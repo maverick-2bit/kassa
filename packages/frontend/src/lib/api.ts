@@ -4,8 +4,12 @@ import type {
   ArtikelUpdate,
   BarzahlungsbelegInput,
   BelegResponse,
+  JahresbelegInput,
+  MonatsbelegInput,
+  NullbelegInput,
   SetupInput,
   SetupResponse,
+  StornobelegInput,
 } from '@kassa/shared'
 
 // ---------------------------------------------------------------------------
@@ -67,10 +71,18 @@ export const artikelApi = {
 // ---------------------------------------------------------------------------
 
 export const belegApi = {
-  list:        (kasseId: string, limit = 50) =>
+  list:       (kasseId: string, limit = 50) =>
     request<BelegResponse[]>('GET', `/api/belege?kasseId=${kasseId}&limit=${limit}`),
-  barzahlung:  (input: BarzahlungsbelegInput) =>
+  barzahlung: (input: BarzahlungsbelegInput) =>
     request<BelegResponse>('POST', '/api/belege/barzahlung', input),
+  storno:     (input: StornobelegInput) =>
+    request<BelegResponse>('POST', '/api/belege/storno', input),
+  nullbeleg:  (input: NullbelegInput) =>
+    request<BelegResponse>('POST', '/api/belege/nullbeleg', input),
+  monatsbeleg:(input: MonatsbelegInput) =>
+    request<BelegResponse>('POST', '/api/belege/monatsbeleg', input),
+  jahresbeleg:(input: JahresbelegInput) =>
+    request<BelegResponse>('POST', '/api/belege/jahresbeleg', input),
 }
 
 export { ApiError }

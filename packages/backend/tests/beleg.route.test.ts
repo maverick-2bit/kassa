@@ -32,8 +32,9 @@ beforeAll(async () => {
 // ---------------------------------------------------------------------------
 
 interface MockState {
-  kasse?:    Record<string, unknown> | null
-  artikel?:  Record<string, unknown>[]
+  kasse?:        Record<string, unknown> | null
+  artikel?:      Record<string, unknown>[]
+  verweisBeleg?: Record<string, unknown> | null
   belegInsertSpy?: ReturnType<typeof vi.fn>
   kasseUpdateSpy?: ReturnType<typeof vi.fn>
 }
@@ -42,15 +43,18 @@ function mockDb(state: MockState = {}): Db {
   const belegInsertSpy = state.belegInsertSpy ?? vi.fn()
   const kasseUpdateSpy = state.kasseUpdateSpy ?? vi.fn()
 
-  // Wir differenzieren kasse vs. artikel über .for() (nur Kasse nutzt SELECT FOR UPDATE)
+  // Innerhalb der TX: select().from().where()
+  //   .for('update')   → Kasse-Lookup
+  //   .limit(n)        → Verweis-Beleg-Lookup (Storno)
+  //   (default await)  → Artikel-Lookup (Barzahlung)
+  // Reihenfolge: zuerst .for() (Kasse), dann je nach Belegtyp .limit() oder direkt await
   const txMock = {
     select: () => ({
       from: () => ({
         where: () => ({
-          // Kasse-Selection (mit SELECT FOR UPDATE)
-          for: () => Promise.resolve(state.kasse ? [state.kasse] : []),
-          // Artikel-Selection (ohne .for, direkt awaitable)
-          then: (resolve: (v: unknown) => void) =>
+          for:   () => Promise.resolve(state.kasse ? [state.kasse] : []),
+          limit: () => Promise.resolve(state.verweisBeleg ? [state.verweisBeleg] : []),
+          then:  (resolve: (v: unknown) => void) =>
             Promise.resolve(state.artikel ?? []).then(resolve),
         }),
       }),
@@ -71,9 +75,22 @@ function mockDb(state: MockState = {}): Db {
     }),
   }
 
+  // Außerhalb der TX wird der Verweisbeleg sowie ggf. Artikel geladen
+  const outerSelectChain = {
+    from: () => ({
+      where: () => ({
+        limit: () => Promise.resolve(state.verweisBeleg ? [state.verweisBeleg] : []),
+        // direkt awaitable für Artikel-Lookup außerhalb TX
+        then: (resolve: (v: unknown) => void) =>
+          Promise.resolve(state.artikel ?? []).then(resolve),
+        orderBy: () => ({ limit: () => Promise.resolve([]) }),
+      }),
+    }),
+  }
+
   return {
     transaction: async (cb: (tx: typeof txMock) => Promise<unknown>) => cb(txMock),
-    select:      () => ({ from: () => ({ where: () => ({ orderBy: () => ({ limit: () => Promise.resolve([]) }) }) }) }),
+    select:      () => outerSelectChain,
   } as unknown as Db
 }
 
@@ -241,6 +258,130 @@ describe('POST /api/belege/barzahlung', () => {
         positionen: [],
         zahlung:    { barCent: 0, karteCent: 0, sonstigeCent: 0 },
       },
+    })
+    expect(res.statusCode).toBe(400)
+    await server.close()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// POST /api/belege/storno
+// ---------------------------------------------------------------------------
+
+function vergangenerBarzahlungsbeleg() {
+  return {
+    id:                          '40000000-0000-0000-0000-000000000010',
+    mandantId:                   MANDANT_ID,
+    kasseId:                     KASSE_ID,
+    belegNummer:                 2,
+    belegDatum:                  new Date('2026-05-20T10:30:00Z'),
+    belegTyp:                    'Barzahlungsbeleg',
+    betragNormalCent:            0,
+    betragErmaessigt1Cent:       700,
+    betragErmaessigt2Cent:       0,
+    betragNullCent:              0,
+    betragBesondersCent:         0,
+    summeBarCent:                700,
+    summeKarteCent:              0,
+    summeSonstigeCent:           0,
+    umsatzzaehlerVerschluesselt: 'enc',
+    zertifikatSn:                '12345',
+    sigVorbeleg:                 'svw',
+    signaturwert:                'sigw',
+    maschinenlesbareCode:        '_R1-AT_...',
+    positionen: [
+      { bezeichnung: 'Espresso', menge: 2, einzelpreisBreutto: 350, mwstSatz: 'ermaessigt1' },
+    ],
+    createdAt: new Date(),
+  }
+}
+
+describe('POST /api/belege/storno', () => {
+  it('erstellt einen Stornobeleg mit negierten Beträgen', async () => {
+    const insertSpy = vi.fn()
+    const db = mockDb({
+      kasse:        aktiveKasse(),
+      verweisBeleg: vergangenerBarzahlungsbeleg(),
+      belegInsertSpy: insertSpy,
+    })
+    const server = await buildTestServer(db)
+    const res = await server.inject({
+      method:  'POST',
+      url:     '/api/belege/storno',
+      payload: { kasseId: KASSE_ID, verweisBelegId: '40000000-0000-0000-0000-000000000010' },
+    })
+
+    expect(res.statusCode).toBe(201)
+    const body = res.json()
+    expect(body.belegTyp).toBe('Stornobeleg')
+    expect(body.summeBarCent).toBe(-700)
+    expect(body.gesamtbetragCent).toBe(-700)
+    expect(body.positionen[0].bezeichnung).toMatch(/^Storno:/)
+    expect(body.positionen[0].einzelpreisBreutto).toBe(-350)
+    await server.close()
+  })
+
+  it('404 wenn Vorgängerbeleg nicht existiert', async () => {
+    const db = mockDb({ kasse: aktiveKasse(), verweisBeleg: null })
+    const server = await buildTestServer(db)
+    const res = await server.inject({
+      method:  'POST',
+      url:     '/api/belege/storno',
+      payload: { kasseId: KASSE_ID, verweisBelegId: '40000000-0000-0000-0000-000000000099' },
+    })
+    expect(res.statusCode).toBe(404)
+    await server.close()
+  })
+
+  it('400 wenn ein Stornobeleg storniert werden soll', async () => {
+    const stornoBeleg = { ...vergangenerBarzahlungsbeleg(), belegTyp: 'Stornobeleg' }
+    const db = mockDb({ kasse: aktiveKasse(), verweisBeleg: stornoBeleg })
+    const server = await buildTestServer(db)
+    const res = await server.inject({
+      method:  'POST',
+      url:     '/api/belege/storno',
+      payload: { kasseId: KASSE_ID, verweisBelegId: stornoBeleg.id },
+    })
+    expect(res.statusCode).toBe(400)
+    expect(res.json().fehler).toContain('Stornobeleg')
+    await server.close()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// POST /api/belege/nullbeleg, /monatsbeleg, /jahresbeleg
+// ---------------------------------------------------------------------------
+
+describe('Spezialbelege (Nullbeleg, Monatsbeleg, Jahresbeleg)', () => {
+  it.each([
+    ['/api/belege/nullbeleg',   'Nullbeleg'],
+    ['/api/belege/monatsbeleg', 'Monatsbeleg'],
+    ['/api/belege/jahresbeleg', 'Jahresbeleg'],
+  ])('%s erstellt einen %s ohne Umsatz', async (url, erwarteterTyp) => {
+    const db = mockDb({ kasse: aktiveKasse() })
+    const server = await buildTestServer(db)
+    const res = await server.inject({
+      method:  'POST',
+      url,
+      payload: { kasseId: KASSE_ID },
+    })
+
+    expect(res.statusCode).toBe(201)
+    const body = res.json()
+    expect(body.belegTyp).toBe(erwarteterTyp)
+    expect(body.gesamtbetragCent).toBe(0)
+    expect(body.positionen).toEqual([])
+    expect(body.maschinenlesbareCode).toMatch(/^_R1-AT_/)
+    await server.close()
+  })
+
+  it('lehnt fehlende kasseId ab', async () => {
+    const db = mockDb({ kasse: aktiveKasse() })
+    const server = await buildTestServer(db)
+    const res = await server.inject({
+      method: 'POST',
+      url:    '/api/belege/nullbeleg',
+      payload: {},
     })
     expect(res.statusCode).toBe(400)
     await server.close()

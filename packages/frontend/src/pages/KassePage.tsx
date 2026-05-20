@@ -94,6 +94,15 @@ export function KassePage() {
     onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
   })
 
+  const nullbelegMutation = useMutation({
+    mutationFn: () => belegApi.nullbeleg({ kasseId: identity.kasseId }),
+    onSuccess: (beleg) => {
+      setLetzterBon(beleg)
+      queryClient.invalidateQueries({ queryKey: ['belege'] })
+    },
+    onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
+  })
+
   const handleBonErstellen = () => {
     setFehler(null)
     if (korb.length === 0) {
@@ -230,6 +239,17 @@ export function KassePage() {
               >
                 Bon erstellen
               </Button>
+            </div>
+
+            <div className="pt-2 border-t border-gray-200 text-center">
+              <button
+                type="button"
+                onClick={() => nullbelegMutation.mutate()}
+                disabled={nullbelegMutation.isPending}
+                className="text-xs text-gray-500 hover:text-brand-600 disabled:opacity-50"
+              >
+                {nullbelegMutation.isPending ? 'Wird erstellt…' : 'Nullbeleg erstellen (Tagesschluss ohne Umsatz)'}
+              </button>
             </div>
           </div>
         </section>

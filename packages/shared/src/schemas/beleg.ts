@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { MwStSatzSchema } from './artikel.js'
+import { FinanzOnlineCredentialsSchema } from './setup.js'
 
 // ---------------------------------------------------------------------------
 // Beleg-Position (im Bon enthaltene Zeile)
@@ -30,6 +31,47 @@ export const BarzahlungsbelegInputSchema = z.object({
   }),
 })
 export type BarzahlungsbelegInput = z.infer<typeof BarzahlungsbelegInputSchema>
+
+// ---------------------------------------------------------------------------
+// Stornobeleg — Komplett-Storno eines vorherigen Belegs
+// ---------------------------------------------------------------------------
+
+export const StornobelegInputSchema = z.object({
+  kasseId:        z.string().uuid(),
+  verweisBelegId: z.string().uuid(),
+  /** Optional: Grund (für interne Dokumentation, nicht im Bon-QR-Code) */
+  grund:          z.string().trim().max(200).optional(),
+})
+export type StornobelegInput = z.infer<typeof StornobelegInputSchema>
+
+// ---------------------------------------------------------------------------
+// Nullbeleg — Test-/Kontrollbeleg ohne Umsatz
+// ---------------------------------------------------------------------------
+
+export const NullbelegInputSchema = z.object({
+  kasseId: z.string().uuid(),
+})
+export type NullbelegInput = z.infer<typeof NullbelegInputSchema>
+
+// ---------------------------------------------------------------------------
+// Monatsbeleg — Monatsabschluss (RKSV-Pflicht)
+// ---------------------------------------------------------------------------
+
+export const MonatsbelegInputSchema = z.object({
+  kasseId: z.string().uuid(),
+})
+export type MonatsbelegInput = z.infer<typeof MonatsbelegInputSchema>
+
+// ---------------------------------------------------------------------------
+// Jahresbeleg — Jahresabschluss (RKSV-Pflicht + FinanzOnline-Prüfung)
+// ---------------------------------------------------------------------------
+
+export const JahresbelegInputSchema = z.object({
+  kasseId: z.string().uuid(),
+  /** Optional: wenn gesetzt, wird der Jahresbeleg direkt bei FinanzOnline geprüft */
+  finanzOnline: FinanzOnlineCredentialsSchema.optional(),
+})
+export type JahresbelegInput = z.infer<typeof JahresbelegInputSchema>
 
 // ---------------------------------------------------------------------------
 // Beleg-Response

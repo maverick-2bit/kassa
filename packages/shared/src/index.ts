@@ -38,11 +38,19 @@ export type {
 // Beleg
 export {
   BarzahlungsbelegInputSchema,
+  StornobelegInputSchema,
+  NullbelegInputSchema,
+  MonatsbelegInputSchema,
+  JahresbelegInputSchema,
   BelegResponseSchema,
   BelegPositionSchema,
 } from './schemas/beleg.js'
 export type {
   BarzahlungsbelegInput,
+  StornobelegInput,
+  NullbelegInput,
+  MonatsbelegInput,
+  JahresbelegInput,
   BelegResponse,
   BelegPositionDto,
 } from './schemas/beleg.js'
