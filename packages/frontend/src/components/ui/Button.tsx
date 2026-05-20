@@ -1,8 +1,8 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary'
-  loading?: boolean
+  variant?: 'primary' | 'secondary' | undefined
+  loading?: boolean | undefined
   children: ReactNode
 }
 
