@@ -1,0 +1,195 @@
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { SetupInputSchema, type SetupInput } from '@kassa/shared'
+import { Field } from './ui/Field'
+import { Input } from './ui/Input'
+import { Button } from './ui/Button'
+
+interface Props {
+  onSubmit: (data: SetupInput) => void
+  loading?: boolean
+  error?:   string | undefined
+}
+
+export function SetupForm({ onSubmit, loading = false, error }: Props) {
+  const {
+    register,
+    handleSubmit,
+    watch,
+    formState: { errors },
+  } = useForm<SetupInput>({
+    resolver: zodResolver(SetupInputSchema),
+    defaultValues: {
+      firmenname: '',
+      uid:        '',
+      kassenId:   '',
+      finanzOnline: {
+        teilnehmerId:    '',
+        benutzerkennung: '',
+        pin:             '',
+      },
+      umgebung: 'test',
+    },
+  })
+
+  const umgebung = watch('umgebung')
+
+  return (
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-8" noValidate>
+      {/* Sektion: Unternehmensdaten */}
+      <fieldset className="space-y-4">
+        <SectionHeader title="Unternehmensdaten" subtitle="Wem gehört die Kasse?" />
+        <Field label="Firmenname" htmlFor="firmenname" required error={errors.firmenname?.message}>
+          <Input
+            id="firmenname"
+            placeholder="Restaurant Mustermann GmbH"
+            autoComplete="organization"
+            invalid={!!errors.firmenname}
+            {...register('firmenname')}
+          />
+        </Field>
+        <Field
+          label="UID-Nummer"
+          htmlFor="uid"
+          required
+          hint="Österreichische Umsatzsteuer-ID, Format: ATU + 8 Ziffern"
+          error={errors.uid?.message}
+        >
+          <Input
+            id="uid"
+            placeholder="ATU12345678"
+            invalid={!!errors.uid}
+            {...register('uid')}
+          />
+        </Field>
+      </fieldset>
+
+      {/* Sektion: Kasse */}
+      <fieldset className="space-y-4">
+        <SectionHeader title="Kasse" subtitle="Eindeutige Kennung für diese Registrierkasse" />
+        <Field
+          label="Kassen-ID"
+          htmlFor="kassenId"
+          required
+          hint="Z. B. KASSE-001 oder STANDORT-A-01. Wird bei FinanzOnline hinterlegt."
+          error={errors.kassenId?.message}
+        >
+          <Input
+            id="kassenId"
+            placeholder="KASSE-001"
+            invalid={!!errors.kassenId}
+            {...register('kassenId')}
+          />
+        </Field>
+      </fieldset>
+
+      {/* Sektion: FinanzOnline */}
+      <fieldset className="space-y-4">
+        <SectionHeader
+          title="FinanzOnline-Zugang"
+          subtitle="Zugangsdaten Ihres FinanzOnline-Kontos. Werden nur für die Registrierung verwendet und nicht gespeichert."
+        />
+        <Field label="Teilnehmer-ID (TID)" htmlFor="tid" required error={errors.finanzOnline?.teilnehmerId?.message}>
+          <Input
+            id="tid"
+            invalid={!!errors.finanzOnline?.teilnehmerId}
+            {...register('finanzOnline.teilnehmerId')}
+          />
+        </Field>
+        <Field label="Benutzerkennung (BenID)" htmlFor="benid" required error={errors.finanzOnline?.benutzerkennung?.message}>
+          <Input
+            id="benid"
+            invalid={!!errors.finanzOnline?.benutzerkennung}
+            {...register('finanzOnline.benutzerkennung')}
+          />
+        </Field>
+        <Field label="PIN" htmlFor="pin" required error={errors.finanzOnline?.pin?.message}>
+          <Input
+            id="pin"
+            type="password"
+            autoComplete="off"
+            invalid={!!errors.finanzOnline?.pin}
+            {...register('finanzOnline.pin')}
+          />
+        </Field>
+      </fieldset>
+
+      {/* Sektion: Umgebung */}
+      <fieldset className="space-y-3">
+        <SectionHeader title="Umgebung" />
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <UmgebungOption
+            value="test"
+            checked={umgebung === 'test'}
+            register={register('umgebung')}
+            title="Testumgebung"
+            description="FinanzOnline-Testserver. Empfohlen für den ersten Test."
+          />
+          <UmgebungOption
+            value="produktion"
+            checked={umgebung === 'produktion'}
+            register={register('umgebung')}
+            title="Produktion"
+            description="Echtbetrieb. Registrierung ist verbindlich."
+          />
+        </div>
+      </fieldset>
+
+      {error && (
+        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert">
+          {error}
+        </div>
+      )}
+
+      <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
+        <Button type="submit" loading={loading}>
+          Kasse einrichten
+        </Button>
+      </div>
+    </form>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Sub-Komponenten
+// ---------------------------------------------------------------------------
+
+function SectionHeader({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <div>
+      <h2 className="text-base font-semibold text-gray-900">{title}</h2>
+      {subtitle && <p className="text-sm text-gray-500 mt-0.5">{subtitle}</p>}
+    </div>
+  )
+}
+
+interface UmgebungOptionProps {
+  value:       'test' | 'produktion'
+  checked:     boolean
+  title:       string
+  description: string
+  register:    ReturnType<ReturnType<typeof useForm<SetupInput>>['register']>
+}
+
+function UmgebungOption({ value, checked, title, description, register }: UmgebungOptionProps) {
+  return (
+    <label
+      className={`relative flex cursor-pointer rounded-lg border p-3 ${
+        checked
+          ? 'border-brand-500 ring-1 ring-brand-500 bg-brand-50/50'
+          : 'border-gray-300 hover:border-gray-400'
+      }`}
+    >
+      <input type="radio" value={value} className="sr-only" {...register} />
+      <span className="flex flex-1 flex-col">
+        <span className="text-sm font-medium text-gray-900">{title}</span>
+        <span className="mt-1 text-xs text-gray-500">{description}</span>
+      </span>
+      {checked && (
+        <svg className="h-5 w-5 text-brand-500 shrink-0" viewBox="0 0 20 20" fill="currentColor">
+          <path fillRule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16zm3.7-9.3a1 1 0 0 0-1.4-1.4L9 10.6 7.7 9.3a1 1 0 1 0-1.4 1.4l2 2a1 1 0 0 0 1.4 0l4-4z" clipRule="evenodd"/>
+        </svg>
+      )}
+    </label>
+  )
+}
