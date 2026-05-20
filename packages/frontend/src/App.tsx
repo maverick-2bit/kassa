@@ -4,6 +4,7 @@ import { SetupPage } from './pages/SetupPage'
 import { KassePage } from './pages/KassePage'
 import { ArtikelPage } from './pages/ArtikelPage'
 import { BelegePage } from './pages/BelegePage'
+import { EinstellungenPage } from './pages/EinstellungenPage'
 import { getKasseIdentity } from './lib/kasse'
 
 export function App() {
@@ -14,7 +15,8 @@ export function App() {
         <Route element={<Layout />}>
           <Route path="/kasse"   element={<RequireSetup><KassePage /></RequireSetup>} />
           <Route path="/artikel" element={<RequireSetup><ArtikelPage /></RequireSetup>} />
-          <Route path="/belege"  element={<RequireSetup><BelegePage /></RequireSetup>} />
+          <Route path="/belege"        element={<RequireSetup><BelegePage /></RequireSetup>} />
+          <Route path="/einstellungen" element={<RequireSetup><EinstellungenPage /></RequireSetup>} />
         </Route>
         <Route path="*" element={<Navigate to={getKasseIdentity() ? '/kasse' : '/setup'} replace />} />
       </Routes>

@@ -70,6 +70,28 @@ export const artikelApi = {
 // Belege
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Drucker
+// ---------------------------------------------------------------------------
+
+export interface DruckerConfig {
+  druckerIp:     string | null
+  druckerPort:   number
+  druckerAktiv:  boolean
+  druckerBreite: number
+}
+
+export const druckerApi = {
+  get:        (kasseId: string) =>
+    request<DruckerConfig>('GET', `/api/kassen/${kasseId}/drucker`),
+  patch:      (kasseId: string, config: Partial<DruckerConfig>) =>
+    request<DruckerConfig>('PATCH', `/api/kassen/${kasseId}/drucker`, config),
+  test:       (kasseId: string) =>
+    request<{ erfolgreich: boolean }>('POST', `/api/kassen/${kasseId}/drucker/test`),
+  reprint:    (belegId: string) =>
+    request<{ erfolgreich: boolean }>('POST', `/api/belege/${belegId}/drucken`),
+}
+
 export const belegApi = {
   list:       (kasseId: string, limit = 50) =>
     request<BelegResponse[]>('GET', `/api/belege?kasseId=${kasseId}&limit=${limit}`),

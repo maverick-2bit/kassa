@@ -27,6 +27,7 @@ function Header() {
           <NavItem to="/kasse">Kasse</NavItem>
           <NavItem to="/artikel">Artikel</NavItem>
           <NavItem to="/belege">Belege</NavItem>
+          <NavItem to="/einstellungen">Einstellungen</NavItem>
         </nav>
       </div>
     </header>

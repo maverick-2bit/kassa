@@ -3,8 +3,11 @@
  * Zeigt Positionen, Steueraufteilung und den RKSV-Maschinencode.
  */
 
+import { useState } from 'react'
+import { useMutation } from '@tanstack/react-query'
 import type { BelegResponse } from '@kassa/shared'
 import { MWST_LABELS } from '@kassa/shared'
+import { druckerApi } from '../lib/api'
 import { formatPreis, formatDatum } from '../lib/format'
 
 interface Props {
@@ -12,6 +15,12 @@ interface Props {
 }
 
 export function BonAnzeige({ beleg }: Props) {
+  const [druckStatus, setDruckStatus] = useState<{ typ: 'ok' | 'fehler'; text: string } | null>(null)
+  const druckMutation = useMutation({
+    mutationFn: () => druckerApi.reprint(beleg.id),
+    onSuccess:  () => setDruckStatus({ typ: 'ok', text: 'Druckauftrag gesendet' }),
+    onError:    (err) => setDruckStatus({ typ: 'fehler', text: err instanceof Error ? err.message : String(err) }),
+  })
   const steuerEintraege = (
     [
       ['normal',      beleg.betraege.normal],
@@ -89,6 +98,28 @@ export function BonAnzeige({ beleg }: Props) {
         {beleg.summeSonstigeCent > 0 && (
           <div className="flex justify-between"><span>Sonstige</span><span className="font-mono">{formatPreis(beleg.summeSonstigeCent)}</span></div>
         )}
+      </div>
+
+      {/* Drucken */}
+      <div className="border-t border-gray-200 pt-3 flex items-center justify-between flex-wrap gap-2">
+        <div>
+          {druckStatus && (
+            <p className={`text-xs ${druckStatus.typ === 'ok' ? 'text-green-600' : 'text-red-600'}`}>
+              {druckStatus.text}
+            </p>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => { setDruckStatus(null); druckMutation.mutate() }}
+          disabled={druckMutation.isPending}
+          className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+        >
+          <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M5 4v3H4a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h1v2a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-2h1a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-1V4a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2zm8 0H7v3h6V4zm0 8H7v4h6v-4z" clipRule="evenodd"/>
+          </svg>
+          {druckMutation.isPending ? 'Drucke…' : 'Drucken'}
+        </button>
       </div>
 
       {/* RKSV-Code */}

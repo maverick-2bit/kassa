@@ -72,6 +72,13 @@ export const kassen = pgTable('kassen', {
   fo_pruefwert:          text('fo_pruefwert'),
   registriert_am:        timestamp('registriert_am', { withTimezone: true }),
 
+  // Drucker-Konfiguration (ESC/POS via TCP — z. B. Epson TM-T20, Star TSP100)
+  druckerIp:             varchar('drucker_ip',   { length: 64 }),
+  druckerPort:           integer('drucker_port').notNull().default(9100),
+  druckerAktiv:          boolean('drucker_aktiv').notNull().default(false),
+  /** Zeichen pro Zeile — 32 für 58mm-Papier, 42 oder 48 für 80mm */
+  druckerBreite:         integer('drucker_breite_zeichen').notNull().default(42),
+
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
