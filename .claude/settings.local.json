@@ -1,0 +1,37 @@
+{
+  "permissions": {
+    "allow": [
+      "Edit",
+      "Write",
+      "Read",
+      "Glob",
+      "Grep",
+      "PowerShell(pnpm install)",
+      "PowerShell(pnpm install:*)",
+      "PowerShell(pnpm add:*)",
+      "PowerShell(pnpm build)",
+      "PowerShell(pnpm test)",
+      "PowerShell(pnpm test:*)",
+      "PowerShell(pnpm dev)",
+      "PowerShell(pnpm lint)",
+      "PowerShell(pnpm:*)",
+      "PowerShell(npx:*)",
+      "PowerShell(turbo:*)",
+      "PowerShell(node:*)",
+      "PowerShell(tsc:*)",
+      "PowerShell(git status)",
+      "PowerShell(git status:*)",
+      "PowerShell(git diff)",
+      "PowerShell(git diff:*)",
+      "PowerShell(git log:*)",
+      "PowerShell(git add:*)",
+      "PowerShell(git commit:*)",
+      "PowerShell(git branch:*)",
+      "PowerShell(git checkout:*)",
+      "PowerShell(Set-Location:*)",
+      "PowerShell(New-Item:*)",
+      "PowerShell(Test-Path:*)",
+      "PowerShell(Get-ChildItem:*)"
+    ]
+  }
+}

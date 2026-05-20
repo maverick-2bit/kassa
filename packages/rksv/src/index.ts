@@ -57,6 +57,19 @@ export type { DEP7ValidationResult } from './dep.js'
 // FinanzOnline
 export { FinanzOnlineClient } from './finanz-online.js'
 
+// Setup-Orchestrierung (automatische Einrichtung)
+export {
+  kasseAutomatischEinrichten,
+  validiereKasseEinrichtenInput,
+} from './setup.js'
+export type {
+  KasseEinrichtenInput,
+  KasseEinrichtenOptionen,
+  KasseEinrichtenErgebnis,
+  EinrichtungsSchritt,
+  EinrichtungsSchrittTyp,
+} from './setup.js'
+
 // Betreiberwechsel
 export {
   kasseAbgeben,
