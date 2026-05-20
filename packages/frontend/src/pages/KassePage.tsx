@@ -1,7 +1,14 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { Artikel, BarzahlungsbelegInput, BelegResponse } from '@kassa/shared'
-import { artikelApi, belegApi } from '../lib/api'
+import type {
+  Artikel,
+  BarzahlungsbelegInput,
+  BelegResponse,
+  BonierungErgebnis,
+  BonierungInput,
+} from '@kassa/shared'
+import { STATION_LABELS } from '@kassa/shared'
+import { artikelApi, belegApi, bonierApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
 import { Button } from '../components/ui/Button'
@@ -27,9 +34,12 @@ export function KassePage() {
   const queryClient = useQueryClient()
 
   const [korb, setKorb] = useState<KorbPosition[]>([])
+  const [tisch, setTisch] = useState<string>('1')
+  const [kellner, setKellner] = useState<string>('Service')
   const [barInput, setBarInput] = useState<string>('')
   const [karteInput, setKarteInput] = useState<string>('')
   const [letzterBon, setLetzterBon] = useState<BelegResponse | null>(null)
+  const [bonierungErgebnis, setBonierungErgebnis] = useState<BonierungErgebnis | null>(null)
   const [fehler, setFehler] = useState<string | null>(null)
 
   const artikelQuery = useQuery({
@@ -103,6 +113,37 @@ export function KassePage() {
     onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
   })
 
+  const bonierMutation = useMutation({
+    mutationFn: (input: BonierungInput) => bonierApi.bonieren(input),
+    onSuccess: (ergebnis) => {
+      setBonierungErgebnis(ergebnis)
+    },
+    onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
+  })
+
+  const handleBonieren = () => {
+    setFehler(null)
+    if (korb.length === 0) { setFehler('Der Warenkorb ist leer.'); return }
+    if (!tisch.trim())     { setFehler('Tisch fehlt.'); return }
+    if (!kellner.trim())   { setFehler('Kellner fehlt.'); return }
+
+    // Nur Artikel mit Station bonieren — Server-seitig wird das nochmal geprüft
+    const positionen = korb
+      .filter((p) => p.artikel.station)
+      .map((p) => ({ artikelId: p.artikel.id, menge: p.menge }))
+    if (positionen.length === 0) {
+      setFehler('Kein Artikel im Warenkorb hat eine KDS-Station hinterlegt.')
+      return
+    }
+
+    bonierMutation.mutate({
+      kasseId: identity.kasseId,
+      tisch:   tisch.trim(),
+      kellner: kellner.trim(),
+      positionen,
+    })
+  }
+
   const handleBonErstellen = () => {
     setFehler(null)
     if (korb.length === 0) {
@@ -133,6 +174,26 @@ export function KassePage() {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-4">
+      {/* Kontext-Leiste: Tisch + Kellner */}
+      <div className="mb-3 bg-white rounded-lg shadow-sm border border-gray-200 px-3 py-2 flex flex-wrap items-center gap-3">
+        <label className="inline-flex items-center gap-2 text-sm">
+          <span className="font-medium text-gray-700">Tisch</span>
+          <Input
+            value={tisch}
+            onChange={(e) => setTisch(e.target.value)}
+            className="w-20 text-center"
+          />
+        </label>
+        <label className="inline-flex items-center gap-2 text-sm">
+          <span className="font-medium text-gray-700">Kellner</span>
+          <Input
+            value={kellner}
+            onChange={(e) => setKellner(e.target.value)}
+            className="w-40"
+          />
+        </label>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-4">
         {/* ----- Linke Seite: Artikel-Buttons ----- */}
         <section className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
@@ -232,6 +293,15 @@ export function KassePage() {
             <div className="flex gap-2 pt-1">
               <Button variant="secondary" onClick={reset} className="flex-1">Leeren</Button>
               <Button
+                variant="secondary"
+                onClick={handleBonieren}
+                loading={bonierMutation.isPending}
+                className="flex-1"
+                disabled={korb.length === 0}
+              >
+                Bonieren
+              </Button>
+              <Button
                 onClick={handleBonErstellen}
                 loading={belegMutation.isPending}
                 className="flex-1"
@@ -263,6 +333,42 @@ export function KassePage() {
         size="lg"
       >
         {letzterBon && <BonAnzeige beleg={letzterBon} />}
+      </Modal>
+
+      {/* Bonierungs-Ergebnis */}
+      <Modal
+        open={!!bonierungErgebnis}
+        onClose={() => setBonierungErgebnis(null)}
+        title={`Bonierung ${bonierungErgebnis?.bonNummer ?? ''}`}
+      >
+        {bonierungErgebnis && (
+          <div className="space-y-3">
+            <p className="text-sm text-gray-600">
+              Bonierbons an folgende Stationen gesendet:
+            </p>
+            <ul className="space-y-1.5">
+              {bonierungErgebnis.stationen.map((s) => (
+                <li
+                  key={s.station}
+                  className={`flex items-center justify-between rounded-md border px-3 py-2 text-sm ${
+                    s.erfolgreich
+                      ? 'border-green-200 bg-green-50 text-green-800'
+                      : 'border-red-200 bg-red-50 text-red-700'
+                  }`}
+                >
+                  <span className="font-medium">
+                    {STATION_LABELS[s.station]} <span className="font-mono text-xs text-gray-500">({s.ip || '—'})</span>
+                  </span>
+                  <span>
+                    {s.erfolgreich
+                      ? `${s.positionen} Position${s.positionen === 1 ? '' : 'en'}`
+                      : s.fehler ?? 'Fehler'}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </Modal>
     </div>
   )

@@ -10,6 +10,7 @@ import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { eq } from 'drizzle-orm'
 import { Buffer } from 'node:buffer'
+import { StationSchema } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import { kassen } from '../db/schema.js'
 import {
@@ -90,6 +91,46 @@ export const druckerRoute: FastifyPluginAsync<DruckerRouteOptions> = async (fast
       fastify.log.error({ err }, 'Reprint fehlgeschlagen')
       return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
     }
+  })
+
+  // GET /kassen/:id/kds — KDS-Konfiguration auslesen
+  fastify.get('/kassen/:id/kds', async (request, reply) => {
+    const params = IdParamSchema.safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
+    const [kasse] = await opts.db.select().from(kassen).where(eq(kassen.id, params.data.id)).limit(1)
+    if (!kasse) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
+    return reply.send({
+      kdsAktiv:     kasse.kdsAktiv,
+      kdsPort:      kasse.kdsPort,
+      kdsStationen: kasse.kdsStationen,
+    })
+  })
+
+  // PATCH /kassen/:id/kds — KDS-Stationen + Port + Aktiv
+  fastify.patch('/kassen/:id/kds', async (request, reply) => {
+    const params = IdParamSchema.safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
+
+    const KdsConfigSchema = z.object({
+      kdsAktiv:     z.boolean().optional(),
+      kdsPort:      z.number().int().min(1).max(65535).optional(),
+      kdsStationen: z.record(StationSchema, z.string().trim().min(1).max(64)).optional(),
+    })
+    const body = KdsConfigSchema.safeParse(request.body)
+    if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
+
+    const update: Partial<typeof kassen.$inferInsert> = { updatedAt: new Date() }
+    if (body.data.kdsAktiv     !== undefined) update.kdsAktiv     = body.data.kdsAktiv
+    if (body.data.kdsPort      !== undefined) update.kdsPort      = body.data.kdsPort
+    if (body.data.kdsStationen !== undefined) update.kdsStationen = body.data.kdsStationen
+
+    const [updated] = await opts.db.update(kassen).set(update).where(eq(kassen.id, params.data.id)).returning()
+    if (!updated) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
+    return reply.send({
+      kdsAktiv:     updated.kdsAktiv,
+      kdsPort:      updated.kdsPort,
+      kdsStationen: updated.kdsStationen,
+    })
   })
 
   // POST /kassen/:id/drucker/test (Testdruck)

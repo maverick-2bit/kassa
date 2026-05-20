@@ -4,11 +4,14 @@ import type {
   ArtikelUpdate,
   BarzahlungsbelegInput,
   BelegResponse,
+  BonierungErgebnis,
+  BonierungInput,
   JahresbelegInput,
   MonatsbelegInput,
   NullbelegInput,
   SetupInput,
   SetupResponse,
+  Station,
   StornobelegInput,
 } from '@kassa/shared'
 
@@ -90,6 +93,28 @@ export const druckerApi = {
     request<{ erfolgreich: boolean }>('POST', `/api/kassen/${kasseId}/drucker/test`),
   reprint:    (belegId: string) =>
     request<{ erfolgreich: boolean }>('POST', `/api/belege/${belegId}/drucken`),
+}
+
+// ---------------------------------------------------------------------------
+// KDS
+// ---------------------------------------------------------------------------
+
+export interface KdsConfig {
+  kdsAktiv:     boolean
+  kdsPort:      number
+  kdsStationen: Partial<Record<Station, string>>
+}
+
+export const kdsApi = {
+  get:   (kasseId: string) =>
+    request<KdsConfig>('GET', `/api/kassen/${kasseId}/kds`),
+  patch: (kasseId: string, config: Partial<KdsConfig>) =>
+    request<KdsConfig>('PATCH', `/api/kassen/${kasseId}/kds`, config),
+}
+
+export const bonierApi = {
+  bonieren: (input: BonierungInput) =>
+    request<BonierungErgebnis>('POST', '/api/bestellung/bonieren', input),
 }
 
 export const belegApi = {

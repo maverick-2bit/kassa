@@ -17,6 +17,7 @@ function toDto(row: typeof artikel.$inferSelect): Artikel {
     preisBruttoCent: row.preisBruttoCent,
     mwstSatz:        row.mwstSatz as Artikel['mwstSatz'],
     artikelnummer:   row.artikelnummer,
+    station:         row.station as Artikel['station'],
     aktiv:           row.aktiv,
     createdAt:       row.createdAt.toISOString(),
     updatedAt:       row.updatedAt.toISOString(),
@@ -30,6 +31,7 @@ export async function erstelleArtikel(db: Db, input: ArtikelInput): Promise<Arti
     preisBruttoCent: input.preisBruttoCent,
     mwstSatz:        input.mwstSatz,
     artikelnummer:   input.artikelnummer ?? null,
+    station:         input.station ?? null,
   }).returning()
   if (!created) throw new Error('Artikel konnte nicht angelegt werden')
   return toDto(created)
@@ -63,6 +65,7 @@ export async function aktualisiereArtikel(
   if (update.preisBruttoCent !== undefined) values.preisBruttoCent = update.preisBruttoCent
   if (update.mwstSatz        !== undefined) values.mwstSatz        = update.mwstSatz
   if (update.artikelnummer   !== undefined) values.artikelnummer   = update.artikelnummer
+  if (update.station         !== undefined) values.station         = update.station
   if (update.aktiv           !== undefined) values.aktiv           = update.aktiv
 
   const [updated] = await db

@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import {
+  ALLE_STATIONEN,
   MWST_LABELS,
+  STATION_LABELS,
   type Artikel,
   type ArtikelInput,
   type MwStSatz,
+  type Station,
 } from '@kassa/shared'
 import { Field } from './ui/Field'
 import { Input } from './ui/Input'
@@ -17,6 +20,7 @@ type FormValues = {
   preisEuro:     string
   mwstSatz:      MwStSatz
   artikelnummer: string
+  station:       Station | ''
 }
 
 interface Props {
@@ -39,6 +43,7 @@ export function ArtikelFormular({ mandantId, initial, onSubmit, onCancel, loadin
       preisEuro:     initial ? (initial.preisBruttoCent / 100).toFixed(2).replace('.', ',') : '',
       mwstSatz:      initial?.mwstSatz      ?? 'normal',
       artikelnummer: initial?.artikelnummer ?? '',
+      station:       initial?.station       ?? '',
     },
   })
 
@@ -48,6 +53,7 @@ export function ArtikelFormular({ mandantId, initial, onSubmit, onCancel, loadin
       preisEuro:     initial ? (initial.preisBruttoCent / 100).toFixed(2).replace('.', ',') : '',
       mwstSatz:      initial?.mwstSatz      ?? 'normal',
       artikelnummer: initial?.artikelnummer ?? '',
+      station:       initial?.station       ?? '',
     })
   }, [initial, reset])
 
@@ -64,6 +70,7 @@ export function ArtikelFormular({ mandantId, initial, onSubmit, onCancel, loadin
       preisBruttoCent: cent,
       mwstSatz:        values.mwstSatz,
       ...(values.artikelnummer.trim() && { artikelnummer: values.artikelnummer.trim() }),
+      station:         values.station || null,
     })
   })
 
@@ -96,9 +103,19 @@ export function ArtikelFormular({ mandantId, initial, onSubmit, onCancel, loadin
         </Field>
       </div>
 
-      <Field label="Artikelnummer" hint="Optional, z.B. ESP-01">
-        <Input placeholder="" {...register('artikelnummer')} />
-      </Field>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Field label="Artikelnummer" hint="Optional, z.B. ESP-01">
+          <Input placeholder="" {...register('artikelnummer')} />
+        </Field>
+        <Field label="KDS-Station" hint="Zielstation für Bonierbon (Küche, Schank …)">
+          <Select {...register('station')}>
+            <option value="">— ohne KDS-Bonierung —</option>
+            {ALLE_STATIONEN.map((s) => (
+              <option key={s} value={s}>{STATION_LABELS[s]}</option>
+            ))}
+          </Select>
+        </Field>
+      </div>
 
       {fehler && (
         <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { StationSchema } from './station.js'
 
 /** Österreichische MwSt-Sätze gemäß RKSV */
 export const MwStSatzSchema = z.enum(['normal', 'ermaessigt1', 'ermaessigt2', 'null', 'besonders'])
@@ -23,6 +24,7 @@ export const ArtikelSchema = z.object({
   preisBruttoCent: z.number().int(),
   mwstSatz:        MwStSatzSchema,
   artikelnummer:   z.string().nullable(),
+  station:         StationSchema.nullable(),
   aktiv:           z.boolean(),
   createdAt:       z.string(),
   updatedAt:       z.string(),
@@ -35,6 +37,7 @@ export const ArtikelInputSchema = z.object({
   preisBruttoCent: z.number().int().nonnegative('Preis darf nicht negativ sein'),
   mwstSatz:        MwStSatzSchema,
   artikelnummer:   z.string().trim().max(40).optional().nullable(),
+  station:         StationSchema.optional().nullable(),
 })
 export type ArtikelInput = z.infer<typeof ArtikelInputSchema>
 
@@ -43,6 +46,7 @@ export const ArtikelUpdateSchema = z.object({
   preisBruttoCent: z.number().int().nonnegative().optional(),
   mwstSatz:        MwStSatzSchema.optional(),
   artikelnummer:   z.string().trim().max(40).optional().nullable(),
+  station:         StationSchema.optional().nullable(),
   aktiv:           z.boolean().optional(),
 })
 export type ArtikelUpdate = z.infer<typeof ArtikelUpdateSchema>

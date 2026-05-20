@@ -35,6 +35,24 @@ export type {
   MwStSatz,
 } from './schemas/artikel.js'
 
+// Stationen + Bonierung
+export {
+  StationSchema,
+  STATION_LABELS,
+  ALLE_STATIONEN,
+} from './schemas/station.js'
+export type { Station } from './schemas/station.js'
+
+export {
+  BonierungInputSchema,
+  BonierungErgebnisSchema,
+  BonierungPositionSchema,
+} from './schemas/bonierung.js'
+export type {
+  BonierungInput,
+  BonierungErgebnis,
+} from './schemas/bonierung.js'
+
 // Beleg
 export {
   BarzahlungsbelegInputSchema,

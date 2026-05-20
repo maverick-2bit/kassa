@@ -14,6 +14,7 @@ import { healthRoute } from './routes/health.route.js'
 import { artikelRoute } from './routes/artikel.route.js'
 import { belegRoute } from './routes/beleg.route.js'
 import { druckerRoute } from './routes/drucker.route.js'
+import { bonierRoute } from './routes/bonier.route.js'
 
 export interface ServerDeps {
   config:    Config
@@ -41,6 +42,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     await api.register(artikelRoute, { db:   deps.db })
     await api.register(belegRoute,   { deps: deps.belegDeps })
     await api.register(druckerRoute, { db:   deps.db })
+    await api.register(bonierRoute,  { deps: { db: deps.db } })
   }, { prefix: '/api' })
 
   return fastify

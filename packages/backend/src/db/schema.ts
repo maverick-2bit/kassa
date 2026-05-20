@@ -79,6 +79,12 @@ export const kassen = pgTable('kassen', {
   /** Zeichen pro Zeile — 32 für 58mm-Papier, 42 oder 48 für 80mm */
   druckerBreite:         integer('drucker_breite_zeichen').notNull().default(42),
 
+  // KDS-Konfiguration (Küchen-Display-System)
+  /** Mapping Stations-Slug → IP-Adresse, z. B. { kueche: "192.168.192.210" } */
+  kdsStationen:          jsonb('kds_stationen').notNull().default({}),
+  kdsPort:               integer('kds_port').notNull().default(9100),
+  kdsAktiv:              boolean('kds_aktiv').notNull().default(false),
+
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
@@ -138,6 +144,8 @@ export const artikel = pgTable('artikel', {
   preisBruttoCent:   integer('preis_brutto_cent').notNull(),
   mwstSatz:          varchar('mwst_satz', { length: 20 }).notNull(),
   artikelnummer:     varchar('artikelnummer', { length: 40 }),
+  /** KDS-Station für Bonierbon-Routing (null = nicht bonieren, z.B. Pfand) */
+  station:           varchar('station', { length: 20 }),
   aktiv:             boolean('aktiv').notNull().default(true),
   createdAt:         timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt:         timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
