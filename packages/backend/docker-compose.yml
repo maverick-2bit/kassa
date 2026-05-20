@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: kassa-postgres
+    environment:
+      POSTGRES_USER: kassa
+      POSTGRES_PASSWORD: kassa
+      POSTGRES_DB: kassa
+    ports:
+      - "5432:5432"
+    volumes:
+      - kassa-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kassa"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  kassa-pgdata:
