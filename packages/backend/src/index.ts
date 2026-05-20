@@ -13,7 +13,12 @@ async function main(): Promise<void> {
 
   const server = await buildServer({
     config,
+    db,
     setupDeps: {
+      db,
+      masterPassphrase: config.MASTER_PASSPHRASE,
+    },
+    belegDeps: {
       db,
       masterPassphrase: config.MASTER_PASSPHRASE,
     },

@@ -19,3 +19,30 @@ export type {
   EinrichtungsSchrittDto,
   FinanzOnlineCredentialsInput,
 } from './schemas/setup.js'
+
+// Artikel
+export {
+  ArtikelSchema,
+  ArtikelInputSchema,
+  ArtikelUpdateSchema,
+  MwStSatzSchema,
+  MWST_LABELS,
+} from './schemas/artikel.js'
+export type {
+  Artikel,
+  ArtikelInput,
+  ArtikelUpdate,
+  MwStSatz,
+} from './schemas/artikel.js'
+
+// Beleg
+export {
+  BarzahlungsbelegInputSchema,
+  BelegResponseSchema,
+  BelegPositionSchema,
+} from './schemas/beleg.js'
+export type {
+  BarzahlungsbelegInput,
+  BelegResponse,
+  BelegPositionDto,
+} from './schemas/beleg.js'

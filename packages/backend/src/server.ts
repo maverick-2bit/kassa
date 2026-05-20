@@ -6,13 +6,19 @@
 import Fastify, { type FastifyInstance } from 'fastify'
 import cors from '@fastify/cors'
 import type { Config } from './config.js'
+import type { Db } from './db/client.js'
 import type { SetupServiceDeps } from './services/setup.service.js'
+import type { BelegServiceDeps } from './services/beleg.service.js'
 import { setupRoute } from './routes/setup.route.js'
 import { healthRoute } from './routes/health.route.js'
+import { artikelRoute } from './routes/artikel.route.js'
+import { belegRoute } from './routes/beleg.route.js'
 
 export interface ServerDeps {
-  config: Config
+  config:    Config
+  db:        Db
   setupDeps: SetupServiceDeps
+  belegDeps: BelegServiceDeps
 }
 
 export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
@@ -30,7 +36,9 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
 
   await fastify.register(async (api) => {
     await api.register(healthRoute)
-    await api.register(setupRoute, { deps: deps.setupDeps })
+    await api.register(setupRoute,   { deps: deps.setupDeps })
+    await api.register(artikelRoute, { db:   deps.db })
+    await api.register(belegRoute,   { deps: deps.belegDeps })
   }, { prefix: '/api' })
 
   return fastify

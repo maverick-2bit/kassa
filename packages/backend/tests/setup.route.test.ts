@@ -82,6 +82,7 @@ async function buildTestServer(deps: {
   db?: Db
   foClient?: FinanzOnlineClient
 } = {}) {
+  const db = deps.db ?? mockDb()
   return buildServer({
     config: {
       DATABASE_URL:      'postgresql://test',
@@ -91,10 +92,15 @@ async function buildTestServer(deps: {
       CORS_ORIGIN:       '*',
       NODE_ENV:          'test',
     },
+    db,
     setupDeps: {
-      db:               deps.db ?? mockDb(),
+      db,
       masterPassphrase: 'test-passphrase-long-enough',
       rksvOptionen:     deps.foClient ? { finanzOnlineClient: deps.foClient } : undefined,
+    },
+    belegDeps: {
+      db,
+      masterPassphrase: 'test-passphrase-long-enough',
     },
   })
 }

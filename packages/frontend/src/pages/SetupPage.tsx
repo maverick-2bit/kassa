@@ -1,13 +1,21 @@
 import { useMutation } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import type { SetupInput } from '@kassa/shared'
 import { postSetup } from '../lib/api'
+import { setKasseIdentity } from '../lib/kasse'
 import { SetupForm } from '../components/SetupForm'
 import { SetupProgress } from '../components/SetupProgress'
 import { SetupSuccess } from '../components/SetupSuccess'
 
 export function SetupPage() {
+  const navigate = useNavigate()
   const mutation = useMutation({
     mutationFn: postSetup,
+    onSuccess: (data) => {
+      if (data.erfolgreich && data.mandantId && data.kasseId) {
+        setKasseIdentity({ mandantId: data.mandantId, kasseId: data.kasseId })
+      }
+    },
   })
 
   const isSuccess = mutation.isSuccess && mutation.data.erfolgreich
@@ -26,7 +34,17 @@ export function SetupPage() {
 
         <main className="rounded-xl bg-white shadow-sm border border-gray-200 p-6 sm:p-8">
           {isSuccess && mutation.data ? (
-            <SetupSuccess data={mutation.data} />
+            <div className="space-y-6">
+              <SetupSuccess data={mutation.data} />
+              <div className="flex justify-center pt-2">
+                <button
+                  onClick={() => navigate('/kasse')}
+                  className="inline-flex items-center gap-2 rounded-md bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-600"
+                >
+                  Zur Kasse →
+                </button>
+              </div>
+            </div>
           ) : mutation.isPending ? (
             <div className="space-y-6">
               <div>
