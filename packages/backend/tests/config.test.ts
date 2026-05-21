@@ -5,6 +5,7 @@ describe('loadConfig', () => {
   const validEnv = {
     DATABASE_URL:      'postgresql://kassa:kassa@localhost:5432/kassa',
     MASTER_PASSPHRASE: 'a-sufficiently-long-passphrase',
+    JWT_SECRET:        'a-sufficiently-long-jwt-secret-key-here',
     PORT:              '3000',
     CORS_ORIGIN:       'http://localhost:5173',
   }
@@ -29,6 +30,7 @@ describe('loadConfig', () => {
     const env: NodeJS.ProcessEnv = {
       DATABASE_URL:      validEnv.DATABASE_URL,
       MASTER_PASSPHRASE: validEnv.MASTER_PASSPHRASE,
+      JWT_SECRET:        validEnv.JWT_SECRET,
     }
     const cfg = loadConfig(env)
     expect(cfg.PORT).toBe(3000)

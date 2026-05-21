@@ -1,16 +1,13 @@
-/**
- * Fastify-Server-Aufbau.
- * Wird sowohl von index.ts (Produktion) als auch von Tests verwendet.
- */
-
 import Fastify, { type FastifyInstance } from 'fastify'
 import cors from '@fastify/cors'
 import type { Config } from './config.js'
 import type { Db } from './db/client.js'
 import type { SetupServiceDeps } from './services/setup.service.js'
 import type { BelegServiceDeps } from './services/beleg.service.js'
+import { registerAuth } from './auth/plugin.js'
 import { setupRoute } from './routes/setup.route.js'
 import { healthRoute } from './routes/health.route.js'
+import { authRoute } from './routes/auth.route.js'
 import { artikelRoute } from './routes/artikel.route.js'
 import { belegRoute } from './routes/beleg.route.js'
 import { druckerRoute } from './routes/drucker.route.js'
@@ -36,9 +33,16 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     credentials: true,
   })
 
+  // Auth-Plugin registrieren (stellt fastify.jwt + fastify.authenticate bereit)
+  await registerAuth(fastify, deps.config)
+
   await fastify.register(async (api) => {
+    // Offene Routen (kein Login nötig)
     await api.register(healthRoute)
+    await api.register(authRoute,    { db:   deps.db })
     await api.register(setupRoute,   { deps: deps.setupDeps })
+
+    // Geschützte Routen — alle Handler verlangen JWT via onRequest-Hook in den Routes
     await api.register(artikelRoute, { db:   deps.db })
     await api.register(belegRoute,   { deps: deps.belegDeps })
     await api.register(druckerRoute, { db:   deps.db })

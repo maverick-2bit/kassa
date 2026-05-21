@@ -5,6 +5,23 @@
  * gemeinsam verwendet. Single source of truth.
  */
 
+// Auth
+export {
+  LoginInputSchema,
+  LoginResponseSchema,
+  UserSchema,
+  RolleSchema,
+  ROLLE_LABELS,
+  AdminUserInputSchema,
+} from './schemas/auth.js'
+export type {
+  LoginInput,
+  LoginResponse,
+  User,
+  Rolle,
+  AdminUserInput,
+} from './schemas/auth.js'
+
 // Setup
 export {
   SetupInputSchema,

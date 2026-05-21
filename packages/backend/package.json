@@ -17,14 +17,17 @@
   },
   "dependencies": {
     "@fastify/cors": "^10.0.0",
+    "@fastify/jwt": "^9.0.0",
     "@kassa/rksv": "workspace:*",
     "@kassa/shared": "workspace:*",
+    "bcryptjs": "^2.4.3",
     "drizzle-orm": "^0.36.0",
     "fastify": "^5.0.0",
     "postgres": "^3.4.5",
     "zod": "^3.23.0"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
     "@types/node": "^22.0.0",
     "drizzle-kit": "^0.28.0",
     "typescript": "^5.4.5",

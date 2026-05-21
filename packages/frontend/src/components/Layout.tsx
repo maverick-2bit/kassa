@@ -1,4 +1,5 @@
-import { NavLink, Outlet } from 'react-router-dom'
+import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { clearAuth, getAuth } from '../lib/auth'
 
 export function Layout() {
   return (
@@ -12,6 +13,14 @@ export function Layout() {
 }
 
 function Header() {
+  const navigate = useNavigate()
+  const auth     = getAuth()
+
+  const logout = () => {
+    clearAuth()
+    navigate('/login')
+  }
+
   return (
     <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
       <div className="mx-auto max-w-6xl px-4 py-3 flex items-center gap-6">
@@ -23,12 +32,28 @@ function Header() {
           </span>
           <span className="font-semibold text-gray-900">Kassa</span>
         </div>
-        <nav className="flex gap-1">
+        <nav className="flex gap-1 flex-1">
           <NavItem to="/kasse">Kasse</NavItem>
           <NavItem to="/artikel">Artikel</NavItem>
           <NavItem to="/belege">Belege</NavItem>
           <NavItem to="/einstellungen">Einstellungen</NavItem>
         </nav>
+        {auth && (
+          <div className="flex items-center gap-3">
+            <div className="text-right text-xs">
+              <p className="font-medium text-gray-900">{auth.user.name}</p>
+              <p className="text-gray-500">{auth.mandant.firmenname}</p>
+            </div>
+            <button
+              type="button"
+              onClick={logout}
+              className="text-xs text-gray-500 hover:text-red-600 px-2 py-1 rounded hover:bg-gray-100"
+              title="Abmelden"
+            >
+              Abmelden
+            </button>
+          </div>
+        )}
       </div>
     </header>
   )

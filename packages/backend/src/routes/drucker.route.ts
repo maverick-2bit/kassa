@@ -13,6 +13,7 @@ import { Buffer } from 'node:buffer'
 import { StationSchema } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import { kassen } from '../db/schema.js'
+import { pruefeBelegGehoertZuMandant, pruefeKasseGehoertZuMandant } from '../auth/scope.js'
 import {
   druckeBeleg,
   sendBytes,
@@ -36,9 +37,12 @@ const DruckerConfigInputSchema = z.object({
 
 export const druckerRoute: FastifyPluginAsync<DruckerRouteOptions> = async (fastify, opts) => {
   // GET /kassen/:id/drucker
-  fastify.get('/kassen/:id/drucker', async (request, reply) => {
+  fastify.get('/kassen/:id/drucker', { onRequest: [fastify.authenticate] }, async (request, reply) => {
     const params = IdParamSchema.safeParse(request.params)
     if (!params.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
+    if (!(await pruefeKasseGehoertZuMandant(opts.db, params.data.id, request.user.mandantId))) {
+      return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
+    }
 
     const [kasse] = await opts.db.select().from(kassen).where(eq(kassen.id, params.data.id)).limit(1)
     if (!kasse) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
@@ -52,9 +56,12 @@ export const druckerRoute: FastifyPluginAsync<DruckerRouteOptions> = async (fast
   })
 
   // PATCH /kassen/:id/drucker
-  fastify.patch('/kassen/:id/drucker', async (request, reply) => {
+  fastify.patch('/kassen/:id/drucker', { onRequest: [fastify.authenticate] }, async (request, reply) => {
     const params = IdParamSchema.safeParse(request.params)
     if (!params.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
+    if (!(await pruefeKasseGehoertZuMandant(opts.db, params.data.id, request.user.mandantId))) {
+      return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
+    }
 
     const body = DruckerConfigInputSchema.safeParse(request.body)
     if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
@@ -77,9 +84,12 @@ export const druckerRoute: FastifyPluginAsync<DruckerRouteOptions> = async (fast
   })
 
   // POST /belege/:id/drucken (Reprint)
-  fastify.post('/belege/:id/drucken', async (request, reply) => {
+  fastify.post('/belege/:id/drucken', { onRequest: [fastify.authenticate] }, async (request, reply) => {
     const params = IdParamSchema.safeParse(request.params)
     if (!params.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
+    if (!(await pruefeBelegGehoertZuMandant(opts.db, params.data.id, request.user.mandantId))) {
+      return reply.status(404).send({ fehler: 'Beleg nicht gefunden' })
+    }
 
     try {
       await druckeBeleg(opts.db, params.data.id)
@@ -94,9 +104,12 @@ export const druckerRoute: FastifyPluginAsync<DruckerRouteOptions> = async (fast
   })
 
   // GET /kassen/:id/kds — KDS-Konfiguration auslesen
-  fastify.get('/kassen/:id/kds', async (request, reply) => {
+  fastify.get('/kassen/:id/kds', { onRequest: [fastify.authenticate] }, async (request, reply) => {
     const params = IdParamSchema.safeParse(request.params)
     if (!params.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
+    if (!(await pruefeKasseGehoertZuMandant(opts.db, params.data.id, request.user.mandantId))) {
+      return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
+    }
     const [kasse] = await opts.db.select().from(kassen).where(eq(kassen.id, params.data.id)).limit(1)
     if (!kasse) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
     return reply.send({
@@ -107,9 +120,12 @@ export const druckerRoute: FastifyPluginAsync<DruckerRouteOptions> = async (fast
   })
 
   // PATCH /kassen/:id/kds — KDS-Stationen + Port + Aktiv
-  fastify.patch('/kassen/:id/kds', async (request, reply) => {
+  fastify.patch('/kassen/:id/kds', { onRequest: [fastify.authenticate] }, async (request, reply) => {
     const params = IdParamSchema.safeParse(request.params)
     if (!params.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
+    if (!(await pruefeKasseGehoertZuMandant(opts.db, params.data.id, request.user.mandantId))) {
+      return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
+    }
 
     const KdsConfigSchema = z.object({
       kdsAktiv:     z.boolean().optional(),
@@ -134,9 +150,12 @@ export const druckerRoute: FastifyPluginAsync<DruckerRouteOptions> = async (fast
   })
 
   // POST /kassen/:id/drucker/test (Testdruck)
-  fastify.post('/kassen/:id/drucker/test', async (request, reply) => {
+  fastify.post('/kassen/:id/drucker/test', { onRequest: [fastify.authenticate] }, async (request, reply) => {
     const params = IdParamSchema.safeParse(request.params)
     if (!params.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
+    if (!(await pruefeKasseGehoertZuMandant(opts.db, params.data.id, request.user.mandantId))) {
+      return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
+    }
 
     const [kasse] = await opts.db.select().from(kassen).where(eq(kassen.id, params.data.id)).limit(1)
     if (!kasse) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })

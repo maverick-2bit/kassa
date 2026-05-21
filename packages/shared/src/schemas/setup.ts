@@ -4,6 +4,7 @@
  */
 
 import { z } from 'zod'
+import { AdminUserInputSchema } from './auth.js'
 
 // ---------------------------------------------------------------------------
 // FinanzOnline-Zugangsdaten
@@ -27,6 +28,8 @@ export const SetupInputSchema = z.object({
   kassenId:   z.string().trim().min(1, 'Kassen-ID ist erforderlich').max(40),
   finanzOnline: FinanzOnlineCredentialsSchema,
   umgebung:   z.enum(['test', 'produktion']).default('test'),
+  /** Admin-Benutzer für den ersten Login nach Setup */
+  admin:      AdminUserInputSchema,
   /** Optional: Gültigkeitsdauer des Zertifikats in Tagen (Standard: 5 Jahre) */
   zertifikatGueltigkeitTage: z.number().int().min(30).max(3650).optional(),
 })

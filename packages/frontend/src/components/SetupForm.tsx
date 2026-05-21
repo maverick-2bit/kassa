@@ -29,6 +29,11 @@ export function SetupForm({ onSubmit, loading = false, error }: Props) {
         pin:             '',
       },
       umgebung: 'test',
+      admin: {
+        name:     '',
+        email:    '',
+        passwort: '',
+      },
     },
   })
 
@@ -112,6 +117,50 @@ export function SetupForm({ onSubmit, loading = false, error }: Props) {
             {...register('finanzOnline.pin')}
           />
         </Field>
+      </fieldset>
+
+      {/* Sektion: Administrator */}
+      <fieldset className="space-y-4">
+        <SectionHeader
+          title="Administrator"
+          subtitle="Erster Benutzer für die Anmeldung nach der Einrichtung"
+        />
+        <Field label="Name" htmlFor="admin-name" required error={errors.admin?.name?.message}>
+          <Input
+            id="admin-name"
+            placeholder="Max Mustermann"
+            autoComplete="name"
+            invalid={!!errors.admin?.name}
+            {...register('admin.name')}
+          />
+        </Field>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Field label="E-Mail" htmlFor="admin-email" required error={errors.admin?.email?.message}>
+            <Input
+              id="admin-email"
+              type="email"
+              placeholder="admin@firma.at"
+              autoComplete="email"
+              invalid={!!errors.admin?.email}
+              {...register('admin.email')}
+            />
+          </Field>
+          <Field
+            label="Passwort"
+            htmlFor="admin-passwort"
+            required
+            hint="Mindestens 8 Zeichen"
+            error={errors.admin?.passwort?.message}
+          >
+            <Input
+              id="admin-passwort"
+              type="password"
+              autoComplete="new-password"
+              invalid={!!errors.admin?.passwort}
+              {...register('admin.passwort')}
+            />
+          </Field>
+        </div>
       </fieldset>
 
       {/* Sektion: Umgebung */}

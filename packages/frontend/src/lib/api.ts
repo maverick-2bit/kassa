@@ -7,6 +7,8 @@ import type {
   BonierungErgebnis,
   BonierungInput,
   JahresbelegInput,
+  LoginInput,
+  LoginResponse,
   MonatsbelegInput,
   NullbelegInput,
   SetupInput,
@@ -14,6 +16,7 @@ import type {
   Station,
   StornobelegInput,
 } from '@kassa/shared'
+import { getToken, handleUnauthorized } from './auth.js'
 
 // ---------------------------------------------------------------------------
 // Generischer Fetcher
@@ -26,11 +29,20 @@ class ApiError extends Error {
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const token = getToken()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
   const res = await fetch(path, {
     method,
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     ...(body !== undefined && { body: JSON.stringify(body) }),
   })
+
+  if (res.status === 401) {
+    handleUnauthorized()
+  }
+
   const text = await res.text()
   const data = text ? (JSON.parse(text) as unknown) : null
 
@@ -55,6 +67,18 @@ export async function postSetup(input: SetupInput): Promise<SetupResponse> {
     body:    JSON.stringify(input),
   })
   return (await res.json()) as SetupResponse
+}
+
+// ---------------------------------------------------------------------------
+// Auth
+// ---------------------------------------------------------------------------
+
+export const authApi = {
+  login: (input: LoginInput) =>
+    request<LoginResponse>('POST', '/api/auth/login', input),
+  me:    () =>
+    request<{ user: LoginResponse['user']; mandant: LoginResponse['mandant']; kassen: LoginResponse['kassen'] }>(
+      'GET', '/api/auth/me'),
 }
 
 // ---------------------------------------------------------------------------

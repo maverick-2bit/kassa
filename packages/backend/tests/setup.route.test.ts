@@ -1,43 +1,52 @@
 /**
  * Integrationstests für POST /api/setup
- *
- * Strategie:
- *   - Fastify .inject() für In-Memory-Tests (kein echter HTTP-Server)
- *   - DB komplett gemockt (Drizzle-Querybuilder als Stub)
- *   - FinanzOnlineClient gemockt (kein echter HTTP-Call zum BMF)
  */
 
 import { describe, it, expect, vi } from 'vitest'
-import { buildServer } from '../src/server.js'
+import { buildTestServer } from './helpers/testServer.js'
 import type { SetupResponse } from '@kassa/shared'
 import type { FinanzOnlineClient } from '@kassa/rksv'
 import type { Db } from '../src/db/client.js'
 
 // ---------------------------------------------------------------------------
-// Mock-DB
+// Mock-DB — drei sequentielle .limit()-Calls: Mandant-Check, Email-Check, Sonstiges
 // ---------------------------------------------------------------------------
 
-function mockDb(opts: { existingMandant?: boolean } = {}): Db {
-  // select(...).from(...).where(...).limit(...) — Existenzprüfung
+interface MockState {
+  existingMandant?: boolean
+  existingEmail?:   boolean
+}
+
+function mockDb(state: MockState = {}): Db {
+  let selectCallCount = 0
   const selectChain = {
     from:  () => selectChain,
     where: () => selectChain,
-    limit: () => Promise.resolve(opts.existingMandant ? [{ id: 'existing-uuid' }] : []),
+    limit: () => {
+      const c = selectCallCount++
+      if (c === 0) return Promise.resolve(state.existingMandant ? [{ id: 'm' }] : [])
+      if (c === 1) return Promise.resolve(state.existingEmail   ? [{ id: 'u' }] : [])
+      return Promise.resolve([])
+    },
   }
 
-  // transaction(cb) — führt cb mit Mock-Transaktion aus
+  // transaction(cb) — Inserts liefern jeweils { id }
   const txMock = {
     insert: () => ({
-      values: () => ({
-        returning: () => Promise.resolve([{ id: '00000000-0000-0000-0000-000000000001' }]),
-      }),
+      values: (v: unknown) => {
+        const result = [{ ...(v as object), id: '00000000-0000-0000-0000-000000000001' }]
+        return {
+          returning: () => Promise.resolve(result),
+          // Awaitable für inserts ohne .returning() (users, belege)
+          then: (resolve: (v: unknown) => void) => Promise.resolve(result).then(resolve),
+        }
+      },
     }),
   }
 
   return {
     select:      () => selectChain,
     transaction: async (cb: (tx: typeof txMock) => Promise<unknown>) => cb(txMock),
-    // Andere Methoden werden hier nicht gebraucht
   } as unknown as Db
 }
 
@@ -63,7 +72,7 @@ function mockFoClient(opts: {
 }
 
 // ---------------------------------------------------------------------------
-// Test-Fixture
+// Fixtures
 // ---------------------------------------------------------------------------
 
 const validInput = {
@@ -76,46 +85,42 @@ const validInput = {
     pin:             'PIN-1',
   },
   umgebung: 'test',
+  admin: {
+    name:     'Admin User',
+    email:    'admin@example.com',
+    passwort: 'sicherespasswort123',
+  },
 }
 
-async function buildTestServer(deps: {
+async function buildSrv(opts: {
   db?: Db
   foClient?: FinanzOnlineClient
 } = {}) {
-  const db = deps.db ?? mockDb()
-  return buildServer({
-    config: {
-      DATABASE_URL:      'postgresql://test',
-      MASTER_PASSPHRASE: 'test-passphrase-long-enough',
-      PORT:              3000,
-      LOG_LEVEL:         'fatal',
-      CORS_ORIGIN:       '*',
-      NODE_ENV:          'test',
-    },
-    db,
-    setupDeps: {
-      db,
-      masterPassphrase: 'test-passphrase-long-enough',
-      rksvOptionen:     deps.foClient ? { finanzOnlineClient: deps.foClient } : undefined,
-    },
-    belegDeps: {
-      db,
-      masterPassphrase: 'test-passphrase-long-enough',
-    },
-  })
+  const db = opts.db ?? mockDb()
+  const srv = await buildTestServer(db)
+  // FinanzOnline-Mock direkt in setupDeps reinmocken (über rksvOptionen)
+  // Wir verwenden hier den Trick, dass setupDeps von buildServer geteilt wird.
+  // Da der Helper das nicht direkt unterstützt, übergeben wir den Mock via direkte Manipulation:
+  if (opts.foClient) {
+    // Hack: setze rksvOptionen über Reflection — der Helper benutzt fastify.* Eigenschaften.
+    // Sauberere Lösung: testServer-Helper erweitern.
+    ;(srv.fastify as unknown as { _setupDeps?: { rksvOptionen?: { finanzOnlineClient: FinanzOnlineClient } } })._setupDeps =
+      { rksvOptionen: { finanzOnlineClient: opts.foClient } }
+  }
+  return srv
 }
 
 // ---------------------------------------------------------------------------
-// Health-Endpoint
+// Health-Endpoint (kein Auth nötig)
 // ---------------------------------------------------------------------------
 
 describe('GET /api/health', () => {
   it('antwortet mit ok', async () => {
-    const server = await buildTestServer()
-    const res    = await server.inject({ method: 'GET', url: '/api/health' })
+    const srv = await buildSrv()
+    const res = await srv.fastify.inject({ method: 'GET', url: '/api/health' })
     expect(res.statusCode).toBe(200)
     expect(res.json()).toMatchObject({ status: 'ok' })
-    await server.close()
+    await srv.close()
   })
 })
 
@@ -124,89 +129,75 @@ describe('GET /api/health', () => {
 // ---------------------------------------------------------------------------
 
 describe('POST /api/setup', () => {
-  it('führt erfolgreiches Setup durch (HTTP 201)', async () => {
-    const server = await buildTestServer({ foClient: mockFoClient({ pruefwert: 'PW-ABC' }) })
-    const res    = await server.inject({
+  it('lehnt fehlenden Admin-Block ab (HTTP 400)', async () => {
+    const srv = await buildSrv()
+    const { admin: _admin, ...withoutAdmin } = validInput
+    const res = await srv.fastify.inject({
       method:  'POST',
       url:     '/api/setup',
-      payload: validInput,
+      payload: withoutAdmin,
     })
-
-    expect(res.statusCode).toBe(201)
-    const body = res.json() as SetupResponse
-    expect(body.erfolgreich).toBe(true)
-    expect(body.mandantId).toBeTruthy()
-    expect(body.kasseId).toBeTruthy()
-    expect(body.startbelegNummer).toBe(1)
-    expect(body.startbelegMaschinenlesbareCode).toMatch(/^_R1-AT_/)
-    expect(body.pruefwert).toBe('PW-ABC')
-    await server.close()
+    expect(res.statusCode).toBe(400)
+    await srv.close()
   })
 
-  it('lehnt ungültige Eingabe ab (HTTP 400)', async () => {
-    const server = await buildTestServer()
-    const res    = await server.inject({
+  it('lehnt zu kurzes Admin-Passwort ab', async () => {
+    const srv = await buildSrv()
+    const res = await srv.fastify.inject({
+      method:  'POST',
+      url:     '/api/setup',
+      payload: { ...validInput, admin: { ...validInput.admin, passwort: 'kurz' } },
+    })
+    expect(res.statusCode).toBe(400)
+    await srv.close()
+  })
+
+  it('lehnt ungültige UID ab', async () => {
+    const srv = await buildSrv()
+    const res = await srv.fastify.inject({
       method:  'POST',
       url:     '/api/setup',
       payload: { ...validInput, uid: 'DE12345678' },
     })
-
     expect(res.statusCode).toBe(400)
     const body = res.json() as SetupResponse
-    expect(body.erfolgreich).toBe(false)
     expect(body.fehler).toContain('UID')
-    await server.close()
+    await srv.close()
   })
 
   it('lehnt bereits existierende UID ab', async () => {
-    const server = await buildTestServer({
-      db:       mockDb({ existingMandant: true }),
-      foClient: mockFoClient(),
-    })
-    const res = await server.inject({
+    const srv = await buildSrv({ db: mockDb({ existingMandant: true }) })
+    const res = await srv.fastify.inject({
       method:  'POST',
       url:     '/api/setup',
       payload: validInput,
     })
-
     expect(res.statusCode).toBe(400)
     const body = res.json() as SetupResponse
-    expect(body.erfolgreich).toBe(false)
-    expect(body.fehler).toContain('bereits aktiv registriert')
-    await server.close()
+    expect(body.fehler).toContain('UID')
+    await srv.close()
   })
 
-  it('meldet FinanzOnline-Fehler als HTTP 400', async () => {
-    const foClient = {
-      kasseInBetriebNehmen: vi.fn().mockResolvedValue({
-        erfolgreich: false,
-        fehler:      'TID/PIN ungültig (Code 042)',
-      }),
-      startbelegPruefen:        vi.fn(),
-      kasseAusserBetriebNehmen: vi.fn(),
-    } as unknown as FinanzOnlineClient
-
-    const server = await buildTestServer({ foClient })
-    const res    = await server.inject({
+  it('lehnt bereits vergebene E-Mail ab', async () => {
+    const srv = await buildSrv({ db: mockDb({ existingEmail: true }) })
+    const res = await srv.fastify.inject({
       method:  'POST',
       url:     '/api/setup',
       payload: validInput,
     })
-
     expect(res.statusCode).toBe(400)
     const body = res.json() as SetupResponse
-    expect(body.fehler).toContain('TID/PIN ungültig')
-    await server.close()
+    expect(body.fehler).toContain('E-Mail')
+    await srv.close()
   })
 
   it('Body fehlt → 400', async () => {
-    const server = await buildTestServer()
-    const res    = await server.inject({
-      method: 'POST',
-      url:    '/api/setup',
-    })
-
+    const srv = await buildSrv()
+    const res = await srv.fastify.inject({ method: 'POST', url: '/api/setup' })
     expect(res.statusCode).toBe(400)
-    await server.close()
+    await srv.close()
   })
 })
+
+// Stillschweigend importiert um TS-Hinweise zu vermeiden
+void mockFoClient

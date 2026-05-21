@@ -1,10 +1,11 @@
 /**
  * Tests für die Artikel-CRUD-Routen.
- * DB wird komplett gemockt — Drizzle-Chains werden als Stubs nachgebaut.
+ * Alle Routen sind auth-protected — der Test-Server liefert über authHeader()
+ * einen gültigen JWT mit TEST_MANDANT_ID als mandantId.
  */
 
 import { describe, it, expect, vi } from 'vitest'
-import { buildServer } from '../src/server.js'
+import { buildTestServer, TEST_MANDANT_ID } from './helpers/testServer.js'
 import type { Db } from '../src/db/client.js'
 
 // ---------------------------------------------------------------------------
@@ -35,6 +36,8 @@ function mockDb(state: MockDbState = {}): Db {
     select: () => ({
       from: () => ({
         where: () => ({
+          // Ownership-Check (.limit(1)) und Liste (.orderBy()) liefern dasselbe
+          limit:   () => Promise.resolve(state.selectReturning ?? []),
           orderBy: () => Promise.resolve(state.selectReturning ?? []),
         }),
       }),
@@ -52,39 +55,45 @@ function mockDb(state: MockDbState = {}): Db {
   } as unknown as Db
 }
 
-async function buildTestServer(db: Db) {
-  return buildServer({
-    config: {
-      DATABASE_URL:      'postgresql://test',
-      MASTER_PASSPHRASE: 'test-passphrase-long-enough',
-      PORT:              3000,
-      LOG_LEVEL:         'fatal',
-      CORS_ORIGIN:       '*',
-      NODE_ENV:          'test',
-    },
-    db,
-    setupDeps: { db, masterPassphrase: 'test-passphrase-long-enough' },
-    belegDeps: { db, masterPassphrase: 'test-passphrase-long-enough' },
-  })
-}
-
 // ---------------------------------------------------------------------------
 // Test-Fixtures
 // ---------------------------------------------------------------------------
 
-const MANDANT_ID = '00000000-0000-0000-0000-000000000001'
-
 const artikelRow = (overrides: Record<string, unknown> = {}) => ({
   id:              '11111111-1111-1111-1111-111111111111',
-  mandantId:       MANDANT_ID,
+  mandantId:       TEST_MANDANT_ID,
   bezeichnung:     'Espresso',
   preisBruttoCent: 350,
   mwstSatz:        'ermaessigt1',
   artikelnummer:   null,
+  station:         null,
   aktiv:           true,
   createdAt:       new Date('2026-05-20T10:00:00Z'),
   updatedAt:       new Date('2026-05-20T10:00:00Z'),
   ...overrides,
+})
+
+// ---------------------------------------------------------------------------
+// Auth-Check: ohne Token → 401
+// ---------------------------------------------------------------------------
+
+describe('Auth-Schutz', () => {
+  it('GET /api/artikel ohne Token → 401', async () => {
+    const srv = await buildTestServer(mockDb())
+    const res = await srv.fastify.inject({ method: 'GET', url: '/api/artikel' })
+    expect(res.statusCode).toBe(401)
+    await srv.close()
+  })
+
+  it('POST /api/artikel ohne Token → 401', async () => {
+    const srv = await buildTestServer(mockDb())
+    const res = await srv.fastify.inject({
+      method: 'POST', url: '/api/artikel',
+      payload: { bezeichnung: 'x', preisBruttoCent: 100, mwstSatz: 'normal' },
+    })
+    expect(res.statusCode).toBe(401)
+    await srv.close()
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -93,65 +102,57 @@ const artikelRow = (overrides: Record<string, unknown> = {}) => ({
 
 describe('POST /api/artikel', () => {
   it('legt einen Artikel an (HTTP 201)', async () => {
-    const server = await buildTestServer(mockDb({ insertReturning: [artikelRow()] }))
-    const res = await server.inject({
-      method:  'POST',
-      url:     '/api/artikel',
+    const srv = await buildTestServer(mockDb({ insertReturning: [artikelRow()] }))
+    const res = await srv.fastify.inject({
+      method: 'POST', url: '/api/artikel',
+      headers: srv.authHeader(),
+      payload: { bezeichnung: 'Espresso', preisBruttoCent: 350, mwstSatz: 'ermaessigt1' },
+    })
+    expect(res.statusCode).toBe(201)
+    const body = res.json()
+    expect(body.bezeichnung).toBe('Espresso')
+    expect(body.mandantId).toBe(TEST_MANDANT_ID) // aus JWT übernommen
+    await srv.close()
+  })
+
+  it('ignoriert mandantId aus Body — nimmt JWT', async () => {
+    const srv = await buildTestServer(mockDb({ insertReturning: [artikelRow()] }))
+    const res = await srv.fastify.inject({
+      method: 'POST', url: '/api/artikel',
+      headers: srv.authHeader(),
       payload: {
-        mandantId:       MANDANT_ID,
+        // Versuch, einen anderen Mandanten unterzuschieben
+        mandantId:       '99999999-9999-9999-9999-999999999999',
         bezeichnung:     'Espresso',
         preisBruttoCent: 350,
         mwstSatz:        'ermaessigt1',
       },
     })
     expect(res.statusCode).toBe(201)
-    const body = res.json()
-    expect(body.bezeichnung).toBe('Espresso')
-    expect(body.preisBruttoCent).toBe(350)
-    await server.close()
+    expect(res.json().mandantId).toBe(TEST_MANDANT_ID)
+    await srv.close()
   })
 
   it('lehnt ungültigen mwstSatz ab', async () => {
-    const server = await buildTestServer(mockDb())
-    const res = await server.inject({
-      method:  'POST',
-      url:     '/api/artikel',
-      payload: {
-        mandantId:       MANDANT_ID,
-        bezeichnung:     'Test',
-        preisBruttoCent: 100,
-        mwstSatz:        'ungueltig',
-      },
+    const srv = await buildTestServer(mockDb())
+    const res = await srv.fastify.inject({
+      method: 'POST', url: '/api/artikel',
+      headers: srv.authHeader(),
+      payload: { bezeichnung: 'Test', preisBruttoCent: 100, mwstSatz: 'ungueltig' },
     })
     expect(res.statusCode).toBe(400)
-    await server.close()
+    await srv.close()
   })
 
   it('lehnt negativen Preis ab', async () => {
-    const server = await buildTestServer(mockDb())
-    const res = await server.inject({
-      method:  'POST',
-      url:     '/api/artikel',
-      payload: {
-        mandantId:       MANDANT_ID,
-        bezeichnung:     'Test',
-        preisBruttoCent: -100,
-        mwstSatz:        'normal',
-      },
+    const srv = await buildTestServer(mockDb())
+    const res = await srv.fastify.inject({
+      method: 'POST', url: '/api/artikel',
+      headers: srv.authHeader(),
+      payload: { bezeichnung: 'Test', preisBruttoCent: -100, mwstSatz: 'normal' },
     })
     expect(res.statusCode).toBe(400)
-    await server.close()
-  })
-
-  it('lehnt fehlende mandantId ab', async () => {
-    const server = await buildTestServer(mockDb())
-    const res = await server.inject({
-      method:  'POST',
-      url:     '/api/artikel',
-      payload: { bezeichnung: 'Test', preisBruttoCent: 100, mwstSatz: 'normal' },
-    })
-    expect(res.statusCode).toBe(400)
-    await server.close()
+    await srv.close()
   })
 })
 
@@ -160,26 +161,19 @@ describe('POST /api/artikel', () => {
 // ---------------------------------------------------------------------------
 
 describe('GET /api/artikel', () => {
-  it('listet Artikel zu mandantId auf', async () => {
+  it('listet Artikel zum mandantId aus JWT auf', async () => {
     const rows = [
       artikelRow({ id: 'a1', bezeichnung: 'Apfelstrudel' }),
       artikelRow({ id: 'a2', bezeichnung: 'Espresso' }),
     ]
-    const server = await buildTestServer(mockDb({ selectReturning: rows }))
-    const res = await server.inject({
-      method: 'GET',
-      url:    `/api/artikel?mandantId=${MANDANT_ID}`,
+    const srv = await buildTestServer(mockDb({ selectReturning: rows }))
+    const res = await srv.fastify.inject({
+      method: 'GET', url: '/api/artikel',
+      headers: srv.authHeader(),
     })
     expect(res.statusCode).toBe(200)
     expect(res.json()).toHaveLength(2)
-    await server.close()
-  })
-
-  it('verlangt mandantId in der Query', async () => {
-    const server = await buildTestServer(mockDb())
-    const res = await server.inject({ method: 'GET', url: '/api/artikel' })
-    expect(res.statusCode).toBe(400)
-    await server.close()
+    await srv.close()
   })
 })
 
@@ -189,27 +183,31 @@ describe('GET /api/artikel', () => {
 
 describe('PUT /api/artikel/:id', () => {
   it('aktualisiert einen Artikel', async () => {
-    const updated = artikelRow({ bezeichnung: 'Doppelter Espresso' })
-    const server = await buildTestServer(mockDb({ updateReturning: [updated] }))
-    const res = await server.inject({
-      method:  'PUT',
-      url:     `/api/artikel/${updated.id}`,
+    const original = artikelRow()
+    const updated  = artikelRow({ bezeichnung: 'Doppelter Espresso' })
+    const srv = await buildTestServer(mockDb({
+      selectReturning: [original],  // Ownership-Check
+      updateReturning: [updated],
+    }))
+    const res = await srv.fastify.inject({
+      method: 'PUT', url: `/api/artikel/${original.id}`,
+      headers: srv.authHeader(),
       payload: { bezeichnung: 'Doppelter Espresso' },
     })
     expect(res.statusCode).toBe(200)
     expect(res.json().bezeichnung).toBe('Doppelter Espresso')
-    await server.close()
+    await srv.close()
   })
 
-  it('404 wenn nicht gefunden', async () => {
-    const server = await buildTestServer(mockDb({ updateReturning: [] }))
-    const res = await server.inject({
-      method:  'PUT',
-      url:     '/api/artikel/22222222-2222-2222-2222-222222222222',
+  it('404 wenn Artikel nicht zum Mandanten gehört', async () => {
+    const srv = await buildTestServer(mockDb({ selectReturning: [] }))
+    const res = await srv.fastify.inject({
+      method: 'PUT', url: '/api/artikel/22222222-2222-2222-2222-222222222222',
+      headers: srv.authHeader(),
       payload: { bezeichnung: 'Neu' },
     })
     expect(res.statusCode).toBe(404)
-    await server.close()
+    await srv.close()
   })
 })
 
@@ -219,16 +217,21 @@ describe('PUT /api/artikel/:id', () => {
 
 describe('DELETE /api/artikel/:id', () => {
   it('setzt aktiv=false', async () => {
+    const original    = artikelRow()
     const deaktiviert = artikelRow({ aktiv: false })
-    const updateSpy = vi.fn()
-    const server = await buildTestServer(mockDb({ updateReturning: [deaktiviert], updateSpy }))
-    const res = await server.inject({
-      method: 'DELETE',
-      url:    `/api/artikel/${deaktiviert.id}`,
+    const updateSpy   = vi.fn()
+    const srv = await buildTestServer(mockDb({
+      selectReturning: [original],
+      updateReturning: [deaktiviert],
+      updateSpy,
+    }))
+    const res = await srv.fastify.inject({
+      method: 'DELETE', url: `/api/artikel/${original.id}`,
+      headers: srv.authHeader(),
     })
     expect(res.statusCode).toBe(200)
     expect(res.json().aktiv).toBe(false)
     expect(updateSpy).toHaveBeenCalled()
-    await server.close()
+    await srv.close()
   })
 })

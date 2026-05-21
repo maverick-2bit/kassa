@@ -134,6 +134,28 @@ export const belege = pgTable('belege', {
 }))
 
 // ---------------------------------------------------------------------------
+// Benutzer (Auth) — pro Mandant
+// ---------------------------------------------------------------------------
+
+export const users = pgTable('users', {
+  id:           uuid('id').primaryKey().defaultRandom(),
+  mandantId:    uuid('mandant_id').notNull().references(() => mandanten.id),
+  email:        varchar('email', { length: 200 }).notNull(),
+  passwordHash: text('password_hash').notNull(),
+  name:         text('name').notNull(),
+  /** admin | kellner — erweiterbar */
+  rolle:        varchar('rolle', { length: 20 }).notNull().default('kellner'),
+  aktiv:        boolean('aktiv').notNull().default(true),
+  createdAt:    timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:    timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  emailIdx: uniqueIndex('users_email_idx').on(t.email),
+}))
+
+export type User    = typeof users.$inferSelect
+export type NewUser = typeof users.$inferInsert
+
+// ---------------------------------------------------------------------------
 // Artikel (Produkte) – für späteren Bestellprozess
 // ---------------------------------------------------------------------------
 

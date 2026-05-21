@@ -15,8 +15,9 @@ import {
 } from '@kassa/rksv'
 import type { SetupInput, SetupResponse, EinrichtungsSchrittDto } from '@kassa/shared'
 import type { Db } from '../db/client.js'
-import { mandanten, kassen, belege } from '../db/schema.js'
+import { mandanten, kassen, belege, users } from '../db/schema.js'
 import { encryptPrivateKey } from '../crypto/master-key.js'
+import { hashPassword } from './auth.service.js'
 import { X509Certificate } from 'node:crypto'
 
 export interface SetupServiceDeps {
@@ -49,6 +50,25 @@ export async function fuehreSetupDurch(
         zeitstempel: new Date().toISOString(),
       }],
       fehler: `Mandant mit UID ${input.uid} ist bereits aktiv registriert`,
+    }
+  }
+
+  // E-Mail-Konflikt prüfen
+  const emailExisting = await deps.db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.email, input.admin.email.toLowerCase()))
+    .limit(1)
+  if (emailExisting.length > 0) {
+    return {
+      erfolgreich: false,
+      schritte: [{
+        schritt:     'eingabe-validierung',
+        status:      'fehler',
+        meldung:     `E-Mail ${input.admin.email} ist bereits vergeben`,
+        zeitstempel: new Date().toISOString(),
+      }],
+      fehler: `E-Mail ${input.admin.email} ist bereits vergeben`,
     }
   }
 
@@ -91,8 +111,9 @@ export async function fuehreSetupDurch(
 
   // In DB persistieren — alles in einer Transaktion
   const { see, startbeleg } = ergebnis
-  const cert       = new X509Certificate(see.zertifikatDER)
+  const cert         = new X509Certificate(see.zertifikatDER)
   const encryptedKey = encryptPrivateKey(see.privateKeyDER, deps.masterPassphrase)
+  const passwordHash = await hashPassword(input.admin.passwort)
 
   const result = await deps.db.transaction(async (tx) => {
     // 1. Mandant
@@ -122,7 +143,17 @@ export async function fuehreSetupDurch(
 
     if (!kasse) throw new Error('Kasse konnte nicht angelegt werden')
 
-    // 3. Startbeleg
+    // 3. Admin-User
+    await tx.insert(users).values({
+      mandantId:    mandant.id,
+      email:        input.admin.email.toLowerCase(),
+      passwordHash,
+      name:         input.admin.name,
+      rolle:        'admin',
+      aktiv:        true,
+    })
+
+    // 4. Startbeleg
     await tx.insert(belege).values(belegToInsert(mandant.id, kasse.id, startbeleg))
 
     return { mandantId: mandant.id, kasseId: kasse.id }
