@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ALLE_STATIONEN, STATION_LABELS, type Station } from '@kassa/shared'
-import { druckerApi, kdsApi, type DruckerConfig, type KdsConfig } from '../lib/api'
+import { ALLE_STATIONEN, STATION_LABELS, type Station, type ZvtConfig } from '@kassa/shared'
+import { druckerApi, kdsApi, zvtApi, type DruckerConfig, type KdsConfig } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { Field } from '../components/ui/Field'
 import { Input } from '../components/ui/Input'
 import { Button } from '../components/ui/Button'
+import { KartenzahlungModal } from '../components/KartenzahlungModal'
 
 export function EinstellungenPage() {
   return (
@@ -16,6 +17,7 @@ export function EinstellungenPage() {
       </header>
       <DruckerSektion />
       <KdsSektion />
+      <ZvtSektion />
     </div>
   )
 }
@@ -263,6 +265,141 @@ function KdsSektion() {
           </div>
         </>
       )}
+    </section>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// ZVT (Kartenterminal)
+// ---------------------------------------------------------------------------
+
+function ZvtSektion() {
+  const identity    = getKasseIdentity()!
+  const queryClient = useQueryClient()
+  const [form, setForm] = useState<ZvtConfig>({
+    zvtIp: '', zvtPort: 20007, zvtPasswort: '', zvtAktiv: false,
+  })
+  const [meldung, setMeldung]   = useState<{ typ: 'ok' | 'fehler'; text: string } | null>(null)
+  const [testOffen, setTestOffen] = useState(false)
+
+  const cfgQuery = useQuery({
+    queryKey: ['zvt', identity.kasseId],
+    queryFn:  () => zvtApi.getConfig(identity.kasseId),
+  })
+
+  useEffect(() => {
+    if (cfgQuery.data) {
+      setForm({
+        zvtIp:       cfgQuery.data.zvtIp       ?? '',
+        zvtPort:     cfgQuery.data.zvtPort,
+        zvtPasswort: cfgQuery.data.zvtPasswort ?? '',
+        zvtAktiv:    cfgQuery.data.zvtAktiv,
+      })
+    }
+  }, [cfgQuery.data])
+
+  const speichern = useMutation({
+    mutationFn: () => zvtApi.patchConfig(identity.kasseId, {
+      zvtIp:       form.zvtIp?.trim() || null,
+      zvtPort:     form.zvtPort,
+      zvtPasswort: form.zvtPasswort?.trim() || null,
+      zvtAktiv:    form.zvtAktiv,
+    }),
+    onSuccess: () => {
+      setMeldung({ typ: 'ok', text: 'ZVT-Einstellungen gespeichert' })
+      queryClient.invalidateQueries({ queryKey: ['zvt', identity.kasseId] })
+    },
+    onError: (err) => setMeldung({ typ: 'fehler', text: err instanceof Error ? err.message : String(err) }),
+  })
+
+  return (
+    <section className="rounded-lg bg-white shadow-sm border border-gray-200 p-6 space-y-5">
+      <div>
+        <h2 className="text-base font-semibold text-gray-900">Kartenterminal (ZVT)</h2>
+        <p className="text-sm text-gray-500 mt-0.5">
+          Hobex, Payroc und andere ZVT-kompatible Terminals via TCP.
+          Für Tests ohne echtes Terminal: IP <code className="text-xs bg-gray-100 px-1 rounded">stub</code>.
+        </p>
+      </div>
+
+      {cfgQuery.isLoading ? (
+        <p className="text-sm text-gray-500">Konfiguration wird geladen…</p>
+      ) : (
+        <>
+          <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
+            <input
+              type="checkbox"
+              className="rounded border-gray-300 text-brand-500 focus:ring-brand-500"
+              checked={form.zvtAktiv}
+              onChange={(e) => setForm({ ...form, zvtAktiv: e.target.checked })}
+            />
+            Kartenzahlung aktiviert
+          </label>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="sm:col-span-2">
+              <Field label="Terminal-IP" hint="z. B. 192.168.1.50 oder 'stub' für Tests">
+                <Input
+                  value={form.zvtIp ?? ''}
+                  onChange={(e) => setForm({ ...form, zvtIp: e.target.value })}
+                  placeholder="192.168.1.50"
+                />
+              </Field>
+            </div>
+            <Field label="Port" hint="Hobex/Payroc: 20007">
+              <Input
+                type="number"
+                value={form.zvtPort}
+                onChange={(e) => setForm({ ...form, zvtPort: parseInt(e.target.value || '20007', 10) })}
+              />
+            </Field>
+          </div>
+
+          <Field label="Terminal-Passwort" hint="Optional (6-stellig, falls vom Gerät verlangt)">
+            <Input
+              type="text"
+              inputMode="numeric"
+              maxLength={6}
+              value={form.zvtPasswort ?? ''}
+              onChange={(e) => setForm({ ...form, zvtPasswort: e.target.value.replace(/\D/g, '') })}
+              placeholder=""
+            />
+          </Field>
+
+          {meldung && (
+            <div className={`rounded-md p-3 text-sm ${
+              meldung.typ === 'ok'
+                ? 'bg-green-50 border border-green-200 text-green-700'
+                : 'bg-red-50 border border-red-200 text-red-700'
+            }`}>{meldung.text}</div>
+          )}
+
+          <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-200">
+            <Button onClick={() => { setMeldung(null); speichern.mutate() }} loading={speichern.isPending}>
+              Speichern
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => setTestOffen(true)}
+              disabled={!form.zvtAktiv || !form.zvtIp}
+            >
+              Test 1 Cent
+            </Button>
+          </div>
+        </>
+      )}
+
+      {/* Test-Zahlung: nur Verbindungs- und Protokoll-Check, KEIN Beleg */}
+      <KartenzahlungModal
+        open={testOffen}
+        kasseId={identity.kasseId}
+        betragCent={1}
+        onErfolg={() => {
+          setTestOffen(false)
+          setMeldung({ typ: 'ok', text: 'Test-Transaktion erfolgreich' })
+        }}
+        onAbbruch={() => setTestOffen(false)}
+      />
     </section>
   )
 }

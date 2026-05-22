@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
@@ -6,36 +6,16 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { LoginInputSchema, type LoginInput } from '@kassa/shared'
 import { authApi } from '../lib/api'
 import { setAuth } from '../lib/auth'
-import { setKasseIdentity } from '../lib/kasse'
+import { getKasseIdentity, setKasseIdentity } from '../lib/kasse'
 import { Field } from '../components/ui/Field'
 import { Input } from '../components/ui/Input'
 import { Button } from '../components/ui/Button'
 
+type Tab = 'passwort' | 'pin'
+
 export function LoginPage() {
-  const navigate = useNavigate()
-  const [serverFehler, setServerFehler] = useState<string | null>(null)
-
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<LoginInput>({
-    resolver: zodResolver(LoginInputSchema),
-    defaultValues: { email: '', passwort: '' },
-  })
-
-  const loginMutation = useMutation({
-    mutationFn: authApi.login,
-    onSuccess: (data) => {
-      setAuth(data)
-      // Falls genau eine Kasse vorhanden ist, direkt setzen
-      if (data.kassen.length === 1 && data.kassen[0]) {
-        setKasseIdentity({ mandantId: data.mandant.id, kasseId: data.kassen[0].id })
-      }
-      navigate('/kasse')
-    },
-    onError: (err) => setServerFehler(err instanceof Error ? err.message : 'Login fehlgeschlagen'),
-  })
+  const navigate   = useNavigate()
+  const [tab, setTab] = useState<Tab>('pin')
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 bg-gray-50">
@@ -47,59 +27,204 @@ export function LoginPage() {
             </svg>
           </div>
           <h1 className="text-2xl font-bold text-gray-900">Anmeldung</h1>
-          <p className="mt-1 text-sm text-gray-600">Mit deinem Kassa-Konto einloggen</p>
         </header>
 
-        <form
-          onSubmit={handleSubmit((data) => { setServerFehler(null); loginMutation.mutate(data) })}
-          className="rounded-xl bg-white shadow-sm border border-gray-200 p-6 space-y-4"
-          noValidate
-        >
-          <Field label="E-Mail" htmlFor="email" required error={errors.email?.message}>
-            <Input
-              id="email"
-              type="email"
-              autoComplete="email"
-              autoFocus
-              invalid={!!errors.email}
-              {...register('email')}
-            />
-          </Field>
-
-          <Field label="Passwort" htmlFor="passwort" required error={errors.passwort?.message}>
-            <Input
-              id="passwort"
-              type="password"
-              autoComplete="current-password"
-              invalid={!!errors.passwort}
-              {...register('passwort')}
-            />
-          </Field>
-
-          {serverFehler && (
-            <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert">
-              {serverFehler}
-            </div>
-          )}
-
-          <div className="pt-2 border-t border-gray-200">
-            <Button type="submit" loading={loginMutation.isPending} className="w-full">
-              Einloggen
-            </Button>
-          </div>
-
-          <p className="text-center text-xs text-gray-500 pt-1">
-            Noch keine Kasse?{' '}
+        {/* Tab-Umschalter */}
+        <div className="flex rounded-lg border border-gray-200 bg-gray-100 p-1 mb-4">
+          {(['pin', 'passwort'] as Tab[]).map((t) => (
             <button
+              key={t}
               type="button"
-              onClick={() => navigate('/setup')}
-              className="text-brand-600 hover:underline"
+              onClick={() => setTab(t)}
+              className={`flex-1 py-1.5 text-sm font-medium rounded-md transition ${
+                tab === t
+                  ? 'bg-white shadow-sm text-gray-900'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
             >
-              Kasse einrichten
+              {t === 'pin' ? 'PIN' : 'E-Mail & Passwort'}
             </button>
-          </p>
-        </form>
+          ))}
+        </div>
+
+        {tab === 'pin'
+          ? <PinLoginForm onNavigate={() => navigate('/tische')} />
+          : <PasswortLoginForm onNavigate={() => navigate('/tische')} />
+        }
       </div>
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// PIN-Login
+// ---------------------------------------------------------------------------
+
+function PinLoginForm({ onNavigate }: { onNavigate: () => void }) {
+  const [pin, setPin]         = useState('')
+  const [fehler, setFehler]   = useState<string | null>(null)
+  const inputRef              = useRef<HTMLInputElement>(null)
+
+  const identity = getKasseIdentity()
+
+  const mutation = useMutation({
+    mutationFn: authApi.pinLogin,
+    onSuccess: (data) => {
+      setAuth(data)
+      // Kasse wechseln: wenn aktuelle Kasse nicht in den zugewiesenen ist, auf die erste umschalten
+      const aktuelle = getKasseIdentity()
+      const passt = aktuelle && data.kassen.some(k => k.id === aktuelle.kasseId)
+      if (!passt && data.kassen[0]) {
+        setKasseIdentity({ mandantId: data.mandant.id, kasseId: data.kassen[0].id })
+      }
+      onNavigate()
+    },
+    onError: (err) => {
+      setFehler(err instanceof Error ? err.message : 'PIN ungültig')
+      setPin('')
+      inputRef.current?.focus()
+    },
+  })
+
+  const handleDigit = (d: string) => {
+    const next = (pin + d).slice(0, 4)
+    setPin(next)
+    setFehler(null)
+    if (next.length === 4 && identity) {
+      mutation.mutate({ kasseId: identity.kasseId, pin: next })
+    }
+  }
+
+  const handleDelete = () => setPin(p => p.slice(0, -1))
+
+  if (!identity) {
+    return (
+      <div className="rounded-xl bg-white shadow-sm border border-gray-200 p-6 text-center">
+        <p className="text-sm text-gray-500">Keine Kasse eingerichtet.</p>
+        <button type="button" onClick={() => window.location.href = '/setup'} className="mt-2 text-sm text-brand-600 hover:underline">
+          Kasse einrichten →
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-xl bg-white shadow-sm border border-gray-200 p-6">
+      <p className="text-center text-sm text-gray-500 mb-5">PIN eingeben</p>
+
+      {/* PIN-Punkte */}
+      <div className="flex justify-center gap-3 mb-6">
+        {[0, 1, 2, 3].map((i) => (
+          <div
+            key={i}
+            className={`h-4 w-4 rounded-full border-2 transition ${
+              pin.length > i
+                ? 'bg-brand-500 border-brand-500'
+                : 'bg-white border-gray-300'
+            }`}
+          />
+        ))}
+      </div>
+
+      {fehler && (
+        <div className="mb-4 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700 text-center">
+          {fehler}
+        </div>
+      )}
+
+      {/* Numpad */}
+      <div className="grid grid-cols-3 gap-2">
+        {['1','2','3','4','5','6','7','8','9','','0','⌫'].map((d, i) => (
+          <button
+            key={i}
+            type="button"
+            disabled={mutation.isPending || d === ''}
+            onClick={() => d === '⌫' ? handleDelete() : handleDigit(d)}
+            className={`h-14 rounded-xl text-xl font-semibold transition ${
+              d === ''
+                ? 'cursor-default'
+                : d === '⌫'
+                ? 'bg-gray-100 hover:bg-gray-200 text-gray-600'
+                : 'bg-gray-50 hover:bg-brand-50 hover:text-brand-700 border border-gray-200 text-gray-800'
+            } disabled:opacity-50`}
+          >
+            {d}
+          </button>
+        ))}
+      </div>
+
+      {/* Hidden input für Keyboard auf Tablets */}
+      <input
+        ref={inputRef}
+        type="tel"
+        value={pin}
+        onChange={(e) => {
+          const v = e.target.value.replace(/\D/g, '').slice(0, 4)
+          setPin(v)
+          setFehler(null)
+          if (v.length === 4 && identity) {
+            mutation.mutate({ kasseId: identity.kasseId, pin: v })
+          }
+        }}
+        className="sr-only"
+        aria-hidden
+      />
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Passwort-Login
+// ---------------------------------------------------------------------------
+
+function PasswortLoginForm({ onNavigate }: { onNavigate: () => void }) {
+  const [serverFehler, setServerFehler] = useState<string | null>(null)
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<LoginInput>({
+    resolver: zodResolver(LoginInputSchema),
+    defaultValues: { email: '', passwort: '' },
+  })
+
+  const mutation = useMutation({
+    mutationFn: authApi.login,
+    onSuccess: (data) => {
+      setAuth(data)
+      if (data.kassen.length === 1 && data.kassen[0]) {
+        setKasseIdentity({ mandantId: data.mandant.id, kasseId: data.kassen[0].id })
+      }
+      onNavigate()
+    },
+    onError: (err) => setServerFehler(err instanceof Error ? err.message : 'Login fehlgeschlagen'),
+  })
+
+  return (
+    <form
+      onSubmit={handleSubmit((data) => { setServerFehler(null); mutation.mutate(data) })}
+      className="rounded-xl bg-white shadow-sm border border-gray-200 p-6 space-y-4"
+      noValidate
+    >
+      <Field label="E-Mail" htmlFor="email" required error={errors.email?.message}>
+        <Input id="email" type="email" autoComplete="email" autoFocus invalid={!!errors.email} {...register('email')} />
+      </Field>
+      <Field label="Passwort" htmlFor="passwort" required error={errors.passwort?.message}>
+        <Input id="passwort" type="password" autoComplete="current-password" invalid={!!errors.passwort} {...register('passwort')} />
+      </Field>
+      {serverFehler && (
+        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{serverFehler}</div>
+      )}
+      <div className="pt-2 border-t border-gray-200">
+        <Button type="submit" loading={mutation.isPending} className="w-full">Einloggen</Button>
+      </div>
+      <p className="text-center text-xs text-gray-500 pt-1">
+        Noch keine Kasse?{' '}
+        <button type="button" onClick={() => window.location.href = '/setup'} className="text-brand-600 hover:underline">
+          Kasse einrichten
+        </button>
+      </p>
+    </form>
   )
 }

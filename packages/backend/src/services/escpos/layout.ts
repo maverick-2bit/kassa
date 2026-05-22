@@ -31,7 +31,7 @@
 
 import { Buffer } from 'node:buffer'
 import { MWST_LABELS } from '@kassa/shared'
-import type { BelegResponse, MwStSatz } from '@kassa/shared'
+import type { BelegResponse, MwStSatz, Tagesabschluss } from '@kassa/shared'
 import * as ep from './commands.js'
 
 /** Steuersätze in Prozent gemäß österr. UStG */
@@ -148,6 +148,77 @@ export function baueBon(
 }
 
 // ---------------------------------------------------------------------------
+// Z-Bon (Tagesabschluss)
+// ---------------------------------------------------------------------------
+
+export function baueZBon(
+  ta:      Tagesabschluss,
+  mandant: MandantInfo,
+  kontext: DruckerKontext,
+): Buffer {
+  const W = kontext.breite
+  const parts: Buffer[] = []
+  const add = (b: Buffer): void => { parts.push(b) }
+
+  add(ep.init())
+  add(ep.selectCodepage(19))
+  add(ep.selectInternational(2))
+
+  // Kopf
+  add(ep.align('center'))
+  add(ep.font({ bold: true, doubleHeight: true, doubleWidth: true }))
+  add(ep.textLine(truncate(mandant.firmenname.toUpperCase(), Math.floor(W / 2))))
+  add(ep.font())
+  add(ep.textLine(mandant.uid))
+  add(ep.textLine(`Kasse: ${mandant.kassenId}`))
+  add(ep.newline())
+
+  // Titel
+  add(ep.font({ bold: true }))
+  add(ep.textLine('TAGESABSCHLUSS (Z-BON)'))
+  add(ep.font())
+  add(ep.textLine(formatDatumNur(ta.datum)))
+  add(trennlinie(W))
+
+  // Beleganzahl
+  add(ep.align('left'))
+  add(ep.textLine(zweispaltig('Barzahlungsbelege', String(ta.anzahlBarzahlungsbelege), W)))
+  if (ta.anzahlStornobelege > 0) {
+    add(ep.textLine(zweispaltig('Stornobelege', String(ta.anzahlStornobelege), W)))
+  }
+  add(trennlinie(W))
+
+  // Netto-Umsatz
+  add(ep.font({ bold: true, doubleHeight: true }))
+  add(ep.textLine(zweispaltig('NETTO-UMSATZ', formatCent(ta.nettoUmsatzCent), Math.floor(W / 2))))
+  add(ep.font())
+  add(trennlinie(W))
+
+  // Zahlungsarten
+  if (ta.barCent !== 0)      add(ep.textLine(zweispaltig('Bar',      formatCent(ta.barCent),      W)))
+  if (ta.karteCent !== 0)    add(ep.textLine(zweispaltig('Karte',    formatCent(ta.karteCent),    W)))
+  if (ta.sonstigCent !== 0)  add(ep.textLine(zweispaltig('Sonstige', formatCent(ta.sonstigCent),  W)))
+  add(trennlinie(W))
+
+  // MwSt-Aufteilung
+  if (ta.mwst.length > 0) {
+    add(ep.textLine('USt-Aufteilung:'))
+    for (const z of ta.mwst) {
+      add(ep.textLine(`  ${z.label}: Netto ${formatCent(z.nettoCent)} USt ${formatCent(z.ustCent)}`))
+    }
+    add(trennlinie(W))
+  }
+
+  // Druckzeitpunkt
+  add(ep.align('center'))
+  add(ep.textLine(`Gedruckt: ${formatDatum(new Date().toISOString())}`))
+  add(ep.newline(2))
+  add(ep.cut())
+
+  return Buffer.concat(parts)
+}
+
+// ---------------------------------------------------------------------------
 // Layout-Helfer
 // ---------------------------------------------------------------------------
 
@@ -173,6 +244,12 @@ function formatDatum(iso: string): string {
   const d = new Date(iso)
   const pad = (n: number) => n.toString().padStart(2, '0')
   return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function formatDatumNur(datum: string): string {
+  // datum = YYYY-MM-DD
+  const [y, m, d] = datum.split('-')
+  return `${d}.${m}.${y}`
 }
 
 function formatMenge(m: number): string {

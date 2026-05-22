@@ -3,7 +3,7 @@
  * Wird vom fetch-Wrapper gelesen, um den Authorization-Header zu setzen.
  */
 
-import type { LoginResponse } from '@kassa/shared'
+import type { Berechtigung, LoginResponse } from '@kassa/shared'
 
 const KEY_TOKEN = 'kassa:token'
 const KEY_AUTH  = 'kassa:auth'
@@ -43,6 +43,13 @@ export function clearAuth(): void {
 
 export function getToken(): string | null {
   return localStorage.getItem(KEY_TOKEN)
+}
+
+export function hasBerechtigung(berechtigung: Berechtigung): boolean {
+  const auth = getAuth()
+  if (!auth) return false
+  if (auth.user.rolle === 'admin') return true
+  return auth.user.berechtigungen.includes(berechtigung)
 }
 
 /** Triggert beim 401 — z. B. um zur Login-Seite zu redirecten */

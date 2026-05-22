@@ -8,17 +8,27 @@
 // Auth
 export {
   LoginInputSchema,
+  PinLoginInputSchema,
   LoginResponseSchema,
   UserSchema,
+  UserCreateInputSchema,
+  UserUpdateInputSchema,
   RolleSchema,
   ROLLE_LABELS,
+  BerechtigungSchema,
+  ALLE_BERECHTIGUNGEN,
+  BERECHTIGUNG_LABELS,
   AdminUserInputSchema,
 } from './schemas/auth.js'
 export type {
   LoginInput,
+  PinLoginInput,
   LoginResponse,
   User,
   Rolle,
+  Berechtigung,
+  UserCreateInput,
+  UserUpdateInput,
   AdminUserInput,
 } from './schemas/auth.js'
 
@@ -69,6 +79,68 @@ export type {
   BonierungInput,
   BonierungErgebnis,
 } from './schemas/bonierung.js'
+
+// ZVT-Kartenterminal
+export {
+  ZvtConfigSchema,
+  ZvtConfigUpdateSchema,
+  ZvtJobStatusSchema,
+  ZvtErgebnisSchema,
+  ZvtJobSchema,
+  ZvtZahlungInputSchema,
+} from './schemas/zvt.js'
+export type {
+  ZvtConfig,
+  ZvtConfigUpdate,
+  ZvtJobStatus,
+  ZvtErgebnis,
+  ZvtJob,
+  ZvtZahlungInput,
+} from './schemas/zvt.js'
+
+// Tisch-Tab
+export {
+  TabPositionSchema,
+  TischTabErstellenInputSchema,
+  TischTabPositionenUpdateSchema,
+  TischTabBezahlenInputSchema,
+  TischTabResponseSchema,
+} from './schemas/tisch-tab.js'
+export type {
+  TabPosition,
+  TischTabErstellenInput,
+  TischTabPositionenUpdate,
+  TischTabBezahlenInput,
+  TischTabResponse,
+} from './schemas/tisch-tab.js'
+
+// Bericht
+export {
+  BerichtFilterSchema,
+  BerichtGruppierungSchema,
+  BerichtZeileSchema,
+  BerichtGesamtSchema,
+  BerichtResponseSchema,
+} from './schemas/bericht.js'
+export type {
+  BerichtFilter,
+  BerichtGruppierung,
+  BerichtZeile,
+  BerichtGesamt,
+  BerichtResponse,
+} from './schemas/bericht.js'
+
+// Tagesabschluss
+export {
+  TagesabschlussSchema,
+  TagesabschlussQuerySchema,
+  MwStZeileSchema,
+} from './schemas/tagesabschluss.js'
+export type {
+  Tagesabschluss,
+  TagesabschlussQuery,
+  MwStZeile,
+} from './schemas/tagesabschluss.js'
 
 // Beleg
 export {

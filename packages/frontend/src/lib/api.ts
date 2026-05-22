@@ -3,6 +3,8 @@ import type {
   ArtikelInput,
   ArtikelUpdate,
   BarzahlungsbelegInput,
+  BerichtFilter,
+  BerichtResponse,
   BelegResponse,
   BonierungErgebnis,
   BonierungInput,
@@ -11,10 +13,23 @@ import type {
   LoginResponse,
   MonatsbelegInput,
   NullbelegInput,
+  PinLoginInput,
   SetupInput,
   SetupResponse,
   Station,
   StornobelegInput,
+  Tagesabschluss,
+  TabPosition,
+  TischTabBezahlenInput,
+  TischTabErstellenInput,
+  TischTabResponse,
+  User,
+  UserCreateInput,
+  UserUpdateInput,
+  ZvtConfig,
+  ZvtConfigUpdate,
+  ZvtJob,
+  ZvtZahlungInput,
 } from '@kassa/shared'
 import { getToken, handleUnauthorized } from './auth.js'
 
@@ -74,9 +89,11 @@ export async function postSetup(input: SetupInput): Promise<SetupResponse> {
 // ---------------------------------------------------------------------------
 
 export const authApi = {
-  login: (input: LoginInput) =>
+  login:    (input: LoginInput) =>
     request<LoginResponse>('POST', '/api/auth/login', input),
-  me:    () =>
+  pinLogin: (input: PinLoginInput) =>
+    request<LoginResponse>('POST', '/api/auth/pin-login', input),
+  me:       () =>
     request<{ user: LoginResponse['user']; mandant: LoginResponse['mandant']; kassen: LoginResponse['kassen'] }>(
       'GET', '/api/auth/me'),
 }
@@ -154,6 +171,75 @@ export const belegApi = {
     request<BelegResponse>('POST', '/api/belege/monatsbeleg', input),
   jahresbeleg:(input: JahresbelegInput) =>
     request<BelegResponse>('POST', '/api/belege/jahresbeleg', input),
+}
+
+export const berichtApi = {
+  umsatz: (filter: Omit<BerichtFilter, 'kasseIds'> & { kasseIds?: string[] }): Promise<BerichtResponse> => {
+    const p = new URLSearchParams()
+    p.set('von', filter.von)
+    p.set('bis', filter.bis)
+    p.set('gruppierung', filter.gruppierung ?? 'tag')
+    if (filter.nurZielrechnungen) p.set('nurZielrechnungen', 'true')
+    for (const id of filter.kasseIds ?? []) p.append('kasseIds', id)
+    return request<BerichtResponse>('GET', `/api/berichte/umsatz?${p.toString()}`)
+  },
+}
+
+export const tagesabschlussApi = {
+  get:    (kasseId: string, datum: string) =>
+    request<Tagesabschluss>('GET', `/api/belege/tagesabschluss?kasseId=${kasseId}&datum=${datum}`),
+  drucken:(kasseId: string, datum: string) =>
+    request<{ erfolgreich: boolean }>('POST', '/api/belege/tagesabschluss/drucken', { kasseId, datum }),
+}
+
+// ---------------------------------------------------------------------------
+// User-Verwaltung
+// ---------------------------------------------------------------------------
+
+export const userApi = {
+  list:       () =>
+    request<User[]>('GET', '/api/users'),
+  create:     (input: UserCreateInput) =>
+    request<User>('POST', '/api/users', input),
+  update:     (id: string, input: UserUpdateInput) =>
+    request<User>('PUT', `/api/users/${id}`, input),
+  deactivate: (id: string) =>
+    request<User>('DELETE', `/api/users/${id}`),
+}
+
+// ---------------------------------------------------------------------------
+// Tisch-Tabs
+// ---------------------------------------------------------------------------
+
+export const tischTabApi = {
+  list: (kasseId: string) =>
+    request<TischTabResponse[]>('GET', `/api/tisch-tabs?kasseId=${kasseId}`),
+  erstelle: (input: TischTabErstellenInput) =>
+    request<TischTabResponse>('POST', '/api/tisch-tabs', input),
+  get: (id: string) =>
+    request<TischTabResponse>('GET', `/api/tisch-tabs/${id}`),
+  aktualisierePositionen: (id: string, positionen: TabPosition[]) =>
+    request<TischTabResponse>('PUT', `/api/tisch-tabs/${id}/positionen`, { positionen }),
+  bezahle: (id: string, input: TischTabBezahlenInput) =>
+    request<{ tab: TischTabResponse; belegId: string }>('POST', `/api/tisch-tabs/${id}/bezahlen`, input),
+}
+
+// ---------------------------------------------------------------------------
+// ZVT-Kartenterminal
+// ---------------------------------------------------------------------------
+
+export const zvtApi = {
+  getConfig:   (kasseId: string) =>
+    request<ZvtConfig>('GET', `/api/kassen/${kasseId}/zvt`),
+  patchConfig: (kasseId: string, config: ZvtConfigUpdate) =>
+    request<ZvtConfig>('PATCH', `/api/kassen/${kasseId}/zvt`, config),
+
+  starteZahlung: (input: ZvtZahlungInput) =>
+    request<{ jobId: string }>('POST', '/api/zvt/zahlung', input),
+  getJob:        (jobId: string) =>
+    request<ZvtJob>('GET', `/api/zvt/zahlung/${jobId}`),
+  abbrechen:     (jobId: string) =>
+    request<ZvtJob>('POST', `/api/zvt/zahlung/${jobId}/abbrechen`),
 }
 
 export { ApiError }

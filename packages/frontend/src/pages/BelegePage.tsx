@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { BelegResponse } from '@kassa/shared'
 import { belegApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
+import { hasBerechtigung } from '../lib/auth'
 import { formatPreis, formatDatum } from '../lib/format'
 import { Modal } from '../components/ui/Modal'
 import { Button } from '../components/ui/Button'
@@ -14,6 +15,7 @@ export function BelegePage() {
 
   const [ausgewaehlt, setAusgewaehlt] = useState<BelegResponse | null>(null)
   const [stornoKandidat, setStornoKandidat] = useState<BelegResponse | null>(null)
+  const [stornoGrund, setStornoGrund] = useState('')
   const [aktionsfehler, setAktionsfehler] = useState<string | null>(null)
   const [neuErzeugt, setNeuErzeugt] = useState<BelegResponse | null>(null)
 
@@ -34,6 +36,7 @@ export function BelegePage() {
     onSuccess:  (beleg) => {
       setNeuErzeugt(beleg)
       setStornoKandidat(null)
+      setStornoGrund('')
       setAktionsfehler(null)
       invalidate()
     },
@@ -63,6 +66,19 @@ export function BelegePage() {
   // -------------------------------------------------------------------------
 
   const faelligkeit = useMemo(() => berechneFaelligkeit(liste.data ?? []), [liste.data])
+
+  // IDs aller Barzahlungsbelege die bereits einen Stornobeleg haben
+  const bereitsStornoiert = useMemo(() => {
+    const ids = new Set<string>()
+    for (const b of liste.data ?? []) {
+      if (b.belegTyp === 'Stornobeleg' && b.verweisBelegId) {
+        ids.add(b.verweisBelegId)
+      }
+    }
+    return ids
+  }, [liste.data])
+
+  const kannStornieren = hasBerechtigung('belege.stornieren')
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 sm:py-8 space-y-6">
@@ -122,7 +138,7 @@ export function BelegePage() {
         </div>
       </details>
 
-      {aktionsfehler && (
+      {aktionsfehler && !stornoKandidat && (
         <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           {aktionsfehler}
         </div>
@@ -180,14 +196,18 @@ export function BelegePage() {
                     {formatPreis(b.gesamtbetragCent)}
                   </td>
                   <td className="px-4 py-2 text-right">
-                    {b.belegTyp === 'Barzahlungsbeleg' && (
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); setStornoKandidat(b); setAktionsfehler(null) }}
-                        className="text-xs text-red-600 hover:underline whitespace-nowrap"
-                      >
-                        Stornieren
-                      </button>
+                    {b.belegTyp === 'Barzahlungsbeleg' && kannStornieren && (
+                      bereitsStornoiert.has(b.id) ? (
+                        <span className="text-xs text-gray-400 italic whitespace-nowrap">storniert</span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setStornoKandidat(b); setStornoGrund(''); setAktionsfehler(null) }}
+                          className="text-xs text-red-600 hover:underline whitespace-nowrap"
+                        >
+                          Stornieren
+                        </button>
+                      )
                     )}
                   </td>
                 </tr>
@@ -210,7 +230,7 @@ export function BelegePage() {
       {/* Storno-Bestätigung */}
       <Modal
         open={!!stornoKandidat}
-        onClose={() => setStornoKandidat(null)}
+        onClose={() => { setStornoKandidat(null); setStornoGrund('') }}
         title={`Beleg #${stornoKandidat?.belegNummer} stornieren?`}
       >
         {stornoKandidat && (
@@ -224,10 +244,34 @@ export function BelegePage() {
               <div className="flex justify-between"><dt className="text-gray-500">Datum</dt><dd>{formatDatum(stornoKandidat.belegDatum)}</dd></div>
               <div className="flex justify-between font-medium"><dt>Betrag</dt><dd className="font-mono">{formatPreis(stornoKandidat.gesamtbetragCent)}</dd></div>
             </dl>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Storno-Grund <span className="text-gray-400 font-normal">(optional)</span>
+              </label>
+              <input
+                type="text"
+                value={stornoGrund}
+                onChange={(e) => setStornoGrund(e.target.value)}
+                maxLength={200}
+                placeholder="z. B. Falscheingabe, Kundenwunsch …"
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+              />
+            </div>
+            {aktionsfehler && (
+              <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                {aktionsfehler}
+              </div>
+            )}
             <div className="flex justify-end gap-2 pt-2 border-t border-gray-200">
-              <Button variant="secondary" onClick={() => setStornoKandidat(null)}>Abbrechen</Button>
+              <Button variant="secondary" onClick={() => { setStornoKandidat(null); setStornoGrund('') }}>
+                Abbrechen
+              </Button>
               <Button
-                onClick={() => stornoMutation.mutate({ kasseId: identity.kasseId, verweisBelegId: stornoKandidat.id })}
+                onClick={() => stornoMutation.mutate({
+                  kasseId:        identity.kasseId,
+                  verweisBelegId: stornoKandidat.id,
+                  ...(stornoGrund.trim() && { grund: stornoGrund.trim() }),
+                })}
                 loading={stornoMutation.isPending}
               >
                 Storno bestätigen

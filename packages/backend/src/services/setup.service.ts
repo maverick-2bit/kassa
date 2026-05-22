@@ -145,12 +145,13 @@ export async function fuehreSetupDurch(
 
     // 3. Admin-User
     await tx.insert(users).values({
-      mandantId:    mandant.id,
-      email:        input.admin.email.toLowerCase(),
+      mandantId:      mandant.id,
+      email:          input.admin.email.toLowerCase(),
       passwordHash,
-      name:         input.admin.name,
-      rolle:        'admin',
-      aktiv:        true,
+      name:           input.admin.name,
+      rolle:          'admin',
+      berechtigungen: [],
+      aktiv:          true,
     })
 
     // 4. Startbeleg

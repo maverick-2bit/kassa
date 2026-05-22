@@ -98,6 +98,9 @@ export const BelegResponseSchema = z.object({
 
   positionen: z.array(BelegPositionSchema),
 
+  /** Nur bei Stornobeleg: ID des Original-Belegs */
+  verweisBelegId: z.string().uuid().optional(),
+
   zertifikatSn:                z.string(),
   sigVorbeleg:                 z.string(),
   signaturwert:                z.string(),

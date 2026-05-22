@@ -71,6 +71,8 @@ interface SigniereInput {
   belegDaten: BelegDaten | ((tx: Tx) => Promise<BelegDaten>)
   /** Wenn true: validiert Zahlungssumme == Belegtotal (Pflicht bei Barzahlung & Storno) */
   validatePayment: boolean
+  /** Verweis auf Original-Beleg (nur für Stornobeleg) */
+  verweisBelegId?: string
 }
 
 async function signiereImTx(
@@ -154,6 +156,7 @@ async function signiereImTx(
       signaturwert:                signed.signaturwert,
       maschinenlesbareCode:        signed.maschinenlesbareCode,
       positionen,
+      ...(input.verweisBelegId && { verweisBelegId: input.verweisBelegId }),
     }).returning()
     if (!persisted) throw new BelegError(500, 'Beleg konnte nicht gespeichert werden')
 
@@ -224,6 +227,7 @@ export async function erstelleStornobeleg(
     kasseId:         input.kasseId,
     belegTyp:        'Stornobeleg',
     validatePayment: true,
+    verweisBelegId:  input.verweisBelegId,
     belegDaten: async (tx) => {
       const [verweisBeleg] = await tx
         .select()
@@ -238,6 +242,16 @@ export async function erstelleStornobeleg(
       }
       if (verweisBeleg.belegTyp !== 'Barzahlungsbeleg') {
         throw new BelegError(400, `Belegtyp ${verweisBeleg.belegTyp} kann nicht storniert werden`)
+      }
+
+      // Prüfen ob Beleg bereits storniert wurde
+      const [bereitsStorniert] = await tx
+        .select({ id: belege.id })
+        .from(belege)
+        .where(eq(belege.verweisBelegId, input.verweisBelegId))
+        .limit(1)
+      if (bereitsStorniert) {
+        throw new BelegError(409, 'Dieser Beleg wurde bereits storniert')
       }
 
       // Positionen mit negiertem Einzelpreis
@@ -341,6 +355,7 @@ function toDto(row: typeof belege.$inferSelect, positionen: BelegPosition[]): Be
     summeSonstigeCent:           row.summeSonstigeCent,
     gesamtbetragCent,
     positionen,
+    ...(row.verweisBelegId && { verweisBelegId: row.verweisBelegId }),
     zertifikatSn:                row.zertifikatSn,
     sigVorbeleg:                 row.sigVorbeleg,
     signaturwert:                row.signaturwert,

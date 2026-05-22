@@ -7,7 +7,13 @@ import { KassePage } from './pages/KassePage'
 import { ArtikelPage } from './pages/ArtikelPage'
 import { BelegePage } from './pages/BelegePage'
 import { EinstellungenPage } from './pages/EinstellungenPage'
-import { getAuth, setOnUnauthorized } from './lib/auth'
+import { TischePage } from './pages/TischePage'
+import { TischTabPage } from './pages/TischTabPage'
+import { UserVerwaltungPage } from './pages/UserVerwaltungPage'
+import { TagesabschlussPage } from './pages/TagesabschlussPage'
+import { BerichtePage } from './pages/BerichtePage'
+import type { Berechtigung } from '@kassa/shared'
+import { getAuth, hasBerechtigung, setOnUnauthorized } from './lib/auth'
 import { getKasseIdentity } from './lib/kasse'
 
 export function App() {
@@ -31,10 +37,15 @@ function AppRoutes() {
       <Route path="/setup" element={<SetupPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route element={<Layout />}>
-        <Route path="/kasse"         element={<RequireAuth><KassePage /></RequireAuth>} />
-        <Route path="/artikel"       element={<RequireAuth><ArtikelPage /></RequireAuth>} />
-        <Route path="/belege"        element={<RequireAuth><BelegePage /></RequireAuth>} />
-        <Route path="/einstellungen" element={<RequireAuth><EinstellungenPage /></RequireAuth>} />
+        <Route path="/tische"         element={<Require b="tische"><TischePage /></Require>} />
+        <Route path="/tische/:tabId"  element={<Require b="tische"><TischTabPage /></Require>} />
+        <Route path="/kasse"          element={<Require b="kasse"><KassePage /></Require>} />
+        <Route path="/artikel"        element={<Require b="artikel.verwalten"><ArtikelPage /></Require>} />
+        <Route path="/belege"         element={<Require b="belege.lesen"><BelegePage /></Require>} />
+        <Route path="/einstellungen"  element={<Require b="einstellungen"><EinstellungenPage /></Require>} />
+        <Route path="/benutzer"          element={<Require b="user.verwalten"><UserVerwaltungPage /></Require>} />
+        <Route path="/tagesabschluss"   element={<Require b="belege.lesen"><TagesabschlussPage /></Require>} />
+        <Route path="/berichte"         element={<Require b="belege.lesen"><BerichtePage /></Require>} />
       </Route>
       <Route path="*" element={<Navigate to={getInitialRoute()} replace />} />
     </Routes>
@@ -46,10 +57,18 @@ function getInitialRoute(): string {
   if (!getAuth()) {
     return getKasseIdentity() ? '/login' : '/setup'
   }
-  return '/kasse'
+  // Erste erreichbare Seite je nach Berechtigung — Tische ist Default für Gastro
+  if (hasBerechtigung('tische'))            return '/tische'
+  if (hasBerechtigung('kasse'))             return '/kasse'
+  if (hasBerechtigung('belege.lesen'))      return '/belege'
+  if (hasBerechtigung('artikel.verwalten')) return '/artikel'
+  if (hasBerechtigung('einstellungen'))     return '/einstellungen'
+  if (hasBerechtigung('user.verwalten'))    return '/benutzer'
+  return '/login'  // User ohne jegliche Berechtigung — sollte nicht vorkommen
 }
 
-function RequireAuth({ children }: { children: React.ReactNode }) {
+function Require({ b, children }: { b: Berechtigung; children: React.ReactNode }) {
   if (!getAuth()) return <Navigate to="/login" replace />
+  if (!hasBerechtigung(b)) return <Navigate to={getInitialRoute()} replace />
   return <>{children}</>
 }

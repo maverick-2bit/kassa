@@ -11,6 +11,7 @@ import {
   NullbelegInputSchema,
   MonatsbelegInputSchema,
   JahresbelegInputSchema,
+  TagesabschlussQuerySchema,
 } from '@kassa/shared'
 import {
   erstelleBarzahlungsbeleg,
@@ -22,8 +23,15 @@ import {
   BelegError,
   type BelegServiceDeps,
 } from '../services/beleg.service.js'
-import { tryDruckeBeleg } from '../services/drucker.service.js'
+import {
+  holeTagesabschluss,
+  TagesabschlussError,
+} from '../services/tagesabschluss.service.js'
+import { tryDruckeBeleg, druckerConfigVonKasse, sendBytes } from '../services/drucker.service.js'
+import { baueZBon } from '../services/escpos/layout.js'
 import { pruefeKasseGehoertZuMandant } from '../auth/scope.js'
+import { eq } from 'drizzle-orm'
+import { kassen, mandanten } from '../db/schema.js'
 
 export interface BelegRouteOptions {
   deps: BelegServiceDeps
@@ -115,5 +123,78 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
       ...(parsed.data.limit !== undefined && { limit: parsed.data.limit }),
     })
     return reply.send(liste)
+  })
+
+  // -------------------------------------------------------------------------
+  // Tagesabschluss (Z-Bon)
+  // -------------------------------------------------------------------------
+
+  fastify.get('/belege/tagesabschluss', guard, async (request, reply) => {
+    const parsed = TagesabschlussQuerySchema.safeParse(request.query)
+    if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
+    try {
+      const ta = await holeTagesabschluss(
+        parsed.data.kasseId,
+        parsed.data.datum,
+        request.user.mandantId,
+        opts.deps,
+      )
+      return reply.send(ta)
+    } catch (err) {
+      if (err instanceof TagesabschlussError) {
+        return reply.status(err.httpStatus).send({ fehler: err.message })
+      }
+      fastify.log.error({ err }, 'Tagesabschluss unerwartet fehlgeschlagen')
+      return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
+    }
+  })
+
+  fastify.post('/belege/tagesabschluss/drucken', guard, async (request, reply) => {
+    const parsed = TagesabschlussQuerySchema.safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
+
+    try {
+      const ta = await holeTagesabschluss(
+        parsed.data.kasseId,
+        parsed.data.datum,
+        request.user.mandantId,
+        opts.deps,
+      )
+
+      // Kasse + Mandant für Drucker-Config und Bon-Header laden
+      const [kasse] = await opts.deps.db
+        .select()
+        .from(kassen)
+        .where(eq(kassen.id, parsed.data.kasseId))
+        .limit(1)
+      if (!kasse) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
+
+      const druckerConfig = druckerConfigVonKasse(kasse)
+      if (!druckerConfig) {
+        return reply.status(409).send({ fehler: 'Drucker ist nicht konfiguriert oder deaktiviert' })
+      }
+
+      const [mandant] = await opts.deps.db
+        .select()
+        .from(mandanten)
+        .where(eq(mandanten.id, kasse.mandantId))
+        .limit(1)
+      if (!mandant) return reply.status(404).send({ fehler: 'Mandant nicht gefunden' })
+
+      const bytes = baueZBon(ta, {
+        firmenname: mandant.firmenname,
+        uid:        mandant.uid,
+        kassenId:   kasse.kassenId,
+      }, { breite: druckerConfig.breite })
+
+      await sendBytes(bytes, druckerConfig)
+      return reply.send({ erfolgreich: true })
+    } catch (err) {
+      if (err instanceof TagesabschlussError) {
+        return reply.status(err.httpStatus).send({ fehler: err.message })
+      }
+      fastify.log.error({ err }, 'Z-Bon-Druck fehlgeschlagen')
+      return reply.status(502).send({ fehler: err instanceof Error ? err.message : String(err) })
+    }
   })
 }

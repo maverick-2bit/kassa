@@ -7,6 +7,7 @@
  */
 
 import { sql } from 'drizzle-orm'
+import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 import {
   pgTable,
   uuid,
@@ -19,6 +20,7 @@ import {
   boolean,
   uniqueIndex,
   index,
+  primaryKey,
 } from 'drizzle-orm/pg-core'
 
 // ---------------------------------------------------------------------------
@@ -85,6 +87,13 @@ export const kassen = pgTable('kassen', {
   kdsPort:               integer('kds_port').notNull().default(9100),
   kdsAktiv:              boolean('kds_aktiv').notNull().default(false),
 
+  // ZVT-Kartenterminal-Konfiguration (Hobex/Payroc & kompatible über Standard-ZVT-Protokoll)
+  zvtIp:                 varchar('zvt_ip',   { length: 64 }),
+  zvtPort:               integer('zvt_port').notNull().default(20007),
+  /** Optionales Terminal-Passwort (manche Geräte verlangen es bei Authorization) */
+  zvtPasswort:           varchar('zvt_passwort', { length: 16 }),
+  zvtAktiv:              boolean('zvt_aktiv').notNull().default(false),
+
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
@@ -127,10 +136,14 @@ export const belege = pgTable('belege', {
   /** Original-Positionen als JSON (für Storno und Reporting) */
   positionen: jsonb('positionen').notNull(),
 
+  /** Verweis auf den Original-Beleg (nur bei Stornobeleg gesetzt) */
+  verweisBelegId: uuid('verweis_beleg_id').references((): AnyPgColumn => belege.id),
+
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
-  belegNrIdx: uniqueIndex('belege_kasse_belegnr_idx').on(t.kasseId, t.belegNummer),
-  datumIdx:   index('belege_datum_idx').on(t.belegDatum),
+  belegNrIdx:     uniqueIndex('belege_kasse_belegnr_idx').on(t.kasseId, t.belegNummer),
+  datumIdx:       index('belege_datum_idx').on(t.belegDatum),
+  verweisIdx:     index('belege_verweis_idx').on(t.verweisBelegId),
 }))
 
 // ---------------------------------------------------------------------------
@@ -138,22 +151,37 @@ export const belege = pgTable('belege', {
 // ---------------------------------------------------------------------------
 
 export const users = pgTable('users', {
-  id:           uuid('id').primaryKey().defaultRandom(),
-  mandantId:    uuid('mandant_id').notNull().references(() => mandanten.id),
-  email:        varchar('email', { length: 200 }).notNull(),
-  passwordHash: text('password_hash').notNull(),
-  name:         text('name').notNull(),
-  /** admin | kellner — erweiterbar */
-  rolle:        varchar('rolle', { length: 20 }).notNull().default('kellner'),
-  aktiv:        boolean('aktiv').notNull().default(true),
-  createdAt:    timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt:    timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  id:             uuid('id').primaryKey().defaultRandom(),
+  mandantId:      uuid('mandant_id').notNull().references(() => mandanten.id),
+  email:          varchar('email', { length: 200 }).notNull(),
+  passwordHash:   text('password_hash').notNull(),
+  /** bcrypt-Hash des 4-stelligen PINs — null = kein PIN gesetzt */
+  pinHash:        text('pin_hash'),
+  name:           text('name').notNull(),
+  /** admin | kellner */
+  rolle:          varchar('rolle', { length: 20 }).notNull().default('kellner'),
+  /** Fein-granulare Berechtigungen als JSON-Array (z. B. ["tische","kasse"]) */
+  berechtigungen: jsonb('berechtigungen').notNull(),
+  aktiv:          boolean('aktiv').notNull().default(true),
+  createdAt:      timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:      timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
   emailIdx: uniqueIndex('users_email_idx').on(t.email),
 }))
 
 export type User    = typeof users.$inferSelect
 export type NewUser = typeof users.$inferInsert
+
+// ---------------------------------------------------------------------------
+// User ↔ Kassen (Zuordnung welche Kellner an welchen Kassen arbeiten)
+// ---------------------------------------------------------------------------
+
+export const userKassen = pgTable('user_kassen', {
+  userId:  uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  kasseId: uuid('kasse_id').notNull().references(() => kassen.id, { onDelete: 'cascade' }),
+}, (t) => ({
+  pk: primaryKey({ columns: [t.userId, t.kasseId] }),
+}))
 
 // ---------------------------------------------------------------------------
 // Artikel (Produkte) – für späteren Bestellprozess
@@ -176,6 +204,29 @@ export const artikel = pgTable('artikel', {
 }))
 
 // ---------------------------------------------------------------------------
+// Tisch-Tabs — offene Tische mit akkumulierten Positionen
+// ---------------------------------------------------------------------------
+
+export const tischTabs = pgTable('tisch_tabs', {
+  id:           uuid('id').primaryKey().defaultRandom(),
+  mandantId:    uuid('mandant_id').notNull().references(() => mandanten.id),
+  kasseId:      uuid('kasse_id').notNull().references(() => kassen.id),
+  tischNummer:  varchar('tisch_nummer', { length: 40 }).notNull(),
+  kellner:      varchar('kellner', { length: 100 }).notNull().default('Service'),
+  /** Akkumulierte Positionen als JSON-Array [{artikelId, bezeichnung, preisBruttoCent, menge, station?}] */
+  positionen:   jsonb('positionen').notNull(),
+  /** offen | bezahlt */
+  status:       varchar('status', { length: 20 }).notNull().default('offen'),
+  geoffnetAm:   timestamp('geoffnet_am', { withTimezone: true }).notNull().defaultNow(),
+  geschlossenAm: timestamp('geschlossen_am', { withTimezone: true }),
+  belegId:      uuid('beleg_id'),
+  createdAt:    timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:    timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  kasseStatusIdx: index('tisch_tabs_kasse_status_idx').on(t.kasseId, t.status),
+}))
+
+// ---------------------------------------------------------------------------
 // Type-Exports (für Service-Layer)
 // ---------------------------------------------------------------------------
 
@@ -187,3 +238,5 @@ export type Beleg       = typeof belege.$inferSelect
 export type NewBeleg    = typeof belege.$inferInsert
 export type Artikel     = typeof artikel.$inferSelect
 export type NewArtikel  = typeof artikel.$inferInsert
+export type TischTab    = typeof tischTabs.$inferSelect
+export type NewTischTab = typeof tischTabs.$inferInsert

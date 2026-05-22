@@ -8,13 +8,14 @@ import type {
   BonierungInput,
 } from '@kassa/shared'
 import { STATION_LABELS } from '@kassa/shared'
-import { artikelApi, belegApi, bonierApi } from '../lib/api'
+import { artikelApi, belegApi, bonierApi, zvtApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
 import { Button } from '../components/ui/Button'
 import { Modal } from '../components/ui/Modal'
 import { Input } from '../components/ui/Input'
 import { BonAnzeige } from '../components/BonAnzeige'
+import { KartenzahlungModal } from '../components/KartenzahlungModal'
 
 // ---------------------------------------------------------------------------
 // Warenkorb-Typen
@@ -41,6 +42,14 @@ export function KassePage() {
   const [letzterBon, setLetzterBon] = useState<BelegResponse | null>(null)
   const [bonierungErgebnis, setBonierungErgebnis] = useState<BonierungErgebnis | null>(null)
   const [fehler, setFehler] = useState<string | null>(null)
+  const [zvtOffen, setZvtOffen] = useState(false)
+  const [zvtBetrag, setZvtBetrag] = useState(0)
+
+  // ZVT-Config holen — entscheidet ob bei Kartenzahlung Modal nötig ist
+  const zvtCfg = useQuery({
+    queryKey: ['zvt', identity.kasseId],
+    queryFn:  () => zvtApi.getConfig(identity.kasseId),
+  })
 
   const artikelQuery = useQuery({
     queryKey: ['artikel', identity.mandantId, true],
@@ -144,28 +153,37 @@ export function KassePage() {
     })
   }
 
+  const erstelleBeleg = (barCent: number, karteCent: number) => {
+    const input: BarzahlungsbelegInput = {
+      kasseId:    identity.kasseId,
+      positionen: korb.map((p) => ({ artikelId: p.artikel.id, menge: p.menge })),
+      zahlung:    { barCent, karteCent, sonstigeCent: 0 },
+    }
+    belegMutation.mutate(input)
+  }
+
   const handleBonErstellen = () => {
     setFehler(null)
     if (korb.length === 0) {
       setFehler('Der Warenkorb ist leer.')
       return
     }
-    const bar      = parseInt(barInput   || '0', 10) || 0
-    const karte    = parseInt(karteInput || '0', 10) || 0
-    const sonstige = 0
-    const zahlung  = { barCent: bar, karteCent: karte, sonstigeCent: sonstige }
+    const bar   = parseInt(barInput   || '0', 10) || 0
+    const karte = parseInt(karteInput || '0', 10) || 0
 
-    if (bar + karte + sonstige !== summeCent) {
+    if (bar + karte !== summeCent) {
       setFehler(`Zahlungssumme passt nicht: ${formatPreis(bar + karte)} statt ${formatPreis(summeCent)}`)
       return
     }
 
-    const input: BarzahlungsbelegInput = {
-      kasseId:    identity.kasseId,
-      positionen: korb.map((p) => ({ artikelId: p.artikel.id, menge: p.menge })),
-      zahlung,
+    // Kartenzahlung mit aktiviertem ZVT? Erst Terminal-Authorization, dann Beleg
+    if (karte > 0 && zvtCfg.data?.zvtAktiv) {
+      setZvtBetrag(karte)
+      setZvtOffen(true)
+      return
     }
-    belegMutation.mutate(input)
+
+    erstelleBeleg(bar, karte)
   }
 
   // ---------------------------------------------------------------------------
@@ -370,6 +388,23 @@ export function KassePage() {
           </div>
         )}
       </Modal>
+
+      {/* Kartenzahlung (ZVT) — vor Beleg-Erstellung */}
+      <KartenzahlungModal
+        open={zvtOffen}
+        kasseId={identity.kasseId}
+        betragCent={zvtBetrag}
+        onErfolg={() => {
+          setZvtOffen(false)
+          const bar   = parseInt(barInput   || '0', 10) || 0
+          const karte = parseInt(karteInput || '0', 10) || 0
+          erstelleBeleg(bar, karte)
+        }}
+        onAbbruch={() => {
+          setZvtOffen(false)
+          setFehler('Kartenzahlung abgebrochen — kein Beleg erstellt')
+        }}
+      />
     </div>
   )
 }

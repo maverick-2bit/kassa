@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { clearAuth, getAuth } from '../lib/auth'
+import { clearAuth, getAuth, hasBerechtigung } from '../lib/auth'
 
 export function Layout() {
   return (
@@ -33,10 +33,14 @@ function Header() {
           <span className="font-semibold text-gray-900">Kassa</span>
         </div>
         <nav className="flex gap-1 flex-1">
-          <NavItem to="/kasse">Kasse</NavItem>
-          <NavItem to="/artikel">Artikel</NavItem>
-          <NavItem to="/belege">Belege</NavItem>
-          <NavItem to="/einstellungen">Einstellungen</NavItem>
+          {hasBerechtigung('tische')           && <NavItem to="/tische">Tische</NavItem>}
+          {hasBerechtigung('kasse')            && <NavItem to="/kasse">Kasse</NavItem>}
+          {hasBerechtigung('artikel.verwalten')&& <NavItem to="/artikel">Artikel</NavItem>}
+          {hasBerechtigung('belege.lesen')     && <NavItem to="/belege">Belege</NavItem>}
+          {hasBerechtigung('belege.lesen')     && <NavItem to="/tagesabschluss">Abschluss</NavItem>}
+          {hasBerechtigung('belege.lesen')     && <NavItem to="/berichte">Berichte</NavItem>}
+          {hasBerechtigung('einstellungen')    && <NavItem to="/einstellungen">Einstellungen</NavItem>}
+          {hasBerechtigung('user.verwalten')   && <NavItem to="/benutzer">Benutzer</NavItem>}
         </nav>
         {auth && (
           <div className="flex items-center gap-3">

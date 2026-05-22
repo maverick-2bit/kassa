@@ -12,6 +12,10 @@ import { artikelRoute } from './routes/artikel.route.js'
 import { belegRoute } from './routes/beleg.route.js'
 import { druckerRoute } from './routes/drucker.route.js'
 import { bonierRoute } from './routes/bonier.route.js'
+import { tischTabRoute } from './routes/tisch-tab.route.js'
+import { userRoute } from './routes/user.route.js'
+import { zvtRoute } from './routes/zvt.route.js'
+import { berichtRoute } from './routes/bericht.route.js'
 
 export interface ServerDeps {
   config:    Config
@@ -47,6 +51,10 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     await api.register(belegRoute,   { deps: deps.belegDeps })
     await api.register(druckerRoute, { db:   deps.db })
     await api.register(bonierRoute,  { deps: { db: deps.db } })
+    await api.register(tischTabRoute, { deps: { db: deps.db, belegDeps: deps.belegDeps } })
+    await api.register(userRoute,     { db:   deps.db })
+    await api.register(zvtRoute,      { deps: { db: deps.db } })
+    await api.register(berichtRoute,  { deps: { db: deps.db } })
   }, { prefix: '/api' })
 
   return fastify
