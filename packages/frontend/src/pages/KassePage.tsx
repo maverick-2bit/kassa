@@ -8,7 +8,7 @@ import type {
   BonierungInput,
 } from '@kassa/shared'
 import { STATION_LABELS } from '@kassa/shared'
-import { artikelApi, belegApi, bonierApi, zvtApi } from '../lib/api'
+import { artikelApi, belegApi, bonierApi, kategorieApi, zvtApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
 import { Button } from '../components/ui/Button'
@@ -16,6 +16,7 @@ import { Modal } from '../components/ui/Modal'
 import { Input } from '../components/ui/Input'
 import { BonAnzeige } from '../components/BonAnzeige'
 import { KartenzahlungModal } from '../components/KartenzahlungModal'
+import { ArtikelGrid } from '../components/ArtikelGrid'
 
 // ---------------------------------------------------------------------------
 // Warenkorb-Typen
@@ -54,6 +55,11 @@ export function KassePage() {
   const artikelQuery = useQuery({
     queryKey: ['artikel', identity.mandantId, true],
     queryFn:  () => artikelApi.list(identity.mandantId, true),
+  })
+
+  const kategorienQuery = useQuery({
+    queryKey: ['kategorien'],
+    queryFn:  () => kategorieApi.list(true),
   })
 
   const summeCent = useMemo(
@@ -216,34 +222,12 @@ export function KassePage() {
         {/* ----- Linke Seite: Artikel-Buttons ----- */}
         <section className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
           <h2 className="text-sm font-semibold text-gray-700 mb-3">Artikel</h2>
-          {artikelQuery.isLoading ? (
-            <p className="text-sm text-gray-500">Wird geladen…</p>
-          ) : artikelQuery.data && artikelQuery.data.length === 0 ? (
-            <div className="rounded-md border border-dashed border-gray-300 p-6 text-center">
-              <p className="text-sm text-gray-500">Noch keine Artikel angelegt.</p>
-              <a href="/artikel" className="mt-2 inline-block text-sm text-brand-600 hover:underline">
-                Zur Artikel-Verwaltung →
-              </a>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-              {artikelQuery.data?.map((a) => (
-                <button
-                  key={a.id}
-                  type="button"
-                  onClick={() => addArtikel(a)}
-                  className="rounded-lg border border-gray-200 bg-white hover:bg-brand-50 hover:border-brand-400 transition p-3 text-left shadow-sm"
-                >
-                  <p className="text-sm font-medium text-gray-900 line-clamp-2 min-h-[2.5rem]">
-                    {a.bezeichnung}
-                  </p>
-                  <p className="mt-1 text-base font-bold text-brand-600">
-                    {formatPreis(a.preisBruttoCent)}
-                  </p>
-                </button>
-              ))}
-            </div>
-          )}
+          <ArtikelGrid
+            artikel={artikelQuery.data ?? []}
+            kategorien={kategorienQuery.data ?? []}
+            onArtikelClick={addArtikel}
+            loading={artikelQuery.isLoading}
+          />
         </section>
 
         {/* ----- Rechte Seite: Warenkorb + Zahlung ----- */}

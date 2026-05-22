@@ -16,6 +16,7 @@ import { tischTabRoute } from './routes/tisch-tab.route.js'
 import { userRoute } from './routes/user.route.js'
 import { zvtRoute } from './routes/zvt.route.js'
 import { berichtRoute } from './routes/bericht.route.js'
+import { kategorieRoute } from './routes/kategorie.route.js'
 
 export interface ServerDeps {
   config:    Config
@@ -55,6 +56,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     await api.register(userRoute,     { db:   deps.db })
     await api.register(zvtRoute,      { deps: { db: deps.db } })
     await api.register(berichtRoute,  { deps: { db: deps.db } })
+    await api.register(kategorieRoute, { db: deps.db })
   }, { prefix: '/api' })
 
   return fastify

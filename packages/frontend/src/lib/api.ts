@@ -9,6 +9,9 @@ import type {
   BonierungErgebnis,
   BonierungInput,
   JahresbelegInput,
+  Kategorie,
+  KategorieInput,
+  KategorieUpdate,
   LoginInput,
   LoginResponse,
   MonatsbelegInput,
@@ -108,6 +111,21 @@ export const artikelApi = {
   create: (input: ArtikelInput) => request<Artikel>('POST', '/api/artikel', input),
   update: (id: string, input: ArtikelUpdate) => request<Artikel>('PUT', `/api/artikel/${id}`, input),
   deaktiviere: (id: string) => request<Artikel>('DELETE', `/api/artikel/${id}`),
+}
+
+// ---------------------------------------------------------------------------
+// Kategorien
+// ---------------------------------------------------------------------------
+
+export const kategorieApi = {
+  list:       (nurAktive = false) =>
+    request<Kategorie[]>('GET', `/api/kategorien?nurAktive=${nurAktive}`),
+  create:     (input: KategorieInput) =>
+    request<Kategorie>('POST', '/api/kategorien', input),
+  update:     (id: string, input: KategorieUpdate) =>
+    request<Kategorie>('PUT', `/api/kategorien/${id}`, input),
+  deaktiviere:(id: string) =>
+    request<Kategorie>('DELETE', `/api/kategorien/${id}`),
 }
 
 // ---------------------------------------------------------------------------

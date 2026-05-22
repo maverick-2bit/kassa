@@ -6,6 +6,7 @@ import {
   STATION_LABELS,
   type Artikel,
   type ArtikelInput,
+  type Kategorie,
   type MwStSatz,
   type Station,
 } from '@kassa/shared'
@@ -21,39 +22,43 @@ type FormValues = {
   mwstSatz:      MwStSatz
   artikelnummer: string
   station:       Station | ''
+  kategorieId:   string
 }
 
 interface Props {
-  mandantId: string
-  initial?:  Artikel | null
-  onSubmit:  (input: ArtikelInput) => void
-  onCancel:  () => void
-  loading?:  boolean
-  fehler?:   string | undefined
+  mandantId:   string
+  initial?:    Artikel | null
+  kategorien?: Kategorie[] | undefined
+  onSubmit:    (input: ArtikelInput) => void
+  onCancel:    () => void
+  loading?:    boolean
+  fehler?:     string | undefined
 }
 
 const MWST_OPTIONS: MwStSatz[] = ['normal', 'ermaessigt1', 'ermaessigt2', 'null', 'besonders']
 
-export function ArtikelFormular({ mandantId, initial, onSubmit, onCancel, loading, fehler }: Props) {
+export function ArtikelFormular({ mandantId, initial, kategorien, onSubmit, onCancel, loading, fehler }: Props) {
   const [preisFehler, setPreisFehler] = useState<string | null>(null)
 
   const { register, handleSubmit, formState: { errors }, reset } = useForm<FormValues>({
     defaultValues: {
-      bezeichnung:   initial?.bezeichnung   ?? '',
+      bezeichnung:   initial?.bezeichnung       ?? '',
       preisEuro:     initial ? (initial.preisBruttoCent / 100).toFixed(2).replace('.', ',') : '',
-      mwstSatz:      initial?.mwstSatz      ?? 'normal',
-      artikelnummer: initial?.artikelnummer ?? '',
-      station:       initial?.station       ?? '',
+      mwstSatz:      initial?.mwstSatz          ?? 'normal',
+      artikelnummer: initial?.artikelnummer     ?? '',
+      station:       initial?.station           ?? '',
+      kategorieId:   initial?.kategorieId       ?? '',
     },
   })
 
   useEffect(() => {
     reset({
-      bezeichnung:   initial?.bezeichnung   ?? '',
+      bezeichnung:   initial?.bezeichnung       ?? '',
       preisEuro:     initial ? (initial.preisBruttoCent / 100).toFixed(2).replace('.', ',') : '',
-      mwstSatz:      initial?.mwstSatz      ?? 'normal',
-      artikelnummer: initial?.artikelnummer ?? '',
-      station:       initial?.station       ?? '',
+      mwstSatz:      initial?.mwstSatz          ?? 'normal',
+      artikelnummer: initial?.artikelnummer     ?? '',
+      station:       initial?.station           ?? '',
+      kategorieId:   initial?.kategorieId       ?? '',
     })
   }, [initial, reset])
 
@@ -70,7 +75,8 @@ export function ArtikelFormular({ mandantId, initial, onSubmit, onCancel, loadin
       preisBruttoCent: cent,
       mwstSatz:        values.mwstSatz,
       ...(values.artikelnummer.trim() && { artikelnummer: values.artikelnummer.trim() }),
-      station:         values.station || null,
+      station:         values.station     || null,
+      kategorieId:     values.kategorieId || null,
     })
   })
 
@@ -116,6 +122,20 @@ export function ArtikelFormular({ mandantId, initial, onSubmit, onCancel, loadin
           </Select>
         </Field>
       </div>
+
+      {kategorien && kategorien.length > 0 && (
+        <Field label="Kategorie" hint="Gruppierung in der Kassen-Ansicht">
+          <Select {...register('kategorieId')}>
+            <option value="">— ohne Kategorie —</option>
+            {kategorien
+              .filter(k => k.aktiv)
+              .sort((a, b) => a.reihenfolge - b.reihenfolge || a.name.localeCompare(b.name))
+              .map((k) => (
+                <option key={k.id} value={k.id}>{k.name}</option>
+              ))}
+          </Select>
+        </Field>
+      )}
 
       {fehler && (
         <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">

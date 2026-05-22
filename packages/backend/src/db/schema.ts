@@ -184,6 +184,24 @@ export const userKassen = pgTable('user_kassen', {
 }))
 
 // ---------------------------------------------------------------------------
+// Artikel-Kategorien — optionale Gruppierung für POS-Ansicht
+// ---------------------------------------------------------------------------
+
+export const kategorien = pgTable('kategorien', {
+  id:          uuid('id').primaryKey().defaultRandom(),
+  mandantId:   uuid('mandant_id').notNull().references(() => mandanten.id),
+  name:        text('name').notNull(),
+  /** Farbschlüssel für Tab-Darstellung (grau | rot | orange | ...) */
+  farbe:       varchar('farbe', { length: 20 }).notNull().default('grau'),
+  reihenfolge: integer('reihenfolge').notNull().default(0),
+  aktiv:       boolean('aktiv').notNull().default(true),
+  createdAt:   timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:   timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  mandantIdx: index('kategorien_mandant_idx').on(t.mandantId),
+}))
+
+// ---------------------------------------------------------------------------
 // Artikel (Produkte) – für späteren Bestellprozess
 // ---------------------------------------------------------------------------
 
@@ -196,11 +214,14 @@ export const artikel = pgTable('artikel', {
   artikelnummer:     varchar('artikelnummer', { length: 40 }),
   /** KDS-Station für Bonierbon-Routing (null = nicht bonieren, z.B. Pfand) */
   station:           varchar('station', { length: 20 }),
+  /** Optionale Kategorie-Zuordnung für Tab-Gruppierung in der POS-Ansicht */
+  kategorieId:       uuid('kategorie_id').references(() => kategorien.id),
   aktiv:             boolean('aktiv').notNull().default(true),
   createdAt:         timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt:         timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
   mandantNummerIdx: uniqueIndex('artikel_mandant_nummer_idx').on(t.mandantId, t.artikelnummer),
+  kategorieIdx:     index('artikel_kategorie_idx').on(t.kategorieId),
 }))
 
 // ---------------------------------------------------------------------------
@@ -236,6 +257,8 @@ export type Kasse       = typeof kassen.$inferSelect
 export type NewKasse    = typeof kassen.$inferInsert
 export type Beleg       = typeof belege.$inferSelect
 export type NewBeleg    = typeof belege.$inferInsert
+export type Kategorie   = typeof kategorien.$inferSelect
+export type NewKategorie = typeof kategorien.$inferInsert
 export type Artikel     = typeof artikel.$inferSelect
 export type NewArtikel  = typeof artikel.$inferInsert
 export type TischTab    = typeof tischTabs.$inferSelect

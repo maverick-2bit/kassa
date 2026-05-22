@@ -62,6 +62,21 @@ export type {
   MwStSatz,
 } from './schemas/artikel.js'
 
+// Kategorie
+export {
+  KategorieSchema,
+  KategorieInputSchema,
+  KategorieUpdateSchema,
+  KategorieFarbeSchema,
+  KATEGORIE_FARBE_LABELS,
+} from './schemas/kategorie.js'
+export type {
+  Kategorie,
+  KategorieInput,
+  KategorieUpdate,
+  KategorieFarbe,
+} from './schemas/kategorie.js'
+
 // Stationen + Bonierung
 export {
   StationSchema,

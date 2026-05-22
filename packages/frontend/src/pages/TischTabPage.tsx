@@ -10,7 +10,7 @@ import type {
   TischTabResponse,
 } from '@kassa/shared'
 import { STATION_LABELS } from '@kassa/shared'
-import { artikelApi, belegApi, bonierApi, tischTabApi, zvtApi } from '../lib/api'
+import { artikelApi, belegApi, bonierApi, kategorieApi, tischTabApi, zvtApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
 import { Button } from '../components/ui/Button'
@@ -18,6 +18,7 @@ import { Modal } from '../components/ui/Modal'
 import { Input } from '../components/ui/Input'
 import { BonAnzeige } from '../components/BonAnzeige'
 import { KartenzahlungModal } from '../components/KartenzahlungModal'
+import { ArtikelGrid } from '../components/ArtikelGrid'
 
 // ---------------------------------------------------------------------------
 // Typen
@@ -66,6 +67,11 @@ export function TischTabPage() {
     queryFn:  () => artikelApi.list(identity.mandantId, true),
   })
 
+  const kategorienQuery = useQuery({
+    queryKey: ['kategorien'],
+    queryFn:  () => kategorieApi.list(true),
+  })
+
   const tab = tabQuery.data
 
   // Alle Positionen (bestehend + Warenkorb) für Gesamtanzeige und Bezahlen
@@ -75,7 +81,8 @@ export function TischTabPage() {
     for (const k of korb) {
       const idx = merged.findIndex(p => p.artikelId === k.artikel.id)
       if (idx >= 0) {
-        merged[idx] = { ...merged[idx], menge: merged[idx].menge + k.menge }
+        const cur = merged[idx]!
+        merged[idx] = { ...cur, menge: cur.menge + k.menge }
       } else {
         merged.push({
           artikelId:       k.artikel.id,
@@ -254,27 +261,12 @@ export function TischTabPage() {
         {/* Linke Seite: Artikel-Buttons */}
         <section className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
           <h2 className="text-sm font-semibold text-gray-700 mb-3">Artikel nachbestellen</h2>
-          {artikelQuery.isLoading ? (
-            <p className="text-sm text-gray-500">Wird geladen…</p>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-              {artikelQuery.data?.map((a) => (
-                <button
-                  key={a.id}
-                  type="button"
-                  onClick={() => addArtikel(a)}
-                  className="rounded-lg border border-gray-200 bg-white hover:bg-brand-50 hover:border-brand-400 transition p-3 text-left shadow-sm"
-                >
-                  <p className="text-sm font-medium text-gray-900 line-clamp-2 min-h-[2.5rem]">
-                    {a.bezeichnung}
-                  </p>
-                  <p className="mt-1 text-base font-bold text-brand-600">
-                    {formatPreis(a.preisBruttoCent)}
-                  </p>
-                </button>
-              ))}
-            </div>
-          )}
+          <ArtikelGrid
+            artikel={artikelQuery.data ?? []}
+            kategorien={kategorienQuery.data ?? []}
+            onArtikelClick={addArtikel}
+            loading={artikelQuery.isLoading}
+          />
         </section>
 
         {/* Rechte Seite: Tab + Warenkorb */}

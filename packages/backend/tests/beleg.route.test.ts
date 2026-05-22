@@ -41,12 +41,23 @@ function mockDb(state: MockState = {}): Db {
   const kasseUpdateSpy = state.kasseUpdateSpy ?? vi.fn()
 
   // Innerhalb der TX
+  // Zählt .limit()-Aufrufe innerhalb der TX:
+  //   1. Aufruf: Verweisbeleg-Lookup   → verweisBeleg
+  //   2. Aufruf: Double-Storno-Check   → bereitsStorniertBeleg (Standard: leer)
+  let txLimitCallCount = 0
   const txMock = {
     select: () => ({
       from: () => ({
         where: () => ({
           for:   () => Promise.resolve(state.kasse ? [state.kasse] : []),
-          limit: () => Promise.resolve(state.verweisBeleg ? [state.verweisBeleg] : []),
+          limit: () => {
+            txLimitCallCount++
+            if (txLimitCallCount === 1) {
+              return Promise.resolve(state.verweisBeleg ? [state.verweisBeleg] : [])
+            }
+            // 2. Aufruf = Double-Storno-Check → Standard leer (kein bereits-Storno)
+            return Promise.resolve([])
+          },
           then:  (resolve: (v: unknown) => void) =>
             Promise.resolve(state.artikel ?? []).then(resolve),
         }),

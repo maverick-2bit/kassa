@@ -25,6 +25,7 @@ export const ArtikelSchema = z.object({
   mwstSatz:        MwStSatzSchema,
   artikelnummer:   z.string().nullable(),
   station:         StationSchema.nullable(),
+  kategorieId:     z.string().uuid().nullable(),
   aktiv:           z.boolean(),
   createdAt:       z.string(),
   updatedAt:       z.string(),
@@ -38,6 +39,7 @@ export const ArtikelInputSchema = z.object({
   mwstSatz:        MwStSatzSchema,
   artikelnummer:   z.string().trim().max(40).optional().nullable(),
   station:         StationSchema.optional().nullable(),
+  kategorieId:     z.string().uuid().optional().nullable(),
 })
 export type ArtikelInput = z.infer<typeof ArtikelInputSchema>
 
@@ -47,6 +49,7 @@ export const ArtikelUpdateSchema = z.object({
   mwstSatz:        MwStSatzSchema.optional(),
   artikelnummer:   z.string().trim().max(40).optional().nullable(),
   station:         StationSchema.optional().nullable(),
+  kategorieId:     z.string().uuid().optional().nullable(),
   aktiv:           z.boolean().optional(),
 })
 export type ArtikelUpdate = z.infer<typeof ArtikelUpdateSchema>
