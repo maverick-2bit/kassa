@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
@@ -6,11 +6,15 @@ import type {
   BelegResponse,
   BonierungErgebnis,
   BonierungInput,
+  ModifikatorAuswahl,
+  ModifikatorGruppe,
+  TabEreignis,
   TabPosition,
+  TischTabSplittenInput,
   TischTabResponse,
 } from '@kassa/shared'
 import { STATION_LABELS } from '@kassa/shared'
-import { artikelApi, belegApi, bonierApi, kategorieApi, tischTabApi, zvtApi } from '../lib/api'
+import { artikelApi, belegApi, bonierApi, kategorieApi, modifikatorApi, tischTabApi, zvtApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
 import { Button } from '../components/ui/Button'
@@ -25,8 +29,10 @@ import { ArtikelGrid } from '../components/ArtikelGrid'
 // ---------------------------------------------------------------------------
 
 interface KorbPosition {
-  artikel: Artikel
-  menge:   number
+  artikel:       Artikel
+  menge:         number
+  modifikatoren: ModifikatorAuswahl[]
+  preisCent:     number
 }
 
 // ---------------------------------------------------------------------------
@@ -49,6 +55,10 @@ export function TischTabPage() {
   const [fehler, setFehler]                         = useState<string | null>(null)
   const [zvtOffen, setZvtOffen]                     = useState(false)
   const [zvtBetrag, setZvtBetrag]                   = useState(0)
+  const [umbuchenOffen, setUmbuchenOffen]           = useState(false)
+  const [umbenennenOffen, setUmbenennenOffen]       = useState(false)
+  const [splitOffen, setSplitOffen]                 = useState(false)
+  const [verlaufOffen, setVerlaufOffen]             = useState(false)
 
   const zvtCfg = useQuery({
     queryKey: ['zvt', identity.kasseId],
@@ -72,6 +82,32 @@ export function TischTabPage() {
     queryFn:  () => kategorieApi.list(true),
   })
 
+  const modGruppenQuery = useQuery({
+    queryKey: ['modifikator-gruppen'],
+    queryFn:  () => modifikatorApi.listeGruppen(),
+  })
+
+  const modZuweisungenQuery = useQuery({
+    queryKey: ['artikel-modifikator-gruppen'],
+    queryFn:  () => modifikatorApi.listeArtikelZuweisungen(),
+  })
+
+  const artikelGruppenMap = useMemo<Map<string, ModifikatorGruppe[]>>(() => {
+    const gruppen     = modGruppenQuery.data ?? []
+    const zuweisungen = modZuweisungenQuery.data ?? []
+    const gruppeById  = new Map(gruppen.map(g => [g.id, g]))
+    const map = new Map<string, ModifikatorGruppe[]>()
+    for (const z of zuweisungen) {
+      const gruppe = gruppeById.get(z.gruppeId)
+      if (!gruppe || !gruppe.aktiv) continue
+      if (!gruppe.modifikatoren.some(m => m.aktiv)) continue
+      const list = map.get(z.artikelId) ?? []
+      list.push(gruppe)
+      map.set(z.artikelId, list)
+    }
+    return map
+  }, [modGruppenQuery.data, modZuweisungenQuery.data])
+
   const tab = tabQuery.data
 
   // Alle Positionen (bestehend + Warenkorb) für Gesamtanzeige und Bezahlen
@@ -79,25 +115,35 @@ export function TischTabPage() {
     if (!tab) return []
     const merged = [...tab.positionen]
     for (const k of korb) {
-      const idx = merged.findIndex(p => p.artikelId === k.artikel.id)
-      if (idx >= 0) {
-        const cur = merged[idx]!
-        merged[idx] = { ...cur, menge: cur.menge + k.menge }
-      } else {
-        merged.push({
-          artikelId:       k.artikel.id,
-          bezeichnung:     k.artikel.bezeichnung,
-          preisBruttoCent: k.artikel.preisBruttoCent,
-          menge:           k.menge,
-          ...(k.artikel.station ? { station: k.artikel.station } : {}),
-        })
+      // Artikel ohne Modifikatoren: zu bestehender Position addieren
+      if (k.modifikatoren.length === 0) {
+        const idx = merged.findIndex(
+          p => p.artikelId === k.artikel.id && (!p.modifikatoren || p.modifikatoren.length === 0),
+        )
+        if (idx >= 0) {
+          const cur = merged[idx]!
+          merged[idx] = { ...cur, menge: cur.menge + k.menge }
+          continue
+        }
       }
+      // Neue Zeile (oder mit Modifikatoren immer neue Zeile)
+      const bezeichnungZusatz = k.modifikatoren.length > 0
+        ? `${k.artikel.bezeichnung} (${k.modifikatoren.map(m => m.name).join(', ')})`
+        : k.artikel.bezeichnung
+      merged.push({
+        artikelId:       k.artikel.id,
+        bezeichnung:     bezeichnungZusatz,
+        preisBruttoCent: k.preisCent,
+        menge:           k.menge,
+        ...(k.artikel.station ? { station: k.artikel.station } : {}),
+        ...(k.modifikatoren.length > 0 ? { modifikatoren: k.modifikatoren } : {}),
+      })
     }
     return merged
   }, [tab, korb])
 
   const korbSummeCent = useMemo(
-    () => korb.reduce((s, p) => s + p.artikel.preisBruttoCent * p.menge, 0),
+    () => korb.reduce((s, p) => s + p.preisCent * p.menge, 0),
     [korb],
   )
   const gesamt = (tab?.summeGesamtCent ?? 0) + korbSummeCent
@@ -106,27 +152,34 @@ export function TischTabPage() {
   // Warenkorb-Aktionen
   // ---------------------------------------------------------------------------
 
-  const addArtikel = (a: Artikel) => {
+  const addArtikel = (a: Artikel, modifikatoren: ModifikatorAuswahl[]) => {
     setFehler(null)
+    const aufschlag = modifikatoren.reduce((s, m) => s + m.aufschlagCent, 0)
+    const preisCent = a.preisBruttoCent + aufschlag
     setKorb(prev => {
-      const ex = prev.find(p => p.artikel.id === a.id)
-      if (ex) return prev.map(p => p.artikel.id === a.id ? { ...p, menge: p.menge + 1 } : p)
-      return [...prev, { artikel: a, menge: 1 }]
+      // Ohne Modifikatoren: bestehende Zeile erhöhen
+      if (modifikatoren.length === 0) {
+        const ex = prev.find(p => p.artikel.id === a.id && p.modifikatoren.length === 0)
+        if (ex) return prev.map(p =>
+          p.artikel.id === a.id && p.modifikatoren.length === 0 ? { ...p, menge: p.menge + 1 } : p,
+        )
+      }
+      return [...prev, { artikel: a, menge: 1, modifikatoren, preisCent }]
     })
   }
 
-  const updateKorbMenge = (artikelId: string, delta: number) => {
+  const updateKorbMenge = (idx: number, delta: number) => {
     setKorb(prev =>
-      prev.flatMap(p => {
-        if (p.artikel.id !== artikelId) return [p]
+      prev.flatMap((p, i) => {
+        if (i !== idx) return [p]
         const n = p.menge + delta
         return n <= 0 ? [] : [{ ...p, menge: n }]
       }),
     )
   }
 
-  const removeKorbArtikel = (artikelId: string) => {
-    setKorb(prev => prev.filter(p => p.artikel.id !== artikelId))
+  const removeKorbArtikel = (idx: number) => {
+    setKorb(prev => prev.filter((_, i) => i !== idx))
   }
 
   // ---------------------------------------------------------------------------
@@ -150,6 +203,8 @@ export function TischTabPage() {
       setBonierungErgebnis(ergebnis)
       // Neuen Korb-Inhalt zum Tab speichern
       await speichernMutation.mutateAsync(allePositionen)
+      // Artikel neu laden, damit dekrementierte Restbestände sofort sichtbar sind
+      qc.invalidateQueries({ queryKey: ['artikel', identity.mandantId] })
     },
     onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
   })
@@ -174,6 +229,39 @@ export function TischTabPage() {
     onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
   })
 
+  const umbenennenMutation = useMutation({
+    mutationFn: (kellner: string) => tischTabApi.umbennene(tabId!, kellner),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tisch-tab', tabId] })
+      qc.invalidateQueries({ queryKey: ['tisch-tabs'] })
+      setUmbenennenOffen(false)
+      setFehler(null)
+    },
+    onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
+  })
+
+  const umbuchenMutation = useMutation({
+    mutationFn: (tischNummer: string) => tischTabApi.umbucheTisch(tabId!, tischNummer),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tisch-tab', tabId] })
+      qc.invalidateQueries({ queryKey: ['tisch-tabs'] })
+      setUmbuchenOffen(false)
+      setFehler(null)
+    },
+    onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
+  })
+
+  const splitMutation = useMutation({
+    mutationFn: (input: TischTabSplittenInput) => tischTabApi.splitteUndBezahle(tabId!, input),
+    onSuccess: () => {
+      setSplitOffen(false)
+      qc.invalidateQueries({ queryKey: ['tisch-tabs'] })
+      qc.invalidateQueries({ queryKey: ['belege'] })
+      navigate('/tische')
+    },
+    onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
+  })
+
   // ---------------------------------------------------------------------------
   // Handler
   // ---------------------------------------------------------------------------
@@ -181,15 +269,13 @@ export function TischTabPage() {
   const handleBonieren = () => {
     setFehler(null)
     if (korb.length === 0) { setFehler('Keine neuen Artikel im Warenkorb.'); return }
-    const positionen = korb
-      .filter(p => p.artikel.station)
-      .map(p => ({ artikelId: p.artikel.id, menge: p.menge }))
-    if (positionen.length === 0) { setFehler('Kein Artikel hat eine KDS-Station.'); return }
+    // Alle Positionen senden — Server entscheidet über KDS- und Bonierdrucker-Routing
     bonierMutation.mutate({
-      kasseId: identity.kasseId,
-      tisch:   tab?.tischNummer ?? '',
-      kellner: tab?.kellner ?? '',
-      positionen,
+      kasseId:    identity.kasseId,
+      tabId:      tabId,
+      tisch:      tab?.tischNummer ?? '',
+      kellner:    tab?.kellner ?? '',
+      positionen: korb.map(p => ({ artikelId: p.artikel.id, menge: p.menge })),
     })
   }
 
@@ -251,22 +337,48 @@ export function TischTabPage() {
         <h1 className="text-lg font-semibold text-gray-900">
           Tisch {tab.tischNummer}
         </h1>
-        <span className="text-sm text-gray-500">· {tab.kellner}</span>
-        <span className="ml-auto text-xs text-gray-400">
+        <button
+          type="button"
+          onClick={() => { setFehler(null); setUmbenennenOffen(true) }}
+          className="group flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800"
+          title="Partei umbenennen"
+        >
+          · {tab.kellner}
+          <svg className="h-3.5 w-3.5 opacity-0 group-hover:opacity-60 transition-opacity" viewBox="0 0 20 20" fill="currentColor">
+            <path d="M13.586 3.586a2 2 0 1 1 2.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/>
+          </svg>
+        </button>
+        <span className="text-xs text-gray-400">
           Geöffnet {new Date(tab.geoffnetAm).toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' })} Uhr
         </span>
+        <button
+          type="button"
+          onClick={() => setVerlaufOffen(true)}
+          className="ml-auto flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition"
+        >
+          <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16zm1-12a1 1 0 1 0-2 0v4a1 1 0 0 0 .293.707l2.828 2.829a1 1 0 1 0 1.415-1.415L11 9.586V6z" clipRule="evenodd"/>
+          </svg>
+          Verlauf
+        </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-4">
         {/* Linke Seite: Artikel-Buttons */}
-        <section className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-          <h2 className="text-sm font-semibold text-gray-700 mb-3">Artikel nachbestellen</h2>
-          <ArtikelGrid
-            artikel={artikelQuery.data ?? []}
-            kategorien={kategorienQuery.data ?? []}
-            onArtikelClick={addArtikel}
-            loading={artikelQuery.isLoading}
-          />
+        <section className="bg-white rounded-lg shadow-sm border border-gray-200
+                            flex flex-col lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)]">
+          <div className="px-4 pt-4 pb-2 shrink-0">
+            <h2 className="text-sm font-semibold text-gray-700">Artikel nachbestellen</h2>
+          </div>
+          <div className="flex-1 min-h-0 overflow-hidden px-4 pb-4">
+            <ArtikelGrid
+              artikel={artikelQuery.data ?? []}
+              kategorien={kategorienQuery.data ?? []}
+              artikelGruppen={artikelGruppenMap}
+              onArtikelClick={addArtikel}
+              loading={artikelQuery.isLoading}
+            />
+          </div>
         </section>
 
         {/* Rechte Seite: Tab + Warenkorb */}
@@ -302,22 +414,27 @@ export function TischTabPage() {
               </div>
               <div className="px-4 py-3 max-h-[25vh] overflow-y-auto">
                 <ul className="space-y-1.5">
-                  {korb.map((p) => (
-                    <li key={p.artikel.id} className="flex items-center gap-2 text-sm">
+                  {korb.map((p, idx) => (
+                    <li key={idx} className="flex items-center gap-2 text-sm">
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-gray-900 truncate">{p.artikel.bezeichnung}</p>
+                        {p.modifikatoren.length > 0 && (
+                          <p className="text-xs text-brand-600 truncate">
+                            {p.modifikatoren.map(m => m.name).join(', ')}
+                          </p>
+                        )}
                       </div>
                       <div className="flex items-center gap-1">
-                        <MengeButton onClick={() => updateKorbMenge(p.artikel.id, -1)}>−</MengeButton>
+                        <MengeButton onClick={() => updateKorbMenge(idx, -1)}>−</MengeButton>
                         <span className="w-5 text-center text-xs font-medium">{p.menge}</span>
-                        <MengeButton onClick={() => updateKorbMenge(p.artikel.id, +1)}>+</MengeButton>
+                        <MengeButton onClick={() => updateKorbMenge(idx, +1)}>+</MengeButton>
                       </div>
                       <span className="w-18 text-right font-mono text-xs shrink-0">
-                        {formatPreis(p.artikel.preisBruttoCent * p.menge)}
+                        {formatPreis(p.preisCent * p.menge)}
                       </span>
                       <button
                         type="button"
-                        onClick={() => removeKorbArtikel(p.artikel.id)}
+                        onClick={() => removeKorbArtikel(idx)}
                         className="text-gray-300 hover:text-red-500 px-1"
                       >×</button>
                     </li>
@@ -367,6 +484,24 @@ export function TischTabPage() {
             >
               Bezahlen ({formatPreis(gesamt)})
             </Button>
+
+            <div className="flex gap-2">
+              <Button
+                variant="secondary"
+                onClick={() => { setFehler(null); setUmbuchenOffen(true) }}
+                className="flex-1 text-xs"
+              >
+                ⇄ Tisch wechseln
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => { setFehler(null); setSplitOffen(true) }}
+                className="flex-1 text-xs"
+                disabled={tab.positionen.length === 0}
+              >
+                ⊢ Rechnung teilen
+              </Button>
+            </div>
           </div>
         </section>
       </div>
@@ -445,33 +580,104 @@ export function TischTabPage() {
         title={`Bonierung ${bonierungErgebnis?.bonNummer ?? ''}`}
       >
         {bonierungErgebnis && (
-          <div className="space-y-3">
-            <p className="text-sm text-gray-600">Bonierbons an folgende Stationen gesendet:</p>
-            <ul className="space-y-1.5">
-              {bonierungErgebnis.stationen.map((s) => (
-                <li
-                  key={s.station}
-                  className={`flex items-center justify-between rounded-md border px-3 py-2 text-sm ${
-                    s.erfolgreich
-                      ? 'border-green-200 bg-green-50 text-green-800'
-                      : 'border-red-200 bg-red-50 text-red-700'
-                  }`}
-                >
-                  <span className="font-medium">
-                    {STATION_LABELS[s.station]}{' '}
-                    <span className="font-mono text-xs text-gray-500">({s.ip || '—'})</span>
-                  </span>
-                  <span>
-                    {s.erfolgreich
-                      ? `${s.positionen} Position${s.positionen === 1 ? '' : 'en'}`
-                      : s.fehler ?? 'Fehler'}
-                  </span>
-                </li>
-              ))}
-            </ul>
+          <div className="space-y-4">
+            {bonierungErgebnis.stationen.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">KDS-Stationen</p>
+                <ul className="space-y-1.5">
+                  {bonierungErgebnis.stationen.map((s) => (
+                    <li
+                      key={s.station}
+                      className={`flex items-center justify-between rounded-md border px-3 py-2 text-sm ${
+                        s.erfolgreich
+                          ? 'border-green-200 bg-green-50 text-green-800'
+                          : 'border-red-200 bg-red-50 text-red-700'
+                      }`}
+                    >
+                      <span className="font-medium">
+                        {STATION_LABELS[s.station]}{' '}
+                        <span className="font-mono text-xs opacity-60">({s.ip || '—'})</span>
+                      </span>
+                      <span>
+                        {s.erfolgreich ? `${s.positionen} Pos.` : s.fehler ?? 'Fehler'}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {bonierungErgebnis.drucker.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Bonierdrucker</p>
+                <ul className="space-y-1.5">
+                  {bonierungErgebnis.drucker.map((d) => (
+                    <li
+                      key={d.druckerId}
+                      className={`flex items-center justify-between rounded-md border px-3 py-2 text-sm ${
+                        d.erfolgreich
+                          ? 'border-green-200 bg-green-50 text-green-800'
+                          : 'border-red-200 bg-red-50 text-red-700'
+                      }`}
+                    >
+                      <span className="font-medium">
+                        {d.name}
+                        {d.istBackup && <span className="ml-1.5 text-[10px] rounded-full bg-black/10 px-1.5 py-0.5">Backup</span>}
+                        {' '}<span className="font-mono text-xs opacity-60">({d.ip})</span>
+                      </span>
+                      <span>
+                        {d.erfolgreich ? `${d.positionen} Pos.` : d.fehler ?? 'Fehler'}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {bonierungErgebnis.stationen.length === 0 && bonierungErgebnis.drucker.length === 0 && (
+              <p className="text-sm text-gray-500 text-center py-2">Keine Stationen oder Drucker konfiguriert.</p>
+            )}
           </div>
         )}
       </Modal>
+
+      {/* Bonierverlauf */}
+      <VerlaufModal
+        open={verlaufOffen}
+        tabId={tabId!}
+        tischNummer={tab.tischNummer}
+        onClose={() => setVerlaufOffen(false)}
+      />
+
+      {/* Partei umbenennen */}
+      <UmbenennenModal
+        open={umbenennenOffen}
+        aktuellerName={tab.kellner}
+        loading={umbenennenMutation.isPending}
+        fehler={fehler}
+        onSubmit={(k) => { setFehler(null); umbenennenMutation.mutate(k) }}
+        onClose={() => { setUmbenennenOffen(false); setFehler(null) }}
+      />
+
+      {/* Tisch-Umbuchung */}
+      <UmbuchenModal
+        open={umbuchenOffen}
+        aktuellerTisch={tab.tischNummer}
+        loading={umbuchenMutation.isPending}
+        fehler={fehler}
+        onSubmit={(t) => { setFehler(null); umbuchenMutation.mutate(t) }}
+        onClose={() => { setUmbuchenOffen(false); setFehler(null) }}
+      />
+
+      {/* Rechnung-Split */}
+      <SplitModal
+        open={splitOffen}
+        tab={tab}
+        loading={splitMutation.isPending}
+        fehler={fehler}
+        onSubmit={(input) => { setFehler(null); splitMutation.mutate(input) }}
+        onClose={() => { setSplitOffen(false); setFehler(null) }}
+      />
 
       {/* Kartenzahlung (ZVT) — vor Beleg-Erstellung */}
       <KartenzahlungModal
@@ -507,5 +713,492 @@ function MengeButton({ onClick, children }: { onClick: () => void; children: str
     >
       {children}
     </button>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Bonierverlauf Modal
+// ---------------------------------------------------------------------------
+
+const EREIGNIS_CONFIG: Record<TabEreignis['typ'], { label: string; icon: string; color: string }> = {
+  geoeffnet:               { label: 'Tisch geöffnet',        icon: '🟢', color: 'text-green-700  bg-green-50  border-green-200'  },
+  bonierung:               { label: 'Boniert',               icon: '🍽',  color: 'text-blue-700   bg-blue-50   border-blue-200'   },
+  positionen_aktualisiert: { label: 'Positionen gespeichert',icon: '📝', color: 'text-gray-700   bg-gray-50   border-gray-200'   },
+  storno:                  { label: 'Storno',                icon: '✕',  color: 'text-red-700    bg-red-50    border-red-300'    },
+  tisch_gewechselt:        { label: 'Tisch gewechselt',      icon: '⇄',  color: 'text-amber-700  bg-amber-50  border-amber-200'  },
+  kellner_umbenannt:       { label: 'Partei umbenannt',      icon: '✏',  color: 'text-amber-700  bg-amber-50  border-amber-200'  },
+  bezahlt:                 { label: 'Bezahlt',               icon: '✓',  color: 'text-green-700  bg-green-50  border-green-200'  },
+  gesplittet:              { label: 'Rechnung geteilt',      icon: '⊢',  color: 'text-purple-700 bg-purple-50 border-purple-200' },
+}
+
+function EreignisDetails({ typ, details }: { typ: TabEreignis['typ']; details: Record<string, unknown> }) {
+  switch (typ) {
+    case 'geoeffnet':
+      return <span>Tisch <strong>{String(details.tischNummer)}</strong> · {String(details.kellner)}</span>
+
+    case 'bonierung': {
+      const pos = (details.positionen as Array<{ bezeichnung: string; menge: number }>) ?? []
+      const st  = (details.stationen  as Array<{ station: string; erfolgreich: boolean }>) ?? []
+      const ok  = st.filter(s => s.erfolgreich).length
+      return (
+        <span>
+          Bon <strong>{String(details.bonNummer)}</strong> ·{' '}
+          {pos.map(p => `${p.menge}× ${p.bezeichnung}`).join(', ')}
+          {' '}·{' '}
+          <span className={ok === st.length ? 'text-green-600' : 'text-red-600'}>
+            {ok}/{st.length} Stationen OK
+          </span>
+        </span>
+      )
+    }
+
+    case 'positionen_aktualisiert': {
+      const pos = (details.positionen as Array<{ bezeichnung: string; menge: number }>) ?? []
+      return <span>{pos.map(p => `${p.menge}× ${p.bezeichnung}`).join(', ') || '—'}</span>
+    }
+
+    case 'storno': {
+      const pos = (details.positionen as Array<{ bezeichnung: string; menge: number; preisBruttoCent: number }>) ?? []
+      const summe = pos.reduce((s, p) => s + p.preisBruttoCent * p.menge, 0)
+      return (
+        <span>
+          {pos.map(p => `${p.menge}× ${p.bezeichnung}`).join(', ')}
+          {' '}· <strong>−{formatPreis(summe)}</strong>
+        </span>
+      )
+    }
+
+    case 'tisch_gewechselt':
+      return <span>Tisch <strong>{String(details.von)}</strong> → <strong>{String(details.nach)}</strong></span>
+
+    case 'kellner_umbenannt':
+      return <span><strong>{String(details.von)}</strong> → <strong>{String(details.nach)}</strong></span>
+
+    case 'bezahlt':
+      return (
+        <span>
+          {formatPreis(Number(details.gesamtCent))} ·{' '}
+          {Number(details.barCent) > 0   && `Bar ${formatPreis(Number(details.barCent))} `}
+          {Number(details.karteCent) > 0 && `Karte ${formatPreis(Number(details.karteCent))}`}
+        </span>
+      )
+
+    case 'gesplittet':
+      return (
+        <span>
+          {Number(details.anzahlZahler)} Zahler · {formatPreis(Number(details.gesamtCent))}
+        </span>
+      )
+
+    default:
+      return null
+  }
+}
+
+interface VerlaufModalProps {
+  open:        boolean
+  tabId:       string
+  tischNummer: string
+  onClose:     () => void
+}
+
+function VerlaufModal({ open, tabId, tischNummer, onClose }: VerlaufModalProps) {
+  const verlaufQuery = useQuery({
+    queryKey: ['tab-verlauf', tabId],
+    queryFn:  () => tischTabApi.getVerlauf(tabId),
+    enabled:  open,
+    refetchInterval: open ? 10_000 : false,
+  })
+
+  return (
+    <Modal open={open} onClose={onClose} title={`Verlauf — Tisch ${tischNummer}`} size="lg">
+      {verlaufQuery.isLoading && (
+        <p className="text-sm text-gray-500 py-4 text-center">Wird geladen…</p>
+      )}
+      {verlaufQuery.isError && (
+        <p className="text-sm text-red-600 py-4 text-center">Fehler beim Laden.</p>
+      )}
+      {verlaufQuery.data && verlaufQuery.data.length === 0 && (
+        <p className="text-sm text-gray-400 py-4 text-center">Noch keine Einträge.</p>
+      )}
+      {verlaufQuery.data && verlaufQuery.data.length > 0 && (
+        <ol className="space-y-2">
+          {verlaufQuery.data.map((e) => {
+            const cfg = EREIGNIS_CONFIG[e.typ]
+            const ts  = new Date(e.createdAt)
+            return (
+              <li
+                key={e.id}
+                className={`flex items-start gap-3 rounded-lg border px-3 py-2.5 text-sm ${cfg.color}`}
+              >
+                <span className="text-base leading-none mt-0.5 shrink-0">{cfg.icon}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-baseline justify-between gap-2 flex-wrap">
+                    <span className="font-semibold">{cfg.label}</span>
+                    <span className="text-xs opacity-60 shrink-0">
+                      {ts.toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                      {' '}
+                      {ts.toLocaleDateString('de-AT', { day: '2-digit', month: '2-digit' })}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-xs opacity-80 break-words">
+                    <EreignisDetails typ={e.typ} details={e.details} />
+                  </p>
+                </div>
+              </li>
+            )
+          })}
+        </ol>
+      )}
+    </Modal>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Partei umbenennen Modal
+// ---------------------------------------------------------------------------
+
+interface UmbenennenModalProps {
+  open:           boolean
+  aktuellerName:  string
+  loading:        boolean
+  fehler:         string | null
+  onSubmit:       (kellner: string) => void
+  onClose:        () => void
+}
+
+function UmbenennenModal({ open, aktuellerName, loading, fehler, onSubmit, onClose }: UmbenennenModalProps) {
+  const [name, setName] = useState(aktuellerName)
+
+  useEffect(() => { if (open) setName(aktuellerName) }, [open, aktuellerName])
+
+  return (
+    <Modal open={open} onClose={onClose} title="Partei umbenennen">
+      <div className="space-y-4">
+        <label className="block">
+          <span className="text-sm font-medium text-gray-700">Name / Kellner</span>
+          <Input
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && name.trim() && onSubmit(name.trim())}
+            className="mt-1"
+          />
+        </label>
+        {fehler && (
+          <div className="rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">{fehler}</div>
+        )}
+        <div className="flex gap-2 pt-1">
+          <Button variant="secondary" onClick={onClose} className="flex-1">Abbrechen</Button>
+          <Button
+            onClick={() => name.trim() && onSubmit(name.trim())}
+            loading={loading}
+            className="flex-1"
+            disabled={!name.trim() || name.trim() === aktuellerName}
+          >
+            Speichern
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Tisch-Umbuchung Modal
+// ---------------------------------------------------------------------------
+
+interface UmbuchenModalProps {
+  open:             boolean
+  aktuellerTisch:   string
+  loading:          boolean
+  fehler:           string | null
+  onSubmit:         (tischNummer: string) => void
+  onClose:          () => void
+}
+
+function UmbuchenModal({ open, aktuellerTisch, loading, fehler, onSubmit, onClose }: UmbuchenModalProps) {
+  const [neuerTisch, setNeuerTisch] = useState(aktuellerTisch)
+
+  return (
+    <Modal open={open} onClose={onClose} title="Tisch wechseln">
+      <div className="space-y-4">
+        <p className="text-sm text-gray-500">
+          Aktueller Tisch: <strong>{aktuellerTisch}</strong>
+        </p>
+        <label className="block">
+          <span className="text-sm font-medium text-gray-700">Neuer Tisch</span>
+          <Input
+            autoFocus
+            value={neuerTisch}
+            onChange={(e) => setNeuerTisch(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && neuerTisch.trim() && onSubmit(neuerTisch.trim())}
+            placeholder="z. B. 5, Terrasse 2 …"
+            className="mt-1"
+          />
+        </label>
+        {fehler && (
+          <div className="rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">{fehler}</div>
+        )}
+        <div className="flex gap-2 pt-1">
+          <Button variant="secondary" onClick={onClose} className="flex-1">Abbrechen</Button>
+          <Button
+            onClick={() => neuerTisch.trim() && onSubmit(neuerTisch.trim())}
+            loading={loading}
+            className="flex-1"
+            disabled={!neuerTisch.trim() || neuerTisch.trim() === aktuellerTisch}
+          >
+            Umbuchen
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Rechnung-Split Modal
+// ---------------------------------------------------------------------------
+
+interface SplitZahler {
+  id:       number
+  mengen:   Record<string, number>   // artikelId → zugewiesene Menge
+  barInput: string
+  karte:    string
+}
+
+interface SplitModalProps {
+  open:     boolean
+  tab:      TischTabResponse
+  loading:  boolean
+  fehler:   string | null
+  onSubmit: (input: TischTabSplittenInput) => void
+  onClose:  () => void
+}
+
+function initZahler(positionen: TabPosition[], count: number): SplitZahler[] {
+  return Array.from({ length: count }, (_, i) => ({
+    id:       i,
+    mengen:   Object.fromEntries(
+      positionen.map((p) => [p.artikelId, i === 0 ? p.menge : 0]),
+    ),
+    barInput: '',
+    karte:    '',
+  }))
+}
+
+function SplitModal({ open, tab, loading, fehler, onSubmit, onClose }: SplitModalProps) {
+  const [zahler, setZahler] = useState<SplitZahler[]>(() => initZahler(tab.positionen, 2))
+
+  // Reset whenever modal opens
+  useEffect(() => {
+    if (open) setZahler(initZahler(tab.positionen, 2))
+  }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const addZahler = () => {
+    setZahler(prev => [
+      ...prev,
+      {
+        id:       prev.length,
+        mengen:   Object.fromEntries(tab.positionen.map((p) => [p.artikelId, 0])),
+        barInput: '',
+        karte:    '',
+      },
+    ])
+  }
+
+  const updateMenge = (zahlerId: number, artikelId: string, delta: number) => {
+    setZahler(prev => prev.map(z => {
+      if (z.id !== zahlerId) return z
+      const neu = Math.max(0, (z.mengen[artikelId] ?? 0) + delta)
+      return { ...z, mengen: { ...z.mengen, [artikelId]: neu } }
+    }))
+  }
+
+  const updateBar  = (zahlerId: number, val: string) =>
+    setZahler(prev => prev.map(z => z.id === zahlerId ? { ...z, barInput: val.replace(/[^0-9]/g, '') } : z))
+  const updateKarte = (zahlerId: number, val: string) =>
+    setZahler(prev => prev.map(z => z.id === zahlerId ? { ...z, karte: val.replace(/[^0-9]/g, '') } : z))
+
+  // Validation
+  const positionsfehler: string[] = []
+  for (const p of tab.positionen) {
+    const zugewiesen = zahler.reduce((s, z) => s + (z.mengen[p.artikelId] ?? 0), 0)
+    if (zugewiesen !== p.menge) {
+      positionsfehler.push(`${p.bezeichnung}: ${zugewiesen} von ${p.menge} zugewiesen`)
+    }
+  }
+
+  const zahlungsfehler: string[] = []
+  const zahlungenMitPositionen = zahler.filter(z =>
+    tab.positionen.some(p => (z.mengen[p.artikelId] ?? 0) > 0)
+  )
+  for (const z of zahlungenMitPositionen) {
+    const subtotal = tab.positionen.reduce(
+      (s, p) => s + p.preisBruttoCent * (z.mengen[p.artikelId] ?? 0), 0
+    )
+    const bar   = parseInt(z.barInput || '0', 10) || 0
+    const karte = parseInt(z.karte   || '0', 10) || 0
+    if (bar + karte !== subtotal) {
+      zahlungsfehler.push(`Zahler ${zahler.indexOf(z) + 1}: ${formatPreis(bar + karte)} statt ${formatPreis(subtotal)}`)
+    }
+  }
+
+  const kannSubmit = positionsfehler.length === 0 && zahlungsfehler.length === 0 && zahlungenMitPositionen.length >= 2
+
+  const handleSubmit = () => {
+    const zahlungen = zahlungenMitPositionen.map(z => ({
+      positionen: tab.positionen
+        .filter(p => (z.mengen[p.artikelId] ?? 0) > 0)
+        .map(p => ({ ...p, menge: z.mengen[p.artikelId]! })),
+      zahlung: {
+        barCent:      parseInt(z.barInput || '0', 10) || 0,
+        karteCent:    parseInt(z.karte    || '0', 10) || 0,
+        sonstigeCent: 0,
+      },
+    }))
+    onSubmit({ zahlungen })
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={`Rechnung teilen — Tisch ${tab.tischNummer}`}
+      size="lg"
+    >
+      <div className="space-y-4">
+        {/* Positions-Tabelle */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-200">
+                <th className="py-1.5 pr-3 text-left font-medium text-gray-600">Artikel</th>
+                {zahler.map((z, i) => (
+                  <th key={z.id} className="px-2 py-1.5 text-center font-medium text-gray-600 min-w-[90px]">
+                    Zahler {i + 1}
+                  </th>
+                ))}
+                <th className="pl-2 py-1.5 text-right font-medium text-gray-400 text-xs">Ges.</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {tab.positionen.map((p) => {
+                const zugewiesen = zahler.reduce((s, z) => s + (z.mengen[p.artikelId] ?? 0), 0)
+                const ok = zugewiesen === p.menge
+                return (
+                  <tr key={p.artikelId} className={ok ? '' : 'bg-red-50'}>
+                    <td className="py-1.5 pr-3 text-gray-800 truncate max-w-[140px]">
+                      {p.bezeichnung}
+                    </td>
+                    {zahler.map((z) => {
+                      const m = z.mengen[p.artikelId] ?? 0
+                      return (
+                        <td key={z.id} className="px-2 py-1">
+                          <div className="flex items-center justify-center gap-1">
+                            <MengeButton onClick={() => updateMenge(z.id, p.artikelId, -1)}>−</MengeButton>
+                            <span className="w-5 text-center font-medium">{m}</span>
+                            <MengeButton onClick={() => updateMenge(z.id, p.artikelId, +1)}>+</MengeButton>
+                          </div>
+                        </td>
+                      )
+                    })}
+                    <td className="pl-2 py-1.5 text-right text-xs text-gray-400">{p.menge}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Zahler hinzufügen */}
+        {zahler.length < 6 && (
+          <button
+            type="button"
+            onClick={addZahler}
+            className="text-xs text-brand-600 hover:underline font-medium"
+          >
+            + Weiteren Zahler hinzufügen
+          </button>
+        )}
+
+        {/* Zahlungsfelder pro Zahler */}
+        <div className="space-y-3 pt-1 border-t border-gray-200">
+          {zahler.map((z, i) => {
+            const subtotal = tab.positionen.reduce(
+              (s, p) => s + p.preisBruttoCent * (z.mengen[p.artikelId] ?? 0), 0
+            )
+            const hatPositionen = subtotal > 0
+            if (!hatPositionen) return null
+            const bar   = parseInt(z.barInput || '0', 10) || 0
+            const karte = parseInt(z.karte    || '0', 10) || 0
+            const diff  = subtotal - bar - karte
+            return (
+              <div key={z.id} className="rounded-lg border border-gray-200 p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-semibold text-gray-700">Zahler {i + 1}</span>
+                  <span className="text-sm font-bold text-gray-900">{formatPreis(subtotal)}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="block">
+                    <span className="text-xs text-gray-500">Bar (Cent)</span>
+                    <Input
+                      inputMode="numeric"
+                      placeholder="0"
+                      value={z.barInput}
+                      onChange={(e) => updateBar(z.id, e.target.value)}
+                      className="mt-0.5 text-sm"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs text-gray-500">Karte (Cent)</span>
+                    <Input
+                      inputMode="numeric"
+                      placeholder="0"
+                      value={z.karte}
+                      onChange={(e) => updateKarte(z.id, e.target.value)}
+                      className="mt-0.5 text-sm"
+                    />
+                  </label>
+                </div>
+                <div className="flex gap-2 text-xs">
+                  <button type="button" onClick={() => { updateBar(z.id, String(subtotal)); updateKarte(z.id, '') }} className="text-brand-600 hover:underline">Bar = {formatPreis(subtotal)}</button>
+                  <span className="text-gray-300">·</span>
+                  <button type="button" onClick={() => { updateKarte(z.id, String(subtotal)); updateBar(z.id, '') }} className="text-brand-600 hover:underline">Karte = {formatPreis(subtotal)}</button>
+                </div>
+                {diff !== 0 && (
+                  <p className="text-xs text-red-600">
+                    {diff > 0 ? `Noch ${formatPreis(diff)} offen` : `${formatPreis(-diff)} zu viel eingegeben`}
+                  </p>
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Validierungsfehler */}
+        {positionsfehler.length > 0 && (
+          <div className="rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800 space-y-0.5">
+            <p className="font-semibold">Positionen noch nicht vollständig verteilt:</p>
+            {positionsfehler.map(f => <p key={f}>• {f}</p>)}
+          </div>
+        )}
+        {fehler && (
+          <div className="rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">{fehler}</div>
+        )}
+
+        <div className="flex gap-2 pt-1">
+          <Button variant="secondary" onClick={onClose} className="flex-1">Abbrechen</Button>
+          <Button
+            onClick={handleSubmit}
+            loading={loading}
+            disabled={!kannSubmit}
+            className="flex-1"
+          >
+            {zahlungenMitPositionen.length} Bons erstellen
+          </Button>
+        </div>
+      </div>
+    </Modal>
   )
 }

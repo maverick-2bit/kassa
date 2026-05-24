@@ -11,14 +11,15 @@ import { kategorien } from '../db/schema.js'
 
 function toDto(row: typeof kategorien.$inferSelect): Kategorie {
   return {
-    id:          row.id,
-    mandantId:   row.mandantId,
-    name:        row.name,
-    farbe:       row.farbe as Kategorie['farbe'],
-    reihenfolge: row.reihenfolge,
-    aktiv:       row.aktiv,
-    createdAt:   row.createdAt.toISOString(),
-    updatedAt:   row.updatedAt.toISOString(),
+    id:              row.id,
+    mandantId:       row.mandantId,
+    name:            row.name,
+    farbe:           row.farbe as Kategorie['farbe'],
+    reihenfolge:     row.reihenfolge,
+    aktiv:           row.aktiv,
+    bonierdruckerId: row.bonierdruckerId,
+    createdAt:       row.createdAt.toISOString(),
+    updatedAt:       row.updatedAt.toISOString(),
   }
 }
 
@@ -29,9 +30,10 @@ export async function erstelleKategorie(
 ): Promise<Kategorie> {
   const [created] = await db.insert(kategorien).values({
     mandantId,
-    name:        input.name,
-    farbe:       input.farbe,
-    reihenfolge: input.reihenfolge,
+    name:            input.name,
+    farbe:           input.farbe,
+    reihenfolge:     input.reihenfolge,
+    bonierdruckerId: input.bonierdruckerId ?? null,
   }).returning()
   if (!created) throw new Error('Kategorie konnte nicht angelegt werden')
   return toDto(created)
@@ -61,10 +63,11 @@ export async function aktualisiereKategorie(
   update: KategorieUpdate,
 ): Promise<Kategorie | null> {
   const values: Partial<typeof kategorien.$inferInsert> = { updatedAt: new Date() }
-  if (update.name        !== undefined) values.name        = update.name
-  if (update.farbe       !== undefined) values.farbe       = update.farbe
-  if (update.reihenfolge !== undefined) values.reihenfolge = update.reihenfolge
-  if (update.aktiv       !== undefined) values.aktiv       = update.aktiv
+  if (update.name            !== undefined) values.name            = update.name
+  if (update.farbe           !== undefined) values.farbe           = update.farbe
+  if (update.reihenfolge     !== undefined) values.reihenfolge     = update.reihenfolge
+  if (update.aktiv           !== undefined) values.aktiv           = update.aktiv
+  if (update.bonierdruckerId !== undefined) values.bonierdruckerId = update.bonierdruckerId
 
   const [updated] = await db
     .update(kategorien)

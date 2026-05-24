@@ -1,5 +1,6 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { clearAuth, getAuth, hasBerechtigung } from '../lib/auth'
+import { KdsToasts } from './KdsToasts'
 
 export function Layout() {
   return (
@@ -8,6 +9,7 @@ export function Layout() {
       <main className="flex-1">
         <Outlet />
       </main>
+      <KdsToasts />
     </div>
   )
 }
@@ -36,10 +38,13 @@ function Header() {
           {hasBerechtigung('tische')           && <NavItem to="/tische">Tische</NavItem>}
           {hasBerechtigung('kasse')            && <NavItem to="/kasse">Kasse</NavItem>}
           {hasBerechtigung('artikel.verwalten')&& <NavItem to="/artikel">Artikel</NavItem>}
+          {hasBerechtigung('artikel.verwalten')&& <NavItem to="/wareneingang">Wareneingang</NavItem>}
           {hasBerechtigung('belege.lesen')     && <NavItem to="/belege">Belege</NavItem>}
           {hasBerechtigung('belege.lesen')     && <NavItem to="/tagesabschluss">Abschluss</NavItem>}
           {hasBerechtigung('belege.lesen')     && <NavItem to="/berichte">Berichte</NavItem>}
           {hasBerechtigung('einstellungen')    && <NavItem to="/einstellungen">Einstellungen</NavItem>}
+          {hasBerechtigung('einstellungen')    && <NavItem to="/pos-konfiguration">POS-Konfig</NavItem>}
+          {hasBerechtigung('einstellungen')    && <NavItem to="/bonierdrucker">Bonierdrucker</NavItem>}
           {hasBerechtigung('user.verwalten')   && <NavItem to="/benutzer">Benutzer</NavItem>}
         </nav>
         {auth && (

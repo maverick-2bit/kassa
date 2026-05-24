@@ -8,7 +8,7 @@
  *     und dann signiereImTx() innerhalb einer Transaktion aufruft.
  */
 
-import { and, desc, eq, inArray } from 'drizzle-orm'
+import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import { Buffer } from 'node:buffer'
 import {
   Umsatzzaehler,
@@ -31,7 +31,7 @@ import type {
   StornobelegInput,
 } from '@kassa/shared'
 import type { Db } from '../db/client.js'
-import { artikel, belege, kassen } from '../db/schema.js'
+import { artikel, belege, kassen, kategorien, modifikatoren } from '../db/schema.js'
 import { decryptPrivateKey } from '../crypto/master-key.js'
 
 export interface BelegServiceDeps {
@@ -200,13 +200,57 @@ export async function erstelleBarzahlungsbeleg(
       const positionen: BelegPosition[] = input.positionen.map((p) => {
         const a = artikelById.get(p.artikelId)
         if (!a) throw new BelegError(404, `Artikel ${p.artikelId} nicht gefunden`)
+        const preis = p.einzelpreisBreuttoCent ?? a.preisBruttoCent
+        const bezeichnung = p.bezeichnungZusatz
+          ? `${a.bezeichnung} (${p.bezeichnungZusatz})`
+          : a.bezeichnung
         return {
-          bezeichnung:        a.bezeichnung,
+          bezeichnung,
           menge:              p.menge,
-          einzelpreisBreutto: a.preisBruttoCent,
+          einzelpreisBreutto: preis,
           mwstSatz:           a.mwstSatz as MwStSatz,
         }
       })
+
+      // Lagerstand-Countdown: Zwei-Pfad-Logik um Doppel-Abzug zu vermeiden.
+      //
+      //  • Artikel MIT Bonierrouting (station oder bonierdruckerId, egal ob auf Artikel- oder
+      //    Kategorieebene) → Lagerstand wurde bereits beim Bonieren dekrementiert; hier NICHT.
+      //  • Artikel OHNE Bonierrouting (reines Direktkassieren, z. B. To-go) → hier dekrementieren.
+      //
+      // Kategorie-Bonierdrucker laden (für den Fallback-Check):
+      const katergorieIds = [...new Set(
+        artikelRows.map(a => a.kategorieId).filter((id): id is string => id !== null),
+      )]
+      const katBonierdruckerMap = new Map<string, string | null>()
+      if (katergorieIds.length > 0) {
+        const katRows = await tx
+          .select({ id: kategorien.id, bonierdruckerId: kategorien.bonierdruckerId })
+          .from(kategorien)
+          .where(inArray(kategorien.id, katergorieIds))
+        for (const k of katRows) katBonierdruckerMap.set(k.id, k.bonierdruckerId)
+      }
+
+      for (const p of input.positionen) {
+        const a = artikelById.get(p.artikelId)
+        if (!a || !a.lagerstandAktiv) continue
+        // Bonierbar? → Lagerstand wurde beim Bonieren abgezogen, nicht nochmal hier.
+        const hatArtikelBonierrouting  = a.station !== null || a.bonierdruckerId !== null
+        const hatKategorieBonierrouting = a.kategorieId
+          ? (katBonierdruckerMap.get(a.kategorieId) ?? null) !== null
+          : false
+        if (hatArtikelBonierrouting || hatKategorieBonierrouting) continue
+
+        // Kein Bonierrouting → Direktkassieren, Lagerstand atomar abziehen
+        await tx
+          .update(artikel)
+          .set({
+            lagerstandMenge: sql`GREATEST(0, COALESCE(${artikel.lagerstandMenge}, 0) - ${p.menge})`,
+            updatedAt:       new Date(),
+          })
+          .where(eq(artikel.id, a.id))
+      }
+      // (Modifikator-Lagerstand: nie automatisch, bleibt manuell per Wareneingang/Inventur)
 
       return { positionen, zahlung: input.zahlung }
     },

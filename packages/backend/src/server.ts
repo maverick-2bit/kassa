@@ -17,6 +17,12 @@ import { userRoute } from './routes/user.route.js'
 import { zvtRoute } from './routes/zvt.route.js'
 import { berichtRoute } from './routes/bericht.route.js'
 import { kategorieRoute } from './routes/kategorie.route.js'
+import { tischplanRoute } from './routes/tischplan.route.js'
+import { modifikatorRoute } from './routes/modifikator.route.js'
+import { lagerstandRoute } from './routes/lagerstand.route.js'
+import { sseRoute } from './routes/sse.route.js'
+import { bonierdruckerRoute } from './routes/bonierdrucker.route.js'
+import { posConfigRoute } from './routes/pos-config.route.js'
 
 export interface ServerDeps {
   config:    Config
@@ -41,6 +47,9 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   // Auth-Plugin registrieren (stellt fastify.jwt + fastify.authenticate bereit)
   await registerAuth(fastify, deps.config)
 
+  // SSE ausserhalb des /api-Prefix registrieren (eigener Prefix /sse)
+  await fastify.register(sseRoute)
+
   await fastify.register(async (api) => {
     // Offene Routen (kein Login nötig)
     await api.register(healthRoute)
@@ -56,7 +65,12 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     await api.register(userRoute,     { db:   deps.db })
     await api.register(zvtRoute,      { deps: { db: deps.db } })
     await api.register(berichtRoute,  { deps: { db: deps.db } })
-    await api.register(kategorieRoute, { db: deps.db })
+    await api.register(kategorieRoute,   { db:   deps.db })
+    await api.register(tischplanRoute,   { deps: { db: deps.db } })
+    await api.register(modifikatorRoute, { db:   deps.db })
+    await api.register(lagerstandRoute,     { db:   deps.db })
+    await api.register(bonierdruckerRoute,  { db:   deps.db })
+    await api.register(posConfigRoute,      { db:   deps.db })
   }, { prefix: '/api' })
 
   return fastify

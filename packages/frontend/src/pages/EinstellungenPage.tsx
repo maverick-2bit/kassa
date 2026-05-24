@@ -7,18 +7,37 @@ import { Field } from '../components/ui/Field'
 import { Input } from '../components/ui/Input'
 import { Button } from '../components/ui/Button'
 import { KartenzahlungModal } from '../components/KartenzahlungModal'
+import { TischplanEditor } from '../components/TischplanEditor'
 
 export function EinstellungenPage() {
   return (
-    <div className="mx-auto max-w-2xl px-4 py-6 sm:py-8 space-y-6">
+    <div className="mx-auto max-w-4xl px-4 py-6 sm:py-8 space-y-6">
       <header>
         <h1 className="text-2xl font-bold text-gray-900">Einstellungen</h1>
-        <p className="mt-1 text-sm text-gray-500">Drucker und Hardware-Anbindung</p>
+        <p className="mt-1 text-sm text-gray-500">Drucker, Hardware-Anbindung und Tischplan</p>
       </header>
       <DruckerSektion />
       <KdsSektion />
       <ZvtSektion />
+      <TischplanSektion />
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Tischplan-Sektion
+// ---------------------------------------------------------------------------
+
+function TischplanSektion() {
+  return (
+    <section className="rounded-lg border border-gray-200 bg-white p-5">
+      <h2 className="text-base font-semibold text-gray-900 mb-1">Tischplan</h2>
+      <p className="text-sm text-gray-500 mb-4">
+        Bereiche anlegen und Tische per Drag &amp; Drop positionieren.
+        Der fertige Plan erscheint auf der Tische-Seite als grafische Ansicht.
+      </p>
+      <TischplanEditor />
+    </section>
   )
 }
 

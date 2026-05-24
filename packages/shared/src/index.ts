@@ -62,6 +62,30 @@ export type {
   MwStSatz,
 } from './schemas/artikel.js'
 
+// Modifikatoren
+export {
+  ModifikatorSchema,
+  ModifikatorGruppeSchema,
+  ModifikatorGruppeTypSchema,
+  ModifikatorGruppeErstellenSchema,
+  ModifikatorGruppeAktualisierenSchema,
+  ModifikatorErstellenSchema,
+  ModifikatorAktualisierenSchema,
+  ModifikatorAuswahlSchema,
+  ArtikelGruppenZuweisungSchema,
+} from './schemas/modifikator.js'
+export type {
+  Modifikator,
+  ModifikatorGruppe,
+  ModifikatorGruppeTyp,
+  ModifikatorGruppeErstellen,
+  ModifikatorGruppeAktualisieren,
+  ModifikatorErstellen,
+  ModifikatorAktualisieren,
+  ModifikatorAuswahl,
+  ArtikelGruppenZuweisung,
+} from './schemas/modifikator.js'
+
 // Kategorie
 export {
   KategorieSchema,
@@ -116,18 +140,56 @@ export type {
 // Tisch-Tab
 export {
   TabPositionSchema,
+  TabEreignisSchema,
   TischTabErstellenInputSchema,
   TischTabPositionenUpdateSchema,
+  TischTabUmbuchenInputSchema,
+  TischTabUmbenennenInputSchema,
+  TischTabSplittenInputSchema,
   TischTabBezahlenInputSchema,
   TischTabResponseSchema,
 } from './schemas/tisch-tab.js'
 export type {
   TabPosition,
+  TabEreignis,
   TischTabErstellenInput,
   TischTabPositionenUpdate,
+  TischTabUmbuchenInput,
+  TischTabUmbenennenInput,
+  TischTabSplittenInput,
   TischTabBezahlenInput,
   TischTabResponse,
 } from './schemas/tisch-tab.js'
+
+// Bonierdrucker + POS-Konfiguration
+export {
+  BonierdruckerSchema,
+  BonierdruckerInputSchema,
+  BonierdruckerUpdateSchema,
+  PosKonfigSchema,
+  PosKonfigUpdateSchema,
+  ReihenfolgeUpdateSchema,
+  FavoritenReihenfolgeUpdateSchema,
+} from './schemas/bonierdrucker.js'
+export type {
+  Bonierdrucker,
+  BonierdruckerInput,
+  BonierdruckerUpdate,
+  PosKonfig,
+  PosKonfigUpdate,
+  ReihenfolgeUpdate,
+  FavoritenReihenfolgeUpdate,
+} from './schemas/bonierdrucker.js'
+
+// Lagerstand (Wareneingang / Inventur)
+export {
+  LagerstandEintragSchema,
+  LagerstandBulkInputSchema,
+} from './schemas/lagerstand.js'
+export type {
+  LagerstandEintrag,
+  LagerstandBulkInput,
+} from './schemas/lagerstand.js'
 
 // Bericht
 export {
@@ -156,6 +218,40 @@ export type {
   TagesabschlussQuery,
   MwStZeile,
 } from './schemas/tagesabschluss.js'
+
+// Tischplan
+export {
+  TischplanFormSchema,
+  TischplanFarbeSchema,
+  TischplanElementSchema,
+  TischplanElementErstellenSchema,
+  TischplanElementAktualisierenSchema,
+  TischplanBereichSchema,
+  TischplanBereichErstellenSchema,
+  TischplanBereichAktualisierenSchema,
+  TISCHPLAN_FORM_LABELS,
+  TISCHPLAN_FARBE_LABELS,
+} from './schemas/tischplan.js'
+export type {
+  TischplanForm,
+  TischplanFarbe,
+  TischplanElement,
+  TischplanElementErstellen,
+  TischplanElementAktualisieren,
+  TischplanBereich,
+  TischplanBereichErstellen,
+  TischplanBereichAktualisieren,
+} from './schemas/tischplan.js'
+
+// SSE-Events
+export {
+  BonierbonEventSchema,
+  KasseEventSchema,
+} from './schemas/events.js'
+export type {
+  BonierbonEvent,
+  KasseEvent,
+} from './schemas/events.js'
 
 // Beleg
 export {

@@ -15,6 +15,8 @@ export const BonierungPositionSchema = z.object({
 
 export const BonierungInputSchema = z.object({
   kasseId: z.string().uuid(),
+  /** Optionaler Verweis auf den Tisch-Tab — wenn gesetzt, wird das Ereignis im Verlauf protokolliert */
+  tabId:   z.string().uuid().optional(),
   tisch:   z.string().trim().min(1).max(40),
   bereich: z.string().trim().max(60).optional(),
   kellner: z.string().trim().min(1).max(60),
@@ -25,11 +27,21 @@ export type BonierungInput = z.infer<typeof BonierungInputSchema>
 export const BonierungErgebnisSchema = z.object({
   bonNummer:    z.string(),
   stationen: z.array(z.object({
-    station:    StationSchema,
-    ip:         z.string(),
-    positionen: z.number().int(),
+    station:     StationSchema,
+    ip:          z.string(),
+    positionen:  z.number().int(),
     erfolgreich: z.boolean(),
-    fehler:     z.string().optional(),
+    fehler:      z.string().optional(),
   })),
+  /** Ergebnisse für ESC/POS Bonierdrucker (inkl. Backup-Drucker) */
+  drucker: z.array(z.object({
+    druckerId:   z.string().uuid(),
+    name:        z.string(),
+    ip:          z.string(),
+    positionen:  z.number().int(),
+    erfolgreich: z.boolean(),
+    fehler:      z.string().optional(),
+    istBackup:   z.boolean(),
+  })).default([]),
 })
 export type BonierungErgebnis = z.infer<typeof BonierungErgebnisSchema>

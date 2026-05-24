@@ -12,6 +12,9 @@ import { TischTabPage } from './pages/TischTabPage'
 import { UserVerwaltungPage } from './pages/UserVerwaltungPage'
 import { TagesabschlussPage } from './pages/TagesabschlussPage'
 import { BerichtePage } from './pages/BerichtePage'
+import { WareneingangPage } from './pages/WareneingangPage'
+import { BonierdruckerPage } from './pages/BonierdruckerPage'
+import { PosKonfigPage } from './pages/PosKonfigPage'
 import type { Berechtigung } from '@kassa/shared'
 import { getAuth, hasBerechtigung, setOnUnauthorized } from './lib/auth'
 import { getKasseIdentity } from './lib/kasse'
@@ -41,6 +44,9 @@ function AppRoutes() {
         <Route path="/tische/:tabId"  element={<Require b="tische"><TischTabPage /></Require>} />
         <Route path="/kasse"          element={<Require b="kasse"><KassePage /></Require>} />
         <Route path="/artikel"        element={<Require b="artikel.verwalten"><ArtikelPage /></Require>} />
+        <Route path="/wareneingang"   element={<Require b="artikel.verwalten"><WareneingangPage /></Require>} />
+        <Route path="/pos-konfiguration" element={<Require b="einstellungen"><PosKonfigPage /></Require>} />
+        <Route path="/bonierdrucker"     element={<Require b="einstellungen"><BonierdruckerPage /></Require>} />
         <Route path="/belege"         element={<Require b="belege.lesen"><BelegePage /></Require>} />
         <Route path="/einstellungen"  element={<Require b="einstellungen"><EinstellungenPage /></Require>} />
         <Route path="/benutzer"          element={<Require b="user.verwalten"><UserVerwaltungPage /></Require>} />

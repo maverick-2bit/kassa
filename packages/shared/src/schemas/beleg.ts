@@ -23,6 +23,10 @@ export const BarzahlungsbelegInputSchema = z.object({
   positionen: z.array(z.object({
     artikelId: z.string().uuid(),
     menge:     z.number().positive('Menge muss positiv sein'),
+    /** Optionaler Preis-Override (wenn Modifikatoren den Preis verändern) */
+    einzelpreisBreuttoCent: z.number().int().positive().optional(),
+    /** Optionaler Bezeichnungs-Zusatz, z. B. "(groß, Ketchup)" */
+    bezeichnungZusatz: z.string().max(200).optional(),
   })).min(1, 'Mindestens eine Position erforderlich'),
   zahlung: z.object({
     barCent:      z.number().int().nonnegative(),

@@ -1,7 +1,23 @@
 import type {
+  Bonierdrucker,
+  BonierdruckerInput,
+  BonierdruckerUpdate,
+  PosKonfig,
+  PosKonfigUpdate,
+  ReihenfolgeUpdate,
+  FavoritenReihenfolgeUpdate,
+  LagerstandBulkInput,
+  TischplanBereich,
+  TischplanBereichErstellen,
+  TischplanBereichAktualisieren,
+  TischplanElementErstellen,
+  TischplanElementAktualisieren,
+  TischplanElement,
+  TabEreignis,
   Artikel,
   ArtikelInput,
   ArtikelUpdate,
+  ArtikelGruppenZuweisung,
   BarzahlungsbelegInput,
   BerichtFilter,
   BerichtResponse,
@@ -14,6 +30,12 @@ import type {
   KategorieUpdate,
   LoginInput,
   LoginResponse,
+  Modifikator,
+  ModifikatorGruppe,
+  ModifikatorGruppeErstellen,
+  ModifikatorGruppeAktualisieren,
+  ModifikatorErstellen,
+  ModifikatorAktualisieren,
   MonatsbelegInput,
   NullbelegInput,
   PinLoginInput,
@@ -25,6 +47,7 @@ import type {
   TabPosition,
   TischTabBezahlenInput,
   TischTabErstellenInput,
+  TischTabSplittenInput,
   TischTabResponse,
   User,
   UserCreateInput,
@@ -111,6 +134,14 @@ export const artikelApi = {
   create: (input: ArtikelInput) => request<Artikel>('POST', '/api/artikel', input),
   update: (id: string, input: ArtikelUpdate) => request<Artikel>('PUT', `/api/artikel/${id}`, input),
   deaktiviere: (id: string) => request<Artikel>('DELETE', `/api/artikel/${id}`),
+  bulkImport: (rows: Omit<ArtikelInput, 'mandantId'>[]) =>
+    request<{ erstellt: number; fehlgeschlagen: number; fehlzeilen: { index: number; fehler: string }[] }>(
+      'POST', '/api/artikel/bulk', rows,
+    ),
+  updateReihenfolge: (eintraege: ReihenfolgeUpdate['eintraege']) =>
+    request<void>('PATCH', '/api/artikel/reihenfolge', { eintraege }),
+  updateFavoritenReihenfolge: (eintraege: FavoritenReihenfolgeUpdate['eintraege']) =>
+    request<void>('PATCH', '/api/artikel/favoriten-reihenfolge', { eintraege }),
 }
 
 // ---------------------------------------------------------------------------
@@ -126,6 +157,36 @@ export const kategorieApi = {
     request<Kategorie>('PUT', `/api/kategorien/${id}`, input),
   deaktiviere:(id: string) =>
     request<Kategorie>('DELETE', `/api/kategorien/${id}`),
+  updateReihenfolge: (eintraege: ReihenfolgeUpdate['eintraege']) =>
+    request<void>('PATCH', '/api/kategorien/reihenfolge', { eintraege }),
+}
+
+// ---------------------------------------------------------------------------
+// Bonierdrucker
+// ---------------------------------------------------------------------------
+
+export const bonierdruckerApi = {
+  list:   () =>
+    request<Bonierdrucker[]>('GET', '/api/bonierdrucker'),
+  create: (input: BonierdruckerInput) =>
+    request<Bonierdrucker>('POST', '/api/bonierdrucker', input),
+  update: (id: string, input: BonierdruckerUpdate) =>
+    request<Bonierdrucker>('PATCH', `/api/bonierdrucker/${id}`, input),
+  delete: (id: string) =>
+    request<void>('DELETE', `/api/bonierdrucker/${id}`),
+  test:   (id: string) =>
+    request<{ erfolgreich: boolean; fehler?: string }>('POST', `/api/bonierdrucker/${id}/test`),
+}
+
+// ---------------------------------------------------------------------------
+// POS-Konfiguration
+// ---------------------------------------------------------------------------
+
+export const posConfigApi = {
+  get:    (kasseId: string) =>
+    request<PosKonfig>('GET', `/api/kassen/${kasseId}/pos-config`),
+  update: (kasseId: string, input: PosKonfigUpdate) =>
+    request<void>('PUT', `/api/kassen/${kasseId}/pos-config`, input),
 }
 
 // ---------------------------------------------------------------------------
@@ -240,6 +301,14 @@ export const tischTabApi = {
     request<TischTabResponse>('PUT', `/api/tisch-tabs/${id}/positionen`, { positionen }),
   bezahle: (id: string, input: TischTabBezahlenInput) =>
     request<{ tab: TischTabResponse; belegId: string }>('POST', `/api/tisch-tabs/${id}/bezahlen`, input),
+  umbennene: (id: string, kellner: string) =>
+    request<TischTabResponse>('PATCH', `/api/tisch-tabs/${id}/kellner`, { kellner }),
+  umbucheTisch: (id: string, tischNummer: string) =>
+    request<TischTabResponse>('PATCH', `/api/tisch-tabs/${id}/tisch`, { tischNummer }),
+  splitteUndBezahle: (id: string, input: TischTabSplittenInput) =>
+    request<{ tab: TischTabResponse; belegIds: string[] }>('POST', `/api/tisch-tabs/${id}/splitten`, input),
+  getVerlauf: (id: string) =>
+    request<TabEreignis[]>('GET', `/api/tisch-tabs/${id}/verlauf`),
 }
 
 // ---------------------------------------------------------------------------
@@ -258,6 +327,65 @@ export const zvtApi = {
     request<ZvtJob>('GET', `/api/zvt/zahlung/${jobId}`),
   abbrechen:     (jobId: string) =>
     request<ZvtJob>('POST', `/api/zvt/zahlung/${jobId}/abbrechen`),
+}
+
+// ---------------------------------------------------------------------------
+// Tischplan
+// ---------------------------------------------------------------------------
+
+export const tischplanApi = {
+  listeBereiche: (kasseId: string) =>
+    request<TischplanBereich[]>('GET', `/api/tischplan/bereiche?kasseId=${kasseId}`),
+
+  erstelleBereich: (input: TischplanBereichErstellen) =>
+    request<TischplanBereich>('POST', '/api/tischplan/bereiche', input),
+  aktualisiereBereich: (id: string, input: TischplanBereichAktualisieren) =>
+    request<void>('PATCH', `/api/tischplan/bereiche/${id}`, input),
+  loescheBereich: (id: string) =>
+    request<void>('DELETE', `/api/tischplan/bereiche/${id}`),
+
+  erstelleElement: (input: TischplanElementErstellen) =>
+    request<TischplanElement>('POST', '/api/tischplan/elemente', input),
+  aktualisiereElement: (id: string, input: TischplanElementAktualisieren) =>
+    request<void>('PATCH', `/api/tischplan/elemente/${id}`, input),
+  loescheElement: (id: string) =>
+    request<void>('DELETE', `/api/tischplan/elemente/${id}`),
+}
+
+// ---------------------------------------------------------------------------
+// Modifikatoren
+// ---------------------------------------------------------------------------
+
+export const modifikatorApi = {
+  listeGruppen: () =>
+    request<ModifikatorGruppe[]>('GET', '/api/modifikator-gruppen'),
+  listeArtikelZuweisungen: () =>
+    request<{ artikelId: string; gruppeId: string; reihenfolge: number }[]>(
+      'GET', '/api/artikel-modifikator-gruppen',
+    ),
+  erstelleGruppe: (input: ModifikatorGruppeErstellen) =>
+    request<ModifikatorGruppe>('POST', '/api/modifikator-gruppen', input),
+  aktualisiereGruppe: (id: string, input: ModifikatorGruppeAktualisieren) =>
+    request<ModifikatorGruppe>('PATCH', `/api/modifikator-gruppen/${id}`, input),
+  loescheGruppe: (id: string) =>
+    request<void>('DELETE', `/api/modifikator-gruppen/${id}`),
+  erstelleModifikator: (gruppeId: string, input: ModifikatorErstellen) =>
+    request<ModifikatorGruppe>('POST', `/api/modifikator-gruppen/${gruppeId}/modifikatoren`, input),
+  aktualisiereModifikator: (id: string, input: ModifikatorAktualisieren) =>
+    request<ModifikatorGruppe>('PATCH', `/api/modifikatoren/${id}`, input),
+  loescheModifikator: (id: string) =>
+    request<void>('DELETE', `/api/modifikatoren/${id}`),
+  getGruppenFuerArtikel: (artikelId: string) =>
+    request<ModifikatorGruppe[]>('GET', `/api/artikel/${artikelId}/modifikator-gruppen`),
+  setzeGruppenFuerArtikel: (artikelId: string, input: ArtikelGruppenZuweisung) =>
+    request<ModifikatorGruppe[]>('PUT', `/api/artikel/${artikelId}/modifikator-gruppen`, input),
+}
+
+export type { Modifikator, ModifikatorGruppe }
+
+export const lagerstandApi = {
+  bulk: (input: LagerstandBulkInput) =>
+    request<void>('POST', '/api/lagerstand/bulk', input),
 }
 
 export { ApiError }

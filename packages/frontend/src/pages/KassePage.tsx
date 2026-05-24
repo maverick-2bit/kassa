@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
   Artikel,
@@ -6,10 +7,15 @@ import type {
   BelegResponse,
   BonierungErgebnis,
   BonierungInput,
+  ModifikatorAuswahl,
+  ModifikatorGruppe,
+  TischTabErstellenInput,
+  TischTabResponse,
 } from '@kassa/shared'
 import { STATION_LABELS } from '@kassa/shared'
-import { artikelApi, belegApi, bonierApi, kategorieApi, zvtApi } from '../lib/api'
+import { artikelApi, belegApi, bonierApi, kategorieApi, modifikatorApi, posConfigApi, tischTabApi, zvtApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
+import { hasBerechtigung } from '../lib/auth'
 import { formatPreis } from '../lib/format'
 import { Button } from '../components/ui/Button'
 import { Modal } from '../components/ui/Modal'
@@ -23,8 +29,12 @@ import { ArtikelGrid } from '../components/ArtikelGrid'
 // ---------------------------------------------------------------------------
 
 interface KorbPosition {
-  artikel: Artikel
-  menge:   number
+  artikel:       Artikel
+  menge:         number
+  /** Ausgewählte Modifikatoren für diese Position */
+  modifikatoren: ModifikatorAuswahl[]
+  /** Gesamtpreis pro Einheit inkl. Modifikator-Aufschläge */
+  preisCent:     number
 }
 
 // ---------------------------------------------------------------------------
@@ -62,8 +72,41 @@ export function KassePage() {
     queryFn:  () => kategorieApi.list(true),
   })
 
+  const modGruppenQuery = useQuery({
+    queryKey: ['modifikator-gruppen'],
+    queryFn:  () => modifikatorApi.listeGruppen(),
+  })
+
+  const modZuweisungenQuery = useQuery({
+    queryKey: ['artikel-modifikator-gruppen'],
+    queryFn:  () => modifikatorApi.listeArtikelZuweisungen(),
+  })
+
+  const posConfigQuery = useQuery({
+    queryKey: ['pos-config', identity.kasseId],
+    queryFn:  () => posConfigApi.get(identity.kasseId),
+  })
+
+  // Map: artikelId → ModifikatorGruppe[] (nur aktive Gruppen mit aktiven Optionen)
+  const artikelGruppenMap = useMemo<Map<string, ModifikatorGruppe[]>>(() => {
+    const gruppen     = modGruppenQuery.data ?? []
+    const zuweisungen = modZuweisungenQuery.data ?? []
+    const gruppeById  = new Map(gruppen.map(g => [g.id, g]))
+
+    const map = new Map<string, ModifikatorGruppe[]>()
+    for (const z of zuweisungen) {
+      const gruppe = gruppeById.get(z.gruppeId)
+      if (!gruppe || !gruppe.aktiv) continue
+      if (!gruppe.modifikatoren.some(m => m.aktiv)) continue
+      const list = map.get(z.artikelId) ?? []
+      list.push(gruppe)
+      map.set(z.artikelId, list)
+    }
+    return map
+  }, [modGruppenQuery.data, modZuweisungenQuery.data])
+
   const summeCent = useMemo(
-    () => korb.reduce((sum, p) => sum + p.artikel.preisBruttoCent * p.menge, 0),
+    () => korb.reduce((sum, p) => sum + p.preisCent * p.menge, 0),
     [korb],
   )
 
@@ -71,21 +114,31 @@ export function KassePage() {
   // Warenkorb-Aktionen
   // ---------------------------------------------------------------------------
 
-  const addArtikel = (a: Artikel) => {
+  const addArtikel = (a: Artikel, modifikatoren: ModifikatorAuswahl[]) => {
     setFehler(null)
+    const aufschlag  = modifikatoren.reduce((s, m) => s + m.aufschlagCent, 0)
+    const preisCent  = a.preisBruttoCent + aufschlag
     setKorb((prev) => {
-      const existing = prev.find((p) => p.artikel.id === a.id)
-      if (existing) {
-        return prev.map((p) => p.artikel.id === a.id ? { ...p, menge: p.menge + 1 } : p)
+      // Artikel ohne Modifikatoren: Menge erhöhen falls bereits vorhanden
+      if (modifikatoren.length === 0) {
+        const existing = prev.find((p) => p.artikel.id === a.id && p.modifikatoren.length === 0)
+        if (existing) {
+          return prev.map((p) =>
+            p.artikel.id === a.id && p.modifikatoren.length === 0
+              ? { ...p, menge: p.menge + 1 }
+              : p,
+          )
+        }
       }
-      return [...prev, { artikel: a, menge: 1 }]
+      // Neue Zeile (mit Modifikatoren immer neue Zeile für Übersichtlichkeit)
+      return [...prev, { artikel: a, menge: 1, modifikatoren, preisCent }]
     })
   }
 
-  const updateMenge = (artikelId: string, delta: number) => {
+  const updateMenge = (idx: number, delta: number) => {
     setKorb((prev) =>
-      prev.flatMap((p) => {
-        if (p.artikel.id !== artikelId) return [p]
+      prev.flatMap((p, i) => {
+        if (i !== idx) return [p]
         const neueMenge = p.menge + delta
         if (neueMenge <= 0) return []
         return [{ ...p, menge: neueMenge }]
@@ -93,8 +146,8 @@ export function KassePage() {
     )
   }
 
-  const removeArtikel = (artikelId: string) => {
-    setKorb((prev) => prev.filter((p) => p.artikel.id !== artikelId))
+  const removeArtikel = (idx: number) => {
+    setKorb((prev) => prev.filter((_, i) => i !== idx))
   }
 
   const reset = () => {
@@ -132,6 +185,8 @@ export function KassePage() {
     mutationFn: (input: BonierungInput) => bonierApi.bonieren(input),
     onSuccess: (ergebnis) => {
       setBonierungErgebnis(ergebnis)
+      // Artikel neu laden, damit Restbestände im POS sofort aktuell sind
+      queryClient.invalidateQueries({ queryKey: ['artikel', identity.mandantId] })
     },
     onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
   })
@@ -142,28 +197,27 @@ export function KassePage() {
     if (!tisch.trim())     { setFehler('Tisch fehlt.'); return }
     if (!kellner.trim())   { setFehler('Kellner fehlt.'); return }
 
-    // Nur Artikel mit Station bonieren — Server-seitig wird das nochmal geprüft
-    const positionen = korb
-      .filter((p) => p.artikel.station)
-      .map((p) => ({ artikelId: p.artikel.id, menge: p.menge }))
-    if (positionen.length === 0) {
-      setFehler('Kein Artikel im Warenkorb hat eine KDS-Station hinterlegt.')
-      return
-    }
-
+    // Alle Positionen senden — der Server entscheidet über KDS- und Bonierdrucker-Routing
     bonierMutation.mutate({
-      kasseId: identity.kasseId,
-      tisch:   tisch.trim(),
-      kellner: kellner.trim(),
-      positionen,
+      kasseId:    identity.kasseId,
+      tisch:      tisch.trim(),
+      kellner:    kellner.trim(),
+      positionen: korb.map((p) => ({ artikelId: p.artikel.id, menge: p.menge })),
     })
   }
 
   const erstelleBeleg = (barCent: number, karteCent: number) => {
     const input: BarzahlungsbelegInput = {
-      kasseId:    identity.kasseId,
-      positionen: korb.map((p) => ({ artikelId: p.artikel.id, menge: p.menge })),
-      zahlung:    { barCent, karteCent, sonstigeCent: 0 },
+      kasseId: identity.kasseId,
+      positionen: korb.map((p) => {
+        const base: BarzahlungsbelegInput['positionen'][0] = { artikelId: p.artikel.id, menge: p.menge }
+        if (p.modifikatoren.length > 0) {
+          base.einzelpreisBreuttoCent = p.preisCent
+          base.bezeichnungZusatz = p.modifikatoren.map(m => m.name).join(', ')
+        }
+        return base
+      }),
+      zahlung: { barCent, karteCent, sonstigeCent: 0 },
     }
     belegMutation.mutate(input)
   }
@@ -218,16 +272,25 @@ export function KassePage() {
         </label>
       </div>
 
+      {hasBerechtigung('tische') && <OffeneTischeLeiste />}
+
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-4">
         {/* ----- Linke Seite: Artikel-Buttons ----- */}
-        <section className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-          <h2 className="text-sm font-semibold text-gray-700 mb-3">Artikel</h2>
-          <ArtikelGrid
-            artikel={artikelQuery.data ?? []}
-            kategorien={kategorienQuery.data ?? []}
-            onArtikelClick={addArtikel}
-            loading={artikelQuery.isLoading}
-          />
+        <section className="bg-white rounded-lg shadow-sm border border-gray-200
+                            flex flex-col lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)]">
+          <div className="px-4 pt-4 pb-2 shrink-0">
+            <h2 className="text-sm font-semibold text-gray-700">Artikel</h2>
+          </div>
+          <div className="flex-1 min-h-0 overflow-hidden px-4 pb-4">
+            <ArtikelGrid
+              artikel={artikelQuery.data ?? []}
+              kategorien={kategorienQuery.data ?? []}
+              artikelGruppen={artikelGruppenMap}
+              onArtikelClick={addArtikel}
+              loading={artikelQuery.isLoading}
+              sichtbareKategorieIds={posConfigQuery.data?.sichtbareKategorieIds}
+            />
+          </div>
         </section>
 
         {/* ----- Rechte Seite: Warenkorb + Zahlung ----- */}
@@ -242,23 +305,28 @@ export function KassePage() {
               <p className="text-sm text-gray-400 text-center py-8">Leer</p>
             ) : (
               <ul className="space-y-2">
-                {korb.map((p) => (
-                  <li key={p.artikel.id} className="flex items-center gap-2 text-sm">
+                {korb.map((p, idx) => (
+                  <li key={idx} className="flex items-center gap-2 text-sm">
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-gray-900 truncate">{p.artikel.bezeichnung}</p>
-                      <p className="text-xs text-gray-500">{formatPreis(p.artikel.preisBruttoCent)} × {p.menge}</p>
+                      {p.modifikatoren.length > 0 && (
+                        <p className="text-xs text-brand-600 truncate">
+                          {p.modifikatoren.map(m => m.name).join(', ')}
+                        </p>
+                      )}
+                      <p className="text-xs text-gray-500">{formatPreis(p.preisCent)} × {p.menge}</p>
                     </div>
                     <div className="flex items-center gap-1">
-                      <MengeButton onClick={() => updateMenge(p.artikel.id, -1)}>−</MengeButton>
+                      <MengeButton onClick={() => updateMenge(idx, -1)}>−</MengeButton>
                       <span className="w-6 text-center font-medium">{p.menge}</span>
-                      <MengeButton onClick={() => updateMenge(p.artikel.id, +1)}>+</MengeButton>
+                      <MengeButton onClick={() => updateMenge(idx, +1)}>+</MengeButton>
                     </div>
                     <span className="w-20 text-right font-mono">
-                      {formatPreis(p.artikel.preisBruttoCent * p.menge)}
+                      {formatPreis(p.preisCent * p.menge)}
                     </span>
                     <button
                       type="button"
-                      onClick={() => removeArtikel(p.artikel.id)}
+                      onClick={() => removeArtikel(idx)}
                       className="text-gray-300 hover:text-red-500 px-1"
                       aria-label="Entfernen"
                     >
@@ -344,31 +412,66 @@ export function KassePage() {
         title={`Bonierung ${bonierungErgebnis?.bonNummer ?? ''}`}
       >
         {bonierungErgebnis && (
-          <div className="space-y-3">
-            <p className="text-sm text-gray-600">
-              Bonierbons an folgende Stationen gesendet:
-            </p>
-            <ul className="space-y-1.5">
-              {bonierungErgebnis.stationen.map((s) => (
-                <li
-                  key={s.station}
-                  className={`flex items-center justify-between rounded-md border px-3 py-2 text-sm ${
-                    s.erfolgreich
-                      ? 'border-green-200 bg-green-50 text-green-800'
-                      : 'border-red-200 bg-red-50 text-red-700'
-                  }`}
-                >
-                  <span className="font-medium">
-                    {STATION_LABELS[s.station]} <span className="font-mono text-xs text-gray-500">({s.ip || '—'})</span>
-                  </span>
-                  <span>
-                    {s.erfolgreich
-                      ? `${s.positionen} Position${s.positionen === 1 ? '' : 'en'}`
-                      : s.fehler ?? 'Fehler'}
-                  </span>
-                </li>
-              ))}
-            </ul>
+          <div className="space-y-4">
+            {bonierungErgebnis.stationen.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">KDS-Stationen</p>
+                <ul className="space-y-1.5">
+                  {bonierungErgebnis.stationen.map((s) => (
+                    <li
+                      key={s.station}
+                      className={`flex items-center justify-between rounded-md border px-3 py-2 text-sm ${
+                        s.erfolgreich
+                          ? 'border-green-200 bg-green-50 text-green-800'
+                          : 'border-red-200 bg-red-50 text-red-700'
+                      }`}
+                    >
+                      <span className="font-medium">
+                        {STATION_LABELS[s.station]} <span className="font-mono text-xs opacity-60">({s.ip || '—'})</span>
+                      </span>
+                      <span>
+                        {s.erfolgreich
+                          ? `${s.positionen} Pos.`
+                          : s.fehler ?? 'Fehler'}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {bonierungErgebnis.drucker.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Bonierdrucker</p>
+                <ul className="space-y-1.5">
+                  {bonierungErgebnis.drucker.map((d) => (
+                    <li
+                      key={d.druckerId}
+                      className={`flex items-center justify-between rounded-md border px-3 py-2 text-sm ${
+                        d.erfolgreich
+                          ? 'border-green-200 bg-green-50 text-green-800'
+                          : 'border-red-200 bg-red-50 text-red-700'
+                      }`}
+                    >
+                      <span className="font-medium">
+                        {d.name}
+                        {d.istBackup && <span className="ml-1.5 text-[10px] rounded-full bg-black/10 px-1.5 py-0.5">Backup</span>}
+                        {' '}<span className="font-mono text-xs opacity-60">({d.ip})</span>
+                      </span>
+                      <span>
+                        {d.erfolgreich
+                          ? `${d.positionen} Pos.`
+                          : d.fehler ?? 'Fehler'}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {bonierungErgebnis.stationen.length === 0 && bonierungErgebnis.drucker.length === 0 && (
+              <p className="text-sm text-gray-500 text-center py-2">Keine Stationen oder Drucker konfiguriert.</p>
+            )}
           </div>
         )}
       </Modal>
@@ -389,6 +492,170 @@ export function KassePage() {
           setFehler('Kartenzahlung abgebrochen — kein Beleg erstellt')
         }}
       />
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Offene-Tische-Leiste
+// ---------------------------------------------------------------------------
+
+function OffeneTischeLeiste() {
+  const identity  = getKasseIdentity()!
+  const navigate  = useNavigate()
+  const qc        = useQueryClient()
+  const [modalOffen, setModalOffen] = useState(false)
+  const [fehler,     setFehler]     = useState<string | null>(null)
+
+  const tabsQuery = useQuery({
+    queryKey:        ['tisch-tabs', identity.kasseId],
+    queryFn:         () => tischTabApi.list(identity.kasseId),
+    refetchInterval: 30_000,
+  })
+
+  const erstelleMutation = useMutation({
+    mutationFn: (input: TischTabErstellenInput) => tischTabApi.erstelle(input),
+    onSuccess: (tab) => {
+      qc.invalidateQueries({ queryKey: ['tisch-tabs'] })
+      setModalOffen(false)
+      navigate(`/tische/${tab.id}`)
+    },
+    onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
+  })
+
+  const tabs = tabsQuery.data ?? []
+
+  return (
+    <>
+      <div className="mb-3 bg-white rounded-lg shadow-sm border border-gray-200 px-3 py-2 flex items-center gap-2 min-h-[48px]">
+        <span className="text-xs font-semibold text-gray-500 shrink-0 uppercase tracking-wide">
+          Tische
+        </span>
+
+        {tabsQuery.isLoading && (
+          <span className="text-xs text-gray-400">Wird geladen…</span>
+        )}
+
+        {!tabsQuery.isLoading && tabs.length === 0 && (
+          <span className="text-xs text-gray-400">Keine offenen Tische</span>
+        )}
+
+        {tabs.length > 0 && (
+          <div className="flex-1 min-w-0 overflow-x-auto no-scrollbar">
+            <div className="flex gap-1.5 pr-1">
+              {tabs.map((tab) => (
+                <TischChip
+                  key={tab.id}
+                  tab={tab}
+                  onClick={() => navigate(`/tische/${tab.id}`)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={() => { setFehler(null); setModalOffen(true) }}
+          className="shrink-0 text-xs font-medium text-brand-600 hover:text-brand-700 hover:underline px-1"
+        >
+          + Neuer Tisch
+        </button>
+      </div>
+
+      <Modal
+        open={modalOffen}
+        onClose={() => setModalOffen(false)}
+        title="Neuen Tisch öffnen"
+      >
+        <NeuerTischFormular
+          kasseId={identity.kasseId}
+          loading={erstelleMutation.isPending}
+          fehler={fehler}
+          onSubmit={(input) => { setFehler(null); erstelleMutation.mutate(input) }}
+          onAbbrechen={() => setModalOffen(false)}
+        />
+      </Modal>
+    </>
+  )
+}
+
+function TischChip({ tab, onClick }: { tab: TischTabResponse; onClick: () => void }) {
+  const minOffen  = Math.floor((Date.now() - new Date(tab.geoffnetAm).getTime()) / 60_000)
+  const dauerText = minOffen < 60
+    ? `${minOffen}'`
+    : `${Math.floor(minOffen / 60)}h${minOffen % 60 > 0 ? `${minOffen % 60}'` : ''}`
+
+  // Farbe je nach Wartezeit
+  const farbe = minOffen < 30
+    ? 'border-orange-300 bg-orange-50 hover:border-orange-500 hover:bg-orange-100 text-orange-800'
+    : minOffen < 60
+    ? 'border-amber-400 bg-amber-50 hover:border-amber-600 hover:bg-amber-100 text-amber-900'
+    : 'border-red-300 bg-red-50 hover:border-red-500 hover:bg-red-100 text-red-800'
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`shrink-0 flex items-center gap-2 rounded-lg border px-3 py-1.5 text-left transition ${farbe}`}
+    >
+      <span className="text-base font-bold leading-none">{tab.tischNummer}</span>
+      <span className="flex flex-col items-start leading-tight">
+        <span className="text-xs font-semibold">{formatPreis(tab.summeGesamtCent)}</span>
+        <span className="text-[11px] opacity-70">{tab.kellner} · {dauerText}</span>
+      </span>
+    </button>
+  )
+}
+
+interface NeuerTischFormularProps {
+  kasseId:     string
+  loading:     boolean
+  fehler:      string | null
+  onSubmit:    (input: TischTabErstellenInput) => void
+  onAbbrechen: () => void
+}
+
+function NeuerTischFormular({ kasseId, loading, fehler, onSubmit, onAbbrechen }: NeuerTischFormularProps) {
+  const [tischNummer, setTischNummer] = useState('')
+  const [kellner,     setKellner]     = useState('Service')
+
+  const submit = () => {
+    if (!tischNummer.trim()) return
+    onSubmit({ kasseId, tischNummer: tischNummer.trim(), kellner: kellner.trim() || 'Service' })
+  }
+
+  return (
+    <div className="space-y-4">
+      <label className="block">
+        <span className="text-sm font-medium text-gray-700">Tischnummer / -bezeichnung</span>
+        <Input
+          autoFocus
+          value={tischNummer}
+          onChange={(e) => setTischNummer(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && submit()}
+          placeholder="z. B. 1, Terrasse 3, Bar …"
+          className="mt-1"
+        />
+      </label>
+      <label className="block">
+        <span className="text-sm font-medium text-gray-700">Kellner</span>
+        <Input
+          value={kellner}
+          onChange={(e) => setKellner(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && submit()}
+          className="mt-1"
+        />
+      </label>
+      {fehler && (
+        <div className="rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">{fehler}</div>
+      )}
+      <div className="flex gap-2 pt-1">
+        <Button variant="secondary" onClick={onAbbrechen} className="flex-1">Abbrechen</Button>
+        <Button onClick={submit} loading={loading} className="flex-1" disabled={!tischNummer.trim()}>
+          Tisch öffnen
+        </Button>
+      </div>
     </div>
   )
 }

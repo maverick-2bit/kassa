@@ -3,13 +3,20 @@ import {
   TischTabErstellenInputSchema,
   TischTabPositionenUpdateSchema,
   TischTabBezahlenInputSchema,
+  TischTabUmbuchenInputSchema,
+  TischTabUmbenennenInputSchema,
+  TischTabSplittenInputSchema,
 } from '@kassa/shared'
 import {
   listOffeneTabs,
   erstelleTab,
   getTab,
+  getTabVerlauf,
   aktualisierePositionen,
   bezahleTab,
+  umbenneneTab,
+  umbucheTab,
+  splitteUndBezahleTab,
   TischTabError,
   type TischTabServiceDeps,
 } from '../services/tisch-tab.service.js'
@@ -70,6 +77,56 @@ export const tischTabRoute: FastifyPluginAsync<TischTabRouteOptions> = async (fa
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     try {
       const result = await bezahleTab(id, parsed.data, request.user.mandantId, opts.deps)
+      return reply.send(result)
+    } catch (err) {
+      if (err instanceof TischTabError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      throw err
+    }
+  })
+
+  fastify.patch('/tisch-tabs/:id/kellner', auth, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const parsed = TischTabUmbenennenInputSchema.safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
+    try {
+      const tab = await umbenneneTab(id, parsed.data, request.user.mandantId, opts.deps)
+      return reply.send(tab)
+    } catch (err) {
+      if (err instanceof TischTabError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      throw err
+    }
+  })
+
+  fastify.patch('/tisch-tabs/:id/tisch', auth, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const parsed = TischTabUmbuchenInputSchema.safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
+    try {
+      const tab = await umbucheTab(id, parsed.data, request.user.mandantId, opts.deps)
+      return reply.send(tab)
+    } catch (err) {
+      if (err instanceof TischTabError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      throw err
+    }
+  })
+
+  fastify.get('/tisch-tabs/:id/verlauf', auth, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    try {
+      const verlauf = await getTabVerlauf(id, request.user.mandantId, opts.deps)
+      return reply.send(verlauf)
+    } catch (err) {
+      if (err instanceof TischTabError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      throw err
+    }
+  })
+
+  fastify.post('/tisch-tabs/:id/splitten', auth, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const parsed = TischTabSplittenInputSchema.safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
+    try {
+      const result = await splitteUndBezahleTab(id, parsed.data, request.user.mandantId, opts.deps)
       return reply.send(result)
     } catch (err) {
       if (err instanceof TischTabError) return reply.status(err.httpStatus).send({ fehler: err.message })

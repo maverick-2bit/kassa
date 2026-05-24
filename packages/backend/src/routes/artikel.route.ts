@@ -1,6 +1,7 @@
 /**
  * Artikel-Routen (alle auth-protected, mandantId aus JWT).
  *   POST   /api/artikel              Anlegen
+ *   POST   /api/artikel/bulk         Bulk-Import (Array von Artikel-Inputs)
  *   GET    /api/artikel              Auflisten (mandantId aus JWT)
  *   PUT    /api/artikel/:id          Aktualisieren
  *   DELETE /api/artikel/:id          Deaktivieren (soft delete)
@@ -39,7 +40,42 @@ async function gehortArtikelZuMandant(db: Db, artikelId: string, mandantId: stri
   return !!row
 }
 
+// mandantId fehlt absichtlich — kommt aus dem JWT und wird serverseitig gesetzt
+const BulkImportSchema = z.array(z.record(z.unknown())).min(1).max(500)
+
 export const artikelRoute: FastifyPluginAsync<ArtikelRouteOptions> = async (fastify, opts) => {
+
+  /**
+   * POST /artikel/bulk — bis zu 500 Artikel in einer Anfrage anlegen.
+   * mandantId kommt aus dem JWT, nicht aus dem Body.
+   * Jede Zeile wird einzeln versucht; Fehler einer Zeile blockieren die anderen nicht.
+   */
+  fastify.post('/artikel/bulk', { onRequest: [fastify.authenticate] }, async (request, reply) => {
+    const parsed = BulkImportSchema.safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
+
+    const mandantId = request.user.mandantId
+    let erstellt    = 0
+    const fehlzeilen: { index: number; fehler: string }[] = []
+
+    for (let i = 0; i < parsed.data.length; i++) {
+      // mandantId aus JWT einfügen und vollständig validieren
+      const artikelParsed = ArtikelInputSchema.safeParse({ ...parsed.data[i], mandantId })
+      if (!artikelParsed.success) {
+        fehlzeilen.push({ index: i, fehler: 'Validierungsfehler: ' + artikelParsed.error.issues.map(e => e.message).join(', ') })
+        continue
+      }
+      try {
+        await erstelleArtikel(opts.db, artikelParsed.data)
+        erstellt++
+      } catch (err) {
+        fehlzeilen.push({ index: i, fehler: err instanceof Error ? err.message : 'Unbekannt' })
+      }
+    }
+
+    return reply.send({ erstellt, fehlgeschlagen: fehlzeilen.length, fehlzeilen })
+  })
+
   fastify.post('/artikel', { onRequest: [fastify.authenticate] }, async (request, reply) => {
     // mandantId IMMER aus JWT — Body wird ignoriert
     const bodyWithoutMandant = { ...(request.body as object), mandantId: request.user.mandantId }
