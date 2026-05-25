@@ -18,15 +18,16 @@ import { Button } from './ui/Button'
 import { formatPreis, parseEuroToCent } from '../lib/format'
 
 type FormValues = {
-  bezeichnung:        string
-  preisEuro:          string
-  mwstSatz:           MwStSatz
-  station:            Station | ''
-  kategorieId:        string
-  istFavorit:         boolean
-  bonierdruckerId:    string
-  lagerstandAktiv:    boolean
-  lagerstandMengeStr: string
+  bezeichnung:          string
+  preisEuro:            string
+  mwstSatz:             MwStSatz
+  station:              Station | ''
+  kategorieId:          string
+  istFavorit:           boolean
+  bonierdruckerId:      string
+  lagerstandAktiv:      boolean
+  lagerstandMengeStr:   string
+  mindestbestandStr:    string
 }
 
 interface Props {
@@ -84,7 +85,8 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
       istFavorit:         initial?.istFavorit       ?? false,
       bonierdruckerId:    initial?.bonierdruckerId  ?? '',
       lagerstandAktiv:    initial?.lagerstandAktiv  ?? false,
-      lagerstandMengeStr: initial?.lagerstandMenge != null ? String(initial.lagerstandMenge) : '',
+      lagerstandMengeStr: initial?.lagerstandMenge   != null ? String(initial.lagerstandMenge)   : '',
+      mindestbestandStr:  initial?.mindestbestand    != null ? String(initial.mindestbestand)    : '',
     },
   })
 
@@ -100,7 +102,8 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
       istFavorit:         initial?.istFavorit       ?? false,
       bonierdruckerId:    initial?.bonierdruckerId  ?? '',
       lagerstandAktiv:    initial?.lagerstandAktiv  ?? false,
-      lagerstandMengeStr: initial?.lagerstandMenge != null ? String(initial.lagerstandMenge) : '',
+      lagerstandMengeStr: initial?.lagerstandMenge   != null ? String(initial.lagerstandMenge)   : '',
+      mindestbestandStr:  initial?.mindestbestand    != null ? String(initial.mindestbestand)    : '',
     })
     setBild(initial?.bild ?? null)
   }, [initial, reset])
@@ -115,6 +118,9 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
     const lsMenge = values.lagerstandAktiv && values.lagerstandMengeStr.trim() !== ''
       ? parseInt(values.lagerstandMengeStr.trim(), 10)
       : null
+    const mindest = values.lagerstandAktiv && values.mindestbestandStr.trim() !== ''
+      ? parseInt(values.mindestbestandStr.trim(), 10)
+      : null
     onSubmit({
       mandantId,
       bezeichnung:     values.bezeichnung.trim(),
@@ -126,8 +132,8 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
       bonierdruckerId: values.bonierdruckerId  || null,
       lagerstandAktiv: values.lagerstandAktiv,
       lagerstandMenge: lsMenge,
-      mindestbestand:  null,    // TODO: UI-Feld für Mindestbestand
-      bild,                     // null = kein / entfernt, string = Data-URL
+      mindestbestand:  mindest,
+      bild,
     })
   })
 
@@ -278,16 +284,26 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
         </label>
 
         {lagerstandAktiv && (
-          <Field label="Aktueller Bestand" hint="Leer = unbegrenzt (Countdown deaktiviert)">
-            <Input
-              type="number"
-              min="0"
-              step="1"
-              placeholder="z. B. 12"
-              className="w-36"
-              {...register('lagerstandMengeStr')}
-            />
-          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Aktueller Bestand" hint="Leer = unbegrenzt">
+              <Input
+                type="number"
+                min="0"
+                step="1"
+                placeholder="z. B. 12"
+                {...register('lagerstandMengeStr')}
+              />
+            </Field>
+            <Field label="Mindestbestand" hint="Warnung bei Unterschreitung">
+              <Input
+                type="number"
+                min="0"
+                step="1"
+                placeholder="z. B. 3"
+                {...register('mindestbestandStr')}
+              />
+            </Field>
+          </div>
         )}
       </div>
 

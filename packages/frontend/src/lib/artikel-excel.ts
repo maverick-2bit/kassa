@@ -74,6 +74,7 @@ const SPALTEN = [
   { header: 'Kategorie',     wch: 22 },
   { header: 'Lagerstand',    wch: 13 },
   { header: 'Anfangsbestand', wch: 15 },
+  { header: 'Mindestbestand', wch: 15 },
 ]
 
 const BEISPIEL_ZEILE = [
@@ -83,6 +84,7 @@ const BEISPIEL_ZEILE = [
   STATION_LABELS.schank,
   'Getränke',
   'Nein',
+  '',
   '',
 ]
 
@@ -115,7 +117,8 @@ export function exportArtikelVorlage(
       a.station ? STATION_LABELS[a.station] : '',
       a.kategorieId ? (katMap.get(a.kategorieId) ?? '') : '',
       a.lagerstandAktiv ? 'Ja' : 'Nein',
-      a.lagerstandMenge !== null ? a.lagerstandMenge : '',
+      a.lagerstandMenge    !== null ? a.lagerstandMenge    : '',
+      a.mindestbestand     !== null ? a.mindestbestand     : '',
     ])
   } else {
     // Leere Vorlage mit einem Beispiel-Datensatz
@@ -208,6 +211,7 @@ export function exportArtikelVorlage(
     ['Kategorie',      'Nein',    katHinweis],
     ['Lagerstand',     'Nein',    'Ja oder Nein (Standard: Nein)'],
     ['Anfangsbestand', 'Nein',    'Ganzzahl ≥ 0, nur sinnvoll wenn Lagerstand = Ja'],
+    ['Mindestbestand', 'Nein',    'Ganzzahl ≥ 0 — Warnung im Lagerstand wenn Bestand darunter fällt'],
     ['Artikelnummer',  '—',       'Wird automatisch vergeben — bitte keine Spalte dafür eintragen'],
   ]
   const wsH = XLSX.utils.aoa_to_sheet(hinweise)
@@ -271,15 +275,16 @@ function parseZeile(
   zeile:      number,
   kategorien: Kategorie[],
 ): GeparsterArtikel | null {
-  // Spalten: A=Bezeichnung, B=Preis, C=MwSt, D=Station, E=Kategorie, F=Lagerstand, G=Anfangsbestand
+  // Spalten: A=Bezeichnung, B=Preis, C=MwSt, D=Station, E=Kategorie, F=Lagerstand, G=Anfangsbestand, H=Mindestbestand
   const [
-    bezeichnungRaw = '',
-    preisRaw       = '',
-    mwstRaw        = '',
-    stationRaw     = '',
-    kategorieRaw   = '',
-    lagerstandRaw  = '',
-    bestandRaw     = '',
+    bezeichnungRaw  = '',
+    preisRaw        = '',
+    mwstRaw         = '',
+    stationRaw      = '',
+    kategorieRaw    = '',
+    lagerstandRaw   = '',
+    bestandRaw      = '',
+    mindestRaw      = '',
   ] = row
 
   const bezeichnung   = bezeichnungRaw.trim()
@@ -289,6 +294,7 @@ function parseZeile(
   const kategorieStr  = kategorieRaw.trim()
   const lagerstandStr = lagerstandRaw.trim().toLowerCase()
   const bestandStr    = bestandRaw.trim()
+  const mindestStr    = mindestRaw.trim()
 
   // Vollständig leere Zeile → überspringen
   if (!bezeichnung && !preisStr && !mwstStr) return null
@@ -341,6 +347,12 @@ function parseZeile(
     if (!isNaN(n) && n >= 0) lagerstandMenge = n
     else warnungen.push(`Anfangsbestand "${bestandStr}" ungültig — wird als leer behandelt`)
   }
+  let mindestbestand: number | null = null
+  if (lagerstandAktiv && mindestStr) {
+    const n = parseInt(mindestStr, 10)
+    if (!isNaN(n) && n >= 0) mindestbestand = n
+    else warnungen.push(`Mindestbestand "${mindestStr}" ungültig — wird ignoriert`)
+  }
 
   if (fehler.length > 0) {
     return { zeile, gueltig: false, fehler, warnungen, kategorieStr }
@@ -361,7 +373,7 @@ function parseZeile(
       istFavorit:      false,
       lagerstandAktiv,
       lagerstandMenge,
-      mindestbestand:  null,
+      mindestbestand,
     },
   }
 }
