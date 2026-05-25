@@ -76,7 +76,7 @@ export const kassen = pgTable('kassen', {
   seeGueltigBis:         timestamp('see_gueltig_bis', { withTimezone: true }).notNull(),
 
   // RKSV-Laufzeitdaten
-  umsatzzaehlerCent:     bigint('umsatzzaehler_cent', { mode: 'bigint' }).notNull().default(0n),
+  umsatzzaehlerCent:     bigint('umsatzzaehler_cent', { mode: 'bigint' }).notNull().default(sql`0`),
   letzteBelegNummer:     integer('letzte_beleg_nummer').notNull().default(0),
   letzterSignaturwert:   text('letzter_signaturwert'),
 

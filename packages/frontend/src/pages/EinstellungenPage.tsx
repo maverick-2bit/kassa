@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ALLE_STATIONEN, STATION_LABELS, type Station, type ZvtConfig } from '@kassa/shared'
 import { druckerApi, kdsApi, zvtApi, downloadDepExport, type DruckerConfig, type KdsConfig } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
+import { hasModul } from '../lib/auth'
 import { Field } from '../components/ui/Field'
 import { Input } from '../components/ui/Input'
 import { Button } from '../components/ui/Button'
@@ -20,7 +21,7 @@ export function EinstellungenPage() {
       <KdsSektion />
       <ZvtSektion />
       <RksvExportSektion />
-      <TischplanSektion />
+      {hasModul('gastro') && <TischplanSektion />}
     </div>
   )
 }
