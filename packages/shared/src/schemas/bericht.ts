@@ -106,3 +106,35 @@ export const WarengruppeBerichtResponseSchema = z.object({
   zeilen:   z.array(WarengruppeBerichtZeileSchema),
 })
 export type WarengruppeBerichtResponse = z.infer<typeof WarengruppeBerichtResponseSchema>
+
+// ---------------------------------------------------------------------------
+// Stunden-Bericht (Umsatz nach Tageszeit)
+// ---------------------------------------------------------------------------
+
+export const StundenBerichtFilterSchema = z.object({
+  kasseIds: z.array(z.string().uuid()).default([]),
+  von:      z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Ungültiges Datum (YYYY-MM-DD)'),
+  bis:      z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Ungültiges Datum (YYYY-MM-DD)'),
+})
+export type StundenBerichtFilter = z.infer<typeof StundenBerichtFilterSchema>
+
+export const StundenBerichtZeileSchema = z.object({
+  stunde:        z.number().int().min(0).max(23),
+  anzahlBelege:  z.number().int(),
+  anzahlStornos: z.number().int(),
+  umsatzCent:    z.number().int(),
+  barCent:       z.number().int(),
+  karteCent:     z.number().int(),
+  sonstigCent:   z.number().int(),
+})
+export type StundenBerichtZeile = z.infer<typeof StundenBerichtZeileSchema>
+
+export const StundenBerichtResponseSchema = z.object({
+  von:      z.string(),
+  bis:      z.string(),
+  kasseIds: z.array(z.string().uuid()),
+  /** Immer 24 Einträge (Stunde 0–23), Stunden ohne Umsatz mit Nullwerten */
+  zeilen:   z.array(StundenBerichtZeileSchema),
+  gesamt:   BerichtGesamtSchema,
+})
+export type StundenBerichtResponse = z.infer<typeof StundenBerichtResponseSchema>

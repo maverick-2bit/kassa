@@ -118,8 +118,11 @@ export async function fuehreSetupDurch(
   const result = await deps.db.transaction(async (tx) => {
     // 1. Mandant
     const [mandant] = await tx.insert(mandanten).values({
-      firmenname: input.firmenname,
-      uid:        input.uid,
+      firmenname:          input.firmenname,
+      uid:                 input.uid,
+      modulGastroAktiv:    input.module?.gastro    ?? true,
+      modulAngeboteAktiv:  input.module?.angebote  ?? false,
+      modulMergeportAktiv: input.module?.mergeport ?? false,
     }).returning({ id: mandanten.id })
 
     if (!mandant) throw new Error('Mandant konnte nicht angelegt werden')

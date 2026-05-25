@@ -48,6 +48,7 @@ export type {
 
 // Setup
 export {
+  SetupModuleSchema,
   SetupInputSchema,
   SetupResponseSchema,
   EinrichtungsSchrittSchema,
@@ -55,6 +56,7 @@ export {
 } from './schemas/setup.js'
 
 export type {
+  SetupModule,
   SetupInput,
   SetupResponse,
   EinrichtungsSchrittDto,
@@ -218,6 +220,9 @@ export {
   WarengruppeBerichtFilterSchema,
   WarengruppeBerichtZeileSchema,
   WarengruppeBerichtResponseSchema,
+  StundenBerichtFilterSchema,
+  StundenBerichtZeileSchema,
+  StundenBerichtResponseSchema,
 } from './schemas/bericht.js'
 export type {
   BerichtFilter,
@@ -230,6 +235,9 @@ export type {
   ArtikelBerichtResponse,
   WarengruppeBerichtZeile,
   WarengruppeBerichtResponse,
+  StundenBerichtFilter,
+  StundenBerichtZeile,
+  StundenBerichtResponse,
 } from './schemas/bericht.js'
 
 // Tagesabschluss

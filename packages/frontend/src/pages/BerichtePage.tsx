@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import type { ArtikelBerichtResponse, BerichtGesamt, BerichtGruppierung, BerichtResponse, WarengruppeBerichtResponse } from '@kassa/shared'
+import type { ArtikelBerichtResponse, BerichtGesamt, BerichtGruppierung, BerichtResponse, StundenBerichtResponse, StundenBerichtZeile, WarengruppeBerichtResponse } from '@kassa/shared'
 import { berichtApi } from '../lib/api'
 import { getAuth } from '../lib/auth'
 import { formatPreis } from '../lib/format'
@@ -96,7 +96,7 @@ function standardGruppierung(preset: ZeitraumPreset): BerichtGruppierung {
 // Haupt-Komponente
 // ---------------------------------------------------------------------------
 
-type BerichtTab = 'gesamtumsatz' | 'umsatz' | 'zahlungsart' | 'warengruppe' | 'artikel'
+type BerichtTab = 'gesamtumsatz' | 'umsatz' | 'zahlungsart' | 'warengruppe' | 'artikel' | 'stunden'
 
 const TABS: [BerichtTab, string][] = [
   ['gesamtumsatz', 'Übersicht'],
@@ -104,6 +104,7 @@ const TABS: [BerichtTab, string][] = [
   ['zahlungsart',  'Zahlungsart'],
   ['warengruppe',  'Warengruppe'],
   ['artikel',      'Artikel'],
+  ['stunden',      'Tageszeit'],
 ]
 
 export function BerichtePage() {
@@ -138,6 +139,7 @@ export function BerichtePage() {
       {aktTab === 'zahlungsart'  && <ZahlungsartBericht />}
       {aktTab === 'warengruppe'  && <WarengruppeBericht />}
       {aktTab === 'artikel'      && <ArtikelBericht />}
+      {aktTab === 'stunden'      && <StundenBericht />}
     </div>
   )
 }
@@ -1109,6 +1111,146 @@ function WarengruppeBericht() {
 
       {isError && <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error instanceof Error ? error.message : 'Fehler'}</div>}
       {data && <WarengruppeTabelle data={data} />}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Stunden-Bericht (Umsatz nach Tageszeit)
+// ---------------------------------------------------------------------------
+
+function StundenBericht() {
+  const { preset, von, bis, kasseIds, waehlePreset, setVon, setBis, toggleKasse } = useFilterState()
+  const [geladenerFilter, setGeladenerFilter] = useState<{ kasseIds: string[]; von: string; bis: string } | null>(null)
+
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: ['bericht-stunden', geladenerFilter],
+    queryFn:  () => berichtApi.stunden(geladenerFilter!),
+    enabled:  geladenerFilter !== null,
+  })
+
+  return (
+    <div className="space-y-6">
+      <FilterPanel preset={preset} onPreset={waehlePreset} von={von} onVon={setVon} bis={bis} onBis={setBis}
+        kasseIds={kasseIds} onToggleKasse={toggleKasse} isLoading={isLoading}
+        onLaden={() => setGeladenerFilter({ kasseIds, von, bis })} />
+
+      {isError && <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error instanceof Error ? error.message : 'Fehler'}</div>}
+      {data && <StundenDiagramm data={data} />}
+    </div>
+  )
+}
+
+function StundenDiagramm({ data }: { data: StundenBerichtResponse }) {
+  const maxUmsatz = Math.max(...data.zeilen.map(z => z.umsatzCent), 1)
+  const gesamtUmsatz = data.gesamt.umsatzCent
+
+  if (gesamtUmsatz === 0) {
+    return (
+      <div className="rounded-lg bg-white shadow-sm border border-gray-200 p-8 text-center text-sm text-gray-500">
+        Keine Belege im gewählten Zeitraum.
+      </div>
+    )
+  }
+
+  // Geschäftszeiten ermitteln (erste/letzte Stunde mit Umsatz)
+  const aktiveStunden = data.zeilen.filter(z => z.umsatzCent > 0)
+  const ersteStunde = aktiveStunden[0]?.stunde ?? 0
+  const letzteStunde = aktiveStunden[aktiveStunden.length - 1]?.stunde ?? 23
+  // ±2 Stunden Puffer
+  const von = Math.max(0, ersteStunde - 1)
+  const bis = Math.min(23, letzteStunde + 1)
+  const angezeigteZeilen = data.zeilen.slice(von, bis + 1)
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <Kachel label="Gesamtumsatz"  wert={formatPreis(gesamtUmsatz)}       sub={`${formatDatumAnzeige(data.von)} – ${formatDatumAnzeige(data.bis)}`} hervor />
+        <Kachel label="Anzahl Belege" wert={String(data.gesamt.anzahlBelege)} {...(data.gesamt.anzahlStornos > 0 ? { sub: `${data.gesamt.anzahlStornos} Stornos` } : {})} />
+        <Kachel label="Spitzenstunde" wert={`${data.zeilen.reduce((best: StundenBerichtZeile, z: StundenBerichtZeile) => z.umsatzCent > best.umsatzCent ? z : best, data.zeilen[0]!).stunde}:00 Uhr`} sub={formatPreis(maxUmsatz)} />
+        <Kachel label="Aktive Stunden" wert={String(aktiveStunden.length)} sub="Stunden mit Umsatz" />
+      </div>
+
+      <div className="rounded-lg bg-white shadow-sm border border-gray-200 overflow-hidden">
+        <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-gray-700">
+            Umsatz nach Tageszeit ({formatDatumAnzeige(data.von)} – {formatDatumAnzeige(data.bis)})
+          </h2>
+          <CsvExportButton onClick={() => {
+            const kopfzeile = ['Stunde', 'Belege', 'Umsatz (€)', 'Bar (€)', 'Karte (€)']
+            const datenzeilen = data.zeilen.map(z => [
+              `${z.stunde}:00`,
+              String(z.anzahlBelege),
+              centZuEuro(z.umsatzCent),
+              centZuEuro(z.barCent),
+              centZuEuro(z.karteCent),
+            ])
+            csvHerunterladen(`bericht-stunden_${data.von}_${data.bis}.csv`, [kopfzeile, ...datenzeilen])
+          }} />
+        </div>
+        <div className="px-4 py-4 space-y-1.5">
+          {angezeigteZeilen.map(z => {
+            const balkenBreite = maxUmsatz > 0 ? Math.round((z.umsatzCent / maxUmsatz) * 100) : 0
+            const istSpitze = z.umsatzCent === maxUmsatz && z.umsatzCent > 0
+            return (
+              <div key={z.stunde} className="flex items-center gap-3 group">
+                <span className="text-xs font-mono text-gray-500 w-12 shrink-0 text-right">
+                  {z.stunde.toString().padStart(2, '0')}:00
+                </span>
+                <div className="flex-1 h-6 bg-gray-100 rounded overflow-hidden">
+                  <div
+                    className={`h-full rounded transition-all ${istSpitze ? 'bg-brand-500' : 'bg-brand-300'}`}
+                    style={{ width: `${balkenBreite}%` }}
+                  />
+                </div>
+                <span className={`text-xs font-mono w-28 shrink-0 text-right ${z.umsatzCent > 0 ? 'text-gray-900 font-semibold' : 'text-gray-300'}`}>
+                  {z.umsatzCent > 0 ? formatPreis(z.umsatzCent) : '—'}
+                </span>
+                <span className="text-xs text-gray-400 w-14 shrink-0 text-right">
+                  {z.anzahlBelege > 0 ? `${z.anzahlBelege} Bel.` : ''}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Detailtabelle */}
+      <div className="rounded-lg bg-white shadow-sm border border-gray-200 overflow-hidden">
+        <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+          <h2 className="text-sm font-semibold text-gray-700">Stundendetails</h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500 border-b border-gray-200">
+              <tr>
+                <th className="px-4 py-2 font-semibold">Stunde</th>
+                <th className="px-4 py-2 font-semibold text-right">Belege</th>
+                <th className="px-4 py-2 font-semibold text-right">Umsatz</th>
+                <th className="px-4 py-2 font-semibold text-right">Bar</th>
+                <th className="px-4 py-2 font-semibold text-right">Karte</th>
+                <th className="px-4 py-2 font-semibold text-right">Anteil</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {data.zeilen.filter(z => z.umsatzCent > 0).map(z => (
+                <tr key={z.stunde} className="hover:bg-gray-50">
+                  <td className="px-4 py-2 font-medium text-gray-900 font-mono">
+                    {z.stunde.toString().padStart(2, '0')}:00–{(z.stunde + 1).toString().padStart(2, '0')}:00
+                  </td>
+                  <td className="px-4 py-2 text-right text-gray-700">{z.anzahlBelege}</td>
+                  <td className="px-4 py-2 text-right font-mono font-semibold text-gray-900">{formatPreis(z.umsatzCent)}</td>
+                  <td className="px-4 py-2 text-right font-mono text-gray-600">{z.barCent > 0 ? formatPreis(z.barCent) : '—'}</td>
+                  <td className="px-4 py-2 text-right font-mono text-gray-600">{z.karteCent > 0 ? formatPreis(z.karteCent) : '—'}</td>
+                  <td className="px-4 py-2 text-right text-gray-500 text-xs">
+                    {gesamtUmsatz > 0 ? `${Math.round((z.umsatzCent / gesamtUmsatz) * 100)} %` : ''}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   )
 }

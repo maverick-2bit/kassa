@@ -1,6 +1,6 @@
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { SetupInputSchema, type SetupInput } from '@kassa/shared'
+import { MANDANT_MODUL_BESCHREIBUNGEN, MANDANT_MODUL_LABELS, SetupInputSchema, type MandantModul, type SetupInput } from '@kassa/shared'
 import { Field } from './ui/Field'
 import { Input } from './ui/Input'
 import { Button } from './ui/Button'
@@ -34,10 +34,16 @@ export function SetupForm({ onSubmit, loading = false, error }: Props) {
         email:    '',
         passwort: '',
       },
+      module: {
+        gastro:    true,
+        angebote:  false,
+        mergeport: false,
+      },
     },
   })
 
   const umgebung = watch('umgebung')
+  const module   = watch('module')
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-8" noValidate>
@@ -181,6 +187,36 @@ export function SetupForm({ onSubmit, loading = false, error }: Props) {
             title="Produktion"
             description="Echtbetrieb. Registrierung ist verbindlich."
           />
+        </div>
+      </fieldset>
+
+      {/* Sektion: Module */}
+      <fieldset className="space-y-3">
+        <SectionHeader
+          title="Module aktivieren"
+          subtitle="Welche Funktionen benötigst du? Kann jederzeit unter Einstellungen → Module geändert werden."
+        />
+        <div className="space-y-2">
+          {(['gastro', 'angebote', 'mergeport'] as MandantModul[]).map((modul) => (
+            <label
+              key={modul}
+              className={`flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition ${
+                module?.[modul]
+                  ? 'border-brand-400 bg-brand-50/50 ring-1 ring-brand-400'
+                  : 'border-gray-200 hover:border-gray-300'
+              }`}
+            >
+              <input
+                type="checkbox"
+                className="mt-0.5 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                {...register(`module.${modul}`)}
+              />
+              <div>
+                <p className="text-sm font-medium text-gray-900">{MANDANT_MODUL_LABELS[modul]}</p>
+                <p className="text-xs text-gray-500 mt-0.5">{MANDANT_MODUL_BESCHREIBUNGEN[modul]}</p>
+              </div>
+            </label>
+          ))}
         </div>
       </fieldset>
 

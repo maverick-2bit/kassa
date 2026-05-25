@@ -17,6 +17,9 @@ import {
   type BerichtResponse,
   type BerichtZeile,
   type MwStSatz,
+  type StundenBerichtFilter,
+  type StundenBerichtResponse,
+  type StundenBerichtZeile,
   type WarengruppeBerichtResponse,
 } from '@kassa/shared'
 import type { Db } from '../db/client.js'
@@ -274,4 +277,93 @@ function getPeriodeKey(
     ((d.valueOf() - jan4.valueOf()) / 86_400_000 - 3 + (jan4.getDay() + 6) % 7) / 7
   )
   return `${d.getFullYear()}-KW${kw.toString().padStart(2, '0')}`
+}
+
+// ---------------------------------------------------------------------------
+// Stunden-Bericht
+// ---------------------------------------------------------------------------
+
+export async function holeStundenbericht(
+  filter:    StundenBerichtFilter,
+  mandantId: string,
+  deps:      BerichtServiceDeps,
+): Promise<StundenBerichtResponse> {
+  const alleKassen = await deps.db
+    .select({ id: kassen.id })
+    .from(kassen)
+    .where(eq(kassen.mandantId, mandantId))
+  const erlaubteIds = new Set(alleKassen.map(k => k.id))
+
+  const angefragte  = filter.kasseIds.length > 0 ? filter.kasseIds : [...erlaubteIds]
+  const ungueltige  = angefragte.filter((id: string) => !erlaubteIds.has(id))
+  if (ungueltige.length > 0) {
+    throw new BerichtError(404, `Kasse(n) nicht gefunden: ${ungueltige.join(', ')}`)
+  }
+  if (filter.von > filter.bis) {
+    throw new BerichtError(400, '"von" muss vor oder gleich "bis" liegen')
+  }
+
+  const kasseIdArr = sql.join(angefragte.map(id => sql`${id}::uuid`), sql`, `)
+
+  type StundenRow = {
+    stunde:         string
+    anzahl_belege:  string
+    anzahl_stornos: string
+    umsatz_cent:    string
+    bar_cent:       string
+    karte_cent:     string
+    sonstige_cent:  string
+  }
+
+  const rows = await deps.db.execute<StundenRow>(sql`
+    SELECT
+      EXTRACT(HOUR FROM (beleg_datum AT TIME ZONE 'Europe/Vienna'))::int    AS stunde,
+      SUM(CASE WHEN beleg_typ = 'Barzahlungsbeleg' THEN 1 ELSE 0 END)::int AS anzahl_belege,
+      SUM(CASE WHEN beleg_typ = 'Stornobeleg'      THEN 1 ELSE 0 END)::int AS anzahl_stornos,
+      SUM(summe_bar_cent + summe_karte_cent + summe_sonstige_cent)::int     AS umsatz_cent,
+      SUM(summe_bar_cent)::int                                              AS bar_cent,
+      SUM(summe_karte_cent)::int                                            AS karte_cent,
+      SUM(summe_sonstige_cent)::int                                         AS sonstige_cent
+    FROM belege
+    WHERE kasse_id = ANY(ARRAY[${kasseIdArr}])
+      AND beleg_typ IN ('Barzahlungsbeleg', 'Stornobeleg')
+      AND (beleg_datum AT TIME ZONE 'Europe/Vienna')::date
+          BETWEEN ${filter.von}::date AND ${filter.bis}::date
+    GROUP BY stunde
+    ORDER BY stunde
+  `)
+
+  const stundenMap = new Map<number, StundenBerichtZeile>()
+  for (const row of rows) {
+    const stunde = parseInt(row.stunde, 10)
+    stundenMap.set(stunde, {
+      stunde,
+      anzahlBelege:  parseInt(row.anzahl_belege,  10),
+      anzahlStornos: parseInt(row.anzahl_stornos, 10),
+      umsatzCent:    parseInt(row.umsatz_cent,    10),
+      barCent:       parseInt(row.bar_cent,       10),
+      karteCent:     parseInt(row.karte_cent,     10),
+      sonstigCent:   parseInt(row.sonstige_cent,  10),
+    })
+  }
+
+  const leer: Omit<StundenBerichtZeile, 'stunde'> = {
+    anzahlBelege: 0, anzahlStornos: 0,
+    umsatzCent: 0, barCent: 0, karteCent: 0, sonstigCent: 0,
+  }
+  const zeilen: StundenBerichtZeile[] = Array.from({ length: 24 }, (_, i) =>
+    stundenMap.get(i) ?? { stunde: i, ...leer }
+  )
+
+  const gesamt: BerichtGesamt = {
+    anzahlBelege:  zeilen.reduce((s, z) => s + z.anzahlBelege,  0),
+    anzahlStornos: zeilen.reduce((s, z) => s + z.anzahlStornos, 0),
+    umsatzCent:    zeilen.reduce((s, z) => s + z.umsatzCent,    0),
+    barCent:       zeilen.reduce((s, z) => s + z.barCent,       0),
+    karteCent:     zeilen.reduce((s, z) => s + z.karteCent,     0),
+    sonstigCent:   zeilen.reduce((s, z) => s + z.sonstigCent,   0),
+    mwst:          [],   // Stunden-Bericht ohne USt-Aufteilung
+  }
+
+  return { von: filter.von, bis: filter.bis, kasseIds: angefragte, zeilen, gesamt }
 }

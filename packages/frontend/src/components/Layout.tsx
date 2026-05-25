@@ -35,6 +35,7 @@ function Header() {
           <span className="font-semibold text-gray-900">Kassa</span>
         </div>
         <nav className="flex gap-1 flex-1">
+          {hasBerechtigung('belege.lesen')                                && <NavItem to="/dashboard">Dashboard</NavItem>}
           {hasBerechtigung('tische')            && hasModul('gastro')    && <NavItem to="/tische">Tische</NavItem>}
           {hasBerechtigung('kasse')                                       && <NavItem to="/kasse">Kasse</NavItem>}
           {hasBerechtigung('artikel.verwalten')                           && <NavItem to="/artikel">Artikel</NavItem>}

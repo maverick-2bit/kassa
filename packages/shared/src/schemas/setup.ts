@@ -22,6 +22,13 @@ export type FinanzOnlineCredentialsInput = z.infer<typeof FinanzOnlineCredential
 // Setup-Eingabe (Formular)
 // ---------------------------------------------------------------------------
 
+export const SetupModuleSchema = z.object({
+  gastro:    z.boolean().default(true),
+  angebote:  z.boolean().default(false),
+  mergeport: z.boolean().default(false),
+})
+export type SetupModule = z.infer<typeof SetupModuleSchema>
+
 export const SetupInputSchema = z.object({
   firmenname: z.string().trim().min(1, 'Firmenname ist erforderlich'),
   uid:        z.string().trim().regex(/^ATU\d{8}$/, 'UID ungültig (Format: ATU + 8 Ziffern)'),
@@ -32,6 +39,8 @@ export const SetupInputSchema = z.object({
   admin:      AdminUserInputSchema,
   /** Optional: Gültigkeitsdauer des Zertifikats in Tagen (Standard: 5 Jahre) */
   zertifikatGueltigkeitTage: z.number().int().min(30).max(3650).optional(),
+  /** Welche Module beim Setup aktiviert werden sollen */
+  module: SetupModuleSchema.default({ gastro: true, angebote: false, mergeport: false }),
 })
 
 export type SetupInput = z.infer<typeof SetupInputSchema>

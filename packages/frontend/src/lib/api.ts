@@ -44,6 +44,7 @@ import type {
   ArtikelGruppenZuweisung,
   ArtikelBerichtResponse,
   WarengruppeBerichtResponse,
+  StundenBerichtResponse,
   BarzahlungsbelegInput,
   BerichtFilter,
   BerichtResponse,
@@ -354,6 +355,13 @@ export const berichtApi = {
     p.set('bis', filter.bis)
     for (const id of filter.kasseIds ?? []) p.append('kasseIds', id)
     return request<WarengruppeBerichtResponse>('GET', `/api/berichte/warengruppe?${p.toString()}`)
+  },
+  stunden: (filter: { von: string; bis: string; kasseIds?: string[] }): Promise<StundenBerichtResponse> => {
+    const p = new URLSearchParams()
+    p.set('von', filter.von)
+    p.set('bis', filter.bis)
+    for (const id of filter.kasseIds ?? []) p.append('kasseIds', id)
+    return request<StundenBerichtResponse>('GET', `/api/berichte/stunden?${p.toString()}`)
   },
 }
 

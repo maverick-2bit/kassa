@@ -18,6 +18,7 @@ import { OffenePostenPage } from './pages/OffenePostenPage'
 import { GutscheinPage } from './pages/GutscheinPage'
 import { LieferungenPage } from './pages/LieferungenPage'
 import { MandantenEinstellungenPage } from './pages/MandantenEinstellungenPage'
+import { DashboardPage } from './pages/DashboardPage'
 import { KundenPage } from './pages/KundenPage'
 import { AngebotePage } from './pages/AngebotePage'
 import { KassensturzPage } from './pages/KassensturzPage'
@@ -48,6 +49,7 @@ function AppRoutes() {
       <Route path="/setup" element={<SetupPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route element={<Layout />}>
+        <Route path="/dashboard"        element={<Require b="belege.lesen"                 ><DashboardPage /></Require>} />
         <Route path="/tische"         element={<Require b="tische"          m="gastro"   ><TischePage /></Require>} />
         <Route path="/tische/:tabId"  element={<Require b="tische"          m="gastro"   ><TischTabPage /></Require>} />
         <Route path="/kasse"          element={<Require b="kasse"                        ><KassePage /></Require>} />
