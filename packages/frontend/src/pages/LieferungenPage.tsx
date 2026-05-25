@@ -270,6 +270,10 @@ function BestellungDetail({
 }) {
   const istAktiv = b.status === 'neu' || b.status === 'bestaetigt'
 
+  const druckenMut = useMutation({
+    mutationFn: () => lieferApi.drucken(b.id),
+  })
+
   return (
     <div className="space-y-4">
       {/* Provider + Status */}
@@ -354,6 +358,13 @@ function BestellungDetail({
             Stornieren
           </Button>
         )}
+        <Button
+          variant="secondary"
+          onClick={() => druckenMut.mutate()}
+          loading={druckenMut.isPending}
+        >
+          🖨️ Drucken
+        </Button>
         <Button variant="secondary" onClick={onClose} className="ml-auto">
           Schließen
         </Button>

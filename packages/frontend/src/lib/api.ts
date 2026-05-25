@@ -600,6 +600,8 @@ export const lieferApi = {
   },
   updateStatus: (id: string, input: LieferbestellungUpdate): Promise<LieferbestellungResponse> =>
     request<LieferbestellungResponse>('PATCH', `/api/lieferbestellungen/${id}`, input),
+  drucken: (id: string): Promise<{ erfolgreich: boolean }> =>
+    request<{ erfolgreich: boolean }>('POST', `/api/lieferbestellungen/${id}/drucken`),
   webhookUrls: (kasseId: string): Promise<{ webhookSecret: string; urls: { lieferando: string; mergeport: string; custom: string } }> =>
     request('GET', `/api/kassen/${kasseId}/webhook-url`),
 }

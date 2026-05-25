@@ -24,6 +24,7 @@ import {
   erstelleBestellung,
   listeBestellungen,
   aktualisiereBestellungStatus,
+  druckeLieferbestellung,
 } from '../services/lieferbestellung.service.js'
 import { LieferbestellungUpdateSchema } from '@kassa/shared'
 import { pruefeKasseGehoertZuMandant } from '../auth/scope.js'
@@ -83,6 +84,23 @@ export const lieferbestellungRoute: FastifyPluginAsync<LieferbestellungRouteOpti
       return reply.send(updated)
     } catch (err) {
       return reply.status(404).send({ fehler: err instanceof Error ? err.message : 'Fehler' })
+    }
+  })
+
+  // ---- POST /lieferbestellungen/:id/drucken ----
+  fastify.post('/lieferbestellungen/:id/drucken', guard, async (request, reply) => {
+    const p = IdParam.safeParse(request.params)
+    if (!p.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
+
+    try {
+      await druckeLieferbestellung(opts.db, p.data.id, request.user.mandantId)
+      return reply.send({ erfolgreich: true })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Druckfehler'
+      const status = msg.includes('nicht gefunden') ? 404
+        : msg.includes('nicht konfiguriert') ? 409
+        : 500
+      return reply.status(status).send({ fehler: msg })
     }
   })
 

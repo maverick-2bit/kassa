@@ -10,8 +10,10 @@
 
 import { and, desc, eq } from 'drizzle-orm'
 import type { Db } from '../db/client.js'
-import { kassen, lieferbestellungen } from '../db/schema.js'
+import { kassen, lieferbestellungen, mandanten } from '../db/schema.js'
 import { emitKasseEvent } from '../sse/event-bus.js'
+import { druckerConfigVonKasse, sendBytes } from './drucker.service.js'
+import { baueLieferbestellungBon } from './escpos/layout.js'
 import type {
   LieferbestellungPosition,
   LieferbestellungResponse,
@@ -205,7 +207,14 @@ export async function erstelleBestellung(
   raw:      unknown,
 ): Promise<LieferbestellungResponse> {
   const [kasse] = await db
-    .select({ mandantId: kassen.mandantId })
+    .select({
+      mandantId:    kassen.mandantId,
+      kassenId:     kassen.kassenId,
+      druckerIp:    kassen.druckerIp,
+      druckerPort:  kassen.druckerPort,
+      druckerAktiv: kassen.druckerAktiv,
+      druckerBreite: kassen.druckerBreite,
+    })
     .from(kassen)
     .where(eq(kassen.id, kasseId))
     .limit(1)
@@ -264,6 +273,30 @@ export async function erstelleBestellung(
     positionen:       norm.positionen.length,
   })
 
+  // Auto-Print: Lieferbon drucken wenn Bondrucker aktiviert
+  const druckerConfig = druckerConfigVonKasse(kasse)
+  if (druckerConfig) {
+    // Mandant-Infos für den Bon-Kopf laden
+    const [mandant] = await db
+      .select({ firmenname: mandanten.firmenname, uid: mandanten.uid })
+      .from(mandanten)
+      .where(eq(mandanten.id, kasse.mandantId))
+      .limit(1)
+
+    if (mandant) {
+      try {
+        const bytes = baueLieferbestellungBon(
+          toDto(row),
+          { firmenname: mandant.firmenname, uid: mandant.uid, kassenId: kasse.kassenId },
+          { breite: kasse.druckerBreite },
+        )
+        await sendBytes(bytes, druckerConfig)
+      } catch {
+        // Druckfehler nicht nach oben werfen — Bestellung ist bereits gespeichert
+      }
+    }
+  }
+
   return toDto(row)
 }
 
@@ -305,6 +338,56 @@ export async function aktualisiereBestellungStatus(
 
   if (!row) throw new Error('Bestellung nicht gefunden')
   return toDto(row)
+}
+
+// ---------------------------------------------------------------------------
+// Manueller Reprint
+// ---------------------------------------------------------------------------
+
+export async function druckeLieferbestellung(
+  db:        Db,
+  id:        string,
+  mandantId: string,
+): Promise<void> {
+  // Bestellung laden
+  const [row] = await db
+    .select()
+    .from(lieferbestellungen)
+    .where(and(eq(lieferbestellungen.id, id), eq(lieferbestellungen.mandantId, mandantId)))
+    .limit(1)
+  if (!row) throw new Error('Bestellung nicht gefunden')
+
+  // Kasse laden
+  const [kasse] = await db
+    .select({
+      kassenId:      kassen.kassenId,
+      druckerIp:     kassen.druckerIp,
+      druckerPort:   kassen.druckerPort,
+      druckerAktiv:  kassen.druckerAktiv,
+      druckerBreite: kassen.druckerBreite,
+    })
+    .from(kassen)
+    .where(eq(kassen.id, row.kasseId))
+    .limit(1)
+  if (!kasse) throw new Error('Kasse nicht gefunden')
+
+  const druckerConfig = druckerConfigVonKasse(kasse)
+  if (!druckerConfig) throw new Error('Drucker nicht konfiguriert oder deaktiviert')
+
+  // Mandant laden
+  const [mandant] = await db
+    .select({ firmenname: mandanten.firmenname, uid: mandanten.uid })
+    .from(mandanten)
+    .where(eq(mandanten.id, mandantId))
+    .limit(1)
+  if (!mandant) throw new Error('Mandant nicht gefunden')
+
+  const bytes = baueLieferbestellungBon(
+    toDto(row),
+    { firmenname: mandant.firmenname, uid: mandant.uid, kassenId: kasse.kassenId },
+    { breite: kasse.druckerBreite },
+  )
+  await sendBytes(bytes, druckerConfig)
 }
 
 // ---------------------------------------------------------------------------

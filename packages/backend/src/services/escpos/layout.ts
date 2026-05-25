@@ -30,8 +30,8 @@
  */
 
 import { Buffer } from 'node:buffer'
-import { MWST_LABELS } from '@kassa/shared'
-import type { BelegResponse, MwStSatz, Tagesabschluss } from '@kassa/shared'
+import { MWST_LABELS, LIEFERBESTELLUNG_PROVIDER_LABELS } from '@kassa/shared'
+import type { BelegResponse, LieferbestellungResponse, MwStSatz, Tagesabschluss } from '@kassa/shared'
 import * as ep from './commands.js'
 
 /** Steuersätze in Prozent gemäß österr. UStG */
@@ -301,4 +301,101 @@ function ustAufteilung(beleg: BelegResponse): UStEintrag[] {
     })
   }
   return eintraege
+}
+
+// ---------------------------------------------------------------------------
+// Lieferbestellungs-Bon
+// ---------------------------------------------------------------------------
+
+/**
+ * Erstellt einen ESC/POS-Bon für eine eingehende Lieferbestellung.
+ *
+ *   ┌────────────────────────────┐
+ *   │  FIRMENNAME                │
+ *   │  UID                       │
+ *   │  ──────────                │
+ *   │  LIEFERBESTELLUNG          │
+ *   │  Lieferando  #EXT-123      │
+ *   │  15.01.2025  14:32         │
+ *   │  ──────────                │
+ *   │  Max Mustermann            │
+ *   │  Tel: +43 123 456 789      │
+ *   │  Adr: Musterstr. 1, Wien   │
+ *   │  ──────────                │
+ *   │  2x Margherita      12,00  │
+ *   │    Notiz: ohne Oliven      │
+ *   │  1x Cola             2,50  │
+ *   │  ──────────                │
+ *   │  GESAMT             14,50  │
+ *   │  ──────────                │
+ *   │  Notiz: bitte klingeln     │
+ *   └────────────────────────────┘
+ */
+export function baueLieferbestellungBon(
+  bestellung: LieferbestellungResponse,
+  mandant:    MandantInfo,
+  kontext:    DruckerKontext,
+): Buffer {
+  const W = kontext.breite
+
+  const parts: Buffer[] = []
+  const add = (b: Buffer): void => { parts.push(b) }
+
+  add(ep.init())
+  add(ep.selectCodepage(19))
+  add(ep.selectInternational(2))
+
+  // ----- Kopf -----
+  add(ep.align('center'))
+  add(ep.font({ bold: true, doubleHeight: true, doubleWidth: true }))
+  add(ep.textLine(truncate(mandant.firmenname.toUpperCase(), Math.floor(W / 2))))
+  add(ep.font())
+  add(ep.textLine(mandant.uid))
+  add(ep.newline())
+
+  // ----- Typ -----
+  add(ep.font({ bold: true, doubleHeight: true }))
+  add(ep.textLine('LIEFERBESTELLUNG'))
+  add(ep.font())
+  const providerLabel = LIEFERBESTELLUNG_PROVIDER_LABELS[bestellung.provider] ?? bestellung.provider
+  add(ep.textLine(`${providerLabel}  #${bestellung.externeId}`))
+  add(ep.textLine(formatDatum(bestellung.createdAt)))
+  add(trennlinie(W))
+
+  // ----- Kundendaten -----
+  add(ep.align('left'))
+  if (bestellung.lieferName)    add(ep.textLine(bestellung.lieferName))
+  if (bestellung.lieferTelefon) add(ep.textLine(`Tel: ${bestellung.lieferTelefon}`))
+  if (bestellung.lieferAdresse) add(ep.textLine(`Adr: ${truncate(bestellung.lieferAdresse, W - 5)}`))
+  if (bestellung.lieferName || bestellung.lieferTelefon || bestellung.lieferAdresse) {
+    add(trennlinie(W))
+  }
+
+  // ----- Positionen -----
+  for (const p of bestellung.positionen) {
+    const mengeStr = `${p.menge}x ${p.bezeichnung}`
+    const preisStr = formatCent(p.einzelpreisBreuttoCent * p.menge)
+    add(ep.textLine(zweispaltig(mengeStr, preisStr, W)))
+    if (p.notiz) {
+      add(ep.textLine(`  Notiz: ${truncate(p.notiz, W - 9)}`))
+    }
+  }
+  add(trennlinie(W))
+
+  // ----- Gesamt -----
+  add(ep.font({ bold: true, doubleHeight: true }))
+  add(ep.textLine(zweispaltig('GESAMT', formatCent(bestellung.gesamtbetragCent), Math.floor(W / 2))))
+  add(ep.font())
+
+  // ----- Bestellnotiz -----
+  if (bestellung.notiz) {
+    add(trennlinie(W))
+    add(ep.align('left'))
+    add(ep.textLine(`Notiz: ${truncate(bestellung.notiz, W - 7)}`))
+  }
+
+  add(ep.newline(2))
+  add(ep.cut())
+
+  return Buffer.concat(parts)
 }
