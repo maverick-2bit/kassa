@@ -65,6 +65,8 @@ interface Props {
   loading?:             boolean
   /** Wenn gesetzt: nur diese Kategorie-IDs im Tab anzeigen (leer = alle) */
   sichtbareKategorieIds?: string[] | undefined
+  /** Artikelbilder anzeigen (default: true) */
+  artikelbilderAktiv?:  boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -74,7 +76,7 @@ interface Props {
 // Sentinel für den Favoriten-Tab
 const FAVORITEN_TAB_ID = '__favoriten__'
 
-export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClick, loading, sichtbareKategorieIds }: Props) {
+export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClick, loading, sichtbareKategorieIds, artikelbilderAktiv = true }: Props) {
   const [aktivKategorieId, setAktivKategorieId] = useState<string | null>(null)
   const [modArtikel, setModArtikel] = useState<Artikel | null>(null)
 
@@ -246,7 +248,7 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
                   disabled={istAusverkauft}
                   onClick={handleClick}
                   className={`
-                    rounded-lg border bg-white transition p-3 text-left shadow-sm
+                    rounded-lg border bg-white transition text-left shadow-sm overflow-hidden
                     ${istAusverkauft
                       ? 'border-gray-200 opacity-50 cursor-not-allowed'
                       : `active:scale-[0.97] border-gray-200 ${farbe
@@ -256,28 +258,41 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
                     }
                   `}
                 >
-                  <p className="text-sm font-medium text-gray-900 line-clamp-2 min-h-[2.5rem]">
-                    {a.bezeichnung}
-                  </p>
-                  <div className="mt-1 flex items-center gap-1.5 flex-wrap">
-                    <p className="text-sm font-bold text-brand-600">
-                      {formatPreis(a.preisBruttoCent)}
+                  {/* Thumbnail — nur wenn Bild vorhanden UND Bilder aktiviert */}
+                  {artikelbilderAktiv && a.bild && (
+                    <div className="w-full h-16 overflow-hidden bg-gray-100">
+                      <img
+                        src={a.bild}
+                        alt=""
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                      />
+                    </div>
+                  )}
+                  <div className="p-3">
+                    <p className="text-sm font-medium text-gray-900 line-clamp-2 min-h-[2.5rem]">
+                      {a.bezeichnung}
                     </p>
-                    {istAusverkauft && (
-                      <span className="text-[10px] bg-red-100 text-red-600 rounded-full px-1.5 py-0.5 font-medium leading-none">
-                        Ausverkauft
-                      </span>
-                    )}
-                    {zeigeBestand && (
-                      <span className="text-[10px] bg-amber-100 text-amber-700 rounded-full px-1.5 py-0.5 font-medium leading-none">
-                        noch {a.lagerstandMenge}
-                      </span>
-                    )}
-                    {!istAusverkauft && hatMods && (
-                      <span className="text-[10px] bg-brand-100 text-brand-700 rounded-full px-1.5 py-0.5 font-medium leading-none">
-                        Optionen
-                      </span>
-                    )}
+                    <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                      <p className="text-sm font-bold text-brand-600">
+                        {formatPreis(a.preisBruttoCent)}
+                      </p>
+                      {istAusverkauft && (
+                        <span className="text-[10px] bg-red-100 text-red-600 rounded-full px-1.5 py-0.5 font-medium leading-none">
+                          Ausverkauft
+                        </span>
+                      )}
+                      {zeigeBestand && (
+                        <span className="text-[10px] bg-amber-100 text-amber-700 rounded-full px-1.5 py-0.5 font-medium leading-none">
+                          noch {a.lagerstandMenge}
+                        </span>
+                      )}
+                      {!istAusverkauft && hatMods && (
+                        <span className="text-[10px] bg-brand-100 text-brand-700 rounded-full px-1.5 py-0.5 font-medium leading-none">
+                          Optionen
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </button>
               )

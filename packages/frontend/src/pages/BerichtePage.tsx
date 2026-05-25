@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import type { BerichtGruppierung, BerichtResponse } from '@kassa/shared'
+import type { ArtikelBerichtResponse, BerichtGesamt, BerichtGruppierung, BerichtResponse, WarengruppeBerichtResponse } from '@kassa/shared'
 import { berichtApi } from '../lib/api'
 import { getAuth } from '../lib/auth'
 import { formatPreis } from '../lib/format'
@@ -96,14 +96,64 @@ function standardGruppierung(preset: ZeitraumPreset): BerichtGruppierung {
 // Haupt-Komponente
 // ---------------------------------------------------------------------------
 
+type BerichtTab = 'gesamtumsatz' | 'umsatz' | 'zahlungsart' | 'warengruppe' | 'artikel'
+
+const TABS: [BerichtTab, string][] = [
+  ['gesamtumsatz', 'Übersicht'],
+  ['umsatz',       'Umsatz'],
+  ['zahlungsart',  'Zahlungsart'],
+  ['warengruppe',  'Warengruppe'],
+  ['artikel',      'Artikel'],
+]
+
 export function BerichtePage() {
+  const [aktTab, setAktTab] = useState<BerichtTab>('gesamtumsatz')
+
+  return (
+    <div className="mx-auto max-w-6xl px-4 py-6 sm:py-8 space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Berichte</h1>
+        <p className="mt-1 text-sm text-gray-500">Umsatz- und Artikel-Auswertungen</p>
+      </div>
+
+      <div className="flex gap-1 border-b border-gray-200 overflow-x-auto">
+        {TABS.map(([tab, label]) => (
+          <button
+            key={tab}
+            type="button"
+            onClick={() => setAktTab(tab)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition whitespace-nowrap ${
+              aktTab === tab
+                ? 'border-brand-600 text-brand-700'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {aktTab === 'gesamtumsatz' && <GesamtumsatzBericht />}
+      {aktTab === 'umsatz'       && <UmsatzBericht />}
+      {aktTab === 'zahlungsart'  && <ZahlungsartBericht />}
+      {aktTab === 'warengruppe'  && <WarengruppeBericht />}
+      {aktTab === 'artikel'      && <ArtikelBericht />}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Umsatz-Bericht (bestehende Logik, in eigene Komponente extrahiert)
+// ---------------------------------------------------------------------------
+
+function UmsatzBericht() {
   const auth = getAuth()!
 
   const [preset, setPreset]       = useState<ZeitraumPreset>('monat')
   const [von, setVon]             = useState(() => berechneZeitraum('monat', heute()).von)
   const [bis, setBis]             = useState(() => berechneZeitraum('monat', heute()).bis)
   const [gruppierung, setGruppierung] = useState<BerichtGruppierung>('woche')
-  const [kasseIds, setKasseIds]   = useState<string[]>([])  // leer = alle
+  const [kasseIds, setKasseIds]   = useState<string[]>([])
   const [nurZiel, setNurZiel]     = useState(false)
   const [geladenerFilter, setGeladenerFilter] = useState<{
     kasseIds:          string[]
@@ -114,7 +164,7 @@ export function BerichtePage() {
   } | null>(null)
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['bericht', geladenerFilter],
+    queryKey: ['bericht-umsatz', geladenerFilter],
     queryFn:  () => berichtApi.umsatz(geladenerFilter!),
     enabled:  geladenerFilter !== null,
   })
@@ -147,20 +197,10 @@ export function BerichtePage() {
   const alleKassenGewaehlt = kasseIds.length === 0
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 sm:py-8 space-y-6">
-      {/* Kopfzeile */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Umsatzbericht</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Umsatzauswertung nach Zeitraum, Kasse und Zahlungsart
-        </p>
-      </div>
-
+    <div className="space-y-6">
       {/* Filter-Panel */}
       <div className="rounded-lg bg-white shadow-sm border border-gray-200 p-4 space-y-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-
-          {/* Zeitraum-Preset */}
           <div>
             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
               Zeitraum
@@ -183,7 +223,6 @@ export function BerichtePage() {
             </div>
           </div>
 
-          {/* Von / Bis + Gruppierung */}
           <div className="space-y-3">
             <div>
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
@@ -236,7 +275,6 @@ export function BerichtePage() {
             </div>
           </div>
 
-          {/* Kassen + Zielrechnungen */}
           <div className="space-y-3">
             {kassenAnzeige.length > 1 && (
               <div>
@@ -245,43 +283,22 @@ export function BerichtePage() {
                 </label>
                 <div className="space-y-1">
                   <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={alleKassenGewaehlt}
-                      onChange={() => setKasseIds([])}
-                      className="rounded"
-                    />
-                    <span className={alleKassenGewaehlt ? 'font-medium text-gray-900' : 'text-gray-600'}>
-                      Alle Kassen
-                    </span>
+                    <input type="checkbox" checked={alleKassenGewaehlt} onChange={() => setKasseIds([])} className="rounded" />
+                    <span className={alleKassenGewaehlt ? 'font-medium text-gray-900' : 'text-gray-600'}>Alle Kassen</span>
                   </label>
                   {kassenAnzeige.map(k => (
                     <label key={k.id} className="flex items-center gap-2 text-sm cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={kasseIds.includes(k.id)}
-                        onChange={() => toggleKasse(k.id)}
-                        className="rounded"
-                      />
-                      <span className={kasseIds.includes(k.id) ? 'font-medium text-gray-900' : 'text-gray-600'}>
-                        {k.label}
-                      </span>
+                      <input type="checkbox" checked={kasseIds.includes(k.id)} onChange={() => toggleKasse(k.id)} className="rounded" />
+                      <span className={kasseIds.includes(k.id) ? 'font-medium text-gray-900' : 'text-gray-600'}>{k.label}</span>
                     </label>
                   ))}
                 </div>
               </div>
             )}
             <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                Filter
-              </label>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Filter</label>
               <label className="flex items-center gap-2 text-sm cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={nurZiel}
-                  onChange={(e) => setNurZiel(e.target.checked)}
-                  className="rounded"
-                />
+                <input type="checkbox" checked={nurZiel} onChange={(e) => setNurZiel(e.target.checked)} className="rounded" />
                 <span>Nur Zielrechnungen</span>
               </label>
             </div>
@@ -289,21 +306,208 @@ export function BerichtePage() {
         </div>
 
         <div className="pt-2 border-t border-gray-100 flex justify-end">
-          <Button onClick={ladeBericht} loading={isLoading}>
-            Bericht laden
-          </Button>
+          <Button onClick={ladeBericht} loading={isLoading}>Bericht laden</Button>
         </div>
       </div>
 
-      {/* Fehler */}
       {isError && (
         <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
           {error instanceof Error ? error.message : 'Fehler beim Laden'}
         </div>
       )}
-
-      {/* Ergebnis */}
       {data && <BerichtErgebnis data={data} gruppierung={geladenerFilter!.gruppierung} />}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Artikel-Bericht
+// ---------------------------------------------------------------------------
+
+function ArtikelBericht() {
+  const auth = getAuth()!
+
+  const [preset, setPreset] = useState<ZeitraumPreset>('monat')
+  const [von, setVon]       = useState(() => berechneZeitraum('monat', heute()).von)
+  const [bis, setBis]       = useState(() => berechneZeitraum('monat', heute()).bis)
+  const [kasseIds, setKasseIds] = useState<string[]>([])
+  const [geladenerFilter, setGeladenerFilter] = useState<{
+    kasseIds: string[]; von: string; bis: string
+  } | null>(null)
+
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: ['bericht-artikel', geladenerFilter],
+    queryFn:  () => berichtApi.artikel(geladenerFilter!),
+    enabled:  geladenerFilter !== null,
+  })
+
+  function ladeBericht() {
+    setGeladenerFilter({ kasseIds, von, bis })
+  }
+
+  function waehlePreset(p: ZeitraumPreset) {
+    setPreset(p)
+    if (p !== 'individuell') {
+      const { von: v, bis: b } = berechneZeitraum(p, heute())
+      setVon(v)
+      setBis(b)
+    }
+  }
+
+  function toggleKasse(id: string) {
+    setKasseIds(prev => prev.includes(id) ? prev.filter(k => k !== id) : [...prev, id])
+  }
+
+  const kassenAnzeige = useMemo(() => auth.kassen.map(k => ({
+    id: k.id, label: k.bezeichnung ?? k.kassenId,
+  })), [auth.kassen])
+  const alleKassenGewaehlt = kasseIds.length === 0
+
+  return (
+    <div className="space-y-6">
+      <div className="rounded-lg bg-white shadow-sm border border-gray-200 p-4 space-y-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Zeitraum</label>
+            <div className="space-y-1">
+              {ZEITRAUM_OPTIONEN.map(opt => (
+                <button
+                  key={opt.key}
+                  type="button"
+                  onClick={() => waehlePreset(opt.key)}
+                  className={`w-full text-left px-3 py-1.5 rounded text-sm transition ${
+                    preset === opt.key ? 'bg-brand-50 text-brand-700 font-medium' : 'text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Datum</label>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500 w-6">Von</span>
+                <input
+                  type="date" value={von} max={bis}
+                  onChange={(e) => { setVon(e.target.value); setPreset('individuell') }}
+                  className="flex-1 rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500 w-6">Bis</span>
+                <input
+                  type="date" value={bis} min={von} max={heute()}
+                  onChange={(e) => { setBis(e.target.value); setPreset('individuell') }}
+                  className="flex-1 rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+                />
+              </div>
+            </div>
+          </div>
+
+          {kassenAnzeige.length > 1 && (
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Kasse</label>
+              <div className="space-y-1">
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input type="checkbox" checked={alleKassenGewaehlt} onChange={() => setKasseIds([])} className="rounded" />
+                  <span className={alleKassenGewaehlt ? 'font-medium text-gray-900' : 'text-gray-600'}>Alle Kassen</span>
+                </label>
+                {kassenAnzeige.map(k => (
+                  <label key={k.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input type="checkbox" checked={kasseIds.includes(k.id)} onChange={() => toggleKasse(k.id)} className="rounded" />
+                    <span className={kasseIds.includes(k.id) ? 'font-medium text-gray-900' : 'text-gray-600'}>{k.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="pt-2 border-t border-gray-100 flex justify-end">
+          <Button onClick={ladeBericht} loading={isLoading}>Bericht laden</Button>
+        </div>
+      </div>
+
+      {isError && (
+        <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {error instanceof Error ? error.message : 'Fehler beim Laden'}
+        </div>
+      )}
+      {data && <ArtikelBerichtTabelle data={data} />}
+    </div>
+  )
+}
+
+function ArtikelBerichtTabelle({ data }: { data: ArtikelBerichtResponse }) {
+  if (data.zeilen.length === 0) {
+    return (
+      <div className="rounded-lg bg-white shadow-sm border border-gray-200 p-8 text-center text-sm text-gray-500">
+        Keine Belege im gewählten Zeitraum.
+      </div>
+    )
+  }
+
+  const gesamtUmsatz = data.zeilen.reduce((s, z) => s + z.umsatzCent, 0)
+  const gesamtMenge  = data.zeilen.reduce((s, z) => s + z.mengeSumme, 0)
+
+  return (
+    <div className="rounded-lg bg-white shadow-sm border border-gray-200 overflow-hidden">
+      <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-gray-700">
+          {data.zeilen.length} Artikel ({formatDatumAnzeige(data.von)} – {formatDatumAnzeige(data.bis)})
+        </h2>
+        <CsvExportButton onClick={() => {
+          const kopfzeile = ['Rang', 'Artikel', 'Menge', 'Umsatz (€)', 'Anteil (%)']
+          const datenzeilen = data.zeilen.map((z, i) => [
+            String(i + 1),
+            z.bezeichnung,
+            String(z.mengeSumme),
+            centZuEuro(z.umsatzCent),
+            gesamtUmsatz !== 0 ? String(Math.round(Math.abs(z.umsatzCent / gesamtUmsatz) * 100)) : '0',
+          ])
+          const fusszeile = ['', 'Gesamt', String(gesamtMenge), centZuEuro(gesamtUmsatz), '100']
+          csvHerunterladen(`bericht-artikel_${data.von}_${data.bis}.csv`, [kopfzeile, ...datenzeilen, fusszeile])
+        }} />
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500 border-b border-gray-200">
+            <tr>
+              <th className="px-4 py-2 font-semibold">#</th>
+              <th className="px-4 py-2 font-semibold">Artikel</th>
+              <th className="px-4 py-2 font-semibold text-right">Menge</th>
+              <th className="px-4 py-2 font-semibold text-right">Umsatz</th>
+              <th className="px-4 py-2 font-semibold text-right">Anteil</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {data.zeilen.map((z, i) => (
+              <tr key={z.bezeichnung} className="hover:bg-gray-50">
+                <td className="px-4 py-2 text-gray-400 font-mono text-xs">{i + 1}</td>
+                <td className="px-4 py-2 text-gray-900">{z.bezeichnung}</td>
+                <td className="px-4 py-2 text-right font-mono text-gray-700">{z.mengeSumme}</td>
+                <td className="px-4 py-2 text-right font-mono font-semibold text-gray-900">
+                  {formatPreis(z.umsatzCent)}
+                </td>
+                <td className="px-4 py-2 text-right text-gray-500 text-xs">
+                  {gesamtUmsatz !== 0 ? `${Math.round(Math.abs(z.umsatzCent / gesamtUmsatz) * 100)} %` : ''}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="border-t-2 border-gray-300 bg-gray-50 font-semibold">
+              <td className="px-4 py-2" colSpan={2}>Gesamt</td>
+              <td className="px-4 py-2 text-right font-mono text-gray-900">{gesamtMenge}</td>
+              <td className="px-4 py-2 text-right font-mono text-gray-900">{formatPreis(gesamtUmsatz)}</td>
+              <td className="px-4 py-2 text-right text-gray-400 text-xs">100 %</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
     </div>
   )
 }
@@ -340,11 +544,33 @@ function BerichtErgebnis({ data, gruppierung }: { data: BerichtResponse; gruppie
 
       {/* Tabelle */}
       <div className="rounded-lg bg-white shadow-sm border border-gray-200 overflow-hidden">
-        <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+        <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-gray-700">
             {data.zeilen.length} {gruppierung === 'tag' ? 'Tage' : gruppierung === 'woche' ? 'Wochen' : 'Monate'}
             {' '}({formatDatumAnzeige(data.von)} – {formatDatumAnzeige(data.bis)})
           </h2>
+          <CsvExportButton onClick={() => {
+            const kopfzeile = ['Periode', 'Belege', 'Stornos', 'Umsatz (€)', 'Bar (€)', 'Karte (€)', 'Sonstige (€)']
+            const datenzeilen = data.zeilen.map(z => [
+              z.periode,
+              String(z.anzahlBelege),
+              String(z.anzahlStornos),
+              centZuEuro(z.umsatzCent),
+              centZuEuro(z.barCent),
+              centZuEuro(z.karteCent),
+              centZuEuro(z.sonstigCent),
+            ])
+            const fusszeile = [
+              'Gesamt',
+              String(g.anzahlBelege),
+              String(g.anzahlStornos),
+              centZuEuro(g.umsatzCent),
+              centZuEuro(g.barCent),
+              centZuEuro(g.karteCent),
+              centZuEuro(g.sonstigCent),
+            ]
+            csvHerunterladen(`bericht-umsatz_${data.von}_${data.bis}.csv`, [kopfzeile, ...datenzeilen, fusszeile])
+          }} />
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -416,8 +642,18 @@ function BerichtErgebnis({ data, gruppierung }: { data: BerichtResponse; gruppie
       {/* USt-Aufteilung */}
       {g.mwst.length > 0 && (
         <div className="rounded-lg bg-white shadow-sm border border-gray-200 overflow-hidden">
-          <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+          <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-gray-700">USt-Aufteilung</h2>
+            <CsvExportButton onClick={() => {
+              const kopfzeile = ['Steuersatz', 'Brutto (€)', 'Netto (€)', 'USt (€)']
+              const datenzeilen = g.mwst.map(z => [
+                z.label,
+                centZuEuro(z.bruttoCent),
+                centZuEuro(z.nettoCent),
+                centZuEuro(z.ustCent),
+              ])
+              csvHerunterladen(`bericht-ust_${data.von}_${data.bis}.csv`, [kopfzeile, ...datenzeilen])
+            }} />
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -490,4 +726,463 @@ function pct(teil: number, gesamt: number): string {
 function formatDatumAnzeige(datum: string): string {
   const [y, m, d] = datum.split('-')
   return `${d}.${m}.${y}`
+}
+
+// ---------------------------------------------------------------------------
+// CSV-Export-Hilfsfunktionen
+// ---------------------------------------------------------------------------
+
+function centZuEuro(cent: number): string {
+  return (cent / 100).toFixed(2).replace('.', ',')
+}
+
+function escapeCsvCell(v: string): string {
+  if (v.includes(';') || v.includes('"') || v.includes('\n')) {
+    return `"${v.replace(/"/g, '""')}"`
+  }
+  return v
+}
+
+function csvHerunterladen(dateiname: string, zeilen: string[][]): void {
+  // BOM damit Excel in DE/AT direkt korrekt öffnet
+  const inhalt = '﻿' + zeilen
+    .map(z => z.map(escapeCsvCell).join(';'))
+    .join('\r\n')
+  const blob = new Blob([inhalt], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = dateiname
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+function CsvExportButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="text-xs font-medium text-brand-600 hover:text-brand-700 hover:underline"
+    >
+      CSV exportieren
+    </button>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Gemeinsamer Filter-Block (Zeitraum + optionale Kasse) — wiederverwendet
+// ---------------------------------------------------------------------------
+
+function FilterPanel({
+  preset, onPreset, von, onVon, bis, onBis,
+  kasseIds, onToggleKasse,
+  isLoading, onLaden,
+  children,
+}: {
+  preset: ZeitraumPreset
+  onPreset: (p: ZeitraumPreset) => void
+  von: string
+  onVon: (v: string) => void
+  bis: string
+  onBis: (v: string) => void
+  kasseIds: string[]
+  onToggleKasse: (id: string) => void
+  isLoading: boolean
+  onLaden: () => void
+  children?: React.ReactNode
+}) {
+  const auth = getAuth()!
+  const kassenAnzeige = useMemo(() => auth.kassen.map(k => ({
+    id: k.id, label: k.bezeichnung ?? k.kassenId,
+  })), [auth.kassen])
+  const alleKassenGewaehlt = kasseIds.length === 0
+
+  return (
+    <div className="rounded-lg bg-white shadow-sm border border-gray-200 p-4 space-y-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div>
+          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Zeitraum</label>
+          <div className="space-y-1">
+            {ZEITRAUM_OPTIONEN.map(opt => (
+              <button key={opt.key} type="button" onClick={() => onPreset(opt.key)}
+                className={`w-full text-left px-3 py-1.5 rounded text-sm transition ${
+                  preset === opt.key ? 'bg-brand-50 text-brand-700 font-medium' : 'text-gray-700 hover:bg-gray-100'
+                }`}>
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Datum</label>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500 w-6">Von</span>
+                <input type="date" value={von} max={bis}
+                  onChange={e => { onVon(e.target.value); onPreset('individuell') }}
+                  className="flex-1 rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none" />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500 w-6">Bis</span>
+                <input type="date" value={bis} min={von} max={heute()}
+                  onChange={e => { onBis(e.target.value); onPreset('individuell') }}
+                  className="flex-1 rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none" />
+              </div>
+            </div>
+          </div>
+          {children}
+        </div>
+
+        {kassenAnzeige.length > 1 && (
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Kasse</label>
+            <div className="space-y-1">
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input type="checkbox" checked={alleKassenGewaehlt} onChange={() => { for (const k of kassenAnzeige) onToggleKasse(k.id); }} className="rounded" />
+                <span className={alleKassenGewaehlt ? 'font-medium text-gray-900' : 'text-gray-600'}>Alle Kassen</span>
+              </label>
+              {kassenAnzeige.map(k => (
+                <label key={k.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input type="checkbox" checked={kasseIds.includes(k.id)} onChange={() => onToggleKasse(k.id)} className="rounded" />
+                  <span className={kasseIds.includes(k.id) ? 'font-medium text-gray-900' : 'text-gray-600'}>{k.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+      <div className="pt-2 border-t border-gray-100 flex justify-end">
+        <Button onClick={onLaden} loading={isLoading}>Bericht laden</Button>
+      </div>
+    </div>
+  )
+}
+
+function useFilterState(initialPreset: ZeitraumPreset = 'monat') {
+  const [preset, setPreset]   = useState<ZeitraumPreset>(initialPreset)
+  const [von, setVon]         = useState(() => berechneZeitraum(initialPreset, heute()).von)
+  const [bis, setBis]         = useState(() => berechneZeitraum(initialPreset, heute()).bis)
+  const [kasseIds, setKasseIds] = useState<string[]>([])
+
+  function waehlePreset(p: ZeitraumPreset) {
+    setPreset(p)
+    if (p !== 'individuell') {
+      const { von: v, bis: b } = berechneZeitraum(p, heute())
+      setVon(v); setBis(b)
+    }
+  }
+  function toggleKasse(id: string) {
+    setKasseIds(prev => prev.includes(id) ? prev.filter(k => k !== id) : [...prev, id])
+  }
+
+  return { preset, von, bis, kasseIds, waehlePreset, setVon, setBis, toggleKasse }
+}
+
+// ---------------------------------------------------------------------------
+// Gesamtumsatz-Übersicht
+// ---------------------------------------------------------------------------
+
+function GesamtumsatzBericht() {
+  const { preset, von, bis, kasseIds, waehlePreset, setVon, setBis, toggleKasse } = useFilterState()
+  const [geladenerFilter, setGeladenerFilter] = useState<{ kasseIds: string[]; von: string; bis: string; gruppierung: 'monat' } | null>(null)
+
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: ['bericht-gesamt', geladenerFilter],
+    queryFn:  () => berichtApi.umsatz({ ...geladenerFilter!, gruppierung: 'monat', nurZielrechnungen: false }),
+    enabled:  geladenerFilter !== null,
+  })
+
+  return (
+    <div className="space-y-6">
+      <FilterPanel preset={preset} onPreset={waehlePreset} von={von} onVon={setVon} bis={bis} onBis={setBis}
+        kasseIds={kasseIds} onToggleKasse={toggleKasse} isLoading={isLoading}
+        onLaden={() => setGeladenerFilter({ kasseIds, von, bis, gruppierung: 'monat' })} />
+
+      {isError && <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error instanceof Error ? error.message : 'Fehler'}</div>}
+      {data && <GesamtumsatzErgebnis data={data.gesamt} von={data.von} bis={data.bis} />}
+    </div>
+  )
+}
+
+function GesamtumsatzErgebnis({ data, von, bis }: { data: BerichtGesamt; von: string; bis: string }) {
+  const avgBonCent = data.anzahlBelege > 0
+    ? Math.round(data.umsatzCent / data.anzahlBelege)
+    : 0
+  const stornoPct = data.anzahlBelege > 0
+    ? Math.round((data.anzahlStornos / data.anzahlBelege) * 100)
+    : 0
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <Kachel label="Gesamtumsatz"    wert={formatPreis(data.umsatzCent)}    sub={`${formatDatumAnzeige(von)} – ${formatDatumAnzeige(bis)}`} hervor />
+        <Kachel label="Anzahl Belege"   wert={String(data.anzahlBelege)}       sub={data.anzahlStornos > 0 ? `${data.anzahlStornos} Stornos (${stornoPct} %)` : 'keine Stornos'} />
+        <Kachel label="Ø Bon-Wert"      wert={formatPreis(avgBonCent)}         sub="pro Barzahlungsbeleg" />
+        <Kachel label="Bar"             wert={formatPreis(data.barCent)}        sub={pct(data.barCent, data.umsatzCent)} />
+      </div>
+
+      {data.mwst.length > 0 && (
+        <div className="rounded-lg bg-white shadow-sm border border-gray-200 overflow-hidden">
+          <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-gray-700">USt-Aufteilung</h2>
+            <CsvExportButton onClick={() => {
+              const kopfzeile = ['Steuersatz', 'Brutto (€)', 'Netto (€)', 'USt (€)', 'Anteil (%)']
+              const datenzeilen = data.mwst.map(z => [
+                z.label,
+                centZuEuro(z.bruttoCent),
+                centZuEuro(z.nettoCent),
+                centZuEuro(z.ustCent),
+                data.umsatzCent !== 0 ? String(Math.round(Math.abs(z.bruttoCent / data.umsatzCent) * 100)) : '0',
+              ])
+              csvHerunterladen(`bericht-ust_${von}_${bis}.csv`, [kopfzeile, ...datenzeilen])
+            }} />
+          </div>
+          <table className="w-full text-sm">
+            <thead className="text-left text-xs uppercase tracking-wide text-gray-500">
+              <tr>
+                <th className="px-4 py-2 font-semibold">Steuersatz</th>
+                <th className="px-4 py-2 font-semibold text-right">Brutto</th>
+                <th className="px-4 py-2 font-semibold text-right">Netto</th>
+                <th className="px-4 py-2 font-semibold text-right">USt</th>
+                <th className="px-4 py-2 font-semibold text-right">Anteil</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {data.mwst.map(z => (
+                <tr key={z.satzKey} className="hover:bg-gray-50">
+                  <td className="px-4 py-2 text-gray-700">{z.label}</td>
+                  <td className="px-4 py-2 text-right font-mono text-gray-900">{formatPreis(z.bruttoCent)}</td>
+                  <td className="px-4 py-2 text-right font-mono text-gray-600">{formatPreis(z.nettoCent)}</td>
+                  <td className="px-4 py-2 text-right font-mono text-gray-600">{formatPreis(z.ustCent)}</td>
+                  <td className="px-4 py-2 text-right text-gray-500 text-xs">{pct(z.bruttoCent, data.umsatzCent)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Zahlungsart-Bericht
+// ---------------------------------------------------------------------------
+
+function ZahlungsartBericht() {
+  const { preset, von, bis, kasseIds, waehlePreset, setVon, setBis, toggleKasse } = useFilterState()
+  const [geladenerFilter, setGeladenerFilter] = useState<{ kasseIds: string[]; von: string; bis: string; gruppierung: BerichtGruppierung } | null>(null)
+
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: ['bericht-zahlungsart', geladenerFilter],
+    queryFn:  () => berichtApi.umsatz({ ...geladenerFilter!, nurZielrechnungen: false }),
+    enabled:  geladenerFilter !== null,
+  })
+
+  return (
+    <div className="space-y-6">
+      <FilterPanel preset={preset} onPreset={waehlePreset} von={von} onVon={setVon} bis={bis} onBis={setBis}
+        kasseIds={kasseIds} onToggleKasse={toggleKasse} isLoading={isLoading}
+        onLaden={() => setGeladenerFilter({ kasseIds, von, bis, gruppierung: standardGruppierung(preset) })} />
+
+      {isError && <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error instanceof Error ? error.message : 'Fehler'}</div>}
+      {data && <ZahlungsartErgebnis data={data} />}
+    </div>
+  )
+}
+
+function ZahlungsartErgebnis({ data }: { data: BerichtResponse }) {
+  const g = data.gesamt
+  if (g.anzahlBelege === 0) {
+    return <div className="rounded-lg bg-white border border-gray-200 p-8 text-center text-sm text-gray-500">Keine Belege im gewählten Zeitraum.</div>
+  }
+
+  const zahlarten = [
+    { label: 'Barzahlung',  cent: g.barCent,     farbe: 'bg-green-500'  },
+    { label: 'Kartenzahlung', cent: g.karteCent,  farbe: 'bg-blue-500'   },
+    { label: 'Sonstige',    cent: g.sonstigCent,  farbe: 'bg-purple-500' },
+  ].filter(z => z.cent !== 0)
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {zahlarten.map(z => (
+          <div key={z.label} className="rounded-lg border border-gray-200 bg-white shadow-sm p-4">
+            <div className="flex justify-between items-start mb-2">
+              <p className="text-xs text-gray-500">{z.label}</p>
+              <span className="text-xs font-medium text-gray-500">{pct(z.cent, g.umsatzCent)}</span>
+            </div>
+            <p className="font-mono font-semibold text-xl text-gray-900">{formatPreis(z.cent)}</p>
+            <div className="mt-3 h-2 rounded-full bg-gray-100 overflow-hidden">
+              <div
+                className={`h-full rounded-full ${z.farbe}`}
+                style={{ width: g.umsatzCent !== 0 ? `${Math.round(Math.abs(z.cent / g.umsatzCent) * 100)}%` : '0%' }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="rounded-lg bg-white shadow-sm border border-gray-200 overflow-hidden">
+        <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-gray-700">Verlauf ({formatDatumAnzeige(data.von)} – {formatDatumAnzeige(data.bis)})</h2>
+          <CsvExportButton onClick={() => {
+            const kopfzeile = ['Periode', 'Bar (€)', 'Karte (€)', 'Sonstige (€)', 'Gesamt (€)']
+            const datenzeilen = data.zeilen.map(z => [
+              z.periode,
+              centZuEuro(z.barCent),
+              centZuEuro(z.karteCent),
+              centZuEuro(z.sonstigCent),
+              centZuEuro(z.umsatzCent),
+            ])
+            const fusszeile = [
+              'Gesamt',
+              centZuEuro(g.barCent),
+              centZuEuro(g.karteCent),
+              centZuEuro(g.sonstigCent),
+              centZuEuro(g.umsatzCent),
+            ]
+            csvHerunterladen(`bericht-zahlungsart_${data.von}_${data.bis}.csv`, [kopfzeile, ...datenzeilen, fusszeile])
+          }} />
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500 border-b border-gray-200">
+              <tr>
+                <th className="px-4 py-2 font-semibold">Periode</th>
+                <th className="px-4 py-2 font-semibold text-right">Bar</th>
+                <th className="px-4 py-2 font-semibold text-right">Karte</th>
+                {g.sonstigCent !== 0 && <th className="px-4 py-2 font-semibold text-right">Sonstige</th>}
+                <th className="px-4 py-2 font-semibold text-right">Gesamt</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {data.zeilen.map(z => (
+                <tr key={z.periode} className="hover:bg-gray-50">
+                  <td className="px-4 py-2 font-medium text-gray-900">{z.periode}</td>
+                  <td className="px-4 py-2 text-right font-mono text-gray-700">{z.barCent !== 0 ? formatPreis(z.barCent) : '—'}</td>
+                  <td className="px-4 py-2 text-right font-mono text-gray-700">{z.karteCent !== 0 ? formatPreis(z.karteCent) : '—'}</td>
+                  {g.sonstigCent !== 0 && <td className="px-4 py-2 text-right font-mono text-gray-700">{z.sonstigCent !== 0 ? formatPreis(z.sonstigCent) : '—'}</td>}
+                  <td className="px-4 py-2 text-right font-mono font-semibold text-gray-900">{formatPreis(z.umsatzCent)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-gray-300 bg-gray-50 font-semibold">
+                <td className="px-4 py-2 text-gray-900">Gesamt</td>
+                <td className="px-4 py-2 text-right font-mono">{g.barCent !== 0 ? formatPreis(g.barCent) : '—'}</td>
+                <td className="px-4 py-2 text-right font-mono">{g.karteCent !== 0 ? formatPreis(g.karteCent) : '—'}</td>
+                {g.sonstigCent !== 0 && <td className="px-4 py-2 text-right font-mono">{formatPreis(g.sonstigCent)}</td>}
+                <td className="px-4 py-2 text-right font-mono text-gray-900">{formatPreis(g.umsatzCent)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Warengruppen-Bericht
+// ---------------------------------------------------------------------------
+
+function WarengruppeBericht() {
+  const { preset, von, bis, kasseIds, waehlePreset, setVon, setBis, toggleKasse } = useFilterState()
+  const [geladenerFilter, setGeladenerFilter] = useState<{ kasseIds: string[]; von: string; bis: string } | null>(null)
+
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: ['bericht-warengruppe', geladenerFilter],
+    queryFn:  () => berichtApi.warengruppe(geladenerFilter!),
+    enabled:  geladenerFilter !== null,
+  })
+
+  return (
+    <div className="space-y-6">
+      <FilterPanel preset={preset} onPreset={waehlePreset} von={von} onVon={setVon} bis={bis} onBis={setBis}
+        kasseIds={kasseIds} onToggleKasse={toggleKasse} isLoading={isLoading}
+        onLaden={() => setGeladenerFilter({ kasseIds, von, bis })} />
+
+      {isError && <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error instanceof Error ? error.message : 'Fehler'}</div>}
+      {data && <WarengruppeTabelle data={data} />}
+    </div>
+  )
+}
+
+function WarengruppeTabelle({ data }: { data: WarengruppeBerichtResponse }) {
+  if (data.zeilen.length === 0) {
+    return <div className="rounded-lg bg-white border border-gray-200 p-8 text-center text-sm text-gray-500">Keine Belege im gewählten Zeitraum.</div>
+  }
+
+  const gesamtUmsatz = data.zeilen.reduce((s, z) => s + z.umsatzCent, 0)
+
+  return (
+    <div className="rounded-lg bg-white shadow-sm border border-gray-200 overflow-hidden">
+      <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-gray-700">
+          {data.zeilen.length} Warengruppen ({formatDatumAnzeige(data.von)} – {formatDatumAnzeige(data.bis)})
+        </h2>
+        <CsvExportButton onClick={() => {
+          const kopfzeile = ['Warengruppe', 'Menge', 'Umsatz (€)', 'Anteil (%)']
+          const datenzeilen = data.zeilen.map(z => [
+            z.kategorieName,
+            String(z.mengeSumme),
+            centZuEuro(z.umsatzCent),
+            gesamtUmsatz !== 0 ? String(Math.round(Math.abs(z.umsatzCent / gesamtUmsatz) * 100)) : '0',
+          ])
+          const fusszeile = [
+            'Gesamt',
+            String(data.zeilen.reduce((s, z) => s + z.mengeSumme, 0)),
+            centZuEuro(gesamtUmsatz),
+            '100',
+          ]
+          csvHerunterladen(`bericht-warengruppe_${data.von}_${data.bis}.csv`, [kopfzeile, ...datenzeilen, fusszeile])
+        }} />
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500 border-b border-gray-200">
+            <tr>
+              <th className="px-4 py-2 font-semibold">Warengruppe</th>
+              <th className="px-4 py-2 font-semibold text-right">Menge</th>
+              <th className="px-4 py-2 font-semibold text-right">Umsatz</th>
+              <th className="px-4 py-2 font-semibold text-right">Anteil</th>
+              <th className="px-4 py-2 font-semibold">Verteilung</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {data.zeilen.map(z => {
+              const anteil = gesamtUmsatz !== 0 ? Math.round(Math.abs(z.umsatzCent / gesamtUmsatz) * 100) : 0
+              return (
+                <tr key={z.kategorieName} className="hover:bg-gray-50">
+                  <td className="px-4 py-2 text-gray-900 font-medium">{z.kategorieName}</td>
+                  <td className="px-4 py-2 text-right font-mono text-gray-700">{z.mengeSumme}</td>
+                  <td className="px-4 py-2 text-right font-mono font-semibold text-gray-900">{formatPreis(z.umsatzCent)}</td>
+                  <td className="px-4 py-2 text-right text-gray-500 text-xs">{anteil} %</td>
+                  <td className="px-4 py-2 w-32">
+                    <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+                      <div className="h-full rounded-full bg-brand-500" style={{ width: `${anteil}%` }} />
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+          <tfoot>
+            <tr className="border-t-2 border-gray-300 bg-gray-50 font-semibold">
+              <td className="px-4 py-2 text-gray-900">Gesamt</td>
+              <td className="px-4 py-2 text-right font-mono">{data.zeilen.reduce((s, z) => s + z.mengeSumme, 0)}</td>
+              <td className="px-4 py-2 text-right font-mono text-gray-900">{formatPreis(gesamtUmsatz)}</td>
+              <td className="px-4 py-2 text-right text-gray-400 text-xs">100 %</td>
+              <td className="px-4 py-2" />
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  )
 }

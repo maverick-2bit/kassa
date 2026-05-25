@@ -148,6 +148,69 @@ export interface DEP7BelegPackage {
 }
 
 // ---------------------------------------------------------------------------
+// DEP131 – Erweitertes Datenerfassungsprotokoll (§131 BAO)
+// ---------------------------------------------------------------------------
+
+/** Einzelne Position für den DEP131-Export (menschenlesbar) */
+export interface DEP131Position {
+  Bezeichnung:             string
+  Menge:                   number
+  EinzelpreisBreuttoCent:  number
+  MwStSatz:                MwStSatz
+}
+
+/** Vollständiger Beleg für den DEP131-Export */
+export interface DEP131Beleg {
+  Belegtyp:                    BelegTyp
+  Belegnummer:                 number
+  DatumUhrzeit:                string
+  Positionen:                  DEP131Position[]
+  Betraege: {
+    NormalCent:      number
+    Ermaessigt1Cent: number
+    Ermaessigt2Cent: number
+    NullCent:        number
+    BesondersCent:   number
+  }
+  Zahlung: {
+    BarCent:      number
+    KarteCent:    number
+    SonstigeCent: number
+  }
+  MaschinenlesbareCode:        string
+  Signaturwert:                string
+  UmsatzzaehlerVerschluesselt: string
+  ZertifikatSN:                string
+  SigVorbeleg:                 string
+}
+
+/** DEP131-Export-Datei (strukturiert, menschenlesbar + maschinell verarbeitbar) */
+export interface DEP131Export {
+  exportDatum: string
+  kassenId:    string
+  Belege:      DEP131Beleg[]
+}
+
+/** Eingabe-Daten pro Beleg für die DEP131-Assemblierung */
+export interface DEP131BelegInput {
+  belegNummer:                 number
+  datumUhrzeit:                Date
+  belegTyp:                    BelegTyp
+  positionen:                  BelegPosition[]
+  betraege:                    BetraegeSummen
+  zahlung: {
+    barCent:      number
+    karteCent:    number
+    sonstigeCent: number
+  }
+  maschinenlesbareCode:        string
+  signaturwert:                string
+  umsatzzaehlerVerschluesselt: string
+  zertifikatSN:                string
+  sigVorbeleg:                 string
+}
+
+// ---------------------------------------------------------------------------
 // FinanzOnline
 // ---------------------------------------------------------------------------
 

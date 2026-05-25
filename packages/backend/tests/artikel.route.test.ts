@@ -25,6 +25,7 @@ function mockDb(state: MockDbState = {}): Db {
   const updateSpy = state.updateSpy ?? vi.fn()
 
   return {
+    execute: () => Promise.resolve([{ naechste: 1 }]),
     insert: (...args: unknown[]) => {
       insertSpy(...args)
       return {

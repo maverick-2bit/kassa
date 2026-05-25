@@ -117,6 +117,7 @@ export function ArtikelPage() {
         bonierdruckerId: input.bonierdruckerId  ?? null,
         lagerstandAktiv: input.lagerstandAktiv,
         lagerstandMenge: input.lagerstandMenge  ?? null,
+        bild:            input.bild             ?? null,
       }),
     onSuccess: () => { setModalOpen(false); setEditing(null); setError(null); invalidateArtikel() },
     onError: (err) => setError(err instanceof Error ? err.message : String(err)),

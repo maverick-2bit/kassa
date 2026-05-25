@@ -8,14 +8,19 @@
  *     und dann signiereImTx() innerhalb einer Transaktion aufruft.
  */
 
-import { and, desc, eq, inArray, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, inArray, lt, sql } from 'drizzle-orm'
 import { Buffer } from 'node:buffer'
 import {
   Umsatzzaehler,
   signiereBeleg,
   gesamtBetragCent,
+  erstelleDEP7Export,
+  erstelleDEP131Export,
+  dep7ZuJson,
+  dep131ZuJson,
   type BelegPosition,
   type BelegTyp,
+  type DEP131BelegInput,
   type MwStSatz,
   type RawBeleg,
   type SEEConfig,
@@ -26,12 +31,15 @@ import type {
   BarzahlungsbelegInput,
   BelegResponse,
   JahresbelegInput,
+  KundeSnapshot,
   MonatsbelegInput,
   NullbelegInput,
   StornobelegInput,
 } from '@kassa/shared'
+import { ArtikelPositionSchema } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import { artikel, belege, kassen, kategorien, modifikatoren } from '../db/schema.js'
+import { erstelleKunde, ladeKundeSnapshot } from './kunde.service.js'
 import { decryptPrivateKey } from '../crypto/master-key.js'
 
 export interface BelegServiceDeps {
@@ -73,6 +81,9 @@ interface SigniereInput {
   validatePayment: boolean
   /** Verweis auf Original-Beleg (nur für Stornobeleg) */
   verweisBelegId?: string
+  /** Kunden-Zuordnung (optional, nur bei Barzahlungsbeleg) */
+  kundeId?:       string | undefined
+  kundeSnapshot?: KundeSnapshot | undefined
 }
 
 async function signiereImTx(
@@ -157,6 +168,8 @@ async function signiereImTx(
       maschinenlesbareCode:        signed.maschinenlesbareCode,
       positionen,
       ...(input.verweisBelegId && { verweisBelegId: input.verweisBelegId }),
+      ...(input.kundeId        && { kundeId:        input.kundeId }),
+      ...(input.kundeSnapshot  && { kundeSnapshot:  input.kundeSnapshot }),
     }).returning()
     if (!persisted) throw new BelegError(500, 'Beleg konnte nicht gespeichert werden')
 
@@ -182,56 +195,134 @@ export async function erstelleBarzahlungsbeleg(
   input: BarzahlungsbelegInput,
   deps:  BelegServiceDeps,
 ): Promise<BelegResponse> {
+  // Kunden-Snapshot vor der Transaktion auflösen (neuer Kunde wird hier angelegt)
+  let kundeId:       string | undefined
+  let kundeSnapshot: KundeSnapshot | undefined
+
+  if (input.neuerKunde || input.kundeId) {
+    const kasseRows = await deps.db
+      .select({ mandantId: kassen.mandantId })
+      .from(kassen)
+      .where(eq(kassen.id, input.kasseId))
+      .limit(1)
+    const mandantId = kasseRows[0]?.mandantId
+    if (mandantId) {
+      if (input.neuerKunde) {
+        const neuer = await erstelleKunde(deps.db, mandantId, input.neuerKunde)
+        kundeId       = neuer.id
+        kundeSnapshot = {
+          id: neuer.id, nummer: neuer.nummer, bezeichnung: neuer.bezeichnung,
+          firma: neuer.firma, vorname: neuer.vorname, nachname: neuer.nachname,
+          email: neuer.email, telefon: neuer.telefon, strasse: neuer.strasse,
+          plz: neuer.plz, ort: neuer.ort, land: neuer.land, uid: neuer.uid,
+        }
+      } else if (input.kundeId) {
+        kundeSnapshot = await ladeKundeSnapshot(deps.db, input.kundeId, mandantId)
+        kundeId       = input.kundeId
+      }
+    }
+  }
+
   const { signed, persisted } = await signiereImTx({
     kasseId:         input.kasseId,
     belegTyp:        'Barzahlungsbeleg',
     validatePayment: true,
+    kundeId,
+    kundeSnapshot,
     belegDaten: async (tx) => {
-      const artikelIds  = [...new Set(input.positionen.map(p => p.artikelId))]
-      const artikelRows = await tx
-        .select()
-        .from(artikel)
-        .where(and(inArray(artikel.id, artikelIds), eq(artikel.aktiv, true)))
+      // Artikel-Positionen (mit artikelId) vs. freie Positionen trennen
+      const artikelPositionen = input.positionen.filter(p => ArtikelPositionSchema.safeParse(p).success)
+      const freiePositionen   = input.positionen.filter(p => !ArtikelPositionSchema.safeParse(p).success)
+
+      const artikelIds  = [...new Set(artikelPositionen.map(p => (p as { artikelId: string }).artikelId))]
+      const artikelRows = artikelIds.length > 0
+        ? await tx.select().from(artikel).where(and(inArray(artikel.id, artikelIds), eq(artikel.aktiv, true)))
+        : []
       if (artikelRows.length !== artikelIds.length) {
         throw new BelegError(404, 'Mindestens ein Artikel ist nicht (mehr) verfügbar')
       }
       const artikelById = new Map(artikelRows.map(a => [a.id, a]))
 
-      const positionen: BelegPosition[] = input.positionen.map((p) => {
-        const a = artikelById.get(p.artikelId)
-        if (!a) throw new BelegError(404, `Artikel ${p.artikelId} nicht gefunden`)
-        const preis = p.einzelpreisBreuttoCent ?? a.preisBruttoCent
-        const bezeichnung = p.bezeichnungZusatz
-          ? `${a.bezeichnung} (${p.bezeichnungZusatz})`
-          : a.bezeichnung
-        return {
-          bezeichnung,
-          menge:              p.menge,
-          einzelpreisBreutto: preis,
-          mwstSatz:           a.mwstSatz as MwStSatz,
+      // Kategorie-Infos laden (für Bonierdrucker-Check UND Warengruppen-Reporting)
+      const katergorieIds = [...new Set(
+        artikelRows.map(a => a.kategorieId).filter((id): id is string => id !== null),
+      )]
+      const katBonierdruckerMap = new Map<string, string | null>()
+      const katNameMap          = new Map<string, string>()
+      if (katergorieIds.length > 0) {
+        const katRows = await tx
+          .select({ id: kategorien.id, name: kategorien.name, bonierdruckerId: kategorien.bonierdruckerId })
+          .from(kategorien)
+          .where(inArray(kategorien.id, katergorieIds))
+        for (const k of katRows) {
+          katBonierdruckerMap.set(k.id, k.bonierdruckerId)
+          katNameMap.set(k.id, k.name)
         }
-      })
+      }
+
+      // Positionen aufbauen — extra Felder (kategorieId, kategorieName) werden im JSONB
+      // mitgespeichert, berühren aber nicht die RKSV-Signatur (nur menge/preis/mwst relevant).
+      const positionen: (BelegPosition & { kategorieId?: string | undefined; kategorieName?: string | undefined })[] =
+        input.positionen.map((p) => {
+          // Freie Position: direkt übernehmen, kein Artikel-Lookup
+          if (!('artikelId' in p)) {
+            return {
+              bezeichnung:        p.bezeichnung,
+              menge:              p.menge,
+              einzelpreisBreutto: p.preisBruttoCent,
+              mwstSatz:           p.mwstSatz,
+            }
+          }
+          const a = artikelById.get(p.artikelId)
+          if (!a) throw new BelegError(404, `Artikel ${p.artikelId} nicht gefunden`)
+          const preis = p.einzelpreisBreuttoCent ?? a.preisBruttoCent
+          const bezeichnung = p.bezeichnungZusatz
+            ? `${a.bezeichnung} (${p.bezeichnungZusatz})`
+            : a.bezeichnung
+          return {
+            bezeichnung,
+            menge:              p.menge,
+            einzelpreisBreutto: preis,
+            mwstSatz:           a.mwstSatz as MwStSatz,
+            ...(a.kategorieId && {
+              kategorieId:   a.kategorieId,
+              kategorieName: katNameMap.get(a.kategorieId),
+            }),
+          }
+        })
+
+      // Rabatt-Positionen einfügen (nach Artikel-Lookup, vor Lagerstand-Update)
+      if (input.rabatt) {
+        const rabattLabel = input.rabatt.bezeichnung
+          ?? (input.rabatt.typ === 'prozent'
+              ? `Rabatt (${input.rabatt.prozent}%)`
+              : 'Rabatt')
+
+        if (input.rabatt.typ === 'prozent') {
+          // Anteilig auf alle MwSt-Sätze verteilen
+          const satzSummen = new Map<MwStSatz, number>()
+          for (const p of positionen) {
+            satzSummen.set(p.mwstSatz, (satzSummen.get(p.mwstSatz) ?? 0) + p.einzelpreisBreutto * p.menge)
+          }
+          for (const [satz, summe] of satzSummen) {
+            if (summe <= 0) continue
+            const rabattCent = Math.round(summe * input.rabatt.prozent / 100)
+            positionen.push({ bezeichnung: rabattLabel, menge: 1, einzelpreisBreutto: -rabattCent, mwstSatz: satz })
+          }
+        } else {
+          const satz = input.rabatt.mwstSatz ?? 'normal'
+          positionen.push({ bezeichnung: rabattLabel, menge: 1, einzelpreisBreutto: -input.rabatt.betragCent, mwstSatz: satz })
+        }
+      }
 
       // Lagerstand-Countdown: Zwei-Pfad-Logik um Doppel-Abzug zu vermeiden.
       //
       //  • Artikel MIT Bonierrouting (station oder bonierdruckerId, egal ob auf Artikel- oder
       //    Kategorieebene) → Lagerstand wurde bereits beim Bonieren dekrementiert; hier NICHT.
       //  • Artikel OHNE Bonierrouting (reines Direktkassieren, z. B. To-go) → hier dekrementieren.
-      //
-      // Kategorie-Bonierdrucker laden (für den Fallback-Check):
-      const katergorieIds = [...new Set(
-        artikelRows.map(a => a.kategorieId).filter((id): id is string => id !== null),
-      )]
-      const katBonierdruckerMap = new Map<string, string | null>()
-      if (katergorieIds.length > 0) {
-        const katRows = await tx
-          .select({ id: kategorien.id, bonierdruckerId: kategorien.bonierdruckerId })
-          .from(kategorien)
-          .where(inArray(kategorien.id, katergorieIds))
-        for (const k of katRows) katBonierdruckerMap.set(k.id, k.bonierdruckerId)
-      }
 
       for (const p of input.positionen) {
+        if (!('artikelId' in p)) continue  // freie Position: kein Lagerstand
         const a = artikelById.get(p.artikelId)
         if (!a || !a.lagerstandAktiv) continue
         // Bonierbar? → Lagerstand wurde beim Bonieren abgezogen, nicht nochmal hier.
@@ -348,9 +439,10 @@ export async function erstelleMonatsbeleg(input: MonatsbelegInput, deps: BelegSe
 }
 
 export async function erstelleJahresbeleg(input: JahresbelegInput, deps: BelegServiceDeps): Promise<BelegResponse> {
-  // TODO: Bei input.finanzOnline → FinanzOnlineClient.startbelegPruefen(beleg) aufrufen
-  //       und pruefwert in Kasse-Tabelle speichern. Aktuell wird der Jahresbeleg
-  //       nur lokal erstellt — manuelle Prüfung über FinanzOnline-Portal nötig.
+  // Hinweis: Die FinanzOnline SOAP-API stellt KEINE Methode zur automatisierten
+  // Jahresbeleg-Prüfung bereit. Die Prüfung erfolgt manuell durch den Unternehmer
+  // via BMF FinanzOnline App (Belegcheck, QR-Code scannen) — gesetzlich vorgeschrieben
+  // gemäß RKSV § 8 Abs. 3. Das Frontend zeigt nach der Erstellung einen Prüfhinweis.
   return erstelleNullartigenBeleg('Jahresbeleg', input.kasseId, deps)
 }
 
@@ -361,12 +453,16 @@ export async function erstelleJahresbeleg(input: JahresbelegInput, deps: BelegSe
 export async function listeBelege(
   db: Db,
   kasseId: string,
-  opts: { limit?: number } = {},
+  opts: { limit?: number; kundeId?: string } = {},
 ): Promise<BelegResponse[]> {
+  const conditions = [eq(belege.kasseId, kasseId)]
+  if (opts.kundeId) {
+    conditions.push(eq(belege.kundeId, opts.kundeId))
+  }
   const rows = await db
     .select()
     .from(belege)
-    .where(eq(belege.kasseId, kasseId))
+    .where(and(...conditions))
     .orderBy(desc(belege.belegNummer))
     .limit(opts.limit ?? 50)
 
@@ -374,10 +470,101 @@ export async function listeBelege(
 }
 
 // ---------------------------------------------------------------------------
+// DEP-Export (DEP7 + DEP131)
+// ---------------------------------------------------------------------------
+
+export interface DepExportFilter {
+  kasseId:   string
+  vonDatum?: string | undefined  // YYYY-MM-DD
+  bisDatum?: string | undefined  // YYYY-MM-DD
+}
+
+export async function erstelleDep7Json(
+  db:     Db,
+  filter: DepExportFilter,
+): Promise<{ json: string; kassenId: string; anzahl: number }> {
+  const { rows, kassenId, zertBase64 } = await ladeDepDaten(db, filter)
+  const maschinenCodes = rows.map(r => r.maschinenlesbareCode)
+
+  const dep7 = erstelleDEP7Export(
+    rows.map(r => ({ maschinenlesbareCode: r.maschinenlesbareCode } as SignedBeleg)),
+    { zertifikatDER: Buffer.from(zertBase64, 'base64'), kassenId, privateKeyDER: Buffer.alloc(0) },
+    kassenId,
+  )
+
+  return { json: dep7ZuJson(dep7), kassenId, anzahl: maschinenCodes.length }
+}
+
+export async function erstelleDep131Json(
+  db:     Db,
+  filter: DepExportFilter,
+): Promise<{ json: string; kassenId: string; anzahl: number }> {
+  const { rows, kassenId } = await ladeDepDaten(db, filter)
+
+  const belegInputs: DEP131BelegInput[] = rows.map(r => ({
+    belegNummer:                 r.belegNummer,
+    datumUhrzeit:                r.belegDatum,
+    belegTyp:                    r.belegTyp as BelegTyp,
+    positionen:                  r.positionen as BelegPosition[],
+    betraege: {
+      normal:      r.betragNormalCent,
+      ermaessigt1: r.betragErmaessigt1Cent,
+      ermaessigt2: r.betragErmaessigt2Cent,
+      null:        r.betragNullCent,
+      besonders:   r.betragBesondersCent,
+    },
+    zahlung: {
+      barCent:      r.summeBarCent,
+      karteCent:    r.summeKarteCent,
+      sonstigeCent: r.summeSonstigeCent,
+    },
+    maschinenlesbareCode:        r.maschinenlesbareCode,
+    signaturwert:                r.signaturwert,
+    umsatzzaehlerVerschluesselt: r.umsatzzaehlerVerschluesselt,
+    zertifikatSN:                r.zertifikatSn,
+    sigVorbeleg:                 r.sigVorbeleg,
+  }))
+
+  const dep131 = erstelleDEP131Export(belegInputs, kassenId)
+  return { json: dep131ZuJson(dep131), kassenId, anzahl: rows.length }
+}
+
+async function ladeDepDaten(
+  db:     Db,
+  filter: DepExportFilter,
+): Promise<{ rows: typeof belege.$inferSelect[]; kassenId: string; zertBase64: string }> {
+  const kasseRows = await db.select().from(kassen).where(eq(kassen.id, filter.kasseId)).limit(1)
+  const kasse = kasseRows[0]
+  if (!kasse) throw new BelegError(404, 'Kasse nicht gefunden')
+
+  const conditions = [eq(belege.kasseId, filter.kasseId)]
+  if (filter.vonDatum) {
+    conditions.push(gte(belege.belegDatum, new Date(filter.vonDatum + 'T00:00:00.000Z')))
+  }
+  if (filter.bisDatum) {
+    // Bis einschließlich des angegebenen Tages (00:00 des Folgetags)
+    const bis = new Date(filter.bisDatum + 'T00:00:00.000Z')
+    bis.setDate(bis.getDate() + 1)
+    conditions.push(lt(belege.belegDatum, bis))
+  }
+
+  const rows = await db
+    .select()
+    .from(belege)
+    .where(and(...conditions))
+    .orderBy(asc(belege.belegNummer))
+
+  return { rows, kassenId: kasse.kassenId, zertBase64: kasse.seeZertifikatDer }
+}
+
+// ---------------------------------------------------------------------------
 // DB-Row → DTO
 // ---------------------------------------------------------------------------
 
-function toDto(row: typeof belege.$inferSelect, positionen: BelegPosition[]): BelegResponse {
+function toDto(
+  row:        typeof belege.$inferSelect,
+  positionen: BelegPosition[],
+): BelegResponse {
   const betraege = {
     normal:      row.betragNormalCent,
     ermaessigt1: row.betragErmaessigt1Cent,
@@ -400,6 +587,7 @@ function toDto(row: typeof belege.$inferSelect, positionen: BelegPosition[]): Be
     gesamtbetragCent,
     positionen,
     ...(row.verweisBelegId && { verweisBelegId: row.verweisBelegId }),
+    ...(row.kundeSnapshot != null ? { kunde: row.kundeSnapshot as KundeSnapshot } : {}),
     zertifikatSn:                row.zertifikatSn,
     sigVorbeleg:                 row.sigVorbeleg,
     signaturwert:                row.signaturwert,

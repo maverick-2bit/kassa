@@ -57,3 +57,52 @@ export const BerichtResponseSchema = z.object({
   gesamt:      BerichtGesamtSchema,
 })
 export type BerichtResponse = z.infer<typeof BerichtResponseSchema>
+
+// ---------------------------------------------------------------------------
+// Artikel-Umsatzbericht
+// ---------------------------------------------------------------------------
+
+export const ArtikelBerichtFilterSchema = z.object({
+  kasseIds: z.array(z.string().uuid()).default([]),
+  von:      z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Ungültiges Datum (YYYY-MM-DD)'),
+  bis:      z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Ungültiges Datum (YYYY-MM-DD)'),
+  /** Maximale Anzahl zurückgegebener Artikel (Standard: 200) */
+  limit:    z.coerce.number().int().min(1).max(1000).default(200),
+})
+export type ArtikelBerichtFilter = z.infer<typeof ArtikelBerichtFilterSchema>
+
+export const ArtikelBerichtZeileSchema = z.object({
+  bezeichnung:  z.string(),
+  mengeSumme:   z.number().int(),
+  umsatzCent:   z.number().int(),
+})
+export type ArtikelBerichtZeile = z.infer<typeof ArtikelBerichtZeileSchema>
+
+export const ArtikelBerichtResponseSchema = z.object({
+  von:      z.string(),
+  bis:      z.string(),
+  kasseIds: z.array(z.string().uuid()),
+  zeilen:   z.array(ArtikelBerichtZeileSchema),
+})
+export type ArtikelBerichtResponse = z.infer<typeof ArtikelBerichtResponseSchema>
+
+// ---------------------------------------------------------------------------
+// Warengruppen-Bericht
+// ---------------------------------------------------------------------------
+
+export const WarengruppeBerichtFilterSchema = ArtikelBerichtFilterSchema
+
+export const WarengruppeBerichtZeileSchema = z.object({
+  kategorieName: z.string(),
+  mengeSumme:    z.number().int(),
+  umsatzCent:    z.number().int(),
+})
+export type WarengruppeBerichtZeile = z.infer<typeof WarengruppeBerichtZeileSchema>
+
+export const WarengruppeBerichtResponseSchema = z.object({
+  von:      z.string(),
+  bis:      z.string(),
+  kasseIds: z.array(z.string().uuid()),
+  zeilen:   z.array(WarengruppeBerichtZeileSchema),
+})
+export type WarengruppeBerichtResponse = z.infer<typeof WarengruppeBerichtResponseSchema>

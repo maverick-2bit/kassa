@@ -8,7 +8,14 @@
  * Referenz: https://www.bmf.gv.at/dam/jcr:7a94c4b1-8abc-4ee9-9e96-1b8dbf7ef2a8/RKSV_DEP7.pdf
  */
 
-import type { DEP7BelegPackage, DEP7Export, SEEConfig, SignedBeleg } from './types.js'
+import type {
+  DEP7BelegPackage,
+  DEP7Export,
+  DEP131BelegInput,
+  DEP131Export,
+  SEEConfig,
+  SignedBeleg,
+} from './types.js'
 
 // ---------------------------------------------------------------------------
 // DEP7-Export erstellen
@@ -128,4 +135,60 @@ export function dep7AusJson(json: string): DEP7Export {
     throw new Error('Ungültiges DEP7-Format')
   }
   return parsed as DEP7Export
+}
+
+// ---------------------------------------------------------------------------
+// DEP131 – Erweiterter Export (§131 BAO, vollständige Belegdaten)
+// ---------------------------------------------------------------------------
+
+/**
+ * Erstellt einen DEP131-Export aus strukturierten Belegdaten.
+ *
+ * DEP131 enthält im Gegensatz zu DEP7 die vollständigen Positionen,
+ * Betraege, Zahlungsaufteilung und alle RKSV-Signaturfelder — lesbar
+ * für Menschen und maschinell verarbeitbar.
+ *
+ * @param belege    Chronologisch geordnete Liste aller Belege
+ * @param kassenId  RKSV-Kassen-ID (nicht die UUID)
+ */
+export function erstelleDEP131Export(
+  belege: DEP131BelegInput[],
+  kassenId: string,
+): DEP131Export {
+  return {
+    exportDatum: new Date().toISOString(),
+    kassenId,
+    Belege: belege.map(b => ({
+      Belegtyp:    b.belegTyp,
+      Belegnummer: b.belegNummer,
+      DatumUhrzeit: b.datumUhrzeit.toISOString(),
+      Positionen: b.positionen.map(p => ({
+        Bezeichnung:            p.bezeichnung,
+        Menge:                  p.menge,
+        EinzelpreisBreuttoCent: p.einzelpreisBreutto,
+        MwStSatz:               p.mwstSatz,
+      })),
+      Betraege: {
+        NormalCent:      b.betraege.normal,
+        Ermaessigt1Cent: b.betraege.ermaessigt1,
+        Ermaessigt2Cent: b.betraege.ermaessigt2,
+        NullCent:        b.betraege.null,
+        BesondersCent:   b.betraege.besonders,
+      },
+      Zahlung: {
+        BarCent:      b.zahlung.barCent,
+        KarteCent:    b.zahlung.karteCent,
+        SonstigeCent: b.zahlung.sonstigeCent,
+      },
+      MaschinenlesbareCode:        b.maschinenlesbareCode,
+      Signaturwert:                b.signaturwert,
+      UmsatzzaehlerVerschluesselt: b.umsatzzaehlerVerschluesselt,
+      ZertifikatSN:                b.zertifikatSN,
+      SigVorbeleg:                 b.sigVorbeleg,
+    })),
+  }
+}
+
+export function dep131ZuJson(dep: DEP131Export): string {
+  return JSON.stringify(dep, null, 2)
 }

@@ -22,6 +22,9 @@ export type {
   SEEInfo,
   DEP7Export,
   DEP7BelegPackage,
+  DEP131BelegInput,
+  DEP131Beleg,
+  DEP131Export,
   FinanzOnlineCredentials,
   KassenRegistrierung,
   RegistrierungErgebnis,
@@ -50,8 +53,8 @@ export {
 } from './beleg.js'
 export type { SignierungsKontext } from './beleg.js'
 
-// DEP7
-export { erstelleDEP7Export, mergeDEP7Exports, validiereDEP7, dep7ZuJson, dep7AusJson } from './dep.js'
+// DEP7 + DEP131
+export { erstelleDEP7Export, mergeDEP7Exports, validiereDEP7, dep7ZuJson, dep7AusJson, erstelleDEP131Export, dep131ZuJson } from './dep.js'
 export type { DEP7ValidationResult } from './dep.js'
 
 // FinanzOnline

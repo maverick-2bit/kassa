@@ -10,11 +10,14 @@
 import { and, eq, inArray, ne, sql } from 'drizzle-orm'
 import {
   MWST_LABELS,
+  type ArtikelBerichtFilter,
+  type ArtikelBerichtResponse,
   type BerichtFilter,
   type BerichtGesamt,
   type BerichtResponse,
   type BerichtZeile,
   type MwStSatz,
+  type WarengruppeBerichtResponse,
 } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import { belege, kassen } from '../db/schema.js'
@@ -153,6 +156,102 @@ export async function holeUmsatzbericht(
   }
 
   return { von: filter.von, bis: filter.bis, kasseIds, zeilen, gesamt }
+}
+
+// ---------------------------------------------------------------------------
+// Artikel-Umsatzbericht
+// ---------------------------------------------------------------------------
+
+export async function holeArtikelBericht(
+  filter:    ArtikelBerichtFilter,
+  mandantId: string,
+  deps:      BerichtServiceDeps,
+): Promise<ArtikelBerichtResponse> {
+  const alleKassenDesMandanten = await deps.db
+    .select({ id: kassen.id })
+    .from(kassen)
+    .where(eq(kassen.mandantId, mandantId))
+  const erlaubteIds = new Set(alleKassenDesMandanten.map(k => k.id))
+
+  const angefragte = filter.kasseIds.length > 0 ? filter.kasseIds : [...erlaubteIds]
+  const ungueltige = angefragte.filter(id => !erlaubteIds.has(id))
+  if (ungueltige.length > 0) throw new BerichtError(404, `Kasse(n) nicht gefunden: ${ungueltige.join(', ')}`)
+
+  if (filter.von > filter.bis) throw new BerichtError(400, '"von" muss vor oder gleich "bis" liegen')
+
+  // Positionen per jsonb_array_elements auffalten und nach Bezeichnung aggregieren.
+  // Stornobelege haben negative Einzelpreise → werden automatisch korrekt subtrahiert.
+  const kasseIdArr = sql.join(angefragte.map(id => sql`${id}::uuid`), sql`, `)
+  const rows = await deps.db.execute<{ bezeichnung: string; menge_summe: string; umsatz_cent: string }>(sql`
+    SELECT
+      pos->>'bezeichnung'                                           AS bezeichnung,
+      SUM((pos->>'menge')::int)                                     AS menge_summe,
+      SUM((pos->>'menge')::int * (pos->>'einzelpreisBreutto')::int) AS umsatz_cent
+    FROM belege,
+         jsonb_array_elements(positionen) AS pos
+    WHERE kasse_id = ANY(ARRAY[${kasseIdArr}])
+      AND beleg_typ IN ('Barzahlungsbeleg','Stornobeleg')
+      AND (beleg_datum AT TIME ZONE 'Europe/Vienna')::date
+          BETWEEN ${filter.von}::date AND ${filter.bis}::date
+    GROUP BY pos->>'bezeichnung'
+    ORDER BY umsatz_cent DESC
+    LIMIT ${filter.limit}
+  `)
+
+  const zeilen = rows.map(r => ({
+    bezeichnung: r.bezeichnung,
+    mengeSumme:  parseInt(r.menge_summe, 10),
+    umsatzCent:  parseInt(r.umsatz_cent, 10),
+  }))
+
+  return { von: filter.von, bis: filter.bis, kasseIds: angefragte, zeilen }
+}
+
+// ---------------------------------------------------------------------------
+// Warengruppen-Bericht
+// ---------------------------------------------------------------------------
+
+export async function holeWarengruppeBericht(
+  filter:    ArtikelBerichtFilter,
+  mandantId: string,
+  deps:      BerichtServiceDeps,
+): Promise<WarengruppeBerichtResponse> {
+  const alleKassenDesMandanten = await deps.db
+    .select({ id: kassen.id })
+    .from(kassen)
+    .where(eq(kassen.mandantId, mandantId))
+  const erlaubteIds = new Set(alleKassenDesMandanten.map(k => k.id))
+
+  const angefragte = filter.kasseIds.length > 0 ? filter.kasseIds : [...erlaubteIds]
+  const ungueltige = angefragte.filter(id => !erlaubteIds.has(id))
+  if (ungueltige.length > 0) throw new BerichtError(404, `Kasse(n) nicht gefunden: ${ungueltige.join(', ')}`)
+
+  if (filter.von > filter.bis) throw new BerichtError(400, '"von" muss vor oder gleich "bis" liegen')
+
+  const kasseIdArr = sql.join(angefragte.map(id => sql`${id}::uuid`), sql`, `)
+  const rows = await deps.db.execute<{ kategorie_name: string; menge_summe: string; umsatz_cent: string }>(sql`
+    SELECT
+      COALESCE(pos->>'kategorieName', 'Ohne Kategorie')                AS kategorie_name,
+      SUM((pos->>'menge')::int)                                         AS menge_summe,
+      SUM((pos->>'menge')::int * (pos->>'einzelpreisBreutto')::int)     AS umsatz_cent
+    FROM belege,
+         jsonb_array_elements(positionen) AS pos
+    WHERE kasse_id = ANY(ARRAY[${kasseIdArr}])
+      AND beleg_typ IN ('Barzahlungsbeleg','Stornobeleg')
+      AND (beleg_datum AT TIME ZONE 'Europe/Vienna')::date
+          BETWEEN ${filter.von}::date AND ${filter.bis}::date
+    GROUP BY COALESCE(pos->>'kategorieName', 'Ohne Kategorie')
+    ORDER BY umsatz_cent DESC
+    LIMIT ${filter.limit}
+  `)
+
+  const zeilen = rows.map(r => ({
+    kategorieName: r.kategorie_name,
+    mengeSumme:    parseInt(r.menge_summe, 10),
+    umsatzCent:    parseInt(r.umsatz_cent, 10),
+  }))
+
+  return { von: filter.von, bis: filter.bis, kasseIds: angefragte, zeilen }
 }
 
 // ---------------------------------------------------------------------------

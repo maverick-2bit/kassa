@@ -21,6 +21,7 @@ const KasseIdParam = z.object({ kasseId: z.string().uuid() })
 const PosConfigBodySchema = z.object({
   sichtbareKategorieIds: z.array(z.string().uuid()).optional(),
   erlaubteZahlungsarten: z.array(z.enum(['bar', 'karte', 'sonstige'])).optional(),
+  artikelbilderAktiv:    z.boolean().optional(),
 })
 
 export const posConfigRoute: FastifyPluginAsync<PosConfigRouteOptions> = async (fastify, opts) => {
@@ -31,7 +32,7 @@ export const posConfigRoute: FastifyPluginAsync<PosConfigRouteOptions> = async (
     if (!p.success) return reply.status(400).send({ fehler: 'Ungültige Kassen-ID' })
 
     const [kasse] = await opts.db
-      .select({ erlaubteZahlungsarten: kassen.erlaubteZahlungsarten })
+      .select({ erlaubteZahlungsarten: kassen.erlaubteZahlungsarten, artikelbilderAktiv: kassen.artikelbilderAktiv })
       .from(kassen)
       .where(and(eq(kassen.id, p.data.kasseId), eq(kassen.mandantId, request.user.mandantId)))
       .limit(1)
@@ -45,6 +46,7 @@ export const posConfigRoute: FastifyPluginAsync<PosConfigRouteOptions> = async (
     return reply.send({
       sichtbareKategorieIds: sichtbarkeit.map(r => r.kategorieId),
       erlaubteZahlungsarten: kasse.erlaubteZahlungsarten as string[],
+      artikelbilderAktiv:    kasse.artikelbilderAktiv,
     })
   })
 
@@ -64,10 +66,14 @@ export const posConfigRoute: FastifyPluginAsync<PosConfigRouteOptions> = async (
     if (!kasse) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
 
     await opts.db.transaction(async (tx) => {
-      // Zahlungsarten
-      if (body.data.erlaubteZahlungsarten !== undefined) {
+      // Zahlungsarten + Darstellungsoptionen
+      if (body.data.erlaubteZahlungsarten !== undefined || body.data.artikelbilderAktiv !== undefined) {
         await tx.update(kassen)
-          .set({ erlaubteZahlungsarten: body.data.erlaubteZahlungsarten, updatedAt: new Date() })
+          .set({
+            ...(body.data.erlaubteZahlungsarten !== undefined && { erlaubteZahlungsarten: body.data.erlaubteZahlungsarten }),
+            ...(body.data.artikelbilderAktiv    !== undefined && { artikelbilderAktiv:    body.data.artikelbilderAktiv }),
+            updatedAt: new Date(),
+          })
           .where(eq(kassen.id, p.data.kasseId))
       }
 

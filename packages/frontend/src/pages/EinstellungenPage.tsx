@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ALLE_STATIONEN, STATION_LABELS, type Station, type ZvtConfig } from '@kassa/shared'
-import { druckerApi, kdsApi, zvtApi, type DruckerConfig, type KdsConfig } from '../lib/api'
+import { druckerApi, kdsApi, zvtApi, downloadDepExport, type DruckerConfig, type KdsConfig } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { Field } from '../components/ui/Field'
 import { Input } from '../components/ui/Input'
@@ -19,8 +19,82 @@ export function EinstellungenPage() {
       <DruckerSektion />
       <KdsSektion />
       <ZvtSektion />
+      <RksvExportSektion />
       <TischplanSektion />
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// RKSV-Export-Sektion (DEP7 + DEP131)
+// ---------------------------------------------------------------------------
+
+function RksvExportSektion() {
+  const identity = getKasseIdentity()!
+  const [vonDatum, setVonDatum] = useState('')
+  const [bisDatum, setBisDatum] = useState('')
+  const [meldung, setMeldung]   = useState<{ typ: 'ok' | 'fehler'; text: string } | null>(null)
+
+  const exportieren = async (format: 'dep7' | 'dep131') => {
+    setMeldung(null)
+    try {
+      const { anzahl } = await downloadDepExport({
+        kasseId:  identity.kasseId,
+        format,
+        ...(vonDatum && { vonDatum }),
+        ...(bisDatum && { bisDatum }),
+      })
+      setMeldung({ typ: 'ok', text: `${anzahl} Belege exportiert` })
+    } catch (err) {
+      setMeldung({ typ: 'fehler', text: err instanceof Error ? err.message : 'Export fehlgeschlagen' })
+    }
+  }
+
+  return (
+    <section className="rounded-lg border border-gray-200 bg-white p-5">
+      <h2 className="text-base font-semibold text-gray-900 mb-1">RKSV-Datenexport</h2>
+      <p className="text-sm text-gray-500 mb-4">
+        DEP7 enthält die maschinenlesbaren Codes (Signaturkette). DEP131 enthält alle
+        Belege mit Positionen und Beträgen. Ohne Datumsangabe wird der gesamte Bestand exportiert.
+      </p>
+
+      <div className="flex flex-wrap gap-3 mb-4">
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Von (Datum)</label>
+          <input
+            type="date"
+            value={vonDatum}
+            onChange={e => setVonDatum(e.target.value)}
+            className="rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Bis (Datum)</label>
+          <input
+            type="date"
+            value={bisDatum}
+            onChange={e => setBisDatum(e.target.value)}
+            min={vonDatum || undefined}
+            className="rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+          />
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <Button onClick={() => exportieren('dep7')} variant="secondary">
+          DEP7 exportieren
+        </Button>
+        <Button onClick={() => exportieren('dep131')} variant="secondary">
+          DEP131 exportieren
+        </Button>
+      </div>
+
+      {meldung && (
+        <p className={`mt-3 text-sm ${meldung.typ === 'ok' ? 'text-green-700' : 'text-red-600'}`}>
+          {meldung.text}
+        </p>
+      )}
+    </section>
   )
 }
 

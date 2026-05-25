@@ -20,6 +20,8 @@ import {
   erstelleMonatsbeleg,
   erstelleJahresbeleg,
   listeBelege,
+  erstelleDep7Json,
+  erstelleDep131Json,
   BelegError,
   type BelegServiceDeps,
 } from '../services/beleg.service.js'
@@ -40,6 +42,13 @@ export interface BelegRouteOptions {
 const ListQuerySchema = z.object({
   kasseId: z.string().uuid(),
   limit:   z.coerce.number().int().min(1).max(500).optional(),
+  kundeId: z.string().uuid().optional(),
+})
+
+const DepExportQuerySchema = z.object({
+  kasseId:  z.string().uuid(),
+  vonDatum: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  bisDatum: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 })
 
 async function fuehreAus<T extends { id: string }>(
@@ -120,7 +129,8 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     if (!(await pruefeKasseScope(request, reply, opts.deps, parsed.data.kasseId))) return
     const liste = await listeBelege(opts.deps.db, parsed.data.kasseId, {
-      ...(parsed.data.limit !== undefined && { limit: parsed.data.limit }),
+      ...(parsed.data.limit   !== undefined && { limit:   parsed.data.limit }),
+      ...(parsed.data.kundeId !== undefined && { kundeId: parsed.data.kundeId }),
     })
     return reply.send(liste)
   })
@@ -145,6 +155,50 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
         return reply.status(err.httpStatus).send({ fehler: err.message })
       }
       fastify.log.error({ err }, 'Tagesabschluss unerwartet fehlgeschlagen')
+      return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
+    }
+  })
+
+  // -------------------------------------------------------------------------
+  // DEP-Export (DEP7 + DEP131)
+  // -------------------------------------------------------------------------
+
+  fastify.get('/belege/dep7', guard, async (request, reply) => {
+    const parsed = DepExportQuerySchema.safeParse(request.query)
+    if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
+    if (!(await pruefeKasseScope(request, reply, opts.deps, parsed.data.kasseId))) return
+
+    try {
+      const { json, kassenId, anzahl } = await erstelleDep7Json(opts.deps.db, parsed.data)
+      const datei = `DEP7-${kassenId}-${new Date().toISOString().slice(0, 10)}.json`
+      return reply
+        .header('Content-Type', 'application/json')
+        .header('Content-Disposition', `attachment; filename="${datei}"`)
+        .header('X-Anzahl-Belege', String(anzahl))
+        .send(json)
+    } catch (err) {
+      if (err instanceof BelegError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      fastify.log.error({ err }, 'DEP7-Export fehlgeschlagen')
+      return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
+    }
+  })
+
+  fastify.get('/belege/dep131', guard, async (request, reply) => {
+    const parsed = DepExportQuerySchema.safeParse(request.query)
+    if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
+    if (!(await pruefeKasseScope(request, reply, opts.deps, parsed.data.kasseId))) return
+
+    try {
+      const { json, kassenId, anzahl } = await erstelleDep131Json(opts.deps.db, parsed.data)
+      const datei = `DEP131-${kassenId}-${new Date().toISOString().slice(0, 10)}.json`
+      return reply
+        .header('Content-Type', 'application/json')
+        .header('Content-Disposition', `attachment; filename="${datei}"`)
+        .header('X-Anzahl-Belege', String(anzahl))
+        .send(json)
+    } catch (err) {
+      if (err instanceof BelegError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      fastify.log.error({ err }, 'DEP131-Export fehlgeschlagen')
       return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
     }
   })

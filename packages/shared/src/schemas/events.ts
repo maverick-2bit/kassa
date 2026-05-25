@@ -15,5 +15,17 @@ export const BonierbonEventSchema = z.object({
 })
 export type BonierbonEvent = z.infer<typeof BonierbonEventSchema>
 
-export const KasseEventSchema = BonierbonEventSchema
-export type KasseEvent = BonierbonEvent
+export const NeueBestellungEventSchema = z.object({
+  typ:              z.literal('neue_bestellung'),
+  bestellungId:     z.string().uuid(),
+  provider:         z.string(),
+  gesamtbetragCent: z.number().int(),
+  positionen:       z.number().int(),
+})
+export type NeueBestellungEvent = z.infer<typeof NeueBestellungEventSchema>
+
+export const KasseEventSchema = z.discriminatedUnion('typ', [
+  BonierbonEventSchema,
+  NeueBestellungEventSchema,
+])
+export type KasseEvent = z.infer<typeof KasseEventSchema>

@@ -13,10 +13,18 @@ import { UserVerwaltungPage } from './pages/UserVerwaltungPage'
 import { TagesabschlussPage } from './pages/TagesabschlussPage'
 import { BerichtePage } from './pages/BerichtePage'
 import { WareneingangPage } from './pages/WareneingangPage'
+import { LagerstandPage } from './pages/LagerstandPage'
+import { OffenePostenPage } from './pages/OffenePostenPage'
+import { GutscheinPage } from './pages/GutscheinPage'
+import { LieferungenPage } from './pages/LieferungenPage'
+import { MandantenEinstellungenPage } from './pages/MandantenEinstellungenPage'
+import { KundenPage } from './pages/KundenPage'
+import { AngebotePage } from './pages/AngebotePage'
+import { KassensturzPage } from './pages/KassensturzPage'
 import { BonierdruckerPage } from './pages/BonierdruckerPage'
 import { PosKonfigPage } from './pages/PosKonfigPage'
-import type { Berechtigung } from '@kassa/shared'
-import { getAuth, hasBerechtigung, setOnUnauthorized } from './lib/auth'
+import type { Berechtigung, MandantModul } from '@kassa/shared'
+import { getAuth, hasBerechtigung, hasModul, setOnUnauthorized } from './lib/auth'
 import { getKasseIdentity } from './lib/kasse'
 
 export function App() {
@@ -40,18 +48,26 @@ function AppRoutes() {
       <Route path="/setup" element={<SetupPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route element={<Layout />}>
-        <Route path="/tische"         element={<Require b="tische"><TischePage /></Require>} />
-        <Route path="/tische/:tabId"  element={<Require b="tische"><TischTabPage /></Require>} />
-        <Route path="/kasse"          element={<Require b="kasse"><KassePage /></Require>} />
-        <Route path="/artikel"        element={<Require b="artikel.verwalten"><ArtikelPage /></Require>} />
-        <Route path="/wareneingang"   element={<Require b="artikel.verwalten"><WareneingangPage /></Require>} />
-        <Route path="/pos-konfiguration" element={<Require b="einstellungen"><PosKonfigPage /></Require>} />
-        <Route path="/bonierdrucker"     element={<Require b="einstellungen"><BonierdruckerPage /></Require>} />
-        <Route path="/belege"         element={<Require b="belege.lesen"><BelegePage /></Require>} />
-        <Route path="/einstellungen"  element={<Require b="einstellungen"><EinstellungenPage /></Require>} />
-        <Route path="/benutzer"          element={<Require b="user.verwalten"><UserVerwaltungPage /></Require>} />
-        <Route path="/tagesabschluss"   element={<Require b="belege.lesen"><TagesabschlussPage /></Require>} />
-        <Route path="/berichte"         element={<Require b="belege.lesen"><BerichtePage /></Require>} />
+        <Route path="/tische"         element={<Require b="tische"          m="gastro"   ><TischePage /></Require>} />
+        <Route path="/tische/:tabId"  element={<Require b="tische"          m="gastro"   ><TischTabPage /></Require>} />
+        <Route path="/kasse"          element={<Require b="kasse"                        ><KassePage /></Require>} />
+        <Route path="/artikel"        element={<Require b="artikel.verwalten"            ><ArtikelPage /></Require>} />
+        <Route path="/wareneingang"   element={<Require b="artikel.verwalten"            ><WareneingangPage /></Require>} />
+        <Route path="/lagerstand"     element={<Require b="artikel.verwalten"            ><LagerstandPage /></Require>} />
+        <Route path="/pos-konfiguration" element={<Require b="einstellungen"             ><PosKonfigPage /></Require>} />
+        <Route path="/bonierdrucker"     element={<Require b="einstellungen"  m="gastro" ><BonierdruckerPage /></Require>} />
+        <Route path="/belege"         element={<Require b="belege.lesen"                 ><BelegePage /></Require>} />
+        <Route path="/einstellungen"  element={<Require b="einstellungen"                ><EinstellungenPage /></Require>} />
+        <Route path="/module"         element={<Require b="einstellungen"                ><MandantenEinstellungenPage /></Require>} />
+        <Route path="/benutzer"       element={<Require b="user.verwalten"               ><UserVerwaltungPage /></Require>} />
+        <Route path="/tagesabschluss" element={<Require b="belege.lesen"                 ><TagesabschlussPage /></Require>} />
+        <Route path="/kassensturz"    element={<Require b="belege.lesen"                 ><KassensturzPage /></Require>} />
+        <Route path="/berichte"       element={<Require b="belege.lesen"                 ><BerichtePage /></Require>} />
+        <Route path="/kunden"         element={<Require b="kunden.verwalten"             ><KundenPage /></Require>} />
+        <Route path="/angebote"       element={<Require b="kasse"            m="angebote"><AngebotePage /></Require>} />
+        <Route path="/offene-posten"  element={<Require b="kunden.verwalten"             ><OffenePostenPage /></Require>} />
+        <Route path="/gutscheine"     element={<Require b="kasse"                        ><GutscheinPage /></Require>} />
+        <Route path="/lieferungen"    element={<Require b="kasse"            m="mergeport"><LieferungenPage /></Require>} />
       </Route>
       <Route path="*" element={<Navigate to={getInitialRoute()} replace />} />
     </Routes>
@@ -63,18 +79,19 @@ function getInitialRoute(): string {
   if (!getAuth()) {
     return getKasseIdentity() ? '/login' : '/setup'
   }
-  // Erste erreichbare Seite je nach Berechtigung — Tische ist Default für Gastro
-  if (hasBerechtigung('tische'))            return '/tische'
-  if (hasBerechtigung('kasse'))             return '/kasse'
-  if (hasBerechtigung('belege.lesen'))      return '/belege'
-  if (hasBerechtigung('artikel.verwalten')) return '/artikel'
-  if (hasBerechtigung('einstellungen'))     return '/einstellungen'
-  if (hasBerechtigung('user.verwalten'))    return '/benutzer'
+  // Erste erreichbare Seite je nach Berechtigung + aktivem Modul
+  if (hasBerechtigung('tische') && hasModul('gastro'))    return '/tische'
+  if (hasBerechtigung('kasse'))                           return '/kasse'
+  if (hasBerechtigung('belege.lesen'))                    return '/belege'
+  if (hasBerechtigung('artikel.verwalten'))               return '/artikel'
+  if (hasBerechtigung('einstellungen'))                   return '/einstellungen'
+  if (hasBerechtigung('user.verwalten'))                  return '/benutzer'
   return '/login'  // User ohne jegliche Berechtigung — sollte nicht vorkommen
 }
 
-function Require({ b, children }: { b: Berechtigung; children: React.ReactNode }) {
+function Require({ b, m, children }: { b: Berechtigung; m?: MandantModul; children: React.ReactNode }) {
   if (!getAuth()) return <Navigate to="/login" replace />
   if (!hasBerechtigung(b)) return <Navigate to={getInitialRoute()} replace />
+  if (m && !hasModul(m)) return <Navigate to={getInitialRoute()} replace />
   return <>{children}</>
 }

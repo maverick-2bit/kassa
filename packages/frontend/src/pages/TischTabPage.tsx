@@ -8,13 +8,14 @@ import type {
   BonierungInput,
   ModifikatorAuswahl,
   ModifikatorGruppe,
+  RabattInput,
   TabEreignis,
   TabPosition,
   TischTabSplittenInput,
   TischTabResponse,
 } from '@kassa/shared'
 import { STATION_LABELS } from '@kassa/shared'
-import { artikelApi, belegApi, bonierApi, kategorieApi, modifikatorApi, tischTabApi, zvtApi } from '../lib/api'
+import { artikelApi, belegApi, bonierApi, kategorieApi, modifikatorApi, posConfigApi, tischTabApi, zvtApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
 import { Button } from '../components/ui/Button'
@@ -22,6 +23,7 @@ import { Modal } from '../components/ui/Modal'
 import { Input } from '../components/ui/Input'
 import { BonAnzeige } from '../components/BonAnzeige'
 import { KartenzahlungModal } from '../components/KartenzahlungModal'
+import { RabattModal } from '../components/RabattModal'
 import { ArtikelGrid } from '../components/ArtikelGrid'
 
 // ---------------------------------------------------------------------------
@@ -50,6 +52,11 @@ export function TischTabPage() {
   const [letzterBon, setLetzterBon]                 = useState<BelegResponse | null>(null)
   const [bonierungErgebnis, setBonierungErgebnis]   = useState<BonierungErgebnis | null>(null)
   const [bezahlenOffen, setBezahlenOffen]           = useState(false)
+  const [rabatt, setRabatt]                         = useState<RabattInput | null>(null)
+  const [rabattOffen, setRabattOffen]               = useState(false)
+  const [posRabatteOffen, setPosRabatteOffen]       = useState(false)
+  /** positionIndex → neuer Einzelpreis in Cent */
+  const [posRabatte, setPosRabatte]                 = useState<Record<number, number>>({})
   const [barInput, setBarInput]                     = useState('')
   const [karteInput, setKarteInput]                 = useState('')
   const [fehler, setFehler]                         = useState<string | null>(null)
@@ -90,6 +97,11 @@ export function TischTabPage() {
   const modZuweisungenQuery = useQuery({
     queryKey: ['artikel-modifikator-gruppen'],
     queryFn:  () => modifikatorApi.listeArtikelZuweisungen(),
+  })
+
+  const posConfigQuery = useQuery({
+    queryKey: ['pos-config', identity.kasseId],
+    queryFn:  () => posConfigApi.get(identity.kasseId),
   })
 
   const artikelGruppenMap = useMemo<Map<string, ModifikatorGruppe[]>>(() => {
@@ -146,7 +158,22 @@ export function TischTabPage() {
     () => korb.reduce((s, p) => s + p.preisCent * p.menge, 0),
     [korb],
   )
-  const gesamt = (tab?.summeGesamtCent ?? 0) + korbSummeCent
+
+  // Tab-Summe mit Positions-Rabatten
+  const tabSummeMitPosRabatten = useMemo(() => {
+    if (!tab) return 0
+    return tab.positionen.reduce(
+      (s, p, i) => s + (posRabatte[i] ?? p.preisBruttoCent) * p.menge, 0
+    )
+  }, [tab, posRabatte])
+
+  const gesamtVorRabatt = tabSummeMitPosRabatten + korbSummeCent
+  const rabattCent = useMemo(() => {
+    if (!rabatt || gesamtVorRabatt === 0) return 0
+    if (rabatt.typ === 'prozent') return Math.round(gesamtVorRabatt * rabatt.prozent / 100)
+    return Math.min(rabatt.betragCent, gesamtVorRabatt)
+  }, [rabatt, gesamtVorRabatt])
+  const gesamt = gesamtVorRabatt - rabattCent
 
   // ---------------------------------------------------------------------------
   // Warenkorb-Aktionen
@@ -215,8 +242,12 @@ export function TischTabPage() {
       if (korb.length > 0) {
         await tischTabApi.aktualisierePositionen(tabId!, allePositionen)
       }
+      const posRabatteArr = Object.entries(posRabatte)
+        .map(([i, preis]) => ({ positionIndex: Number(i), einzelpreisBreuttoCent: preis }))
       return tischTabApi.bezahle(tabId!, {
         zahlung: { barCent: bar, karteCent: karte, sonstigeCent: 0 },
+        ...(rabatt && { rabatt }),
+        ...(posRabatteArr.length > 0 && { positionRabatte: posRabatteArr }),
       })
     },
     onSuccess: async ({ belegId }) => {
@@ -286,9 +317,15 @@ export function TischTabPage() {
 
   const handleBezahlen = () => {
     setFehler(null)
+    setRabatt(null)
     setBezahlenOffen(true)
     setBarInput('')
     setKarteInput('')
+  }
+
+  const handlePosRabatteBestaetigen = (neuePosRabatte: Record<number, number>) => {
+    setPosRabatte(neuePosRabatte)
+    setPosRabatteOffen(false)
   }
 
   const handleBezahlenBestaetigen = () => {
@@ -377,6 +414,7 @@ export function TischTabPage() {
               artikelGruppen={artikelGruppenMap}
               onArtikelClick={addArtikel}
               loading={artikelQuery.isLoading}
+              artikelbilderAktiv={posConfigQuery.data?.artikelbilderAktiv ?? true}
             />
           </div>
         </section>
@@ -502,6 +540,18 @@ export function TischTabPage() {
                 ⊢ Rechnung teilen
               </Button>
             </div>
+            <div className="flex gap-2">
+              <Button
+                variant="secondary"
+                onClick={() => { setFehler(null); setPosRabatteOffen(true) }}
+                className="flex-1 text-xs"
+                disabled={tab.positionen.length === 0}
+              >
+                {Object.keys(posRabatte).length > 0
+                  ? `% Artikel-Rabatte (${Object.keys(posRabatte).length})`
+                  : '% Artikel-Rabatte'}
+              </Button>
+            </div>
           </div>
         </section>
       </div>
@@ -513,9 +563,37 @@ export function TischTabPage() {
         title={`Tisch ${tab.tischNummer} bezahlen`}
       >
         <div className="space-y-4">
-          <p className="text-sm text-gray-600">
-            Gesamt: <strong>{formatPreis(gesamt)}</strong>
-          </p>
+          <div className="flex items-center justify-between text-sm text-gray-600">
+            <span>Zwischensumme</span>
+            <span>{formatPreis(gesamtVorRabatt)}</span>
+          </div>
+
+          {/* Rabatt im Bezahlen-Modal */}
+          {rabatt ? (
+            <div className="flex items-center justify-between text-sm text-green-700 bg-green-50 rounded px-2 py-1.5 border border-green-200">
+              <span className="flex items-center gap-1.5">
+                {rabatt.typ === 'prozent'
+                  ? `${rabatt.bezeichnung ?? 'Rabatt'} (${rabatt.prozent}%)`
+                  : (rabatt.bezeichnung ?? 'Rabatt')}
+                <button type="button" onClick={() => setRabatt(null)} className="text-green-500 hover:text-red-500 text-xs px-1">×</button>
+              </span>
+              <span className="font-mono font-medium">−{formatPreis(rabattCent)}</span>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setRabattOffen(true)}
+              className="text-xs text-brand-600 hover:underline font-medium"
+            >
+              + Rabatt hinzufügen
+            </button>
+          )}
+
+          <div className="flex items-center justify-between text-base font-bold text-gray-900">
+            <span>Zu zahlen</span>
+            <span>{formatPreis(gesamt)}</span>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
               <span className="text-xs font-medium text-gray-600">Bar (Cent)</span>
@@ -562,6 +640,21 @@ export function TischTabPage() {
           </div>
         </div>
       </Modal>
+
+      <RabattModal
+        open={rabattOffen}
+        summeCent={gesamtVorRabatt}
+        onSubmit={(r) => { setRabatt(r); setRabattOffen(false) }}
+        onClose={() => setRabattOffen(false)}
+      />
+
+      <ArtikelRabatteModal
+        open={posRabatteOffen}
+        positionen={tab.positionen}
+        posRabatte={posRabatte}
+        onBestaetigen={handlePosRabatteBestaetigen}
+        onClose={() => setPosRabatteOffen(false)}
+      />
 
       {/* Bon-Anzeige nach Bezahlen */}
       <Modal
@@ -962,7 +1055,7 @@ function UmbuchenModal({ open, aktuellerTisch, loading, fehler, onSubmit, onClos
 
 interface SplitZahler {
   id:       number
-  mengen:   Record<string, number>   // artikelId → zugewiesene Menge
+  mengen:   Record<number, number>   // positionsIndex → zugewiesene Menge
   barInput: string
   karte:    string
 }
@@ -980,7 +1073,7 @@ function initZahler(positionen: TabPosition[], count: number): SplitZahler[] {
   return Array.from({ length: count }, (_, i) => ({
     id:       i,
     mengen:   Object.fromEntries(
-      positionen.map((p) => [p.artikelId, i === 0 ? p.menge : 0]),
+      positionen.map((_, posIdx) => [posIdx, i === 0 ? positionen[posIdx]!.menge : 0]),
     ),
     barInput: '',
     karte:    '',
@@ -1000,18 +1093,18 @@ function SplitModal({ open, tab, loading, fehler, onSubmit, onClose }: SplitModa
       ...prev,
       {
         id:       prev.length,
-        mengen:   Object.fromEntries(tab.positionen.map((p) => [p.artikelId, 0])),
+        mengen:   Object.fromEntries(tab.positionen.map((_, i) => [i, 0])),
         barInput: '',
         karte:    '',
       },
     ])
   }
 
-  const updateMenge = (zahlerId: number, artikelId: string, delta: number) => {
+  const updateMenge = (zahlerId: number, posIdx: number, delta: number) => {
     setZahler(prev => prev.map(z => {
       if (z.id !== zahlerId) return z
-      const neu = Math.max(0, (z.mengen[artikelId] ?? 0) + delta)
-      return { ...z, mengen: { ...z.mengen, [artikelId]: neu } }
+      const neu = Math.max(0, (z.mengen[posIdx] ?? 0) + delta)
+      return { ...z, mengen: { ...z.mengen, [posIdx]: neu } }
     }))
   }
 
@@ -1022,8 +1115,8 @@ function SplitModal({ open, tab, loading, fehler, onSubmit, onClose }: SplitModa
 
   // Validation
   const positionsfehler: string[] = []
-  for (const p of tab.positionen) {
-    const zugewiesen = zahler.reduce((s, z) => s + (z.mengen[p.artikelId] ?? 0), 0)
+  for (const [posIdx, p] of tab.positionen.entries()) {
+    const zugewiesen = zahler.reduce((s, z) => s + (z.mengen[posIdx] ?? 0), 0)
     if (zugewiesen !== p.menge) {
       positionsfehler.push(`${p.bezeichnung}: ${zugewiesen} von ${p.menge} zugewiesen`)
     }
@@ -1031,11 +1124,11 @@ function SplitModal({ open, tab, loading, fehler, onSubmit, onClose }: SplitModa
 
   const zahlungsfehler: string[] = []
   const zahlungenMitPositionen = zahler.filter(z =>
-    tab.positionen.some(p => (z.mengen[p.artikelId] ?? 0) > 0)
+    tab.positionen.some((_, i) => (z.mengen[i] ?? 0) > 0)
   )
   for (const z of zahlungenMitPositionen) {
     const subtotal = tab.positionen.reduce(
-      (s, p) => s + p.preisBruttoCent * (z.mengen[p.artikelId] ?? 0), 0
+      (s, p, i) => s + p.preisBruttoCent * (z.mengen[i] ?? 0), 0
     )
     const bar   = parseInt(z.barInput || '0', 10) || 0
     const karte = parseInt(z.karte   || '0', 10) || 0
@@ -1049,8 +1142,8 @@ function SplitModal({ open, tab, loading, fehler, onSubmit, onClose }: SplitModa
   const handleSubmit = () => {
     const zahlungen = zahlungenMitPositionen.map(z => ({
       positionen: tab.positionen
-        .filter(p => (z.mengen[p.artikelId] ?? 0) > 0)
-        .map(p => ({ ...p, menge: z.mengen[p.artikelId]! })),
+        .map((p, i) => ({ ...p, menge: z.mengen[i] ?? 0 }))
+        .filter(p => p.menge > 0),
       zahlung: {
         barCent:      parseInt(z.barInput || '0', 10) || 0,
         karteCent:    parseInt(z.karte    || '0', 10) || 0,
@@ -1083,22 +1176,22 @@ function SplitModal({ open, tab, loading, fehler, onSubmit, onClose }: SplitModa
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {tab.positionen.map((p) => {
-                const zugewiesen = zahler.reduce((s, z) => s + (z.mengen[p.artikelId] ?? 0), 0)
+              {tab.positionen.map((p, posIdx) => {
+                const zugewiesen = zahler.reduce((s, z) => s + (z.mengen[posIdx] ?? 0), 0)
                 const ok = zugewiesen === p.menge
                 return (
-                  <tr key={p.artikelId} className={ok ? '' : 'bg-red-50'}>
+                  <tr key={posIdx} className={ok ? '' : 'bg-red-50'}>
                     <td className="py-1.5 pr-3 text-gray-800 truncate max-w-[140px]">
                       {p.bezeichnung}
                     </td>
                     {zahler.map((z) => {
-                      const m = z.mengen[p.artikelId] ?? 0
+                      const m = z.mengen[posIdx] ?? 0
                       return (
                         <td key={z.id} className="px-2 py-1">
                           <div className="flex items-center justify-center gap-1">
-                            <MengeButton onClick={() => updateMenge(z.id, p.artikelId, -1)}>−</MengeButton>
+                            <MengeButton onClick={() => updateMenge(z.id, posIdx, -1)}>−</MengeButton>
                             <span className="w-5 text-center font-medium">{m}</span>
-                            <MengeButton onClick={() => updateMenge(z.id, p.artikelId, +1)}>+</MengeButton>
+                            <MengeButton onClick={() => updateMenge(z.id, posIdx, +1)}>+</MengeButton>
                           </div>
                         </td>
                       )
@@ -1126,7 +1219,7 @@ function SplitModal({ open, tab, loading, fehler, onSubmit, onClose }: SplitModa
         <div className="space-y-3 pt-1 border-t border-gray-200">
           {zahler.map((z, i) => {
             const subtotal = tab.positionen.reduce(
-              (s, p) => s + p.preisBruttoCent * (z.mengen[p.artikelId] ?? 0), 0
+              (s, p, posIdx) => s + p.preisBruttoCent * (z.mengen[posIdx] ?? 0), 0
             )
             const hatPositionen = subtotal > 0
             if (!hatPositionen) return null
@@ -1196,6 +1289,185 @@ function SplitModal({ open, tab, loading, fehler, onSubmit, onClose }: SplitModa
             className="flex-1"
           >
             {zahlungenMitPositionen.length} Bons erstellen
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Artikel-Rabatte Modal
+// ---------------------------------------------------------------------------
+
+interface ArtikelRabatteModalProps {
+  open:          boolean
+  positionen:    TabPosition[]
+  posRabatte:    Record<number, number>
+  onBestaetigen: (neuePosRabatte: Record<number, number>) => void
+  onClose:       () => void
+}
+
+function ArtikelRabatteModal({ open, positionen, posRabatte, onBestaetigen, onClose }: ArtikelRabatteModalProps) {
+  const [lokaleRabatte, setLokaleRabatte] = useState<Record<number, number>>({})
+  const [aktiverIdx, setAktiverIdx]       = useState<number | null>(null)
+  const [prozentInput, setProzentInput]   = useState('')
+  const [betragInput, setBetragInput]     = useState('')
+  const [rabattTyp, setRabattTyp]         = useState<'prozent' | 'betrag'>('prozent')
+
+  useEffect(() => {
+    if (open) {
+      setLokaleRabatte({ ...posRabatte })
+      setAktiverIdx(null)
+      setProzentInput('')
+      setBetragInput('')
+    }
+  }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const applyRabatt = (idx: number) => {
+    const basis = positionen[idx]!.preisBruttoCent
+    let neuerPreis: number
+    if (rabattTyp === 'prozent') {
+      const p = parseInt(prozentInput || '0', 10) || 0
+      if (p <= 0 || p > 100) return
+      neuerPreis = Math.max(0, basis - Math.round(basis * p / 100))
+    } else {
+      const b = parseInt(betragInput || '0', 10) || 0
+      if (b <= 0) return
+      neuerPreis = Math.max(0, basis - b)
+    }
+    setLokaleRabatte(prev => ({ ...prev, [idx]: neuerPreis }))
+    setAktiverIdx(null)
+    setProzentInput('')
+    setBetragInput('')
+  }
+
+  const removeRabatt = (idx: number) => {
+    setLokaleRabatte(prev => {
+      const next = { ...prev }
+      delete next[idx]
+      return next
+    })
+  }
+
+  const gesamtNachRabatt = positionen.reduce(
+    (s, p, i) => s + (lokaleRabatte[i] ?? p.preisBruttoCent) * p.menge, 0
+  )
+  const gesamtOriginal = positionen.reduce((s, p) => s + p.preisBruttoCent * p.menge, 0)
+
+  return (
+    <Modal open={open} onClose={onClose} title="Artikel-Rabatte" size="lg">
+      <div className="space-y-3">
+        <ul className="divide-y divide-gray-100">
+          {positionen.map((p, idx) => {
+            const hatRabatt = idx in lokaleRabatte
+            const aktuellerPreis = lokaleRabatte[idx] ?? p.preisBruttoCent
+            const istAktiv = aktiverIdx === idx
+
+            return (
+              <li key={idx} className="py-2.5 space-y-2">
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="flex-1 text-gray-800 truncate">
+                    {p.menge}× {p.bezeichnung}
+                  </span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {hatRabatt ? (
+                      <>
+                        <span className="text-xs line-through text-gray-400">{formatPreis(p.preisBruttoCent)}</span>
+                        <span className="text-sm font-medium text-green-700">{formatPreis(aktuellerPreis)}</span>
+                        <button
+                          type="button"
+                          onClick={() => removeRabatt(idx)}
+                          className="text-xs text-green-600 hover:text-red-500 px-1"
+                        >×</button>
+                      </>
+                    ) : (
+                      <span className="text-sm font-mono text-gray-700">{formatPreis(p.preisBruttoCent)}</span>
+                    )}
+                    {!istAktiv && (
+                      <button
+                        type="button"
+                        onClick={() => { setAktiverIdx(idx); setProzentInput(''); setBetragInput(''); setRabattTyp('prozent') }}
+                        className="rounded border border-gray-200 bg-white px-1.5 py-0.5 text-xs text-gray-500 hover:border-brand-400 hover:text-brand-600 transition"
+                      >
+                        {hatRabatt ? 'ändern' : '% Rabatt'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {istAktiv && (
+                  <div className="flex items-center gap-2 pl-2 flex-wrap">
+                    <div className="flex rounded border border-gray-200 overflow-hidden text-xs">
+                      {(['prozent', 'betrag'] as const).map(t => (
+                        <button
+                          key={t}
+                          type="button"
+                          onClick={() => setRabattTyp(t)}
+                          className={`px-2 py-1 font-medium transition ${rabattTyp === t ? 'bg-brand-600 text-white' : 'bg-white text-gray-600'}`}
+                        >
+                          {t === 'prozent' ? '%' : '€'}
+                        </button>
+                      ))}
+                    </div>
+                    {rabattTyp === 'prozent' ? (
+                      <div className="flex items-center gap-1">
+                        <input
+                          autoFocus
+                          inputMode="numeric"
+                          placeholder="10"
+                          value={prozentInput}
+                          onChange={e => setProzentInput(e.target.value.replace(/[^0-9]/g, ''))}
+                          onKeyDown={e => e.key === 'Enter' && applyRabatt(idx)}
+                          className="w-14 rounded border border-gray-300 px-1.5 py-1 text-xs text-center"
+                        />
+                        <span className="text-xs text-gray-400">%</span>
+                        <div className="flex gap-0.5">
+                          {[5, 10, 15, 20].map(p => (
+                            <button key={p} type="button" onClick={() => setProzentInput(String(p))}
+                              className={`rounded border px-1.5 py-0.5 text-xs transition ${prozentInput === String(p) ? 'border-brand-400 bg-brand-50 text-brand-700' : 'border-gray-200 bg-white text-gray-500'}`}
+                            >{p}%</button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1">
+                        <input
+                          autoFocus
+                          inputMode="numeric"
+                          placeholder="0"
+                          value={betragInput}
+                          onChange={e => setBetragInput(e.target.value.replace(/[^0-9]/g, ''))}
+                          onKeyDown={e => e.key === 'Enter' && applyRabatt(idx)}
+                          className="w-20 rounded border border-gray-300 px-1.5 py-1 text-xs text-center"
+                        />
+                        <span className="text-xs text-gray-400">Cent</span>
+                      </div>
+                    )}
+                    <button type="button" onClick={() => applyRabatt(idx)}
+                      className="rounded bg-brand-600 px-2 py-1 text-xs font-medium text-white hover:bg-brand-700"
+                    >✓</button>
+                    <button type="button" onClick={() => setAktiverIdx(null)}
+                      className="rounded border border-gray-200 px-2 py-1 text-xs text-gray-500 hover:bg-gray-50"
+                    >Abbruch</button>
+                  </div>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+
+        {Object.keys(lokaleRabatte).length > 0 && (
+          <div className="rounded bg-green-50 border border-green-200 px-3 py-2 text-sm text-green-800 flex justify-between">
+            <span>Ersparnis: <strong>−{formatPreis(gesamtOriginal - gesamtNachRabatt)}</strong></span>
+            <span>Gesamt: <strong>{formatPreis(gesamtNachRabatt)}</strong></span>
+          </div>
+        )}
+
+        <div className="flex gap-2 pt-1">
+          <Button variant="secondary" onClick={onClose} className="flex-1">Abbrechen</Button>
+          <Button onClick={() => onBestaetigen(lokaleRabatte)} className="flex-1">
+            Übernehmen
           </Button>
         </div>
       </div>

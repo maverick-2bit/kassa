@@ -7,6 +7,7 @@
  */
 
 import { sql } from 'drizzle-orm'
+import { randomUUID } from 'node:crypto'
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 import {
   pgTable,
@@ -36,6 +37,15 @@ export const mandanten = pgTable('mandanten', {
   /** Nachfolger eines früheren Mandanten (Betreiberwechsel) */
   vorgaengerId: uuid('vorgaenger_id'),
   status:       varchar('status', { length: 20 }).notNull().default('aktiv'),
+
+  // Gebuchte / aktivierte Funktions-Module
+  /** Gastro-Betrieb: Tische, Tisch-Tabs, grafischer Tischplan, Bonierdrucker */
+  modulGastroAktiv:    boolean('modul_gastro_aktiv').notNull().default(true),
+  /** Angebotswesen: Angebote, Lieferscheine, Zielrechnungen */
+  modulAngeboteAktiv:  boolean('modul_angebote_aktiv').notNull().default(false),
+  /** Lieferservice-Integration: Lieferando, Mergeport und eigene Webhooks */
+  modulMergeportAktiv: boolean('modul_mergeport_aktiv').notNull().default(false),
+
   createdAt:    timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt:    timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
@@ -88,9 +98,11 @@ export const kassen = pgTable('kassen', {
   kdsPort:               integer('kds_port').notNull().default(9100),
   kdsAktiv:              boolean('kds_aktiv').notNull().default(false),
 
-  // POS-Konfiguration (Zahlungsarten)
+  // POS-Konfiguration (Zahlungsarten + Darstellung)
   /** Erlaubte Zahlungsarten: ["bar", "karte", "sonstige"] — Subset davon pro Kasse */
   erlaubteZahlungsarten: jsonb('erlaubte_zahlungsarten').notNull().default(['bar', 'karte', 'sonstige']),
+  /** Artikelbilder im Kassen-Raster anzeigen */
+  artikelbilderAktiv:    boolean('artikel_bilder_aktiv').notNull().default(true),
 
   // ZVT-Kartenterminal-Konfiguration (Hobex/Payroc & kompatible über Standard-ZVT-Protokoll)
   zvtIp:                 varchar('zvt_ip',   { length: 64 }),
@@ -98,6 +110,9 @@ export const kassen = pgTable('kassen', {
   /** Optionales Terminal-Passwort (manche Geräte verlangen es bei Authorization) */
   zvtPasswort:           varchar('zvt_passwort', { length: 16 }),
   zvtAktiv:              boolean('zvt_aktiv').notNull().default(false),
+
+  /** Geheimnis für eingehende Lieferando/Mergeport-Webhooks (URL-Parameter secret=…) */
+  webhookSecret:         text('webhook_secret').notNull().$defaultFn(() => randomUUID()),
 
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -144,12 +159,263 @@ export const belege = pgTable('belege', {
   /** Verweis auf den Original-Beleg (nur bei Stornobeleg gesetzt) */
   verweisBelegId: uuid('verweis_beleg_id').references((): AnyPgColumn => belege.id),
 
+  /** Kunde (optional) — FK auf kunden-Tabelle */
+  kundeId: uuid('kunde_id').references(() => kunden.id, { onDelete: 'set null' }),
+  /** Eingefrierter Kunden-Snapshot zum Zeitpunkt der Buchung */
+  kundeSnapshot: jsonb('kunde_snapshot'),
+
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
   belegNrIdx:     uniqueIndex('belege_kasse_belegnr_idx').on(t.kasseId, t.belegNummer),
   datumIdx:       index('belege_datum_idx').on(t.belegDatum),
   verweisIdx:     index('belege_verweis_idx').on(t.verweisBelegId),
 }))
+
+// ---------------------------------------------------------------------------
+// Kunden (CRM) — Kundenstammdaten pro Mandant
+// ---------------------------------------------------------------------------
+
+export const kunden = pgTable('kunden', {
+  id:        uuid('id').primaryKey().defaultRandom(),
+  mandantId: uuid('mandant_id').notNull().references(() => mandanten.id),
+
+  /** Laufende Kundennummer pro Mandant (1, 2, 3, …) */
+  nummer:    integer('nummer').notNull(),
+
+  firma:    varchar('firma',    { length: 200 }),
+  vorname:  varchar('vorname',  { length: 100 }),
+  nachname: varchar('nachname', { length: 100 }),
+  email:    varchar('email',    { length: 200 }),
+  telefon:  varchar('telefon',  { length: 50  }),
+  strasse:  varchar('strasse',  { length: 200 }),
+  plz:      varchar('plz',      { length: 20  }),
+  ort:      varchar('ort',      { length: 100 }),
+  land:     varchar('land',     { length: 2   }).notNull().default('AT'),
+  uid:      varchar('uid',      { length: 30  }),
+
+  aktiv:       boolean('aktiv').notNull().default(true),
+  /** Kreditkunde: darf "Auf Kredit" buchen */
+  kreditAktiv: boolean('kredit_aktiv').notNull().default(false),
+  createdAt:   timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:   timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  nummerIdx:  uniqueIndex('kunden_mandant_nummer_idx').on(t.mandantId, t.nummer),
+  sucheIdx:   index('kunden_suche_idx').on(t.mandantId, t.aktiv),
+}))
+
+export type Kunde    = typeof kunden.$inferSelect
+export type NewKunde = typeof kunden.$inferInsert
+
+// ---------------------------------------------------------------------------
+// Angebote — nicht RKSV-relevant, kein Lagerstand
+// ---------------------------------------------------------------------------
+
+export const angebote = pgTable('angebote', {
+  id:        uuid('id').primaryKey().defaultRandom(),
+  mandantId: uuid('mandant_id').notNull().references(() => mandanten.id),
+  kasseId:   uuid('kasse_id').notNull().references(() => kassen.id),
+
+  /** Laufende Angebotsnummer pro Mandant */
+  nummer:    integer('nummer').notNull(),
+
+  datum:     timestamp('datum', { withTimezone: true }).notNull().defaultNow(),
+  gueltigBis: varchar('gueltig_bis', { length: 10 }),   // YYYY-MM-DD
+  status:    varchar('status', { length: 20 }).notNull().default('offen'),
+  notiz:     text('notiz'),
+
+  /** Positionen als JSON (aufgelöst: bezeichnung, menge, preis, mwstSatz) */
+  positionen:       jsonb('positionen').notNull(),
+  gesamtbetragCent: integer('gesamtbetrag_cent').notNull(),
+
+  /** Kunde (optional) */
+  kundeId:       uuid('kunde_id').references(() => kunden.id, { onDelete: 'set null' }),
+  kundeSnapshot: jsonb('kunde_snapshot'),
+
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  nummerIdx: uniqueIndex('angebote_mandant_nummer_idx').on(t.mandantId, t.nummer),
+  statusIdx: index('angebote_status_idx').on(t.mandantId, t.status),
+}))
+
+export type Angebot    = typeof angebote.$inferSelect
+export type NewAngebot = typeof angebote.$inferInsert
+
+// ---------------------------------------------------------------------------
+// Lieferscheine — abgeleitet aus Angeboten, nicht RKSV-relevant
+// ---------------------------------------------------------------------------
+
+export const lieferscheine = pgTable('lieferscheine', {
+  id:        uuid('id').primaryKey().defaultRandom(),
+  mandantId: uuid('mandant_id').notNull().references(() => mandanten.id),
+  kasseId:   uuid('kasse_id').notNull().references(() => kassen.id),
+  angebotId: uuid('angebot_id').notNull().references(() => angebote.id),
+
+  /** Laufende Lieferscheinnummer pro Mandant */
+  nummer: integer('nummer').notNull(),
+
+  datum:  timestamp('datum', { withTimezone: true }).notNull().defaultNow(),
+  status: varchar('status', { length: 20 }).notNull().default('offen'),
+  notiz:  text('notiz'),
+
+  /** Positionen-Snapshot aus dem Angebot (bezeichnung, menge, preis, mwstSatz) */
+  positionen: jsonb('positionen').notNull(),
+
+  /** Kunde (optional, übernommen vom Angebot) */
+  kundeId:       uuid('kunde_id').references(() => kunden.id, { onDelete: 'set null' }),
+  kundeSnapshot: jsonb('kunde_snapshot'),
+
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  nummerIdx: uniqueIndex('lieferscheine_mandant_nummer_idx').on(t.mandantId, t.nummer),
+  kundeIdx:  index('lieferscheine_kunde_idx').on(t.mandantId, t.kundeId),
+  statusIdx: index('lieferscheine_status_idx').on(t.mandantId, t.status),
+}))
+
+export type Lieferschein    = typeof lieferscheine.$inferSelect
+export type NewLiferschein  = typeof lieferscheine.$inferInsert
+
+// ---------------------------------------------------------------------------
+// Sammelrechnungen — fasst mehrere Lieferscheine zu einer Rechnung zusammen
+// ---------------------------------------------------------------------------
+
+export const sammelrechnungen = pgTable('sammelrechnungen', {
+  id:        uuid('id').primaryKey().defaultRandom(),
+  mandantId: uuid('mandant_id').notNull().references(() => mandanten.id),
+
+  /** Laufende Sammelrechnungsnummer pro Mandant */
+  nummer: integer('nummer').notNull(),
+
+  datum: timestamp('datum', { withTimezone: true }).notNull().defaultNow(),
+
+  /** IDs der enthaltenen Lieferscheine (als JSON-Array) */
+  lieferscheinIds: jsonb('lieferschein_ids').notNull(),
+
+  gesamtbetragCent: integer('gesamtbetrag_cent').notNull(),
+
+  /** Kundebezug (vom ersten LS übernommen — alle müssen demselben Kunden gehören) */
+  kundeId:       uuid('kunde_id').references(() => kunden.id, { onDelete: 'set null' }),
+  kundeSnapshot: jsonb('kunde_snapshot'),
+
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  nummerIdx: uniqueIndex('sammelrechnungen_mandant_nummer_idx').on(t.mandantId, t.nummer),
+  kundeIdx:  index('sammelrechnungen_kunde_idx').on(t.mandantId, t.kundeId),
+}))
+
+export type Sammelrechnung    = typeof sammelrechnungen.$inferSelect
+export type NewSammelrechnung = typeof sammelrechnungen.$inferInsert
+
+// ---------------------------------------------------------------------------
+// Gutscheine — Ausgabe und Einlösung
+// ---------------------------------------------------------------------------
+
+export const gutscheine = pgTable('gutscheine', {
+  id:        uuid('id').primaryKey().defaultRandom(),
+  mandantId: uuid('mandant_id').notNull().references(() => mandanten.id),
+
+  /** Eindeutiger Code pro Mandant (z. B. "GS-A3B7-X2Y9") */
+  code:   varchar('code', { length: 20 }).notNull(),
+  nummer: integer('nummer').notNull(),
+  datum:  timestamp('datum', { withTimezone: true }).notNull().defaultNow(),
+
+  /** aktiv | teileingeloest | eingeloest | storniert */
+  status: varchar('status', { length: 20 }).notNull().default('aktiv'),
+
+  betragCent:  integer('betrag_cent').notNull(),
+  bezahltCent: integer('bezahlt_cent').notNull().default(0),
+
+  /** Optionales Ablaufdatum (YYYY-MM-DD) */
+  gueltigBis: varchar('gueltig_bis', { length: 10 }),
+
+  kundeId:       uuid('kunde_id').references(() => kunden.id, { onDelete: 'set null' }),
+  kundeSnapshot: jsonb('kunde_snapshot'),
+
+  notiz:     text('notiz'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  codeIdx:   uniqueIndex('gutscheine_mandant_code_idx').on(t.mandantId, t.code),
+  nummerIdx: uniqueIndex('gutscheine_mandant_nummer_idx').on(t.mandantId, t.nummer),
+  statusIdx: index('gutscheine_status_idx').on(t.mandantId, t.status),
+}))
+
+export type Gutschein    = typeof gutscheine.$inferSelect
+export type NewGutschein = typeof gutscheine.$inferInsert
+
+// ---------------------------------------------------------------------------
+// Gutschein-Buchungen — lückenlose Transaktionshistorie pro Gutschein
+// ---------------------------------------------------------------------------
+
+export const gutscheinBuchungen = pgTable('gutschein_buchungen', {
+  id:          uuid('id').primaryKey().defaultRandom(),
+  gutscheinId: uuid('gutschein_id').notNull().references(() => gutscheine.id, { onDelete: 'cascade' }),
+  mandantId:   uuid('mandant_id').notNull(),
+
+  /** ausstellung | einloesung | restgutschein | storno */
+  typ: varchar('typ', { length: 20 }).notNull(),
+
+  /** Positiv = Guthaben (Ausstellung), negativ = Verbrauch (Einlösung, Storno) */
+  betragCent:   integer('betrag_cent').notNull(),
+  /** Restwert des Gutscheins nach dieser Buchung */
+  restCentNach: integer('rest_cent_nach').notNull(),
+
+  /** Optionaler Beleg-Bezug (Einlösung am Kassatisch) */
+  belegId: uuid('beleg_id').references(() => belege.id, { onDelete: 'set null' }),
+
+  /** Bei typ = 'restgutschein': ID des neu erstellten Gutscheins */
+  verknuepfterGutscheinId: uuid('verknuepfter_gutschein_id'),
+
+  notiz:     text('notiz'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  gutscheinIdx: index('gutschein_buchungen_gutschein_idx').on(t.gutscheinId),
+  mandantIdx:   index('gutschein_buchungen_mandant_idx').on(t.mandantId),
+}))
+
+export type GutscheinBuchung    = typeof gutscheinBuchungen.$inferSelect
+export type NewGutscheinBuchung = typeof gutscheinBuchungen.$inferInsert
+
+// ---------------------------------------------------------------------------
+// Offene Posten — Kreditverkäufe, die später bezahlt werden
+// ---------------------------------------------------------------------------
+
+export const offenePosten = pgTable('offene_posten', {
+  id:        uuid('id').primaryKey().defaultRandom(),
+  mandantId: uuid('mandant_id').notNull().references(() => mandanten.id),
+
+  /** Laufende Nummer pro Mandant */
+  nummer: integer('nummer').notNull(),
+
+  datum:  timestamp('datum', { withTimezone: true }).notNull().defaultNow(),
+  /** offen | teilbezahlt | bezahlt */
+  status: varchar('status', { length: 20 }).notNull().default('offen'),
+
+  /** Kunden-FK + Snapshot */
+  kundeId:       uuid('kunde_id').references(() => kunden.id, { onDelete: 'set null' }),
+  kundeSnapshot: jsonb('kunde_snapshot'),
+
+  /** Optionaler Verweis auf den auslösenden Beleg */
+  belegId: uuid('beleg_id').references(() => belege.id, { onDelete: 'set null' }),
+
+  /** Ursprungsbetrag in Cent */
+  betragCent:  integer('betrag_cent').notNull(),
+  /** Bereits bezahlter Betrag in Cent */
+  bezahltCent: integer('bezahlt_cent').notNull().default(0),
+
+  notiz: text('notiz'),
+
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  nummerIdx: uniqueIndex('offene_posten_mandant_nummer_idx').on(t.mandantId, t.nummer),
+  kundeIdx:  index('offene_posten_kunde_idx').on(t.mandantId, t.kundeId),
+  statusIdx: index('offene_posten_status_idx').on(t.mandantId, t.status),
+}))
+
+export type OffenerPosten    = typeof offenePosten.$inferSelect
+export type NewOffenerPosten = typeof offenePosten.$inferInsert
 
 // ---------------------------------------------------------------------------
 // Benutzer (Auth) — pro Mandant
@@ -247,6 +513,8 @@ export const artikel = pgTable('artikel', {
   lagerstandAktiv:     boolean('lagerstand_aktiv').notNull().default(false),
   /** Aktueller Lagerstand (null wenn lagerstandAktiv=false) */
   lagerstandMenge:     integer('lagerstand_menge'),
+  /** Mindestbestand – Alarm wenn lagerstandMenge ≤ mindestbestand */
+  mindestbestand:      integer('mindestbestand'),
   /** Erscheint im Favoriten-Tab der POS-Ansicht */
   istFavorit:          boolean('ist_favorit').notNull().default(false),
   /** Sortierung innerhalb der Kategorie (global, für alle Kassen gleich) */
@@ -255,6 +523,8 @@ export const artikel = pgTable('artikel', {
   favoritenReihenfolge: integer('favoriten_reihenfolge').notNull().default(0),
   /** Override: Bonierdrucker für diesen Artikel (überschreibt Kategorie-Einstellung) */
   bonierdruckerId:     uuid('bonierdrucker_id').references(() => bonierdrucker.id, { onDelete: 'set null' }),
+  /** Artikelbild als Data-URL (max. 200×200 px JPEG, client-seitig komprimiert) */
+  bild:                text('bild'),
   createdAt:           timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt:           timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
@@ -439,3 +709,45 @@ export type ModifikatorGruppe    = typeof modifikatorGruppen.$inferSelect
 export type NewModifikatorGruppe = typeof modifikatorGruppen.$inferInsert
 export type Modifikator          = typeof modifikatoren.$inferSelect
 export type NewModifikator       = typeof modifikatoren.$inferInsert
+
+// ---------------------------------------------------------------------------
+// Lieferbestellungen (Lieferando / Mergeport Webhook-Eingang)
+// ---------------------------------------------------------------------------
+
+export const lieferbestellungen = pgTable('lieferbestellungen', {
+  id:               uuid('id').primaryKey().defaultRandom(),
+  mandantId:        uuid('mandant_id').notNull().references(() => mandanten.id),
+  kasseId:          uuid('kasse_id').notNull().references(() => kassen.id, { onDelete: 'cascade' }),
+
+  /** Externe Bestell-ID des Lieferdiensts */
+  externeId:        text('externe_id').notNull(),
+  /** Lieferdienst-Bezeichnung: 'lieferando' | 'mergeport' | 'custom' */
+  provider:         varchar('provider', { length: 40 }).notNull(),
+
+  /** Status: neu | bestaetigt | fertig | abgelehnt | storniert */
+  status:           varchar('status', { length: 20 }).notNull().default('neu'),
+
+  /** Bestellpositionen (normalisiert) */
+  positionen:       jsonb('positionen').notNull(),
+  /** Gesamtbetrag in Cent */
+  gesamtbetragCent: integer('gesamtbetrag_cent').notNull(),
+
+  // Lieferadresse / Kundendaten
+  lieferName:       text('liefer_name'),
+  lieferTelefon:    text('liefer_telefon'),
+  lieferAdresse:    text('liefer_adresse'),
+  notiz:            text('notiz'),
+
+  /** Vollständiger Original-Payload für Debugging/Audit */
+  rohDaten:         jsonb('roh_daten').notNull().default({}),
+
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  kasseIdx:    index('lieferbestellungen_kasse_idx').on(t.kasseId),
+  statusIdx:   index('lieferbestellungen_status_idx').on(t.mandantId, t.status),
+  externeIdx:  uniqueIndex('lieferbestellungen_externe_idx').on(t.provider, t.externeId),
+}))
+
+export type Lieferbestellung    = typeof lieferbestellungen.$inferSelect
+export type NewLieferbestellung = typeof lieferbestellungen.$inferInsert

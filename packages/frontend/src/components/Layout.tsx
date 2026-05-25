@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { clearAuth, getAuth, hasBerechtigung } from '../lib/auth'
+import { clearAuth, getAuth, hasBerechtigung, hasModul } from '../lib/auth'
 import { KdsToasts } from './KdsToasts'
 
 export function Layout() {
@@ -35,17 +35,25 @@ function Header() {
           <span className="font-semibold text-gray-900">Kassa</span>
         </div>
         <nav className="flex gap-1 flex-1">
-          {hasBerechtigung('tische')           && <NavItem to="/tische">Tische</NavItem>}
-          {hasBerechtigung('kasse')            && <NavItem to="/kasse">Kasse</NavItem>}
-          {hasBerechtigung('artikel.verwalten')&& <NavItem to="/artikel">Artikel</NavItem>}
-          {hasBerechtigung('artikel.verwalten')&& <NavItem to="/wareneingang">Wareneingang</NavItem>}
-          {hasBerechtigung('belege.lesen')     && <NavItem to="/belege">Belege</NavItem>}
-          {hasBerechtigung('belege.lesen')     && <NavItem to="/tagesabschluss">Abschluss</NavItem>}
-          {hasBerechtigung('belege.lesen')     && <NavItem to="/berichte">Berichte</NavItem>}
-          {hasBerechtigung('einstellungen')    && <NavItem to="/einstellungen">Einstellungen</NavItem>}
-          {hasBerechtigung('einstellungen')    && <NavItem to="/pos-konfiguration">POS-Konfig</NavItem>}
-          {hasBerechtigung('einstellungen')    && <NavItem to="/bonierdrucker">Bonierdrucker</NavItem>}
-          {hasBerechtigung('user.verwalten')   && <NavItem to="/benutzer">Benutzer</NavItem>}
+          {hasBerechtigung('tische')            && hasModul('gastro')    && <NavItem to="/tische">Tische</NavItem>}
+          {hasBerechtigung('kasse')                                       && <NavItem to="/kasse">Kasse</NavItem>}
+          {hasBerechtigung('artikel.verwalten')                           && <NavItem to="/artikel">Artikel</NavItem>}
+          {hasBerechtigung('artikel.verwalten')                           && <NavItem to="/wareneingang">Wareneingang</NavItem>}
+          {hasBerechtigung('artikel.verwalten')                           && <NavItem to="/lagerstand">Lagerstand</NavItem>}
+          {hasBerechtigung('kunden.verwalten')                            && <NavItem to="/kunden">Kunden</NavItem>}
+          {hasBerechtigung('kunden.verwalten')                            && <NavItem to="/offene-posten">Offene Posten</NavItem>}
+          {hasBerechtigung('kasse')                                       && <NavItem to="/gutscheine">Gutscheine</NavItem>}
+          {hasBerechtigung('kasse')             && hasModul('mergeport')  && <NavItem to="/lieferungen">Lieferungen</NavItem>}
+          {hasBerechtigung('kasse')             && hasModul('angebote')   && <NavItem to="/angebote">Angebote</NavItem>}
+          {hasBerechtigung('belege.lesen')                                && <NavItem to="/belege">Belege</NavItem>}
+          {hasBerechtigung('belege.lesen')                                && <NavItem to="/tagesabschluss">Abschluss</NavItem>}
+          {hasBerechtigung('belege.lesen')                                && <NavItem to="/kassensturz">Kassensturz</NavItem>}
+          {hasBerechtigung('belege.lesen')                                && <NavItem to="/berichte">Berichte</NavItem>}
+          {hasBerechtigung('einstellungen')                               && <NavItem to="/einstellungen">Einstellungen</NavItem>}
+          {hasBerechtigung('einstellungen')                               && <NavItem to="/pos-konfiguration">POS-Konfig</NavItem>}
+          {hasBerechtigung('einstellungen')     && hasModul('gastro')     && <NavItem to="/bonierdrucker">Bonierdrucker</NavItem>}
+          {hasBerechtigung('einstellungen')                               && <NavItem to="/module">Module</NavItem>}
+          {hasBerechtigung('user.verwalten')                              && <NavItem to="/benutzer">Benutzer</NavItem>}
         </nav>
         {auth && (
           <div className="flex items-center gap-3">

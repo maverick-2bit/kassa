@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { BelegResponse } from '@kassa/shared'
-import { belegApi } from '../lib/api'
+import type { BelegResponse, Kunde } from '@kassa/shared'
+import { belegApi, kundeApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { hasBerechtigung } from '../lib/auth'
 import { formatPreis, formatDatum } from '../lib/format'
@@ -19,9 +19,12 @@ export function BelegePage() {
   const [aktionsfehler, setAktionsfehler] = useState<string | null>(null)
   const [neuErzeugt, setNeuErzeugt] = useState<BelegResponse | null>(null)
 
+  // Kunden-Filter
+  const [filterKunde, setFilterKunde] = useState<Pick<Kunde, 'id' | 'bezeichnung'> | null>(null)
+
   const liste = useQuery({
-    queryKey: ['belege', identity.kasseId],
-    queryFn:  () => belegApi.list(identity.kasseId, 200),
+    queryKey: ['belege', identity.kasseId, filterKunde?.id],
+    queryFn:  () => belegApi.list(identity.kasseId, 200, filterKunde?.id),
   })
 
   const invalidate = () =>
@@ -144,6 +147,21 @@ export function BelegePage() {
         </div>
       )}
 
+      {/* Kunden-Filter */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex-1 min-w-[220px] max-w-sm">
+          <KundeFilterSuche
+            value={filterKunde}
+            onChange={setFilterKunde}
+          />
+        </div>
+        {filterKunde && (
+          <p className="text-sm text-gray-500">
+            Belege für <strong className="text-gray-900">{filterKunde.bezeichnung}</strong>
+          </p>
+        )}
+      </div>
+
       {/* Tabelle */}
       <div className="rounded-lg bg-white shadow-sm border border-gray-200 overflow-hidden">
         {liste.isLoading ? (
@@ -164,6 +182,7 @@ export function BelegePage() {
                 <th className="px-4 py-2 font-semibold">Nr.</th>
                 <th className="px-4 py-2 font-semibold">Datum</th>
                 <th className="px-4 py-2 font-semibold">Typ</th>
+                <th className="px-4 py-2 font-semibold">Kunde</th>
                 <th className="px-4 py-2 font-semibold">Positionen</th>
                 <th className="px-4 py-2 font-semibold text-right">Bar</th>
                 <th className="px-4 py-2 font-semibold text-right">Karte</th>
@@ -182,6 +201,25 @@ export function BelegePage() {
                   </td>
                   <td className="px-4 py-2 cursor-pointer" onClick={() => setAusgewaehlt(b)}>
                     <BelegTypBadge typ={b.belegTyp} />
+                  </td>
+                  <td className="px-4 py-2 text-gray-600 cursor-pointer max-w-[180px]" onClick={() => setAusgewaehlt(b)}>
+                    {b.kunde ? (
+                      <button
+                        type="button"
+                        className="text-left"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setFilterKunde({ id: b.kunde!.id, bezeichnung: b.kunde!.bezeichnung })
+                        }}
+                        title={`Nach ${b.kunde.bezeichnung} filtern`}
+                      >
+                        <span className="text-xs font-medium text-brand-700 hover:text-brand-900 hover:underline truncate block max-w-[160px]">
+                          {b.kunde.bezeichnung}
+                        </span>
+                      </button>
+                    ) : (
+                      <span className="text-gray-300">—</span>
+                    )}
                   </td>
                   <td className="px-4 py-2 text-gray-600 cursor-pointer" onClick={() => setAusgewaehlt(b)}>
                     {b.positionen.length}
@@ -288,7 +326,35 @@ export function BelegePage() {
         title={`${neuErzeugt?.belegTyp} #${neuErzeugt?.belegNummer} erstellt`}
         size="lg"
       >
-        {neuErzeugt && <BonAnzeige beleg={neuErzeugt} />}
+        {neuErzeugt && (
+          <div className="space-y-4">
+            {neuErzeugt.belegTyp === 'Jahresbeleg' && (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 space-y-2">
+                <div className="flex items-start gap-2">
+                  <svg className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd"/>
+                  </svg>
+                  <div>
+                    <p className="text-sm font-semibold text-amber-800">
+                      Jahresbeleg — Prüfung gesetzlich erforderlich (RKSV § 8)
+                    </p>
+                    <p className="text-sm text-amber-700 mt-1">
+                      Dieser Jahresbeleg muss mit der <strong>FinanzOnline App der BMF</strong> geprüft werden.
+                      Bitte den ausgedruckten QR-Code mit der App scannen und die Prüfung durchführen.
+                    </p>
+                    <ol className="mt-2 text-xs text-amber-700 space-y-1 list-decimal list-inside">
+                      <li>BMF FinanzOnline App öffnen (Android / iOS)</li>
+                      <li>„Belegcheck" wählen</li>
+                      <li>QR-Code auf dem ausgedruckten Jahresbeleg scannen</li>
+                      <li>Prüfergebnis auf „OK" bestätigen</li>
+                    </ol>
+                  </div>
+                </div>
+              </div>
+            )}
+            <BonAnzeige beleg={neuErzeugt} codeAufgeklappt={neuErzeugt.belegTyp === 'Jahresbeleg'} />
+          </div>
+        )}
       </Modal>
     </div>
   )
@@ -297,6 +363,108 @@ export function BelegePage() {
 // ---------------------------------------------------------------------------
 // Hilfs-Komponenten
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Kunden-Filter-Picker (inline, ohne "Neu anlegen")
+// ---------------------------------------------------------------------------
+
+function KundeFilterSuche({
+  value,
+  onChange,
+}: {
+  value:    Pick<Kunde, 'id' | 'bezeichnung'> | null
+  onChange: (k: Pick<Kunde, 'id' | 'bezeichnung'> | null) => void
+}) {
+  const [suche,      setSuche]      = useState('')
+  const [ergebnisse, setErgebnisse] = useState<Kunde[]>([])
+  const [offen,      setOffen]      = useState(false)
+  const [laedt,      setLaedt]      = useState(false)
+  const wrapperRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function onClick(e: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setOffen(false)
+      }
+    }
+    document.addEventListener('mousedown', onClick)
+    return () => document.removeEventListener('mousedown', onClick)
+  }, [])
+
+  useEffect(() => {
+    if (!offen) return
+    const t = setTimeout(async () => {
+      setLaedt(true)
+      try {
+        const res = await kundeApi.list({ ...(suche ? { suche } : {}), limit: 10 })
+        setErgebnisse(res)
+      } finally {
+        setLaedt(false)
+      }
+    }, 200)
+    return () => clearTimeout(t)
+  }, [suche, offen])
+
+  if (value) {
+    return (
+      <div className="flex items-center gap-2 rounded-md border border-brand-200 bg-brand-50 px-3 py-2 text-sm">
+        <svg className="h-4 w-4 text-brand-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a4 4 0 00-5.477-3.718M9 20H4v-2a4 4 0 015.477-3.718m0 0A5.002 5.002 0 0112 15a5.002 5.002 0 012.523.282m-5.046 0A5.002 5.002 0 0112 10a5 5 0 015 5" />
+        </svg>
+        <span className="font-medium text-brand-800 flex-1 truncate">{value.bezeichnung}</span>
+        <button
+          type="button"
+          onClick={() => onChange(null)}
+          className="text-brand-400 hover:text-red-500 text-lg leading-none px-0.5 shrink-0"
+          title="Filter zurücksetzen"
+        >
+          ×
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div ref={wrapperRef} className="relative">
+      <div className="relative">
+        <svg className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z" />
+        </svg>
+        <input
+          type="text"
+          placeholder="Nach Kunde filtern…"
+          value={suche}
+          onChange={e => { setSuche(e.target.value); setOffen(true) }}
+          onFocus={() => setOffen(true)}
+          className="w-full rounded-md border border-gray-300 pl-9 pr-3 py-2 text-sm
+                     focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+        />
+      </div>
+      {offen && (
+        <div className="absolute left-0 right-0 top-full mt-1 z-30 rounded-md border border-gray-200 bg-white shadow-lg max-h-48 overflow-y-auto">
+          {laedt ? (
+            <p className="px-3 py-2 text-xs text-gray-400">Suche…</p>
+          ) : ergebnisse.length === 0 ? (
+            <p className="px-3 py-2 text-xs text-gray-400">Keine Kunden gefunden</p>
+          ) : (
+            ergebnisse.map(k => (
+              <button
+                key={k.id}
+                type="button"
+                onClick={() => { onChange({ id: k.id, bezeichnung: k.bezeichnung }); setOffen(false); setSuche('') }}
+                className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm border-b border-gray-100 last:border-0"
+              >
+                <span className="font-medium text-gray-900">{k.bezeichnung}</span>
+                {k.email && <span className="ml-2 text-xs text-gray-500">{k.email}</span>}
+                <span className="ml-2 text-xs text-gray-400">#{k.nummer}</span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 
 function BelegTypBadge({ typ }: { typ: string }) {
   const farbe =

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import {
   ALLE_STATIONEN,
@@ -44,6 +44,35 @@ const MWST_OPTIONS: MwStSatz[] = ['normal', 'ermaessigt1', 'ermaessigt2', 'null'
 
 export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker, onSubmit, onCancel, loading, fehler }: Props) {
   const [preisFehler, setPreisFehler] = useState<string | null>(null)
+  const [bild,        setBild]        = useState<string | null>(initial?.bild ?? null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // ---------------------------------------------------------------------------
+  // Bild-Upload: Client-seitig auf max. 200 × 200 px JPEG komprimieren
+  // ---------------------------------------------------------------------------
+  const handleBildUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const img = new window.Image()
+      img.onload = () => {
+        const MAX = 200
+        const scale = Math.min(MAX / img.width, MAX / img.height, 1)
+        const canvas = document.createElement('canvas')
+        canvas.width  = Math.round(img.width  * scale)
+        canvas.height = Math.round(img.height * scale)
+        const ctx = canvas.getContext('2d')
+        if (!ctx) return
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+        setBild(canvas.toDataURL('image/jpeg', 0.82))
+      }
+      img.src = ev.target?.result as string
+    }
+    reader.readAsDataURL(file)
+    // Input zurücksetzen damit dasselbe Bild nochmal gewählt werden kann
+    e.target.value = ''
+  }
 
   const { register, handleSubmit, formState: { errors }, reset, watch } = useForm<FormValues>({
     defaultValues: {
@@ -73,6 +102,7 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
       lagerstandAktiv:    initial?.lagerstandAktiv  ?? false,
       lagerstandMengeStr: initial?.lagerstandMenge != null ? String(initial.lagerstandMenge) : '',
     })
+    setBild(initial?.bild ?? null)
   }, [initial, reset])
 
   const submit = handleSubmit((values) => {
@@ -96,6 +126,8 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
       bonierdruckerId: values.bonierdruckerId  || null,
       lagerstandAktiv: values.lagerstandAktiv,
       lagerstandMenge: lsMenge,
+      mindestbestand:  null,    // TODO: UI-Feld für Mindestbestand
+      bild,                     // null = kein / entfernt, string = Data-URL
     })
   })
 
@@ -109,6 +141,56 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
           {...register('bezeichnung', { required: 'Bezeichnung erforderlich' })}
         />
       </Field>
+
+      {/* Artikelbild */}
+      <div>
+        <span className="text-sm font-medium text-gray-700 block mb-1">Artikelbild (optional)</span>
+        {bild ? (
+          <div className="flex items-center gap-3">
+            <img
+              src={bild}
+              alt="Artikelbild"
+              className="h-20 w-20 rounded-lg object-cover border border-gray-200 shadow-sm"
+            />
+            <div className="space-y-1.5">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="block text-xs text-brand-600 hover:underline font-medium"
+              >
+                Bild ändern
+              </button>
+              <button
+                type="button"
+                onClick={() => setBild(null)}
+                className="block text-xs text-red-500 hover:underline"
+              >
+                Bild entfernen
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center justify-center w-full h-20 rounded-lg border-2 border-dashed border-gray-300 hover:border-brand-400 hover:bg-brand-50 transition cursor-pointer"
+          >
+            <div className="text-center">
+              <svg className="mx-auto h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3 21h18M3 3h18M3 9l4.5 4.5" />
+              </svg>
+              <p className="text-xs text-gray-500 mt-1">Foto hochladen (PNG / JPG)</p>
+            </div>
+          </button>
+        )}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="sr-only"
+          onChange={handleBildUpload}
+        />
+      </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Field label="Preis (brutto)" required hint="z.B. 3,50" error={preisFehler ?? undefined}>

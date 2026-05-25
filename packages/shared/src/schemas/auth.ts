@@ -24,6 +24,8 @@ export const BerechtigungSchema = z.enum([
   'artikel.verwalten',   // Artikel anlegen/bearbeiten/deaktivieren
   'einstellungen',       // Drucker- und KDS-Konfiguration ändern
   'user.verwalten',      // Benutzer anlegen/bearbeiten (Admin)
+  'kunden.verwalten',    // Kundenstamm (CRM) einsehen und bearbeiten
+  'kasse.kredit',        // Kreditverkauf (Auf Kredit buchen) verwenden
 ])
 export type Berechtigung = z.infer<typeof BerechtigungSchema>
 
@@ -37,6 +39,8 @@ export const BERECHTIGUNG_LABELS: Record<Berechtigung, string> = {
   'artikel.verwalten': 'Artikel verwalten',
   'einstellungen':     'Einstellungen',
   'user.verwalten':    'Benutzer verwalten',
+  'kunden.verwalten':  'Kunden (CRM)',
+  'kasse.kredit':      'Kreditverkauf (Auf Kredit buchen)',
 }
 
 // ---------------------------------------------------------------------------
@@ -77,9 +81,12 @@ export const LoginResponseSchema = z.object({
   token:   z.string(),
   user:    UserSchema,
   mandant: z.object({
-    id:         z.string().uuid(),
-    firmenname: z.string(),
-    uid:        z.string(),
+    id:                  z.string().uuid(),
+    firmenname:          z.string(),
+    uid:                 z.string(),
+    modulGastroAktiv:    z.boolean(),
+    modulAngeboteAktiv:  z.boolean(),
+    modulMergeportAktiv: z.boolean(),
   }),
   kassen: z.array(z.object({
     id:          z.string().uuid(),

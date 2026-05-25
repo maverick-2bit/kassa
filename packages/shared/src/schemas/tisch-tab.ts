@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { ModifikatorAuswahlSchema } from './modifikator.js'
+import { RabattInputSchema } from './beleg.js'
 
 // ---------------------------------------------------------------------------
 // Tab-Position (ein Artikel in einem offenen Tisch-Tab)
@@ -62,6 +63,12 @@ export const TischTabBezahlenInputSchema = z.object({
     karteCent:    z.number().int().nonnegative(),
     sonstigeCent: z.number().int().nonnegative(),
   }),
+  rabatt: RabattInputSchema.optional(),
+  /** Preis-Overrides pro Position (Index = Reihenfolge in tab.positionen) */
+  positionRabatte: z.array(z.object({
+    positionIndex:          z.number().int().nonnegative(),
+    einzelpreisBreuttoCent: z.number().int().nonnegative(),
+  })).optional(),
 })
 export type TischTabBezahlenInput = z.infer<typeof TischTabBezahlenInputSchema>
 

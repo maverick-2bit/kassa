@@ -39,10 +39,12 @@ function toDto(row: typeof artikel.$inferSelect): Artikel {
     aktiv:                row.aktiv,
     lagerstandAktiv:      row.lagerstandAktiv,
     lagerstandMenge:      row.lagerstandMenge,
+    mindestbestand:       row.mindestbestand,
     istFavorit:           row.istFavorit,
     reihenfolge:          row.reihenfolge,
     favoritenReihenfolge: row.favoritenReihenfolge,
     bonierdruckerId:      row.bonierdruckerId,
+    ...(row.bild != null  && { bild: row.bild }),
     createdAt:            row.createdAt.toISOString(),
     updatedAt:            row.updatedAt.toISOString(),
   }
@@ -62,6 +64,7 @@ export async function erstelleArtikel(db: Db, input: ArtikelInput): Promise<Arti
     lagerstandMenge: input.lagerstandAktiv ? (input.lagerstandMenge ?? null) : null,
     istFavorit:      input.istFavorit ?? false,
     bonierdruckerId: input.bonierdruckerId ?? null,
+    ...(input.bild != null && { bild: input.bild }),
   }).returning()
   if (!created) throw new Error('Artikel konnte nicht angelegt werden')
   return toDto(created)
@@ -100,10 +103,12 @@ export async function aktualisiereArtikel(
   if (update.aktiv           !== undefined) values.aktiv           = update.aktiv
   if (update.lagerstandAktiv      !== undefined) values.lagerstandAktiv      = update.lagerstandAktiv
   if (update.lagerstandMenge      !== undefined) values.lagerstandMenge      = update.lagerstandMenge
+  if (update.mindestbestand       !== undefined) values.mindestbestand       = update.mindestbestand
   if (update.istFavorit           !== undefined) values.istFavorit           = update.istFavorit
   if (update.reihenfolge          !== undefined) values.reihenfolge          = update.reihenfolge
   if (update.favoritenReihenfolge !== undefined) values.favoritenReihenfolge = update.favoritenReihenfolge
   if (update.bonierdruckerId      !== undefined) values.bonierdruckerId      = update.bonierdruckerId
+  if (update.bild                 !== undefined) values.bild                 = update.bild ?? null
 
   const [updated] = await db
     .update(artikel)

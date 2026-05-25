@@ -3,7 +3,7 @@
  * Wird vom fetch-Wrapper gelesen, um den Authorization-Header zu setzen.
  */
 
-import type { Berechtigung, LoginResponse } from '@kassa/shared'
+import type { Berechtigung, LoginResponse, MandantModul } from '@kassa/shared'
 
 const KEY_TOKEN = 'kassa:token'
 const KEY_AUTH  = 'kassa:auth'
@@ -50,6 +50,28 @@ export function hasBerechtigung(berechtigung: Berechtigung): boolean {
   if (!auth) return false
   if (auth.user.rolle === 'admin') return true
   return auth.user.berechtigungen.includes(berechtigung)
+}
+
+export function hasModul(modul: MandantModul): boolean {
+  const auth = getAuth()
+  if (!auth) return false
+  if (modul === 'gastro')    return auth.mandant.modulGastroAktiv
+  if (modul === 'angebote')  return auth.mandant.modulAngeboteAktiv
+  if (modul === 'mergeport') return auth.mandant.modulMergeportAktiv
+  return false
+}
+
+/** Aktualisiert die Modul-Flags im LocalStorage ohne Re-Login. */
+export function updateMandantModule(
+  updates: Partial<{ modulGastroAktiv: boolean; modulAngeboteAktiv: boolean; modulMergeportAktiv: boolean }>,
+): void {
+  const auth = getAuth()
+  if (!auth) return
+  localStorage.setItem(KEY_AUTH, JSON.stringify({
+    user:    auth.user,
+    mandant: { ...auth.mandant, ...updates },
+    kassen:  auth.kassen,
+  }))
 }
 
 /** Triggert beim 401 — z. B. um zur Login-Seite zu redirecten */

@@ -361,6 +361,7 @@ function parseZeile(
       istFavorit:      false,
       lagerstandAktiv,
       lagerstandMenge,
+      mindestbestand:  null,
     },
   }
 }

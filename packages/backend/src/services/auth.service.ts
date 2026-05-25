@@ -103,7 +103,14 @@ async function buildLoginResponse(
   deps: LoginDeps,
 ): Promise<LoginResponse> {
   const [mandant] = await deps.db
-    .select({ id: mandanten.id, firmenname: mandanten.firmenname, uid: mandanten.uid })
+    .select({
+      id:                  mandanten.id,
+      firmenname:          mandanten.firmenname,
+      uid:                 mandanten.uid,
+      modulGastroAktiv:    mandanten.modulGastroAktiv,
+      modulAngeboteAktiv:  mandanten.modulAngeboteAktiv,
+      modulMergeportAktiv: mandanten.modulMergeportAktiv,
+    })
     .from(mandanten)
     .where(eq(mandanten.id, user.mandantId))
     .limit(1)

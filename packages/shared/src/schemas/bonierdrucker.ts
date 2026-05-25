@@ -43,12 +43,15 @@ export const PosKonfigSchema = z.object({
   sichtbareKategorieIds: z.array(z.string().uuid()),
   /** Erlaubte Zahlungsarten */
   erlaubteZahlungsarten: z.array(z.enum(['bar', 'karte', 'sonstige'])),
+  /** Artikelbilder im Kassen-Raster anzeigen (default: true) */
+  artikelbilderAktiv:    z.boolean(),
 })
 export type PosKonfig = z.infer<typeof PosKonfigSchema>
 
 export const PosKonfigUpdateSchema = z.object({
   sichtbareKategorieIds: z.array(z.string().uuid()).optional(),
   erlaubteZahlungsarten: z.array(z.enum(['bar', 'karte', 'sonstige'])).optional(),
+  artikelbilderAktiv:    z.boolean().optional(),
 })
 export type PosKonfigUpdate = z.infer<typeof PosKonfigUpdateSchema>
 

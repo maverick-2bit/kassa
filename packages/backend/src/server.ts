@@ -23,6 +23,13 @@ import { lagerstandRoute } from './routes/lagerstand.route.js'
 import { sseRoute } from './routes/sse.route.js'
 import { bonierdruckerRoute } from './routes/bonierdrucker.route.js'
 import { posConfigRoute } from './routes/pos-config.route.js'
+import { kundeRoute } from './routes/kunde.route.js'
+import { angebotRoute } from './routes/angebot.route.js'
+import { lieferscheinRoute } from './routes/lieferschein.route.js'
+import { offenerPostenRoute } from './routes/offenerPosten.route.js'
+import { gutscheinRoute } from './routes/gutschein.route.js'
+import { lieferbestellungRoute } from './routes/lieferbestellung.route.js'
+import { mandantRoute }          from './routes/mandant.route.js'
 
 export interface ServerDeps {
   config:    Config
@@ -71,6 +78,13 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     await api.register(lagerstandRoute,     { db:   deps.db })
     await api.register(bonierdruckerRoute,  { db:   deps.db })
     await api.register(posConfigRoute,      { db:   deps.db })
+    await api.register(kundeRoute,          { db:   deps.db })
+    await api.register(angebotRoute,        { db:   deps.db })
+    await api.register(lieferscheinRoute,    { db:   deps.db })
+    await api.register(offenerPostenRoute,   { db:   deps.db })
+    await api.register(gutscheinRoute,          { db: deps.db })
+    await api.register(lieferbestellungRoute,   { db: deps.db })
+    await api.register(mandantRoute,            { db: deps.db })
   }, { prefix: '/api' })
 
   return fastify

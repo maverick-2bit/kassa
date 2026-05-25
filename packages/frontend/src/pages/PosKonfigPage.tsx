@@ -399,14 +399,32 @@ function TabZahlungsarten({ kasseId }: { kasseId: string }) {
   const [erlaubte, setErlaubte] = useState<Set<string>>(
     () => new Set(posQuery.data?.erlaubteZahlungsarten ?? ['bar', 'karte', 'sonstige'])
   )
+  const [artikelbilder, setArtikelbilder] = useState<boolean>(
+    () => posQuery.data?.artikelbilderAktiv ?? true
+  )
 
-  const mut = useMutation({
+  // Sync wenn posQuery geladen (z.B. nach erstem Render)
+  const posDataRef = posQuery.data
+  useState(() => {
+    if (posDataRef) {
+      setErlaubte(new Set(posDataRef.erlaubteZahlungsarten))
+      setArtikelbilder(posDataRef.artikelbilderAktiv)
+    }
+  })
+
+  const zahlMut = useMutation({
     mutationFn: (arten: string[]) =>
       posConfigApi.update(kasseId, { erlaubteZahlungsarten: arten as ('bar' | 'karte' | 'sonstige')[] }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['pos-config', kasseId] }),
   })
 
-  const toggle = (key: string) => {
+  const bildMut = useMutation({
+    mutationFn: (aktiv: boolean) =>
+      posConfigApi.update(kasseId, { artikelbilderAktiv: aktiv }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['pos-config', kasseId] }),
+  })
+
+  const toggleZahlung = (key: string) => {
     const next = new Set(erlaubte)
     if (next.has(key)) {
       if (next.size <= 1) return  // mindestens eine muss aktiv sein
@@ -415,26 +433,54 @@ function TabZahlungsarten({ kasseId }: { kasseId: string }) {
       next.add(key)
     }
     setErlaubte(next)
-    mut.mutate([...next])
+    zahlMut.mutate([...next])
+  }
+
+  const toggleBilder = () => {
+    const next = !artikelbilder
+    setArtikelbilder(next)
+    bildMut.mutate(next)
   }
 
   return (
-    <div className="space-y-3 max-w-sm">
-      <p className="text-sm text-gray-500 mb-4">
-        Welche Zahlungsarten sind an dieser Kasse verfügbar?
-        Mindestens eine muss aktiviert sein.
-      </p>
-      {ZAHLUNGSARTEN.map(({ key, label }) => (
-        <label key={key} className="flex items-center gap-3 cursor-pointer rounded-xl border border-gray-200 bg-white px-4 py-3 hover:bg-gray-50">
+    <div className="space-y-6 max-w-sm">
+      {/* Zahlungsarten */}
+      <div className="space-y-3">
+        <p className="text-sm text-gray-500">
+          Welche Zahlungsarten sind an dieser Kasse verfügbar?
+          Mindestens eine muss aktiviert sein.
+        </p>
+        {ZAHLUNGSARTEN.map(({ key, label }) => (
+          <label key={key} className="flex items-center gap-3 cursor-pointer rounded-xl border border-gray-200 bg-white px-4 py-3 hover:bg-gray-50">
+            <input
+              type="checkbox"
+              checked={erlaubte.has(key)}
+              onChange={() => toggleZahlung(key)}
+              className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+            />
+            <span className="text-sm font-medium text-gray-800">{label}</span>
+          </label>
+        ))}
+      </div>
+
+      {/* Darstellung */}
+      <div className="border-t border-gray-200 pt-5 space-y-3">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Darstellung</p>
+        <label className="flex items-center gap-3 cursor-pointer rounded-xl border border-gray-200 bg-white px-4 py-3 hover:bg-gray-50">
           <input
             type="checkbox"
-            checked={erlaubte.has(key)}
-            onChange={() => toggle(key)}
+            checked={artikelbilder}
+            onChange={toggleBilder}
             className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
           />
-          <span className="text-sm font-medium text-gray-800">{label}</span>
+          <div>
+            <p className="text-sm font-medium text-gray-800">Artikelbilder anzeigen</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Fotos im Artikel-Raster einblenden. Deaktivieren für kompaktere Ansicht.
+            </p>
+          </div>
         </label>
-      ))}
+      </div>
     </div>
   )
 }

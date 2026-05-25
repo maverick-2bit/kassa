@@ -1,11 +1,11 @@
 import { useCallback, useState } from 'react'
-import type { KasseEvent } from '@kassa/shared'
+import type { BonierbonEvent, KasseEvent } from '@kassa/shared'
 import { STATION_LABELS } from '@kassa/shared'
 import { useKasseEvents } from '../lib/sse'
 
 interface Toast {
   id:        number
-  event:     KasseEvent
+  event:     BonierbonEvent
   timestamp: Date
 }
 
@@ -15,6 +15,7 @@ export function KdsToasts() {
   const [toasts, setToasts] = useState<Toast[]>([])
 
   const handleEvent = useCallback((event: KasseEvent) => {
+    if (event.typ !== 'bonierbon') return  // Nur Bonierbons als Toast anzeigen
     const id = ++nextId
     setToasts((prev) => [...prev.slice(-4), { id, event, timestamp: new Date() }])
     setTimeout(() => {
@@ -45,7 +46,7 @@ function BonierbonToast({
   timestamp,
   onClose,
 }: {
-  event: KasseEvent
+  event: BonierbonEvent
   timestamp: Date
   onClose: () => void
 }) {

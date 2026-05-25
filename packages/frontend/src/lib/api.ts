@@ -1,4 +1,28 @@
 import type {
+  AngebotInput,
+  AngebotResponse,
+  AngebotStatus,
+  AngebotUpdate,
+  LiferscheinInput,
+  LiferscheinResponse,
+  LiferscheinStatus,
+  LiferscheinUpdate,
+  SammelrechnungInput,
+  GutscheinInput,
+  GutscheinResponse,
+  GutscheinStatus,
+  GutscheinEinloesen,
+  GutscheinBuchungResponse,
+  GutscheinEinloesungResult,
+  OffenerPostenInput,
+  OffenerPostenResponse,
+  OffenerPostenStatus,
+  OffenerPostenZahlung,
+  SammelrechnungResponse,
+  Kunde,
+  KundeBelegVorschau,
+  KundeInput,
+  KundeUpdate,
   Bonierdrucker,
   BonierdruckerInput,
   BonierdruckerUpdate,
@@ -18,6 +42,8 @@ import type {
   ArtikelInput,
   ArtikelUpdate,
   ArtikelGruppenZuweisung,
+  ArtikelBerichtResponse,
+  WarengruppeBerichtResponse,
   BarzahlungsbelegInput,
   BerichtFilter,
   BerichtResponse,
@@ -56,6 +82,10 @@ import type {
   ZvtConfigUpdate,
   ZvtJob,
   ZvtZahlungInput,
+  LieferbestellungResponse,
+  LieferbestellungUpdate,
+  MandantModule,
+  MandantModuleUpdate,
 } from '@kassa/shared'
 import { getToken, handleUnauthorized } from './auth.js'
 
@@ -95,6 +125,51 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     throw new ApiError(res.status, message)
   }
   return data as T
+}
+
+// ---------------------------------------------------------------------------
+// DEP-Export (Datei-Download)
+// ---------------------------------------------------------------------------
+
+export interface DepExportOptions {
+  kasseId:  string
+  format:   'dep7' | 'dep131'
+  vonDatum?: string  // YYYY-MM-DD
+  bisDatum?: string  // YYYY-MM-DD
+}
+
+export async function downloadDepExport(opts: DepExportOptions): Promise<{ anzahl: number }> {
+  const params = new URLSearchParams({ kasseId: opts.kasseId })
+  if (opts.vonDatum) params.set('vonDatum', opts.vonDatum)
+  if (opts.bisDatum) params.set('bisDatum', opts.bisDatum)
+
+  const token = getToken()
+  const res = await fetch(`/api/belege/${opts.format}?${params}`, {
+    headers: { Authorization: token ? `Bearer ${token}` : '' },
+  })
+
+  if (res.status === 401) { handleUnauthorized(); throw new ApiError(401, 'Nicht angemeldet') }
+  if (!res.ok) {
+    const text = await res.text()
+    const fehler = text ? (JSON.parse(text) as { fehler?: string })?.fehler ?? `HTTP ${res.status}` : `HTTP ${res.status}`
+    throw new ApiError(res.status, fehler)
+  }
+
+  const anzahl = parseInt(res.headers.get('X-Anzahl-Belege') ?? '0', 10)
+  const disposition = res.headers.get('Content-Disposition') ?? ''
+  const filename = disposition.match(/filename="([^"]+)"/)?.[1] ?? `${opts.format}.json`
+
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+
+  return { anzahl }
 }
 
 // ---------------------------------------------------------------------------
@@ -238,8 +313,11 @@ export const bonierApi = {
 }
 
 export const belegApi = {
-  list:       (kasseId: string, limit = 50) =>
-    request<BelegResponse[]>('GET', `/api/belege?kasseId=${kasseId}&limit=${limit}`),
+  list:       (kasseId: string, limit = 50, kundeId?: string) => {
+    const p = new URLSearchParams({ kasseId, limit: String(limit) })
+    if (kundeId) p.set('kundeId', kundeId)
+    return request<BelegResponse[]>('GET', `/api/belege?${p.toString()}`)
+  },
   barzahlung: (input: BarzahlungsbelegInput) =>
     request<BelegResponse>('POST', '/api/belege/barzahlung', input),
   storno:     (input: StornobelegInput) =>
@@ -261,6 +339,21 @@ export const berichtApi = {
     if (filter.nurZielrechnungen) p.set('nurZielrechnungen', 'true')
     for (const id of filter.kasseIds ?? []) p.append('kasseIds', id)
     return request<BerichtResponse>('GET', `/api/berichte/umsatz?${p.toString()}`)
+  },
+  artikel: (filter: { von: string; bis: string; kasseIds?: string[]; limit?: number }): Promise<ArtikelBerichtResponse> => {
+    const p = new URLSearchParams()
+    p.set('von', filter.von)
+    p.set('bis', filter.bis)
+    if (filter.limit) p.set('limit', String(filter.limit))
+    for (const id of filter.kasseIds ?? []) p.append('kasseIds', id)
+    return request<ArtikelBerichtResponse>('GET', `/api/berichte/artikel?${p.toString()}`)
+  },
+  warengruppe: (filter: { von: string; bis: string; kasseIds?: string[] }): Promise<WarengruppeBerichtResponse> => {
+    const p = new URLSearchParams()
+    p.set('von', filter.von)
+    p.set('bis', filter.bis)
+    for (const id of filter.kasseIds ?? []) p.append('kasseIds', id)
+    return request<WarengruppeBerichtResponse>('GET', `/api/berichte/warengruppe?${p.toString()}`)
   },
 }
 
@@ -386,6 +479,136 @@ export type { Modifikator, ModifikatorGruppe }
 export const lagerstandApi = {
   bulk: (input: LagerstandBulkInput) =>
     request<void>('POST', '/api/lagerstand/bulk', input),
+}
+
+// ---------------------------------------------------------------------------
+// Kunden (CRM)
+// ---------------------------------------------------------------------------
+
+export const kundeApi = {
+  list: (opts: { suche?: string; nurAktive?: boolean; limit?: number } = {}): Promise<Kunde[]> => {
+    const p = new URLSearchParams()
+    if (opts.suche)               p.set('suche',     opts.suche)
+    if (opts.nurAktive === false)  p.set('nurAktive', 'false')
+    if (opts.limit)                p.set('limit',     String(opts.limit))
+    return request<Kunde[]>('GET', `/api/kunden?${p.toString()}`)
+  },
+  get: (id: string): Promise<Kunde> =>
+    request<Kunde>('GET', `/api/kunden/${id}`),
+  create: (input: KundeInput): Promise<Kunde> =>
+    request<Kunde>('POST', '/api/kunden', input),
+  update: (id: string, input: KundeUpdate): Promise<Kunde> =>
+    request<Kunde>('PUT', `/api/kunden/${id}`, input),
+  deactivate: (id: string): Promise<Kunde> =>
+    request<Kunde>('DELETE', `/api/kunden/${id}`),
+  reactivate: (id: string): Promise<Kunde> =>
+    request<Kunde>('PUT', `/api/kunden/${id}`, { aktiv: true }),
+  belege: (id: string): Promise<KundeBelegVorschau[]> =>
+    request<KundeBelegVorschau[]>('GET', `/api/kunden/${id}/belege`),
+}
+
+// ---------------------------------------------------------------------------
+// Angebote
+// ---------------------------------------------------------------------------
+
+export const lieferscheinApi = {
+  list: (opts: { kundeId?: string; angebotId?: string; status?: LiferscheinStatus; limit?: number } = {}): Promise<LiferscheinResponse[]> => {
+    const p = new URLSearchParams()
+    if (opts.kundeId)   p.set('kundeId',   opts.kundeId)
+    if (opts.angebotId) p.set('angebotId', opts.angebotId)
+    if (opts.status)    p.set('status',    opts.status)
+    if (opts.limit)     p.set('limit',     String(opts.limit))
+    return request<LiferscheinResponse[]>('GET', `/api/lieferscheine?${p.toString()}`)
+  },
+  get: (id: string): Promise<LiferscheinResponse> =>
+    request<LiferscheinResponse>('GET', `/api/lieferscheine/${id}`),
+  create: (input: LiferscheinInput): Promise<LiferscheinResponse> =>
+    request<LiferscheinResponse>('POST', '/api/lieferscheine', input),
+  update: (id: string, input: LiferscheinUpdate): Promise<LiferscheinResponse> =>
+    request<LiferscheinResponse>('PATCH', `/api/lieferscheine/${id}`, input),
+}
+
+export const sammelrechnungApi = {
+  create: (input: SammelrechnungInput): Promise<SammelrechnungResponse> =>
+    request<SammelrechnungResponse>('POST', '/api/sammelrechnungen', input),
+}
+
+export const gutscheinApi = {
+  list: (opts: { status?: GutscheinStatus; kundeId?: string } = {}): Promise<GutscheinResponse[]> => {
+    const p = new URLSearchParams()
+    if (opts.status)  p.set('status',  opts.status)
+    if (opts.kundeId) p.set('kundeId', opts.kundeId)
+    return request<GutscheinResponse[]>('GET', `/api/gutscheine?${p}`)
+  },
+  get:        (id: string): Promise<GutscheinResponse> =>
+    request<GutscheinResponse>('GET', `/api/gutscheine/${id}`),
+  getByCode:  (code: string): Promise<GutscheinResponse> =>
+    request<GutscheinResponse>('GET', `/api/gutscheine/code/${encodeURIComponent(code)}`),
+  create:     (input: GutscheinInput): Promise<GutscheinResponse> =>
+    request<GutscheinResponse>('POST', '/api/gutscheine', input),
+  einloesen:  (id: string, input: GutscheinEinloesen): Promise<GutscheinEinloesungResult> =>
+    request<GutscheinEinloesungResult>('POST', `/api/gutscheine/${id}/einloesen`, input),
+  stornieren: (id: string): Promise<GutscheinResponse> =>
+    request<GutscheinResponse>('POST', `/api/gutscheine/${id}/stornieren`),
+  buchungen:  (id: string): Promise<GutscheinBuchungResponse[]> =>
+    request<GutscheinBuchungResponse[]>('GET', `/api/gutscheine/${id}/buchungen`),
+}
+
+export const offenerPostenApi = {
+  list: (opts: { kundeId?: string; status?: OffenerPostenStatus; limit?: number } = {}): Promise<OffenerPostenResponse[]> => {
+    const p = new URLSearchParams()
+    if (opts.kundeId) p.set('kundeId', opts.kundeId)
+    if (opts.status)  p.set('status',  opts.status)
+    if (opts.limit)   p.set('limit',   String(opts.limit))
+    return request<OffenerPostenResponse[]>('GET', `/api/offene-posten?${p}`)
+  },
+  get: (id: string): Promise<OffenerPostenResponse> =>
+    request<OffenerPostenResponse>('GET', `/api/offene-posten/${id}`),
+  create: (input: OffenerPostenInput): Promise<OffenerPostenResponse> =>
+    request<OffenerPostenResponse>('POST', '/api/offene-posten', input),
+  zahlung: (id: string, input: OffenerPostenZahlung): Promise<OffenerPostenResponse> =>
+    request<OffenerPostenResponse>('POST', `/api/offene-posten/${id}/zahlung`, input),
+  statistik: (): Promise<{ anzahl: number; gesamtRestCent: number }> =>
+    request<{ anzahl: number; gesamtRestCent: number }>('GET', '/api/offene-posten/statistik'),
+}
+
+export const angebotApi = {
+  list: (opts: { status?: AngebotStatus; limit?: number } = {}): Promise<AngebotResponse[]> => {
+    const p = new URLSearchParams()
+    if (opts.status) p.set('status', opts.status)
+    if (opts.limit)  p.set('limit',  String(opts.limit))
+    return request<AngebotResponse[]>('GET', `/api/angebote?${p.toString()}`)
+  },
+  get: (id: string): Promise<AngebotResponse> =>
+    request<AngebotResponse>('GET', `/api/angebote/${id}`),
+  create: (input: AngebotInput): Promise<AngebotResponse> =>
+    request<AngebotResponse>('POST', '/api/angebote', input),
+  update: (id: string, input: AngebotUpdate): Promise<AngebotResponse> =>
+    request<AngebotResponse>('PATCH', `/api/angebote/${id}`, input),
+}
+
+// ---------------------------------------------------------------------------
+// Lieferbestellungen (Lieferando / Mergeport)
+// ---------------------------------------------------------------------------
+
+export const lieferApi = {
+  list: (kasseId: string, opts: { nurNeu?: boolean; limit?: number } = {}): Promise<LieferbestellungResponse[]> => {
+    const p = new URLSearchParams({ kasseId })
+    if (opts.nurNeu) p.set('nurNeu', 'true')
+    if (opts.limit)  p.set('limit',  String(opts.limit))
+    return request<LieferbestellungResponse[]>('GET', `/api/lieferbestellungen?${p.toString()}`)
+  },
+  updateStatus: (id: string, input: LieferbestellungUpdate): Promise<LieferbestellungResponse> =>
+    request<LieferbestellungResponse>('PATCH', `/api/lieferbestellungen/${id}`, input),
+  webhookUrls: (kasseId: string): Promise<{ webhookSecret: string; urls: { lieferando: string; mergeport: string; custom: string } }> =>
+    request('GET', `/api/kassen/${kasseId}/webhook-url`),
+}
+
+export const mandantApi = {
+  getModule: (): Promise<MandantModule> =>
+    request<MandantModule>('GET', '/api/mandanten/module'),
+  patchModule: (input: MandantModuleUpdate): Promise<MandantModule> =>
+    request<MandantModule>('PATCH', '/api/mandanten/module', input),
 }
 
 export { ApiError }

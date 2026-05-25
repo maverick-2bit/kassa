@@ -325,9 +325,22 @@ export async function bezahleTab(
   if (positionen.length === 0) throw new TischTabError(400, 'Keine Positionen im Tab')
 
   const beleg = await erstelleBarzahlungsbeleg({
-    kasseId:    existing.kasseId,
-    positionen: positionen.map(p => ({ artikelId: p.artikelId, menge: p.menge })),
+    kasseId: existing.kasseId,
+    positionen: positionen.map((p, i) => {
+      const posRabatt = input.positionRabatte?.find(r => r.positionIndex === i)
+      return {
+        artikelId:              p.artikelId,
+        menge:                  p.menge,
+        // Preis aus Tab verwenden (enthält Modifier-Aufschläge), ggf. Rabatt-Override
+        einzelpreisBreuttoCent: posRabatt?.einzelpreisBreuttoCent ?? p.preisBruttoCent,
+        // Modifier-Bezeichnung weiterleiten
+        ...(p.modifikatoren?.length
+          ? { bezeichnungZusatz: p.modifikatoren.map((m: { name: string }) => m.name).join(', ') }
+          : {}),
+      }
+    }),
     zahlung:    input.zahlung,
+    ...(input.rabatt && { rabatt: input.rabatt }),
   }, deps.belegDeps)
 
   const [row] = await deps.db

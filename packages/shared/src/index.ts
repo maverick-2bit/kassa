@@ -5,6 +5,20 @@
  * gemeinsam verwendet. Single source of truth.
  */
 
+// Mandanten-Module
+export {
+  MandantModulSchema,
+  MANDANT_MODUL_LABELS,
+  MANDANT_MODUL_BESCHREIBUNGEN,
+  MandantModuleSchema,
+  MandantModuleUpdateSchema,
+} from './schemas/mandant.js'
+export type {
+  MandantModul,
+  MandantModule,
+  MandantModuleUpdate,
+} from './schemas/mandant.js'
+
 // Auth
 export {
   LoginInputSchema,
@@ -198,6 +212,12 @@ export {
   BerichtZeileSchema,
   BerichtGesamtSchema,
   BerichtResponseSchema,
+  ArtikelBerichtFilterSchema,
+  ArtikelBerichtZeileSchema,
+  ArtikelBerichtResponseSchema,
+  WarengruppeBerichtFilterSchema,
+  WarengruppeBerichtZeileSchema,
+  WarengruppeBerichtResponseSchema,
 } from './schemas/bericht.js'
 export type {
   BerichtFilter,
@@ -205,6 +225,11 @@ export type {
   BerichtZeile,
   BerichtGesamt,
   BerichtResponse,
+  ArtikelBerichtFilter,
+  ArtikelBerichtZeile,
+  ArtikelBerichtResponse,
+  WarengruppeBerichtZeile,
+  WarengruppeBerichtResponse,
 } from './schemas/bericht.js'
 
 // Tagesabschluss
@@ -246,15 +271,113 @@ export type {
 // SSE-Events
 export {
   BonierbonEventSchema,
+  NeueBestellungEventSchema,
   KasseEventSchema,
 } from './schemas/events.js'
 export type {
   BonierbonEvent,
+  NeueBestellungEvent,
   KasseEvent,
 } from './schemas/events.js'
 
+// Kunde (CRM)
+export {
+  KundeInputSchema,
+  KundeUpdateSchema,
+  KundeSchema,
+  KundeSnapshotSchema,
+  KundeBelegVorschauSchema,
+  KundeSuchfilterSchema,
+  kundeBezeichnung,
+} from './schemas/kunde.js'
+export type {
+  KundeInput,
+  KundeUpdate,
+  Kunde,
+  KundeSnapshot,
+  KundeBelegVorschau,
+  KundeSuchfilter,
+} from './schemas/kunde.js'
+
+// Lieferschein + Sammelrechnung
+export {
+  LiferscheinStatusSchema,
+  LIEFERSCHEIN_STATUS_LABELS,
+  LiferscheinInputSchema,
+  LiferscheinUpdateSchema,
+  LiferscheinResponseSchema,
+  SammelrechnungInputSchema,
+  SammelrechnungResponseSchema,
+} from './schemas/lieferschein.js'
+export type {
+  LiferscheinStatus,
+  LiferscheinInput,
+  LiferscheinUpdate,
+  LiferscheinResponse,
+  SammelrechnungInput,
+  SammelrechnungResponse,
+} from './schemas/lieferschein.js'
+
+// Gutscheine
+export {
+  GutscheinStatusSchema,
+  GUTSCHEIN_STATUS_LABELS,
+  GutscheinBuchungTypSchema,
+  GUTSCHEIN_BUCHUNG_TYP_LABELS,
+  GutscheinInputSchema,
+  GutscheinEinloesenSchema,
+  GutscheinResponseSchema,
+  GutscheinBuchungResponseSchema,
+  GutscheinEinloesungResultSchema,
+} from './schemas/gutschein.js'
+export type {
+  GutscheinStatus,
+  GutscheinBuchungTyp,
+  GutscheinInput,
+  GutscheinEinloesen,
+  GutscheinResponse,
+  GutscheinBuchungResponse,
+  GutscheinEinloesungResult,
+} from './schemas/gutschein.js'
+
+// Offene Posten (Kreditverkauf)
+export {
+  OffenerPostenStatusSchema,
+  OFFENER_POSTEN_STATUS_LABELS,
+  OffenerPostenInputSchema,
+  OffenerPostenZahlungSchema,
+  OffenerPostenResponseSchema,
+} from './schemas/offenerPosten.js'
+export type {
+  OffenerPostenStatus,
+  OffenerPostenInput,
+  OffenerPostenZahlung,
+  OffenerPostenResponse,
+} from './schemas/offenerPosten.js'
+
+// Angebot
+export {
+  AngebotPositionSchema,
+  AngebotInputSchema,
+  AngebotStatusSchema,
+  AngebotUpdateSchema,
+  AngebotResponseSchema,
+  ANGEBOT_STATUS_LABELS,
+} from './schemas/angebot.js'
+export type {
+  AngebotPosition,
+  AngebotInput,
+  AngebotStatus,
+  AngebotUpdate,
+  AngebotResponse,
+} from './schemas/angebot.js'
+
 // Beleg
 export {
+  RabattInputSchema,
+  ArtikelPositionSchema,
+  FreiePositionSchema,
+  BelegInputPositionSchema,
   BarzahlungsbelegInputSchema,
   StornobelegInputSchema,
   NullbelegInputSchema,
@@ -264,6 +387,10 @@ export {
   BelegPositionSchema,
 } from './schemas/beleg.js'
 export type {
+  RabattInput,
+  ArtikelPosition,
+  FreiePosition,
+  BelegInputPosition,
   BarzahlungsbelegInput,
   StornobelegInput,
   NullbelegInput,
@@ -272,3 +399,19 @@ export type {
   BelegResponse,
   BelegPositionDto,
 } from './schemas/beleg.js'
+
+// Lieferbestellungen (Lieferando / Mergeport)
+export {
+  LieferbestellungStatusSchema,
+  LIEFERBESTELLUNG_STATUS_LABELS,
+  LIEFERBESTELLUNG_PROVIDER_LABELS,
+  LieferbestellungPositionSchema,
+  LieferbestellungResponseSchema,
+  LieferbestellungUpdateSchema,
+} from './schemas/lieferbestellung.js'
+export type {
+  LieferbestellungStatus,
+  LieferbestellungPosition,
+  LieferbestellungResponse,
+  LieferbestellungUpdate,
+} from './schemas/lieferbestellung.js'
