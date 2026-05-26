@@ -1,0 +1,30 @@
+# Git
+.git/
+.github/
+
+# Abhängigkeiten (werden im Container neu installiert)
+node_modules/
+packages/*/node_modules/
+
+# Build-Artefakte
+dist/
+packages/*/dist/
+.turbo/
+*.tsbuildinfo
+
+# Lokale Konfig & Secrets
+.env
+.env.local
+.env*.local
+
+# Test & Coverage
+coverage/
+packages/*/coverage/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

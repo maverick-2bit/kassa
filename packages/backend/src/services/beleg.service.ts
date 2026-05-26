@@ -103,6 +103,15 @@ async function signiereImTx(
     if (kasse.status !== 'aktiv')  throw new BelegError(409, `Kasse ist ${kasse.status}, keine neuen Belege möglich`)
     if (!kasse.bei_fo_registriert) throw new BelegError(409, 'Kasse ist nicht bei FinanzOnline registriert')
 
+    // Zertifikats-Ablauf prüfen
+    if (kasse.seeGueltigBis <= new Date()) {
+      const ablaufDatum = kasse.seeGueltigBis.toISOString().slice(0, 10)
+      throw new BelegError(
+        409,
+        `SEE-Zertifikat ist abgelaufen (${ablaufDatum}). Die Kasse kann keine Belege mehr ausstellen. Bitte Kasse neu einrichten.`,
+      )
+    }
+
     // BelegDaten ggf. erst jetzt aufbauen (Artikel- oder Verweis-Lookup)
     const { positionen, zahlung } = typeof input.belegDaten === 'function'
       ? await input.belegDaten(tx)

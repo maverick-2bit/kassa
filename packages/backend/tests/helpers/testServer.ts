@@ -7,7 +7,7 @@
 import type { FastifyInstance } from 'fastify'
 import { buildServer } from '../../src/server.js'
 import type { Db } from '../../src/db/client.js'
-import type { Rolle } from '@kassa/shared'
+import type { Berechtigung, Rolle } from '@kassa/shared'
 import type { FinanzOnlineClient } from '@kassa/rksv'
 
 export const TEST_MASTER     = 'test-passphrase-long-enough'
@@ -20,10 +20,11 @@ export interface TestServer {
   fastify: FastifyInstance
   /** Erzeugt einen gültigen JWT für die Tests */
   signTestToken: (overrides?: {
-    sub?:       string
-    mandantId?: string
-    rolle?:     Rolle
-    name?:      string
+    sub?:            string
+    mandantId?:      string
+    rolle?:          Rolle
+    name?:           string
+    berechtigungen?: Berechtigung[]
   }) => string
   authHeader: (overrides?: Parameters<TestServer['signTestToken']>[0]) => { authorization: string }
   close: () => Promise<void>
@@ -58,10 +59,11 @@ export async function buildTestServer(db: Db, opts: BuildTestServerOptions = {})
 
   const signTestToken: TestServer['signTestToken'] = (overrides = {}) =>
     fastify.jwt.sign({
-      sub:       overrides.sub       ?? TEST_USER_ID,
-      mandantId: overrides.mandantId ?? TEST_MANDANT_ID,
-      rolle:     overrides.rolle     ?? 'admin',
-      name:      overrides.name      ?? 'Test User',
+      sub:             overrides.sub             ?? TEST_USER_ID,
+      mandantId:       overrides.mandantId       ?? TEST_MANDANT_ID,
+      rolle:           overrides.rolle           ?? 'admin',
+      name:            overrides.name            ?? 'Test User',
+      berechtigungen:  overrides.berechtigungen  ?? [],
     })
 
   return {

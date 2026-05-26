@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { BelegResponse, Kunde } from '@kassa/shared'
-import { belegApi, kundeApi } from '../lib/api'
+import { belegApi, druckerApi, kundeApi, kasseApi, type JahresbelegStatus } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { hasBerechtigung } from '../lib/auth'
 import { formatPreis, formatDatum } from '../lib/format'
@@ -21,6 +21,18 @@ export function BelegePage() {
 
   // Kunden-Filter
   const [filterKunde, setFilterKunde] = useState<Pick<Kunde, 'id' | 'bezeichnung'> | null>(null)
+
+  const kasseStatus = useQuery({
+    queryKey: ['kasse-status', identity.kasseId],
+    queryFn:  () => kasseApi.getStatus(identity.kasseId),
+    staleTime: 1000 * 60 * 10,   // 10 Minuten cachen
+  })
+
+  const jahresbelegStatus = useQuery({
+    queryKey:  ['jahresbeleg-status', identity.kasseId],
+    queryFn:   () => kasseApi.getJahresbelegStatus(identity.kasseId),
+    staleTime: 1000 * 60 * 5,
+  })
 
   const liste = useQuery({
     queryKey: ['belege', identity.kasseId, filterKunde?.id],
@@ -60,7 +72,12 @@ export function BelegePage() {
 
   const jahresbelegMutation = useMutation({
     mutationFn: () => belegApi.jahresbeleg({ kasseId: identity.kasseId }),
-    onSuccess:  (beleg) => { setNeuErzeugt(beleg); invalidate() },
+    onSuccess:  (beleg) => {
+      setNeuErzeugt(beleg)
+      invalidate()
+      // Jahresbeleg-Status sofort neu laden → Banner verschwindet
+      void queryClient.invalidateQueries({ queryKey: ['jahresbeleg-status', identity.kasseId] })
+    },
     onError: (err) => setAktionsfehler(err instanceof Error ? err.message : String(err)),
   })
 
@@ -93,6 +110,22 @@ export function BelegePage() {
         </p>
       </div>
 
+      {/* SEE-Zertifikats-Banner */}
+      {kasseStatus.data?.seeAbgelaufen && (
+        <Banner
+          farbe="red"
+          titel="SEE-Zertifikat abgelaufen"
+          beschreibung={`Das Sicherheitseinrichtungs-Zertifikat ist seit dem ${new Date(kasseStatus.data.seeGueltigBis).toLocaleDateString('de-AT')} abgelaufen. Die Kasse kann keine Belege mehr ausstellen. Bitte Kasse neu einrichten.`}
+        />
+      )}
+      {kasseStatus.data && !kasseStatus.data.seeAbgelaufen && kasseStatus.data.seeRestTage <= 90 && (
+        <Banner
+          farbe={kasseStatus.data.seeRestTage <= 30 ? 'red' : 'amber'}
+          titel={`SEE-Zertifikat läuft in ${kasseStatus.data.seeRestTage} Tagen ab`}
+          beschreibung={`Das Sicherheitseinrichtungs-Zertifikat ist bis ${new Date(kasseStatus.data.seeGueltigBis).toLocaleDateString('de-AT')} gültig. Bitte rechtzeitig Kasse neu einrichten, um Betriebsunterbrechungen zu vermeiden.`}
+        />
+      )}
+
       {/* Fälligkeits-Banner */}
       {faelligkeit.monatsbelegFaellig && (
         <Banner
@@ -110,28 +143,34 @@ export function BelegePage() {
           }
         />
       )}
-      {faelligkeit.jahresbelegFaellig && (
-        <Banner
-          farbe="red"
-          titel="Jahresbeleg fällig"
-          beschreibung="Das Jahr ist abgelaufen, aber es wurde noch kein Jahresbeleg erstellt. Pflicht nach RKSV § 8."
-          aktion={
-            <Button onClick={() => jahresbelegMutation.mutate()} loading={jahresbelegMutation.isPending}>
-              Jahresbeleg erstellen
-            </Button>
-          }
+      {jahresbelegStatus.data?.jahresbelegFaellig && (
+        <JahresbelegBanner
+          status={jahresbelegStatus.data}
+          isPending={jahresbelegMutation.isPending}
+          onErstellen={() => jahresbelegMutation.mutate()}
         />
       )}
 
       {/* Spezialbelege */}
-      <details className="rounded-lg bg-white shadow-sm border border-gray-200">
-        <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50">
-          Spezialbelege (Nullbeleg, Monatsbeleg, Jahresbeleg)
-        </summary>
-        <div className="border-t border-gray-200 px-4 py-3 flex flex-wrap gap-2">
-          <Button variant="secondary" onClick={() => nullbelegMutation.mutate()} loading={nullbelegMutation.isPending}>
-            Nullbeleg erstellen
+      <div className="rounded-lg bg-white shadow-sm border border-gray-200 p-4 space-y-4">
+        <h2 className="text-sm font-semibold text-gray-900">RKSV-Spezialbelege</h2>
+
+        {/* Kontrollbeleg — primäre Aktion */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-blue-900">Kontrollbeleg (Nullbeleg)</p>
+            <p className="text-xs text-blue-700 mt-0.5">
+              Nullbeleg gem. RKSV § 8 — wird signiert, gedruckt und in die Signaturkette eingereiht.
+              Bei Behördenkontrolle auf Verlangen sofort erstellen.
+            </p>
+          </div>
+          <Button onClick={() => nullbelegMutation.mutate()} loading={nullbelegMutation.isPending}>
+            Kontrollbeleg erstellen
           </Button>
+        </div>
+
+        {/* Monats- und Jahresbeleg — sekundär */}
+        <div className="flex flex-wrap gap-2 pt-1 border-t border-gray-100">
           <Button variant="secondary" onClick={() => monatsbelegMutation.mutate()} loading={monatsbelegMutation.isPending}>
             Monatsbeleg erstellen
           </Button>
@@ -139,7 +178,7 @@ export function BelegePage() {
             Jahresbeleg erstellen
           </Button>
         </div>
-      </details>
+      </div>
 
       {aktionsfehler && !stornoKandidat && (
         <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
@@ -503,14 +542,55 @@ function Banner({ farbe, titel, beschreibung, aktion }: {
 }
 
 // ---------------------------------------------------------------------------
-// Fälligkeits-Logik
+// Jahresbeleg-Banner (Backend-gestützt, zuverlässig)
+// ---------------------------------------------------------------------------
+
+function JahresbelegBanner({
+  status,
+  isPending,
+  onErstellen,
+}: {
+  status:      JahresbelegStatus
+  isPending:   boolean
+  onErstellen: () => void
+}) {
+  // Wie viele Tage sind seit dem 1. Januar vergangen?
+  const startDesJahres = new Date(status.jahr, 0, 1)
+  const tageSeitJahresbeginn = Math.floor(
+    (Date.now() - startDesJahres.getTime()) / (1000 * 60 * 60 * 24)
+  )
+  // Erste Woche: amber (Erinnerung), danach: rot (kritisch)
+  const kritisch = tageSeitJahresbeginn > 7
+
+  return (
+    <Banner
+      farbe={kritisch ? 'red' : 'amber'}
+      titel={
+        kritisch
+          ? `Jahresbeleg ${status.jahr} überfällig`
+          : `Jahresbeleg ${status.jahr} fällig`
+      }
+      beschreibung={
+        kritisch
+          ? `Der Jahresbeleg für ${status.jahr} wurde noch nicht erstellt (${tageSeitJahresbeginn} Tage seit Jahresbeginn). Pflicht gemäß RKSV § 8 Abs. 3 — bitte sofort nachholen.`
+          : `Bitte erstelle den Jahresbeleg für ${status.jahr}. Er muss zu Jahresbeginn erstellt und mit der BMF FinanzOnline App geprüft werden (QR-Code scannen).`
+      }
+      aktion={
+        <Button onClick={onErstellen} loading={isPending}>
+          Jahresbeleg {status.jahr} erstellen
+        </Button>
+      }
+    />
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Fälligkeits-Logik (Monatsbeleg — bleibt frontend-seitig aus der Belegeliste)
 // ---------------------------------------------------------------------------
 
 interface Faelligkeit {
   monatsbelegFaellig:    boolean
-  jahresbelegFaellig:    boolean
   letzterMonatsbeleg?:   string
-  letzterJahresbeleg?:   string
 }
 
 function berechneFaelligkeit(belege: BelegResponse[]): Faelligkeit {
@@ -519,26 +599,17 @@ function berechneFaelligkeit(belege: BelegResponse[]): Faelligkeit {
   const startbeleg    = belege.find(b => b.belegTyp === 'Startbeleg')
 
   const letzterMonatsbeleg = monatsbelege[0]?.belegDatum
-  const letzterJahresbeleg = jahresbelege[0]?.belegDatum
-
-  const referenzMonat = letzterMonatsbeleg ?? letzterJahresbeleg ?? startbeleg?.belegDatum
-  const referenzJahr  = letzterJahresbeleg ?? startbeleg?.belegDatum
-
-  const now = new Date()
+  const referenzMonat      = letzterMonatsbeleg
+    ?? jahresbelege[0]?.belegDatum
+    ?? startbeleg?.belegDatum
 
   const monatsbelegFaellig = referenzMonat
-    ? monateZwischen(new Date(referenzMonat), now) >= 1
-    : false
-
-  const jahresbelegFaellig = referenzJahr
-    ? new Date(referenzJahr).getFullYear() < now.getFullYear()
+    ? monateZwischen(new Date(referenzMonat), new Date()) >= 1
     : false
 
   return {
     monatsbelegFaellig,
-    jahresbelegFaellig,
     ...(letzterMonatsbeleg && { letzterMonatsbeleg }),
-    ...(letzterJahresbeleg && { letzterJahresbeleg }),
   }
 }
 

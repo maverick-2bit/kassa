@@ -1,6 +1,5 @@
 import { z } from 'zod'
 import { MwStSatzSchema } from './artikel.js'
-import { FinanzOnlineCredentialsSchema } from './setup.js'
 import { KundeInputSchema, KundeSnapshotSchema } from './kunde.js'
 
 // ---------------------------------------------------------------------------
@@ -104,13 +103,11 @@ export const MonatsbelegInputSchema = z.object({
 export type MonatsbelegInput = z.infer<typeof MonatsbelegInputSchema>
 
 // ---------------------------------------------------------------------------
-// Jahresbeleg — Jahresabschluss (RKSV-Pflicht + FinanzOnline-Prüfung)
+// Jahresbeleg — Jahresabschluss (RKSV-Pflicht)
 // ---------------------------------------------------------------------------
 
 export const JahresbelegInputSchema = z.object({
   kasseId: z.string().uuid(),
-  /** Optional: wenn gesetzt, wird der Jahresbeleg direkt bei FinanzOnline geprüft */
-  finanzOnline: FinanzOnlineCredentialsSchema.optional(),
 })
 export type JahresbelegInput = z.infer<typeof JahresbelegInputSchema>
 

@@ -621,4 +621,50 @@ export const mandantApi = {
     request<MandantModule>('PATCH', '/api/mandanten/module', input),
 }
 
+// ---------------------------------------------------------------------------
+// Kassen-Status (Zertifikats-Ablauf)
+// ---------------------------------------------------------------------------
+
+export interface KasseStatus {
+  kasseId:       string
+  bezeichnung:   string | null
+  status:        string
+  seeGueltigBis: string   // ISO-Datum
+  seeRestTage:   number
+  seeAbgelaufen: boolean
+}
+
+export interface JahresbelegStatus {
+  jahr:                  number
+  jahresbelegFaellig:    boolean
+  jahresbelegErstelltAm: string | null   // ISO-Datum oder null
+}
+
+export const kasseApi = {
+  getStatus: (kasseId: string): Promise<KasseStatus> =>
+    request<KasseStatus>('GET', `/api/kassen/${kasseId}/status`),
+
+  getJahresbelegStatus: (kasseId: string): Promise<JahresbelegStatus> =>
+    request<JahresbelegStatus>('GET', `/api/kassen/${kasseId}/jahresbeleg-status`),
+}
+
+// ---------------------------------------------------------------------------
+// Health-Check (Systeminfo)
+// ---------------------------------------------------------------------------
+
+export interface HealthStatus {
+  status:     'ok' | 'degraded'
+  version:    string
+  uptimeSek:  number
+  timestamp:  string
+  checks: {
+    db: 'ok' | 'unreachable'
+  }
+}
+
+export const healthApi = {
+  get: (): Promise<HealthStatus> =>
+    request<HealthStatus>('GET', '/api/health'),
+}
+
 export { ApiError }

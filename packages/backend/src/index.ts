@@ -5,10 +5,17 @@
 
 import { loadConfig } from './config.js'
 import { createDb } from './db/client.js'
+import { runMigrations } from './db/migrate.js'
 import { buildServer } from './server.js'
 
 async function main(): Promise<void> {
   const config = loadConfig()
+
+  // Migrationen vor dem Server-Start ausführen
+  console.info('Führe Datenbankmigrationen aus…')
+  await runMigrations(config.DATABASE_URL)
+  console.info('Migrationen abgeschlossen.')
+
   const db     = createDb(config.DATABASE_URL)
 
   const server = await buildServer({

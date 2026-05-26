@@ -15,8 +15,11 @@ export interface AuthRouteOptions {
   db: Db
 }
 
+/** Strenges Rate-Limit für Login-Endpunkte (Brute-Force-Schutz). */
+const loginRateLimit = { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }
+
 export const authRoute: FastifyPluginAsync<AuthRouteOptions> = async (fastify, opts) => {
-  fastify.post('/auth/login', async (request, reply) => {
+  fastify.post('/auth/login', loginRateLimit, async (request, reply) => {
     const parsed = LoginInputSchema.safeParse(request.body)
     if (!parsed.success) {
       return reply.status(400).send({ fehler: parsed.error.issues })
@@ -37,7 +40,7 @@ export const authRoute: FastifyPluginAsync<AuthRouteOptions> = async (fastify, o
     }
   })
 
-  fastify.post('/auth/pin-login', async (request, reply) => {
+  fastify.post('/auth/pin-login', loginRateLimit, async (request, reply) => {
     const parsed = PinLoginInputSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     try {

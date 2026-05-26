@@ -46,6 +46,7 @@ function mockDb(state: MockState = {}): Db {
 
   return {
     select:      () => selectChain,
+    execute:     () => Promise.resolve([]),   // für Health-Check SELECT 1
     transaction: async (cb: (tx: typeof txMock) => Promise<unknown>) => cb(txMock),
   } as unknown as Db
 }

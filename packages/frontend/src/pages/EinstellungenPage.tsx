@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ALLE_STATIONEN, STATION_LABELS, type Station, type ZvtConfig } from '@kassa/shared'
-import { druckerApi, kdsApi, zvtApi, downloadDepExport, type DruckerConfig, type KdsConfig } from '../lib/api'
+import { druckerApi, kdsApi, zvtApi, downloadDepExport, healthApi, type DruckerConfig, type KdsConfig } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { hasModul } from '../lib/auth'
 import { Field } from '../components/ui/Field'
@@ -22,6 +22,7 @@ export function EinstellungenPage() {
       <ZvtSektion />
       <RksvExportSektion />
       {hasModul('gastro') && <TischplanSektion />}
+      <SystemInfoSektion />
     </div>
   )
 }
@@ -494,6 +495,139 @@ function ZvtSektion() {
         }}
         onAbbruch={() => setTestOffen(false)}
       />
+    </section>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Systeminfo-Sektion
+// ---------------------------------------------------------------------------
+
+function SystemInfoSektion() {
+  const health = useQuery({
+    queryKey: ['health'],
+    queryFn:  healthApi.get,
+    refetchInterval: 60_000,   // jede Minute neu prüfen
+    retry: false,
+  })
+
+  const dbOk     = health.data?.checks.db === 'ok'
+  const statusOk = health.data?.status === 'ok'
+
+  const formatUptime = (sek: number) => {
+    if (sek < 60)   return `${sek}s`
+    if (sek < 3600) return `${Math.floor(sek / 60)}min`
+    const h = Math.floor(sek / 3600)
+    const m = Math.floor((sek % 3600) / 60)
+    return `${h}h ${m}min`
+  }
+
+  return (
+    <section className="rounded-xl border border-gray-200 bg-white p-6 space-y-4">
+      <h2 className="text-lg font-semibold text-gray-900">Systeminfo</h2>
+
+      <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 text-sm">
+        {/* Frontend-Version */}
+        <div>
+          <dt className="text-gray-500">Frontend-Version</dt>
+          <dd className="mt-0.5 font-mono font-medium text-gray-900">
+            v{__APP_VERSION__}
+          </dd>
+        </div>
+
+        {/* Backend-Version */}
+        <div>
+          <dt className="text-gray-500">Backend-Version</dt>
+          <dd className="mt-0.5 font-mono font-medium text-gray-900">
+            {health.isLoading ? (
+              <span className="text-gray-400">…</span>
+            ) : health.data ? (
+              `v${health.data.version}`
+            ) : (
+              <span className="text-red-500">nicht erreichbar</span>
+            )}
+          </dd>
+        </div>
+
+        {/* Datenbank-Status */}
+        <div>
+          <dt className="text-gray-500">Datenbank</dt>
+          <dd className="mt-0.5 flex items-center gap-1.5">
+            {health.isLoading ? (
+              <span className="text-gray-400 text-sm">…</span>
+            ) : (
+              <>
+                <span
+                  className={`inline-block h-2 w-2 rounded-full ${
+                    dbOk ? 'bg-green-500' : 'bg-red-500'
+                  }`}
+                />
+                <span className={`font-medium ${dbOk ? 'text-green-700' : 'text-red-600'}`}>
+                  {dbOk ? 'verbunden' : 'nicht erreichbar'}
+                </span>
+              </>
+            )}
+          </dd>
+        </div>
+
+        {/* Server-Status */}
+        <div>
+          <dt className="text-gray-500">Server-Status</dt>
+          <dd className="mt-0.5 flex items-center gap-1.5">
+            {health.isLoading ? (
+              <span className="text-gray-400 text-sm">…</span>
+            ) : health.data ? (
+              <>
+                <span
+                  className={`inline-block h-2 w-2 rounded-full ${
+                    statusOk ? 'bg-green-500' : 'bg-amber-500'
+                  }`}
+                />
+                <span className={`font-medium ${statusOk ? 'text-green-700' : 'text-amber-700'}`}>
+                  {statusOk ? 'ok' : 'eingeschränkt'}
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="inline-block h-2 w-2 rounded-full bg-red-500" />
+                <span className="font-medium text-red-600">offline</span>
+              </>
+            )}
+          </dd>
+        </div>
+
+        {/* Uptime */}
+        {health.data && (
+          <div>
+            <dt className="text-gray-500">Server-Laufzeit</dt>
+            <dd className="mt-0.5 font-medium text-gray-900">
+              {formatUptime(health.data.uptimeSek)}
+            </dd>
+          </div>
+        )}
+
+        {/* Letzter Check */}
+        {health.data && (
+          <div>
+            <dt className="text-gray-500">Letzter Check</dt>
+            <dd className="mt-0.5 text-gray-600">
+              {new Date(health.data.timestamp).toLocaleTimeString('de-AT')}
+            </dd>
+          </div>
+        )}
+      </dl>
+
+      {/* Manueller Refresh */}
+      <div className="pt-1">
+        <button
+          type="button"
+          onClick={() => void health.refetch()}
+          disabled={health.isFetching}
+          className="text-xs text-brand-600 hover:text-brand-700 disabled:text-gray-400"
+        >
+          {health.isFetching ? 'Prüfe…' : '↻ Jetzt prüfen'}
+        </button>
+      </div>
     </section>
   )
 }

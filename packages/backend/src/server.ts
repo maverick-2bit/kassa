@@ -1,5 +1,6 @@
 import Fastify, { type FastifyInstance } from 'fastify'
 import cors from '@fastify/cors'
+import rateLimit from '@fastify/rate-limit'
 import type { Config } from './config.js'
 import type { Db } from './db/client.js'
 import type { SetupServiceDeps } from './services/setup.service.js'
@@ -30,6 +31,7 @@ import { offenerPostenRoute } from './routes/offenerPosten.route.js'
 import { gutscheinRoute } from './routes/gutschein.route.js'
 import { lieferbestellungRoute } from './routes/lieferbestellung.route.js'
 import { mandantRoute }          from './routes/mandant.route.js'
+import { kasseRoute }            from './routes/kasse.route.js'
 
 export interface ServerDeps {
   config:    Config
@@ -51,6 +53,16 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     credentials: true,
   })
 
+  // Rate-Limiting — in Tests deaktiviert, in Produktion aktiv
+  await fastify.register(rateLimit, {
+    global:     true,
+    max:        deps.config.NODE_ENV === 'test' ? 10_000 : 300,
+    timeWindow: '1 minute',
+    errorResponseBuilder: (_request, context) => ({
+      fehler: `Zu viele Anfragen. Bitte in ${Math.ceil(context.ttl / 1000)} Sekunden erneut versuchen.`,
+    }),
+  })
+
   // Auth-Plugin registrieren (stellt fastify.jwt + fastify.authenticate bereit)
   await registerAuth(fastify, deps.config)
 
@@ -59,7 +71,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
 
   await fastify.register(async (api) => {
     // Offene Routen (kein Login nötig)
-    await api.register(healthRoute)
+    await api.register(healthRoute,  { db:   deps.db })
     await api.register(authRoute,    { db:   deps.db })
     await api.register(setupRoute,   { deps: deps.setupDeps })
 
@@ -85,7 +97,15 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     await api.register(gutscheinRoute,          { db: deps.db })
     await api.register(lieferbestellungRoute,   { db: deps.db })
     await api.register(mandantRoute,            { db: deps.db })
+    await api.register(kasseRoute,              { db: deps.db })
   }, { prefix: '/api' })
+
+  // Globaler Fehler-Handler — fängt alle unbehandelten Fehler ab
+  fastify.setErrorHandler((error, request, reply) => {
+    fastify.log.error({ err: error, url: request.url, method: request.method }, 'Unbehandelter Serverfehler')
+    if (reply.sent) return
+    return reply.status(500).send({ fehler: 'Interner Serverfehler' })
+  })
 
   return fastify
 }

@@ -6,9 +6,10 @@
  * pro Kasse (parallel via TanStack Query).
  */
 
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueries } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
 import type { BerichtGesamt } from '@kassa/shared'
-import { berichtApi } from '../lib/api'
+import { berichtApi, kasseApi } from '../lib/api'
 import { getAuth } from '../lib/auth'
 import { formatPreis } from '../lib/format'
 
@@ -56,6 +57,9 @@ export function DashboardPage() {
         </p>
       </div>
 
+      {/* Jahresbeleg-Warnung */}
+      <JahresbelegDashboardBanner kassen={kassen} />
+
       {/* Mandant-Gesamt-Kacheln */}
       {gesamtQuery.data && (
         <GesamtUebersicht gesamt={gesamtQuery.data.gesamt} />
@@ -87,6 +91,77 @@ export function DashboardPage() {
 
       {/* Stundenaufriss für heute */}
       <StundenVerlauf datum={datum} />
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Jahresbeleg-Dashboard-Banner
+// ---------------------------------------------------------------------------
+
+type KasseInfo = { id: string; bezeichnung: string | null; kassenId: string }
+
+function JahresbelegDashboardBanner({ kassen }: { kassen: KasseInfo[] }) {
+  const results = useQueries({
+    queries: kassen.map(k => ({
+      queryKey:  ['jahresbeleg-status', k.id],
+      queryFn:   () => kasseApi.getJahresbelegStatus(k.id),
+      staleTime: 5 * 60_000,
+    })),
+  })
+
+  // Only render once at least one query has settled
+  if (results.every(r => r.isLoading)) return null
+
+  const faelligeKassen = kassen.filter((_k, i) => results[i]?.data?.jahresbelegFaellig === true)
+  if (faelligeKassen.length === 0) return null
+
+  const jetzt   = new Date()
+  const tagDesJahres =
+    Math.floor((jetzt.getTime() - new Date(jetzt.getFullYear(), 0, 1).getTime()) / 86_400_000) + 1
+  const ueberfaellig = tagDesJahres > 7
+
+  const [bg, border, text, iconFill] = ueberfaellig
+    ? ['bg-red-50',   'border-red-300',   'text-red-800',   'text-red-500']
+    : ['bg-amber-50', 'border-amber-300', 'text-amber-800', 'text-amber-500']
+
+  const kassenNamen = faelligeKassen
+    .map(k => `„${k.bezeichnung ?? k.kassenId}"`)
+    .join(', ')
+
+  const aktivesJahr = jetzt.getFullYear()
+
+  return (
+    <div className={`rounded-lg border ${bg} ${border} p-4`} role="alert">
+      <div className="flex items-start gap-3">
+        {/* Warndreieck */}
+        <svg className={`h-5 w-5 flex-shrink-0 mt-0.5 ${iconFill}`} viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+          <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+        </svg>
+
+        <div className="flex-1 min-w-0">
+          <p className={`text-sm font-semibold ${text}`}>
+            {ueberfaellig ? 'Jahresbeleg überfällig!' : 'Jahresbeleg fällig'}
+          </p>
+          <p className={`text-sm mt-1 ${text}`}>
+            {faelligeKassen.length === 1
+              ? <>Für die Kasse {kassenNamen} wurde noch kein Jahresbeleg für {aktivesJahr} erstellt.</>
+              : <>Für {faelligeKassen.length} Kassen ({kassenNamen}) wurde noch kein Jahresbeleg für {aktivesJahr} erstellt.</>
+            }
+            {' '}
+            {ueberfaellig
+              ? <>Laut RKSV § 8 Abs. 3 war der Jahresbeleg am 1.&nbsp;Jänner fällig — bitte umgehend nachholen.</>
+              : <>Bitte den Jahresbeleg so früh wie möglich erstellen (RKSV § 8 Abs. 3).</>
+            }
+          </p>
+          <Link
+            to="/belege"
+            className={`inline-block mt-2 text-xs font-semibold underline underline-offset-2 ${text}`}
+          >
+            Zur Belegseite → Jahresbeleg erstellen
+          </Link>
+        </div>
+      </div>
     </div>
   )
 }
