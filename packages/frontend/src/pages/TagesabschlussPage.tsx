@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { tagesabschlussApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
-import { hasBerechtigung } from '../lib/auth'
+import { getAuth, hasBerechtigung } from '../lib/auth'
 import { formatPreis } from '../lib/format'
+import { downloadZBonPdf } from '../lib/pdf'
 import { Button } from '../components/ui/Button'
 
 /** YYYY-MM-DD für heute in Wiener Lokalzeit */
@@ -12,10 +13,13 @@ function heuteLokal(): string {
 }
 
 export function TagesabschlussPage() {
-  const identity = getKasseIdentity()!
+  const identity   = getKasseIdentity()!
+  const auth       = getAuth()!
   const [datum, setDatum] = useState<string>(heuteLokal())
-  const [druckfehler, setDruckfehler] = useState<string | null>(null)
-  const [druckErfolg, setDruckErfolg] = useState(false)
+  const [druckfehler, setDruckfehler]   = useState<string | null>(null)
+  const [druckErfolg, setDruckErfolg]   = useState(false)
+  const [pdfLaedt, setPdfLaedt]         = useState(false)
+  const [pdfFehler, setPdfFehler]       = useState<string | null>(null)
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['tagesabschluss', identity.kasseId, datum],
@@ -31,6 +35,22 @@ export function TagesabschlussPage() {
       setDruckErfolg(false)
     },
   })
+
+  async function pdfHerunterladen() {
+    if (!data) return
+    setPdfLaedt(true)
+    setPdfFehler(null)
+    try {
+      // Kassenbezeichnung aus den im JWT gespeicherten Kassen-Infos holen
+      const kasseInfo  = auth.kassen.find(k => k.id === identity.kasseId)
+      const bezeichnung = kasseInfo?.bezeichnung ?? kasseInfo?.kassenId ?? identity.kasseId
+      await downloadZBonPdf(data, auth.mandant.firmenname, bezeichnung)
+    } catch (err) {
+      setPdfFehler(err instanceof Error ? err.message : 'PDF-Erstellung fehlgeschlagen')
+    } finally {
+      setPdfLaedt(false)
+    }
+  }
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-6 sm:py-8 space-y-6">
@@ -195,9 +215,23 @@ export function TagesabschlussPage() {
             )}
           </div>
 
-          {/* Drucken */}
-          {hasBerechtigung('einstellungen') && (
-            <div className="flex items-center gap-3 flex-wrap">
+          {/* Aktionen */}
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* PDF herunterladen — immer sichtbar wenn Daten vorhanden */}
+            <Button
+              variant="secondary"
+              onClick={() => void pdfHerunterladen()}
+              loading={pdfLaedt}
+              disabled={data.anzahlBarzahlungsbelege === 0 && data.anzahlStornobelege === 0}
+            >
+              <svg className="h-4 w-4 mr-1.5 inline-block" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+              </svg>
+              PDF herunterladen
+            </Button>
+
+            {/* Z-Bon drucken — nur mit Einstellungs-Berechtigung (Drucker nötig) */}
+            {hasBerechtigung('einstellungen') && (
               <Button
                 onClick={() => {
                   setDruckErfolg(false)
@@ -209,14 +243,12 @@ export function TagesabschlussPage() {
               >
                 Z-Bon drucken
               </Button>
-              {druckErfolg && (
-                <span className="text-sm text-green-700">✓ Z-Bon gedruckt</span>
-              )}
-              {druckfehler && (
-                <span className="text-sm text-red-700">{druckfehler}</span>
-              )}
-            </div>
-          )}
+            )}
+
+            {druckErfolg && <span className="text-sm text-green-700">✓ Z-Bon gedruckt</span>}
+            {druckfehler && <span className="text-sm text-red-700">{druckfehler}</span>}
+            {pdfFehler   && <span className="text-sm text-red-700">{pdfFehler}</span>}
+          </div>
         </div>
       )}
     </div>
