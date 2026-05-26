@@ -1,11 +1,12 @@
 /**
- * PDF-Generierung — Z-Bon / Tagesabschluss
+ * PDF-Generierung — Z-Bon / Tagesabschluss + Kassensturz
  *
  * jsPDF wird per dynamic import lazy-geladen (nur beim ersten Klick auf
  * „PDF herunterladen" wird das ~300 kB große Bundle nachgeladen).
  */
 
 import type { Tagesabschluss } from '@kassa/shared'
+import type { KassensturzDruckInput } from './api'
 
 // ---------------------------------------------------------------------------
 // Helfer
@@ -180,4 +181,143 @@ export async function downloadZBonPdf(
   // ── Datei-Download ─────────────────────────────────────────────────────────
   const dateiname = `zbon_${data.datum}_${kassenBezeichnung.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`
   doc.save(dateiname)
+}
+
+// ---------------------------------------------------------------------------
+// Kassensturz-PDF
+// ---------------------------------------------------------------------------
+
+export async function downloadKassensturzPdf(
+  input:             KassensturzDruckInput,
+  firmenname:        string,
+  kassenBezeichnung: string,
+): Promise<void> {
+  const [{ jsPDF }, { default: autoTable }] = await Promise.all([
+    import('jspdf'),
+    import('jspdf-autotable'),
+  ])
+
+  const doc   = new jsPDF({ unit: 'mm', format: 'a4', putOnlyUsedFonts: true })
+  const pageW = doc.internal.pageSize.getWidth()
+  const pageH = doc.internal.pageSize.getHeight()
+  const mL    = 20
+  const mR    = 20
+  const grau  = [243, 244, 246] as [number, number, number]
+
+  let y = 22
+
+  // ── Kopfzeile ──────────────────────────────────────────────────────────────
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(16)
+  doc.text('Kassensturz', mL, y)
+  y += 7
+
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(9)
+  doc.setTextColor(90)
+  doc.text(firmenname,                              mL, y); y += 4.5
+  doc.text(`Kasse: ${kassenBezeichnung}`,           mL, y); y += 4.5
+  doc.text(`Datum: ${fmt(input.datum)}`,            mL, y)
+  doc.text(
+    `Erstellt: ${new Date().toLocaleString('de-AT', { timeZone: 'Europe/Vienna' })}`,
+    pageW - mR, y - 4.5,
+    { align: 'right' },
+  )
+  doc.setTextColor(0)
+  y += 8
+
+  doc.setDrawColor(210)
+  doc.line(mL, y, pageW - mR, y)
+  y += 8
+
+  // ── Stückelung ─────────────────────────────────────────────────────────────
+  const aktiveStueck = input.stueck.filter(s => s.anzahl > 0)
+  if (aktiveStueck.length > 0) {
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(11)
+    doc.text('Stückelung', mL, y)
+    y += 4
+
+    autoTable(doc, {
+      startY:      y,
+      margin:      { left: mL, right: mR },
+      head:        [['Stückelung', 'Anzahl', 'Summe']],
+      body:        aktiveStueck.map(s => [s.label, `× ${s.anzahl}`, cent(s.summeCent)]),
+      foot:        [['Gesamt gezählt', '', cent(input.istCent)]],
+      columnStyles: { 0: { cellWidth: 50 }, 1: { halign: 'center' }, 2: { halign: 'right' } },
+      styles:       { fontSize: 10, cellPadding: 2.5 },
+      headStyles:   { fillColor: grau, textColor: 50, fontStyle: 'bold', fontSize: 9 },
+      footStyles:   { fillColor: [255, 255, 255], fontStyle: 'bold', fontSize: 10 },
+      theme:        'striped',
+      showFoot:     'lastPage',
+    })
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    y = (doc as any).lastAutoTable.finalY + 8
+  }
+
+  // ── Ergebnis ───────────────────────────────────────────────────────────────
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(11)
+  doc.text('Ergebnis', mL, y)
+  y += 4
+
+  const ergebnisBody: [string, string][] = [
+    ['Gezählt (IST)', cent(input.istCent)],
+  ]
+  if (input.startgeldCent > 0) {
+    ergebnisBody.push(['  davon Startgeld', cent(input.startgeldCent)])
+  }
+  ergebnisBody.push([
+    `Bar-Umsatz laut Belegen (SOLL)${input.startgeldCent > 0 ? ' inkl. Startgeld' : ''}`,
+    cent(input.sollCent),
+  ])
+
+  const diff     = input.differenzCent
+  const diffText = diff === 0
+    ? 'Ausgeglichen'
+    : diff > 0 ? `Überschuss (+${cent(diff)})`
+    : `Fehlbetrag (${cent(diff)})`
+
+  autoTable(doc, {
+    startY:      y,
+    margin:      { left: mL, right: mR },
+    body:        ergebnisBody,
+    foot:        [['DIFFERENZ', diff >= 0 ? `+${cent(diff)}` : cent(diff)]],
+    columnStyles: { 0: { cellWidth: 100 }, 1: { halign: 'right' } },
+    styles:       { fontSize: 10, cellPadding: 2.5 },
+    footStyles:   {
+      fillColor: diff === 0
+        ? ([220, 252, 231] as [number, number, number])
+        : ([254, 226, 226] as [number, number, number]),
+      textColor:  diff === 0 ? 22 : 153,
+      fontStyle:  'bold',
+      fontSize:   11,
+    },
+    theme:    'plain',
+    showFoot: 'lastPage',
+  })
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  y = (doc as any).lastAutoTable.finalY + 6
+
+  // Ergebnis-Hinweis
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(12)
+  doc.setTextColor(diff === 0 ? 21 : diff > 0 ? 29 : 153)
+  doc.text(
+    diff === 0 ? '✓ ' + diffText : diffText,
+    doc.internal.pageSize.getWidth() / 2, y,
+    { align: 'center' },
+  )
+  doc.setTextColor(0)
+
+  // ── Fußzeile ───────────────────────────────────────────────────────────────
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(7.5)
+  doc.setTextColor(150)
+  doc.text('Kassa — RKSV-konformes Kassensystem', mL, pageH - 10)
+  doc.text(`Kassa v${__APP_VERSION__}`, pageW - mR, pageH - 10, { align: 'right' })
+
+  doc.save(`kassensturz_${input.datum}_${kassenBezeichnung.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`)
 }

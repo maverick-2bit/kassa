@@ -6,10 +6,12 @@
  */
 
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { tagesabschlussApi } from '../lib/api'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { tagesabschlussApi, kassensturzApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
+import { getAuth } from '../lib/auth'
 import { formatPreis } from '../lib/format'
+import { downloadKassensturzPdf } from '../lib/pdf'
 import { Button } from '../components/ui/Button'
 
 // ---------------------------------------------------------------------------
@@ -54,10 +56,12 @@ function formatDatumAnzeige(datum: string): string {
 
 export function KassensturzPage() {
   const identity  = getKasseIdentity()!
-  const [datum, setDatum]       = useState(heuteLokal())
-  const [stueck, setStueck]     = useState<Record<number, number>>({})
-  const [startgeld, setStartgeld] = useState('')   // optionales Wechselgeld am Beginn
-  const [gedruckt, setGedruckt] = useState(false)
+  const auth      = getAuth()!
+  const [datum, setDatum]           = useState(heuteLokal())
+  const [stueck, setStueck]         = useState<Record<number, number>>({})
+  const [startgeld, setStartgeld]   = useState('')
+  const [pdfLaedt, setPdfLaedt]     = useState(false)
+  const [pdfFehler, setPdfFehler]   = useState<string | null>(null)
 
   const { data: ta, isLoading, isError, error } = useQuery({
     queryKey: ['tagesabschluss', identity.kasseId, datum],
@@ -79,48 +83,43 @@ export function KassensturzPage() {
   const reset = () => {
     setStueck({})
     setStartgeld('')
-    setGedruckt(false)
+    setPdfFehler(null)
   }
 
-  const drucken = () => {
-    const zeilen = STUECKELUNG
-      .filter(s => (stueck[s.wertCent] ?? 0) > 0)
-      .map(s => `${s.label.padEnd(10)} × ${String(stueck[s.wertCent]).padStart(4)}  =  ${formatPreis(s.wertCent * (stueck[s.wertCent] ?? 0))}`)
-      .join('\n')
+  /** Gemeinsame Daten für PDF und ESC/POS-Druck */
+  function baueEingabe() {
+    return {
+      kasseId:       identity.kasseId,
+      datum,
+      istCent,
+      sollCent,
+      differenzCent,
+      startgeldCent: startCent,
+      stueck: STUECKELUNG.map(s => ({
+        label:     s.label,
+        anzahl:    stueck[s.wertCent] ?? 0,
+        summeCent: (stueck[s.wertCent] ?? 0) * s.wertCent,
+      })),
+    }
+  }
 
-    const text = [
-      '================================',
-      '          KASSENSTURZ',
-      `Datum:   ${formatDatumAnzeige(datum)}`,
-      `Kasse:   ${identity.kasseId}`,
-      '================================',
-      '',
-      'STÜCKELUNG:',
-      zeilen || '  (keine Eingabe)',
-      '',
-      '--------------------------------',
-      `IST:       ${formatPreis(istCent)}`,
-      startCent > 0 ? `Startgeld: ${formatPreis(startCent)}` : null,
-      `SOLL:      ${formatPreis(sollCent)}`,
-      `DIFFERENZ: ${differenzCent >= 0 ? '+' : ''}${formatPreis(differenzCent)}`,
-      '',
-      differenzCent === 0
-        ? '✓ Kassensturz ausgeglichen'
-        : differenzCent > 0
-          ? `⚠ Überschuss: ${formatPreis(differenzCent)}`
-          : `⚠ Fehlbetrag: ${formatPreis(Math.abs(differenzCent))}`,
-      '================================',
-    ].filter(l => l !== null).join('\n')
+  // ESC/POS-Druck via Backend (braucht konfigurierten Drucker an der Kasse)
+  const druckenMutation = useMutation({
+    mutationFn: () => kassensturzApi.drucken(baueEingabe()),
+  })
 
-    const win = window.open('', '_blank', 'width=400,height=600')
-    if (!win) return
-    win.document.write(`<html><head><title>Kassensturz ${formatDatumAnzeige(datum)}</title>
-      <style>body{font-family:monospace;white-space:pre;padding:20px;font-size:13px}
-      @media print{@page{size:80mm auto;margin:5mm}}</style></head>
-      <body>${text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
-      <script>window.onload=()=>window.print()</script></body></html>`)
-    win.document.close()
-    setGedruckt(true)
+  async function pdfHerunterladen() {
+    setPdfLaedt(true)
+    setPdfFehler(null)
+    try {
+      const kasseInfo   = auth.kassen.find(k => k.id === identity.kasseId)
+      const bezeichnung = kasseInfo?.bezeichnung ?? kasseInfo?.kassenId ?? identity.kasseId
+      await downloadKassensturzPdf(baueEingabe(), auth.mandant.firmenname, bezeichnung)
+    } catch (err) {
+      setPdfFehler(err instanceof Error ? err.message : 'PDF-Erstellung fehlgeschlagen')
+    } finally {
+      setPdfLaedt(false)
+    }
   }
 
   return (
@@ -236,16 +235,44 @@ export function KassensturzPage() {
       </div>
 
       {/* Aktionen */}
-      <div className="flex flex-wrap gap-2">
-        <Button onClick={drucken} disabled={!ta}>
-          Kassensturz drucken / PDF
+      <div className="flex flex-wrap items-center gap-3">
+        {/* PDF */}
+        <Button
+          variant="secondary"
+          onClick={() => void pdfHerunterladen()}
+          loading={pdfLaedt}
+          disabled={!ta}
+        >
+          <svg className="h-4 w-4 mr-1.5 inline-block" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+          </svg>
+          PDF herunterladen
         </Button>
+
+        {/* ESC/POS-Druck (nur wenn Drucker konfiguriert) */}
+        <Button
+          onClick={() => druckenMutation.mutate()}
+          loading={druckenMutation.isPending}
+          disabled={!ta}
+        >
+          Bon drucken (ESC/POS)
+        </Button>
+
         <Button variant="secondary" onClick={reset}>
           Zurücksetzen
         </Button>
-        {gedruckt && (
-          <span className="self-center text-sm text-green-700">✓ Gedruckt</span>
+
+        {druckenMutation.isSuccess && (
+          <span className="text-sm text-green-700">✓ Bon gedruckt</span>
         )}
+        {druckenMutation.isError && (
+          <span className="text-sm text-red-600">
+            {druckenMutation.error instanceof Error
+              ? druckenMutation.error.message
+              : 'Druckfehler'}
+          </span>
+        )}
+        {pdfFehler && <span className="text-sm text-red-600">{pdfFehler}</span>}
       </div>
     </div>
   )

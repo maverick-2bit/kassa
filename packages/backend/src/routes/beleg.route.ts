@@ -30,7 +30,7 @@ import {
   TagesabschlussError,
 } from '../services/tagesabschluss.service.js'
 import { tryDruckeBeleg, druckerConfigVonKasse, sendBytes } from '../services/drucker.service.js'
-import { baueZBon } from '../services/escpos/layout.js'
+import { baueZBon, baueKassensturzBon } from '../services/escpos/layout.js'
 import { pruefeKasseGehoertZuMandant } from '../auth/scope.js'
 import { eq } from 'drizzle-orm'
 import { kassen, mandanten } from '../db/schema.js'
@@ -200,6 +200,68 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
       if (err instanceof BelegError) return reply.status(err.httpStatus).send({ fehler: err.message })
       fastify.log.error({ err }, 'DEP131-Export fehlgeschlagen')
       return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
+    }
+  })
+
+  // ---------------------------------------------------------------------------
+  // Kassensturz-Bon drucken
+  // ---------------------------------------------------------------------------
+
+  const KassensturzDruckenSchema = z.object({
+    kasseId:       z.string().uuid(),
+    datum:         z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    istCent:       z.number().int(),
+    sollCent:      z.number().int(),
+    differenzCent: z.number().int(),
+    startgeldCent: z.number().int().default(0),
+    stueck: z.array(z.object({
+      label:     z.string(),
+      anzahl:    z.number().int().min(0),
+      summeCent: z.number().int(),
+    })),
+  })
+
+  fastify.post('/kassensturz/drucken', guard, async (request, reply) => {
+    const parsed = KassensturzDruckenSchema.safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
+
+    const { kasseId } = parsed.data
+    const mandantId   = request.user.mandantId
+
+    const [kasse] = await opts.deps.db
+      .select()
+      .from(kassen)
+      .where(eq(kassen.id, kasseId))
+      .limit(1)
+
+    if (!kasse || kasse.mandantId !== mandantId) {
+      return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
+    }
+
+    const druckerConfig = druckerConfigVonKasse(kasse)
+    if (!druckerConfig) {
+      return reply.status(409).send({ fehler: 'Drucker ist nicht konfiguriert oder deaktiviert' })
+    }
+
+    const [mandant] = await opts.deps.db
+      .select({ firmenname: mandanten.firmenname })
+      .from(mandanten)
+      .where(eq(mandanten.id, kasse.mandantId))
+      .limit(1)
+    if (!mandant) return reply.status(404).send({ fehler: 'Mandant nicht gefunden' })
+
+    try {
+      const bytes = baueKassensturzBon({
+        ...parsed.data,
+        kassenId:   kasse.kassenId,
+        firmenname: mandant.firmenname,
+      }, { breite: druckerConfig.breite })
+
+      await sendBytes(bytes, druckerConfig)
+      return reply.send({ erfolgreich: true })
+    } catch (err) {
+      fastify.log.error({ err }, 'Kassensturz-Druck fehlgeschlagen')
+      return reply.status(502).send({ fehler: err instanceof Error ? err.message : String(err) })
     }
   })
 

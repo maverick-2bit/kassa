@@ -270,6 +270,91 @@ function qrSizeFuerBreite(breite: number): number {
 }
 
 // ---------------------------------------------------------------------------
+// Kassensturz-Bon
+// ---------------------------------------------------------------------------
+
+export interface KassensturzDruckDaten {
+  datum:          string   // YYYY-MM-DD
+  kassenId:       string
+  firmenname:     string
+  stueck:         { label: string; anzahl: number; summeCent: number }[]
+  istCent:        number
+  startgeldCent:  number
+  sollCent:       number
+  differenzCent:  number
+}
+
+export function baueKassensturzBon(
+  d:      KassensturzDruckDaten,
+  kontext: DruckerKontext,
+): Buffer {
+  const W    = kontext.breite
+  const parts: Buffer[] = []
+  const add  = (b: Buffer) => parts.push(b)
+
+  add(ep.init())
+  add(ep.selectCodepage(19))
+  add(ep.selectInternational(2))
+
+  // Kopf
+  add(ep.align('center'))
+  add(ep.font({ bold: true }))
+  add(ep.textLine(truncate(d.firmenname.toUpperCase(), W)))
+  add(ep.font())
+  add(ep.textLine(`Kasse: ${d.kassenId}`))
+  add(ep.newline())
+  add(ep.font({ bold: true }))
+  add(ep.textLine('KASSENSTURZ'))
+  add(ep.font())
+  add(ep.textLine(formatDatumNur(d.datum)))
+  add(trennlinie(W))
+
+  // Stückelung
+  add(ep.align('left'))
+  const aktiveStueck = d.stueck.filter(s => s.anzahl > 0)
+  if (aktiveStueck.length > 0) {
+    add(ep.textLine('STUECKELUNG:'))
+    for (const s of aktiveStueck) {
+      const zeile = `${s.label} x${s.anzahl}`
+      add(ep.textLine(zweispaltig(zeile, formatCent(s.summeCent), W)))
+    }
+    add(trennlinie(W))
+  }
+
+  // Ergebnis
+  add(ep.font({ bold: true, doubleHeight: true }))
+  add(ep.textLine(zweispaltig('IST', formatCent(d.istCent), Math.floor(W / 2))))
+  add(ep.font())
+
+  if (d.startgeldCent > 0) {
+    add(ep.textLine(zweispaltig('  davon Startgeld', formatCent(d.startgeldCent), W)))
+  }
+  add(ep.textLine(zweispaltig('SOLL', formatCent(d.sollCent), W)))
+  add(trennlinie(W))
+
+  // Differenz
+  add(ep.align('center'))
+  if (d.differenzCent === 0) {
+    add(ep.font({ bold: true }))
+    add(ep.textLine('Kassensturz ausgeglichen'))
+    add(ep.font())
+  } else if (d.differenzCent > 0) {
+    add(ep.textLine(zweispaltig('Ueberschuss', formatCent(d.differenzCent), W)))
+  } else {
+    add(ep.font({ bold: true }))
+    add(ep.textLine(zweispaltig('FEHLBETRAG', formatCent(Math.abs(d.differenzCent)), W)))
+    add(ep.font())
+  }
+
+  add(trennlinie(W))
+  add(ep.textLine(`Gedruckt: ${formatDatum(new Date().toISOString())}`))
+  add(ep.newline(2))
+  add(ep.cut())
+
+  return Buffer.concat(parts)
+}
+
+// ---------------------------------------------------------------------------
 // USt-Aufteilung berechnen
 // ---------------------------------------------------------------------------
 
