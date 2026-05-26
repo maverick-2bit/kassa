@@ -1,0 +1,3638 @@
+{
+  "id": "e07a41f5-2457-41cf-847b-2b96fe35dc9f",
+  "prevId": "ceabaa32-87e2-46bb-a1c3-e42a27e80096",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.angebote": {
+      "name": "angebote",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "mandant_id": {
+          "name": "mandant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kasse_id": {
+          "name": "kasse_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nummer": {
+          "name": "nummer",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "datum": {
+          "name": "datum",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "gueltig_bis": {
+          "name": "gueltig_bis",
+          "type": "varchar(10)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'offen'"
+        },
+        "notiz": {
+          "name": "notiz",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "positionen": {
+          "name": "positionen",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "gesamtbetrag_cent": {
+          "name": "gesamtbetrag_cent",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kunde_id": {
+          "name": "kunde_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "kunde_snapshot": {
+          "name": "kunde_snapshot",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "angebote_mandant_nummer_idx": {
+          "name": "angebote_mandant_nummer_idx",
+          "columns": [
+            {
+              "expression": "mandant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "nummer",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "angebote_status_idx": {
+          "name": "angebote_status_idx",
+          "columns": [
+            {
+              "expression": "mandant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "angebote_mandant_id_mandanten_id_fk": {
+          "name": "angebote_mandant_id_mandanten_id_fk",
+          "tableFrom": "angebote",
+          "tableTo": "mandanten",
+          "columnsFrom": [
+            "mandant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "angebote_kasse_id_kassen_id_fk": {
+          "name": "angebote_kasse_id_kassen_id_fk",
+          "tableFrom": "angebote",
+          "tableTo": "kassen",
+          "columnsFrom": [
+            "kasse_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "angebote_kunde_id_kunden_id_fk": {
+          "name": "angebote_kunde_id_kunden_id_fk",
+          "tableFrom": "angebote",
+          "tableTo": "kunden",
+          "columnsFrom": [
+            "kunde_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.artikel": {
+      "name": "artikel",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "mandant_id": {
+          "name": "mandant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bezeichnung": {
+          "name": "bezeichnung",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "preis_brutto_cent": {
+          "name": "preis_brutto_cent",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mwst_satz": {
+          "name": "mwst_satz",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "artikelnummer": {
+          "name": "artikelnummer",
+          "type": "varchar(40)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "station": {
+          "name": "station",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "kategorie_id": {
+          "name": "kategorie_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "aktiv": {
+          "name": "aktiv",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "lagerstand_aktiv": {
+          "name": "lagerstand_aktiv",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "lagerstand_menge": {
+          "name": "lagerstand_menge",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "mindestbestand": {
+          "name": "mindestbestand",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ist_favorit": {
+          "name": "ist_favorit",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "reihenfolge": {
+          "name": "reihenfolge",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "favoriten_reihenfolge": {
+          "name": "favoriten_reihenfolge",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "bonierdrucker_id": {
+          "name": "bonierdrucker_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "bild": {
+          "name": "bild",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "artikel_mandant_nummer_idx": {
+          "name": "artikel_mandant_nummer_idx",
+          "columns": [
+            {
+              "expression": "mandant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "artikelnummer",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "artikel_kategorie_idx": {
+          "name": "artikel_kategorie_idx",
+          "columns": [
+            {
+              "expression": "kategorie_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "artikel_mandant_id_mandanten_id_fk": {
+          "name": "artikel_mandant_id_mandanten_id_fk",
+          "tableFrom": "artikel",
+          "tableTo": "mandanten",
+          "columnsFrom": [
+            "mandant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "artikel_kategorie_id_kategorien_id_fk": {
+          "name": "artikel_kategorie_id_kategorien_id_fk",
+          "tableFrom": "artikel",
+          "tableTo": "kategorien",
+          "columnsFrom": [
+            "kategorie_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "artikel_bonierdrucker_id_bonierdrucker_id_fk": {
+          "name": "artikel_bonierdrucker_id_bonierdrucker_id_fk",
+          "tableFrom": "artikel",
+          "tableTo": "bonierdrucker",
+          "columnsFrom": [
+            "bonierdrucker_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.artikel_modifikator_gruppen": {
+      "name": "artikel_modifikator_gruppen",
+      "schema": "",
+      "columns": {
+        "artikel_id": {
+          "name": "artikel_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "gruppe_id": {
+          "name": "gruppe_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reihenfolge": {
+          "name": "reihenfolge",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {
+        "amg_artikel_idx": {
+          "name": "amg_artikel_idx",
+          "columns": [
+            {
+              "expression": "artikel_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "artikel_modifikator_gruppen_artikel_id_artikel_id_fk": {
+          "name": "artikel_modifikator_gruppen_artikel_id_artikel_id_fk",
+          "tableFrom": "artikel_modifikator_gruppen",
+          "tableTo": "artikel",
+          "columnsFrom": [
+            "artikel_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "artikel_modifikator_gruppen_gruppe_id_modifikator_gruppen_id_fk": {
+          "name": "artikel_modifikator_gruppen_gruppe_id_modifikator_gruppen_id_fk",
+          "tableFrom": "artikel_modifikator_gruppen",
+          "tableTo": "modifikator_gruppen",
+          "columnsFrom": [
+            "gruppe_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "artikel_modifikator_gruppen_artikel_id_gruppe_id_pk": {
+          "name": "artikel_modifikator_gruppen_artikel_id_gruppe_id_pk",
+          "columns": [
+            "artikel_id",
+            "gruppe_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.audit_logs": {
+      "name": "audit_logs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "mandant_id": {
+          "name": "mandant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "aktion": {
+          "name": "aktion",
+          "type": "varchar(80)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "details": {
+          "name": "details",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ip_adresse": {
+          "name": "ip_adresse",
+          "type": "varchar(45)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "user_agent": {
+          "name": "user_agent",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "audit_logs_mandant_idx": {
+          "name": "audit_logs_mandant_idx",
+          "columns": [
+            {
+              "expression": "mandant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "audit_logs_created_idx": {
+          "name": "audit_logs_created_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.belege": {
+      "name": "belege",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "mandant_id": {
+          "name": "mandant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kasse_id": {
+          "name": "kasse_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "beleg_nummer": {
+          "name": "beleg_nummer",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "beleg_datum": {
+          "name": "beleg_datum",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "beleg_typ": {
+          "name": "beleg_typ",
+          "type": "varchar(30)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "betrag_normal_cent": {
+          "name": "betrag_normal_cent",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "betrag_ermaessigt1_cent": {
+          "name": "betrag_ermaessigt1_cent",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "betrag_ermaessigt2_cent": {
+          "name": "betrag_ermaessigt2_cent",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "betrag_null_cent": {
+          "name": "betrag_null_cent",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "betrag_besonders_cent": {
+          "name": "betrag_besonders_cent",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "summe_bar_cent": {
+          "name": "summe_bar_cent",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "summe_karte_cent": {
+          "name": "summe_karte_cent",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "summe_sonstige_cent": {
+          "name": "summe_sonstige_cent",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "umsatzzaehler_verschluesselt": {
+          "name": "umsatzzaehler_verschluesselt",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "zertifikat_sn": {
+          "name": "zertifikat_sn",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sig_vorbeleg": {
+          "name": "sig_vorbeleg",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "signaturwert": {
+          "name": "signaturwert",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "maschinenlesbare_code": {
+          "name": "maschinenlesbare_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "positionen": {
+          "name": "positionen",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "verweis_beleg_id": {
+          "name": "verweis_beleg_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "kunde_id": {
+          "name": "kunde_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "kunde_snapshot": {
+          "name": "kunde_snapshot",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "belege_kasse_belegnr_idx": {
+          "name": "belege_kasse_belegnr_idx",
+          "columns": [
+            {
+              "expression": "kasse_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "beleg_nummer",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "belege_datum_idx": {
+          "name": "belege_datum_idx",
+          "columns": [
+            {
+              "expression": "beleg_datum",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "belege_verweis_idx": {
+          "name": "belege_verweis_idx",
+          "columns": [
+            {
+              "expression": "verweis_beleg_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "belege_mandant_id_mandanten_id_fk": {
+          "name": "belege_mandant_id_mandanten_id_fk",
+          "tableFrom": "belege",
+          "tableTo": "mandanten",
+          "columnsFrom": [
+            "mandant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "belege_kasse_id_kassen_id_fk": {
+          "name": "belege_kasse_id_kassen_id_fk",
+          "tableFrom": "belege",
+          "tableTo": "kassen",
+          "columnsFrom": [
+            "kasse_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "belege_verweis_beleg_id_belege_id_fk": {
+          "name": "belege_verweis_beleg_id_belege_id_fk",
+          "tableFrom": "belege",
+          "tableTo": "belege",
+          "columnsFrom": [
+            "verweis_beleg_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "belege_kunde_id_kunden_id_fk": {
+          "name": "belege_kunde_id_kunden_id_fk",
+          "tableFrom": "belege",
+          "tableTo": "kunden",
+          "columnsFrom": [
+            "kunde_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.bonierdrucker": {
+      "name": "bonierdrucker",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "mandant_id": {
+          "name": "mandant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ip": {
+          "name": "ip",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "port": {
+          "name": "port",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 9100
+        },
+        "ist_backup": {
+          "name": "ist_backup",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "aktiv": {
+          "name": "aktiv",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "bonierdrucker_mandant_idx": {
+          "name": "bonierdrucker_mandant_idx",
+          "columns": [
+            {
+              "expression": "mandant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "bonierdrucker_mandant_id_mandanten_id_fk": {
+          "name": "bonierdrucker_mandant_id_mandanten_id_fk",
+          "tableFrom": "bonierdrucker",
+          "tableTo": "mandanten",
+          "columnsFrom": [
+            "mandant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.gutschein_buchungen": {
+      "name": "gutschein_buchungen",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "gutschein_id": {
+          "name": "gutschein_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mandant_id": {
+          "name": "mandant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "typ": {
+          "name": "typ",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "betrag_cent": {
+          "name": "betrag_cent",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rest_cent_nach": {
+          "name": "rest_cent_nach",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "beleg_id": {
+          "name": "beleg_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "verknuepfter_gutschein_id": {
+          "name": "verknuepfter_gutschein_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notiz": {
+          "name": "notiz",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "gutschein_buchungen_gutschein_idx": {
+          "name": "gutschein_buchungen_gutschein_idx",
+          "columns": [
+            {
+              "expression": "gutschein_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "gutschein_buchungen_mandant_idx": {
+          "name": "gutschein_buchungen_mandant_idx",
+          "columns": [
+            {
+              "expression": "mandant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "gutschein_buchungen_gutschein_id_gutscheine_id_fk": {
+          "name": "gutschein_buchungen_gutschein_id_gutscheine_id_fk",
+          "tableFrom": "gutschein_buchungen",
+          "tableTo": "gutscheine",
+          "columnsFrom": [
+            "gutschein_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "gutschein_buchungen_beleg_id_belege_id_fk": {
+          "name": "gutschein_buchungen_beleg_id_belege_id_fk",
+          "tableFrom": "gutschein_buchungen",
+          "tableTo": "belege",
+          "columnsFrom": [
+            "beleg_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.gutscheine": {
+      "name": "gutscheine",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "mandant_id": {
+          "name": "mandant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "code": {
+          "name": "code",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nummer": {
+          "name": "nummer",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "datum": {
+          "name": "datum",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "status": {
+          "name": "status",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'aktiv'"
+        },
+        "betrag_cent": {
+          "name": "betrag_cent",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bezahlt_cent": {
+          "name": "bezahlt_cent",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "gueltig_bis": {
+          "name": "gueltig_bis",
+          "type": "varchar(10)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "kunde_id": {
+          "name": "kunde_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "kunde_snapshot": {
+          "name": "kunde_snapshot",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notiz": {
+          "name": "notiz",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "gutscheine_mandant_code_idx": {
+          "name": "gutscheine_mandant_code_idx",
+          "columns": [
+            {
+              "expression": "mandant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "gutscheine_mandant_nummer_idx": {
+          "name": "gutscheine_mandant_nummer_idx",
+          "columns": [
+            {
+              "expression": "mandant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "nummer",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "gutscheine_status_idx": {
+          "name": "gutscheine_status_idx",
+          "columns": [
+            {
+              "expression": "mandant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "gutscheine_mandant_id_mandanten_id_fk": {
+          "name": "gutscheine_mandant_id_mandanten_id_fk",
+          "tableFrom": "gutscheine",
+          "tableTo": "mandanten",
+          "columnsFrom": [
+            "mandant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "gutscheine_kunde_id_kunden_id_fk": {
+          "name": "gutscheine_kunde_id_kunden_id_fk",
+          "tableFrom": "gutscheine",
+          "tableTo": "kunden",
+          "columnsFrom": [
+            "kunde_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.kasse_kategorie_sichtbarkeit": {
+      "name": "kasse_kategorie_sichtbarkeit",
+      "schema": "",
+      "columns": {
+        "kasse_id": {
+          "name": "kasse_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kategorie_id": {
+          "name": "kategorie_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "kks_kasse_idx": {
+          "name": "kks_kasse_idx",
+          "columns": [
+            {
+              "expression": "kasse_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "kasse_kategorie_sichtbarkeit_kasse_id_kassen_id_fk": {
+          "name": "kasse_kategorie_sichtbarkeit_kasse_id_kassen_id_fk",
+          "tableFrom": "kasse_kategorie_sichtbarkeit",
+          "tableTo": "kassen",
+          "columnsFrom": [
+            "kasse_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "kasse_kategorie_sichtbarkeit_kategorie_id_kategorien_id_fk": {
+          "name": "kasse_kategorie_sichtbarkeit_kategorie_id_kategorien_id_fk",
+          "tableFrom": "kasse_kategorie_sichtbarkeit",
+          "tableTo": "kategorien",
+          "columnsFrom": [
+            "kategorie_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "kasse_kategorie_sichtbarkeit_kasse_id_kategorie_id_pk": {
+          "name": "kasse_kategorie_sichtbarkeit_kasse_id_kategorie_id_pk",
+          "columns": [
+            "kasse_id",
+            "kategorie_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.kassen": {
+      "name": "kassen",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "mandant_id": {
+          "name": "mandant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kassen_id": {
+          "name": "kassen_id",
+          "type": "varchar(40)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bezeichnung": {
+          "name": "bezeichnung",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'aktiv'"
+        },
+        "umgebung": {
+          "name": "umgebung",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'produktion'"
+        },
+        "see_zertifikat_der": {
+          "name": "see_zertifikat_der",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "see_private_key_enc": {
+          "name": "see_private_key_enc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "see_zertifikat_sn": {
+          "name": "see_zertifikat_sn",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "see_gueltig_bis": {
+          "name": "see_gueltig_bis",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "umsatzzaehler_cent": {
+          "name": "umsatzzaehler_cent",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "0"
+        },
+        "letzte_beleg_nummer": {
+          "name": "letzte_beleg_nummer",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "letzter_signaturwert": {
+          "name": "letzter_signaturwert",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "bei_fo_registriert": {
+          "name": "bei_fo_registriert",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "fo_pruefwert": {
+          "name": "fo_pruefwert",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "registriert_am": {
+          "name": "registriert_am",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "drucker_ip": {
+          "name": "drucker_ip",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "drucker_port": {
+          "name": "drucker_port",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 9100
+        },
+        "drucker_aktiv": {
+          "name": "drucker_aktiv",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "drucker_breite_zeichen": {
+          "name": "drucker_breite_zeichen",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 42
+        },
+        "kds_stationen": {
+          "name": "kds_stationen",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "kds_port": {
+          "name": "kds_port",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 9100
+        },
+        "kds_aktiv": {
+          "name": "kds_aktiv",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "erlaubte_zahlungsarten": {
+          "name": "erlaubte_zahlungsarten",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[\"bar\",\"karte\",\"sonstige\"]'::jsonb"
+        },
+        "artikel_bilder_aktiv": {
+          "name": "artikel_bilder_aktiv",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "zvt_ip": {
+          "name": "zvt_ip",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "zvt_port": {
+          "name": "zvt_port",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 20007
+        },
+        "zvt_passwort": {
+          "name": "zvt_passwort",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "zvt_aktiv": {
+          "name": "zvt_aktiv",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "webhook_secret": {
+          "name": "webhook_secret",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "kassen_mandant_kassenid_idx": {
+          "name": "kassen_mandant_kassenid_idx",
+          "columns": [
+            {
+              "expression": "mandant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "kassen_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "kassen_mandant_id_mandanten_id_fk": {
+          "name": "kassen_mandant_id_mandanten_id_fk",
+          "tableFrom": "kassen",
+          "tableTo": "mandanten",
+          "columnsFrom": [
+            "mandant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.kategorien": {
+      "name": "kategorien",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "mandant_id": {
+          "name": "mandant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "farbe": {
+          "name": "farbe",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'grau'"
+        },
+        "reihenfolge": {
+          "name": "reihenfolge",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "aktiv": {
+          "name": "aktiv",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "bonierdrucker_id": {
+          "name": "bonierdrucker_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "kategorien_mandant_idx": {
+          "name": "kategorien_mandant_idx",
+          "columns": [
+            {
+              "expression": "mandant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "kategorien_mandant_id_mandanten_id_fk": {
+          "name": "kategorien_mandant_id_mandanten_id_fk",
+          "tableFrom": "kategorien",
+          "tableTo": "mandanten",
+          "columnsFrom": [
+            "mandant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "kategorien_bonierdrucker_id_bonierdrucker_id_fk": {
+          "name": "kategorien_bonierdrucker_id_bonierdrucker_id_fk",
+          "tableFrom": "kategorien",
+          "tableTo": "bonierdrucker",
+          "columnsFrom": [
+            "bonierdrucker_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.kunden": {
+      "name": "kunden",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "mandant_id": {
+          "name": "mandant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nummer": {
+          "name": "nummer",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "firma": {
+          "name": "firma",
+          "type": "varchar(200)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "vorname": {
+          "name": "vorname",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "nachname": {
+          "name": "nachname",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "email": {
+          "name": "email",
+          "type": "varchar(200)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "telefon": {
+          "name": "telefon",
+          "type": "varchar(50)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "strasse": {
+          "name": "strasse",
+          "type": "varchar(200)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "plz": {
+          "name": "plz",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ort": {
+          "name": "ort",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "land": {
+          "name": "land",
+          "type": "varchar(2)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'AT'"
+        },
+        "uid": {
+          "name": "uid",
+          "type": "varchar(30)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "aktiv": {
+          "name": "aktiv",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "kredit_aktiv": {
+          "name": "kredit_aktiv",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "kunden_mandant_nummer_idx": {
+          "name": "kunden_mandant_nummer_idx",
+          "columns": [
+            {
+              "expression": "mandant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "nummer",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "kunden_suche_idx": {
+          "name": "kunden_suche_idx",
+          "columns": [
+            {
+              "expression": "mandant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "aktiv",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "kunden_mandant_id_mandanten_id_fk": {
+          "name": "kunden_mandant_id_mandanten_id_fk",
+          "tableFrom": "kunden",
+          "tableTo": "mandanten",
+          "columnsFrom": [
+            "mandant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.lieferbestellungen": {
+      "name": "lieferbestellungen",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "mandant_id": {
+          "name": "mandant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kasse_id": {
+          "name": "kasse_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "externe_id": {
+          "name": "externe_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provider": {
+          "name": "provider",
+          "type": "varchar(40)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'neu'"
+        },
+        "positionen": {
+          "name": "positionen",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "gesamtbetrag_cent": {
+          "name": "gesamtbetrag_cent",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "liefer_name": {
+          "name": "liefer_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "liefer_telefon": {
+          "name": "liefer_telefon",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "liefer_adresse": {
+          "name": "liefer_adresse",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notiz": {
+          "name": "notiz",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "roh_daten": {
+          "name": "roh_daten",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "lieferbestellungen_kasse_idx": {
+          "name": "lieferbestellungen_kasse_idx",
+          "columns": [
+            {
+              "expression": "kasse_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "lieferbestellungen_status_idx": {
+          "name": "lieferbestellungen_status_idx",
+          "columns": [
+            {
+              "expression": "mandant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "lieferbestellungen_externe_idx": {
+          "name": "lieferbestellungen_externe_idx",
+          "columns": [
+            {
+              "expression": "provider",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "externe_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "lieferbestellungen_mandant_id_mandanten_id_fk": {
+          "name": "lieferbestellungen_mandant_id_mandanten_id_fk",
+          "tableFrom": "lieferbestellungen",
+          "tableTo": "mandanten",
+          "columnsFrom": [
+            "mandant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "lieferbestellungen_kasse_id_kassen_id_fk": {
+          "name": "lieferbestellungen_kasse_id_kassen_id_fk",
+          "tableFrom": "lieferbestellungen",
+          "tableTo": "kassen",
+          "columnsFrom": [
+            "kasse_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.lieferscheine": {
+      "name": "lieferscheine",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "mandant_id": {
+          "name": "mandant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kasse_id": {
+          "name": "kasse_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "angebot_id": {
+          "name": "angebot_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nummer": {
+          "name": "nummer",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "datum": {
+          "name": "datum",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "status": {
+          "name": "status",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'offen'"
+        },
+        "notiz": {
+          "name": "notiz",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "positionen": {
+          "name": "positionen",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kunde_id": {
+          "name": "kunde_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "kunde_snapshot": {
+          "name": "kunde_snapshot",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "lieferscheine_mandant_nummer_idx": {
+          "name": "lieferscheine_mandant_nummer_idx",
+          "columns": [
+            {
+              "expression": "mandant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "nummer",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "lieferscheine_kunde_idx": {
+          "name": "lieferscheine_kunde_idx",
+          "columns": [
+            {
+              "expression": "mandant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "kunde_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "lieferscheine_status_idx": {
+          "name": "lieferscheine_status_idx",
+          "columns": [
+            {
+              "expression": "mandant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "lieferscheine_mandant_id_mandanten_id_fk": {
+          "name": "lieferscheine_mandant_id_mandanten_id_fk",
+          "tableFrom": "lieferscheine",
+          "tableTo": "mandanten",
+          "columnsFrom": [
+            "mandant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "lieferscheine_kasse_id_kassen_id_fk": {
+          "name": "lieferscheine_kasse_id_kassen_id_fk",
+          "tableFrom": "lieferscheine",
+          "tableTo": "kassen",
+          "columnsFrom": [
+            "kasse_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "lieferscheine_angebot_id_angebote_id_fk": {
+          "name": "lieferscheine_angebot_id_angebote_id_fk",
+          "tableFrom": "lieferscheine",
+          "tableTo": "angebote",
+          "columnsFrom": [
+            "angebot_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "lieferscheine_kunde_id_kunden_id_fk": {
+          "name": "lieferscheine_kunde_id_kunden_id_fk",
+          "tableFrom": "lieferscheine",
+          "tableTo": "kunden",
+          "columnsFrom": [
+            "kunde_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.mandanten": {
+      "name": "mandanten",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "firmenname": {
+          "name": "firmenname",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "uid": {
+          "name": "uid",
+          "type": "varchar(11)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "vorgaenger_id": {
+          "name": "vorgaenger_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'aktiv'"
+        },
+        "modul_gastro_aktiv": {
+          "name": "modul_gastro_aktiv",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "modul_angebote_aktiv": {
+          "name": "modul_angebote_aktiv",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "modul_mergeport_aktiv": {
+          "name": "modul_mergeport_aktiv",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "mandanten_uid_idx": {
+          "name": "mandanten_uid_idx",
+          "columns": [
+            {
+              "expression": "uid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "status = 'aktiv'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.modifikator_gruppen": {
+      "name": "modifikator_gruppen",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "mandant_id": {
+          "name": "mandant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "typ": {
+          "name": "typ",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'optional'"
+        },
+        "max_auswahl": {
+          "name": "max_auswahl",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reihenfolge": {
+          "name": "reihenfolge",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "aktiv": {
+          "name": "aktiv",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "modifikator_gruppen_mandant_idx": {
+          "name": "modifikator_gruppen_mandant_idx",
+          "columns": [
+            {
+              "expression": "mandant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "modifikator_gruppen_mandant_id_mandanten_id_fk": {
+          "name": "modifikator_gruppen_mandant_id_mandanten_id_fk",
+          "tableFrom": "modifikator_gruppen",
+          "tableTo": "mandanten",
+          "columnsFrom": [
+            "mandant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.modifikatoren": {
+      "name": "modifikatoren",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "mandant_id": {
+          "name": "mandant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "gruppe_id": {
+          "name": "gruppe_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "aufschlag_cent": {
+          "name": "aufschlag_cent",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "reihenfolge": {
+          "name": "reihenfolge",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "aktiv": {
+          "name": "aktiv",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "lagerstand_menge": {
+          "name": "lagerstand_menge",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "modifikatoren_gruppe_idx": {
+          "name": "modifikatoren_gruppe_idx",
+          "columns": [
+            {
+              "expression": "gruppe_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "modifikatoren_mandant_id_mandanten_id_fk": {
+          "name": "modifikatoren_mandant_id_mandanten_id_fk",
+          "tableFrom": "modifikatoren",
+          "tableTo": "mandanten",
+          "columnsFrom": [
+            "mandant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "modifikatoren_gruppe_id_modifikator_gruppen_id_fk": {
+          "name": "modifikatoren_gruppe_id_modifikator_gruppen_id_fk",
+          "tableFrom": "modifikatoren",
+          "tableTo": "modifikator_gruppen",
+          "columnsFrom": [
+            "gruppe_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.offene_posten": {
+      "name": "offene_posten",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "mandant_id": {
+          "name": "mandant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nummer": {
+          "name": "nummer",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "datum": {
+          "name": "datum",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "status": {
+          "name": "status",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'offen'"
+        },
+        "kunde_id": {
+          "name": "kunde_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "kunde_snapshot": {
+          "name": "kunde_snapshot",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "beleg_id": {
+          "name": "beleg_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "betrag_cent": {
+          "name": "betrag_cent",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bezahlt_cent": {
+          "name": "bezahlt_cent",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "notiz": {
+          "name": "notiz",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "offene_posten_mandant_nummer_idx": {
+          "name": "offene_posten_mandant_nummer_idx",
+          "columns": [
+            {
+              "expression": "mandant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "nummer",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "offene_posten_kunde_idx": {
+          "name": "offene_posten_kunde_idx",
+          "columns": [
+            {
+              "expression": "mandant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "kunde_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "offene_posten_status_idx": {
+          "name": "offene_posten_status_idx",
+          "columns": [
+            {
+              "expression": "mandant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "offene_posten_mandant_id_mandanten_id_fk": {
+          "name": "offene_posten_mandant_id_mandanten_id_fk",
+          "tableFrom": "offene_posten",
+          "tableTo": "mandanten",
+          "columnsFrom": [
+            "mandant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "offene_posten_kunde_id_kunden_id_fk": {
+          "name": "offene_posten_kunde_id_kunden_id_fk",
+          "tableFrom": "offene_posten",
+          "tableTo": "kunden",
+          "columnsFrom": [
+            "kunde_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "offene_posten_beleg_id_belege_id_fk": {
+          "name": "offene_posten_beleg_id_belege_id_fk",
+          "tableFrom": "offene_posten",
+          "tableTo": "belege",
+          "columnsFrom": [
+            "beleg_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.sammelrechnungen": {
+      "name": "sammelrechnungen",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "mandant_id": {
+          "name": "mandant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nummer": {
+          "name": "nummer",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "datum": {
+          "name": "datum",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "lieferschein_ids": {
+          "name": "lieferschein_ids",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "gesamtbetrag_cent": {
+          "name": "gesamtbetrag_cent",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kunde_id": {
+          "name": "kunde_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "kunde_snapshot": {
+          "name": "kunde_snapshot",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "sammelrechnungen_mandant_nummer_idx": {
+          "name": "sammelrechnungen_mandant_nummer_idx",
+          "columns": [
+            {
+              "expression": "mandant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "nummer",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sammelrechnungen_kunde_idx": {
+          "name": "sammelrechnungen_kunde_idx",
+          "columns": [
+            {
+              "expression": "mandant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "kunde_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "sammelrechnungen_mandant_id_mandanten_id_fk": {
+          "name": "sammelrechnungen_mandant_id_mandanten_id_fk",
+          "tableFrom": "sammelrechnungen",
+          "tableTo": "mandanten",
+          "columnsFrom": [
+            "mandant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "sammelrechnungen_kunde_id_kunden_id_fk": {
+          "name": "sammelrechnungen_kunde_id_kunden_id_fk",
+          "tableFrom": "sammelrechnungen",
+          "tableTo": "kunden",
+          "columnsFrom": [
+            "kunde_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.tab_ereignisse": {
+      "name": "tab_ereignisse",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "mandant_id": {
+          "name": "mandant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tab_id": {
+          "name": "tab_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "typ": {
+          "name": "typ",
+          "type": "varchar(40)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "details": {
+          "name": "details",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "tab_ereignisse_tab_idx": {
+          "name": "tab_ereignisse_tab_idx",
+          "columns": [
+            {
+              "expression": "tab_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "tab_ereignisse_mandant_id_mandanten_id_fk": {
+          "name": "tab_ereignisse_mandant_id_mandanten_id_fk",
+          "tableFrom": "tab_ereignisse",
+          "tableTo": "mandanten",
+          "columnsFrom": [
+            "mandant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "tab_ereignisse_tab_id_tisch_tabs_id_fk": {
+          "name": "tab_ereignisse_tab_id_tisch_tabs_id_fk",
+          "tableFrom": "tab_ereignisse",
+          "tableTo": "tisch_tabs",
+          "columnsFrom": [
+            "tab_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.tisch_tabs": {
+      "name": "tisch_tabs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "mandant_id": {
+          "name": "mandant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kasse_id": {
+          "name": "kasse_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tisch_nummer": {
+          "name": "tisch_nummer",
+          "type": "varchar(40)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kellner": {
+          "name": "kellner",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'Service'"
+        },
+        "positionen": {
+          "name": "positionen",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'offen'"
+        },
+        "geoffnet_am": {
+          "name": "geoffnet_am",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "geschlossen_am": {
+          "name": "geschlossen_am",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "beleg_id": {
+          "name": "beleg_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "tisch_tabs_kasse_status_idx": {
+          "name": "tisch_tabs_kasse_status_idx",
+          "columns": [
+            {
+              "expression": "kasse_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "tisch_tabs_mandant_id_mandanten_id_fk": {
+          "name": "tisch_tabs_mandant_id_mandanten_id_fk",
+          "tableFrom": "tisch_tabs",
+          "tableTo": "mandanten",
+          "columnsFrom": [
+            "mandant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "tisch_tabs_kasse_id_kassen_id_fk": {
+          "name": "tisch_tabs_kasse_id_kassen_id_fk",
+          "tableFrom": "tisch_tabs",
+          "tableTo": "kassen",
+          "columnsFrom": [
+            "kasse_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.tischplan_bereiche": {
+      "name": "tischplan_bereiche",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "mandant_id": {
+          "name": "mandant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kasse_id": {
+          "name": "kasse_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reihenfolge": {
+          "name": "reihenfolge",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "tischplan_bereiche_kasse_idx": {
+          "name": "tischplan_bereiche_kasse_idx",
+          "columns": [
+            {
+              "expression": "kasse_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "tischplan_bereiche_mandant_id_mandanten_id_fk": {
+          "name": "tischplan_bereiche_mandant_id_mandanten_id_fk",
+          "tableFrom": "tischplan_bereiche",
+          "tableTo": "mandanten",
+          "columnsFrom": [
+            "mandant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "tischplan_bereiche_kasse_id_kassen_id_fk": {
+          "name": "tischplan_bereiche_kasse_id_kassen_id_fk",
+          "tableFrom": "tischplan_bereiche",
+          "tableTo": "kassen",
+          "columnsFrom": [
+            "kasse_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.tischplan_elemente": {
+      "name": "tischplan_elemente",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "mandant_id": {
+          "name": "mandant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kasse_id": {
+          "name": "kasse_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bereich_id": {
+          "name": "bereich_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bezeichnung": {
+          "name": "bezeichnung",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "form": {
+          "name": "form",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'rechteck'"
+        },
+        "farbe": {
+          "name": "farbe",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'grau'"
+        },
+        "x": {
+          "name": "x",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 10
+        },
+        "y": {
+          "name": "y",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 10
+        },
+        "breite": {
+          "name": "breite",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 10
+        },
+        "hoehe": {
+          "name": "hoehe",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 8
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "tischplan_elemente_bereich_idx": {
+          "name": "tischplan_elemente_bereich_idx",
+          "columns": [
+            {
+              "expression": "bereich_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "tischplan_elemente_mandant_id_mandanten_id_fk": {
+          "name": "tischplan_elemente_mandant_id_mandanten_id_fk",
+          "tableFrom": "tischplan_elemente",
+          "tableTo": "mandanten",
+          "columnsFrom": [
+            "mandant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "tischplan_elemente_kasse_id_kassen_id_fk": {
+          "name": "tischplan_elemente_kasse_id_kassen_id_fk",
+          "tableFrom": "tischplan_elemente",
+          "tableTo": "kassen",
+          "columnsFrom": [
+            "kasse_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "tischplan_elemente_bereich_id_tischplan_bereiche_id_fk": {
+          "name": "tischplan_elemente_bereich_id_tischplan_bereiche_id_fk",
+          "tableFrom": "tischplan_elemente",
+          "tableTo": "tischplan_bereiche",
+          "columnsFrom": [
+            "bereich_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.user_kassen": {
+      "name": "user_kassen",
+      "schema": "",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kasse_id": {
+          "name": "kasse_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "user_kassen_user_id_users_id_fk": {
+          "name": "user_kassen_user_id_users_id_fk",
+          "tableFrom": "user_kassen",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "user_kassen_kasse_id_kassen_id_fk": {
+          "name": "user_kassen_kasse_id_kassen_id_fk",
+          "tableFrom": "user_kassen",
+          "tableTo": "kassen",
+          "columnsFrom": [
+            "kasse_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "user_kassen_user_id_kasse_id_pk": {
+          "name": "user_kassen_user_id_kasse_id_pk",
+          "columns": [
+            "user_id",
+            "kasse_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.users": {
+      "name": "users",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "mandant_id": {
+          "name": "mandant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "email": {
+          "name": "email",
+          "type": "varchar(200)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "password_hash": {
+          "name": "password_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "pin_hash": {
+          "name": "pin_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rolle": {
+          "name": "rolle",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'kellner'"
+        },
+        "berechtigungen": {
+          "name": "berechtigungen",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "aktiv": {
+          "name": "aktiv",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "users_email_idx": {
+          "name": "users_email_idx",
+          "columns": [
+            {
+              "expression": "email",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "users_mandant_id_mandanten_id_fk": {
+          "name": "users_mandant_id_mandanten_id_fk",
+          "tableFrom": "users",
+          "tableTo": "mandanten",
+          "columnsFrom": [
+            "mandant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@fastify/cors": "^10.0.0",
+    "@fastify/helmet": "^13.0.2",
     "@fastify/jwt": "^9.0.0",
     "@fastify/rate-limit": "^10.3.0",
     "@kassa/rksv": "workspace:*",

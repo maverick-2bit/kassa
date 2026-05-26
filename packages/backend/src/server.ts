@@ -1,5 +1,6 @@
 import Fastify, { type FastifyInstance } from 'fastify'
 import cors from '@fastify/cors'
+import helmet from '@fastify/helmet'
 import rateLimit from '@fastify/rate-limit'
 import type { Config } from './config.js'
 import type { Db } from './db/client.js'
@@ -32,6 +33,7 @@ import { gutscheinRoute } from './routes/gutschein.route.js'
 import { lieferbestellungRoute } from './routes/lieferbestellung.route.js'
 import { mandantRoute }          from './routes/mandant.route.js'
 import { kasseRoute }            from './routes/kasse.route.js'
+import { auditRoute }           from './routes/audit.route.js'
 
 export interface ServerDeps {
   config:    Config
@@ -51,6 +53,30 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   await fastify.register(cors, {
     origin: deps.config.CORS_ORIGIN.split(',').map(s => s.trim()),
     credentials: true,
+  })
+
+  // HTTP Security Headers (Helmet)
+  await fastify.register(helmet, {
+    // CSP: erlaubt nur eigene Ressourcen + inline-Scripts (Vite-Inlines in Prod)
+    contentSecurityPolicy: deps.config.NODE_ENV === 'production' ? {
+      directives: {
+        defaultSrc:     ["'self'"],
+        scriptSrc:      ["'self'"],
+        styleSrc:       ["'self'", "'unsafe-inline'"],
+        imgSrc:         ["'self'", 'data:'],
+        connectSrc:     ["'self'"],
+        fontSrc:        ["'self'"],
+        objectSrc:      ["'none'"],
+        frameSrc:       ["'none'"],
+        upgradeInsecureRequests: [],
+      },
+    } : false,
+    // HSTS: Browser merkt sich HTTPS-Only für 1 Jahr
+    hsts: deps.config.NODE_ENV === 'production'
+      ? { maxAge: 31_536_000, includeSubDomains: true }
+      : false,
+    crossOriginResourcePolicy: { policy: 'same-origin' },
+    referrerPolicy:            { policy: 'strict-origin-when-cross-origin' },
   })
 
   // Rate-Limiting — in Tests deaktiviert, in Produktion aktiv
@@ -98,6 +124,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     await api.register(lieferbestellungRoute,   { db: deps.db })
     await api.register(mandantRoute,            { db: deps.db })
     await api.register(kasseRoute,              { db: deps.db })
+    await api.register(auditRoute,              { db: deps.db })
   }, { prefix: '/api' })
 
   // Globaler Fehler-Handler — fängt alle unbehandelten Fehler ab

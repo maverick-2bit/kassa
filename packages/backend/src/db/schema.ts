@@ -751,3 +751,29 @@ export const lieferbestellungen = pgTable('lieferbestellungen', {
 
 export type Lieferbestellung    = typeof lieferbestellungen.$inferSelect
 export type NewLieferbestellung = typeof lieferbestellungen.$inferInsert
+
+// ---------------------------------------------------------------------------
+// Audit-Log — Protokoll sicherheitsrelevanter Aktionen
+// ---------------------------------------------------------------------------
+
+export const auditLogs = pgTable('audit_logs', {
+  id:        uuid('id').primaryKey().$defaultFn(() => randomUUID()),
+  /** Mandant — null bei Pre-Auth-Ereignissen (z. B. Login-Fehlschlag unbekannter User) */
+  mandantId: uuid('mandant_id'),
+  /** Benutzer — null bei fehlgeschlagenen Logins (User evtl. nicht gefunden) */
+  userId:    uuid('user_id'),
+  /** Strukturierter Aktions-Schlüssel, z. B. "login.erfolg" */
+  aktion:    varchar('aktion', { length: 80 }).notNull(),
+  /** Zusätzliche kontextabhängige Details */
+  details:   jsonb('details'),
+  /** IP-Adresse des Clients (IPv4 oder IPv6, max. 45 Zeichen) */
+  ipAdresse: varchar('ip_adresse', { length: 45 }),
+  userAgent: text('user_agent'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  mandantIdx: index('audit_logs_mandant_idx').on(t.mandantId),
+  createdIdx: index('audit_logs_created_idx').on(t.createdAt),
+}))
+
+export type AuditLog    = typeof auditLogs.$inferSelect
+export type NewAuditLog = typeof auditLogs.$inferInsert
