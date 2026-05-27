@@ -87,6 +87,9 @@ import type {
   LieferbestellungUpdate,
   MandantModule,
   MandantModuleUpdate,
+  KassenbuchBuchung,
+  KassenbuchBuchungInput,
+  KassenbuchResponse,
 } from '@kassa/shared'
 import { getToken, handleUnauthorized } from './auth.js'
 
@@ -680,6 +683,18 @@ export interface HealthStatus {
 export const healthApi = {
   get: (): Promise<HealthStatus> =>
     request<HealthStatus>('GET', '/api/health'),
+}
+
+// ---------------------------------------------------------------------------
+// Kassenbuch
+// ---------------------------------------------------------------------------
+
+export const kassenbuchApi = {
+  liste: (kasseId: string, von: string, bis: string): Promise<KassenbuchResponse> =>
+    request<KassenbuchResponse>('GET', `/api/kassenbuch?kasseId=${kasseId}&von=${von}&bis=${bis}`),
+
+  erstelle: (input: KassenbuchBuchungInput): Promise<KassenbuchBuchung> =>
+    request<KassenbuchBuchung>('POST', '/api/kassenbuch', input),
 }
 
 export { ApiError }

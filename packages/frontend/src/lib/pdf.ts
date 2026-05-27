@@ -5,7 +5,7 @@
  * „PDF herunterladen" wird das ~300 kB große Bundle nachgeladen).
  */
 
-import type { Tagesabschluss } from '@kassa/shared'
+import type { Tagesabschluss, KassenbuchResponse } from '@kassa/shared'
 import type { KassensturzDruckInput } from './api'
 
 // ---------------------------------------------------------------------------
@@ -320,4 +320,123 @@ export async function downloadKassensturzPdf(
   doc.text(`Kassa v${__APP_VERSION__}`, pageW - mR, pageH - 10, { align: 'right' })
 
   doc.save(`kassensturz_${input.datum}_${kassenBezeichnung.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`)
+}
+
+// ---------------------------------------------------------------------------
+// Kassenbuch-PDF
+// ---------------------------------------------------------------------------
+
+export async function downloadKassenbuchPdf(
+  data:              KassenbuchResponse,
+  firmenname:        string,
+  kassenBezeichnung: string,
+): Promise<void> {
+  const [{ jsPDF }, { default: autoTable }] = await Promise.all([
+    import('jspdf'),
+    import('jspdf-autotable'),
+  ])
+
+  const doc   = new jsPDF({ unit: 'mm', format: 'a4', putOnlyUsedFonts: true })
+  const pageW = doc.internal.pageSize.getWidth()
+  const pageH = doc.internal.pageSize.getHeight()
+  const mL    = 20
+  const mR    = 20
+  const grau  = [243, 244, 246] as [number, number, number]
+
+  let y = 22
+
+  // ── Kopfzeile ──────────────────────────────────────────────────────────────
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(16)
+  doc.text('Kassenbuch', mL, y)
+  y += 7
+
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(9)
+  doc.setTextColor(90)
+  doc.text(firmenname,                              mL, y); y += 4.5
+  doc.text(`Kasse: ${kassenBezeichnung}`,           mL, y); y += 4.5
+  doc.text(`Zeitraum: ${fmt(data.von)} – ${fmt(data.bis)}`, mL, y)
+  doc.text(
+    `Erstellt: ${new Date().toLocaleString('de-AT', { timeZone: 'Europe/Vienna' })}`,
+    pageW - mR, y,
+    { align: 'right' },
+  )
+  doc.setTextColor(0)
+  y += 8
+
+  doc.setDrawColor(210)
+  doc.line(mL, y, pageW - mR, y)
+  y += 8
+
+  // ── Übersicht ──────────────────────────────────────────────────────────────
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(11)
+  doc.text('Übersicht', mL, y)
+  y += 4
+
+  autoTable(doc, {
+    startY:       y,
+    margin:       { left: mL, right: mR },
+    body:         [
+      ['Einlagen',  cent(data.einlagenCent)],
+      ['Entnahmen', `- ${cent(data.entnahmenCent)}`],
+    ],
+    foot:         [['Saldo', (data.saldoCent >= 0 ? '+' : '') + cent(data.saldoCent)]],
+    columnStyles: { 0: { cellWidth: 60 }, 1: { halign: 'right' } },
+    styles:       { fontSize: 10, cellPadding: 2.5 },
+    footStyles:   {
+      fillColor: data.saldoCent >= 0
+        ? ([220, 252, 231] as [number, number, number])
+        : ([254, 226, 226] as [number, number, number]),
+      textColor:  data.saldoCent >= 0 ? 22 : 153,
+      fontStyle:  'bold',
+      fontSize:   10,
+    },
+    theme:    'plain',
+    showFoot: 'lastPage',
+  })
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  y = (doc as any).lastAutoTable.finalY + 8
+
+  // ── Buchungsliste ──────────────────────────────────────────────────────────
+  if (data.buchungen.length > 0) {
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(11)
+    doc.text('Buchungen', mL, y)
+    y += 4
+
+    autoTable(doc, {
+      startY:  y,
+      margin:  { left: mL, right: mR },
+      head:    [['Datum', 'Art', 'Grund', 'Benutzer', 'Betrag']],
+      body:    data.buchungen.map(b => [
+        fmt(b.datum),
+        b.typ === 'einlage' ? 'Einlage' : 'Entnahme',
+        b.grund ?? '',
+        b.userName ?? '',
+        (b.typ === 'einlage' ? '+' : '-') + cent(b.betragCent),
+      ]),
+      columnStyles: {
+        0: { cellWidth: 24 },
+        1: { cellWidth: 24 },
+        2: { cellWidth: 'auto' },
+        3: { cellWidth: 35 },
+        4: { halign: 'right', cellWidth: 30 },
+      },
+      styles:     { fontSize: 9, cellPadding: 2 },
+      headStyles: { fillColor: grau, textColor: 50, fontStyle: 'bold', fontSize: 8 },
+      theme:      'striped',
+    })
+  }
+
+  // ── Fußzeile ───────────────────────────────────────────────────────────────
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(7.5)
+  doc.setTextColor(150)
+  doc.text('Kassa — RKSV-konformes Kassensystem', mL, pageH - 10)
+  doc.text(`Kassa v${__APP_VERSION__}`, pageW - mR, pageH - 10, { align: 'right' })
+
+  doc.save(`kassenbuch_${data.von}_${data.bis}_${kassenBezeichnung.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`)
 }

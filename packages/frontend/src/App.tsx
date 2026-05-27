@@ -23,6 +23,7 @@ import { KundenPage } from './pages/KundenPage'
 import { AngebotePage } from './pages/AngebotePage'
 import { KassensturzPage } from './pages/KassensturzPage'
 import { BonierdruckerPage } from './pages/BonierdruckerPage'
+import { KassenbuchPage } from './pages/KassenbuchPage'
 import { PosKonfigPage } from './pages/PosKonfigPage'
 import type { Berechtigung, MandantModul } from '@kassa/shared'
 import { getAuth, hasBerechtigung, hasModul, setOnUnauthorized } from './lib/auth'
@@ -64,6 +65,7 @@ function AppRoutes() {
         <Route path="/benutzer"       element={<Require b="user.verwalten"               ><UserVerwaltungPage /></Require>} />
         <Route path="/tagesabschluss" element={<Require b="belege.lesen"                 ><TagesabschlussPage /></Require>} />
         <Route path="/kassensturz"    element={<Require b="belege.lesen"                 ><KassensturzPage /></Require>} />
+        <Route path="/kassenbuch"     element={<Require b="einstellungen"                ><KassenbuchPage /></Require>} />
         <Route path="/berichte"       element={<Require b="belege.lesen"                 ><BerichtePage /></Require>} />
         <Route path="/kunden"         element={<Require b="kunden.verwalten"             ><KundenPage /></Require>} />
         <Route path="/angebote"       element={<Require b="kasse"            m="angebote"><AngebotePage /></Require>} />

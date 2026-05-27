@@ -408,6 +408,23 @@ export type {
   BelegPositionDto,
 } from './schemas/beleg.js'
 
+// Kassenbuch
+export {
+  KassenbuchBuchungTypSchema,
+  KASSENBUCH_TYP_LABELS,
+  KassenbuchBuchungSchema,
+  KassenbuchBuchungInputSchema,
+  KassenbuchQuerySchema,
+  KassenbuchResponseSchema,
+} from './schemas/kassenbuch.js'
+export type {
+  KassenbuchBuchungTyp,
+  KassenbuchBuchung,
+  KassenbuchBuchungInput,
+  KassenbuchQuery,
+  KassenbuchResponse,
+} from './schemas/kassenbuch.js'
+
 // Lieferbestellungen (Lieferando / Mergeport)
 export {
   LieferbestellungStatusSchema,

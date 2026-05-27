@@ -753,6 +753,26 @@ export type Lieferbestellung    = typeof lieferbestellungen.$inferSelect
 export type NewLieferbestellung = typeof lieferbestellungen.$inferInsert
 
 // ---------------------------------------------------------------------------
+// Kassenbuch — Bar-Einlagen und -Entnahmen (nicht umsatzbezogen)
+// ---------------------------------------------------------------------------
+
+export const kassenbuchBuchungen = pgTable('kassenbuch_buchungen', {
+  id:         uuid('id').primaryKey().defaultRandom(),
+  kasseId:    uuid('kasse_id').notNull().references(() => kassen.id),
+  typ:        varchar('typ', { length: 20 }).notNull(), // 'einlage' | 'entnahme'
+  betragCent: integer('betrag_cent').notNull(),
+  grund:      text('grund'),
+  userId:     uuid('user_id'),
+  datum:      varchar('datum', { length: 10 }).notNull(), // YYYY-MM-DD
+  createdAt:  timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  kasseIdx: index('kassenbuch_kasse_idx').on(t.kasseId, t.datum),
+}))
+
+export type KassenbuchBuchungRow    = typeof kassenbuchBuchungen.$inferSelect
+export type NewKassenbuchBuchungRow = typeof kassenbuchBuchungen.$inferInsert
+
+// ---------------------------------------------------------------------------
 // Audit-Log — Protokoll sicherheitsrelevanter Aktionen
 // ---------------------------------------------------------------------------
 

@@ -57,6 +57,7 @@ function Header() {
           {hasBerechtigung('belege.lesen')                                && <NavItem to="/tagesabschluss">Abschluss</NavItem>}
           {hasBerechtigung('belege.lesen')                                && <NavItem to="/kassensturz">Kassensturz</NavItem>}
           {hasBerechtigung('belege.lesen')                                && <NavItem to="/berichte">Berichte</NavItem>}
+          {hasBerechtigung('einstellungen')                               && <NavItem to="/kassenbuch">Kassenbuch</NavItem>}
           {hasBerechtigung('einstellungen')                               && <NavItem to="/einstellungen">Einstellungen</NavItem>}
           {hasBerechtigung('einstellungen')                               && <NavItem to="/pos-konfiguration">POS-Konfig</NavItem>}
           {hasBerechtigung('einstellungen')     && hasModul('gastro')     && <NavItem to="/bonierdrucker">Bonierdrucker</NavItem>}
