@@ -72,7 +72,6 @@ export function KassensturzPage() {
   const setStueckCount = (wertCent: number, raw: string) => {
     const n = Math.max(0, parseInt(raw || '0', 10))
     setStueck(prev => ({ ...prev, [wertCent]: n }))
-    setGedruckt(false)
   }
 
   const istCent      = STUECKELUNG.reduce((s, { wertCent }) => s + (stueck[wertCent] ?? 0) * wertCent, 0)
@@ -152,7 +151,7 @@ export function KassensturzPage() {
               type="text"
               inputMode="decimal"
               value={startgeld}
-              onChange={e => { setStartgeld(e.target.value); setGedruckt(false) }}
+              onChange={e => { setStartgeld(e.target.value) }}
               placeholder="0,00"
               className="w-24 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
             />

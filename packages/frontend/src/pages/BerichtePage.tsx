@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueries } from '@tanstack/react-query'
 import type { ArtikelBerichtResponse, BerichtGesamt, BerichtGruppierung, BerichtResponse, StundenBerichtResponse, StundenBerichtZeile, WarengruppeBerichtResponse } from '@kassa/shared'
 import { berichtApi } from '../lib/api'
 import { getAuth } from '../lib/auth'
@@ -96,7 +96,7 @@ function standardGruppierung(preset: ZeitraumPreset): BerichtGruppierung {
 // Haupt-Komponente
 // ---------------------------------------------------------------------------
 
-type BerichtTab = 'gesamtumsatz' | 'umsatz' | 'zahlungsart' | 'warengruppe' | 'artikel' | 'stunden'
+type BerichtTab = 'gesamtumsatz' | 'umsatz' | 'zahlungsart' | 'warengruppe' | 'artikel' | 'stunden' | 'vergleich'
 
 const TABS: [BerichtTab, string][] = [
   ['gesamtumsatz', 'Übersicht'],
@@ -105,6 +105,7 @@ const TABS: [BerichtTab, string][] = [
   ['warengruppe',  'Warengruppe'],
   ['artikel',      'Artikel'],
   ['stunden',      'Tageszeit'],
+  ['vergleich',    'Vergleich'],
 ]
 
 export function BerichtePage() {
@@ -140,6 +141,7 @@ export function BerichtePage() {
       {aktTab === 'warengruppe'  && <WarengruppeBericht />}
       {aktTab === 'artikel'      && <ArtikelBericht />}
       {aktTab === 'stunden'      && <StundenBericht />}
+      {aktTab === 'vergleich'    && <VergleichBericht />}
     </div>
   )
 }
@@ -543,6 +545,9 @@ function BerichtErgebnis({ data, gruppierung }: { data: BerichtResponse; gruppie
         <Kachel label="Karte"    wert={formatPreis(g.karteCent)}    sub={pct(g.karteCent,    g.umsatzCent)} />
         <Kachel label="Sonstige" wert={formatPreis(g.sonstigCent)}  sub={pct(g.sonstigCent,  g.umsatzCent)} />
       </div>
+
+      {/* Balkendiagramm */}
+      <UmsatzBalkendiagramm data={data} />
 
       {/* Tabelle */}
       <div className="rounded-lg bg-white shadow-sm border border-gray-200 overflow-hidden">
@@ -1252,6 +1257,443 @@ function StundenDiagramm({ data }: { data: StundenBerichtResponse }) {
         </div>
       </div>
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Umsatz-Balkendiagramm (vertikale Balken, rein CSS)
+// ---------------------------------------------------------------------------
+
+function UmsatzBalkendiagramm({ data }: { data: BerichtResponse }) {
+  if (data.zeilen.length < 2) return null
+
+  const maxCent = Math.max(...data.zeilen.map(z => z.umsatzCent), 1)
+  const BAR_H   = 120 // px — max Balkenhöhe
+
+  // Bei mehr als 31 Balken jeden zweiten überspringen
+  const zeilen = data.zeilen.length > 31
+    ? data.zeilen.filter((_, i) => i % 2 === 0)
+    : data.zeilen
+
+  return (
+    <div className="rounded-lg bg-white shadow-sm border border-gray-200 overflow-hidden">
+      <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+        <h2 className="text-sm font-semibold text-gray-700">Verlauf</h2>
+      </div>
+      <div className="px-4 pt-4 pb-2 overflow-x-auto">
+        <div
+          className="flex items-end gap-1"
+          style={{ minWidth: `${zeilen.length * 28}px`, height: `${BAR_H + 36}px` }}
+        >
+          {zeilen.map(z => {
+            const barH = maxCent > 0 ? Math.max(2, Math.round((z.umsatzCent / maxCent) * BAR_H)) : 0
+            return (
+              <div
+                key={z.periode}
+                className="relative flex flex-col items-center flex-1 min-w-[20px] group"
+                style={{ height: `${BAR_H + 36}px` }}
+              >
+                {/* Tooltip */}
+                <div className="absolute bottom-full mb-1 hidden group-hover:flex flex-col items-center z-10 pointer-events-none">
+                  <div className="bg-gray-900 text-white text-xs rounded px-2 py-1 whitespace-nowrap">
+                    <span className="font-medium">{z.periode}</span>
+                    <br />
+                    <span className="font-mono">{formatPreis(z.umsatzCent)}</span>
+                    {z.anzahlBelege > 0 && (
+                      <><br /><span className="text-gray-300">{z.anzahlBelege} Bel.</span></>
+                    )}
+                  </div>
+                  <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900" />
+                </div>
+                {/* Balken-Bereich */}
+                <div className="flex-1 flex items-end w-full">
+                  <div
+                    className={`w-full rounded-t transition-colors ${
+                      z.umsatzCent > 0 ? 'bg-brand-400 group-hover:bg-brand-500' : 'bg-gray-100'
+                    }`}
+                    style={{ height: `${barH}px` }}
+                  />
+                </div>
+                {/* Label */}
+                <span className="text-[9px] text-gray-400 mt-1 w-full text-center truncate leading-tight px-0.5">
+                  {z.periode.length > 7 ? z.periode.slice(-5) : z.periode}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Vergleich-Bericht (Aktueller Zeitraum vs. Vorperiode)
+// ---------------------------------------------------------------------------
+
+type VergleichPreset = 'woche' | 'monat' | 'jahr'
+
+const VERGLEICH_OPTIONEN: { key: VergleichPreset; label: string; sublabel: string }[] = [
+  { key: 'woche', label: 'Diese Woche',   sublabel: 'vs. Vorwoche' },
+  { key: 'monat', label: 'Dieser Monat',  sublabel: 'vs. Vormonat' },
+  { key: 'jahr',  label: 'Dieses Jahr',   sublabel: 'vs. Vorjahr'  },
+]
+
+function berechneVergleichsZeitraeume(preset: VergleichPreset, h: string): {
+  vonAkt: string; bisAkt: string
+  vonVor: string; bisVor: string
+} {
+  switch (preset) {
+    case 'woche': {
+      const vonAkt = startDerWoche(h)
+      const bisAkt = addTage(vonAkt, 6)
+      return { vonAkt, bisAkt, vonVor: addTage(vonAkt, -7), bisVor: addTage(vonAkt, -1) }
+    }
+    case 'monat': {
+      const vonAkt = startDesMonats(h)
+      const bisAkt = endeDesMonats(h)
+      // Vormonat: einen Monat zurück
+      const d = new Date(vonAkt)
+      d.setMonth(d.getMonth() - 1)
+      const vonVor = d.toLocaleDateString('sv-SE')
+      return { vonAkt, bisAkt, vonVor, bisVor: endeDesMonats(vonVor) }
+    }
+    case 'jahr': {
+      const y    = parseInt(h.slice(0, 4))
+      const vonAkt = `${y}-01-01`
+      const bisAkt = `${y}-12-31`
+      return { vonAkt, bisAkt, vonVor: `${y - 1}-01-01`, bisVor: `${y - 1}-12-31` }
+    }
+  }
+}
+
+function VergleichBericht() {
+  const auth = getAuth()!
+  const [preset, setPreset]     = useState<VergleichPreset>('woche')
+  const [kasseIds, setKasseIds] = useState<string[]>([])
+  const [geladen, setGeladen]   = useState<{
+    vonAkt: string; bisAkt: string
+    vonVor: string; bisVor: string
+    kasseIds: string[]
+  } | null>(null)
+
+  // Zwei parallele Queries — immer mit zwei Einträgen (stabiles Tupel), enabled steuert Ausführung
+  const [aktResult, vorResult] = useQueries({
+    queries: [
+      {
+        queryKey: ['bericht-vergleich-akt', geladen] as const,
+        queryFn:  () => berichtApi.umsatz({
+          kasseIds:          geladen!.kasseIds,
+          von:               geladen!.vonAkt,
+          bis:               geladen!.bisAkt,
+          gruppierung:       'tag' as const,
+          nurZielrechnungen: false,
+        }),
+        enabled: geladen !== null,
+      },
+      {
+        queryKey: ['bericht-vergleich-vor', geladen] as const,
+        queryFn:  () => berichtApi.umsatz({
+          kasseIds:          geladen!.kasseIds,
+          von:               geladen!.vonVor,
+          bis:               geladen!.bisVor,
+          gruppierung:       'tag' as const,
+          nurZielrechnungen: false,
+        }),
+        enabled: geladen !== null,
+      },
+    ],
+  })
+
+  const isLoading = aktResult.isLoading || vorResult.isLoading
+  const isError   = aktResult.isError   || vorResult.isError
+
+  const kassenAnzeige = useMemo(
+    () => auth.kassen.map(k => ({ id: k.id, label: k.bezeichnung ?? k.kassenId })),
+    [auth.kassen],
+  )
+  const alleKassenGewaehlt = kasseIds.length === 0
+
+  function toggleKasse(id: string) {
+    setKasseIds(prev => prev.includes(id) ? prev.filter(k => k !== id) : [...prev, id])
+  }
+
+  function ladeBericht() {
+    const zt = berechneVergleichsZeitraeume(preset, heute())
+    setGeladen({ ...zt, kasseIds })
+  }
+
+  const optionInfo = VERGLEICH_OPTIONEN.find(o => o.key === preset)!
+
+  return (
+    <div className="space-y-6">
+      {/* Filter */}
+      <div className="rounded-lg bg-white shadow-sm border border-gray-200 p-4 space-y-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {/* Preset-Auswahl */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+              Vergleich
+            </label>
+            <div className="space-y-2">
+              {VERGLEICH_OPTIONEN.map(opt => (
+                <button
+                  key={opt.key}
+                  type="button"
+                  onClick={() => setPreset(opt.key)}
+                  className={`w-full text-left px-3 py-2 rounded border transition ${
+                    preset === opt.key
+                      ? 'bg-brand-50 border-brand-300 text-brand-700'
+                      : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  <div className="text-sm font-medium">{opt.label}</div>
+                  <div className="text-xs text-gray-400">{opt.sublabel}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Zeitraum-Vorschau */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+              Zeiträume
+            </label>
+            {(() => {
+              const zt = berechneVergleichsZeitraeume(preset, heute())
+              return (
+                <div className="space-y-3">
+                  <div className="rounded border border-brand-200 bg-brand-50 p-3">
+                    <p className="text-xs font-semibold text-brand-700 mb-0.5">Aktueller Zeitraum</p>
+                    <p className="text-sm font-mono text-brand-900">
+                      {formatDatumAnzeige(zt.vonAkt)} – {formatDatumAnzeige(zt.bisAkt)}
+                    </p>
+                  </div>
+                  <div className="rounded border border-gray-200 bg-gray-50 p-3">
+                    <p className="text-xs font-semibold text-gray-500 mb-0.5">Vorperiode</p>
+                    <p className="text-sm font-mono text-gray-700">
+                      {formatDatumAnzeige(zt.vonVor)} – {formatDatumAnzeige(zt.bisVor)}
+                    </p>
+                  </div>
+                </div>
+              )
+            })()}
+          </div>
+
+          {/* Kassen */}
+          {kassenAnzeige.length > 1 && (
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Kasse</label>
+              <div className="space-y-1">
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input type="checkbox" checked={alleKassenGewaehlt} onChange={() => setKasseIds([])} className="rounded" />
+                  <span className={alleKassenGewaehlt ? 'font-medium text-gray-900' : 'text-gray-600'}>Alle Kassen</span>
+                </label>
+                {kassenAnzeige.map(k => (
+                  <label key={k.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input type="checkbox" checked={kasseIds.includes(k.id)} onChange={() => toggleKasse(k.id)} className="rounded" />
+                    <span className={kasseIds.includes(k.id) ? 'font-medium text-gray-900' : 'text-gray-600'}>{k.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="pt-2 border-t border-gray-100 flex justify-end">
+          <Button onClick={ladeBericht} loading={isLoading}>
+            {optionInfo.label} vs. {optionInfo.sublabel.replace('vs. ', '')} laden
+          </Button>
+        </div>
+      </div>
+
+      {isError && (
+        <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          Fehler beim Laden eines Berichts
+        </div>
+      )}
+
+      {aktResult.data && vorResult.data && (
+        <VergleichErgebnis
+          akt={aktResult.data}
+          vor={vorResult.data}
+          aktLabel={optionInfo.label}
+          vorLabel={optionInfo.sublabel.replace('vs. ', '')}
+        />
+      )}
+    </div>
+  )
+}
+
+function VergleichErgebnis({
+  akt, vor, aktLabel, vorLabel,
+}: {
+  akt:      BerichtResponse
+  vor:      BerichtResponse
+  aktLabel: string
+  vorLabel: string
+}) {
+  const a = akt.gesamt
+  const v = vor.gesamt
+
+  const delta        = a.umsatzCent - v.umsatzCent
+  const deltaPct     = v.umsatzCent !== 0 ? Math.round((delta / Math.abs(v.umsatzCent)) * 100) : null
+  const deltaPositiv = delta >= 0
+
+  const deltaBarCent   = a.barCent   - v.barCent
+  const deltaKarteCent = a.karteCent - v.karteCent
+  const deltaBelege    = a.anzahlBelege - v.anzahlBelege
+
+  /** Kleines farbiges Chip mit Pfeil für Delta-Werte */
+  function absDeltaChip(wert: number, fmtFn: (n: number) => string) {
+    const pos = wert >= 0
+    return (
+      <span className={`inline-flex items-center gap-0.5 text-xs font-semibold px-1.5 py-0.5 rounded ${
+        pos ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+      }`}>
+        {pos ? '▲' : '▼'} {fmtFn(Math.abs(wert))}
+      </span>
+    )
+  }
+
+  const zahlarten = [
+    { label: 'Barzahlung',    aktCent: a.barCent,   vorCent: v.barCent,   deltaCent: deltaBarCent   },
+    { label: 'Kartenzahlung', aktCent: a.karteCent, vorCent: v.karteCent, deltaCent: deltaKarteCent },
+  ].filter(z => z.aktCent !== 0 || z.vorCent !== 0)
+
+  return (
+    <div className="space-y-4">
+      {/* KPI-Kacheln */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="rounded-lg border border-brand-200 bg-brand-50 shadow-sm p-4">
+          <p className="text-xs text-brand-600 font-medium">{aktLabel}</p>
+          <p className="font-mono font-bold text-xl mt-1 text-brand-800">{formatPreis(a.umsatzCent)}</p>
+          <p className="text-xs text-brand-500 mt-0.5">{a.anzahlBelege} Belege</p>
+        </div>
+        <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-4">
+          <p className="text-xs text-gray-500 font-medium">{vorLabel}</p>
+          <p className="font-mono font-semibold text-xl mt-1 text-gray-700">{formatPreis(v.umsatzCent)}</p>
+          <p className="text-xs text-gray-400 mt-0.5">{v.anzahlBelege} Belege</p>
+        </div>
+        <div className={`rounded-lg border shadow-sm p-4 ${deltaPositiv ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
+          <p className={`text-xs font-medium ${deltaPositiv ? 'text-green-600' : 'text-red-600'}`}>Differenz</p>
+          <p className={`font-mono font-bold text-xl mt-1 ${deltaPositiv ? 'text-green-800' : 'text-red-800'}`}>
+            {delta >= 0 ? '+' : ''}{formatPreis(delta)}
+          </p>
+          <p className={`text-xs mt-0.5 ${deltaPositiv ? 'text-green-500' : 'text-red-500'}`}>
+            {deltaBelege >= 0 ? '+' : ''}{deltaBelege} Belege
+          </p>
+        </div>
+        <div className={`rounded-lg border shadow-sm p-4 ${deltaPositiv ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
+          <p className={`text-xs font-medium ${deltaPositiv ? 'text-green-600' : 'text-red-600'}`}>Veränderung</p>
+          <p className={`font-mono font-bold text-2xl mt-1 ${deltaPositiv ? 'text-green-800' : 'text-red-800'}`}>
+            {deltaPct !== null
+              ? `${deltaPct >= 0 ? '+' : ''}${deltaPct} %`
+              : v.umsatzCent === 0 ? '—' : '>999 %'}
+          </p>
+          <p className={`text-xs mt-0.5 ${deltaPositiv ? 'text-green-500' : 'text-red-500'}`}>
+            {deltaPositiv ? 'Zuwachs' : 'Rückgang'}
+          </p>
+        </div>
+      </div>
+
+      {/* Zahlungsarten-Vergleich */}
+      {zahlarten.length > 0 && (
+        <div className="rounded-lg bg-white shadow-sm border border-gray-200 overflow-hidden">
+          <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+            <h2 className="text-sm font-semibold text-gray-700">Zahlungsarten</h2>
+          </div>
+          <div className="p-4 space-y-4">
+            {zahlarten.map(z => {
+              const maxV = Math.max(z.aktCent, z.vorCent, 1)
+              return (
+                <div key={z.label}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-sm text-gray-700">{z.label}</span>
+                    {absDeltaChip(z.deltaCent, formatPreis)}
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-brand-600 w-20 shrink-0 font-medium">{aktLabel}</span>
+                      <div className="flex-1 h-5 bg-brand-100 rounded-full overflow-hidden">
+                        <div className="h-full rounded-full bg-brand-400"
+                          style={{ width: `${Math.round((z.aktCent / maxV) * 100)}%` }} />
+                      </div>
+                      <span className="text-xs font-mono text-gray-700 w-24 text-right shrink-0">{formatPreis(z.aktCent)}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-400 w-20 shrink-0">{vorLabel}</span>
+                      <div className="flex-1 h-5 bg-gray-100 rounded-full overflow-hidden">
+                        <div className="h-full rounded-full bg-gray-300"
+                          style={{ width: `${Math.round((z.vorCent / maxV) * 100)}%` }} />
+                      </div>
+                      <span className="text-xs font-mono text-gray-400 w-24 text-right shrink-0">{formatPreis(z.vorCent)}</span>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Vergleichs-Tabelle */}
+      <div className="rounded-lg bg-white shadow-sm border border-gray-200 overflow-hidden">
+        <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-gray-700">Kennzahlen im Vergleich</h2>
+          <CsvExportButton onClick={() => {
+            const kopfzeile = ['Kennzahl', aktLabel, vorLabel, 'Differenz', 'Veränderung (%)']
+            const rows: string[][] = [
+              ['Umsatz (€)',   centZuEuro(a.umsatzCent), centZuEuro(v.umsatzCent), centZuEuro(delta),         deltaPct !== null ? `${deltaPct}` : ''],
+              ['Bar (€)',      centZuEuro(a.barCent),    centZuEuro(v.barCent),    centZuEuro(deltaBarCent),   ''],
+              ['Karte (€)',    centZuEuro(a.karteCent),  centZuEuro(v.karteCent),  centZuEuro(deltaKarteCent), ''],
+              ['Belege',       String(a.anzahlBelege),   String(v.anzahlBelege),   String(deltaBelege),        ''],
+            ]
+            csvHerunterladen(`bericht-vergleich_${akt.von}_vs_${vor.von}.csv`, [kopfzeile, ...rows])
+          }} />
+        </div>
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500 border-b border-gray-200">
+            <tr>
+              <th className="px-4 py-2 font-semibold text-left">Kennzahl</th>
+              <th className="px-4 py-2 font-semibold text-right text-brand-700">{aktLabel}</th>
+              <th className="px-4 py-2 font-semibold text-right text-gray-500">{vorLabel}</th>
+              <th className="px-4 py-2 font-semibold text-right">Differenz</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            <VergleichZeile label="Netto-Umsatz"  aktStr={formatPreis(a.umsatzCent)} vorStr={formatPreis(v.umsatzCent)} deltaStr={`${delta >= 0 ? '+' : ''}${formatPreis(delta)}`}  pos={delta >= 0} />
+            <VergleichZeile label="Barzahlung"    aktStr={formatPreis(a.barCent)}    vorStr={formatPreis(v.barCent)}    deltaStr={`${deltaBarCent >= 0 ? '+' : ''}${formatPreis(deltaBarCent)}`}    pos={deltaBarCent >= 0} />
+            <VergleichZeile label="Kartenzahlung" aktStr={formatPreis(a.karteCent)}  vorStr={formatPreis(v.karteCent)}  deltaStr={`${deltaKarteCent >= 0 ? '+' : ''}${formatPreis(deltaKarteCent)}`}  pos={deltaKarteCent >= 0} />
+            <VergleichZeile label="Belege"        aktStr={String(a.anzahlBelege)}    vorStr={String(v.anzahlBelege)}    deltaStr={`${deltaBelege >= 0 ? '+' : ''}${deltaBelege}`}                     pos={deltaBelege >= 0} />
+          </tbody>
+        </table>
+        <div className="px-4 py-2 bg-gray-50 border-t border-gray-200 text-xs text-gray-400">
+          {aktLabel}: {formatDatumAnzeige(akt.von)} – {formatDatumAnzeige(akt.bis)}
+          {' · '}
+          {vorLabel}: {formatDatumAnzeige(vor.von)} – {formatDatumAnzeige(vor.bis)}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function VergleichZeile({ label, aktStr, vorStr, deltaStr, pos }: {
+  label:    string
+  aktStr:   string
+  vorStr:   string
+  deltaStr: string
+  pos:      boolean
+}) {
+  return (
+    <tr className="hover:bg-gray-50">
+      <td className="px-4 py-2 text-gray-700">{label}</td>
+      <td className="px-4 py-2 text-right font-mono font-semibold text-brand-800">{aktStr}</td>
+      <td className="px-4 py-2 text-right font-mono text-gray-500">{vorStr}</td>
+      <td className={`px-4 py-2 text-right font-mono text-xs ${pos ? 'text-green-700' : 'text-red-700'}`}>
+        {deltaStr}
+      </td>
+    </tr>
   )
 }
 
