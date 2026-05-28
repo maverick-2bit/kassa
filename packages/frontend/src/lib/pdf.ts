@@ -34,6 +34,7 @@ export async function downloadZBonPdf(
   firmenname:        string,
   kassenBezeichnung: string,
   kassenbuch?:       KassenbuchResponse,
+  belegFusstext?:    string | null,
 ): Promise<void> {
   // Lazy-Load — lädt jsPDF + Plugin nur beim ersten Aufruf
   const [{ jsPDF }, { default: autoTable }] = await Promise.all([
@@ -214,6 +215,20 @@ export async function downloadZBonPdf(
       theme:      'striped',
       showFoot:   'lastPage',
     })
+  }
+
+  // ── Belegfußtext (optional) ────────────────────────────────────────────────
+  if (belegFusstext && belegFusstext.trim()) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const lastY = (doc as any).lastAutoTable?.finalY ?? y
+    const fussBeginn = lastY + 10
+
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8.5)
+    doc.setTextColor(80)
+
+    const zeilen = doc.splitTextToSize(belegFusstext.trim(), pageW - mL - mR)
+    doc.text(zeilen, mL, fussBeginn)
   }
 
   // ── Fußzeile ───────────────────────────────────────────────────────────────

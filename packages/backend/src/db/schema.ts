@@ -38,6 +38,9 @@ export const mandanten = pgTable('mandanten', {
   vorgaengerId: uuid('vorgaenger_id'),
   status:       varchar('status', { length: 20 }).notNull().default('aktiv'),
 
+  /** Freitext-Fußzeile auf Belegen / PDFs — z. B. Adresse, Dankestext, Website */
+  belegFusstext:       text('beleg_fusstext'),
+
   // Gebuchte / aktivierte Funktions-Module
   /** Gastro-Betrieb: Tische, Tisch-Tabs, grafischer Tischplan, Bonierdrucker */
   modulGastroAktiv:    boolean('modul_gastro_aktiv').notNull().default(true),

@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ALLE_STATIONEN, STATION_LABELS, type Station, type ZvtConfig } from '@kassa/shared'
-import { druckerApi, kdsApi, zvtApi, downloadDepExport, healthApi, type DruckerConfig, type KdsConfig } from '../lib/api'
+import { druckerApi, kdsApi, zvtApi, downloadDepExport, healthApi, mandantApi, kasseApi, type DruckerConfig, type KdsConfig } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
-import { hasModul } from '../lib/auth'
+import { getAuth, hasModul, updateKasseBezeichnung } from '../lib/auth'
 import { Field } from '../components/ui/Field'
 import { Input } from '../components/ui/Input'
 import { Button } from '../components/ui/Button'
@@ -15,8 +15,10 @@ export function EinstellungenPage() {
     <div className="mx-auto max-w-4xl px-4 py-6 sm:py-8 space-y-6">
       <header>
         <h1 className="text-2xl font-bold text-gray-900">Einstellungen</h1>
-        <p className="mt-1 text-sm text-gray-500">Drucker, Hardware-Anbindung und Tischplan</p>
+        <p className="mt-1 text-sm text-gray-500">Drucker, Hardware-Anbindung, Belegtext und Tischplan</p>
       </header>
+      <KasseBezeichnungSektion />
+      <StammdatenSektion />
       <DruckerSektion />
       <KdsSektion />
       <ZvtSektion />
@@ -24,6 +26,170 @@ export function EinstellungenPage() {
       {hasModul('gastro') && <TischplanSektion />}
       <SystemInfoSektion />
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Kassenbezeichnung
+// ---------------------------------------------------------------------------
+
+function KasseBezeichnungSektion() {
+  const identity    = getKasseIdentity()!
+  const auth        = getAuth()!
+  const queryClient = useQueryClient()
+  const kasseInfo   = auth.kassen.find(k => k.id === identity.kasseId)
+  const [wert, setWert]       = useState(kasseInfo?.bezeichnung ?? kasseInfo?.kassenId ?? '')
+  const [meldung, setMeldung] = useState<{ typ: 'ok' | 'fehler'; text: string } | null>(null)
+
+  const speichern = useMutation({
+    mutationFn: () => kasseApi.updateBezeichnung(identity.kasseId, { bezeichnung: wert.trim() }),
+    onSuccess: (data) => {
+      updateKasseBezeichnung(identity.kasseId, data.bezeichnung ?? '')
+      queryClient.invalidateQueries({ queryKey: ['kasse-status', identity.kasseId] })
+      setMeldung({ typ: 'ok', text: 'Kassenbezeichnung gespeichert' })
+    },
+    onError: (err) => setMeldung({ typ: 'fehler', text: err instanceof Error ? err.message : String(err) }),
+  })
+
+  return (
+    <section className="rounded-lg bg-white shadow-sm border border-gray-200 p-6 space-y-4">
+      <div>
+        <h2 className="text-base font-semibold text-gray-900">Kassenbezeichnung</h2>
+        <p className="text-sm text-gray-500 mt-0.5">
+          Anzeigename dieser Kasse (erscheint in PDFs, Berichten und der Navigation).
+        </p>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Field label="Bezeichnung" hint={`Interne ID: ${kasseInfo?.kassenId ?? identity.kasseId}`}>
+          <Input
+            value={wert}
+            onChange={e => { setWert(e.target.value); setMeldung(null) }}
+            placeholder={kasseInfo?.kassenId ?? ''}
+            maxLength={100}
+          />
+        </Field>
+      </div>
+
+      {meldung && (
+        <div className={`rounded-md p-3 text-sm ${
+          meldung.typ === 'ok'
+            ? 'bg-green-50 border border-green-200 text-green-700'
+            : 'bg-red-50 border border-red-200 text-red-700'
+        }`}>{meldung.text}</div>
+      )}
+
+      <div className="pt-2 border-t border-gray-200">
+        <Button
+          onClick={() => { setMeldung(null); speichern.mutate() }}
+          loading={speichern.isPending}
+          disabled={!wert.trim() || wert.trim() === (kasseInfo?.bezeichnung ?? kasseInfo?.kassenId ?? '')}
+        >
+          Speichern
+        </Button>
+      </div>
+    </section>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Mandanten-Stammdaten (Firmeninfo + Belegfußtext)
+// ---------------------------------------------------------------------------
+
+function StammdatenSektion() {
+  const queryClient = useQueryClient()
+  const [fusstext, setFusstext] = useState('')
+  const [meldung, setMeldung]   = useState<{ typ: 'ok' | 'fehler'; text: string } | null>(null)
+
+  const stammdatenQuery = useQuery({
+    queryKey: ['mandant-stammdaten'],
+    queryFn:  mandantApi.getStammdaten,
+  })
+
+  useEffect(() => {
+    if (stammdatenQuery.data) {
+      setFusstext(stammdatenQuery.data.belegFusstext ?? '')
+    }
+  }, [stammdatenQuery.data])
+
+  const speichern = useMutation({
+    mutationFn: () => mandantApi.patchStammdaten({
+      belegFusstext: fusstext.trim() || null,
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['mandant-stammdaten'] })
+      setMeldung({ typ: 'ok', text: 'Einstellungen gespeichert' })
+    },
+    onError: (err) => setMeldung({ typ: 'fehler', text: err instanceof Error ? err.message : String(err) }),
+  })
+
+  const d = stammdatenQuery.data
+
+  return (
+    <section className="rounded-lg bg-white shadow-sm border border-gray-200 p-6 space-y-4">
+      <div>
+        <h2 className="text-base font-semibold text-gray-900">Unternehmensdaten &amp; Belegtext</h2>
+        <p className="text-sm text-gray-500 mt-0.5">
+          Firmenname und UID sind RKSV-seitig festgelegt. Der Belegfußtext erscheint auf
+          allen ausgedruckten Belegen und PDFs.
+        </p>
+      </div>
+
+      {stammdatenQuery.isLoading ? (
+        <p className="text-sm text-gray-500">Wird geladen…</p>
+      ) : d ? (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-1">Firmenname</p>
+              <p className="text-sm font-medium text-gray-800 bg-gray-50 rounded-md px-3 py-2 border border-gray-200">
+                {d.firmenname}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-1">UID-Nummer</p>
+              <p className="text-sm font-mono text-gray-800 bg-gray-50 rounded-md px-3 py-2 border border-gray-200">
+                {d.uid}
+              </p>
+            </div>
+          </div>
+
+          <Field
+            label="Belegfußtext"
+            hint="Z. B. Adresse, Telefon, Website, Dankestext — erscheint am Ende jedes Belegs / PDFs"
+          >
+            <textarea
+              value={fusstext}
+              onChange={e => { setFusstext(e.target.value); setMeldung(null) }}
+              rows={3}
+              maxLength={500}
+              placeholder="z. B. Musterstraße 1, 1010 Wien • Tel: +43 1 234567 • www.beispiel.at"
+              className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm
+                         placeholder-gray-400 shadow-sm resize-y
+                         focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+            />
+            <p className="text-xs text-gray-400 mt-1 text-right">{fusstext.length}/500</p>
+          </Field>
+
+          {meldung && (
+            <div className={`rounded-md p-3 text-sm ${
+              meldung.typ === 'ok'
+                ? 'bg-green-50 border border-green-200 text-green-700'
+                : 'bg-red-50 border border-red-200 text-red-700'
+            }`}>{meldung.text}</div>
+          )}
+
+          <div className="pt-2 border-t border-gray-200">
+            <Button
+              onClick={() => { setMeldung(null); speichern.mutate() }}
+              loading={speichern.isPending}
+              disabled={fusstext.trim() === (d.belegFusstext ?? '')}
+            >
+              Belegtext speichern
+            </Button>
+          </div>
+        </>
+      ) : null}
+    </section>
   )
 }
 

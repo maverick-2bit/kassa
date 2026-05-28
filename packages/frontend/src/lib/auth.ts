@@ -74,6 +74,17 @@ export function updateMandantModule(
   }))
 }
 
+/** Aktualisiert die Kassenbezeichnung im LocalStorage ohne Re-Login. */
+export function updateKasseBezeichnung(kasseId: string, bezeichnung: string): void {
+  const auth = getAuth()
+  if (!auth) return
+  localStorage.setItem(KEY_AUTH, JSON.stringify({
+    user:    auth.user,
+    mandant: auth.mandant,
+    kassen:  auth.kassen.map(k => k.id === kasseId ? { ...k, bezeichnung } : k),
+  }))
+}
+
 /** Triggert beim 401 — z. B. um zur Login-Seite zu redirecten */
 export type UnauthorizedHandler = () => void
 let onUnauthorized: UnauthorizedHandler | null = null

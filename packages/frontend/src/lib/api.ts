@@ -87,6 +87,9 @@ import type {
   LieferbestellungUpdate,
   MandantModule,
   MandantModuleUpdate,
+  MandantStammdaten,
+  MandantStammdatenUpdate,
+  KasseBezeichnungUpdate,
   KassenbuchBuchung,
   KassenbuchBuchungInput,
   KassenbuchResponse,
@@ -637,6 +640,10 @@ export const mandantApi = {
     request<MandantModule>('GET', '/api/mandanten/module'),
   patchModule: (input: MandantModuleUpdate): Promise<MandantModule> =>
     request<MandantModule>('PATCH', '/api/mandanten/module', input),
+  getStammdaten: (): Promise<MandantStammdaten> =>
+    request<MandantStammdaten>('GET', '/api/mandanten/stammdaten'),
+  patchStammdaten: (input: MandantStammdatenUpdate): Promise<MandantStammdaten> =>
+    request<MandantStammdaten>('PATCH', '/api/mandanten/stammdaten', input),
 }
 
 // ---------------------------------------------------------------------------
@@ -664,6 +671,9 @@ export const kasseApi = {
 
   getJahresbelegStatus: (kasseId: string): Promise<JahresbelegStatus> =>
     request<JahresbelegStatus>('GET', `/api/kassen/${kasseId}/jahresbeleg-status`),
+
+  updateBezeichnung: (kasseId: string, input: KasseBezeichnungUpdate): Promise<{ id: string; bezeichnung: string }> =>
+    request<{ id: string; bezeichnung: string }>('PATCH', `/api/kassen/${kasseId}/bezeichnung`, input),
 }
 
 // ---------------------------------------------------------------------------

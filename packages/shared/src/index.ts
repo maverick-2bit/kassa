@@ -5,18 +5,24 @@
  * gemeinsam verwendet. Single source of truth.
  */
 
-// Mandanten-Module
+// Mandanten-Module + Stammdaten
 export {
   MandantModulSchema,
   MANDANT_MODUL_LABELS,
   MANDANT_MODUL_BESCHREIBUNGEN,
   MandantModuleSchema,
   MandantModuleUpdateSchema,
+  MandantStammdatenSchema,
+  MandantStammdatenUpdateSchema,
+  KasseBezeichnungUpdateSchema,
 } from './schemas/mandant.js'
 export type {
   MandantModul,
   MandantModule,
   MandantModuleUpdate,
+  MandantStammdaten,
+  MandantStammdatenUpdate,
+  KasseBezeichnungUpdate,
 } from './schemas/mandant.js'
 
 // Auth

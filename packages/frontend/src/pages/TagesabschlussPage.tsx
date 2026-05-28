@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import type { KassenbuchResponse } from '@kassa/shared'
 import { KASSENBUCH_TYP_LABELS } from '@kassa/shared'
-import { tagesabschlussApi, kassenbuchApi } from '../lib/api'
+import { tagesabschlussApi, kassenbuchApi, mandantApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { getAuth, hasBerechtigung } from '../lib/auth'
 import { formatPreis } from '../lib/format'
@@ -35,6 +35,12 @@ export function TagesabschlussPage() {
     enabled:  !!datum,
   })
 
+  const stammdatenQuery = useQuery({
+    queryKey: ['mandant-stammdaten'],
+    queryFn:  mandantApi.getStammdaten,
+    staleTime: 10 * 60_000,
+  })
+
   const druckenMutation = useMutation({
     mutationFn: () => tagesabschlussApi.drucken(identity.kasseId, datum),
     onSuccess:  () => { setDruckErfolg(true); setDruckfehler(null) },
@@ -52,7 +58,13 @@ export function TagesabschlussPage() {
       // Kassenbezeichnung aus den im JWT gespeicherten Kassen-Infos holen
       const kasseInfo  = auth.kassen.find(k => k.id === identity.kasseId)
       const bezeichnung = kasseInfo?.bezeichnung ?? kasseInfo?.kassenId ?? identity.kasseId
-      await downloadZBonPdf(data, auth.mandant.firmenname, bezeichnung, kassenbuchQuery.data)
+      await downloadZBonPdf(
+        data,
+        auth.mandant.firmenname,
+        bezeichnung,
+        kassenbuchQuery.data,
+        stammdatenQuery.data?.belegFusstext,
+      )
     } catch (err) {
       setPdfFehler(err instanceof Error ? err.message : 'PDF-Erstellung fehlgeschlagen')
     } finally {

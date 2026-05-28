@@ -2,17 +2,20 @@
  * Mandanten-Einstellungen
  *
  *  GET  /api/mandanten/module
- *    → Aktuell aktivierte Funktions-Module des eingeloggten Mandanten
- *
  *  PATCH /api/mandanten/module
- *    → Module aktivieren / deaktivieren (erfordert Berechtigung "einstellungen")
+ *
+ *  GET  /api/mandanten/stammdaten
+ *    → Firmenname, UID, Belegfußtext
+ *
+ *  PATCH /api/mandanten/stammdaten
+ *    → Belegfußtext ändern (erfordert Berechtigung "einstellungen")
  */
 
 import type { FastifyPluginAsync } from 'fastify'
 import { eq } from 'drizzle-orm'
 import type { Db } from '../db/client.js'
 import { mandanten } from '../db/schema.js'
-import { MandantModuleUpdateSchema } from '@kassa/shared'
+import { MandantModuleUpdateSchema, MandantStammdatenUpdateSchema } from '@kassa/shared'
 
 export interface MandantRouteOptions { db: Db }
 
@@ -70,6 +73,51 @@ export const mandantRoute: FastifyPluginAsync<MandantRouteOptions> = async (fast
         modulGastroAktiv:    mandanten.modulGastroAktiv,
         modulAngeboteAktiv:  mandanten.modulAngeboteAktiv,
         modulMergeportAktiv: mandanten.modulMergeportAktiv,
+      })
+
+    if (!row) return reply.status(404).send({ fehler: 'Mandant nicht gefunden' })
+    return reply.send(row)
+  })
+
+  // ---- GET /mandanten/stammdaten ----
+  fastify.get('/mandanten/stammdaten', guard, async (request, reply) => {
+    const [row] = await opts.db
+      .select({
+        firmenname:    mandanten.firmenname,
+        uid:           mandanten.uid,
+        belegFusstext: mandanten.belegFusstext,
+      })
+      .from(mandanten)
+      .where(eq(mandanten.id, request.user.mandantId))
+      .limit(1)
+
+    if (!row) return reply.status(404).send({ fehler: 'Mandant nicht gefunden' })
+    return reply.send(row)
+  })
+
+  // ---- PATCH /mandanten/stammdaten ----
+  fastify.patch('/mandanten/stammdaten', guard, async (request, reply) => {
+    if (
+      request.user.rolle !== 'admin' &&
+      !request.user.berechtigungen.includes('einstellungen')
+    ) {
+      return reply.status(403).send({ fehler: 'Keine Berechtigung' })
+    }
+
+    const body = MandantStammdatenUpdateSchema.safeParse(request.body)
+    if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
+
+    const [row] = await opts.db
+      .update(mandanten)
+      .set({
+        belegFusstext: body.data.belegFusstext ?? null,
+        updatedAt:     new Date(),
+      })
+      .where(eq(mandanten.id, request.user.mandantId))
+      .returning({
+        firmenname:    mandanten.firmenname,
+        uid:           mandanten.uid,
+        belegFusstext: mandanten.belegFusstext,
       })
 
     if (!row) return reply.status(404).send({ fehler: 'Mandant nicht gefunden' })

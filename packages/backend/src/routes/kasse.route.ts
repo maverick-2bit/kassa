@@ -6,6 +6,7 @@ import type { FastifyPluginAsync } from 'fastify'
 import { and, desc, eq, sql } from 'drizzle-orm'
 import type { Db } from '../db/client.js'
 import { belege, kassen } from '../db/schema.js'
+import { KasseBezeichnungUpdateSchema } from '@kassa/shared'
 
 export interface KasseRouteOptions { db: Db }
 
@@ -93,5 +94,39 @@ export const kasseRoute: FastifyPluginAsync<KasseRouteOptions> = async (fastify,
       jahresbelegFaellig:     letzter === null,
       jahresbelegErstelltAm:  letzter?.belegDatum.toISOString() ?? null,
     })
+  })
+
+  /**
+   * PATCH /kassen/:id/bezeichnung
+   * Kassenbezeichnung (Anzeigename) aktualisieren.
+   */
+  fastify.patch('/kassen/:id/bezeichnung', auth, async (request, reply) => {
+    if (
+      request.user.rolle !== 'admin' &&
+      !request.user.berechtigungen.includes('einstellungen')
+    ) {
+      return reply.status(403).send({ fehler: 'Keine Berechtigung' })
+    }
+
+    const { id } = request.params as { id: string }
+
+    const body = KasseBezeichnungUpdateSchema.safeParse(request.body)
+    if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
+
+    // Ownership-Check
+    const [check] = await opts.db
+      .select({ id: kassen.id })
+      .from(kassen)
+      .where(and(eq(kassen.id, id), eq(kassen.mandantId, request.user.mandantId)))
+      .limit(1)
+    if (!check) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
+
+    const [updated] = await opts.db
+      .update(kassen)
+      .set({ bezeichnung: body.data.bezeichnung })
+      .where(eq(kassen.id, id))
+      .returning({ id: kassen.id, bezeichnung: kassen.bezeichnung })
+
+    return reply.send(updated)
   })
 }
