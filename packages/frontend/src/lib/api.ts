@@ -705,6 +705,9 @@ export const kassenbuchApi = {
 
   erstelle: (input: KassenbuchBuchungInput): Promise<KassenbuchBuchung> =>
     request<KassenbuchBuchung>('POST', '/api/kassenbuch', input),
+
+  drucken: (kasseId: string, von: string, bis: string): Promise<{ erfolgreich: boolean }> =>
+    request<{ erfolgreich: boolean }>('POST', '/api/kassenbuch/drucken', { kasseId, von, bis }),
 }
 
 export { ApiError }

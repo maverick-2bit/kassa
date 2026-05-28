@@ -5,6 +5,7 @@
 
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { hasBerechtigung } from '../lib/auth'
 import type { KassenbuchBuchung, KassenbuchBuchungInput } from '@kassa/shared'
 import { KASSENBUCH_TYP_LABELS } from '@kassa/shared'
 import { kassenbuchApi } from '../lib/api'
@@ -86,12 +87,13 @@ export function KassenbuchPage() {
   const auth       = getAuth()!
   const qc         = useQueryClient()
 
-  const [preset, setPreset]     = useState<ZeitraumPreset>('heute')
-  const [von, setVon]           = useState(() => heute())
-  const [bis, setBis]           = useState(() => heute())
-  const [modalOffen, setModal]  = useState(false)
-  const [pdfLaedt, setPdfLaedt] = useState(false)
+  const [preset, setPreset]       = useState<ZeitraumPreset>('heute')
+  const [von, setVon]             = useState(() => heute())
+  const [bis, setBis]             = useState(() => heute())
+  const [modalOffen, setModal]    = useState(false)
+  const [pdfLaedt, setPdfLaedt]   = useState(false)
   const [pdfFehler, setPdfFehler] = useState<string | null>(null)
+  const [bonFehler, setBonFehler] = useState<string | null>(null)
 
   function waehlePreset(p: ZeitraumPreset) {
     setPreset(p)
@@ -110,6 +112,12 @@ export function KassenbuchPage() {
       qc.invalidateQueries({ queryKey: ['kassenbuch', identity.kasseId] })
       setModal(false)
     },
+  })
+
+  const druckenMutation = useMutation({
+    mutationFn: () => kassenbuchApi.drucken(identity.kasseId, von, bis),
+    onSuccess:  () => setBonFehler(null),
+    onError:    (err) => setBonFehler(err instanceof Error ? err.message : 'Druckfehler'),
   })
 
   async function pdfHerunterladen() {
@@ -232,7 +240,9 @@ export function KassenbuchPage() {
             )}
           </h2>
           <div className="flex items-center gap-3">
-            {pdfFehler && <span className="text-xs text-red-600">{pdfFehler}</span>}
+            {(pdfFehler || bonFehler) && (
+              <span className="text-xs text-red-600">{pdfFehler ?? bonFehler}</span>
+            )}
             <Button
               variant="secondary"
               onClick={() => void pdfHerunterladen()}
@@ -244,6 +254,16 @@ export function KassenbuchPage() {
               </svg>
               PDF
             </Button>
+            {hasBerechtigung('einstellungen') && (
+              <Button
+                onClick={() => { setBonFehler(null); druckenMutation.mutate() }}
+                loading={druckenMutation.isPending}
+                disabled={!data}
+                title="Kassenbuch auf Thermodrucker ausgeben"
+              >
+                🖨 Bon drucken
+              </Button>
+            )}
           </div>
         </div>
 

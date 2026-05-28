@@ -31,7 +31,7 @@
 
 import { Buffer } from 'node:buffer'
 import { MWST_LABELS, LIEFERBESTELLUNG_PROVIDER_LABELS } from '@kassa/shared'
-import type { BelegResponse, LieferbestellungResponse, MwStSatz, Tagesabschluss } from '@kassa/shared'
+import type { BelegResponse, KassenbuchResponse, LieferbestellungResponse, MwStSatz, Tagesabschluss } from '@kassa/shared'
 import * as ep from './commands.js'
 
 /** Steuersätze in Prozent gemäß österr. UStG */
@@ -151,10 +151,16 @@ export function baueBon(
 // Z-Bon (Tagesabschluss)
 // ---------------------------------------------------------------------------
 
+export interface ZBonOptionen {
+  kassenbuch?:    KassenbuchResponse | null | undefined
+  belegFusstext?: string | null | undefined
+}
+
 export function baueZBon(
   ta:      Tagesabschluss,
   mandant: MandantInfo,
   kontext: DruckerKontext,
+  opts:    ZBonOptionen = {},
 ): Buffer {
   const W = kontext.breite
   const parts: Buffer[] = []
@@ -206,6 +212,50 @@ export function baueZBon(
     for (const z of ta.mwst) {
       add(ep.textLine(`  ${z.label}: Netto ${formatCent(z.nettoCent)} USt ${formatCent(z.ustCent)}`))
     }
+    add(trennlinie(W))
+  }
+
+  // Kassenbuch (optional)
+  const kb = opts.kassenbuch
+  if (kb && kb.buchungen.length > 0) {
+    add(ep.align('left'))
+    add(ep.font({ bold: true }))
+    add(ep.textLine('KASSENBUCH'))
+    add(ep.font())
+    add(ep.textLine(zweispaltig('Einlagen',  formatCent(kb.einlagenCent),  W)))
+    add(ep.textLine(zweispaltig('Entnahmen', formatCent(kb.entnahmenCent), W)))
+    add(ep.font({ bold: true }))
+    add(ep.textLine(zweispaltig('Saldo', (kb.saldoCent >= 0 ? '+' : '') + formatCent(kb.saldoCent), W)))
+    add(ep.font())
+    add(trennlinie(W))
+    for (const b of kb.buchungen) {
+      const art = b.typ === 'einlage' ? 'Einl' : 'Entn'
+      const betrag = (b.typ === 'einlage' ? '+' : '-') + formatCent(b.betragCent)
+      const zeile = `${art} ${b.grund ? truncate(b.grund, W - betrag.length - 6) : ''}`
+      add(ep.textLine(zweispaltig(zeile, betrag, W)))
+    }
+    add(trennlinie(W))
+  }
+
+  // Belegfußtext (optional)
+  if (opts.belegFusstext?.trim()) {
+    add(ep.align('center'))
+    // Zeilenumbruch auf Druckerbreite
+    const worte = opts.belegFusstext.trim().split(/\s+/)
+    const zeilen: string[] = []
+    let aktZeile = ''
+    for (const wort of worte) {
+      if (aktZeile.length === 0) {
+        aktZeile = wort
+      } else if (aktZeile.length + 1 + wort.length <= W) {
+        aktZeile += ' ' + wort
+      } else {
+        zeilen.push(aktZeile)
+        aktZeile = wort
+      }
+    }
+    if (aktZeile) zeilen.push(aktZeile)
+    for (const z of zeilen) add(ep.textLine(z))
     add(trennlinie(W))
   }
 
@@ -347,6 +397,73 @@ export function baueKassensturzBon(
   }
 
   add(trennlinie(W))
+  add(ep.textLine(`Gedruckt: ${formatDatum(new Date().toISOString())}`))
+  add(ep.newline(2))
+  add(ep.cut())
+
+  return Buffer.concat(parts)
+}
+
+// ---------------------------------------------------------------------------
+// Kassenbuch-Bon
+// ---------------------------------------------------------------------------
+
+export function baueKassenbuchBon(
+  kb:      KassenbuchResponse,
+  mandant: { firmenname: string; kassenId: string },
+  kontext: DruckerKontext,
+): Buffer {
+  const W = kontext.breite
+  const parts: Buffer[] = []
+  const add = (b: Buffer): void => { parts.push(b) }
+
+  add(ep.init())
+  add(ep.selectCodepage(19))
+  add(ep.selectInternational(2))
+
+  // Kopf
+  add(ep.align('center'))
+  add(ep.font({ bold: true }))
+  add(ep.textLine(truncate(mandant.firmenname.toUpperCase(), W)))
+  add(ep.font())
+  add(ep.textLine(`Kasse: ${mandant.kassenId}`))
+  add(ep.newline())
+  add(ep.font({ bold: true, doubleHeight: true }))
+  add(ep.textLine('KASSENBUCH'))
+  add(ep.font())
+  const vonStr = formatDatumNur(kb.von)
+  const bisStr = formatDatumNur(kb.bis)
+  add(ep.textLine(kb.von === kb.bis ? vonStr : `${vonStr} - ${bisStr}`))
+  add(trennlinie(W))
+
+  // Übersicht
+  add(ep.align('left'))
+  add(ep.textLine(zweispaltig('Einlagen',  formatCent(kb.einlagenCent),  W)))
+  add(ep.textLine(zweispaltig('Entnahmen', formatCent(kb.entnahmenCent), W)))
+  add(ep.font({ bold: true, doubleHeight: true }))
+  add(ep.textLine(zweispaltig('SALDO', (kb.saldoCent >= 0 ? '+' : '') + formatCent(kb.saldoCent), Math.floor(W / 2))))
+  add(ep.font())
+  add(trennlinie(W))
+
+  // Buchungsliste
+  if (kb.buchungen.length === 0) {
+    add(ep.align('center'))
+    add(ep.textLine('Keine Buchungen'))
+  } else {
+    for (const b of kb.buchungen) {
+      const art    = b.typ === 'einlage' ? 'Einl.' : 'Entn.'
+      const betrag = (b.typ === 'einlage' ? '+' : '-') + formatCent(b.betragCent)
+      // Erste Zeile: Art + Betrag
+      add(ep.textLine(zweispaltig(`${art} ${formatDatumNur(b.datum)}`, betrag, W)))
+      // Zweite Zeile: Grund (eingerückt), falls vorhanden
+      if (b.grund) {
+        add(ep.textLine(`  ${truncate(b.grund, W - 2)}`))
+      }
+    }
+    add(trennlinie(W))
+  }
+
+  add(ep.align('center'))
   add(ep.textLine(`Gedruckt: ${formatDatum(new Date().toISOString())}`))
   add(ep.newline(2))
   add(ep.cut())

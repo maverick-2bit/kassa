@@ -31,6 +31,7 @@ import {
 } from '../services/tagesabschluss.service.js'
 import { tryDruckeBeleg, druckerConfigVonKasse, sendBytes } from '../services/drucker.service.js'
 import { baueZBon, baueKassensturzBon } from '../services/escpos/layout.js'
+import { listeKassenbuchBuchungen } from '../services/kassenbuch.service.js'
 import { pruefeKasseGehoertZuMandant } from '../auth/scope.js'
 import { eq } from 'drizzle-orm'
 import { kassen, mandanten } from '../db/schema.js'
@@ -297,11 +298,22 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
         .limit(1)
       if (!mandant) return reply.status(404).send({ fehler: 'Mandant nicht gefunden' })
 
+      // Kassenbuch des Tages nachladen (optional — kein Fehler wenn leer)
+      const kassenbuch = await listeKassenbuchBuchungen(
+        opts.deps.db,
+        parsed.data.kasseId,
+        parsed.data.datum,
+        parsed.data.datum,
+      ).catch(() => null)
+
       const bytes = baueZBon(ta, {
         firmenname: mandant.firmenname,
         uid:        mandant.uid,
         kassenId:   kasse.kassenId,
-      }, { breite: druckerConfig.breite })
+      }, { breite: druckerConfig.breite }, {
+        kassenbuch:    kassenbuch ?? undefined,
+        belegFusstext: mandant.belegFusstext ?? undefined,
+      })
 
       await sendBytes(bytes, druckerConfig)
       return reply.send({ erfolgreich: true })

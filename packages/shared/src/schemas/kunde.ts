@@ -31,6 +31,7 @@ export const KundeInputSchema = z.object({
   land:         z.string().trim().length(2).default('AT'),
   uid:          z.string().trim().max(30).optional(),
   kreditAktiv:  z.boolean().default(false),
+  notizen:      z.string().trim().max(2000).nullable().optional(),
 }).refine(d => d.firma || d.nachname, {
   message: 'Firma oder Nachname ist erforderlich',
   path:    ['nachname'],
@@ -50,6 +51,7 @@ export const KundeUpdateSchema = z.object({
   uid:         z.string().trim().max(30).optional(),
   aktiv:       z.boolean().optional(),
   kreditAktiv: z.boolean().optional(),
+  notizen:     z.string().trim().max(2000).nullable().optional(),
 })
 export type KundeUpdate = z.infer<typeof KundeUpdateSchema>
 
@@ -69,6 +71,7 @@ export const KundeSchema = z.object({
   uid:         z.string().optional(),
   aktiv:       z.boolean(),
   kreditAktiv: z.boolean(),
+  notizen:     z.string().nullable().optional(),
   createdAt:   z.string(),
   updatedAt:   z.string(),
 })

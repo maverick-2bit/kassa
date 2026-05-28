@@ -33,6 +33,7 @@ function toDto(row: KundeRow) {
     uid:         row.uid      ?? undefined,
     aktiv:       row.aktiv,
     kreditAktiv: row.kreditAktiv,
+    notizen:     row.notizen ?? null,
     createdAt:   row.createdAt.toISOString(),
     updatedAt:   row.updatedAt.toISOString(),
   }
@@ -127,6 +128,7 @@ export async function erstelleKunde(db: Db, mandantId: string, input: KundeInput
     land:        input.land ?? 'AT',
     uid:         input.uid      || null,
     kreditAktiv: input.kreditAktiv ?? false,
+    notizen:     input.notizen   || null,
   }).returning()
 
   if (!row) throw new KundeError(500, 'Kunde konnte nicht angelegt werden')
@@ -159,6 +161,7 @@ export async function aktualisiereKunde(
       ...(input.uid        !== undefined && { uid:        input.uid      || null }),
       ...(input.aktiv      !== undefined && { aktiv:      input.aktiv }),
       ...(input.kreditAktiv !== undefined && { kreditAktiv: input.kreditAktiv }),
+      ...(input.notizen     !== undefined && { notizen:    input.notizen || null }),
       updatedAt: new Date(),
     })
     .where(and(eq(kunden.id, id), eq(kunden.mandantId, mandantId)))

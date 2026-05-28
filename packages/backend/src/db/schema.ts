@@ -199,6 +199,8 @@ export const kunden = pgTable('kunden', {
   aktiv:       boolean('aktiv').notNull().default(true),
   /** Kreditkunde: darf "Auf Kredit" buchen */
   kreditAktiv: boolean('kredit_aktiv').notNull().default(false),
+  /** Freitext-Notizen zum Kunden (intern, erscheint nicht auf Belegen) */
+  notizen:     text('notizen'),
   createdAt:   timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt:   timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
