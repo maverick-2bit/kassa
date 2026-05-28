@@ -1,16 +1,20 @@
 /**
  * DashboardPage — Tagesübersicht über alle Kassen des Mandanten.
  *
- * Zeigt pro Kasse: heutiger Umsatz, Anzahl Belege, Zahlungsaufteilung.
- * Nutzt die bestehende Berichte-API mit jeweils einer separaten Anfrage
- * pro Kasse (parallel via TanStack Query).
+ * Zeigt:
+ *  - Quick-Actions (Shortcuts zu häufig genutzten Seiten)
+ *  - Gesamt-KPIs für heute (Umsatz, Ø Bon, Bar/Karte)
+ *  - Sekundäre Widgets: Offene Tische (Gastro), Offene Posten
+ *  - Lagerstand-Warnungen (Artikel unter Mindestbestand)
+ *  - Pro-Kasse-Karten (bei mehreren Kassen)
+ *  - Stunden-Verlauf (Balkendiagramm)
  */
 
 import { useQuery, useQueries } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import type { BerichtGesamt } from '@kassa/shared'
-import { berichtApi, kasseApi } from '../lib/api'
-import { getAuth } from '../lib/auth'
+import type { BerichtGesamt, Artikel } from '@kassa/shared'
+import { berichtApi, kasseApi, tischTabApi, artikelApi, offenerPostenApi } from '../lib/api'
+import { getAuth, hasBerechtigung, hasModul } from '../lib/auth'
 import { formatPreis } from '../lib/format'
 
 // ---------------------------------------------------------------------------
@@ -57,6 +61,9 @@ export function DashboardPage() {
         </p>
       </div>
 
+      {/* Quick-Actions */}
+      <QuickActions />
+
       {/* Jahresbeleg-Warnung */}
       <JahresbelegDashboardBanner kassen={kassen} />
 
@@ -69,6 +76,9 @@ export function DashboardPage() {
           Fehler beim Laden: {gesamtQuery.error instanceof Error ? gesamtQuery.error.message : 'Unbekannt'}
         </div>
       )}
+
+      {/* Sekundäre Widgets */}
+      <SekundaereWidgets kassen={kassen} mandantId={auth.mandant.id} />
 
       {/* Pro-Kasse-Karten */}
       {kassen.length > 1 && (
@@ -89,6 +99,11 @@ export function DashboardPage() {
         </div>
       )}
 
+      {/* Lagerstand-Warnungen */}
+      {hasBerechtigung('artikel.verwalten') && (
+        <LagerstandWarnungen mandantId={auth.mandant.id} />
+      )}
+
       {/* Stundenaufriss für heute */}
       <StundenVerlauf datum={datum} />
     </div>
@@ -96,10 +111,216 @@ export function DashboardPage() {
 }
 
 // ---------------------------------------------------------------------------
-// Jahresbeleg-Dashboard-Banner
+// Quick-Actions
+// ---------------------------------------------------------------------------
+
+function QuickActions() {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {hasBerechtigung('tische') && hasModul('gastro') && (
+        <QuickLink to="/tische" label="Tische" color="emerald" />
+      )}
+      {hasBerechtigung('kasse') && (
+        <QuickLink to="/kasse" label="Kasse" color="brand" />
+      )}
+      {hasBerechtigung('belege.lesen') && (
+        <QuickLink to="/tagesabschluss" label="Tagesabschluss" color="amber" />
+      )}
+      {hasBerechtigung('belege.lesen') && (
+        <QuickLink to="/kassensturz" label="Kassensturz" color="amber" />
+      )}
+      {hasBerechtigung('einstellungen') && (
+        <QuickLink to="/kassenbuch" label="Kassenbuch" color="purple" />
+      )}
+      {hasBerechtigung('belege.lesen') && (
+        <QuickLink to="/berichte" label="Berichte" color="blue" />
+      )}
+      {hasBerechtigung('artikel.verwalten') && (
+        <QuickLink to="/wareneingang" label="Wareneingang" color="gray" />
+      )}
+    </div>
+  )
+}
+
+function QuickLink({ to, label, color }: {
+  to:    string
+  label: string
+  color: 'brand' | 'emerald' | 'amber' | 'purple' | 'blue' | 'gray'
+}) {
+  const cls: Record<string, string> = {
+    brand:   'bg-brand-50   border-brand-200   text-brand-700   hover:bg-brand-100',
+    emerald: 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100',
+    amber:   'bg-amber-50   border-amber-200   text-amber-700   hover:bg-amber-100',
+    purple:  'bg-purple-50  border-purple-200  text-purple-700  hover:bg-purple-100',
+    blue:    'bg-blue-50    border-blue-200    text-blue-700    hover:bg-blue-100',
+    gray:    'bg-gray-50    border-gray-200    text-gray-600    hover:bg-gray-100',
+  }
+  return (
+    <Link
+      to={to}
+      className={`inline-flex items-center px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${cls[color]}`}
+    >
+      {label}
+    </Link>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Sekundäre Widgets (Offene Tische + Offene Posten)
 // ---------------------------------------------------------------------------
 
 type KasseInfo = { id: string; bezeichnung: string | null; kassenId: string }
+
+function SekundaereWidgets({ kassen, mandantId }: { kassen: KasseInfo[]; mandantId: string }) {
+  const zeigeGastro = hasBerechtigung('tische') && hasModul('gastro')
+  const zeigePosten = hasBerechtigung('kunden.verwalten')
+
+  if (!zeigeGastro && !zeigePosten) return null
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {zeigeGastro && <OffeneTischeWidget kassen={kassen} />}
+      {zeigePosten && <OffenePostenWidget />}
+    </div>
+  )
+}
+
+// Offene Tische (Gastro)
+function OffeneTischeWidget({ kassen }: { kassen: KasseInfo[] }) {
+  const results = useQueries({
+    queries: kassen.map(k => ({
+      queryKey:        ['dashboard-tische', k.id],
+      queryFn:         () => tischTabApi.list(k.id),
+      refetchInterval: 30_000,
+    })),
+  })
+
+  const isLoading  = results.some(r => r.isLoading)
+  const allTabs    = results.flatMap(r => r.data ?? [])
+  const anzahl     = allTabs.length
+  const offenCent  = allTabs.reduce((s, t) => s + t.summeGesamtCent, 0)
+
+  return (
+    <div className="rounded-lg border bg-white shadow-sm p-4 space-y-1">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-gray-500">Offene Tische</p>
+        <Link to="/tische" className="text-xs text-brand-600 hover:underline">Zur Tischansicht →</Link>
+      </div>
+      {isLoading ? (
+        <p className="text-sm text-gray-400">Wird geladen…</p>
+      ) : (
+        <>
+          <p className="text-3xl font-bold text-gray-900">{anzahl}</p>
+          {offenCent > 0 && (
+            <p className="text-sm text-gray-500">Offen: {formatPreis(offenCent)}</p>
+          )}
+          {anzahl === 0 && (
+            <p className="text-xs text-gray-400">Keine offenen Tabs</p>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+// Offene Posten
+function OffenePostenWidget() {
+  const { data, isLoading } = useQuery({
+    queryKey:        ['dashboard-offene-posten'],
+    queryFn:         () => offenerPostenApi.statistik(),
+    refetchInterval: 60_000,
+  })
+
+  return (
+    <div className="rounded-lg border bg-white shadow-sm p-4 space-y-1">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-gray-500">Offene Posten</p>
+        <Link to="/offene-posten" className="text-xs text-brand-600 hover:underline">Übersicht →</Link>
+      </div>
+      {isLoading ? (
+        <p className="text-sm text-gray-400">Wird geladen…</p>
+      ) : data && data.anzahl > 0 ? (
+        <>
+          <p className="text-3xl font-bold text-gray-900">{data.anzahl}</p>
+          <p className="text-sm text-gray-500">Ausstehend: {formatPreis(data.gesamtRestCent)}</p>
+        </>
+      ) : (
+        <>
+          <p className="text-3xl font-bold text-green-600">0</p>
+          <p className="text-xs text-gray-400">Alle Posten beglichen</p>
+        </>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Lagerstand-Warnungen
+// ---------------------------------------------------------------------------
+
+function LagerstandWarnungen({ mandantId }: { mandantId: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey:  ['dashboard-lager', mandantId],
+    queryFn:   () => artikelApi.list(mandantId, true),
+    staleTime: 5 * 60_000,
+  })
+
+  if (isLoading) return null
+
+  const warnungen: Artikel[] = (data ?? []).filter(a =>
+    a.lagerstandAktiv &&
+    a.mindestbestand  !== null &&
+    a.lagerstandMenge !== null &&
+    a.lagerstandMenge <= a.mindestbestand
+  )
+
+  if (warnungen.length === 0) return null
+
+  return (
+    <div className="rounded-lg border border-orange-200 bg-orange-50">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-orange-200">
+        <div className="flex items-center gap-2">
+          {/* Warndreieck */}
+          <svg className="h-4 w-4 text-orange-500 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+          </svg>
+          <h2 className="text-sm font-semibold text-orange-800">
+            Lagerstand-Warnungen ({warnungen.length})
+          </h2>
+        </div>
+        <Link to="/wareneingang" className="text-xs font-medium text-orange-700 hover:underline">
+          Wareneingang →
+        </Link>
+      </div>
+      <div className="divide-y divide-orange-100">
+        {warnungen.slice(0, 8).map(a => (
+          <div key={a.id} className="flex items-center justify-between px-4 py-2">
+            <span className="text-sm text-orange-900 font-medium truncate pr-4">{a.bezeichnung}</span>
+            <div className="flex items-center gap-3 flex-shrink-0 text-xs">
+              <span className={`font-mono font-semibold ${
+                a.lagerstandMenge === 0 ? 'text-red-600' : 'text-orange-600'
+              }`}>
+                {a.lagerstandMenge === 0 ? 'Ausverkauft' : `Bestand: ${a.lagerstandMenge}`}
+              </span>
+              <span className="text-orange-400">
+                Min: {a.mindestbestand}
+              </span>
+            </div>
+          </div>
+        ))}
+        {warnungen.length > 8 && (
+          <div className="px-4 py-2 text-xs text-orange-600">
+            … und {warnungen.length - 8} weitere Artikel
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Jahresbeleg-Dashboard-Banner
+// ---------------------------------------------------------------------------
 
 function JahresbelegDashboardBanner({ kassen }: { kassen: KasseInfo[] }) {
   const results = useQueries({
@@ -181,7 +402,7 @@ function GesamtUebersicht({ gesamt: g }: { gesamt: BerichtGesamt }) {
         sub={`${g.anzahlBelege} Belege${g.anzahlStornos > 0 ? `, ${g.anzahlStornos} Stornos` : ''}`}
         hervor
       />
-      <Kachel label="Ø Bon-Wert"  wert={formatPreis(avgBonCent)}    sub="pro Barzahlungsbeleg" />
+      <Kachel label="Ø Bon-Wert"  wert={formatPreis(avgBonCent)}    sub="pro Beleg" />
       <Kachel label="Bar"         wert={formatPreis(g.barCent)}      sub={pct(g.barCent,   g.umsatzCent)} />
       <Kachel label="Karte"       wert={formatPreis(g.karteCent)}    sub={pct(g.karteCent, g.umsatzCent)} />
     </div>
@@ -285,9 +506,9 @@ function StundenVerlauf({ datum }: { datum: string }) {
   const aktiveZeilen = data.zeilen.filter(z => z.umsatzCent > 0)
   if (aktiveZeilen.length === 0) return null
 
-  const ersteStunde = aktiveZeilen[0]!.stunde
+  const ersteStunde  = aktiveZeilen[0]!.stunde
   const letzteStunde = aktiveZeilen[aktiveZeilen.length - 1]!.stunde
-  const angezeigt = data.zeilen.slice(
+  const angezeigt    = data.zeilen.slice(
     Math.max(0, ersteStunde - 1),
     Math.min(23, letzteStunde + 1) + 1,
   )
