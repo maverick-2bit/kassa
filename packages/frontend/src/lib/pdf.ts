@@ -33,6 +33,7 @@ export async function downloadZBonPdf(
   data:              Tagesabschluss,
   firmenname:        string,
   kassenBezeichnung: string,
+  kassenbuch?:       KassenbuchResponse,
 ): Promise<void> {
   // Lazy-Load — lädt jsPDF + Plugin nur beim ersten Aufruf
   const [{ jsPDF }, { default: autoTable }] = await Promise.all([
@@ -166,6 +167,50 @@ export async function downloadZBonPdf(
       styles:     { fontSize: 10, cellPadding: 2.5 },
       headStyles: { fillColor: grau, textColor: 50, fontStyle: 'bold', fontSize: 9 },
       footStyles: { fillColor: [255, 255, 255], fontStyle: 'bold', fontSize: 10 },
+      theme:      'striped',
+      showFoot:   'lastPage',
+    })
+  }
+
+  // ── Kassenbuch (optional) ──────────────────────────────────────────────────
+  if (kassenbuch && kassenbuch.buchungen.length > 0) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    y = (doc as any).lastAutoTable?.finalY ?? y
+    y += 8
+
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(11)
+    doc.setTextColor(0)
+    doc.text('Kassenbuch (Einlagen / Entnahmen)', mL, y)
+    y += 4
+
+    const kbBody = kassenbuch.buchungen.map(b => [
+      b.datum,
+      b.typ === 'einlage' ? 'Einlage' : 'Entnahme',
+      b.grund ?? '',
+      b.userName ?? '',
+      (b.typ === 'einlage' ? '+' : '-') + cent(b.betragCent),
+    ])
+
+    autoTable(doc, {
+      startY:      y,
+      margin:      { left: mL, right: mR },
+      head:        [['Datum', 'Art', 'Grund', 'Benutzer', 'Betrag']],
+      body:        kbBody,
+      foot:        [[
+        '', '', '', 'Saldo',
+        (kassenbuch.saldoCent >= 0 ? '+' : '') + cent(kassenbuch.saldoCent),
+      ]],
+      columnStyles: {
+        0: { cellWidth: 22 },
+        1: { cellWidth: 22 },
+        2: { cellWidth: 'auto' },
+        3: { cellWidth: 30 },
+        4: { halign: 'right', cellWidth: 28 },
+      },
+      styles:     { fontSize: 9, cellPadding: 2 },
+      headStyles: { fillColor: grau, textColor: 50, fontStyle: 'bold', fontSize: 8 },
+      footStyles: { fillColor: [255, 255, 255], fontStyle: 'bold', fontSize: 9 },
       theme:      'striped',
       showFoot:   'lastPage',
     })

@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { tagesabschlussApi } from '../lib/api'
+import type { KassenbuchResponse } from '@kassa/shared'
+import { KASSENBUCH_TYP_LABELS } from '@kassa/shared'
+import { tagesabschlussApi, kassenbuchApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { getAuth, hasBerechtigung } from '../lib/auth'
 import { formatPreis } from '../lib/format'
@@ -27,6 +29,12 @@ export function TagesabschlussPage() {
     enabled:  !!datum,
   })
 
+  const kassenbuchQuery = useQuery({
+    queryKey: ['kassenbuch-tag', identity.kasseId, datum],
+    queryFn:  () => kassenbuchApi.liste(identity.kasseId, datum, datum),
+    enabled:  !!datum,
+  })
+
   const druckenMutation = useMutation({
     mutationFn: () => tagesabschlussApi.drucken(identity.kasseId, datum),
     onSuccess:  () => { setDruckErfolg(true); setDruckfehler(null) },
@@ -44,7 +52,7 @@ export function TagesabschlussPage() {
       // Kassenbezeichnung aus den im JWT gespeicherten Kassen-Infos holen
       const kasseInfo  = auth.kassen.find(k => k.id === identity.kasseId)
       const bezeichnung = kasseInfo?.bezeichnung ?? kasseInfo?.kassenId ?? identity.kasseId
-      await downloadZBonPdf(data, auth.mandant.firmenname, bezeichnung)
+      await downloadZBonPdf(data, auth.mandant.firmenname, bezeichnung, kassenbuchQuery.data)
     } catch (err) {
       setPdfFehler(err instanceof Error ? err.message : 'PDF-Erstellung fehlgeschlagen')
     } finally {
@@ -215,6 +223,11 @@ export function TagesabschlussPage() {
             )}
           </div>
 
+          {/* Kassenbuch für diesen Tag */}
+          {kassenbuchQuery.data && kassenbuchQuery.data.buchungen.length > 0 && (
+            <KassenbuchAbschnitt kb={kassenbuchQuery.data} />
+          )}
+
           {/* Aktionen */}
           <div className="flex items-center gap-3 flex-wrap">
             {/* PDF herunterladen — immer sichtbar wenn Daten vorhanden */}
@@ -287,6 +300,69 @@ function ZeileZweiSpaltig({ label, wert, negativ }: {
         {wert}
       </td>
     </tr>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Kassenbuch-Abschnitt für den gewählten Tag
+// ---------------------------------------------------------------------------
+
+function KassenbuchAbschnitt({ kb }: { kb: KassenbuchResponse }) {
+  return (
+    <div className="rounded-lg bg-white shadow-sm border border-gray-200 overflow-hidden">
+      <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
+          Kassenbuch
+        </h2>
+        <div className="flex gap-4 text-xs">
+          {kb.einlagenCent > 0 && (
+            <span className="text-green-700">
+              Einlagen: +{formatPreis(kb.einlagenCent)}
+            </span>
+          )}
+          {kb.entnahmenCent > 0 && (
+            <span className="text-red-700">
+              Entnahmen: −{formatPreis(kb.entnahmenCent)}
+            </span>
+          )}
+          <span className={`font-semibold ${kb.saldoCent >= 0 ? 'text-gray-900' : 'text-red-700'}`}>
+            Saldo: {kb.saldoCent >= 0 ? '+' : ''}{formatPreis(kb.saldoCent)}
+          </span>
+        </div>
+      </div>
+      <table className="w-full text-sm">
+        <thead className="bg-gray-50 border-b border-gray-100">
+          <tr className="text-xs text-gray-500">
+            <th className="px-4 py-2 text-left font-semibold">Art</th>
+            <th className="px-4 py-2 text-left font-semibold">Grund</th>
+            <th className="px-4 py-2 text-left font-semibold">Benutzer</th>
+            <th className="px-4 py-2 text-right font-semibold">Betrag</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-50">
+          {kb.buchungen.map(b => (
+            <tr key={b.id} className="hover:bg-gray-50">
+              <td className="px-4 py-2">
+                <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${
+                  b.typ === 'einlage'
+                    ? 'bg-green-100 text-green-800'
+                    : 'bg-red-100 text-red-800'
+                }`}>
+                  {KASSENBUCH_TYP_LABELS[b.typ]}
+                </span>
+              </td>
+              <td className="px-4 py-2 text-gray-700">{b.grund ?? <span className="text-gray-400">—</span>}</td>
+              <td className="px-4 py-2 text-gray-500 text-xs">{b.userName ?? '—'}</td>
+              <td className={`px-4 py-2 text-right font-mono font-semibold ${
+                b.typ === 'einlage' ? 'text-green-700' : 'text-red-700'
+              }`}>
+                {b.typ === 'einlage' ? '+' : '−'}{formatPreis(b.betragCent)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }
 
