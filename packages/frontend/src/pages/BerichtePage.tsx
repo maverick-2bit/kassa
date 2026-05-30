@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { useQuery, useQueries } from '@tanstack/react-query'
-import type { ArtikelBerichtResponse, BerichtGesamt, BerichtGruppierung, BerichtResponse, StundenBerichtResponse, StundenBerichtZeile, WarengruppeBerichtResponse } from '@kassa/shared'
+import type { ArtikelBerichtResponse, BerichtGesamt, BerichtGruppierung, BerichtResponse, KellnerBerichtResponse, KellnerBerichtZeile, StundenBerichtResponse, StundenBerichtZeile, WarengruppeBerichtResponse } from '@kassa/shared'
 import { berichtApi } from '../lib/api'
 import { getAuth } from '../lib/auth'
 import { formatPreis } from '../lib/format'
@@ -96,7 +96,7 @@ function standardGruppierung(preset: ZeitraumPreset): BerichtGruppierung {
 // Haupt-Komponente
 // ---------------------------------------------------------------------------
 
-type BerichtTab = 'gesamtumsatz' | 'umsatz' | 'zahlungsart' | 'warengruppe' | 'artikel' | 'stunden' | 'vergleich'
+type BerichtTab = 'gesamtumsatz' | 'umsatz' | 'zahlungsart' | 'warengruppe' | 'artikel' | 'stunden' | 'kellner' | 'vergleich'
 
 const TABS: [BerichtTab, string][] = [
   ['gesamtumsatz', 'Übersicht'],
@@ -105,6 +105,7 @@ const TABS: [BerichtTab, string][] = [
   ['warengruppe',  'Warengruppe'],
   ['artikel',      'Artikel'],
   ['stunden',      'Tageszeit'],
+  ['kellner',      'Kellner'],
   ['vergleich',    'Vergleich'],
 ]
 
@@ -141,6 +142,7 @@ export function BerichtePage() {
       {aktTab === 'warengruppe'  && <WarengruppeBericht />}
       {aktTab === 'artikel'      && <ArtikelBericht />}
       {aktTab === 'stunden'      && <StundenBericht />}
+      {aktTab === 'kellner'      && <KellnerBericht />}
       {aktTab === 'vergleich'    && <VergleichBericht />}
     </div>
   )
@@ -309,7 +311,14 @@ function UmsatzBericht() {
           </div>
         </div>
 
-        <div className="pt-2 border-t border-gray-100 flex justify-end">
+        <div className="pt-2 border-t border-gray-100 flex items-center justify-between gap-3 flex-wrap">
+          <button
+            type="button"
+            onClick={() => berichtApi.buchungsjournalDownload({ kasseIds, von, bis })}
+            className="text-xs text-gray-500 hover:text-brand-700 underline underline-offset-2"
+          >
+            Buchungsjournal exportieren (DATEV/BMD)
+          </button>
           <Button onClick={ladeBericht} loading={isLoading}>Bericht laden</Button>
         </div>
       </div>
@@ -1763,6 +1772,179 @@ function WarengruppeTabelle({ data }: { data: WarengruppeBerichtResponse }) {
               <td className="px-4 py-2 text-right font-mono text-gray-900">{formatPreis(gesamtUmsatz)}</td>
               <td className="px-4 py-2 text-right text-gray-400 text-xs">100 %</td>
               <td className="px-4 py-2" />
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Kellner-Bericht
+// ---------------------------------------------------------------------------
+
+function KellnerBericht() {
+  const auth = getAuth()!
+
+  const [preset,   setPreset]   = useState<ZeitraumPreset>('monat')
+  const [von,      setVon]      = useState(() => berechneZeitraum('monat', heute()).von)
+  const [bis,      setBis]      = useState(() => berechneZeitraum('monat', heute()).bis)
+  const [kasseIds, setKasseIds] = useState<string[]>([])
+  const [geladenerFilter, setGeladenerFilter] = useState<{
+    kasseIds: string[]; von: string; bis: string
+  } | null>(null)
+
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: ['bericht-kellner', geladenerFilter],
+    queryFn:  () => berichtApi.kellner(geladenerFilter!),
+    enabled:  geladenerFilter !== null,
+  })
+
+  const ladeBericht = useCallback(() => setGeladenerFilter({ kasseIds, von, bis }), [kasseIds, von, bis])
+
+  function waehlePreset(p: ZeitraumPreset) {
+    setPreset(p)
+    if (p !== 'individuell') {
+      const { von: v, bis: b } = berechneZeitraum(p, heute())
+      setVon(v); setBis(b)
+    }
+  }
+
+  const kassenAnzeige = useMemo(() => auth.kassen.map(k => ({
+    id: k.id, label: k.bezeichnung ?? k.kassenId,
+  })), [auth.kassen])
+
+  return (
+    <div className="space-y-6">
+      <div className="rounded-lg bg-white shadow-sm border border-gray-200 p-4 space-y-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Zeitraum</label>
+            <div className="space-y-1">
+              {ZEITRAUM_OPTIONEN.map(opt => (
+                <button key={opt.key} type="button" onClick={() => waehlePreset(opt.key)}
+                  className={`w-full text-left px-3 py-1.5 rounded text-sm transition ${preset === opt.key ? 'bg-brand-50 text-brand-700 font-medium' : 'text-gray-700 hover:bg-gray-100'}`}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Datum</label>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500 w-6">Von</span>
+                <input type="date" value={von} max={bis} onChange={e => { setVon(e.target.value); setPreset('individuell') }}
+                  className="flex-1 rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-brand-500 outline-none" />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500 w-6">Bis</span>
+                <input type="date" value={bis} min={von} max={heute()} onChange={e => { setBis(e.target.value); setPreset('individuell') }}
+                  className="flex-1 rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-brand-500 outline-none" />
+              </div>
+            </div>
+          </div>
+          {kassenAnzeige.length > 1 && (
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Kasse</label>
+              <div className="space-y-1">
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input type="checkbox" checked={kasseIds.length === 0} onChange={() => setKasseIds([])} className="rounded" />
+                  <span className={kasseIds.length === 0 ? 'font-medium text-gray-900' : 'text-gray-600'}>Alle Kassen</span>
+                </label>
+                {kassenAnzeige.map(k => (
+                  <label key={k.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input type="checkbox" checked={kasseIds.includes(k.id)}
+                      onChange={() => setKasseIds(prev => prev.includes(k.id) ? prev.filter(x => x !== k.id) : [...prev, k.id])}
+                      className="rounded" />
+                    <span className={kasseIds.includes(k.id) ? 'font-medium text-gray-900' : 'text-gray-600'}>{k.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="pt-2 border-t border-gray-100 flex justify-end">
+          <Button onClick={ladeBericht} loading={isLoading}>Bericht laden</Button>
+        </div>
+      </div>
+
+      {isError && (
+        <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {error instanceof Error ? error.message : 'Fehler beim Laden'}
+        </div>
+      )}
+      {data && <KellnerBerichtTabelle data={data} />}
+    </div>
+  )
+}
+
+function KellnerBerichtTabelle({ data }: { data: KellnerBerichtResponse }) {
+  const maxUmsatz = Math.max(...data.zeilen.map(z => Math.abs(z.umsatzCent)), 1)
+
+  if (data.zeilen.length === 0) {
+    return <p className="text-sm text-gray-500">Keine Daten für diesen Zeitraum.</p>
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {([
+          { label: 'Kellner',       wert: data.zeilen.length,        fmt: (n: number) => String(n) },
+          { label: 'Belege gesamt', wert: data.gesamt.anzahlBelege,  fmt: (n: number) => String(n) },
+          { label: 'Umsatz gesamt', wert: data.gesamt.umsatzCent,    fmt: formatPreis },
+          { label: 'Ø pro Kellner', wert: data.zeilen.length > 0 ? Math.round(data.gesamt.umsatzCent / data.zeilen.length) : 0, fmt: formatPreis },
+        ] as const).map(k => (
+          <div key={k.label} className="rounded-lg border border-gray-200 bg-white p-4">
+            <p className="text-xs text-gray-500">{k.label}</p>
+            <p className="mt-1 text-xl font-bold text-gray-900">{k.fmt(k.wert)}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-gray-200 bg-gray-50">
+              <th className="px-4 py-3 text-left font-semibold text-gray-700">Kellner</th>
+              <th className="px-4 py-3 text-right font-semibold text-gray-700">Belege</th>
+              <th className="px-4 py-3 text-right font-semibold text-gray-700">Stornos</th>
+              <th className="px-4 py-3 text-right font-semibold text-gray-700">Bar</th>
+              <th className="px-4 py-3 text-right font-semibold text-gray-700">Karte</th>
+              <th className="px-4 py-3 text-right font-semibold text-gray-700">Umsatz</th>
+              <th className="px-4 py-3 w-28" />
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {data.zeilen.map((z: KellnerBerichtZeile) => {
+              const anteil = Math.round(Math.abs(z.umsatzCent / maxUmsatz) * 100)
+              return (
+                <tr key={z.kellner} className="hover:bg-gray-50">
+                  <td className="px-4 py-3 font-medium text-gray-900">{z.kellner}</td>
+                  <td className="px-4 py-3 text-right font-mono text-gray-700">{z.anzahlBelege}</td>
+                  <td className="px-4 py-3 text-right font-mono text-gray-500">{z.anzahlStornos || '—'}</td>
+                  <td className="px-4 py-3 text-right font-mono text-gray-700">{formatPreis(z.barCent)}</td>
+                  <td className="px-4 py-3 text-right font-mono text-gray-700">{formatPreis(z.karteCent)}</td>
+                  <td className="px-4 py-3 text-right font-mono font-semibold text-gray-900">{formatPreis(z.umsatzCent)}</td>
+                  <td className="px-4 py-3">
+                    <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+                      <div className="h-full rounded-full bg-brand-500" style={{ width: `${anteil}%` }} />
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+          <tfoot>
+            <tr className="border-t-2 border-gray-300 bg-gray-50 font-semibold">
+              <td className="px-4 py-3 text-gray-900">Gesamt</td>
+              <td className="px-4 py-3 text-right font-mono">{data.gesamt.anzahlBelege}</td>
+              <td className="px-4 py-3 text-right font-mono text-gray-500">{data.gesamt.anzahlStornos || '—'}</td>
+              <td className="px-4 py-3 text-right font-mono">{formatPreis(data.gesamt.barCent)}</td>
+              <td className="px-4 py-3 text-right font-mono">{formatPreis(data.gesamt.karteCent)}</td>
+              <td className="px-4 py-3 text-right font-mono text-gray-900">{formatPreis(data.gesamt.umsatzCent)}</td>
+              <td className="px-4 py-3" />
             </tr>
           </tfoot>
         </table>

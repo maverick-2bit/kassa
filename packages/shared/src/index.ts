@@ -229,6 +229,10 @@ export {
   StundenBerichtFilterSchema,
   StundenBerichtZeileSchema,
   StundenBerichtResponseSchema,
+  KellnerBerichtFilterSchema,
+  KellnerBerichtZeileSchema,
+  KellnerBerichtResponseSchema,
+  BuchungsjournalFilterSchema,
 } from './schemas/bericht.js'
 export type {
   BerichtFilter,
@@ -244,6 +248,10 @@ export type {
   StundenBerichtFilter,
   StundenBerichtZeile,
   StundenBerichtResponse,
+  KellnerBerichtFilter,
+  KellnerBerichtZeile,
+  KellnerBerichtResponse,
+  BuchungsjournalFilter,
 } from './schemas/bericht.js'
 
 // Tagesabschluss

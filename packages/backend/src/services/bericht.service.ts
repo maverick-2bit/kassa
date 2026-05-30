@@ -16,6 +16,9 @@ import {
   type BerichtGesamt,
   type BerichtResponse,
   type BerichtZeile,
+  type BuchungsjournalFilter,
+  type KellnerBerichtFilter,
+  type KellnerBerichtResponse,
   type MwStSatz,
   type StundenBerichtFilter,
   type StundenBerichtResponse,
@@ -23,7 +26,7 @@ import {
   type WarengruppeBerichtResponse,
 } from '@kassa/shared'
 import type { Db } from '../db/client.js'
-import { belege, kassen } from '../db/schema.js'
+import { belege, kassen, tischTabs } from '../db/schema.js'
 
 const MWST_SAETZE: Record<MwStSatz, number> = {
   normal:      20,
@@ -255,6 +258,176 @@ export async function holeWarengruppeBericht(
   }))
 
   return { von: filter.von, bis: filter.bis, kasseIds: angefragte, zeilen }
+}
+
+// ---------------------------------------------------------------------------
+// Kellner-Bericht
+// ---------------------------------------------------------------------------
+
+export async function holeKellnerBericht(
+  filter:    KellnerBerichtFilter,
+  mandantId: string,
+  deps:      BerichtServiceDeps,
+): Promise<KellnerBerichtResponse> {
+  const alleKassen = await deps.db.select({ id: kassen.id }).from(kassen).where(eq(kassen.mandantId, mandantId))
+  const erlaubteIds = new Set(alleKassen.map(k => k.id))
+  const angefragte  = filter.kasseIds.length > 0 ? filter.kasseIds : [...erlaubteIds]
+  const ungueltige  = angefragte.filter(id => !erlaubteIds.has(id))
+  if (ungueltige.length > 0) throw new BerichtError(404, `Kasse(n) nicht gefunden: ${ungueltige.join(', ')}`)
+  if (filter.von > filter.bis) throw new BerichtError(400, '"von" muss vor oder gleich "bis" liegen')
+
+  const kasseIdArr = sql.join(angefragte.map(id => sql`${id}::uuid`), sql`, `)
+
+  type KellnerRow = {
+    kellner:        string
+    anzahl_belege:  string
+    anzahl_stornos: string
+    umsatz_cent:    string
+    bar_cent:       string
+    karte_cent:     string
+    sonstige_cent:  string
+  }
+
+  const rows = await deps.db.execute<KellnerRow>(sql`
+    SELECT
+      COALESCE(tt.kellner, 'Direktverkauf')                               AS kellner,
+      SUM(CASE WHEN b.beleg_typ = 'Barzahlungsbeleg' THEN 1 ELSE 0 END) AS anzahl_belege,
+      SUM(CASE WHEN b.beleg_typ = 'Stornobeleg'      THEN 1 ELSE 0 END) AS anzahl_stornos,
+      SUM(b.summe_bar_cent + b.summe_karte_cent + b.summe_sonstige_cent) AS umsatz_cent,
+      SUM(b.summe_bar_cent)                                               AS bar_cent,
+      SUM(b.summe_karte_cent)                                             AS karte_cent,
+      SUM(b.summe_sonstige_cent)                                          AS sonstige_cent
+    FROM belege b
+    LEFT JOIN tisch_tabs tt ON tt.beleg_id = b.id
+    WHERE b.kasse_id = ANY(ARRAY[${kasseIdArr}])
+      AND b.beleg_typ IN ('Barzahlungsbeleg', 'Stornobeleg')
+      AND (b.beleg_datum AT TIME ZONE 'Europe/Vienna')::date
+          BETWEEN ${filter.von}::date AND ${filter.bis}::date
+    GROUP BY COALESCE(tt.kellner, 'Direktverkauf')
+    ORDER BY umsatz_cent DESC
+  `)
+
+  const zeilen = rows.map(r => ({
+    kellner:       r.kellner,
+    anzahlBelege:  parseInt(r.anzahl_belege,  10),
+    anzahlStornos: parseInt(r.anzahl_stornos, 10),
+    umsatzCent:    parseInt(r.umsatz_cent,    10),
+    barCent:       parseInt(r.bar_cent,       10),
+    karteCent:     parseInt(r.karte_cent,     10),
+    sonstigCent:   parseInt(r.sonstige_cent,  10),
+  }))
+
+  const gesamt: BerichtGesamt = {
+    anzahlBelege:  zeilen.reduce((s, z) => s + z.anzahlBelege,  0),
+    anzahlStornos: zeilen.reduce((s, z) => s + z.anzahlStornos, 0),
+    umsatzCent:    zeilen.reduce((s, z) => s + z.umsatzCent,    0),
+    barCent:       zeilen.reduce((s, z) => s + z.barCent,       0),
+    karteCent:     zeilen.reduce((s, z) => s + z.karteCent,     0),
+    sonstigCent:   zeilen.reduce((s, z) => s + z.sonstigCent,   0),
+    mwst:          [],
+  }
+
+  return { von: filter.von, bis: filter.bis, kasseIds: angefragte, zeilen, gesamt }
+}
+
+// ---------------------------------------------------------------------------
+// Buchungsjournal-Export (DATEV / BMD-kompatibel)
+// ---------------------------------------------------------------------------
+
+export async function erstelleBuchungsjournalCsv(
+  filter:    BuchungsjournalFilter,
+  mandantId: string,
+  deps:      BerichtServiceDeps,
+): Promise<{ csv: string; dateiname: string; anzahl: number }> {
+  const alleKassen = await deps.db.select({ id: kassen.id }).from(kassen).where(eq(kassen.mandantId, mandantId))
+  const erlaubteIds = new Set(alleKassen.map(k => k.id))
+  const angefragte  = filter.kasseIds.length > 0 ? filter.kasseIds : [...erlaubteIds]
+  const ungueltige  = angefragte.filter(id => !erlaubteIds.has(id))
+  if (ungueltige.length > 0) throw new BerichtError(404, `Kasse(n) nicht gefunden: ${ungueltige.join(', ')}`)
+  if (filter.von > filter.bis) throw new BerichtError(400, '"von" muss vor oder gleich "bis" liegen')
+
+  const kasseIdArr = sql.join(angefragte.map(id => sql`${id}::uuid`), sql`, `)
+
+  type JournalRow = {
+    beleg_nummer:           number
+    beleg_datum:            Date
+    beleg_typ:              string
+    kassen_id:              string
+    summe_bar_cent:         number
+    summe_karte_cent:       number
+    summe_sonstige_cent:    number
+    betrag_normal_cent:     number
+    betrag_ermaessigt1_cent: number
+    betrag_ermaessigt2_cent: number
+    betrag_null_cent:       number
+    betrag_besonders_cent:  number
+  }
+
+  const rows = await deps.db.execute<JournalRow>(sql`
+    SELECT
+      b.beleg_nummer,
+      b.beleg_datum,
+      b.beleg_typ,
+      k.kassen_id,
+      b.summe_bar_cent,
+      b.summe_karte_cent,
+      b.summe_sonstige_cent,
+      b.betrag_normal_cent,
+      b.betrag_ermaessigt1_cent,
+      b.betrag_ermaessigt2_cent,
+      b.betrag_null_cent,
+      b.betrag_besonders_cent
+    FROM belege b
+    JOIN kassen k ON k.id = b.kasse_id
+    WHERE b.kasse_id = ANY(ARRAY[${kasseIdArr}])
+      AND b.beleg_typ IN ('Barzahlungsbeleg', 'Stornobeleg')
+      AND (b.beleg_datum AT TIME ZONE 'Europe/Vienna')::date
+          BETWEEN ${filter.von}::date AND ${filter.bis}::date
+    ORDER BY b.beleg_datum, b.beleg_nummer
+  `)
+
+  const sep = ';'
+  const header = [
+    'Datum', 'Belegnummer', 'Belegtyp', 'KassenID',
+    'Brutto', 'USt20%_Basis', 'USt20%', 'USt10%_Basis', 'USt10%',
+    'USt13%_Basis', 'USt13%', 'Steuerfrei', 'Bar', 'Karte', 'Sonstige',
+  ].join(sep)
+
+  const zeilen = rows.map(r => {
+    const datum   = new Date(r.beleg_datum).toLocaleDateString('de-AT', { timeZone: 'Europe/Vienna' })
+    const brutto  = (r.summe_bar_cent + r.summe_karte_cent + r.summe_sonstige_cent) / 100
+
+    const n20basis  = r.betrag_normal_cent / 100
+    const n20ust    = Math.round(r.betrag_normal_cent - r.betrag_normal_cent / 1.20) / 100
+    const n10basis  = r.betrag_ermaessigt1_cent / 100
+    const n10ust    = Math.round(r.betrag_ermaessigt1_cent - r.betrag_ermaessigt1_cent / 1.10) / 100
+    const n13basis  = r.betrag_ermaessigt2_cent / 100
+    const n13ust    = Math.round(r.betrag_ermaessigt2_cent - r.betrag_ermaessigt2_cent / 1.13) / 100
+    const stfrei    = r.betrag_null_cent / 100
+
+    const fmt = (n: number) => n.toFixed(2).replace('.', ',')
+
+    return [
+      datum,
+      r.beleg_nummer,
+      r.beleg_typ,
+      r.kassen_id,
+      fmt(brutto),
+      fmt(n20basis), fmt(n20ust),
+      fmt(n10basis), fmt(n10ust),
+      fmt(n13basis), fmt(n13ust),
+      fmt(stfrei),
+      fmt(r.summe_bar_cent / 100),
+      fmt(r.summe_karte_cent / 100),
+      fmt(r.summe_sonstige_cent / 100),
+    ].join(sep)
+  })
+
+  // UTF-8 BOM für Excel-Kompatibilität
+  const csv = '﻿' + [header, ...zeilen].join('\r\n')
+  const dateiname = `Buchungsjournal-${filter.von}-${filter.bis}.csv`
+
+  return { csv, dateiname, anzahl: rows.length }
 }
 
 // ---------------------------------------------------------------------------

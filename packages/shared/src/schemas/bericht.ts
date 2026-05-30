@@ -138,3 +138,45 @@ export const StundenBerichtResponseSchema = z.object({
   gesamt:   BerichtGesamtSchema,
 })
 export type StundenBerichtResponse = z.infer<typeof StundenBerichtResponseSchema>
+
+// ---------------------------------------------------------------------------
+// Kellner-Bericht (Umsatz pro Kellner / Servicekraft)
+// ---------------------------------------------------------------------------
+
+export const KellnerBerichtFilterSchema = z.object({
+  kasseIds: z.array(z.string().uuid()).default([]),
+  von:      z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Ungültiges Datum (YYYY-MM-DD)'),
+  bis:      z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Ungültiges Datum (YYYY-MM-DD)'),
+})
+export type KellnerBerichtFilter = z.infer<typeof KellnerBerichtFilterSchema>
+
+export const KellnerBerichtZeileSchema = z.object({
+  kellner:       z.string(),
+  anzahlBelege:  z.number().int(),
+  anzahlStornos: z.number().int(),
+  umsatzCent:    z.number().int(),
+  barCent:       z.number().int(),
+  karteCent:     z.number().int(),
+  sonstigCent:   z.number().int(),
+})
+export type KellnerBerichtZeile = z.infer<typeof KellnerBerichtZeileSchema>
+
+export const KellnerBerichtResponseSchema = z.object({
+  von:      z.string(),
+  bis:      z.string(),
+  kasseIds: z.array(z.string().uuid()),
+  zeilen:   z.array(KellnerBerichtZeileSchema),
+  gesamt:   BerichtGesamtSchema,
+})
+export type KellnerBerichtResponse = z.infer<typeof KellnerBerichtResponseSchema>
+
+// ---------------------------------------------------------------------------
+// Buchungsjournal-Filter (DATEV/BMD-Export)
+// ---------------------------------------------------------------------------
+
+export const BuchungsjournalFilterSchema = z.object({
+  kasseIds: z.array(z.string().uuid()).default([]),
+  von:      z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Ungültiges Datum (YYYY-MM-DD)'),
+  bis:      z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Ungültiges Datum (YYYY-MM-DD)'),
+})
+export type BuchungsjournalFilter = z.infer<typeof BuchungsjournalFilterSchema>

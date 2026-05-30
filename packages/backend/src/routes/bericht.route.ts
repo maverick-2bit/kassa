@@ -3,8 +3,10 @@
  */
 
 import type { FastifyPluginAsync } from 'fastify'
-import { ArtikelBerichtFilterSchema, BerichtFilterSchema, StundenBerichtFilterSchema, WarengruppeBerichtFilterSchema } from '@kassa/shared'
+import { ArtikelBerichtFilterSchema, BerichtFilterSchema, BuchungsjournalFilterSchema, KellnerBerichtFilterSchema, StundenBerichtFilterSchema, WarengruppeBerichtFilterSchema } from '@kassa/shared'
 import {
+  erstelleBuchungsjournalCsv,
+  holeKellnerBericht,
   holeUmsatzbericht,
   holeArtikelBericht,
   holeWarengruppeBericht,
@@ -126,6 +128,42 @@ export const berichtRoute: FastifyPluginAsync<BerichtRouteOptions> = async (fast
     } catch (err) {
       if (err instanceof BerichtError) return reply.status(err.httpStatus).send({ fehler: err.message })
       fastify.log.error({ err }, 'Stundenbericht unerwartet fehlgeschlagen')
+      return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
+    }
+  })
+
+  fastify.get('/berichte/kellner', guard, async (request, reply) => {
+    const raw = request.query as Record<string, unknown>
+    const kasseIdsRaw = raw['kasseIds']
+    const kasseIds = Array.isArray(kasseIdsRaw) ? kasseIdsRaw : kasseIdsRaw ? [kasseIdsRaw] : []
+    const parsed = KellnerBerichtFilterSchema.safeParse({ kasseIds, von: raw['von'], bis: raw['bis'] })
+    if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
+    try {
+      const bericht = await holeKellnerBericht(parsed.data, request.user.mandantId, opts.deps)
+      return reply.send(bericht)
+    } catch (err) {
+      if (err instanceof BerichtError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      fastify.log.error({ err }, 'Kellnerbericht unerwartet fehlgeschlagen')
+      return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
+    }
+  })
+
+  fastify.get('/berichte/buchungsjournal', guard, async (request, reply) => {
+    const raw = request.query as Record<string, unknown>
+    const kasseIdsRaw = raw['kasseIds']
+    const kasseIds = Array.isArray(kasseIdsRaw) ? kasseIdsRaw : kasseIdsRaw ? [kasseIdsRaw] : []
+    const parsed = BuchungsjournalFilterSchema.safeParse({ kasseIds, von: raw['von'], bis: raw['bis'] })
+    if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
+    try {
+      const { csv, dateiname, anzahl } = await erstelleBuchungsjournalCsv(parsed.data, request.user.mandantId, opts.deps)
+      return reply
+        .header('Content-Type', 'text/csv; charset=utf-8')
+        .header('Content-Disposition', `attachment; filename="${dateiname}"`)
+        .header('X-Anzahl-Belege', String(anzahl))
+        .send(csv)
+    } catch (err) {
+      if (err instanceof BerichtError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      fastify.log.error({ err }, 'Buchungsjournal-Export unerwartet fehlgeschlagen')
       return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
     }
   })

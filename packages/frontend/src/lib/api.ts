@@ -45,6 +45,7 @@ import type {
   ArtikelBerichtResponse,
   WarengruppeBerichtResponse,
   StundenBerichtResponse,
+  KellnerBerichtResponse,
   BarzahlungsbelegInput,
   BerichtFilter,
   BerichtResponse,
@@ -471,6 +472,36 @@ export const berichtApi = {
     p.set('bis', filter.bis)
     for (const id of filter.kasseIds ?? []) p.append('kasseIds', id)
     return request<StundenBerichtResponse>('GET', `/api/berichte/stunden?${p.toString()}`)
+  },
+  kellner: (filter: { von: string; bis: string; kasseIds?: string[] }): Promise<KellnerBerichtResponse> => {
+    const p = new URLSearchParams()
+    p.set('von', filter.von)
+    p.set('bis', filter.bis)
+    for (const id of filter.kasseIds ?? []) p.append('kasseIds', id)
+    return request<KellnerBerichtResponse>('GET', `/api/berichte/kellner?${p.toString()}`)
+  },
+  buchungsjournalDownload: async (filter: { von: string; bis: string; kasseIds?: string[] }): Promise<void> => {
+    const p = new URLSearchParams()
+    p.set('von', filter.von)
+    p.set('bis', filter.bis)
+    for (const id of filter.kasseIds ?? []) p.append('kasseIds', id)
+    const token = getToken()
+    const res = await fetch(`/api/berichte/buchungsjournal?${p.toString()}`, {
+      headers: { Authorization: token ? `Bearer ${token}` : '' },
+    })
+    if (res.status === 401) { handleUnauthorized(); return }
+    if (!res.ok) throw new ApiError(res.status, `HTTP ${res.status}`)
+    const disposition = res.headers.get('Content-Disposition') ?? ''
+    const filename    = disposition.match(/filename="([^"]+)"/)?.[1] ?? 'buchungsjournal.csv'
+    const blob = await res.blob()
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download  = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
   },
 }
 
