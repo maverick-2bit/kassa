@@ -35,12 +35,15 @@ import { mandantRoute }          from './routes/mandant.route.js'
 import { kasseRoute }            from './routes/kasse.route.js'
 import { auditRoute }           from './routes/audit.route.js'
 import { kassenbuchRoute }      from './routes/kassenbuch.route.js'
+import { depSicherungRoute }    from './routes/dep-sicherung.route.js'
+import { finanzpruefungRoute }  from './routes/finanzpruefung.route.js'
 
 export interface ServerDeps {
   config:    Config
   db:        Db
   setupDeps: SetupServiceDeps
   belegDeps: BelegServiceDeps
+  backupDir: string
 }
 
 export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
@@ -127,6 +130,8 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     await api.register(kasseRoute,              { db: deps.db })
     await api.register(auditRoute,              { db: deps.db })
     await api.register(kassenbuchRoute,         { db: deps.db })
+    await api.register(depSicherungRoute,       { db: deps.db, backupDir: deps.backupDir })
+    await api.register(finanzpruefungRoute,     { db: deps.db })
   }, { prefix: '/api' })
 
   // Globaler Fehler-Handler — fängt alle unbehandelten Fehler ab

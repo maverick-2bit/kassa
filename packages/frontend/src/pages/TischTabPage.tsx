@@ -237,8 +237,7 @@ export function TischTabPage() {
   })
 
   const bezahlenMutation = useMutation({
-    mutationFn: async ({ bar, karte }: { bar: number; karte: number }) => {
-      // Zuerst aktuelle Positionen speichern (inkl. Warenkorb)
+    mutationFn: async ({ bar, karte, trinkgeldCent = 0 }: { bar: number; karte: number; trinkgeldCent?: number }) => {
       if (korb.length > 0) {
         await tischTabApi.aktualisierePositionen(tabId!, allePositionen)
       }
@@ -248,6 +247,7 @@ export function TischTabPage() {
         zahlung: { barCent: bar, karteCent: karte, sonstigeCent: 0 },
         ...(rabatt && { rabatt }),
         ...(posRabatteArr.length > 0 && { positionRabatte: posRabatteArr }),
+        ...(trinkgeldCent > 0 && { trinkgeldCent }),
       })
     },
     onSuccess: async ({ belegId }) => {
@@ -777,11 +777,11 @@ export function TischTabPage() {
         open={zvtOffen}
         kasseId={identity.kasseId}
         betragCent={zvtBetrag}
-        onErfolg={() => {
+        onErfolg={(_job, trinkgeldCent) => {
           setZvtOffen(false)
           const bar   = parseInt(barInput   || '0', 10) || 0
           const karte = parseInt(karteInput || '0', 10) || 0
-          bezahlenMutation.mutate({ bar, karte })
+          bezahlenMutation.mutate({ bar, karte, trinkgeldCent })
         }}
         onAbbruch={() => {
           setZvtOffen(false)

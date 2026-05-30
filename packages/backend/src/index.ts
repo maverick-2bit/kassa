@@ -7,6 +7,7 @@ import { loadConfig } from './config.js'
 import { createDb } from './db/client.js'
 import { runMigrations } from './db/migrate.js'
 import { buildServer } from './server.js'
+import { starteDepSicherungsCron } from './services/dep-sicherung.cron.js'
 
 async function main(): Promise<void> {
   const config = loadConfig()
@@ -29,7 +30,10 @@ async function main(): Promise<void> {
       db,
       masterPassphrase: config.MASTER_PASSPHRASE,
     },
+    backupDir: config.DEP_BACKUP_DIR,
   })
+
+  starteDepSicherungsCron(db, config.DEP_BACKUP_DIR, server.log)
 
   try {
     await server.listen({ port: config.PORT, host: '0.0.0.0' })

@@ -25,6 +25,9 @@ import { KassensturzPage } from './pages/KassensturzPage'
 import { BonierdruckerPage } from './pages/BonierdruckerPage'
 import { KassenbuchPage } from './pages/KassenbuchPage'
 import { PosKonfigPage } from './pages/PosKonfigPage'
+import { DepExportPage } from './pages/DepExportPage'
+import { FinanzpruefungPage } from './pages/FinanzpruefungPage'
+import { PruefungsansichtPage } from './pages/PruefungsansichtPage'
 import type { Berechtigung, MandantModul } from '@kassa/shared'
 import { getAuth, hasBerechtigung, hasModul, setOnUnauthorized } from './lib/auth'
 import { getKasseIdentity } from './lib/kasse'
@@ -49,6 +52,7 @@ function AppRoutes() {
     <Routes>
       <Route path="/setup" element={<SetupPage />} />
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/pruefung/:token" element={<PruefungsansichtPage />} />
       <Route element={<Layout />}>
         <Route path="/dashboard"        element={<Require b="belege.lesen"                 ><DashboardPage /></Require>} />
         <Route path="/tische"         element={<Require b="tische"          m="gastro"   ><TischePage /></Require>} />
@@ -72,6 +76,8 @@ function AppRoutes() {
         <Route path="/offene-posten"  element={<Require b="kunden.verwalten"             ><OffenePostenPage /></Require>} />
         <Route path="/gutscheine"     element={<Require b="kasse"                        ><GutscheinPage /></Require>} />
         <Route path="/lieferungen"    element={<Require b="kasse"            m="mergeport"><LieferungenPage /></Require>} />
+        <Route path="/dep-export"       element={<Require b="einstellungen"                ><DepExportPage /></Require>} />
+        <Route path="/finanzpruefung"  element={<Require b="einstellungen"                ><FinanzpruefungPage /></Require>} />
       </Route>
       <Route path="*" element={<Navigate to={getInitialRoute()} replace />} />
     </Routes>

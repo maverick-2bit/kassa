@@ -180,6 +180,109 @@ export async function downloadDepExport(opts: DepExportOptions): Promise<{ anzah
 }
 
 // ---------------------------------------------------------------------------
+// DEP-Sicherungen
+// ---------------------------------------------------------------------------
+
+export interface DepSicherungRow {
+  id:           string
+  mandantId:    string
+  kasseId:      string
+  erstelltAm:  string
+  format:       string
+  anzahlBelege: number
+  dateiname:    string
+  dateipfad:    string
+  automatisch:  boolean
+}
+
+export const depSicherungApi = {
+  liste: (kasseId: string) =>
+    request<DepSicherungRow[]>('GET', `/api/dep-sicherungen?kasseId=${kasseId}`),
+  erstellen: (kasseId: string) =>
+    request<DepSicherungRow>('POST', '/api/dep-sicherungen', { kasseId }),
+  download: async (id: string, dateiname: string): Promise<void> => {
+    const token = getToken()
+    const res = await fetch(`/api/dep-sicherungen/${id}/download`, {
+      headers: { Authorization: token ? `Bearer ${token}` : '' },
+    })
+    if (res.status === 401) { handleUnauthorized(); return }
+    if (!res.ok) throw new ApiError(res.status, `HTTP ${res.status}`)
+    const blob = await res.blob()
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download  = dateiname
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  },
+}
+
+// ---------------------------------------------------------------------------
+// Finanzprüfungs-Tokens
+// ---------------------------------------------------------------------------
+
+export interface PruefungsTokenRow {
+  id:                 string
+  mandantId:          string
+  kasseId:            string
+  token:              string
+  erstelltAm:        string
+  gueltigBis:         string
+  erstelltVonUserId:  string | null
+  beschreibung:       string | null
+  widerrufen:         boolean
+  letzteVerwendung:   string | null
+}
+
+export const finanzpruefungApi = {
+  erstelleToken: (kasseId: string, gueltigkeitsTage: number, beschreibung?: string) =>
+    request<PruefungsTokenRow>('POST', '/api/finanzpruefung/tokens', { kasseId, gueltigkeitsTage, beschreibung }),
+  listeTokens: (kasseId: string) =>
+    request<PruefungsTokenRow[]>('GET', `/api/finanzpruefung/tokens?kasseId=${kasseId}`),
+  widerruf: (id: string) =>
+    request<void>('DELETE', `/api/finanzpruefung/tokens/${id}`),
+}
+
+// ---------------------------------------------------------------------------
+// Öffentliche Prüfer-API (kein Auth-Header)
+// ---------------------------------------------------------------------------
+
+export interface PruefungsDaten {
+  kassenId:         string
+  kasseBezeichnung: string | null
+  token:            PruefungsTokenRow
+  belege:           BelegResponse[]
+}
+
+export async function ladePruefungsDaten(token: string): Promise<PruefungsDaten> {
+  const res = await fetch(`/api/pruefung/${token}`)
+  if (!res.ok) {
+    const text  = await res.text()
+    const fehler = text ? (JSON.parse(text) as { fehler?: string })?.fehler : undefined
+    throw new ApiError(res.status, fehler ?? `HTTP ${res.status}`)
+  }
+  return res.json() as Promise<PruefungsDaten>
+}
+
+export async function downloadPruefungDep7(token: string): Promise<void> {
+  const res = await fetch(`/api/pruefung/${token}/dep7`)
+  if (!res.ok) throw new ApiError(res.status, `HTTP ${res.status}`)
+  const disposition = res.headers.get('Content-Disposition') ?? ''
+  const filename    = disposition.match(/filename="([^"]+)"/)?.[1] ?? 'dep7.json'
+  const blob = await res.blob()
+  const url  = URL.createObjectURL(blob)
+  const a    = document.createElement('a')
+  a.href     = url
+  a.download  = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+// ---------------------------------------------------------------------------
 // Setup
 // ---------------------------------------------------------------------------
 

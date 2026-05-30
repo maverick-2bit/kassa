@@ -61,6 +61,8 @@ function Header() {
           {hasBerechtigung('einstellungen')                               && <NavItem to="/einstellungen">Einstellungen</NavItem>}
           {hasBerechtigung('einstellungen')                               && <NavItem to="/pos-konfiguration">POS-Konfig</NavItem>}
           {hasBerechtigung('einstellungen')     && hasModul('gastro')     && <NavItem to="/bonierdrucker">Bonierdrucker</NavItem>}
+          {hasBerechtigung('einstellungen')                               && <NavItem to="/dep-export">DEP-Export</NavItem>}
+          {hasBerechtigung('einstellungen')                               && <NavItem to="/finanzpruefung">Finanzprüfung</NavItem>}
           {hasBerechtigung('einstellungen')                               && <NavItem to="/module">Module</NavItem>}
           {hasBerechtigung('user.verwalten')                              && <NavItem to="/benutzer">Benutzer</NavItem>}
         </nav>

@@ -9,7 +9,7 @@
  * Aus dem Dialog heraus kann auch eine neue Gruppe am selben Tisch geöffnet werden.
  */
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { TischplanBereich, TischTabResponse, TischTabErstellenInput } from '@kassa/shared'
@@ -247,11 +247,20 @@ interface TischSymbolProps {
   onClick:     () => void
 }
 
+function useMinutenticker() {
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 60_000)
+    return () => clearInterval(id)
+  }, [])
+}
+
 function TischSymbol({ bezeichnung, form, x, y, breite, hoehe, tabs, onClick }: TischSymbolProps) {
-  const count    = tabs.length
+  useMinutenticker()
+
+  const count     = tabs.length
   const summeCent = tabs.reduce((s, t) => s + t.summeGesamtCent, 0)
 
-  // Ältester Tab bestimmt die Farbstufe
   const aeltestMin = count > 0
     ? Math.max(...tabs.map((t) => Math.floor((Date.now() - new Date(t.geoffnetAm).getTime()) / 60_000)))
     : 0
@@ -259,10 +268,16 @@ function TischSymbol({ bezeichnung, form, x, y, breite, hoehe, tabs, onClick }: 
   const { bg, border, text } = count === 0
     ? { bg: 'bg-white',      border: 'border-gray-300',  text: 'text-gray-500'  }
     : aeltestMin < 30
-    ? { bg: 'bg-orange-100', border: 'border-orange-400', text: 'text-orange-900' }
+    ? { bg: 'bg-green-100',  border: 'border-green-400', text: 'text-green-900' }
     : aeltestMin < 60
-    ? { bg: 'bg-amber-100',  border: 'border-amber-500',  text: 'text-amber-900'  }
+    ? { bg: 'bg-orange-100', border: 'border-orange-400', text: 'text-orange-900' }
     : { bg: 'bg-red-100',    border: 'border-red-500',    text: 'text-red-900'    }
+
+  const zeitText = count > 0
+    ? aeltestMin < 60
+      ? `${aeltestMin}m`
+      : `${Math.floor(aeltestMin / 60)}h${aeltestMin % 60}m`
+    : null
 
   const rund = form === 'rund'
 
@@ -284,19 +299,19 @@ function TischSymbol({ bezeichnung, form, x, y, breite, hoehe, tabs, onClick }: 
         ${bg} ${border} ${text}
       `}
     >
-      {/* Tischname */}
       <span className="font-bold text-[clamp(0.6rem,1.4cqw,1rem)] leading-tight truncate w-full text-center px-1">
         {bezeichnung}
       </span>
-
-      {/* Belegt: Summe + ggf. Gruppen-Badge */}
       {count > 0 && (
         <span className="text-[clamp(0.5rem,1cqw,0.75rem)] opacity-80 leading-tight">
           {formatPreis(summeCent)}
         </span>
       )}
-
-      {/* Gruppen-Badge bei mehreren Parteien */}
+      {zeitText && (
+        <span className="text-[clamp(0.45rem,0.85cqw,0.65rem)] opacity-70 leading-tight">
+          {zeitText}
+        </span>
+      )}
       {count > 1 && (
         <span
           className="absolute top-0.5 right-0.5 min-w-[1.1rem] h-[1.1rem] rounded-full

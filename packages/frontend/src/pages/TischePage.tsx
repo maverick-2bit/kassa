@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { TischTabErstellenInput, TischTabResponse } from '@kassa/shared'
@@ -145,6 +145,50 @@ export function TischePage() {
 // Tisch-Karte
 // ---------------------------------------------------------------------------
 
+/** Minuten-Ticker: zwingt neu-Render jede Minute für Live-Zeitanzeigen */
+function useMinutenticker() {
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 60_000)
+    return () => clearInterval(id)
+  }, [])
+}
+
+function minOffen(geoffnetAm: string): number {
+  return Math.floor((Date.now() - new Date(geoffnetAm).getTime()) / 60_000)
+}
+
+function dauerText(min: number): string {
+  return min < 60 ? `${min} Min.` : `${Math.floor(min / 60)}h ${min % 60}m`
+}
+
+function tischFarbe(min: number): { border: string; bg: string; tischText: string; kellnerText: string; badgeBg: string; badgeText: string } {
+  if (min < 30) return {
+    border:      'border-green-300',
+    bg:          'bg-green-50 hover:bg-green-100 hover:border-green-500',
+    tischText:   'text-green-700',
+    kellnerText: 'text-green-600',
+    badgeBg:     'bg-green-200',
+    badgeText:   'text-green-800',
+  }
+  if (min < 60) return {
+    border:      'border-orange-300',
+    bg:          'bg-orange-50 hover:bg-orange-100 hover:border-orange-500',
+    tischText:   'text-orange-700',
+    kellnerText: 'text-orange-600',
+    badgeBg:     'bg-orange-200',
+    badgeText:   'text-orange-800',
+  }
+  return {
+    border:      'border-red-400',
+    bg:          'bg-red-50 hover:bg-red-100 hover:border-red-600',
+    tischText:   'text-red-700',
+    kellnerText: 'text-red-600',
+    badgeBg:     'bg-red-200',
+    badgeText:   'text-red-800',
+  }
+}
+
 function TischKarte({
   tab,
   gruppeNr,
@@ -154,33 +198,33 @@ function TischKarte({
   gruppeNr: number | undefined
   onClick:  () => void
 }) {
-  const minOffen = Math.floor(
-    (Date.now() - new Date(tab.geoffnetAm).getTime()) / 60_000,
-  )
-  const dauerText = minOffen < 60
-    ? `${minOffen} Min.`
-    : `${Math.floor(minOffen / 60)}h ${minOffen % 60}m`
+  useMinutenticker()
+  const min   = minOffen(tab.geoffnetAm)
+  const farbe = tischFarbe(min)
 
   return (
     <button
       type="button"
       onClick={onClick}
-      className="group relative rounded-xl border-2 border-orange-300 bg-orange-50 p-4 text-left transition hover:border-orange-500 hover:bg-orange-100 hover:shadow-md"
+      className={`group relative rounded-xl border-2 p-4 text-left transition hover:shadow-md ${farbe.border} ${farbe.bg}`}
     >
-      {/* Gruppen-Badge */}
       {gruppeNr !== undefined && (
-        <span className="absolute top-2 right-2 text-[10px] font-bold bg-orange-200 text-orange-800
-                         rounded-full px-1.5 py-0.5 leading-none">
+        <span className={`absolute top-2 right-2 text-[10px] font-bold rounded-full px-1.5 py-0.5 leading-none ${farbe.badgeBg} ${farbe.badgeText}`}>
           G{gruppeNr}
         </span>
       )}
-      <p className="text-2xl font-bold text-orange-700">{tab.tischNummer}</p>
-      <p className="mt-0.5 text-xs font-medium text-orange-600 truncate">{tab.kellner}</p>
+      <div className="flex items-start justify-between gap-2">
+        <p className={`text-2xl font-bold ${farbe.tischText}`}>{tab.tischNummer}</p>
+        <span className={`shrink-0 text-xs font-semibold px-1.5 py-0.5 rounded-md ${farbe.badgeBg} ${farbe.badgeText}`}>
+          {dauerText(min)}
+        </span>
+      </div>
+      <p className={`mt-0.5 text-xs font-medium truncate ${farbe.kellnerText}`}>{tab.kellner}</p>
       <p className="mt-2 text-sm font-semibold text-gray-900">
         {formatPreis(tab.summeGesamtCent)}
       </p>
       <p className="text-xs text-gray-500">
-        {tab.positionen.reduce((n, p) => n + p.menge, 0)} Pos. · {dauerText}
+        {tab.positionen.reduce((n, p) => n + p.menge, 0)} Pos.
       </p>
     </button>
   )

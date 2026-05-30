@@ -69,6 +69,8 @@ export const TischTabBezahlenInputSchema = z.object({
     positionIndex:          z.number().int().nonnegative(),
     einzelpreisBreuttoCent: z.number().int().nonnegative(),
   })).optional(),
+  /** Trinkgeld in Cent — wird als freie Position (0 % MwSt) auf den Beleg gebucht */
+  trinkgeldCent: z.number().int().nonnegative().optional(),
 })
 export type TischTabBezahlenInput = z.infer<typeof TischTabBezahlenInputSchema>
 

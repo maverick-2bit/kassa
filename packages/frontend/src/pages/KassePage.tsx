@@ -380,30 +380,37 @@ export function KassePage() {
     })
   }
 
-  const erstelleBeleg = (barCent: number, karteCent: number) => {
+  const erstelleBeleg = (barCent: number, karteCent: number, trinkgeldCent = 0) => {
+    const positionen: BarzahlungsbelegInput['positionen'] = korb.map((p) => {
+      if (p.typ === 'frei') {
+        return {
+          bezeichnung:     p.bezeichnung,
+          preisBruttoCent: p.preisCent,
+          mwstSatz:        p.mwstSatz,
+          menge:           p.menge,
+        }
+      }
+      return {
+        artikelId:              p.artikel.id,
+        menge:                  p.menge,
+        einzelpreisBreuttoCent: p.preisCent,
+        ...(p.modifikatoren.length > 0
+          ? { bezeichnungZusatz: p.modifikatoren.map(m => m.name).join(', ') }
+          : {}),
+      }
+    })
+    if (trinkgeldCent > 0) {
+      positionen.push({ bezeichnung: 'Trinkgeld', preisBruttoCent: trinkgeldCent, mwstSatz: 'null', menge: 1 })
+    }
     const input: BarzahlungsbelegInput = {
       kasseId: identity.kasseId,
-      positionen: korb.map((p) => {
-        if (p.typ === 'frei') {
-          return {
-            bezeichnung:     p.bezeichnung,
-            preisBruttoCent: p.preisCent,
-            mwstSatz:        p.mwstSatz,
-            menge:           p.menge,
-          }
-        }
-        return {
-          artikelId:              p.artikel.id,
-          menge:                  p.menge,
-          einzelpreisBreuttoCent: p.preisCent,
-          ...(p.modifikatoren.length > 0
-            ? { bezeichnungZusatz: p.modifikatoren.map(m => m.name).join(', ') }
-            : {}),
-        }
-      }),
-      zahlung: { barCent, karteCent, sonstigeCent: gutschein?.einloesungCent ?? 0 },
+      positionen,
+      zahlung: {
+        barCent,
+        karteCent: karteCent + trinkgeldCent,
+        sonstigeCent: gutschein?.einloesungCent ?? 0,
+      },
       ...(rabatt && { rabatt }),
-      // Neuer Kunde: backend legt ihn an; bestehender Kunde: nur ID schicken
       ...(neuerKunde ? { neuerKunde }           : {}),
       ...(kunde && !neuerKunde ? { kundeId: kunde.id } : {}),
     }
@@ -1042,9 +1049,9 @@ export function KassePage() {
         open={zvtOffen}
         kasseId={identity.kasseId}
         betragCent={zvtBetrag}
-        onErfolg={() => {
+        onErfolg={(_job, trinkgeldCent) => {
           setZvtOffen(false)
-          erstelleBeleg(barCentBeleg, karteCentBeleg)
+          erstelleBeleg(barCentBeleg, karteCentBeleg, trinkgeldCent)
         }}
         onAbbruch={() => {
           setZvtOffen(false)

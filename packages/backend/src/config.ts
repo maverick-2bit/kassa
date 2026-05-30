@@ -16,6 +16,8 @@ const ConfigSchema = z.object({
   LOG_LEVEL:         z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   CORS_ORIGIN:       z.string().default('http://localhost:5173'),
   NODE_ENV:          z.enum(['development', 'test', 'production']).default('development'),
+  /** Verzeichnis für DEP-Sicherungsdateien (absolut oder relativ zum CWD) */
+  DEP_BACKUP_DIR:    z.string().default('./dep-backups'),
 })
 
 export type Config = z.infer<typeof ConfigSchema>

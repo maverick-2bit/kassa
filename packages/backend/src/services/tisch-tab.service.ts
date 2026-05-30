@@ -1,5 +1,6 @@
 import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import type {
+  BarzahlungsbelegInput,
   ModifikatorAuswahl,
   TabEreignis,
   TabPosition,
@@ -324,22 +325,36 @@ export async function bezahleTab(
   const positionen = (existing.positionen as TabPosition[]) ?? []
   if (positionen.length === 0) throw new TischTabError(400, 'Keine Positionen im Tab')
 
+  const belegPositionen: BarzahlungsbelegInput['positionen'] = positionen.map((p, i) => {
+    const posRabatt = input.positionRabatte?.find(r => r.positionIndex === i)
+    return {
+      artikelId:              p.artikelId,
+      menge:                  p.menge,
+      einzelpreisBreuttoCent: posRabatt?.einzelpreisBreuttoCent ?? p.preisBruttoCent,
+      ...(p.modifikatoren?.length
+        ? { bezeichnungZusatz: p.modifikatoren.map((m: { name: string }) => m.name).join(', ') }
+        : {}),
+    }
+  })
+
+  const trinkgeldCent = input.trinkgeldCent ?? 0
+  if (trinkgeldCent > 0) {
+    belegPositionen.push({
+      bezeichnung:     'Trinkgeld',
+      preisBruttoCent: trinkgeldCent,
+      mwstSatz:        'null',
+      menge:           1,
+    })
+  }
+
+  const zahlungMitTrinkgeld = trinkgeldCent > 0
+    ? { ...input.zahlung, karteCent: input.zahlung.karteCent + trinkgeldCent }
+    : input.zahlung
+
   const beleg = await erstelleBarzahlungsbeleg({
-    kasseId: existing.kasseId,
-    positionen: positionen.map((p, i) => {
-      const posRabatt = input.positionRabatte?.find(r => r.positionIndex === i)
-      return {
-        artikelId:              p.artikelId,
-        menge:                  p.menge,
-        // Preis aus Tab verwenden (enthält Modifier-Aufschläge), ggf. Rabatt-Override
-        einzelpreisBreuttoCent: posRabatt?.einzelpreisBreuttoCent ?? p.preisBruttoCent,
-        // Modifier-Bezeichnung weiterleiten
-        ...(p.modifikatoren?.length
-          ? { bezeichnungZusatz: p.modifikatoren.map((m: { name: string }) => m.name).join(', ') }
-          : {}),
-      }
-    }),
-    zahlung:    input.zahlung,
+    kasseId:   existing.kasseId,
+    positionen: belegPositionen,
+    zahlung:    zahlungMitTrinkgeld,
     ...(input.rabatt && { rabatt: input.rabatt }),
   }, deps.belegDeps)
 

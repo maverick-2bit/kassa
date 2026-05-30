@@ -802,3 +802,50 @@ export const auditLogs = pgTable('audit_logs', {
 
 export type AuditLog    = typeof auditLogs.$inferSelect
 export type NewAuditLog = typeof auditLogs.$inferInsert
+
+// ---------------------------------------------------------------------------
+// DEP-Sicherungen — Protokoll automatischer und manueller Archiv-Exporte
+// ---------------------------------------------------------------------------
+
+export const depSicherungen = pgTable('dep_sicherungen', {
+  id:            uuid('id').primaryKey().defaultRandom(),
+  mandantId:     uuid('mandant_id').notNull().references(() => mandanten.id),
+  kasseId:       uuid('kasse_id').notNull().references(() => kassen.id),
+  erstelltAm:   timestamp('erstellt_am', { withTimezone: true }).notNull().defaultNow(),
+  /** 'dep7' | 'dep131' */
+  format:        varchar('format', { length: 10 }).notNull(),
+  anzahlBelege:  integer('anzahl_belege').notNull(),
+  dateipfad:     text('dateipfad').notNull(),
+  dateiname:     text('dateiname').notNull(),
+  /** true = Cron, false = manuell ausgelöst */
+  automatisch:   boolean('automatisch').notNull().default(false),
+}, (t) => ({
+  kasseIdx: index('dep_sicherungen_kasse_idx').on(t.kasseId, t.erstelltAm),
+}))
+
+export type DepSicherung    = typeof depSicherungen.$inferSelect
+export type NewDepSicherung = typeof depSicherungen.$inferInsert
+
+// ---------------------------------------------------------------------------
+// Prüfungs-Tokens — zeitlich begrenzte Read-only-Links für Finanzprüfer
+// ---------------------------------------------------------------------------
+
+export const pruefungsTokens = pgTable('pruefungs_tokens', {
+  id:                 uuid('id').primaryKey().defaultRandom(),
+  mandantId:          uuid('mandant_id').notNull().references(() => mandanten.id),
+  kasseId:            uuid('kasse_id').notNull().references(() => kassen.id),
+  /** 32 zufällige Bytes als Hex-String (64 Zeichen) */
+  token:              varchar('token', { length: 64 }).notNull(),
+  erstelltAm:        timestamp('erstellt_am', { withTimezone: true }).notNull().defaultNow(),
+  gueltigBis:         timestamp('gueltig_bis', { withTimezone: true }).notNull(),
+  erstelltVonUserId:  uuid('erstellt_von_user_id').references(() => users.id, { onDelete: 'set null' }),
+  beschreibung:       text('beschreibung'),
+  widerrufen:         boolean('widerrufen').notNull().default(false),
+  letzteVerwendung:   timestamp('letzte_verwendung', { withTimezone: true }),
+}, (t) => ({
+  tokenIdx: uniqueIndex('pruefungs_tokens_token_idx').on(t.token),
+  kasseIdx: index('pruefungs_tokens_kasse_idx').on(t.kasseId),
+}))
+
+export type PruefungsToken    = typeof pruefungsTokens.$inferSelect
+export type NewPruefungsToken = typeof pruefungsTokens.$inferInsert
