@@ -11,7 +11,7 @@ import {
   type ModifikatorGruppeErstellen,
   type ModifikatorErstellen,
 } from '@kassa/shared'
-import { artikelApi, kategorieApi, modifikatorApi, bonierdruckerApi } from '../lib/api'
+import { artikelApi, kategorieApi, modifikatorApi, bonierdruckerApi, lieferantApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
 import { Modal } from '../components/ui/Modal'
@@ -85,6 +85,11 @@ export function ArtikelPage() {
   const bonierdruckerQuery = useQuery({
     queryKey: ['bonierdrucker'],
     queryFn:  bonierdruckerApi.list,
+  })
+
+  const lieferantenQuery = useQuery({
+    queryKey: ['lieferanten'],
+    queryFn:  lieferantApi.list,
   })
 
   const invalidateArtikel = () =>
@@ -661,6 +666,7 @@ export function ArtikelPage() {
           initial={editing}
           kategorien={katList.data}
           bonierdrucker={bonierdruckerQuery.data}
+          lieferanten={lieferantenQuery.data}
           onSubmit={handleSubmit}
           onCancel={() => { setModalOpen(false); setEditing(null); setError(null) }}
           loading={create.isPending || update.isPending}

@@ -37,6 +37,7 @@ import { auditRoute }           from './routes/audit.route.js'
 import { kassenbuchRoute }      from './routes/kassenbuch.route.js'
 import { depSicherungRoute }    from './routes/dep-sicherung.route.js'
 import { finanzpruefungRoute }  from './routes/finanzpruefung.route.js'
+import { lieferantRoute }       from './routes/lieferant.route.js'
 
 export interface ServerDeps {
   config:    Config
@@ -132,6 +133,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     await api.register(kassenbuchRoute,         { db: deps.db })
     await api.register(depSicherungRoute,       { db: deps.db, backupDir: deps.backupDir })
     await api.register(finanzpruefungRoute,     { db: deps.db })
+    await api.register(lieferantRoute,          { db: deps.db })
   }, { prefix: '/api' })
 
   // Globaler Fehler-Handler — fängt alle unbehandelten Fehler ab

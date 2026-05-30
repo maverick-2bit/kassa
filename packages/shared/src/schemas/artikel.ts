@@ -34,6 +34,7 @@ export const ArtikelSchema = z.object({
   reihenfolge:          z.number().int(),
   favoritenReihenfolge: z.number().int(),
   bonierdruckerId:      z.string().uuid().nullable(),
+  lieferantId:          z.string().uuid().nullable(),
   /** Artikelbild als Data-URL (client-seitig auf max. 200×200 px / JPEG komprimiert) */
   bild:                 z.string().nullable().optional(),
   createdAt:            z.string(),
@@ -54,6 +55,7 @@ export const ArtikelInputSchema = z.object({
   mindestbestand:  z.number().int().nonnegative().nullable().default(null),
   istFavorit:      z.boolean().default(false),
   bonierdruckerId: z.string().uuid().optional().nullable(),
+  lieferantId:     z.string().uuid().optional().nullable(),
   bild:            z.string().nullable().optional(),
 })
 export type ArtikelInput = z.infer<typeof ArtikelInputSchema>
@@ -62,7 +64,6 @@ export const ArtikelUpdateSchema = z.object({
   bezeichnung:          z.string().trim().min(1).max(200).optional(),
   preisBruttoCent:      z.number().int().nonnegative().optional(),
   mwstSatz:             MwStSatzSchema.optional(),
-  // artikelnummer ist schreibgeschützt (immer auto-generiert)
   station:              StationSchema.optional().nullable(),
   kategorieId:          z.string().uuid().optional().nullable(),
   aktiv:                z.boolean().optional(),
@@ -73,6 +74,7 @@ export const ArtikelUpdateSchema = z.object({
   reihenfolge:          z.number().int().nonnegative().optional(),
   favoritenReihenfolge: z.number().int().nonnegative().optional(),
   bonierdruckerId:      z.string().uuid().nullable().optional(),
+  lieferantId:          z.string().uuid().nullable().optional(),
   bild:                 z.string().nullable().optional(),
 })
 export type ArtikelUpdate = z.infer<typeof ArtikelUpdateSchema>

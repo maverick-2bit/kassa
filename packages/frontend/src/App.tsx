@@ -28,6 +28,8 @@ import { PosKonfigPage } from './pages/PosKonfigPage'
 import { DepExportPage } from './pages/DepExportPage'
 import { FinanzpruefungPage } from './pages/FinanzpruefungPage'
 import { PruefungsansichtPage } from './pages/PruefungsansichtPage'
+import { LieferantenPage } from './pages/LieferantenPage'
+import { BestelllistePage } from './pages/BestelllistePage'
 import type { Berechtigung, MandantModul } from '@kassa/shared'
 import { getAuth, hasBerechtigung, hasModul, setOnUnauthorized } from './lib/auth'
 import { getKasseIdentity } from './lib/kasse'
@@ -76,6 +78,8 @@ function AppRoutes() {
         <Route path="/offene-posten"  element={<Require b="kunden.verwalten"             ><OffenePostenPage /></Require>} />
         <Route path="/gutscheine"     element={<Require b="kasse"                        ><GutscheinPage /></Require>} />
         <Route path="/lieferungen"    element={<Require b="kasse"            m="mergeport"><LieferungenPage /></Require>} />
+        <Route path="/lieferanten"    element={<Require b="artikel.verwalten"            ><LieferantenPage /></Require>} />
+        <Route path="/bestellliste"   element={<Require b="artikel.verwalten"            ><BestelllistePage /></Require>} />
         <Route path="/dep-export"       element={<Require b="einstellungen"                ><DepExportPage /></Require>} />
         <Route path="/finanzpruefung"  element={<Require b="einstellungen"                ><FinanzpruefungPage /></Require>} />
       </Route>

@@ -8,6 +8,7 @@ import {
   type ArtikelInput,
   type Bonierdrucker,
   type Kategorie,
+  type Lieferant,
   type MwStSatz,
   type Station,
 } from '@kassa/shared'
@@ -25,25 +26,27 @@ type FormValues = {
   kategorieId:          string
   istFavorit:           boolean
   bonierdruckerId:      string
+  lieferantId:          string
   lagerstandAktiv:      boolean
   lagerstandMengeStr:   string
   mindestbestandStr:    string
 }
 
 interface Props {
-  mandantId:    string
-  initial?:     Artikel | null
-  kategorien?:  Kategorie[] | undefined
+  mandantId:     string
+  initial?:      Artikel | null
+  kategorien?:   Kategorie[] | undefined
   bonierdrucker?: Bonierdrucker[] | undefined
-  onSubmit:     (input: ArtikelInput) => void
-  onCancel:     () => void
-  loading?:     boolean
-  fehler?:      string | undefined
+  lieferanten?:  Lieferant[] | undefined
+  onSubmit:      (input: ArtikelInput) => void
+  onCancel:      () => void
+  loading?:      boolean
+  fehler?:       string | undefined
 }
 
 const MWST_OPTIONS: MwStSatz[] = ['normal', 'ermaessigt1', 'ermaessigt2', 'null', 'besonders']
 
-export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker, onSubmit, onCancel, loading, fehler }: Props) {
+export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker, lieferanten, onSubmit, onCancel, loading, fehler }: Props) {
   const [preisFehler, setPreisFehler] = useState<string | null>(null)
   const [bild,        setBild]        = useState<string | null>(initial?.bild ?? null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -84,6 +87,7 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
       kategorieId:        initial?.kategorieId      ?? '',
       istFavorit:         initial?.istFavorit       ?? false,
       bonierdruckerId:    initial?.bonierdruckerId  ?? '',
+      lieferantId:        initial?.lieferantId      ?? '',
       lagerstandAktiv:    initial?.lagerstandAktiv  ?? false,
       lagerstandMengeStr: initial?.lagerstandMenge   != null ? String(initial.lagerstandMenge)   : '',
       mindestbestandStr:  initial?.mindestbestand    != null ? String(initial.mindestbestand)    : '',
@@ -101,6 +105,7 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
       kategorieId:        initial?.kategorieId      ?? '',
       istFavorit:         initial?.istFavorit       ?? false,
       bonierdruckerId:    initial?.bonierdruckerId  ?? '',
+      lieferantId:        initial?.lieferantId      ?? '',
       lagerstandAktiv:    initial?.lagerstandAktiv  ?? false,
       lagerstandMengeStr: initial?.lagerstandMenge   != null ? String(initial.lagerstandMenge)   : '',
       mindestbestandStr:  initial?.mindestbestand    != null ? String(initial.mindestbestand)    : '',
@@ -130,6 +135,7 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
       kategorieId:     values.kategorieId      || null,
       istFavorit:      values.istFavorit,
       bonierdruckerId: values.bonierdruckerId  || null,
+      lieferantId:     values.lieferantId      || null,
       lagerstandAktiv: values.lagerstandAktiv,
       lagerstandMenge: lsMenge,
       mindestbestand:  mindest,
@@ -261,6 +267,17 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
                 <option key={d.id} value={d.id}>
                   {d.name} {d.istBackup ? '(Backup)' : ''}
                 </option>
+              ))}
+            </Select>
+          </Field>
+        )}
+
+        {lieferanten && lieferanten.length > 0 && (
+          <Field label="Lieferant" hint="Für Bestellliste und Einkauf">
+            <Select {...register('lieferantId')}>
+              <option value="">— Kein Lieferant —</option>
+              {lieferanten.map(l => (
+                <option key={l.id} value={l.id}>{l.name}</option>
               ))}
             </Select>
           </Field>

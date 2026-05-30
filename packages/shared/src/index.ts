@@ -5,6 +5,18 @@
  * gemeinsam verwendet. Single source of truth.
  */
 
+// Lieferanten
+export {
+  LieferantSchema,
+  LieferantInputSchema,
+  LieferantUpdateSchema,
+} from './schemas/lieferant.js'
+export type {
+  Lieferant,
+  LieferantInput,
+  LieferantUpdate,
+} from './schemas/lieferant.js'
+
 // Mandanten-Module + Stammdaten
 export {
   MandantModulSchema,

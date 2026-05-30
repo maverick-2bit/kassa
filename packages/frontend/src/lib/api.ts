@@ -94,6 +94,9 @@ import type {
   KassenbuchBuchung,
   KassenbuchBuchungInput,
   KassenbuchResponse,
+  Lieferant,
+  LieferantInput,
+  LieferantUpdate,
 } from '@kassa/shared'
 import { getToken, handleUnauthorized } from './auth.js'
 
@@ -347,6 +350,21 @@ export const kategorieApi = {
     request<Kategorie>('DELETE', `/api/kategorien/${id}`),
   updateReihenfolge: (eintraege: ReihenfolgeUpdate['eintraege']) =>
     request<void>('PATCH', '/api/kategorien/reihenfolge', { eintraege }),
+}
+
+// ---------------------------------------------------------------------------
+// Lieferanten
+// ---------------------------------------------------------------------------
+
+export const lieferantApi = {
+  list:       () =>
+    request<Lieferant[]>('GET', '/api/lieferanten'),
+  create:     (input: LieferantInput) =>
+    request<Lieferant>('POST', '/api/lieferanten', input),
+  update:     (id: string, input: LieferantUpdate) =>
+    request<Lieferant>('PUT', `/api/lieferanten/${id}`, input),
+  deaktiviere:(id: string) =>
+    request<void>('DELETE', `/api/lieferanten/${id}`),
 }
 
 // ---------------------------------------------------------------------------

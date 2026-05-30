@@ -44,6 +44,7 @@ function toDto(row: typeof artikel.$inferSelect): Artikel {
     reihenfolge:          row.reihenfolge,
     favoritenReihenfolge: row.favoritenReihenfolge,
     bonierdruckerId:      row.bonierdruckerId,
+    lieferantId:          row.lieferantId,
     ...(row.bild != null  && { bild: row.bild }),
     createdAt:            row.createdAt.toISOString(),
     updatedAt:            row.updatedAt.toISOString(),

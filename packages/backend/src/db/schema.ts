@@ -528,6 +528,8 @@ export const artikel = pgTable('artikel', {
   favoritenReihenfolge: integer('favoriten_reihenfolge').notNull().default(0),
   /** Override: Bonierdrucker für diesen Artikel (überschreibt Kategorie-Einstellung) */
   bonierdruckerId:     uuid('bonierdrucker_id').references(() => bonierdrucker.id, { onDelete: 'set null' }),
+  /** Lieferant für Bestellliste und Einkauf */
+  lieferantId:         uuid('lieferant_id').references((): AnyPgColumn => lieferanten.id, { onDelete: 'set null' }),
   /** Artikelbild als Data-URL (max. 200×200 px JPEG, client-seitig komprimiert) */
   bild:                text('bild'),
   createdAt:           timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -849,3 +851,25 @@ export const pruefungsTokens = pgTable('pruefungs_tokens', {
 
 export type PruefungsToken    = typeof pruefungsTokens.$inferSelect
 export type NewPruefungsToken = typeof pruefungsTokens.$inferInsert
+
+// ---------------------------------------------------------------------------
+// Lieferanten — Stammdaten für Einkauf + Bestellliste
+// ---------------------------------------------------------------------------
+
+export const lieferanten = pgTable('lieferanten', {
+  id:          uuid('id').primaryKey().defaultRandom(),
+  mandantId:   uuid('mandant_id').notNull().references(() => mandanten.id),
+  name:        text('name').notNull(),
+  kontakt:     text('kontakt'),
+  email:       varchar('email', { length: 200 }),
+  telefon:     varchar('telefon', { length: 50 }),
+  notiz:       text('notiz'),
+  aktiv:       boolean('aktiv').notNull().default(true),
+  createdAt:   timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:   timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  mandantIdx: index('lieferanten_mandant_idx').on(t.mandantId),
+}))
+
+export type Lieferant    = typeof lieferanten.$inferSelect
+export type NewLieferant = typeof lieferanten.$inferInsert
