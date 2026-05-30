@@ -1,8 +1,9 @@
 import { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { Artikel } from '@kassa/shared'
-import { artikelApi } from '../lib/api'
+import { artikelApi, kategorieApi } from '../lib/api'
 import { getAuth } from '../lib/auth'
+import { getKasseIdentity } from '../lib/kasse'
 
 // ---------------------------------------------------------------------------
 // Status-Logik
@@ -116,6 +117,7 @@ function MindestbestandCell({
 
 export function LagerstandPage() {
   const auth         = getAuth()
+  const identity     = getKasseIdentity()
   const queryClient  = useQueryClient()
   const [filter, setFilter] = useState<'alle' | 'alarm'>('alle')
   const [suche, setSuche]   = useState('')
@@ -129,6 +131,13 @@ export function LagerstandPage() {
   const updateMutation = useMutation({
     mutationFn: ({ id, mindestbestand }: { id: string; mindestbestand: number | null }) =>
       artikelApi.update(id, { mindestbestand }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['artikel'] })
+    },
+  })
+
+  const lagerAktivierenMutation = useMutation({
+    mutationFn: (kategorieId: string | null) => artikelApi.lagerAktivieren(kategorieId),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['artikel'] })
     },
@@ -157,9 +166,54 @@ export function LagerstandPage() {
       return a.bezeichnung.localeCompare(b.bezeichnung)
     })
 
+  const kategorienQuery = useQuery({
+    queryKey: ['kategorien', identity?.kasseId],
+    queryFn:  () => kategorieApi.list(identity!.kasseId),
+    enabled:  !!identity,
+  })
+
+  const [gewaehlteKategorie, setGewaehlteKategorie] = useState<string>('alle')
+
   return (
     <div className="max-w-4xl mx-auto px-4 py-6">
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Lagerstand-Übersicht</h1>
+      <h1 className="text-2xl font-bold text-gray-900 mb-4">Lagerstand-Übersicht</h1>
+
+      {/* Warengruppe in Lager aufnehmen */}
+      <div className="mb-6 rounded-xl border border-brand-200 bg-brand-50 p-4">
+        <p className="text-sm font-semibold text-brand-800 mb-3">
+          Warengruppe in Lagerführung aufnehmen
+        </p>
+        <div className="flex items-center gap-3 flex-wrap">
+          <select
+            value={gewaehlteKategorie}
+            onChange={e => setGewaehlteKategorie(e.target.value)}
+            className="flex-1 min-w-40 rounded-lg border border-brand-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+          >
+            <option value="alle">Alle Artikel (ohne Kategorie)</option>
+            {(kategorienQuery.data ?? []).map(k => (
+              <option key={k.id} value={k.id}>{k.name}</option>
+            ))}
+          </select>
+          <button
+            type="button"
+            disabled={lagerAktivierenMutation.isPending}
+            onClick={() => lagerAktivierenMutation.mutate(gewaehlteKategorie === 'alle' ? null : gewaehlteKategorie)}
+            className="shrink-0 px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-semibold hover:bg-brand-700 disabled:opacity-60 transition"
+          >
+            {lagerAktivierenMutation.isPending ? 'Wird aktiviert…' : 'Lager aktivieren'}
+          </button>
+        </div>
+        {lagerAktivierenMutation.isSuccess && (
+          <p className="mt-2 text-xs text-brand-700">
+            ✓ {lagerAktivierenMutation.data.aktiviert} Artikel in Lagerführung aufgenommen.
+          </p>
+        )}
+        {lagerAktivierenMutation.isError && (
+          <p className="mt-2 text-xs text-red-600">
+            Fehler: {lagerAktivierenMutation.error instanceof Error ? lagerAktivierenMutation.error.message : 'Unbekannt'}
+          </p>
+        )}
+      </div>
 
       {/* Statistik-Kacheln */}
       <div className="grid grid-cols-4 gap-4 mb-6">

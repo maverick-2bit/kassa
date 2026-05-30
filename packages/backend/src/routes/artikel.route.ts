@@ -10,7 +10,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { ArtikelInputSchema, ArtikelUpdateSchema } from '@kassa/shared'
 import { z } from 'zod'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, isNotNull } from 'drizzle-orm'
 import type { Db } from '../db/client.js'
 import { artikel } from '../db/schema.js'
 import {
@@ -109,6 +109,34 @@ export const artikelRoute: FastifyPluginAsync<ArtikelRouteOptions> = async (fast
     const result = await aktualisiereArtikel(opts.db, id.data.id, update.data)
     if (!result) return reply.status(404).send({ fehler: 'Artikel nicht gefunden' })
     return reply.send(result)
+  })
+
+  /**
+   * POST /artikel/lager-aktivieren — setzt lagerstandAktiv = true für alle
+   * Artikel einer Warengruppe (oder alle aktiven Artikel ohne Kategorie).
+   */
+  fastify.post('/artikel/lager-aktivieren', { onRequest: [fastify.authenticate] }, async (request, reply) => {
+    const parsed = z.object({
+      kategorieId: z.string().uuid().nullable(),
+    }).safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
+
+    const mandantId  = request.user.mandantId
+    const where = parsed.data.kategorieId === null
+      ? and(eq(artikel.mandantId, mandantId), eq(artikel.aktiv, true))
+      : and(
+          eq(artikel.mandantId, mandantId),
+          eq(artikel.aktiv, true),
+          eq(artikel.kategorieId, parsed.data.kategorieId),
+        )
+
+    const rows = await opts.db
+      .update(artikel)
+      .set({ lagerstandAktiv: true, updatedAt: new Date() })
+      .where(where)
+      .returning({ id: artikel.id })
+
+    return reply.send({ aktiviert: rows.length })
   })
 
   fastify.delete('/artikel/:id', { onRequest: [fastify.authenticate] }, async (request, reply) => {

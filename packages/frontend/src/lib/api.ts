@@ -328,6 +328,8 @@ export const artikelApi = {
     request<void>('PATCH', '/api/artikel/reihenfolge', { eintraege }),
   updateFavoritenReihenfolge: (eintraege: FavoritenReihenfolgeUpdate['eintraege']) =>
     request<void>('PATCH', '/api/artikel/favoriten-reihenfolge', { eintraege }),
+  lagerAktivieren: (kategorieId: string | null) =>
+    request<{ aktiviert: number }>('POST', '/api/artikel/lager-aktivieren', { kategorieId }),
 }
 
 // ---------------------------------------------------------------------------

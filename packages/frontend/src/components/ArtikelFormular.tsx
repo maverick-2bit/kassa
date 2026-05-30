@@ -267,8 +267,8 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
         )}
       </div>
 
-      {/* Lagerstand / Countdown */}
-      <div className="rounded-lg border border-gray-200 p-3 space-y-3">
+      {/* Lager führen */}
+      <div className={`rounded-lg border p-3 space-y-3 transition ${lagerstandAktiv ? 'border-brand-300 bg-brand-50' : 'border-gray-200'}`}>
         <label className="flex items-center gap-3 cursor-pointer">
           <input
             type="checkbox"
@@ -276,16 +276,21 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
             {...register('lagerstandAktiv')}
           />
           <div>
-            <p className="text-sm font-medium text-gray-800">Lagerstand (Countdown)</p>
-            <p className="text-xs text-gray-400">
-              Artikel wird bei Bestand&nbsp;= 0 automatisch gesperrt
+            <p className="text-sm font-semibold text-gray-800">Lager führen</p>
+            <p className="text-xs text-gray-500">
+              Bestand wird bei jeder Buchung abgezogen. Artikel sperrt bei Bestand = 0.
             </p>
           </div>
+          {lagerstandAktiv && (
+            <span className="ml-auto shrink-0 inline-flex items-center rounded-full bg-brand-100 px-2 py-0.5 text-xs font-semibold text-brand-700">
+              Aktiv
+            </span>
+          )}
         </label>
 
         {lagerstandAktiv && (
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Aktueller Bestand" hint="Leer = unbegrenzt">
+          <div className="grid grid-cols-2 gap-3 pt-1 border-t border-brand-200">
+            <Field label="Aktueller Bestand" hint="Leer lassen = unbegrenzt">
               <Input
                 type="number"
                 min="0"
@@ -294,7 +299,7 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
                 {...register('lagerstandMengeStr')}
               />
             </Field>
-            <Field label="Mindestbestand" hint="Warnung bei Unterschreitung">
+            <Field label="Mindestbestand" hint="Alarm wenn Bestand ≤ diesem Wert">
               <Input
                 type="number"
                 min="0"
