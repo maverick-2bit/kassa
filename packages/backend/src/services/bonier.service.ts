@@ -17,6 +17,7 @@ import { sendeBonierbon, type KdsZiel } from './kds/sender.js'
 import { druckeBonierbon } from './bonierdrucker.service.js'
 import { emitKasseEvent } from '../sse/event-bus.js'
 import { logBonierEreignis } from './tisch-tab.service.js'
+import { kdsBonErstellen } from './kds/kds-store.service.js'
 
 export class BonierError extends Error {
   constructor(public readonly httpStatus: number, message: string) {
@@ -253,6 +254,26 @@ export async function bonierBestellung(
     bonNummer,
     stationen: stationenErgebnisse,
     drucker:   druckerErgebnisse,
+  }
+
+  // 11a. KDS-Bons in DB schreiben (Browser-Display) — parallel, Fehler nicht fatal
+  if (kasse.kdsAktiv && proStation.size > 0) {
+    const schreibPromises = [...proStation.entries()].map(([station, positionen]) =>
+      kdsBonErstellen(deps.db, {
+        mandantId:  kasse.mandantId,
+        bonNummer,
+        station,
+        tisch:      input.tisch,
+        bereich:    input.bereich,
+        kellner:    input.kellner,
+        positionen: positionen.map(p => ({
+          bezeichnung: p.bezeichnung,
+          menge:       p.menge,
+          details:     p.details,
+        })),
+      }).catch(err => { console.error('KDS-DB-Fehler:', err) })
+    )
+    await Promise.all(schreibPromises)
   }
 
   emitKasseEvent(kasse.mandantId, {

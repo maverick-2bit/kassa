@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useOffline } from '../lib/useOffline'
 import type {
   Artikel,
   AngebotResponse,
@@ -65,6 +66,8 @@ type KorbPosition = ArtikelKorbPosition | FreieKorbPosition
 export function KassePage() {
   const identity = getKasseIdentity()!
   const queryClient = useQueryClient()
+  const { online, queueCount } = useOffline()
+  const [offlineBelegGespeichert, setOfflineBelegGespeichert] = useState(false)
 
   const [modus, setModus] = useState<'verkauf' | 'angebot'>('verkauf')
   const [korb, setKorb] = useState<KorbPosition[]>([])
@@ -255,6 +258,13 @@ export function KassePage() {
   const belegMutation = useMutation({
     mutationFn: belegApi.barzahlung,
     onSuccess: async (beleg) => {
+      // Offline-Fall: SW gibt 202 + { _offline: true } zurück
+      if ((beleg as unknown as { _offline?: boolean })?._offline) {
+        setOfflineBelegGespeichert(true)
+        setTimeout(() => setOfflineBelegGespeichert(false), 5000)
+        reset()
+        return
+      }
       // Gutschein einlösen — ref hält den Wert noch vor reset()
       const gs = gutscheinRef.current
       if (gs) {
@@ -437,6 +447,29 @@ export function KassePage() {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-4">
+      {/* Offline-Beleg-gespeichert Toast */}
+      {offlineBelegGespeichert && (
+        <div className="mb-3 bg-amber-50 border border-amber-300 text-amber-800
+                        rounded-lg px-4 py-3 flex items-center gap-3 text-sm font-medium">
+          <span className="text-lg">📥</span>
+          <span>
+            Beleg offline gespeichert — wird automatisch übermittelt sobald die Verbindung wiederhergestellt ist
+          </span>
+        </div>
+      )}
+      {/* Offline-Indikator mit Queue-Stand */}
+      {!online && (
+        <div className="mb-3 bg-amber-100 border border-amber-400 text-amber-900
+                        rounded-lg px-4 py-2 flex items-center gap-2 text-xs">
+          <span>📡</span>
+          <span>Kasse arbeitet im Offline-Modus</span>
+          {queueCount > 0 && (
+            <span className="ml-auto font-semibold">
+              {queueCount} {queueCount === 1 ? 'Beleg' : 'Belege'} ausstehend
+            </span>
+          )}
+        </div>
+      )}
       {/* Kontext-Leiste: Modus + Tisch + Kellner */}
       <div className="mb-3 bg-white rounded-lg shadow-sm border border-gray-200 px-3 py-2 flex flex-wrap items-center gap-3">
         {/* Modus-Toggle */}

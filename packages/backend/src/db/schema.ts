@@ -873,3 +873,35 @@ export const lieferanten = pgTable('lieferanten', {
 
 export type Lieferant    = typeof lieferanten.$inferSelect
 export type NewLieferant = typeof lieferanten.$inferInsert
+
+// ---------------------------------------------------------------------------
+// KDS-Bons — aktive Bonierbons für Browser-basiertes Küchen-Display
+// ---------------------------------------------------------------------------
+
+export const kdsBons = pgTable('kds_bons', {
+  id:         uuid('id').primaryKey().defaultRandom(),
+  mandantId:  uuid('mandant_id').notNull().references(() => mandanten.id, { onDelete: 'cascade' }),
+  bonNummer:  varchar('bon_nummer', { length: 20 }).notNull(),
+  station:    varchar('station', { length: 20 }).notNull(),
+  tisch:      varchar('tisch', { length: 40 }).notNull(),
+  bereich:    varchar('bereich', { length: 60 }),
+  kellner:    varchar('kellner', { length: 60 }).notNull(),
+  /** [{id, bezeichnung, menge, details?, erledigt}] */
+  positionen: jsonb('positionen').notNull().$type<KdsPosition[]>(),
+  /** 'offen' | 'erledigt' */
+  status:     varchar('status', { length: 20 }).notNull().default('offen'),
+  erstelltAt: timestamp('erstellt_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  mandantStationIdx: index('kds_bons_mandant_station_idx').on(t.mandantId, t.station, t.status),
+}))
+
+export interface KdsPosition {
+  id:          string
+  bezeichnung: string
+  menge:       number
+  details?:    string
+  erledigt:    boolean
+}
+
+export type KdsBon    = typeof kdsBons.$inferSelect
+export type NewKdsBon = typeof kdsBons.$inferInsert
