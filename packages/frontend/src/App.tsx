@@ -30,6 +30,7 @@ import { FinanzpruefungPage } from './pages/FinanzpruefungPage'
 import { PruefungsansichtPage } from './pages/PruefungsansichtPage'
 import { LieferantenPage } from './pages/LieferantenPage'
 import { BestelllistePage } from './pages/BestelllistePage'
+import { ModifikatorenPage } from './pages/ModifikatorenPage'
 import type { Berechtigung, MandantModul } from '@kassa/shared'
 import { getAuth, hasBerechtigung, hasModul, setOnUnauthorized } from './lib/auth'
 import { getKasseIdentity } from './lib/kasse'
@@ -63,6 +64,7 @@ function AppRoutes() {
         <Route path="/artikel"        element={<Require b="artikel.verwalten"            ><ArtikelPage /></Require>} />
         <Route path="/wareneingang"   element={<Require b="artikel.verwalten"            ><WareneingangPage /></Require>} />
         <Route path="/lagerstand"     element={<Require b="artikel.verwalten"            ><LagerstandPage /></Require>} />
+        <Route path="/modifikatoren"    element={<Require b="artikel.verwalten"            ><ModifikatorenPage /></Require>} />
         <Route path="/pos-konfiguration" element={<Require b="einstellungen"             ><PosKonfigPage /></Require>} />
         <Route path="/bonierdrucker"     element={<Require b="einstellungen"  m="gastro" ><BonierdruckerPage /></Require>} />
         <Route path="/belege"         element={<Require b="belege.lesen"                 ><BelegePage /></Require>} />

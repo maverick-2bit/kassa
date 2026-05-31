@@ -48,6 +48,7 @@ function Header() {
           {hasBerechtigung('artikel.verwalten')                           && <NavItem to="/artikel">Artikel</NavItem>}
           {hasBerechtigung('artikel.verwalten')                           && <NavItem to="/wareneingang">Wareneingang</NavItem>}
           {hasBerechtigung('artikel.verwalten')                           && <NavItem to="/lagerstand">Lagerstand</NavItem>}
+          {hasBerechtigung('artikel.verwalten')                           && <NavItem to="/modifikatoren">Optionen</NavItem>}
           {hasBerechtigung('artikel.verwalten')                           && <NavItem to="/bestellliste">Bestellliste</NavItem>}
           {hasBerechtigung('artikel.verwalten')                           && <NavItem to="/lieferanten">Lieferanten</NavItem>}
           {hasBerechtigung('kunden.verwalten')                            && <NavItem to="/kunden">Kunden</NavItem>}
