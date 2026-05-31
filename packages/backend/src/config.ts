@@ -18,6 +18,13 @@ const ConfigSchema = z.object({
   NODE_ENV:          z.enum(['development', 'test', 'production']).default('development'),
   /** Verzeichnis für DEP-Sicherungsdateien (absolut oder relativ zum CWD) */
   DEP_BACKUP_DIR:    z.string().default('./dep-backups'),
+
+  // ── SMTP (optional — wenn nicht gesetzt, ist E-Mail-Versand deaktiviert) ──
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().int().default(587),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  SMTP_FROM: z.string().optional(),
 })
 
 export type Config = z.infer<typeof ConfigSchema>

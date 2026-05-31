@@ -1,0 +1,204 @@
+/**
+ * Kundendisplay — zeigt den aktuellen Warenkorb der Kasse in Echtzeit.
+ *
+ * URL: http://<server>:8081?kasseId=<uuid>
+ *
+ * Zustände:
+ *   leer          → Begrüßungsbildschirm
+ *   warenkorb     → Artikel-Liste mit laufender Summe
+ *   beleg_erstellt → Dankeschön-Bildschirm (5 Sekunden)
+ */
+
+import { useState, useEffect, useCallback, useRef } from 'react'
+
+// ---------------------------------------------------------------------------
+// Typen (gespiegelt vom Backend display-event-bus.ts)
+// ---------------------------------------------------------------------------
+
+interface DisplayPosition {
+  bezeichnung: string
+  menge:       number
+  preisCent:   number
+}
+
+type DisplayEvent =
+  | { typ: 'warenkorb';     positionen: DisplayPosition[]; summeCent: number }
+  | { typ: 'beleg_erstellt'; belegNummer: number; summeCent: number }
+  | { typ: 'leer' }
+
+// ---------------------------------------------------------------------------
+// Hilfsfunktion
+// ---------------------------------------------------------------------------
+
+function formatPreis(cent: number): string {
+  return (cent / 100).toLocaleString('de-AT', { style: 'currency', currency: 'EUR' })
+}
+
+// ---------------------------------------------------------------------------
+// SSE-Hook
+// ---------------------------------------------------------------------------
+
+function useDisplaySse(kasseId: string, onEvent: (e: DisplayEvent) => void) {
+  const onEventRef = useRef(onEvent)
+  onEventRef.current = onEvent
+
+  const connect = useCallback(() => {
+    const es = new EventSource(`/sse/display?kasseId=${kasseId}`)
+    es.onmessage = (e) => {
+      try { onEventRef.current(JSON.parse(e.data) as DisplayEvent) } catch {}
+    }
+    es.onerror = () => {
+      es.close()
+      setTimeout(connect, 3000)
+    }
+    return es
+  }, [kasseId])
+
+  useEffect(() => {
+    const es = connect()
+    return () => es.close()
+  }, [connect])
+}
+
+// ---------------------------------------------------------------------------
+// Uhr-Komponente
+// ---------------------------------------------------------------------------
+
+function Uhrzeit() {
+  const [zeit, setZeit] = useState(() =>
+    new Date().toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' })
+  )
+  useEffect(() => {
+    const id = setInterval(() =>
+      setZeit(new Date().toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' }))
+    , 10_000)
+    return () => clearInterval(id)
+  }, [])
+  return <>{zeit}</>
+}
+
+// ---------------------------------------------------------------------------
+// Haupt-App
+// ---------------------------------------------------------------------------
+
+export default function App() {
+  const kasseId = new URLSearchParams(window.location.search).get('kasseId') ?? ''
+  const [state, setState] = useState<DisplayEvent>({ typ: 'leer' })
+
+  useDisplaySse(kasseId, useCallback((ev) => setState(ev), []))
+
+  if (!kasseId) {
+    return (
+      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+        <p className="text-gray-500 text-lg">Keine kasseId in der URL angegeben.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-950 text-white flex flex-col select-none">
+      {/* Header-Leiste */}
+      <div className="flex items-center justify-between px-8 py-4 border-b border-gray-800">
+        <div className="flex items-center gap-3">
+          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-600">
+            <svg className="h-5 w-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 3h18v4H3zM3 11h18v10H3zM7 15h2M7 18h2"/>
+            </svg>
+          </span>
+          <span className="font-semibold text-gray-200 text-lg">Ihre Bestellung</span>
+        </div>
+        <span className="text-gray-400 text-xl font-mono tabular-nums"><Uhrzeit /></span>
+      </div>
+
+      {/* Haupt-Bereich */}
+      <div className="flex-1 flex flex-col">
+        {state.typ === 'leer' && <LeerBildschirm />}
+        {state.typ === 'warenkorb' && <WarenkorbAnsicht positionen={state.positionen} summeCent={state.summeCent} />}
+        {state.typ === 'beleg_erstellt' && <DankeschoenBildschirm belegNummer={state.belegNummer} summeCent={state.summeCent} />}
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Leerer Bildschirm
+// ---------------------------------------------------------------------------
+
+function LeerBildschirm() {
+  return (
+    <div className="flex-1 flex flex-col items-center justify-center gap-6 p-12">
+      <div className="w-24 h-24 rounded-full bg-gray-800 flex items-center justify-center">
+        <svg className="h-12 w-12 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 00-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 00-16.536-1.84M7.5 14.25L5.106 5.272M6 20.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm12.75 0a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" />
+        </svg>
+      </div>
+      <div className="text-center space-y-2">
+        <p className="text-2xl font-semibold text-gray-400">Willkommen</p>
+        <p className="text-gray-600">Ihre Bestellungen werden hier angezeigt.</p>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Warenkorb-Ansicht
+// ---------------------------------------------------------------------------
+
+function WarenkorbAnsicht({ positionen, summeCent }: { positionen: DisplayPosition[]; summeCent: number }) {
+  return (
+    <div className="flex-1 flex flex-col max-w-2xl mx-auto w-full px-8 py-6 gap-4">
+      {/* Positions-Liste */}
+      <div className="flex-1 space-y-2 overflow-auto">
+        {positionen.map((pos, i) => (
+          <div
+            key={i}
+            className="flex items-center justify-between bg-gray-900 rounded-xl px-5 py-4 border border-gray-800"
+          >
+            <div className="flex items-center gap-4">
+              <span className="text-2xl font-black text-amber-400 w-10 text-right shrink-0">
+                {pos.menge}×
+              </span>
+              <span className="text-xl font-semibold text-white">{pos.bezeichnung}</span>
+            </div>
+            <span className="text-xl font-mono font-semibold text-gray-300 shrink-0 ml-4">
+              {formatPreis(pos.preisCent * pos.menge)}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {/* Summen-Leiste */}
+      <div className="border-t border-gray-700 pt-4 flex items-center justify-between">
+        <span className="text-2xl font-bold text-gray-200">Gesamt</span>
+        <span className="text-4xl font-black text-white font-mono tabular-nums">
+          {formatPreis(summeCent)}
+        </span>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Dankeschön-Bildschirm
+// ---------------------------------------------------------------------------
+
+function DankeschoenBildschirm({ belegNummer, summeCent }: { belegNummer: number; summeCent: number }) {
+  return (
+    <div className="flex-1 flex flex-col items-center justify-center gap-8 p-12">
+      <div className="w-28 h-28 rounded-full bg-emerald-900/50 border-4 border-emerald-500 flex items-center justify-center">
+        <svg className="h-14 w-14 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+        </svg>
+      </div>
+      <div className="text-center space-y-3">
+        <p className="text-4xl font-black text-emerald-400">Danke!</p>
+        <p className="text-xl text-gray-300">
+          Beleg <span className="font-mono font-bold">#{belegNummer}</span>
+        </p>
+        <p className="text-3xl font-black font-mono text-white tabular-nums">
+          {formatPreis(summeCent)}
+        </p>
+      </div>
+    </div>
+  )
+}

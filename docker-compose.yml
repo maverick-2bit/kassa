@@ -54,6 +54,18 @@ services:
     ports:
       - "${FRONTEND_PORT:-80}:80"
 
+  # ── Kundendisplay (Vite → nginx) ─────────────────────────────────────────────
+  kundendisplay:
+    build:
+      context:    .
+      dockerfile: packages/kundendisplay/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${KUNDENDISPLAY_PORT:-8081}:80"
+
   # ── KDS-Display (Vite → nginx) ───────────────────────────────────────────────
   kds:
     build:
