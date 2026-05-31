@@ -3,10 +3,12 @@ import { useQueries } from '@tanstack/react-query'
 import { clearAuth, getAuth, hasBerechtigung, hasModul } from '../lib/auth'
 import { kasseApi } from '../lib/api'
 import { KdsToasts } from './KdsToasts'
+import { OfflineStatusBar } from './OfflineStatusBar'
 
 export function Layout() {
   return (
     <div className="min-h-screen flex flex-col">
+      <OfflineStatusBar />
       <Header />
       <main className="flex-1">
         <Outlet />
