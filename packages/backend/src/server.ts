@@ -39,6 +39,8 @@ import { depSicherungRoute }    from './routes/dep-sicherung.route.js'
 import { finanzpruefungRoute }  from './routes/finanzpruefung.route.js'
 import { lieferantRoute }       from './routes/lieferant.route.js'
 import { kdsRoute }            from './routes/kds.route.js'
+import { registerDisplayRoutes } from './routes/display.route.js'
+import { emailRoute }            from './routes/email.route.js'
 
 export interface ServerDeps {
   config:    Config
@@ -101,6 +103,9 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   // SSE ausserhalb des /api-Prefix registrieren (eigener Prefix /sse)
   await fastify.register(sseRoute)
 
+  // Display-Routen: POST /api/display + GET /sse/display
+  await registerDisplayRoutes(fastify)
+
   await fastify.register(async (api) => {
     // Offene Routen (kein Login nötig)
     await api.register(healthRoute,  { db:   deps.db })
@@ -136,6 +141,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     await api.register(finanzpruefungRoute,     { db: deps.db })
     await api.register(lieferantRoute,          { db: deps.db })
     await api.register(kdsRoute,                { db: deps.db })
+    await api.register(emailRoute,              { db: deps.db, config: deps.config })
   }, { prefix: '/api' })
 
   // Globaler Fehler-Handler — fängt alle unbehandelten Fehler ab

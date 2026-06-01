@@ -864,4 +864,33 @@ export const kassenbuchApi = {
     request<{ erfolgreich: boolean }>('POST', '/api/kassenbuch/drucken', { kasseId, von, bis }),
 }
 
+// ---------------------------------------------------------------------------
+// Kundendisplay
+// ---------------------------------------------------------------------------
+
+export interface DisplayPosition {
+  bezeichnung: string
+  menge:       number
+  preisCent:   number
+}
+
+export type DisplayEventPayload =
+  | { typ: 'warenkorb'; positionen: DisplayPosition[]; summeCent: number }
+  | { typ: 'beleg_erstellt'; belegNummer: number; summeCent: number }
+  | { typ: 'leer' }
+
+export const displayApi = {
+  push: (kasseId: string, event: DisplayEventPayload) =>
+    request<{ ok: boolean }>('POST', '/api/display', { kasseId, event }),
+}
+
+// ---------------------------------------------------------------------------
+// E-Mail-Versand
+// ---------------------------------------------------------------------------
+
+export const emailApi = {
+  sendBeleg: (belegId: string, empfaenger: string) =>
+    request<{ erfolgreich: boolean }>('POST', `/api/belege/${belegId}/email`, { empfaenger }),
+}
+
 export { ApiError }

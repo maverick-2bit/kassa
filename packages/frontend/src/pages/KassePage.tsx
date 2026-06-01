@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useOffline } from '../lib/useOffline'
+import { displayApi } from '../lib/api'
 import type {
   Artikel,
   AngebotResponse,
@@ -20,7 +21,7 @@ import type {
   TischTabResponse,
 } from '@kassa/shared'
 import { GUTSCHEIN_STATUS_LABELS, MWST_LABELS, STATION_LABELS } from '@kassa/shared'
-import { angebotApi, artikelApi, belegApi, bonierApi, gutscheinApi, kategorieApi, lieferscheinApi, modifikatorApi, offenerPostenApi, posConfigApi, tischTabApi, zvtApi } from '../lib/api'
+import { angebotApi, artikelApi, belegApi, bonierApi, gutscheinApi, kategorieApi, lieferscheinApi, modifikatorApi, offenerPostenApi, posConfigApi, tischTabApi, zvtApi, displayApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { getAuth, hasBerechtigung } from '../lib/auth'
 import { formatPreis } from '../lib/format'
@@ -71,6 +72,27 @@ export function KassePage() {
 
   const [modus, setModus] = useState<'verkauf' | 'angebot'>('verkauf')
   const [korb, setKorb] = useState<KorbPosition[]>([])
+
+  // Display-Push: Warenkorb-Änderungen ans Kundendisplay senden (debounced)
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (!identity.kasseId) return
+      if (korb.length === 0) {
+        displayApi.push(identity.kasseId, { typ: 'leer' }).catch(() => {})
+      } else {
+        displayApi.push(identity.kasseId, {
+          typ:        'warenkorb',
+          positionen: korb.map(p => ({
+            bezeichnung: p.typ === 'frei' ? p.bezeichnung : p.artikel.bezeichnung,
+            menge:       p.menge,
+            preisCent:   p.preisCent,
+          })),
+          summeCent: korb.reduce((s, p) => s + p.preisCent * p.menge, 0),
+        }).catch(() => {})
+      }
+    }, 200)
+    return () => clearTimeout(t)
+  }, [korb, identity.kasseId])
   const [rabatt, setRabatt] = useState<RabattInput | null>(null)
   const [rabattOffen, setRabattOffen] = useState(false)
   const [artikelRabattIdx, setArtikelRabattIdx] = useState<number | null>(null)
@@ -286,6 +308,10 @@ export function KassePage() {
           console.error('Gutschein-Einlösung fehlgeschlagen:', e)
         }
       }
+      // Display: Beleg-Bestätigung anzeigen, dann leer
+      const summeCent = (beleg.zahlungen?.barCent ?? 0) + (beleg.zahlungen?.karteCent ?? 0) + (beleg.zahlungen?.sonstigeCent ?? 0)
+      displayApi.push(identity.kasseId, { typ: 'beleg_erstellt', belegNummer: beleg.belegNummer, summeCent }).catch(() => {})
+      setTimeout(() => displayApi.push(identity.kasseId, { typ: 'leer' }).catch(() => {}), 5000)
       setLetzterBon(beleg)
       reset()
       void queryClient.invalidateQueries({ queryKey: ['belege'] })

@@ -7,7 +7,7 @@ import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import type { BelegResponse } from '@kassa/shared'
 import { MWST_LABELS } from '@kassa/shared'
-import { druckerApi } from '../lib/api'
+import { druckerApi, emailApi } from '../lib/api'
 import { formatPreis, formatDatum } from '../lib/format'
 import { druckeRechnung } from '../lib/rechnung'
 import { getAuth } from '../lib/auth'
@@ -20,9 +20,18 @@ interface Props {
 
 export function BonAnzeige({ beleg, codeAufgeklappt = false }: Props) {
   const [druckStatus, setDruckStatus] = useState<{ typ: 'ok' | 'fehler'; text: string } | null>(null)
+  const [emailOffen,  setEmailOffen]  = useState(false)
+  const [emailAdresse, setEmailAdresse] = useState('')
+
   const druckMutation = useMutation({
     mutationFn: () => druckerApi.reprint(beleg.id),
     onSuccess:  () => setDruckStatus({ typ: 'ok', text: 'Druckauftrag gesendet' }),
+    onError:    (err) => setDruckStatus({ typ: 'fehler', text: err instanceof Error ? err.message : String(err) }),
+  })
+
+  const emailMutation = useMutation({
+    mutationFn: () => emailApi.sendBeleg(beleg.id, emailAdresse.trim()),
+    onSuccess:  () => { setDruckStatus({ typ: 'ok', text: `E-Mail an ${emailAdresse.trim()} gesendet` }); setEmailOffen(false); setEmailAdresse('') },
     onError:    (err) => setDruckStatus({ typ: 'fehler', text: err instanceof Error ? err.message : String(err) }),
   })
   const steuerEintraege = (
@@ -158,6 +167,41 @@ export function BonAnzeige({ beleg, codeAufgeklappt = false }: Props) {
             </svg>
             {druckMutation.isPending ? 'Drucke…' : 'Bon drucken'}
           </button>
+          {/* E-Mail-Button */}
+          {!emailOffen ? (
+            <button
+              type="button"
+              onClick={() => { setDruckStatus(null); setEmailOffen(true) }}
+              className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z"/>
+                <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z"/>
+              </svg>
+              Per E-Mail
+            </button>
+          ) : (
+            <div className="flex items-center gap-1.5">
+              <input
+                autoFocus
+                type="email"
+                value={emailAdresse}
+                onChange={e => setEmailAdresse(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && emailAdresse.includes('@')) emailMutation.mutate() }}
+                placeholder="email@example.com"
+                className="rounded-md border border-gray-300 px-2.5 py-1.5 text-sm w-44 focus:outline-none focus:ring-1 focus:ring-brand-400"
+              />
+              <button
+                type="button"
+                onClick={() => emailMutation.mutate()}
+                disabled={emailMutation.isPending || !emailAdresse.includes('@')}
+                className="rounded-md bg-brand-600 px-2.5 py-1.5 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+              >
+                {emailMutation.isPending ? '…' : 'Senden'}
+              </button>
+              <button type="button" onClick={() => setEmailOffen(false)} className="text-gray-400 hover:text-gray-600 px-1">✕</button>
+            </div>
+          )}
         </div>
       </div>
 
