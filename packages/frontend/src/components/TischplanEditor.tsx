@@ -172,7 +172,8 @@ export function TischplanEditor() {
               bereich={aktiveBereich}
               selectedElId={selectedElId}
               onSelect={setSelectedElId}
-              onMove={(id, x, y) => aktualisiereElMut.mutate({ id, x, y })}
+              onMove={(id, x, y)           => aktualisiereElMut.mutate({ id, x, y })}
+              onResize={(id, breite, hoehe) => aktualisiereElMut.mutate({ id, breite, hoehe })}
             />
             <div className="mt-2 flex justify-end">
               <Button
@@ -260,49 +261,89 @@ function BereichTab({
 // ---------------------------------------------------------------------------
 
 function PlanCanvas({
-  bereich, selectedElId, onSelect, onMove,
+  bereich, selectedElId, onSelect, onMove, onResize,
 }: {
   bereich:      TischplanBereich
   selectedElId: string | null
   onSelect:     (id: string) => void
   onMove:       (id: string, x: number, y: number) => void
+  onResize:     (id: string, breite: number, hoehe: number) => void
 }) {
-  const canvasRef  = useRef<HTMLDivElement>(null)
-  const dragRef    = useRef<{ id: string; startX: number; startY: number; origX: number; origY: number } | null>(null)
+  const canvasRef = useRef<HTMLDivElement>(null)
 
-  // Lokale Positions-Überschreibung während des Drags (für flüssige Animation)
-  const [dragging, setDragging] = useState<{ id: string; x: number; y: number } | null>(null)
+  const dragRef   = useRef<{ id: string; startX: number; startY: number; origX: number; origY: number } | null>(null)
+  const resizeRef = useRef<{ id: string; startX: number; startY: number; origB: number; origH: number } | null>(null)
 
-  const onPointerDown = useCallback((e: React.PointerEvent, el: TischplanElement) => {
+  type LocalState = { x?: number; y?: number; breite?: number; hoehe?: number }
+  const [local, setLocal] = useState<Map<string, LocalState>>(new Map())
+
+  const getRect = () => canvasRef.current?.getBoundingClientRect()
+
+  // ── Drag (Verschieben) ──────────────────────────────────────────────────────
+  const onElPointerDown = useCallback((e: React.PointerEvent, el: TischplanElement) => {
+    if ((e.target as HTMLElement).dataset.resize) return  // Resize-Handle → nicht drag
     e.currentTarget.setPointerCapture(e.pointerId)
     onSelect(el.id)
     dragRef.current = { id: el.id, startX: e.clientX, startY: e.clientY, origX: el.x, origY: el.y }
-    setDragging({ id: el.id, x: el.x, y: el.y })
+    setLocal(prev => { const m = new Map(prev); m.set(el.id, { x: el.x, y: el.y }); return m })
   }, [onSelect])
 
-  const onPointerMove = useCallback((e: React.PointerEvent) => {
-    if (!dragRef.current || !canvasRef.current) return
-    const rect = canvasRef.current.getBoundingClientRect()
-    const dx = ((e.clientX - dragRef.current.startX) / rect.width)  * 100
-    const dy = ((e.clientY - dragRef.current.startY) / rect.height) * 100
-    const newX = Math.max(0, Math.min(95, dragRef.current.origX + dx))
-    const newY = Math.max(0, Math.min(95, dragRef.current.origY + dy))
-    setDragging({ id: dragRef.current.id, x: newX, y: newY })
+  // ── Resize-Handle ────────────────────────────────────────────────────────────
+  const onResizePointerDown = useCallback((e: React.PointerEvent, el: TischplanElement) => {
+    e.stopPropagation()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    onSelect(el.id)
+    resizeRef.current = { id: el.id, startX: e.clientX, startY: e.clientY, origB: el.breite, origH: el.hoehe }
+    setLocal(prev => { const m = new Map(prev); m.set(el.id, { breite: el.breite, hoehe: el.hoehe }); return m })
+  }, [onSelect])
+
+  // ── Pointer Move (Canvas-Level) ──────────────────────────────────────────────
+  const onCanvasPointerMove = useCallback((e: React.PointerEvent) => {
+    const rect = getRect()
+    if (!rect) return
+
+    if (dragRef.current) {
+      const d = dragRef.current
+      const dx = ((e.clientX - d.startX) / rect.width)  * 100
+      const dy = ((e.clientY - d.startY) / rect.height) * 100
+      const nx = Math.max(0, Math.min(95, d.origX + dx))
+      const ny = Math.max(0, Math.min(95, d.origY + dy))
+      setLocal(prev => { const m = new Map(prev); m.set(d.id, { x: nx, y: ny }); return m })
+    }
+
+    if (resizeRef.current) {
+      const r = resizeRef.current
+      const dx = ((e.clientX - r.startX) / rect.width)  * 100
+      const dy = ((e.clientY - r.startY) / rect.height) * 100
+      const nb = Math.max(4, Math.min(40, r.origB + dx))
+      const nh = Math.max(4, Math.min(40, r.origH + dy))
+      setLocal(prev => { const m = new Map(prev); m.set(r.id, { breite: nb, hoehe: nh }); return m })
+    }
   }, [])
 
-  const onPointerUp = useCallback(() => {
-    if (!dragRef.current || !dragging) return
-    onMove(dragRef.current.id, dragging.x, dragging.y)
-    dragRef.current = null
-    setDragging(null)
-  }, [dragging, onMove])
+  const onCanvasPointerUp = useCallback(() => {
+    if (dragRef.current) {
+      const d = dragRef.current
+      const l = local.get(d.id)
+      if (l?.x !== undefined && l?.y !== undefined) onMove(d.id, l.x, l.y)
+      dragRef.current = null
+      setLocal(prev => { const m = new Map(prev); m.delete(d.id); return m })
+    }
+    if (resizeRef.current) {
+      const r = resizeRef.current
+      const l = local.get(r.id)
+      if (l?.breite !== undefined && l?.hoehe !== undefined) onResize(r.id, l.breite, l.hoehe)
+      resizeRef.current = null
+      setLocal(prev => { const m = new Map(prev); m.delete(r.id); return m })
+    }
+  }, [local, onMove, onResize])
 
   return (
     <div
       ref={canvasRef}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerLeave={onPointerUp}
+      onPointerMove={onCanvasPointerMove}
+      onPointerUp={onCanvasPointerUp}
+      onPointerLeave={onCanvasPointerUp}
       className="relative w-full aspect-[4/3] bg-gray-50 rounded-xl border-2 border-dashed border-gray-300 overflow-hidden select-none"
     >
       {bereich.elemente.length === 0 && (
@@ -312,23 +353,27 @@ function PlanCanvas({
       )}
 
       {bereich.elemente.map((el) => {
-        const isDragging = dragging?.id === el.id
-        const x = isDragging ? dragging.x : el.x
-        const y = isDragging ? dragging.y : el.y
+        const l          = local.get(el.id) ?? {}
+        const x          = l.x      ?? el.x
+        const y          = l.y      ?? el.y
+        const breite     = l.breite ?? el.breite
+        const hoehe      = l.hoehe  ?? el.hoehe
         const isSelected = el.id === selectedElId
+        const isDragging = dragRef.current?.id === el.id
+        const isResizing = resizeRef.current?.id === el.id
 
         return (
           <div
             key={el.id}
-            onPointerDown={(e) => onPointerDown(e, el)}
+            onPointerDown={(e) => onElPointerDown(e, el)}
             style={{
               position: 'absolute',
-              left:   `${x}%`,
-              top:    `${y}%`,
-              width:  `${el.breite}%`,
-              height: `${el.hoehe}%`,
-              cursor: isDragging ? 'grabbing' : 'grab',
-              zIndex: isSelected ? 10 : 1,
+              left:     `${x}%`,
+              top:      `${y}%`,
+              width:    `${breite}%`,
+              height:   `${hoehe}%`,
+              cursor:   isDragging ? 'grabbing' : 'grab',
+              zIndex:   isSelected ? 10 : 1,
             }}
             className={`
               flex items-center justify-center border-2 text-center overflow-hidden
@@ -341,6 +386,17 @@ function PlanCanvas({
             <span className="text-[clamp(0.5rem,1.2cqw,0.875rem)] font-semibold leading-tight px-1 truncate w-full text-center">
               {el.bezeichnung}
             </span>
+
+            {/* Resize-Handle (rechts unten) — nur wenn selektiert */}
+            {isSelected && (
+              <div
+                data-resize="1"
+                onPointerDown={(e) => onResizePointerDown(e, el)}
+                style={{ cursor: isResizing ? 'se-resize' : 'se-resize' }}
+                className="absolute bottom-0.5 right-0.5 w-3 h-3 rounded-sm bg-brand-500 opacity-80 hover:opacity-100 transition-opacity"
+                title="Größe ändern"
+              />
+            )}
           </div>
         )
       })}

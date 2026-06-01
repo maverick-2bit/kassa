@@ -13,6 +13,7 @@ import type { Db } from '../db/client.js'
 import { onKdsEvent } from '../sse/kds-event-bus.js'
 import {
   kdsOffeneBons,
+  kdsUebersicht,
   kdsBonErledigt,
   kdsBonTeilbon,
 } from '../services/kds/kds-store.service.js'
@@ -86,6 +87,16 @@ export const kdsRoute: FastifyPluginAsync<KdsRouteOptions> = async (fastify, opt
         request.raw.on('close', resolve)
         request.raw.on('error', resolve)
       })
+    },
+  )
+
+  // ── Dashboard-Übersicht ────────────────────────────────────────────────────
+  fastify.get(
+    '/kds/uebersicht',
+    { onRequest: [fastify.authenticate] },
+    async (request, reply) => {
+      const data = await kdsUebersicht(opts.db, request.user.mandantId)
+      return reply.send(data)
     },
   )
 

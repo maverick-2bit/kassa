@@ -62,6 +62,23 @@ export async function kdsBonErstellen(db: Db, eingabe: NeueBonEingabe): Promise<
   })
 }
 
+/** Übersicht: Anzahl offener Bons pro Station (für Dashboard) */
+export async function kdsUebersicht(db: Db, mandantId: string): Promise<{ total: number; perStation: Record<string, number> }> {
+  const rows = await db
+    .select()
+    .from(kdsBons)
+    .where(and(
+      eq(kdsBons.mandantId, mandantId),
+      eq(kdsBons.status, 'offen'),
+    ))
+
+  const perStation: Record<string, number> = {}
+  for (const row of rows) {
+    perStation[row.station] = (perStation[row.station] ?? 0) + 1
+  }
+  return { total: rows.length, perStation }
+}
+
 /** Alle offenen Bons einer Station laden */
 export async function kdsOffeneBons(db: Db, mandantId: string, station: string) {
   const rows = await db

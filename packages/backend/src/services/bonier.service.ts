@@ -247,6 +247,21 @@ export async function bonierBestellung(
           .where(eq(artikel.id, a.id))
       }
     })
+
+    // Lagerstand-Warnungen emittieren wenn Bestand ≤ Mindestbestand nach Dekrement
+    for (const { a, menge } of zuDekrementieren) {
+      const neueMenge = Math.max(0, (a.lagerstandMenge ?? 0) - menge)
+      if (a.mindestbestand !== null && neueMenge <= a.mindestbestand) {
+        emitKasseEvent(kasse.mandantId, {
+          typ:            'lagerstand_warnung',
+          artikelId:      a.id,
+          bezeichnung:    a.bezeichnung,
+          menge:          neueMenge,
+          mindestbestand: a.mindestbestand,
+          ausverkauft:    neueMenge === 0,
+        })
+      }
+    }
   }
 
   // 11. Ergebnis zusammenbauen + Events

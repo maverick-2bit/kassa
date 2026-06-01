@@ -13,7 +13,7 @@
 import { useQuery, useQueries } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import type { BerichtGesamt, Artikel } from '@kassa/shared'
-import { berichtApi, kasseApi, tischTabApi, artikelApi, offenerPostenApi } from '../lib/api'
+import { berichtApi, kasseApi, tischTabApi, artikelApi, offenerPostenApi, kdsApi } from '../lib/api'
 import { getAuth, hasBerechtigung, hasModul } from '../lib/auth'
 import { formatPreis } from '../lib/format'
 
@@ -23,6 +23,18 @@ import { formatPreis } from '../lib/format'
 
 function heute(): string {
   return new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Vienna' })
+}
+
+function gestern(): string {
+  const d = new Date()
+  d.setDate(d.getDate() - 1)
+  return d.toLocaleDateString('sv-SE', { timeZone: 'Europe/Vienna' })
+}
+
+function trendPct(heute: number, gestern: number): { wert: string; positiv: boolean } | null {
+  if (gestern === 0) return null
+  const diff = ((heute - gestern) / gestern) * 100
+  return { wert: `${diff >= 0 ? '+' : ''}${Math.round(diff)} %`, positiv: diff >= 0 }
 }
 
 function formatDatumAnzeige(datum: string): string {
@@ -40,9 +52,10 @@ function pct(teil: number, gesamt: number): string {
 // ---------------------------------------------------------------------------
 
 export function DashboardPage() {
-  const auth   = getAuth()!
-  const datum  = heute()
-  const kassen = auth.kassen
+  const auth      = getAuth()!
+  const datum     = heute()
+  const datumGest = gestern()
+  const kassen    = auth.kassen
 
   const gesamtQuery = useQuery({
     queryKey: ['dashboard-gesamt', datum],
@@ -50,6 +63,14 @@ export function DashboardPage() {
       von: datum, bis: datum, gruppierung: 'tag', nurZielrechnungen: false,
     }),
     refetchInterval: 60_000,
+  })
+
+  const gestQuery = useQuery({
+    queryKey: ['dashboard-gestern', datumGest],
+    queryFn:  () => berichtApi.umsatz({
+      von: datumGest, bis: datumGest, gruppierung: 'tag', nurZielrechnungen: false,
+    }),
+    staleTime: 5 * 60_000,
   })
 
   return (
@@ -69,7 +90,10 @@ export function DashboardPage() {
 
       {/* Mandant-Gesamt-Kacheln */}
       {gesamtQuery.data && (
-        <GesamtUebersicht gesamt={gesamtQuery.data.gesamt} />
+        <GesamtUebersicht
+          gesamt={gesamtQuery.data.gesamt}
+          gestGesamt={gestQuery.data?.gesamt}
+        />
       )}
       {gesamtQuery.isError && (
         <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
@@ -175,12 +199,11 @@ function SekundaereWidgets({ kassen, mandantId }: { kassen: KasseInfo[]; mandant
   const zeigeGastro = hasBerechtigung('tische') && hasModul('gastro')
   const zeigePosten = hasBerechtigung('kunden.verwalten')
 
-  if (!zeigeGastro && !zeigePosten) return null
-
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
       {zeigeGastro && <OffeneTischeWidget kassen={kassen} />}
       {zeigePosten && <OffenePostenWidget />}
+      <KdsBonsWidget />
     </div>
   )
 }
@@ -248,6 +271,50 @@ function OffenePostenWidget() {
         <>
           <p className="text-3xl font-bold text-green-600">0</p>
           <p className="text-xs text-gray-400">Alle Posten beglichen</p>
+        </>
+      )}
+    </div>
+  )
+}
+
+// KDS-Bons-Widget (offene Bons im Browser-KDS)
+function KdsBonsWidget() {
+  const { data, isLoading } = useQuery({
+    queryKey:        ['dashboard-kds'],
+    queryFn:         () => kdsApi.uebersicht(),
+    refetchInterval: 15_000,
+  })
+
+  const STATION_LABELS: Record<string, string> = {
+    kueche:       'Küche',
+    schank:       'Schank',
+    kalte_kueche: 'Kalte Küche',
+    dessert:      'Dessert',
+  }
+
+  return (
+    <div className="rounded-lg border bg-white shadow-sm p-4 space-y-1">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-gray-500">KDS — Offene Bons</p>
+        <span className="text-xs text-gray-400">alle Stationen</span>
+      </div>
+      {isLoading ? (
+        <p className="text-sm text-gray-400">Wird geladen…</p>
+      ) : !data || data.total === 0 ? (
+        <>
+          <p className="text-3xl font-bold text-green-600">0</p>
+          <p className="text-xs text-gray-400">Keine offenen Bons</p>
+        </>
+      ) : (
+        <>
+          <p className="text-3xl font-bold text-amber-600">{data.total}</p>
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
+            {Object.entries(data.perStation).map(([station, count]) => (
+              <span key={station} className="text-xs text-gray-500">
+                {STATION_LABELS[station] ?? station}: <span className="font-semibold">{count}</span>
+              </span>
+            ))}
+          </div>
         </>
       )}
     </div>
@@ -391,8 +458,12 @@ function JahresbelegDashboardBanner({ kassen }: { kassen: KasseInfo[] }) {
 // Gesamt-Übersicht (alle Kassen summiert)
 // ---------------------------------------------------------------------------
 
-function GesamtUebersicht({ gesamt: g }: { gesamt: BerichtGesamt }) {
-  const avgBonCent = g.anzahlBelege > 0 ? Math.round(g.umsatzCent / g.anzahlBelege) : 0
+function GesamtUebersicht({ gesamt: g, gestGesamt: gg }: { gesamt: BerichtGesamt; gestGesamt?: BerichtGesamt }) {
+  const avgBonCent     = g.anzahlBelege  > 0 ? Math.round(g.umsatzCent  / g.anzahlBelege)  : 0
+  const avgBonGestCent = gg && gg.anzahlBelege > 0 ? Math.round(gg.umsatzCent / gg.anzahlBelege) : 0
+
+  const umsatzTrend  = gg ? trendPct(g.umsatzCent,  gg.umsatzCent)  : null
+  const avgBonTrend  = gg ? trendPct(avgBonCent,     avgBonGestCent) : null
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -400,11 +471,17 @@ function GesamtUebersicht({ gesamt: g }: { gesamt: BerichtGesamt }) {
         label="Umsatz heute"
         wert={formatPreis(g.umsatzCent)}
         sub={`${g.anzahlBelege} Belege${g.anzahlStornos > 0 ? `, ${g.anzahlStornos} Stornos` : ''}`}
+        trend={umsatzTrend ?? undefined}
         hervor
       />
-      <Kachel label="Ø Bon-Wert"  wert={formatPreis(avgBonCent)}    sub="pro Beleg" />
-      <Kachel label="Bar"         wert={formatPreis(g.barCent)}      sub={pct(g.barCent,   g.umsatzCent)} />
-      <Kachel label="Karte"       wert={formatPreis(g.karteCent)}    sub={pct(g.karteCent, g.umsatzCent)} />
+      <Kachel
+        label="Ø Bon-Wert"
+        wert={formatPreis(avgBonCent)}
+        sub="pro Beleg"
+        trend={avgBonTrend ?? undefined}
+      />
+      <Kachel label="Bar"   wert={formatPreis(g.barCent)}   sub={pct(g.barCent,   g.umsatzCent)} />
+      <Kachel label="Karte" wert={formatPreis(g.karteCent)} sub={pct(g.karteCent, g.umsatzCent)} />
     </div>
   )
 }
@@ -546,10 +623,11 @@ function StundenVerlauf({ datum }: { datum: string }) {
 // Kachel-Komponente
 // ---------------------------------------------------------------------------
 
-function Kachel({ label, wert, sub, hervor }: {
+function Kachel({ label, wert, sub, trend, hervor }: {
   label:   string
   wert:    string
   sub?:    string
+  trend?:  { wert: string; positiv: boolean }
   hervor?: boolean
 }) {
   return (
@@ -558,7 +636,18 @@ function Kachel({ label, wert, sub, hervor }: {
       <p className={`font-mono font-semibold text-xl mt-1 ${hervor ? 'text-brand-700' : 'text-gray-900'}`}>
         {wert}
       </p>
-      {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
+      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+        {sub && <p className="text-xs text-gray-400">{sub}</p>}
+        {trend && (
+          <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-full ${
+            trend.positiv
+              ? 'bg-green-100 text-green-700'
+              : 'bg-red-100 text-red-600'
+          }`}>
+            {trend.wert} vs. gestern
+          </span>
+        )}
+      </div>
     </div>
   )
 }

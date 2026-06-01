@@ -24,8 +24,20 @@ export const NeueBestellungEventSchema = z.object({
 })
 export type NeueBestellungEvent = z.infer<typeof NeueBestellungEventSchema>
 
+export const LagerstandWarnungEventSchema = z.object({
+  typ:            z.literal('lagerstand_warnung'),
+  artikelId:      z.string().uuid(),
+  bezeichnung:    z.string(),
+  menge:          z.number().int(),
+  mindestbestand: z.number().int(),
+  /** true wenn Bestand = 0 (ausverkauft) */
+  ausverkauft:    z.boolean(),
+})
+export type LagerstandWarnungEvent = z.infer<typeof LagerstandWarnungEventSchema>
+
 export const KasseEventSchema = z.discriminatedUnion('typ', [
   BonierbonEventSchema,
   NeueBestellungEventSchema,
+  LagerstandWarnungEventSchema,
 ])
 export type KasseEvent = z.infer<typeof KasseEventSchema>
