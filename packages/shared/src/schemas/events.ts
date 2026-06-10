@@ -35,9 +35,19 @@ export const LagerstandWarnungEventSchema = z.object({
 })
 export type LagerstandWarnungEvent = z.infer<typeof LagerstandWarnungEventSchema>
 
+export const KdsNachrichtEventSchema = z.object({
+  typ:     z.literal('kds_nachricht'),
+  text:    z.string().min(1).max(500),
+  station: z.string(),
+  /** ISO-8601-Timestamp */
+  zeit:    z.string(),
+})
+export type KdsNachrichtEvent = z.infer<typeof KdsNachrichtEventSchema>
+
 export const KasseEventSchema = z.discriminatedUnion('typ', [
   BonierbonEventSchema,
   NeueBestellungEventSchema,
   LagerstandWarnungEventSchema,
+  KdsNachrichtEventSchema,
 ])
 export type KasseEvent = z.infer<typeof KasseEventSchema>

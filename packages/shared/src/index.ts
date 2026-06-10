@@ -313,12 +313,14 @@ export {
   BonierbonEventSchema,
   NeueBestellungEventSchema,
   LagerstandWarnungEventSchema,
+  KdsNachrichtEventSchema,
   KasseEventSchema,
 } from './schemas/events.js'
 export type {
   BonierbonEvent,
   NeueBestellungEvent,
   LagerstandWarnungEvent,
+  KdsNachrichtEvent,
   KasseEvent,
 } from './schemas/events.js'
 

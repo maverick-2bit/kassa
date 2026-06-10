@@ -1,7 +1,7 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import type { KdsBon, KdsStation, KdsSseEvent } from './types'
 import { STATION_LABELS, STATION_FARBEN } from './types'
-import { fetchBons } from './api'
+import { fetchBons, nachrichtSenden } from './api'
 import { useKdsSse } from './hooks/useKdsSse'
 import { BonKarte } from './components/BonKarte'
 
@@ -83,11 +83,120 @@ function UhrDisplay() {
   return <span className="font-mono tabular-nums text-zinc-400 text-sm">{uhrzeit}</span>
 }
 
+interface GesendeteNachricht {
+  text:  string
+  zeit:  string
+  ok:    boolean
+  fehler?: string
+}
+
+function ChatPanel({
+  station, token, farbe, onClose,
+}: {
+  station: string
+  token:   string
+  farbe:   string
+  onClose: () => void
+}) {
+  const [text, setText]           = useState('')
+  const [senden, setSenden]       = useState(false)
+  const [verlauf, setVerlauf]     = useState<GesendeteNachricht[]>([])
+  const inputRef                  = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => { inputRef.current?.focus() }, [])
+
+  async function absenden() {
+    const msg = text.trim()
+    if (!msg || senden) return
+    setSenden(true)
+    try {
+      await nachrichtSenden(msg, station, token)
+      setVerlauf(v => [...v, { text: msg, zeit: new Date().toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' }), ok: true }])
+      setText('')
+    } catch (e) {
+      setVerlauf(v => [...v, { text: msg, zeit: new Date().toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' }), ok: false, fehler: e instanceof Error ? e.message : 'Fehler' }])
+    } finally {
+      setSenden(false)
+      inputRef.current?.focus()
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="bg-zinc-900 rounded-2xl w-full max-w-md flex flex-col shadow-2xl border border-zinc-700" style={{ maxHeight: '80vh' }}>
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">💬</span>
+            <div>
+              <p className="font-black text-white">Nachricht an Kellner</p>
+              <p className="text-xs text-zinc-400">von {STATION_LABELS[station as KdsStation] ?? station}</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-zinc-500 hover:text-white transition text-xl font-bold w-8 h-8 flex items-center justify-center rounded-lg hover:bg-zinc-800"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Verlauf */}
+        {verlauf.length > 0 && (
+          <div className="flex-1 overflow-auto px-5 py-3 space-y-2">
+            {verlauf.map((m, i) => (
+              <div key={i} className={`rounded-xl px-4 py-2.5 text-sm ${m.ok ? 'bg-zinc-800' : 'bg-red-900/40 border border-red-700'}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-zinc-100 leading-snug">{m.text}</p>
+                  <span className="text-zinc-500 text-xs shrink-0 mt-0.5">{m.zeit}</span>
+                </div>
+                {m.ok ? (
+                  <p className="text-xs text-green-400 mt-1">✓ Gesendet</p>
+                ) : (
+                  <p className="text-xs text-red-400 mt-1">✗ {m.fehler}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Eingabe */}
+        <div className="px-5 py-4 space-y-3">
+          <textarea
+            ref={inputRef}
+            value={text}
+            onChange={e => setText(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); absenden() } }}
+            rows={3}
+            maxLength={500}
+            placeholder="Nachricht eingeben… (Enter zum Senden)"
+            className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 text-sm border border-zinc-700 focus:outline-none focus:border-zinc-500 resize-none placeholder-zinc-600"
+          />
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs text-zinc-600">{text.length}/500</span>
+            <button
+              onClick={absenden}
+              disabled={!text.trim() || senden}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm text-white transition disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{ backgroundColor: farbe }}
+            >
+              {senden ? '⏳ Senden…' : '📤 Senden'}
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
   const [config, setConfig] = useState(getConfig)
   const [bons, setBons]     = useState<KdsBon[]>([])
   const [verbunden, setVerbunden] = useState(false)
   const [fehler, setFehler] = useState<string | null>(null)
+  const [chatOffen, setChatOffen] = useState(false)
 
   const { station, token } = config
   const istKonfiguriert     = Boolean(token)
@@ -180,8 +289,27 @@ export default function App() {
             {bons.length} offen
           </span>
         </div>
-        <UhrDisplay />
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setChatOffen(true)}
+            title="Nachricht an Kellner senden"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-sm font-medium transition"
+          >
+            <span>💬</span>
+            <span className="hidden sm:inline">Nachricht</span>
+          </button>
+          <UhrDisplay />
+        </div>
       </div>
+
+      {chatOffen && (
+        <ChatPanel
+          station={station}
+          token={token}
+          farbe={farbe}
+          onClose={() => setChatOffen(false)}
+        />
+      )}
 
       {/* Fehler-Banner */}
       {fehler && (

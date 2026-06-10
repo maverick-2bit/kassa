@@ -3,6 +3,7 @@ import { useQueries } from '@tanstack/react-query'
 import { clearAuth, getAuth, hasBerechtigung, hasModul } from '../lib/auth'
 import { kasseApi } from '../lib/api'
 import { KdsToasts } from './KdsToasts'
+import { KdsNachrichten } from './KdsNachrichten'
 import { OfflineStatusBar } from './OfflineStatusBar'
 
 export function Layout() {
@@ -19,6 +20,7 @@ export function Layout() {
         </span>
       </footer>
       <KdsToasts />
+      <KdsNachrichten />
     </div>
   )
 }

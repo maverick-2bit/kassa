@@ -41,6 +41,16 @@ export async function bonTeilbon(bonId: string, positionIds: string[], token: st
   return res.json()
 }
 
+/** Nachricht an alle Kellner senden */
+export async function nachrichtSenden(text: string, station: string, token: string): Promise<void> {
+  const res = await fetch(`${BASE}/nachricht`, {
+    method:  'POST',
+    headers: headers(token),
+    body:    JSON.stringify({ text, station }),
+  })
+  if (!res.ok) throw new Error(`Fehler: ${res.status}`)
+}
+
 /** SSE-URL für eine Station */
 export function kdsEventSourceUrl(station: string, token: string) {
   return `${BASE}/events?station=${station}&token=${encodeURIComponent(token)}`

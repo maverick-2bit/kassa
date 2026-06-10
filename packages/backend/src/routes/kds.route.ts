@@ -11,6 +11,7 @@ import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import type { Db } from '../db/client.js'
 import { onKdsEvent } from '../sse/kds-event-bus.js'
+import { emitKasseEvent } from '../sse/event-bus.js'
 import {
   kdsOffeneBons,
   kdsUebersicht,
@@ -23,6 +24,10 @@ export interface KdsRouteOptions { db: Db }
 const IdParam          = z.object({ id: z.string().uuid() })
 const StationQuery     = z.object({ station: z.string().min(1) })
 const TeilbonBody      = z.object({ positionIds: z.array(z.string().uuid()).min(1) })
+const NachrichtBody    = z.object({
+  text:    z.string().min(1).max(500),
+  station: z.string().min(1),
+})
 
 export const kdsRoute: FastifyPluginAsync<KdsRouteOptions> = async (fastify, opts) => {
 
@@ -123,6 +128,25 @@ export const kdsRoute: FastifyPluginAsync<KdsRouteOptions> = async (fastify, opt
 
       const ok = await kdsBonErledigt(opts.db, p.data.id, request.user.mandantId)
       if (!ok) return reply.status(404).send({ fehler: 'Bon nicht gefunden oder bereits erledigt' })
+
+      return reply.send({ erfolgreich: true })
+    },
+  )
+
+  // ── Nachricht an Kellner senden ────────────────────────────────────────────
+  fastify.post(
+    '/kds/nachricht',
+    { onRequest: [fastify.authenticate] },
+    async (request, reply) => {
+      const b = NachrichtBody.safeParse(request.body)
+      if (!b.success) return reply.status(400).send({ fehler: b.error.issues })
+
+      emitKasseEvent(request.user.mandantId, {
+        typ:     'kds_nachricht',
+        text:    b.data.text,
+        station: b.data.station,
+        zeit:    new Date().toISOString(),
+      })
 
       return reply.send({ erfolgreich: true })
     },
