@@ -922,6 +922,43 @@ export const healthApi = {
 }
 
 // ---------------------------------------------------------------------------
+// Monitoring (admin)
+// ---------------------------------------------------------------------------
+
+export interface MonitoringStatus {
+  timestamp:   string
+  uptimeSek:   number
+  version:     string
+  nodeVersion: string
+  platform:    string
+  db: {
+    ok:       boolean
+    latenzMs: number | null
+  }
+  memory: {
+    heapUsedMb:  number
+    heapTotalMb: number
+    rssMb:       number
+    externalMb:  number
+  }
+  cpu: {
+    userMs:   number
+    systemMs: number
+  }
+  system: {
+    loadAvg1:   number
+    loadAvg5:   number
+    freeMemMb:  number
+    totalMemMb: number
+  }
+}
+
+export const monitoringApi = {
+  get: (): Promise<MonitoringStatus> =>
+    request<MonitoringStatus>('GET', '/api/admin/monitoring'),
+}
+
+// ---------------------------------------------------------------------------
 // Kassenbuch
 // ---------------------------------------------------------------------------
 

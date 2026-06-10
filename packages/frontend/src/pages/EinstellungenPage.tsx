@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { QRCodeSVG } from 'qrcode.react'
 import { ALLE_STATIONEN, STATION_LABELS, type Station, type ZvtConfig } from '@kassa/shared'
-import { druckerApi, kdsApi, zvtApi, downloadDepExport, healthApi, mandantApi, kasseApi, tischplanApi, dbBackupApi, type DruckerConfig, type KdsConfig, type DbSicherungRow } from '../lib/api'
+import { druckerApi, kdsApi, zvtApi, downloadDepExport, healthApi, monitoringApi, mandantApi, kasseApi, tischplanApi, dbBackupApi, type DruckerConfig, type KdsConfig, type DbSicherungRow, type MonitoringStatus } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { getAuth, hasModul, updateKasseBezeichnung } from '../lib/auth'
 import { Field } from '../components/ui/Field'
@@ -1152,17 +1152,28 @@ function DbBackupSektion() {
 }
 
 function SystemInfoSektion() {
+  const auth = getAuth()!
+  const isAdmin = auth.user.rolle === 'admin'
+
   const health = useQuery({
     queryKey: ['health'],
     queryFn:  healthApi.get,
-    refetchInterval: 60_000,   // jede Minute neu prüfen
+    refetchInterval: 60_000,
     retry: false,
+  })
+
+  const monitoring = useQuery({
+    queryKey: ['monitoring'],
+    queryFn:  monitoringApi.get,
+    refetchInterval: 10_000,
+    retry: false,
+    enabled: isAdmin,
   })
 
   const dbOk     = health.data?.checks.db === 'ok'
   const statusOk = health.data?.status === 'ok'
 
-  const formatUptime = (sek: number) => {
+  function formatUptime(sek: number) {
     if (sek < 60)   return `${sek}s`
     if (sek < 3600) return `${Math.floor(sek / 60)}min`
     const h = Math.floor(sek / 3600)
@@ -1170,112 +1181,162 @@ function SystemInfoSektion() {
     return `${h}h ${m}min`
   }
 
+  const m: MonitoringStatus | undefined = monitoring.data
+
   return (
-    <section className="rounded-xl border border-gray-200 bg-white p-6 space-y-4">
-      <h2 className="text-lg font-semibold text-gray-900">Systeminfo</h2>
+    <section className="rounded-xl border border-gray-200 bg-white p-6 space-y-5">
+      {/* Kopfzeile */}
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-gray-900">Systeminfo</h2>
+        <div className="flex items-center gap-3">
+          {health.data && (
+            <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${
+              statusOk ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'
+            }`}>
+              <span className={`h-1.5 w-1.5 rounded-full ${statusOk ? 'bg-green-500' : 'bg-amber-500'}`} />
+              {statusOk ? 'System ok' : 'eingeschränkt'}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => { void health.refetch(); void monitoring.refetch() }}
+            disabled={health.isFetching || monitoring.isFetching}
+            className="text-xs text-brand-600 hover:text-brand-700 disabled:text-gray-400"
+          >
+            {(health.isFetching || monitoring.isFetching) ? 'Prüfe…' : '↻ Aktualisieren'}
+          </button>
+        </div>
+      </div>
 
+      {/* Basis-Infos */}
       <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 text-sm">
-        {/* Frontend-Version */}
         <div>
-          <dt className="text-gray-500">Frontend-Version</dt>
+          <dt className="text-gray-500">Frontend</dt>
+          <dd className="mt-0.5 font-mono font-medium text-gray-900">v{__APP_VERSION__}</dd>
+        </div>
+        <div>
+          <dt className="text-gray-500">Backend</dt>
           <dd className="mt-0.5 font-mono font-medium text-gray-900">
-            v{__APP_VERSION__}
+            {health.isLoading ? <span className="text-gray-400">…</span>
+              : health.data   ? `v${health.data.version}`
+              : <span className="text-red-500">nicht erreichbar</span>}
           </dd>
         </div>
-
-        {/* Backend-Version */}
-        <div>
-          <dt className="text-gray-500">Backend-Version</dt>
-          <dd className="mt-0.5 font-mono font-medium text-gray-900">
-            {health.isLoading ? (
-              <span className="text-gray-400">…</span>
-            ) : health.data ? (
-              `v${health.data.version}`
-            ) : (
-              <span className="text-red-500">nicht erreichbar</span>
-            )}
-          </dd>
-        </div>
-
-        {/* Datenbank-Status */}
         <div>
           <dt className="text-gray-500">Datenbank</dt>
           <dd className="mt-0.5 flex items-center gap-1.5">
-            {health.isLoading ? (
-              <span className="text-gray-400 text-sm">…</span>
-            ) : (
+            {health.isLoading ? <span className="text-gray-400 text-sm">…</span> : (
               <>
-                <span
-                  className={`inline-block h-2 w-2 rounded-full ${
-                    dbOk ? 'bg-green-500' : 'bg-red-500'
-                  }`}
-                />
+                <span className={`h-2 w-2 rounded-full ${dbOk ? 'bg-green-500' : 'bg-red-500'}`} />
                 <span className={`font-medium ${dbOk ? 'text-green-700' : 'text-red-600'}`}>
-                  {dbOk ? 'verbunden' : 'nicht erreichbar'}
+                  {dbOk ? 'verbunden' : 'getrennt'}
                 </span>
+                {m?.db.latenzMs != null && (
+                  <span className="text-gray-400">{m.db.latenzMs} ms</span>
+                )}
               </>
             )}
           </dd>
         </div>
-
-        {/* Server-Status */}
-        <div>
-          <dt className="text-gray-500">Server-Status</dt>
-          <dd className="mt-0.5 flex items-center gap-1.5">
-            {health.isLoading ? (
-              <span className="text-gray-400 text-sm">…</span>
-            ) : health.data ? (
-              <>
-                <span
-                  className={`inline-block h-2 w-2 rounded-full ${
-                    statusOk ? 'bg-green-500' : 'bg-amber-500'
-                  }`}
-                />
-                <span className={`font-medium ${statusOk ? 'text-green-700' : 'text-amber-700'}`}>
-                  {statusOk ? 'ok' : 'eingeschränkt'}
-                </span>
-              </>
-            ) : (
-              <>
-                <span className="inline-block h-2 w-2 rounded-full bg-red-500" />
-                <span className="font-medium text-red-600">offline</span>
-              </>
-            )}
-          </dd>
-        </div>
-
-        {/* Uptime */}
         {health.data && (
           <div>
-            <dt className="text-gray-500">Server-Laufzeit</dt>
-            <dd className="mt-0.5 font-medium text-gray-900">
-              {formatUptime(health.data.uptimeSek)}
-            </dd>
+            <dt className="text-gray-500">Laufzeit</dt>
+            <dd className="mt-0.5 font-medium text-gray-900">{formatUptime(health.data.uptimeSek)}</dd>
           </div>
         )}
-
-        {/* Letzter Check */}
-        {health.data && (
+        {m && (
           <div>
-            <dt className="text-gray-500">Letzter Check</dt>
-            <dd className="mt-0.5 text-gray-600">
-              {new Date(health.data.timestamp).toLocaleTimeString('de-AT')}
-            </dd>
+            <dt className="text-gray-500">Node.js</dt>
+            <dd className="mt-0.5 font-mono text-gray-900">{m.nodeVersion}</dd>
+          </div>
+        )}
+        {m && (
+          <div>
+            <dt className="text-gray-500">Plattform</dt>
+            <dd className="mt-0.5 font-mono text-gray-900">{m.platform}</dd>
           </div>
         )}
       </dl>
 
-      {/* Manueller Refresh */}
-      <div className="pt-1">
-        <button
-          type="button"
-          onClick={() => void health.refetch()}
-          disabled={health.isFetching}
-          className="text-xs text-brand-600 hover:text-brand-700 disabled:text-gray-400"
-        >
-          {health.isFetching ? 'Prüfe…' : '↻ Jetzt prüfen'}
-        </button>
-      </div>
+      {/* Speicher-Widget (nur Admin, nur wenn Daten vorhanden) */}
+      {isAdmin && m && (
+        <div className="space-y-3 border-t border-gray-100 pt-4">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Prozess-Speicher</p>
+
+          {/* Heap-Balken */}
+          <div className="space-y-1">
+            <div className="flex justify-between text-xs text-gray-600">
+              <span>Heap-Nutzung</span>
+              <span className="font-mono">
+                {m.memory.heapUsedMb} / {m.memory.heapTotalMb} MB
+                <span className="text-gray-400 ml-1">
+                  ({Math.round(m.memory.heapUsedMb / m.memory.heapTotalMb * 100)} %)
+                </span>
+              </span>
+            </div>
+            <div className="h-2 w-full rounded-full bg-gray-100 overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${
+                  m.memory.heapUsedMb / m.memory.heapTotalMb > 0.85
+                    ? 'bg-red-500'
+                    : m.memory.heapUsedMb / m.memory.heapTotalMb > 0.65
+                    ? 'bg-amber-400'
+                    : 'bg-brand-500'
+                }`}
+                style={{ width: `${Math.min(100, m.memory.heapUsedMb / m.memory.heapTotalMb * 100)}%` }}
+              />
+            </div>
+          </div>
+
+          {/* System-Speicher */}
+          {m.system.totalMemMb > 0 && (
+            <div className="space-y-1">
+              <div className="flex justify-between text-xs text-gray-600">
+                <span>System-RAM</span>
+                <span className="font-mono">
+                  {Math.round(m.system.totalMemMb - m.system.freeMemMb)} / {Math.round(m.system.totalMemMb)} MB
+                  <span className="text-gray-400 ml-1">
+                    ({Math.round((m.system.totalMemMb - m.system.freeMemMb) / m.system.totalMemMb * 100)} %)
+                  </span>
+                </span>
+              </div>
+              <div className="h-2 w-full rounded-full bg-gray-100 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-indigo-400 transition-all"
+                  style={{ width: `${Math.min(100, (m.system.totalMemMb - m.system.freeMemMb) / m.system.totalMemMb * 100)}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* RSS + Load */}
+          <div className="grid grid-cols-3 gap-3 text-xs">
+            <div className="bg-gray-50 rounded-lg px-3 py-2">
+              <p className="text-gray-500">RSS</p>
+              <p className="font-mono font-semibold text-gray-900 mt-0.5">{m.memory.rssMb} MB</p>
+            </div>
+            <div className="bg-gray-50 rounded-lg px-3 py-2">
+              <p className="text-gray-500">CPU (user)</p>
+              <p className="font-mono font-semibold text-gray-900 mt-0.5">{m.cpu.userMs} ms</p>
+            </div>
+            <div className="bg-gray-50 rounded-lg px-3 py-2">
+              <p className="text-gray-500">Load Ø1min</p>
+              <p className="font-mono font-semibold text-gray-900 mt-0.5">{m.system.loadAvg1}</p>
+            </div>
+          </div>
+
+          <p className="text-xs text-gray-400">
+            Aktualisiert: {new Date(m.timestamp).toLocaleTimeString('de-AT')} · Auto-Refresh alle 10 s
+          </p>
+        </div>
+      )}
+
+      {/* Für Nicht-Admins: nur Letzter-Check-Zeit */}
+      {!isAdmin && health.data && (
+        <p className="text-xs text-gray-400">
+          Letzter Check: {new Date(health.data.timestamp).toLocaleTimeString('de-AT')}
+        </p>
+      )}
     </section>
   )
 }

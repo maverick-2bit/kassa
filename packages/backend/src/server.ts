@@ -43,6 +43,7 @@ import { kdsRoute }            from './routes/kds.route.js'
 import { gastRoute }           from './routes/gast.route.js'
 import { registerDisplayRoutes } from './routes/display.route.js'
 import { emailRoute }            from './routes/email.route.js'
+import { monitoringRoute }       from './routes/monitoring.route.js'
 
 export interface ServerDeps {
   config:          Config
@@ -149,6 +150,8 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     await api.register(gastRoute,               { db: deps.db })
     await api.register(emailRoute,              { db: deps.db, config: deps.config })
   }, { prefix: '/api' })
+
+  await fastify.register(monitoringRoute, { db: deps.db })
 
   // Globaler Fehler-Handler — fängt alle unbehandelten Fehler ab
   fastify.setErrorHandler((error, request, reply) => {
