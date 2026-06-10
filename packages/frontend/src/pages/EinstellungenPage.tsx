@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { QRCodeSVG } from 'qrcode.react'
 import { ALLE_STATIONEN, STATION_LABELS, type Station, type ZvtConfig } from '@kassa/shared'
-import { druckerApi, kdsApi, zvtApi, downloadDepExport, healthApi, mandantApi, kasseApi, tischplanApi, type DruckerConfig, type KdsConfig } from '../lib/api'
+import { druckerApi, kdsApi, zvtApi, downloadDepExport, healthApi, mandantApi, kasseApi, tischplanApi, dbBackupApi, type DruckerConfig, type KdsConfig, type DbSicherungRow } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { getAuth, hasModul, updateKasseBezeichnung } from '../lib/auth'
 import { Field } from '../components/ui/Field'
@@ -26,6 +26,7 @@ export function EinstellungenPage() {
       <RksvExportSektion />
       {hasModul('gastro') && <TischplanSektion />}
       <GastQrCodeSektion />
+      <DbBackupSektion />
       <SystemInfoSektion />
     </div>
   )
@@ -997,6 +998,158 @@ function ZvtSektion() {
 // ---------------------------------------------------------------------------
 // Systeminfo-Sektion
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// DB-Backup
+// ---------------------------------------------------------------------------
+
+function DbBackupSektion() {
+  const auth = getAuth()!
+  if (auth.user.rolle !== 'admin') return null
+
+  const qc = useQueryClient()
+  const [fehler, setFehler] = useState<string | null>(null)
+  const [erfolg, setErfolg] = useState(false)
+
+  const listeQuery = useQuery({
+    queryKey: ['db-sicherungen'],
+    queryFn:  dbBackupApi.liste,
+    staleTime: 30_000,
+  })
+
+  const erstellenMutation = useMutation({
+    mutationFn: dbBackupApi.erstellen,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['db-sicherungen'] })
+      setErfolg(true)
+      setTimeout(() => setErfolg(false), 4000)
+    },
+    onError: (err) => setFehler(err instanceof Error ? err.message : 'Backup fehlgeschlagen'),
+  })
+
+  function formatGroesse(bytes: number): string {
+    if (bytes < 1024)       return `${bytes} B`
+    if (bytes < 1024 ** 2)  return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / 1024 ** 2).toFixed(1)} MB`
+  }
+
+  function formatZeit(iso: string): string {
+    const d = new Date(iso)
+    return d.toLocaleString('de-AT', { dateStyle: 'short', timeStyle: 'short' })
+  }
+
+  const liste: DbSicherungRow[] = listeQuery.data ?? []
+  const letzter = liste[0]
+
+  return (
+    <section className="rounded-xl border border-gray-200 bg-white p-6 space-y-5">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">Datenbank-Backups</h2>
+          <p className="text-sm text-gray-500 mt-0.5">
+            Täglicher PostgreSQL-Dump um 3:00 Uhr · letzten 30 Backups werden aufbewahrt
+          </p>
+        </div>
+        <Button
+          onClick={() => { setFehler(null); erstellenMutation.mutate() }}
+          disabled={erstellenMutation.isPending}
+          variant="secondary"
+        >
+          {erstellenMutation.isPending ? 'Erstelle Backup…' : '+ Backup jetzt erstellen'}
+        </Button>
+      </div>
+
+      {fehler && (
+        <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{fehler}</p>
+      )}
+      {erfolg && (
+        <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-4 py-2">
+          ✓ Backup erfolgreich erstellt
+        </p>
+      )}
+
+      {/* Letztes Backup-Info */}
+      {letzter && (
+        <div className={`rounded-lg border px-4 py-3 flex items-center gap-3 ${letzter.erfolgreich ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
+          <span className={`text-xl ${letzter.erfolgreich ? 'text-green-600' : 'text-red-500'}`}>
+            {letzter.erfolgreich ? '✓' : '✗'}
+          </span>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-gray-900">
+              Letztes Backup: {formatZeit(letzter.erstelltAm)}
+            </p>
+            <p className="text-xs text-gray-500">
+              {letzter.dateiname} · {formatGroesse(letzter.dateigroesse)} · {letzter.automatisch ? 'automatisch' : 'manuell'}
+            </p>
+            {letzter.fehler && <p className="text-xs text-red-600 mt-0.5">{letzter.fehler}</p>}
+          </div>
+          <Button
+            variant="secondary"
+            onClick={() => void dbBackupApi.download(letzter.id, letzter.dateiname)}
+          >
+            ↓ Download
+          </Button>
+        </div>
+      )}
+
+      {/* Verlauf */}
+      {liste.length > 1 && (
+        <details className="group">
+          <summary className="text-sm text-brand-600 cursor-pointer hover:text-brand-700 list-none flex items-center gap-1">
+            <span className="group-open:rotate-90 transition-transform inline-block">›</span>
+            Verlauf ({liste.length} Backups)
+          </summary>
+          <div className="mt-3 rounded-lg border border-gray-200 overflow-hidden">
+            <table className="w-full text-xs">
+              <thead className="bg-gray-50 text-left text-gray-500 border-b border-gray-200">
+                <tr>
+                  <th className="px-3 py-2 font-medium">Datum</th>
+                  <th className="px-3 py-2 font-medium">Größe</th>
+                  <th className="px-3 py-2 font-medium">Typ</th>
+                  <th className="px-3 py-2 font-medium">Status</th>
+                  <th className="px-3 py-2" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {liste.map(s => (
+                  <tr key={s.id} className="hover:bg-gray-50">
+                    <td className="px-3 py-2 font-mono text-gray-700">{formatZeit(s.erstelltAm)}</td>
+                    <td className="px-3 py-2 text-gray-600">{formatGroesse(s.dateigroesse)}</td>
+                    <td className="px-3 py-2 text-gray-500">{s.automatisch ? 'auto' : 'manuell'}</td>
+                    <td className="px-3 py-2">
+                      {s.erfolgreich
+                        ? <span className="text-green-600 font-medium">OK</span>
+                        : <span className="text-red-500 font-medium" title={s.fehler ?? ''}>Fehler</span>
+                      }
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      {s.erfolgreich && (
+                        <button
+                          type="button"
+                          onClick={() => void dbBackupApi.download(s.id, s.dateiname)}
+                          className="text-brand-600 hover:text-brand-700 hover:underline"
+                        >
+                          Download
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      )}
+
+      {listeQuery.isLoading && (
+        <p className="text-sm text-gray-400">Wird geladen…</p>
+      )}
+      {!listeQuery.isLoading && liste.length === 0 && (
+        <p className="text-sm text-gray-400">Noch keine Backups vorhanden. Täglich um 3:00 Uhr wird automatisch eines erstellt.</p>
+      )}
+    </section>
+  )
+}
 
 function SystemInfoSektion() {
   const health = useQuery({

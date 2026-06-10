@@ -36,6 +36,7 @@ import { kasseRoute }            from './routes/kasse.route.js'
 import { auditRoute }           from './routes/audit.route.js'
 import { kassenbuchRoute }      from './routes/kassenbuch.route.js'
 import { depSicherungRoute }    from './routes/dep-sicherung.route.js'
+import { dbBackupRoute }        from './routes/db-backup.route.js'
 import { finanzpruefungRoute }  from './routes/finanzpruefung.route.js'
 import { lieferantRoute }       from './routes/lieferant.route.js'
 import { kdsRoute }            from './routes/kds.route.js'
@@ -44,11 +45,13 @@ import { registerDisplayRoutes } from './routes/display.route.js'
 import { emailRoute }            from './routes/email.route.js'
 
 export interface ServerDeps {
-  config:    Config
-  db:        Db
-  setupDeps: SetupServiceDeps
-  belegDeps: BelegServiceDeps
-  backupDir: string
+  config:          Config
+  db:              Db
+  setupDeps:       SetupServiceDeps
+  belegDeps:       BelegServiceDeps
+  backupDir:       string
+  dbBackupDir:     string
+  dbBackupRetention: number
 }
 
 export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
@@ -139,6 +142,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     await api.register(auditRoute,              { db: deps.db })
     await api.register(kassenbuchRoute,         { db: deps.db })
     await api.register(depSicherungRoute,       { db: deps.db, backupDir: deps.backupDir })
+    await api.register(dbBackupRoute,           { db: deps.db, databaseUrl: deps.config.DATABASE_URL, backupDir: deps.dbBackupDir, retention: deps.dbBackupRetention })
     await api.register(finanzpruefungRoute,     { db: deps.db })
     await api.register(lieferantRoute,          { db: deps.db })
     await api.register(kdsRoute,                { db: deps.db })

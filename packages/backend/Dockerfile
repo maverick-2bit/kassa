@@ -44,6 +44,9 @@ RUN pnpm --filter @kassa/backend deploy --prod /standalone
 FROM node:22-alpine AS runtime
 WORKDIR /app
 
+# postgresql-client für pg_dump (DB-Backups)
+RUN apk add --no-cache postgresql-client
+
 # Nur das Nötigste:  node_modules aus dem Deploy-Schritt …
 COPY --from=builder /standalone/node_modules ./node_modules
 

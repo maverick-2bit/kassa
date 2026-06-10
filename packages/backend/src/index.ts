@@ -8,6 +8,7 @@ import { createDb } from './db/client.js'
 import { runMigrations } from './db/migrate.js'
 import { buildServer } from './server.js'
 import { starteDepSicherungsCron } from './services/dep-sicherung.cron.js'
+import { starteDbBackupCron }      from './services/db-backup.cron.js'
 
 async function main(): Promise<void> {
   const config = loadConfig()
@@ -30,10 +31,13 @@ async function main(): Promise<void> {
       db,
       masterPassphrase: config.MASTER_PASSPHRASE,
     },
-    backupDir: config.DEP_BACKUP_DIR,
+    backupDir:         config.DEP_BACKUP_DIR,
+    dbBackupDir:       config.DB_BACKUP_DIR,
+    dbBackupRetention: config.DB_BACKUP_RETENTION,
   })
 
   starteDepSicherungsCron(db, config.DEP_BACKUP_DIR, server.log)
+  starteDbBackupCron(db, config.DATABASE_URL, config.DB_BACKUP_DIR, config.DB_BACKUP_RETENTION, server.log)
 
   try {
     await server.listen({ port: config.PORT, host: '0.0.0.0' })

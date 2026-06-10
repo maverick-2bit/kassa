@@ -225,6 +225,44 @@ export const depSicherungApi = {
 }
 
 // ---------------------------------------------------------------------------
+// DB-Backups
+// ---------------------------------------------------------------------------
+
+export interface DbSicherungRow {
+  id:           string
+  erstelltAm:   string
+  dateiname:    string
+  dateigroesse: number
+  automatisch:  boolean
+  erfolgreich:  boolean
+  fehler:       string | null
+}
+
+export const dbBackupApi = {
+  liste: () =>
+    request<DbSicherungRow[]>('GET', '/api/db-sicherungen'),
+  erstellen: () =>
+    request<DbSicherungRow>('POST', '/api/db-sicherungen'),
+  download: async (id: string, dateiname: string): Promise<void> => {
+    const token = getToken()
+    const res = await fetch(`/api/db-sicherungen/${id}/download`, {
+      headers: { Authorization: token ? `Bearer ${token}` : '' },
+    })
+    if (res.status === 401) { handleUnauthorized(); return }
+    if (!res.ok) throw new ApiError(res.status, `HTTP ${res.status}`)
+    const blob = await res.blob()
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download  = dateiname
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  },
+}
+
+// ---------------------------------------------------------------------------
 // Finanzprüfungs-Tokens
 // ---------------------------------------------------------------------------
 

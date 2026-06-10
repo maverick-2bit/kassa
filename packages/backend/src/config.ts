@@ -18,6 +18,10 @@ const ConfigSchema = z.object({
   NODE_ENV:          z.enum(['development', 'test', 'production']).default('development'),
   /** Verzeichnis für DEP-Sicherungsdateien (absolut oder relativ zum CWD) */
   DEP_BACKUP_DIR:    z.string().default('./dep-backups'),
+  /** Verzeichnis für PostgreSQL-DB-Dumps */
+  DB_BACKUP_DIR:     z.string().default('./db-backups'),
+  /** Anzahl DB-Backups die aufbewahrt werden (ältere werden gelöscht) */
+  DB_BACKUP_RETENTION: z.coerce.number().int().min(1).max(365).default(30),
 
   // ── SMTP (optional — wenn nicht gesetzt, ist E-Mail-Versand deaktiviert) ──
   SMTP_HOST: z.string().optional(),

@@ -932,3 +932,23 @@ export const druckLog = pgTable('druck_log', {
 
 export type DruckLogEintrag    = typeof druckLog.$inferSelect
 export type NewDruckLogEintrag = typeof druckLog.$inferInsert
+
+// ---------------------------------------------------------------------------
+// DB-Sicherungen — PostgreSQL-Dump-Protokoll
+// ---------------------------------------------------------------------------
+
+export const dbSicherungen = pgTable('db_sicherungen', {
+  id:           uuid('id').primaryKey().defaultRandom(),
+  erstelltAm:   timestamp('erstellt_am', { withTimezone: true }).notNull().defaultNow(),
+  dateiname:    text('dateiname').notNull(),
+  dateipfad:    text('dateipfad').notNull(),
+  dateigroesse: bigint('dateigroesse', { mode: 'number' }).notNull().default(0),
+  automatisch:  boolean('automatisch').notNull().default(false),
+  erfolgreich:  boolean('erfolgreich').notNull().default(true),
+  fehler:       text('fehler'),
+}, (t) => ({
+  erstelltIdx: index('db_sicherungen_erstellt_idx').on(t.erstelltAm),
+}))
+
+export type DbSicherung    = typeof dbSicherungen.$inferSelect
+export type NewDbSicherung = typeof dbSicherungen.$inferInsert
