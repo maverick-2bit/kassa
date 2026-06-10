@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { type Lang, TRANSLATIONS, detectLang } from './i18n'
 
 // ---------------------------------------------------------------------------
 // Typen
@@ -44,7 +45,19 @@ function getParams() {
 }
 
 function formatPreis(cent: number): string {
-  return `€ ${(cent / 100).toFixed(2).replace('.', ',')}`
+  return `€ ${(cent / 100).toFixed(2).replace('.', ',')}`
+}
+
+const LANGS: { code: Lang; label: string }[] = [
+  { code: 'de', label: 'DE' },
+  { code: 'en', label: 'EN' },
+  { code: 'it', label: 'IT' },
+]
+
+function wechsleLang(lang: Lang) {
+  const url = new URL(window.location.href)
+  url.searchParams.set('lang', lang)
+  window.history.replaceState(null, '', url.toString())
 }
 
 // ---------------------------------------------------------------------------
@@ -53,16 +66,24 @@ function formatPreis(cent: number): string {
 
 export default function App() {
   const { kasseId, tischNummer } = getParams()
-  const [phase, setPhase]     = useState<Phase>('laden')
-  const [fehler, setFehler]   = useState('')
-  const [karte, setKarte]     = useState<Karte | null>(null)
-  const [korb, setKorb]       = useState<KorbItem[]>([])
+  const [phase, setPhase]       = useState<Phase>('laden')
+  const [fehler, setFehler]     = useState('')
+  const [karte, setKarte]       = useState<Karte | null>(null)
+  const [korb, setKorb]         = useState<KorbItem[]>([])
   const [aktivKat, setAktivKat] = useState<string | null>(null)
-  const [senden, setSenden]   = useState(false)
+  const [senden, setSenden]     = useState(false)
+  const [lang, setLang]         = useState<Lang>(detectLang)
+
+  const t = TRANSLATIONS[lang]
+
+  function switchLang(l: Lang) {
+    setLang(l)
+    wechsleLang(l)
+  }
 
   useEffect(() => {
     if (!kasseId) {
-      setFehler('Ungültiger QR-Code — kasseId fehlt.')
+      setFehler(t.fehlerQr)
       setPhase('fehler')
       return
     }
@@ -77,9 +98,10 @@ export default function App() {
         setPhase('karte')
       })
       .catch(e => {
-        setFehler(e instanceof Error ? e.message : 'Fehler beim Laden der Speisekarte.')
+        setFehler(e instanceof Error ? e.message : t.fehlerLaden)
         setPhase('fehler')
       })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kasseId])
 
   // Korb-Helfer
@@ -98,7 +120,7 @@ export default function App() {
     return korb.find(k => k.artikel.id === artikelId)?.menge ?? 0
   }
 
-  const gesamtCent = korb.reduce((s, k) => s + k.artikel.preisBruttoCent * k.menge, 0)
+  const gesamtCent  = korb.reduce((s, k) => s + k.artikel.preisBruttoCent * k.menge, 0)
   const gesamtMenge = korb.reduce((s, k) => s + k.menge, 0)
 
   const artikelInKat = useMemo(() =>
@@ -127,10 +149,34 @@ export default function App() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       setPhase('danke')
     } catch {
-      alert('Fehler beim Senden. Bitte nochmal versuchen.')
+      alert(t.fehlerSenden)
     } finally {
       setSenden(false)
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Sprachumschalter (wiederverwendbar)
+  // ---------------------------------------------------------------------------
+
+  function LangSwitch({ className }: { className?: string }) {
+    return (
+      <div className={`flex gap-1 ${className ?? ''}`}>
+        {LANGS.map(l => (
+          <button
+            key={l.code}
+            onClick={() => switchLang(l.code)}
+            className={`px-2 py-1 rounded-lg text-xs font-bold transition ${
+              lang === l.code
+                ? 'bg-orange-500 text-white'
+                : 'text-gray-500 hover:bg-gray-100'
+            }`}
+          >
+            {l.label}
+          </button>
+        ))}
+      </div>
+    )
   }
 
   // ---------------------------------------------------------------------------
@@ -141,7 +187,7 @@ export default function App() {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
       <div className="text-center space-y-3">
         <div className="w-10 h-10 border-4 border-orange-400 border-t-transparent rounded-full animate-spin mx-auto" />
-        <p className="text-gray-500 text-sm">Speisekarte wird geladen…</p>
+        <p className="text-gray-500 text-sm">{t.laden}</p>
       </div>
     </div>
   )
@@ -150,9 +196,10 @@ export default function App() {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
       <div className="text-center space-y-4 max-w-sm">
         <div className="text-5xl">⚠️</div>
-        <h1 className="text-xl font-bold text-gray-800">Oops!</h1>
+        <h1 className="text-xl font-bold text-gray-800">{t.fehlerTitel}</h1>
         <p className="text-gray-500 text-sm">{fehler}</p>
-        <p className="text-gray-400 text-xs">Bitte das Personal um Hilfe bitten.</p>
+        <p className="text-gray-400 text-xs">{t.fehlerHilfe}</p>
+        <LangSwitch className="justify-center" />
       </div>
     </div>
   )
@@ -161,13 +208,11 @@ export default function App() {
     <div className="min-h-screen bg-orange-50 flex items-center justify-center p-6">
       <div className="text-center space-y-5 max-w-sm">
         <div className="text-7xl">🎉</div>
-        <h1 className="text-2xl font-black text-gray-900">Danke!</h1>
-        <p className="text-gray-600">
-          Deine Bestellung wurde aufgenommen und wird so bald wie möglich zubereitet.
-        </p>
+        <h1 className="text-2xl font-black text-gray-900">{t.dankeTitel}</h1>
+        <p className="text-gray-600">{t.dankeText}</p>
         {tischNummer && (
           <div className="bg-orange-100 rounded-2xl px-6 py-3 inline-block">
-            <p className="text-xs text-orange-600 font-medium">Dein Tisch</p>
+            <p className="text-xs text-orange-600 font-medium">{t.deinTisch}</p>
             <p className="text-2xl font-black text-orange-800">{tischNummer}</p>
           </div>
         )}
@@ -175,17 +220,21 @@ export default function App() {
           onClick={() => { setKorb([]); setPhase('karte') }}
           className="w-full py-3 rounded-2xl border-2 border-orange-300 text-orange-700 font-bold text-sm hover:bg-orange-100 transition"
         >
-          Weitere Bestellung aufgeben
+          {t.weitereBestellung}
         </button>
+        <LangSwitch className="justify-center" />
       </div>
     </div>
   )
 
   if (phase === 'bestaetigung') return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      <div className="bg-white border-b border-gray-200 px-4 py-4 flex items-center gap-3">
-        <button onClick={() => setPhase('karte')} className="text-gray-500 hover:text-gray-700 text-xl">‹</button>
-        <h1 className="font-black text-gray-900 text-lg">Bestellung bestätigen</h1>
+      <div className="bg-white border-b border-gray-200 px-4 py-4 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <button onClick={() => setPhase('karte')} className="text-gray-500 hover:text-gray-700 text-xl">‹</button>
+          <h1 className="font-black text-gray-900 text-lg">{t.bestätigenTitel}</h1>
+        </div>
+        <LangSwitch />
       </div>
 
       <div className="flex-1 overflow-auto p-4 space-y-3">
@@ -193,7 +242,7 @@ export default function App() {
           <div className="bg-orange-50 rounded-2xl px-4 py-3 flex items-center gap-3">
             <span className="text-2xl">🪑</span>
             <div>
-              <p className="text-xs text-orange-600 font-medium">Tisch</p>
+              <p className="text-xs text-orange-600 font-medium">{t.tisch}</p>
               <p className="font-black text-orange-900">{tischNummer}</p>
             </div>
           </div>
@@ -214,7 +263,7 @@ export default function App() {
           ))}
         </div>
         <div className="bg-white rounded-2xl border-2 border-orange-200 px-4 py-3 flex justify-between items-center">
-          <span className="font-black text-gray-900">Gesamt</span>
+          <span className="font-black text-gray-900">{t.gesamt}</span>
           <span className="font-black text-xl text-orange-600 font-mono">{formatPreis(gesamtCent)}</span>
         </div>
       </div>
@@ -225,7 +274,7 @@ export default function App() {
           disabled={senden}
           className="w-full py-4 rounded-2xl font-black text-lg text-white bg-orange-500 hover:bg-orange-600 active:scale-95 transition disabled:opacity-50"
         >
-          {senden ? '⏳ Wird gesendet…' : '✓ Jetzt bestellen'}
+          {senden ? t.wirdGesendet : t.jetztBestellen}
         </button>
       </div>
     </div>
@@ -240,19 +289,22 @@ export default function App() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="font-black text-gray-900 text-lg">{karte?.kasse.bezeichnung}</h1>
-            {tischNummer && <p className="text-sm text-gray-500">Tisch: <span className="font-semibold">{tischNummer}</span></p>}
+            {tischNummer && <p className="text-sm text-gray-500">{t.tisch}: <span className="font-semibold">{tischNummer}</span></p>}
           </div>
-          {gesamtMenge > 0 && (
-            <button
-              onClick={() => setPhase('bestaetigung')}
-              className="flex items-center gap-2 bg-orange-500 text-white px-4 py-2 rounded-xl font-bold text-sm active:scale-95 transition"
-            >
-              <span className="bg-white text-orange-600 rounded-full w-5 h-5 flex items-center justify-center text-xs font-black">
-                {gesamtMenge}
-              </span>
-              {formatPreis(gesamtCent)}
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            <LangSwitch />
+            {gesamtMenge > 0 && (
+              <button
+                onClick={() => setPhase('bestaetigung')}
+                className="flex items-center gap-2 bg-orange-500 text-white px-4 py-2 rounded-xl font-bold text-sm active:scale-95 transition"
+              >
+                <span className="bg-white text-orange-600 rounded-full w-5 h-5 flex items-center justify-center text-xs font-black">
+                  {gesamtMenge}
+                </span>
+                {formatPreis(gesamtCent)}
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -281,7 +333,7 @@ export default function App() {
       <div className="flex-1 p-4 space-y-3">
         {artikelInKat.length === 0 ? (
           <div className="text-center py-12 text-gray-400 text-sm">
-            Keine Artikel in dieser Kategorie verfügbar.
+            {t.keineArtikel}
           </div>
         ) : (
           artikelInKat.map(a => {
@@ -323,8 +375,10 @@ export default function App() {
             onClick={() => setPhase('bestaetigung')}
             className="w-full py-4 rounded-2xl font-black text-lg text-white bg-orange-500 hover:bg-orange-600 active:scale-95 transition flex items-center justify-between px-6"
           >
-            <span className="bg-orange-400 rounded-xl px-2 py-0.5 text-sm">{gesamtMenge} Artikel</span>
-            <span>Warenkorb ansehen</span>
+            <span className="bg-orange-400 rounded-xl px-2 py-0.5 text-sm">
+              {(t.artikelAnzahl as (n: number) => string)(gesamtMenge)}
+            </span>
+            <span>{t.warenkorbAnsehen}</span>
             <span className="font-mono">{formatPreis(gesamtCent)}</span>
           </button>
         </div>
