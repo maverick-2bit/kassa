@@ -103,3 +103,13 @@ jobs:
           tags:       kassa/gast:latest,kassa/gast:${{ github.sha }}
           cache-from: type=gha
           cache-to:   type=gha,mode=max
+
+      - name: Kellner-Image bauen
+        uses: docker/build-push-action@v6
+        with:
+          context:    .
+          file:       packages/kellner/Dockerfile
+          push:       false
+          tags:       kassa/kellner:latest,kassa/kellner:${{ github.sha }}
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max

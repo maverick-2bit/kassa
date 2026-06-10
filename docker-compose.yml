@@ -78,5 +78,29 @@ services:
     ports:
       - "${KDS_PORT:-8080}:80"
 
+  # ── Gast-Bestellsystem (Vite → nginx) ──────────────────────────────────────
+  gast:
+    build:
+      context:    .
+      dockerfile: packages/gast/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${GAST_PORT:-8082}:80"
+
+  # ── Kellner-App (Vite → nginx) ───────────────────────────────────────────────
+  kellner:
+    build:
+      context:    .
+      dockerfile: packages/kellner/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${KELLNER_PORT:-8083}:80"
+
 volumes:
   postgres_data:
