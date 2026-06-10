@@ -3,9 +3,10 @@
  */
 
 import type { FastifyPluginAsync } from 'fastify'
-import { ArtikelBerichtFilterSchema, BerichtFilterSchema, BuchungsjournalFilterSchema, KellnerBerichtFilterSchema, StundenBerichtFilterSchema, WarengruppeBerichtFilterSchema } from '@kassa/shared'
+import { ArtikelBerichtFilterSchema, BerichtFilterSchema, BuchungsjournalFilterSchema, KassenVergleichFilterSchema, KellnerBerichtFilterSchema, StundenBerichtFilterSchema, WarengruppeBerichtFilterSchema } from '@kassa/shared'
 import {
   erstelleBuchungsjournalCsv,
+  holeKassenVergleich,
   holeKellnerBericht,
   holeUmsatzbericht,
   holeArtikelBericht,
@@ -144,6 +145,20 @@ export const berichtRoute: FastifyPluginAsync<BerichtRouteOptions> = async (fast
     } catch (err) {
       if (err instanceof BerichtError) return reply.status(err.httpStatus).send({ fehler: err.message })
       fastify.log.error({ err }, 'Kellnerbericht unerwartet fehlgeschlagen')
+      return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
+    }
+  })
+
+  fastify.get('/berichte/kassen-vergleich', guard, async (request, reply) => {
+    const raw = request.query as Record<string, unknown>
+    const parsed = KassenVergleichFilterSchema.safeParse({ von: raw['von'], bis: raw['bis'] })
+    if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
+    try {
+      const bericht = await holeKassenVergleich(parsed.data, request.user.mandantId, opts.deps)
+      return reply.send(bericht)
+    } catch (err) {
+      if (err instanceof BerichtError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      fastify.log.error({ err }, 'Kassenvergleich unerwartet fehlgeschlagen')
       return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
     }
   })

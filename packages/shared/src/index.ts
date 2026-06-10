@@ -245,6 +245,9 @@ export {
   KellnerBerichtZeileSchema,
   KellnerBerichtResponseSchema,
   BuchungsjournalFilterSchema,
+  KassenVergleichFilterSchema,
+  KassenVergleichZeileSchema,
+  KassenVergleichResponseSchema,
 } from './schemas/bericht.js'
 export type {
   BerichtFilter,
@@ -264,6 +267,9 @@ export type {
   KellnerBerichtZeile,
   KellnerBerichtResponse,
   BuchungsjournalFilter,
+  KassenVergleichFilter,
+  KassenVergleichZeile,
+  KassenVergleichResponse,
 } from './schemas/bericht.js'
 
 // Tagesabschluss

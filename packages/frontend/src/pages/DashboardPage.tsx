@@ -92,7 +92,7 @@ export function DashboardPage() {
       {gesamtQuery.data && (
         <GesamtUebersicht
           gesamt={gesamtQuery.data.gesamt}
-          gestGesamt={gestQuery.data?.gesamt}
+          {...(gestQuery.data ? { gestGesamt: gestQuery.data.gesamt } : {})}
         />
       )}
       {gesamtQuery.isError && (
@@ -471,14 +471,14 @@ function GesamtUebersicht({ gesamt: g, gestGesamt: gg }: { gesamt: BerichtGesamt
         label="Umsatz heute"
         wert={formatPreis(g.umsatzCent)}
         sub={`${g.anzahlBelege} Belege${g.anzahlStornos > 0 ? `, ${g.anzahlStornos} Stornos` : ''}`}
-        trend={umsatzTrend ?? undefined}
+        {...(umsatzTrend ? { trend: umsatzTrend } : {})}
         hervor
       />
       <Kachel
         label="Ø Bon-Wert"
         wert={formatPreis(avgBonCent)}
         sub="pro Beleg"
-        trend={avgBonTrend ?? undefined}
+        {...(avgBonTrend ? { trend: avgBonTrend } : {})}
       />
       <Kachel label="Bar"   wert={formatPreis(g.barCent)}   sub={pct(g.barCent,   g.umsatzCent)} />
       <Kachel label="Karte" wert={formatPreis(g.karteCent)} sub={pct(g.karteCent, g.umsatzCent)} />

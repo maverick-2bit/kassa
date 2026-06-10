@@ -30,7 +30,7 @@ export async function kdsBonErstellen(db: Db, eingabe: NeueBonEingabe): Promise<
     id:          randomUUID(),
     bezeichnung: p.bezeichnung,
     menge:       p.menge,
-    details:     p.details,
+    ...(p.details ? { details: p.details } : {}),
     erledigt:    false,
   }))
 
@@ -39,7 +39,7 @@ export async function kdsBonErstellen(db: Db, eingabe: NeueBonEingabe): Promise<
     bonNummer: eingabe.bonNummer,
     station:   eingabe.station,
     tisch:     eingabe.tisch,
-    bereich:   eingabe.bereich,
+    bereich:   eingabe.bereich ?? null,
     kellner:   eingabe.kellner,
     positionen,
   }).returning()
@@ -54,7 +54,7 @@ export async function kdsBonErstellen(db: Db, eingabe: NeueBonEingabe): Promise<
       bonNummer:  bon.bonNummer,
       station:    bon.station as Station,
       tisch:      bon.tisch,
-      bereich:    bon.bereich ?? undefined,
+      ...(bon.bereich ? { bereich: bon.bereich } : {}),
       kellner:    bon.kellner,
       positionen: bon.positionen,
       erstelltAt: bon.erstelltAt.toISOString(),

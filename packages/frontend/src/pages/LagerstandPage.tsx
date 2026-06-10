@@ -168,7 +168,7 @@ export function LagerstandPage() {
 
   const kategorienQuery = useQuery({
     queryKey: ['kategorien', identity?.kasseId],
-    queryFn:  () => kategorieApi.list(identity!.kasseId),
+    queryFn:  () => kategorieApi.list(),
     enabled:  !!identity,
   })
 

@@ -171,6 +171,38 @@ export const KellnerBerichtResponseSchema = z.object({
 export type KellnerBerichtResponse = z.infer<typeof KellnerBerichtResponseSchema>
 
 // ---------------------------------------------------------------------------
+// Kassen-Vergleich (alle Kassen eines Mandanten nebeneinander)
+// ---------------------------------------------------------------------------
+
+export const KassenVergleichFilterSchema = z.object({
+  von: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Ungültiges Datum (YYYY-MM-DD)'),
+  bis: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Ungültiges Datum (YYYY-MM-DD)'),
+})
+export type KassenVergleichFilter = z.infer<typeof KassenVergleichFilterSchema>
+
+export const KassenVergleichZeileSchema = z.object({
+  kasseId:       z.string().uuid(),
+  kassenId:      z.string(),
+  bezeichnung:   z.string().nullable(),
+  anzahlBelege:  z.number().int(),
+  anzahlStornos: z.number().int(),
+  umsatzCent:    z.number().int(),
+  barCent:       z.number().int(),
+  karteCent:     z.number().int(),
+  sonstigCent:   z.number().int(),
+  avgBonCent:    z.number().int(),
+})
+export type KassenVergleichZeile = z.infer<typeof KassenVergleichZeileSchema>
+
+export const KassenVergleichResponseSchema = z.object({
+  von:    z.string(),
+  bis:    z.string(),
+  zeilen: z.array(KassenVergleichZeileSchema),
+  gesamt: BerichtGesamtSchema,
+})
+export type KassenVergleichResponse = z.infer<typeof KassenVergleichResponseSchema>
+
+// ---------------------------------------------------------------------------
 // Buchungsjournal-Filter (DATEV/BMD-Export)
 // ---------------------------------------------------------------------------
 

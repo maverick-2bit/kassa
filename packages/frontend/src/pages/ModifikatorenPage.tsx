@@ -74,7 +74,7 @@ export function ModifikatorenPage() {
   const gruppen = gruppenQuery.data ?? []
   useEffect(() => {
     if (!gewählteGruppeId && gruppen.length > 0) {
-      setGewählteGruppeId(gruppen[0].id)
+      setGewählteGruppeId(gruppen[0]?.id ?? null)
     }
   }, [gruppen, gewählteGruppeId])
 

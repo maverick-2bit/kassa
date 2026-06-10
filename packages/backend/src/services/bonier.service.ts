@@ -279,12 +279,12 @@ export async function bonierBestellung(
         bonNummer,
         station,
         tisch:      input.tisch,
-        bereich:    input.bereich,
+        ...(input.bereich ? { bereich: input.bereich } : {}),
         kellner:    input.kellner,
         positionen: positionen.map(p => ({
           bezeichnung: p.bezeichnung,
           menge:       p.menge,
-          details:     p.details,
+          ...(p.details ? { details: p.details } : {}),
         })),
       }).catch(err => { console.error('KDS-DB-Fehler:', err) })
     )

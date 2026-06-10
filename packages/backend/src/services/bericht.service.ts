@@ -17,6 +17,8 @@ import {
   type BerichtResponse,
   type BerichtZeile,
   type BuchungsjournalFilter,
+  type KassenVergleichFilter,
+  type KassenVergleichResponse,
   type KellnerBerichtFilter,
   type KellnerBerichtResponse,
   type MwStSatz,
@@ -539,4 +541,81 @@ export async function holeStundenbericht(
   }
 
   return { von: filter.von, bis: filter.bis, kasseIds: angefragte, zeilen, gesamt }
+}
+
+// ---------------------------------------------------------------------------
+// Kassen-Vergleich — alle Kassen des Mandanten in einer Abfrage
+// ---------------------------------------------------------------------------
+
+export async function holeKassenVergleich(
+  filter:    KassenVergleichFilter,
+  mandantId: string,
+  deps:      BerichtServiceDeps,
+): Promise<KassenVergleichResponse> {
+  if (filter.von > filter.bis) {
+    throw new BerichtError(400, '"von" muss vor oder gleich "bis" liegen')
+  }
+
+  type VergleichRow = {
+    kasse_id:       string
+    kassen_id:      string
+    bezeichnung:    string | null
+    anzahl_belege:  string
+    anzahl_stornos: string
+    umsatz_cent:    string
+    bar_cent:       string
+    karte_cent:     string
+    sonstige_cent:  string
+  }
+
+  const rows = await deps.db.execute<VergleichRow>(sql`
+    SELECT
+      k.id                                                                        AS kasse_id,
+      k.kassen_id                                                                 AS kassen_id,
+      k.bezeichnung                                                               AS bezeichnung,
+      COALESCE(SUM(CASE WHEN b.beleg_typ = 'Barzahlungsbeleg' THEN 1 ELSE 0 END), 0)::int AS anzahl_belege,
+      COALESCE(SUM(CASE WHEN b.beleg_typ = 'Stornobeleg'      THEN 1 ELSE 0 END), 0)::int AS anzahl_stornos,
+      COALESCE(SUM(b.summe_bar_cent + b.summe_karte_cent + b.summe_sonstige_cent), 0)::int AS umsatz_cent,
+      COALESCE(SUM(b.summe_bar_cent),       0)::int                              AS bar_cent,
+      COALESCE(SUM(b.summe_karte_cent),     0)::int                              AS karte_cent,
+      COALESCE(SUM(b.summe_sonstige_cent),  0)::int                              AS sonstige_cent
+    FROM kassen k
+    LEFT JOIN belege b
+      ON b.kasse_id = k.id
+     AND b.beleg_typ IN ('Barzahlungsbeleg', 'Stornobeleg')
+     AND (b.beleg_datum AT TIME ZONE 'Europe/Vienna')::date
+         BETWEEN ${filter.von}::date AND ${filter.bis}::date
+    WHERE k.mandant_id = ${mandantId}::uuid
+    GROUP BY k.id, k.kassen_id, k.bezeichnung
+    ORDER BY k.kassen_id
+  `)
+
+  const zeilen = rows.map(r => {
+    const anzahlBelege = parseInt(r.anzahl_belege, 10)
+    const umsatzCent   = parseInt(r.umsatz_cent,   10)
+    return {
+      kasseId:       r.kasse_id,
+      kassenId:      r.kassen_id,
+      bezeichnung:   r.bezeichnung,
+      anzahlBelege,
+      anzahlStornos: parseInt(r.anzahl_stornos, 10),
+      umsatzCent,
+      barCent:       parseInt(r.bar_cent,       10),
+      karteCent:     parseInt(r.karte_cent,     10),
+      sonstigCent:   parseInt(r.sonstige_cent,  10),
+      avgBonCent:    anzahlBelege > 0 ? Math.round(umsatzCent / anzahlBelege) : 0,
+    }
+  })
+
+  const gesamt: BerichtGesamt = {
+    anzahlBelege:  zeilen.reduce((s, z) => s + z.anzahlBelege,  0),
+    anzahlStornos: zeilen.reduce((s, z) => s + z.anzahlStornos, 0),
+    umsatzCent:    zeilen.reduce((s, z) => s + z.umsatzCent,    0),
+    barCent:       zeilen.reduce((s, z) => s + z.barCent,       0),
+    karteCent:     zeilen.reduce((s, z) => s + z.karteCent,     0),
+    sonstigCent:   zeilen.reduce((s, z) => s + z.sonstigCent,   0),
+    mwst:          [],
+  }
+
+  return { von: filter.von, bis: filter.bis, zeilen, gesamt }
 }

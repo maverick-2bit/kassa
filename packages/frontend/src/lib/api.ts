@@ -46,6 +46,7 @@ import type {
   WarengruppeBerichtResponse,
   StundenBerichtResponse,
   KellnerBerichtResponse,
+  KassenVergleichResponse,
   BarzahlungsbelegInput,
   BerichtFilter,
   BerichtResponse,
@@ -501,6 +502,12 @@ export const berichtApi = {
     p.set('bis', filter.bis)
     for (const id of filter.kasseIds ?? []) p.append('kasseIds', id)
     return request<KellnerBerichtResponse>('GET', `/api/berichte/kellner?${p.toString()}`)
+  },
+  kassenVergleich: (filter: { von: string; bis: string }): Promise<KassenVergleichResponse> => {
+    const p = new URLSearchParams()
+    p.set('von', filter.von)
+    p.set('bis', filter.bis)
+    return request<KassenVergleichResponse>('GET', `/api/berichte/kassen-vergleich?${p.toString()}`)
   },
   buchungsjournalDownload: async (filter: { von: string; bis: string; kasseIds?: string[] }): Promise<void> => {
     const p = new URLSearchParams()

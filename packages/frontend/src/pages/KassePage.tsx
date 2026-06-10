@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useOffline } from '../lib/useOffline'
-import { displayApi } from '../lib/api'
 import type {
   Artikel,
   AngebotResponse,
@@ -309,7 +308,7 @@ export function KassePage() {
         }
       }
       // Display: Beleg-Bestätigung anzeigen, dann leer
-      const summeCent = (beleg.zahlungen?.barCent ?? 0) + (beleg.zahlungen?.karteCent ?? 0) + (beleg.zahlungen?.sonstigeCent ?? 0)
+      const summeCent = (beleg.summeBarCent ?? 0) + (beleg.summeKarteCent ?? 0) + (beleg.summeSonstigeCent ?? 0)
       displayApi.push(identity.kasseId, { typ: 'beleg_erstellt', belegNummer: beleg.belegNummer, summeCent }).catch(() => {})
       setTimeout(() => displayApi.push(identity.kasseId, { typ: 'leer' }).catch(() => {}), 5000)
       setLetzterBon(beleg)

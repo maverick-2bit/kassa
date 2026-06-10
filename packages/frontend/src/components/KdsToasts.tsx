@@ -26,10 +26,10 @@ export function KdsToasts() {
       ...prev.slice(-4),
       {
         id,
-        typ:        event.typ === 'bonierbon' ? 'bonierbon' : 'lagerstand',
-        bonierbon:  event.typ === 'bonierbon'        ? event : undefined,
-        lagerstand: event.typ === 'lagerstand_warnung' ? event : undefined,
-        timestamp:  new Date(),
+        typ:       event.typ === 'bonierbon' ? 'bonierbon' : 'lagerstand',
+        ...(event.typ === 'bonierbon'          ? { bonierbon:  event } : {}),
+        ...(event.typ === 'lagerstand_warnung' ? { lagerstand: event } : {}),
+        timestamp: new Date(),
       },
     ])
     setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), ttl)
