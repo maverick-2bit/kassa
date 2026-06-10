@@ -439,6 +439,8 @@ export const kdsApi = {
     request<KdsConfig>('PATCH', `/api/kassen/${kasseId}/kds`, config),
   uebersicht: () =>
     request<{ total: number; perStation: Record<string, number> }>('GET', '/api/kds/uebersicht'),
+  antwort: (text: string, station: string) =>
+    request<{ erfolgreich: boolean }>('POST', '/api/kds/antwort', { text, station }),
 }
 
 export const bonierApi = {

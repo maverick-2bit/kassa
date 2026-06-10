@@ -314,6 +314,7 @@ export {
   NeueBestellungEventSchema,
   LagerstandWarnungEventSchema,
   KdsNachrichtEventSchema,
+  GastBestellungEventSchema,
   KasseEventSchema,
 } from './schemas/events.js'
 export type {
@@ -321,6 +322,7 @@ export type {
   NeueBestellungEvent,
   LagerstandWarnungEvent,
   KdsNachrichtEvent,
+  GastBestellungEvent,
   KasseEvent,
 } from './schemas/events.js'
 

@@ -40,7 +40,8 @@ export interface KdsBon {
 
 // SSE-Ereignisse vom Backend
 export type KdsSseEvent =
-  | { typ: 'snapshot';     bons: KdsBon[] }
-  | { typ: 'neuer_bon';    bon: KdsBon }
-  | { typ: 'bon_erledigt'; bonId: string }
+  | { typ: 'snapshot';        bons: KdsBon[] }
+  | { typ: 'neuer_bon';       bon: KdsBon }
+  | { typ: 'bon_erledigt';    bonId: string }
   | { typ: 'position_toggle'; bonId: string; positionId: string; erledigt: boolean }
+  | { typ: 'kellner_antwort'; text: string; kasseBezeichnung: string; zeit: string }

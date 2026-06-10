@@ -13,7 +13,7 @@ import type { FastifyPluginAsync } from 'fastify'
 import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 import type { Db } from '../db/client.js'
-import { onKdsEvent } from '../sse/kds-event-bus.js'
+import { onKdsEvent, emitKdsEvent } from '../sse/kds-event-bus.js'
 import { emitKasseEvent } from '../sse/event-bus.js'
 import { kassen } from '../db/schema.js'
 import {
@@ -33,6 +33,11 @@ const NachrichtBody    = z.object({
   station:  z.string().min(1),
   /** Leer = Broadcast an alle Kassen des Mandanten */
   kasseIds: z.array(z.string().uuid()).default([]),
+})
+const AntwortBody      = z.object({
+  text:    z.string().min(1).max(500),
+  /** Station, an die geantwortet wird (aus dem Original-Event) */
+  station: z.string().min(1),
 })
 
 export const kdsRoute: FastifyPluginAsync<KdsRouteOptions> = async (fastify, opts) => {
@@ -134,6 +139,33 @@ export const kdsRoute: FastifyPluginAsync<KdsRouteOptions> = async (fastify, opt
 
       const ok = await kdsBonErledigt(opts.db, p.data.id, request.user.mandantId)
       if (!ok) return reply.status(404).send({ fehler: 'Bon nicht gefunden oder bereits erledigt' })
+
+      return reply.send({ erfolgreich: true })
+    },
+  )
+
+  // ── Antwort vom Kellner ans KDS ────────────────────────────────────────────
+  fastify.post(
+    '/kds/antwort',
+    { onRequest: [fastify.authenticate] },
+    async (request, reply) => {
+      const b = AntwortBody.safeParse(request.body)
+      if (!b.success) return reply.status(400).send({ fehler: b.error.issues })
+
+      // Kassen-Bezeichnung für die Anzeige im KDS ermitteln
+      const identity = await opts.db
+        .select({ kassenId: kassen.kassenId, bezeichnung: kassen.bezeichnung })
+        .from(kassen)
+        .where(eq(kassen.mandantId, request.user.mandantId))
+        .limit(1)
+      const kasseBezeichnung = identity[0]?.bezeichnung ?? identity[0]?.kassenId ?? 'Kasse'
+
+      emitKdsEvent(request.user.mandantId, b.data.station, {
+        typ:              'kellner_antwort',
+        text:             b.data.text,
+        kasseBezeichnung,
+        zeit:             new Date().toISOString(),
+      })
 
       return reply.send({ erfolgreich: true })
     },

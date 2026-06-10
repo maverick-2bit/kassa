@@ -9,10 +9,11 @@
 import { EventEmitter } from 'node:events'
 
 export type KdsSseEvent =
-  | { typ: 'snapshot';     bons: KdsBonDto[] }
-  | { typ: 'neuer_bon';    bon: KdsBonDto }
-  | { typ: 'bon_erledigt'; bonId: string }
+  | { typ: 'snapshot';        bons: KdsBonDto[] }
+  | { typ: 'neuer_bon';       bon: KdsBonDto }
+  | { typ: 'bon_erledigt';    bonId: string }
   | { typ: 'position_toggle'; bonId: string; positionId: string; erledigt: boolean }
+  | { typ: 'kellner_antwort'; text: string; kasseBezeichnung: string; zeit: string }
 
 export interface KdsBonDto {
   id:         string

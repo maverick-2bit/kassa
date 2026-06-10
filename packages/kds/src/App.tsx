@@ -266,12 +266,19 @@ function ChatPanel({
   )
 }
 
+interface KellerAntwort {
+  text:             string
+  kasseBezeichnung: string
+  zeit:             string
+}
+
 export default function App() {
   const [config, setConfig] = useState(getConfig)
   const [bons, setBons]     = useState<KdsBon[]>([])
   const [verbunden, setVerbunden] = useState(false)
   const [fehler, setFehler] = useState<string | null>(null)
-  const [chatOffen, setChatOffen] = useState(false)
+  const [chatOffen, setChatOffen]   = useState(false)
+  const [antworten, setAntworten]   = useState<KellerAntwort[]>([])
 
   const { station, token } = config
   const istKonfiguriert     = Boolean(token)
@@ -324,6 +331,24 @@ export default function App() {
             ),
           }
         ))
+        break
+
+      case 'kellner_antwort':
+        try {
+          const ctx = new AudioContext()
+          const osc = ctx.createOscillator()
+          const gain = ctx.createGain()
+          osc.connect(gain); gain.connect(ctx.destination)
+          osc.frequency.value = 523
+          gain.gain.setValueAtTime(0.3, ctx.currentTime)
+          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5)
+          osc.start(); osc.stop(ctx.currentTime + 0.5)
+        } catch { /* AudioContext nicht verfügbar */ }
+        setAntworten(prev => [...prev, {
+          text:             event.text,
+          kasseBezeichnung: event.kasseBezeichnung,
+          zeit:             event.zeit,
+        }])
         break
     }
   }, [])
@@ -384,6 +409,47 @@ export default function App() {
           farbe={farbe}
           onClose={() => setChatOffen(false)}
         />
+      )}
+
+      {/* Antworten von Kellnern */}
+      {antworten.length > 0 && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 w-full max-w-sm px-4 pointer-events-none">
+          {antworten.map((a, i) => (
+            <div key={i} className="pointer-events-auto bg-zinc-800 border-2 border-zinc-600 rounded-2xl shadow-2xl overflow-hidden">
+              <div className="flex items-center gap-2 px-4 py-2.5" style={{ backgroundColor: farbe + '33', borderBottom: `2px solid ${farbe}` }}>
+                <span className="text-xl">↩</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-black text-white truncate">Antwort von {a.kasseBezeichnung}</p>
+                  <p className="text-xs text-zinc-400">
+                    {new Date(a.zeit).toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setAntworten(prev => prev.filter((_, j) => j !== i))}
+                  className="text-zinc-400 hover:text-white font-bold text-lg w-7 h-7 flex items-center justify-center rounded-full hover:bg-zinc-700 transition shrink-0"
+                >✕</button>
+              </div>
+              <div className="px-4 py-3">
+                <p className="text-white font-medium leading-snug whitespace-pre-wrap break-words">{a.text}</p>
+              </div>
+              <div className="px-4 pb-3">
+                <button
+                  onClick={() => setAntworten(prev => prev.filter((_, j) => j !== i))}
+                  className="w-full py-2 rounded-xl text-sm font-bold text-white transition hover:opacity-80"
+                  style={{ backgroundColor: farbe }}
+                >✓ OK</button>
+              </div>
+            </div>
+          ))}
+          {antworten.length > 1 && (
+            <button
+              onClick={() => setAntworten([])}
+              className="pointer-events-auto self-center px-5 py-2 rounded-xl bg-zinc-700 text-white text-sm font-bold shadow-lg hover:bg-zinc-600 transition"
+            >
+              Alle schließen ({antworten.length})
+            </button>
+          )}
+        </div>
       )}
 
       {/* Fehler-Banner */}

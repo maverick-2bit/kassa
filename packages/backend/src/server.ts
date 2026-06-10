@@ -39,6 +39,7 @@ import { depSicherungRoute }    from './routes/dep-sicherung.route.js'
 import { finanzpruefungRoute }  from './routes/finanzpruefung.route.js'
 import { lieferantRoute }       from './routes/lieferant.route.js'
 import { kdsRoute }            from './routes/kds.route.js'
+import { gastRoute }           from './routes/gast.route.js'
 import { registerDisplayRoutes } from './routes/display.route.js'
 import { emailRoute }            from './routes/email.route.js'
 
@@ -141,6 +142,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     await api.register(finanzpruefungRoute,     { db: deps.db })
     await api.register(lieferantRoute,          { db: deps.db })
     await api.register(kdsRoute,                { db: deps.db })
+    await api.register(gastRoute,               { db: deps.db })
     await api.register(emailRoute,              { db: deps.db, config: deps.config })
   }, { prefix: '/api' })
 

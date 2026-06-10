@@ -49,10 +49,20 @@ export const KdsNachrichtEventSchema = z.object({
 })
 export type KdsNachrichtEvent = z.infer<typeof KdsNachrichtEventSchema>
 
+export const GastBestellungEventSchema = z.object({
+  typ:              z.literal('neue_gastbestellung'),
+  kasseId:          z.string().uuid(),
+  tischNummer:      z.string(),
+  anzahlPositionen: z.number().int(),
+  gesamtbetragCent: z.number().int(),
+})
+export type GastBestellungEvent = z.infer<typeof GastBestellungEventSchema>
+
 export const KasseEventSchema = z.discriminatedUnion('typ', [
   BonierbonEventSchema,
   NeueBestellungEventSchema,
   LagerstandWarnungEventSchema,
   KdsNachrichtEventSchema,
+  GastBestellungEventSchema,
 ])
 export type KasseEvent = z.infer<typeof KasseEventSchema>

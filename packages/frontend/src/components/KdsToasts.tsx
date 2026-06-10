@@ -1,7 +1,8 @@
 import { useCallback, useState } from 'react'
-import type { BonierbonEvent, KasseEvent, LagerstandWarnungEvent } from '@kassa/shared'
+import type { BonierbonEvent, GastBestellungEvent, KasseEvent, LagerstandWarnungEvent } from '@kassa/shared'
 import { STATION_LABELS } from '@kassa/shared'
 import { useKasseEvents } from '../lib/sse'
+import { formatPreis } from '../lib/format'
 
 type ToastTyp = 'bonierbon' | 'lagerstand'
 
@@ -16,9 +17,14 @@ interface Toast {
 let nextId = 0
 
 export function KdsToasts() {
-  const [toasts, setToasts] = useState<Toast[]>([])
+  const [toasts, setToasts]             = useState<Toast[]>([])
+  const [gastBestellungen, setGastBest] = useState<GastBestellungEvent[]>([])
 
   const handleEvent = useCallback((event: KasseEvent) => {
+    if (event.typ === 'neue_gastbestellung') {
+      setGastBest(prev => [...prev, event])
+      return
+    }
     if (event.typ !== 'bonierbon' && event.typ !== 'lagerstand_warnung') return
     const id = ++nextId
     const ttl = event.typ === 'lagerstand_warnung' ? 10_000 : 6_000
@@ -37,25 +43,59 @@ export function KdsToasts() {
 
   useKasseEvents(handleEvent)
 
-  if (toasts.length === 0) return null
+  if (toasts.length === 0 && gastBestellungen.length === 0) return null
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 items-end">
-      {toasts.map((t) => t.typ === 'bonierbon' && t.bonierbon ? (
-        <BonierbonToast
-          key={t.id}
-          event={t.bonierbon}
-          timestamp={t.timestamp}
-          onClose={() => setToasts((prev) => prev.filter((x) => x.id !== t.id))}
-        />
-      ) : t.typ === 'lagerstand' && t.lagerstand ? (
-        <LagerstandToast
-          key={t.id}
-          event={t.lagerstand}
-          onClose={() => setToasts((prev) => prev.filter((x) => x.id !== t.id))}
-        />
-      ) : null)}
-    </div>
+    <>
+      {/* Gast-Bestellungen — persistent, oben rechts */}
+      {gastBestellungen.length > 0 && (
+        <div className="fixed top-20 right-4 z-50 flex flex-col gap-2 items-end">
+          {gastBestellungen.map((g, i) => (
+            <div key={i} className="w-72 rounded-lg border-2 border-green-400 shadow-lg bg-green-50 text-sm overflow-hidden">
+              <div className="bg-green-400 px-3 py-2 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">🛎️</span>
+                  <span className="font-black text-green-900 text-sm">Neue Gastbestellung!</span>
+                </div>
+                <button onClick={() => setGastBest(prev => prev.filter((_, j) => j !== i))} className="text-green-800 hover:text-green-900 font-bold">×</button>
+              </div>
+              <div className="px-3 py-2.5 space-y-1">
+                <p className="font-semibold text-gray-900">Tisch: <span className="text-green-700">{g.tischNummer}</span></p>
+                <p className="text-xs text-gray-600">{g.anzahlPositionen} Artikel · {formatPreis(g.gesamtbetragCent)}</p>
+              </div>
+              <div className="px-3 pb-2.5">
+                <button
+                  onClick={() => setGastBest(prev => prev.filter((_, j) => j !== i))}
+                  className="w-full py-1.5 rounded-lg bg-green-500 hover:bg-green-600 text-white text-xs font-bold transition"
+                >
+                  ✓ Gesehen
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Bestehende Toasts — unten rechts */}
+      {toasts.length > 0 && (
+        <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 items-end">
+          {toasts.map((t) => t.typ === 'bonierbon' && t.bonierbon ? (
+            <BonierbonToast
+              key={t.id}
+              event={t.bonierbon}
+              timestamp={t.timestamp}
+              onClose={() => setToasts((prev) => prev.filter((x) => x.id !== t.id))}
+            />
+          ) : t.typ === 'lagerstand' && t.lagerstand ? (
+            <LagerstandToast
+              key={t.id}
+              event={t.lagerstand}
+              onClose={() => setToasts((prev) => prev.filter((x) => x.id !== t.id))}
+            />
+          ) : null)}
+        </div>
+      )}
+    </>
   )
 }
 
