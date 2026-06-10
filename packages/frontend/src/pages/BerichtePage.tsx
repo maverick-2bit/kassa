@@ -96,7 +96,7 @@ function standardGruppierung(preset: ZeitraumPreset): BerichtGruppierung {
 // Haupt-Komponente
 // ---------------------------------------------------------------------------
 
-type BerichtTab = 'gesamtumsatz' | 'umsatz' | 'zahlungsart' | 'warengruppe' | 'artikel' | 'stunden' | 'kellner' | 'vergleich' | 'kassen'
+type BerichtTab = 'gesamtumsatz' | 'umsatz' | 'zahlungsart' | 'warengruppe' | 'artikel' | 'stunden' | 'wochentag' | 'kellner' | 'vergleich' | 'kassen'
 
 const TABS: [BerichtTab, string][] = [
   ['gesamtumsatz', 'Übersicht'],
@@ -105,6 +105,7 @@ const TABS: [BerichtTab, string][] = [
   ['warengruppe',  'Warengruppe'],
   ['artikel',      'Artikel'],
   ['stunden',      'Tageszeit'],
+  ['wochentag',    'Wochentag'],
   ['kellner',      'Kellner'],
   ['vergleich',    'Vergleich'],
   ['kassen',       'Kassen'],
@@ -143,6 +144,7 @@ export function BerichtePage() {
       {aktTab === 'warengruppe'  && <WarengruppeBericht />}
       {aktTab === 'artikel'      && <ArtikelBericht />}
       {aktTab === 'stunden'      && <StundenBericht />}
+      {aktTab === 'wochentag'    && <WochentagBericht />}
       {aktTab === 'kellner'      && <KellnerBericht />}
       {aktTab === 'vergleich'    && <VergleichBericht />}
       {aktTab === 'kassen'       && <KassenVergleichBericht />}
@@ -2167,4 +2169,235 @@ function KellnerBerichtTabelle({ data }: { data: KellnerBerichtResponse }) {
       </div>
     </div>
   )
+}
+
+// ---------------------------------------------------------------------------
+// Wochentag-Auswertung
+// ---------------------------------------------------------------------------
+
+const WOCHENTAG_NAMEN = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
+const WOCHENTAG_KURZ  = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
+
+interface WochentagZeile {
+  tag:           number  // 0=Mo … 6=So (ISO)
+  tage:          number  // Anzahl Tage mit diesem Wochentag im Zeitraum
+  umsatzSumCent: number
+  belegeSumme:   number
+  umsatzAvgCent: number
+}
+
+function aggregiereNachWochentag(zeilen: { periode: string; umsatzCent: number; anzahlBelege: number }[]): WochentagZeile[] {
+  const acc: WochentagZeile[] = Array.from({ length: 7 }, (_, i) => ({
+    tag: i, tage: 0, umsatzSumCent: 0, belegeSumme: 0, umsatzAvgCent: 0,
+  }))
+  for (const z of zeilen) {
+    const d = new Date(z.periode)
+    const iso = (d.getDay() + 6) % 7  // JS: 0=So → ISO: 0=Mo
+    const eintrag = acc[iso]!
+    eintrag.tage++
+    eintrag.umsatzSumCent += z.umsatzCent
+    eintrag.belegeSumme   += z.anzahlBelege
+  }
+  for (const e of acc) {
+    e.umsatzAvgCent = e.tage > 0 ? Math.round(e.umsatzSumCent / e.tage) : 0
+  }
+  return acc
+}
+
+function WochentagKassenFilter({ kasseIds, onToggle }: { kasseIds: string[]; onToggle: (id: string) => void }) {
+  const auth = getAuth()!
+  if (auth.kassen.length <= 1) return null
+  return (
+    <div className="flex flex-wrap gap-2">
+      {auth.kassen.map(k => (
+        <button
+          key={k.id}
+          type="button"
+          onClick={() => onToggle(k.id)}
+          className={`px-3 py-1 rounded-full text-xs font-medium border transition ${
+            kasseIds.includes(k.id)
+              ? 'bg-brand-600 text-white border-brand-600'
+              : 'bg-white text-gray-600 border-gray-300 hover:border-brand-400'
+          }`}
+        >
+          {k.bezeichnung ?? k.kassenId}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function WochentagBericht() {
+  const { kasseIds, toggleKasse } = useFilterState()
+  // Festes 90-Tage-Fenster
+  const [geladen, setGeladen] = useState(false)
+  const datumBis  = heute()
+  const datumVon  = (() => {
+    const d = new Date(datumBis)
+    d.setDate(d.getDate() - 89)
+    return d.toLocaleDateString('sv-SE')
+  })()
+
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: ['bericht-wochentag', datumVon, datumBis, kasseIds],
+    queryFn:  () => berichtApi.umsatz({ von: datumVon, bis: datumBis, gruppierung: 'tag', nurZielrechnungen: false, kasseIds }),
+    enabled:  geladen,
+  })
+
+  const zeilen = data ? aggregiereNachWochentag(data.zeilen) : null
+  const maxAvg = zeilen ? Math.max(...zeilen.map(z => z.umsatzAvgCent), 1) : 1
+  const besterTag = zeilen ? zeilen.reduce((best, z) => z.umsatzAvgCent > best.umsatzAvgCent ? z : best, zeilen[0]!) : null
+
+  return (
+    <div className="space-y-6">
+      {/* Kassen-Filter + Laden-Button */}
+      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-4 space-y-4">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <p className="text-sm font-semibold text-gray-900">Wochentag-Auswertung</p>
+            <p className="text-xs text-gray-500">Letzte 90 Tage ({formatDatumAnzeige(datumVon)} – {formatDatumAnzeige(datumBis)})</p>
+          </div>
+          <Button onClick={() => setGeladen(true)} disabled={isLoading}>
+            {isLoading ? 'Wird geladen…' : geladen ? 'Aktualisieren' : 'Laden'}
+          </Button>
+        </div>
+
+        {/* Kassen-Auswahl (falls mehrere) */}
+        <WochentagKassenFilter kasseIds={kasseIds} onToggle={toggleKasse} />
+      </div>
+
+      {isError && (
+        <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {error instanceof Error ? error.message : 'Fehler'}
+        </div>
+      )}
+
+      {zeilen && (
+        <>
+          {/* Highlight: bester Tag */}
+          {besterTag && besterTag.umsatzAvgCent > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <Kachel
+                label="Stärkster Wochentag"
+                wert={WOCHENTAG_NAMEN[besterTag.tag]!}
+                sub={`Ø ${formatPreis(besterTag.umsatzAvgCent)}`}
+                hervor
+              />
+              <Kachel
+                label="Gesamt (90 Tage)"
+                wert={formatPreis(data!.gesamt.umsatzCent)}
+                sub={`${data!.gesamt.anzahlBelege} Belege`}
+              />
+              <Kachel
+                label="Ø pro Tag"
+                wert={formatPreis(data!.gesamt.umsatzCent > 0
+                  ? Math.round(data!.gesamt.umsatzCent / zeilen.filter(z => z.tage > 0).reduce((s, z) => s + z.tage, 0))
+                  : 0)}
+                sub="alle Öffnungstage"
+              />
+              <Kachel
+                label="Auswertungszeitraum"
+                wert="90 Tage"
+                sub={`${formatDatumAnzeige(datumVon)} – ${formatDatumAnzeige(datumBis)}`}
+              />
+            </div>
+          )}
+
+          {/* Balkendiagramm Ø-Umsatz */}
+          <div className="rounded-lg bg-white shadow-sm border border-gray-200 overflow-hidden">
+            <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-gray-700">Ø Umsatz pro Wochentag</h2>
+              <CsvExportButton onClick={() => {
+                const kopfzeile = ['Wochentag', 'Anz. Tage', 'Ø Umsatz (€)', 'Gesamt (€)', 'Ø Belege']
+                const datenzeilen = zeilen.map(z => [
+                  WOCHENTAG_NAMEN[z.tag]!,
+                  String(z.tage),
+                  centZuEuro(z.umsatzAvgCent),
+                  centZuEuro(z.umsatzSumCent),
+                  z.tage > 0 ? (z.belegeSumme / z.tage).toFixed(1) : '0',
+                ])
+                csvHerunterladen(`wochentag_${datumVon}_${datumBis}.csv`, [kopfzeile, ...datenzeilen])
+              }} />
+            </div>
+            <div className="px-4 py-4 space-y-2">
+              {zeilen.map(z => {
+                const balken = maxAvg > 0 ? Math.max(z.umsatzAvgCent > 0 ? 4 : 0, Math.round((z.umsatzAvgCent / maxAvg) * 100)) : 0
+                const istBester = z.tag === besterTag?.tag && z.umsatzAvgCent > 0
+                return (
+                  <div key={z.tag} className="flex items-center gap-3">
+                    <span className={`text-xs font-semibold w-8 shrink-0 ${istBester ? 'text-brand-700' : 'text-gray-500'}`}>
+                      {WOCHENTAG_KURZ[z.tag]}
+                    </span>
+                    <div className="flex-1 h-7 bg-gray-100 rounded overflow-hidden">
+                      <div
+                        className={`h-full rounded transition-all ${istBester ? 'bg-brand-500' : 'bg-brand-300'}`}
+                        style={{ width: `${balken}%` }}
+                      />
+                    </div>
+                    <span className={`text-sm font-mono w-24 shrink-0 text-right ${z.umsatzAvgCent > 0 ? 'font-semibold text-gray-900' : 'text-gray-300'}`}>
+                      {z.umsatzAvgCent > 0 ? formatPreis(z.umsatzAvgCent) : '—'}
+                    </span>
+                    <span className="text-xs text-gray-400 w-16 shrink-0 text-right">
+                      {z.tage > 0 ? `${z.tage} Tage` : ''}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Detail-Tabelle */}
+          <div className="rounded-lg bg-white shadow-sm border border-gray-200 overflow-hidden">
+            <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+              <h2 className="text-sm font-semibold text-gray-700">Details nach Wochentag</h2>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500 border-b border-gray-200">
+                  <tr>
+                    <th className="px-4 py-2 font-semibold">Wochentag</th>
+                    <th className="px-4 py-2 font-semibold text-right">Tage erfasst</th>
+                    <th className="px-4 py-2 font-semibold text-right">Ø Umsatz</th>
+                    <th className="px-4 py-2 font-semibold text-right">Gesamt</th>
+                    <th className="px-4 py-2 font-semibold text-right">Ø Belege</th>
+                    <th className="px-4 py-2 font-semibold text-right">Anteil</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {zeilen.map(z => {
+                    const gesamtSum = zeilen.reduce((s, z2) => s + z2.umsatzSumCent, 0)
+                    const istBester = z.tag === besterDay(zeilen)
+                    return (
+                      <tr key={z.tag} className={`hover:bg-gray-50 ${istBester ? 'bg-brand-50' : ''}`}>
+                        <td className="px-4 py-2.5 font-medium text-gray-900">{WOCHENTAG_NAMEN[z.tag]}</td>
+                        <td className="px-4 py-2.5 text-right text-gray-700">{z.tage}</td>
+                        <td className="px-4 py-2.5 text-right font-mono font-semibold text-gray-900">
+                          {z.umsatzAvgCent > 0 ? formatPreis(z.umsatzAvgCent) : '—'}
+                        </td>
+                        <td className="px-4 py-2.5 text-right font-mono text-gray-600">
+                          {z.umsatzSumCent > 0 ? formatPreis(z.umsatzSumCent) : '—'}
+                        </td>
+                        <td className="px-4 py-2.5 text-right text-gray-600">
+                          {z.tage > 0 ? (z.belegeSumme / z.tage).toFixed(1) : '—'}
+                        </td>
+                        <td className="px-4 py-2.5 text-right text-gray-500 text-xs">
+                          {gesamtSum > 0 && z.umsatzSumCent > 0
+                            ? `${Math.round((z.umsatzSumCent / gesamtSum) * 100)} %`
+                            : '—'}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+function besterDay(zeilen: WochentagZeile[]): number {
+  return zeilen.reduce((best, z) => z.umsatzAvgCent > best.umsatzAvgCent ? z : best, zeilen[0]!).tag
 }

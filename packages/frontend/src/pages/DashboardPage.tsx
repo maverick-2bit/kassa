@@ -12,7 +12,7 @@
 
 import { useQuery, useQueries } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import type { BerichtGesamt, Artikel } from '@kassa/shared'
+import type { ArtikelBerichtResponse, BerichtGesamt, Artikel } from '@kassa/shared'
 import { berichtApi, kasseApi, tischTabApi, artikelApi, offenerPostenApi, kdsApi } from '../lib/api'
 import { getAuth, hasBerechtigung, hasModul } from '../lib/auth'
 import { formatPreis } from '../lib/format'
@@ -120,6 +120,14 @@ export function DashboardPage() {
               />
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Top-Artikel + 7-Tage-Verlauf */}
+      {hasBerechtigung('belege.lesen') && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <TopArtikelWidget datum={datum} />
+          <SiebentageVerlauf datum={datum} />
         </div>
       )}
 
@@ -615,6 +623,193 @@ function StundenVerlauf({ datum }: { datum: string }) {
           )
         })}
       </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Top-5-Artikel (heute)
+// ---------------------------------------------------------------------------
+
+function TopArtikelWidget({ datum }: { datum: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey:        ['dashboard-top-artikel', datum],
+    queryFn:         () => berichtApi.artikel({ von: datum, bis: datum, limit: 5 }),
+    refetchInterval: 60_000,
+  })
+
+  const maxUmsatz = Math.max(...(data?.zeilen ?? []).map(z => z.umsatzCent), 1)
+
+  return (
+    <div className="rounded-lg bg-white shadow-sm border border-gray-200 overflow-hidden">
+      <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-gray-700">Top-Artikel heute</h2>
+        <Link to="/berichte" className="text-xs text-brand-600 hover:underline">Alle Artikel →</Link>
+      </div>
+
+      {isLoading && (
+        <div className="px-4 py-6 text-sm text-gray-400">Wird geladen…</div>
+      )}
+
+      {!isLoading && (!data || data.zeilen.length === 0) && (
+        <div className="px-4 py-6 text-sm text-gray-400">Noch keine Artikel verkauft.</div>
+      )}
+
+      {data && data.zeilen.length > 0 && (
+        <div className="divide-y divide-gray-50">
+          {data.zeilen.map((z, i) => {
+            const balken = Math.max(8, Math.round((z.umsatzCent / maxUmsatz) * 100))
+            return (
+              <div key={z.bezeichnung} className="px-4 py-2.5 flex items-center gap-3">
+                <span className="text-xs font-mono text-gray-400 w-4 shrink-0">{i + 1}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span className="text-sm font-medium text-gray-900 truncate">{z.bezeichnung}</span>
+                    <span className="text-xs text-gray-500 shrink-0">{z.mengeSumme}×</span>
+                  </div>
+                  <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-brand-400 rounded-full transition-all"
+                      style={{ width: `${balken}%` }}
+                    />
+                  </div>
+                </div>
+                <span className="text-sm font-mono font-semibold text-gray-900 shrink-0 w-20 text-right">
+                  {formatPreis(z.umsatzCent)}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// 7-Tage-Trendlinie (SVG-Liniendiagramm)
+// ---------------------------------------------------------------------------
+
+function SiebentageVerlauf({ datum }: { datum: string }) {
+  const von7 = (() => {
+    const d = new Date(datum)
+    d.setDate(d.getDate() - 6)
+    return d.toLocaleDateString('sv-SE', { timeZone: 'Europe/Vienna' })
+  })()
+
+  const { data, isLoading } = useQuery({
+    queryKey:        ['dashboard-7tage', datum],
+    queryFn:         () => berichtApi.umsatz({ von: von7, bis: datum, gruppierung: 'tag', nurZielrechnungen: false }),
+    refetchInterval: 60_000,
+    staleTime:       5 * 60_000,
+  })
+
+  const WOCHENTAGE = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa']
+  const W = 400
+  const H = 110
+  const PAD_L = 44
+  const PAD_R = 12
+  const PAD_T = 12
+  const PAD_B = 24
+
+  const zeilen = data?.zeilen ?? []
+  const maxCent = Math.max(...zeilen.map(z => z.umsatzCent), 1)
+
+  function xPos(i: number) {
+    const n = zeilen.length <= 1 ? 1 : zeilen.length - 1
+    return PAD_L + (i / n) * (W - PAD_L - PAD_R)
+  }
+  function yPos(cent: number) {
+    return PAD_T + (1 - cent / maxCent) * (H - PAD_T - PAD_B)
+  }
+
+  const linePath = zeilen.map((z, i) => `${i === 0 ? 'M' : 'L'} ${xPos(i).toFixed(1)} ${yPos(z.umsatzCent).toFixed(1)}`).join(' ')
+  const areaPath = zeilen.length > 0
+    ? `${linePath} L ${xPos(zeilen.length - 1).toFixed(1)} ${(H - PAD_B).toFixed(1)} L ${xPos(0).toFixed(1)} ${(H - PAD_B).toFixed(1)} Z`
+    : ''
+
+  const wochentagLabel = (periode: string) => {
+    const d = new Date(periode)
+    return WOCHENTAGE[d.getDay()] ?? ''
+  }
+
+  const heute7Sum = zeilen.reduce((s, z) => s + z.umsatzCent, 0)
+  const tageMitUmsatz = zeilen.filter(z => z.umsatzCent > 0).length
+  const durchschnitt = tageMitUmsatz > 0 ? Math.round(heute7Sum / tageMitUmsatz) : 0
+
+  return (
+    <div className="rounded-lg bg-white shadow-sm border border-gray-200 overflow-hidden">
+      <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-gray-700">Letzten 7 Tage</h2>
+        {!isLoading && durchschnitt > 0 && (
+          <span className="text-xs text-gray-500">
+            Ø {formatPreis(durchschnitt)}/Tag
+          </span>
+        )}
+      </div>
+
+      {isLoading && (
+        <div className="px-4 py-6 text-sm text-gray-400">Wird geladen…</div>
+      )}
+
+      {!isLoading && zeilen.length === 0 && (
+        <div className="px-4 py-6 text-sm text-gray-400">Keine Daten vorhanden.</div>
+      )}
+
+      {!isLoading && zeilen.length > 0 && (
+        <div className="px-3 pt-3 pb-1">
+          <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: '110px' }}>
+            <defs>
+              <linearGradient id="trendGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%"   stopColor="#6366f1" stopOpacity="0.18" />
+                <stop offset="100%" stopColor="#6366f1" stopOpacity="0.01" />
+              </linearGradient>
+            </defs>
+
+            {/* Y-Achse — 3 Linien */}
+            {[0, 0.5, 1].map(f => {
+              const y = PAD_T + (1 - f) * (H - PAD_T - PAD_B)
+              const wert = Math.round(maxCent * f)
+              return (
+                <g key={f}>
+                  <line x1={PAD_L} y1={y} x2={W - PAD_R} y2={y} stroke="#e5e7eb" strokeWidth="1" />
+                  <text x={PAD_L - 4} y={y + 4} textAnchor="end" fontSize="9" fill="#9ca3af">
+                    {wert >= 100 ? `${Math.round(wert / 100)}` : '0'}
+                  </text>
+                </g>
+              )
+            })}
+            <text x={PAD_L - 4} y={PAD_T + (H - PAD_T - PAD_B) / 2 + 3} textAnchor="end" fontSize="8" fill="#d1d5db">€</text>
+
+            {/* Area */}
+            {areaPath && (
+              <path d={areaPath} fill="url(#trendGrad)" />
+            )}
+
+            {/* Linie */}
+            {linePath && (
+              <path d={linePath} fill="none" stroke="#6366f1" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+            )}
+
+            {/* Punkte + Labels */}
+            {zeilen.map((z, i) => {
+              const x = xPos(i)
+              const y = yPos(z.umsatzCent)
+              const isHeute = z.periode === datum
+              return (
+                <g key={z.periode} className="group">
+                  <circle cx={x} cy={y} r={isHeute ? 5 : 3.5} fill={isHeute ? '#4f46e5' : '#6366f1'} stroke="white" strokeWidth="1.5" />
+                  <text x={x} y={H - 4} textAnchor="middle" fontSize="9" fill={isHeute ? '#4f46e5' : '#9ca3af'} fontWeight={isHeute ? '600' : '400'}>
+                    {wochentagLabel(z.periode)}
+                  </text>
+                  {/* Tooltip bei Hover */}
+                  <title>{wochentagLabel(z.periode)} — {formatPreis(z.umsatzCent)} ({z.anzahlBelege} Bel.)</title>
+                </g>
+              )
+            })}
+          </svg>
+        </div>
+      )}
     </div>
   )
 }
