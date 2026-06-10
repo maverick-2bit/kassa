@@ -1,131 +1,174 @@
 /**
  * Drucker-Routen
- *   GET   /api/kassen/:id/drucker      Aktuelle Drucker-Konfiguration
- *   PATCH /api/kassen/:id/drucker      Drucker-Konfiguration ändern
- *   POST  /api/belege/:id/drucken      Bon manuell drucken
- *   POST  /api/kassen/:id/drucker/test Testdruck (Mini-Bon zum Prüfen der Verbindung)
+ *   GET   /api/kassen/:id/drucker         Drucker-Konfiguration
+ *   PATCH /api/kassen/:id/drucker         Drucker-Konfiguration ändern
+ *   GET   /api/kassen/:id/drucker/status  Online-Status (TCP-Check)
+ *   GET   /api/kassen/:id/drucker/log     Letzte 50 Druckversuche
+ *   POST  /api/belege/:id/drucken         Bon manuell drucken
+ *   POST  /api/kassen/:id/drucker/test    Testdruck
  */
 
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
-import { eq } from 'drizzle-orm'
+import { desc, eq } from 'drizzle-orm'
 import { Buffer } from 'node:buffer'
 import { StationSchema } from '@kassa/shared'
 import type { Db } from '../db/client.js'
-import { kassen } from '../db/schema.js'
+import { druckLog, kassen } from '../db/schema.js'
 import { pruefeBelegGehoertZuMandant, pruefeKasseGehoertZuMandant } from '../auth/scope.js'
 import {
   druckeBeleg,
   sendBytes,
   druckerConfigVonKasse,
+  aktualisiereStatus,
+  getDruckerStatus,
   DruckerError,
 } from '../services/drucker.service.js'
 import * as ep from '../services/escpos/commands.js'
 
-export interface DruckerRouteOptions {
-  db: Db
-}
+export interface DruckerRouteOptions { db: Db }
 
 const IdParamSchema = z.object({ id: z.string().uuid() })
 
 const DruckerConfigInputSchema = z.object({
-  druckerIp:     z.string().trim().min(1).max(64).nullable(),
-  druckerPort:   z.number().int().min(1).max(65535).optional(),
-  druckerAktiv:  z.boolean().optional(),
-  druckerBreite: z.number().int().min(20).max(80).optional(),
+  druckerIp:          z.string().trim().min(1).max(64).nullable().optional(),
+  druckerPort:        z.number().int().min(1).max(65535).optional(),
+  druckerAktiv:       z.boolean().optional(),
+  druckerBreite:      z.number().int().min(20).max(80).optional(),
+  druckerTimeoutSek:  z.number().int().min(1).max(30).optional(),
 })
 
+function kasseZuDruckerDto(kasse: typeof kassen.$inferSelect) {
+  return {
+    druckerIp:         kasse.druckerIp,
+    druckerPort:       kasse.druckerPort,
+    druckerAktiv:      kasse.druckerAktiv,
+    druckerBreite:     kasse.druckerBreite,
+    druckerTimeoutSek: kasse.druckerTimeoutSek,
+  }
+}
+
 export const druckerRoute: FastifyPluginAsync<DruckerRouteOptions> = async (fastify, opts) => {
-  // GET /kassen/:id/drucker
-  fastify.get('/kassen/:id/drucker', { onRequest: [fastify.authenticate] }, async (request, reply) => {
+  const auth = { onRequest: [fastify.authenticate] }
+
+  // ── GET /kassen/:id/drucker ─────────────────────────────────────────────────
+  fastify.get('/kassen/:id/drucker', auth, async (request, reply) => {
     const params = IdParamSchema.safeParse(request.params)
     if (!params.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
-    if (!(await pruefeKasseGehoertZuMandant(opts.db, params.data.id, request.user.mandantId))) {
+    if (!(await pruefeKasseGehoertZuMandant(opts.db, params.data.id, request.user.mandantId)))
       return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
-    }
 
     const [kasse] = await opts.db.select().from(kassen).where(eq(kassen.id, params.data.id)).limit(1)
     if (!kasse) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
-
-    return reply.send({
-      druckerIp:     kasse.druckerIp,
-      druckerPort:   kasse.druckerPort,
-      druckerAktiv:  kasse.druckerAktiv,
-      druckerBreite: kasse.druckerBreite,
-    })
+    return reply.send(kasseZuDruckerDto(kasse))
   })
 
-  // PATCH /kassen/:id/drucker
-  fastify.patch('/kassen/:id/drucker', { onRequest: [fastify.authenticate] }, async (request, reply) => {
+  // ── PATCH /kassen/:id/drucker ───────────────────────────────────────────────
+  fastify.patch('/kassen/:id/drucker', auth, async (request, reply) => {
     const params = IdParamSchema.safeParse(request.params)
     if (!params.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
-    if (!(await pruefeKasseGehoertZuMandant(opts.db, params.data.id, request.user.mandantId))) {
+    if (!(await pruefeKasseGehoertZuMandant(opts.db, params.data.id, request.user.mandantId)))
       return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
-    }
 
     const body = DruckerConfigInputSchema.safeParse(request.body)
     if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
 
     const update: Partial<typeof kassen.$inferInsert> = { updatedAt: new Date() }
-    if (body.data.druckerIp     !== undefined) update.druckerIp     = body.data.druckerIp
-    if (body.data.druckerPort   !== undefined) update.druckerPort   = body.data.druckerPort
-    if (body.data.druckerAktiv  !== undefined) update.druckerAktiv  = body.data.druckerAktiv
-    if (body.data.druckerBreite !== undefined) update.druckerBreite = body.data.druckerBreite
+    if (body.data.druckerIp         !== undefined) update.druckerIp         = body.data.druckerIp ?? null
+    if (body.data.druckerPort       !== undefined) update.druckerPort       = body.data.druckerPort
+    if (body.data.druckerAktiv      !== undefined) update.druckerAktiv      = body.data.druckerAktiv
+    if (body.data.druckerBreite     !== undefined) update.druckerBreite     = body.data.druckerBreite
+    if (body.data.druckerTimeoutSek !== undefined) update.druckerTimeoutSek = body.data.druckerTimeoutSek
 
     const [updated] = await opts.db.update(kassen).set(update).where(eq(kassen.id, params.data.id)).returning()
     if (!updated) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
-
-    return reply.send({
-      druckerIp:     updated.druckerIp,
-      druckerPort:   updated.druckerPort,
-      druckerAktiv:  updated.druckerAktiv,
-      druckerBreite: updated.druckerBreite,
-    })
+    return reply.send(kasseZuDruckerDto(updated))
   })
 
-  // POST /belege/:id/drucken (Reprint)
-  fastify.post('/belege/:id/drucken', { onRequest: [fastify.authenticate] }, async (request, reply) => {
+  // ── GET /kassen/:id/drucker/status — TCP-Ping ───────────────────────────────
+  fastify.get('/kassen/:id/drucker/status', auth, async (request, reply) => {
     const params = IdParamSchema.safeParse(request.params)
     if (!params.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
-    if (!(await pruefeBelegGehoertZuMandant(opts.db, params.data.id, request.user.mandantId))) {
-      return reply.status(404).send({ fehler: 'Beleg nicht gefunden' })
+    if (!(await pruefeKasseGehoertZuMandant(opts.db, params.data.id, request.user.mandantId)))
+      return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
+
+    const [kasse] = await opts.db.select().from(kassen).where(eq(kassen.id, params.data.id)).limit(1)
+    if (!kasse) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
+
+    if (!kasse.druckerAktiv || !kasse.druckerIp) {
+      return reply.send({ online: null, grund: 'Drucker nicht konfiguriert' })
     }
+
+    // Cache nutzen wenn < 30s alt
+    const cached = getDruckerStatus(kasse.druckerIp)
+    if (cached && Date.now() - cached.geprüftAm.getTime() < 30_000) {
+      return reply.send({ online: cached.online, geprüftAm: cached.geprüftAm })
+    }
+
+    const online = await aktualisiereStatus(kasse.druckerIp, kasse.druckerPort)
+    return reply.send({ online, geprüftAm: new Date() })
+  })
+
+  // ── GET /kassen/:id/drucker/log — Druckhistorie ─────────────────────────────
+  fastify.get('/kassen/:id/drucker/log', auth, async (request, reply) => {
+    const params = IdParamSchema.safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
+    if (!(await pruefeKasseGehoertZuMandant(opts.db, params.data.id, request.user.mandantId)))
+      return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
+
+    const eintraege = await opts.db
+      .select()
+      .from(druckLog)
+      .where(eq(druckLog.kasseId, params.data.id))
+      .orderBy(desc(druckLog.erstelltAt))
+      .limit(50)
+
+    return reply.send(eintraege.map(e => ({
+      id:          e.id,
+      druckerIp:   e.druckerIp,
+      druckerTyp:  e.druckerTyp,
+      belegId:     e.belegId,
+      erfolg:      e.erfolg,
+      fehlerText:  e.fehlerText,
+      erstelltAt:  e.erstelltAt.toISOString(),
+    })))
+  })
+
+  // ── POST /belege/:id/drucken (Reprint) ──────────────────────────────────────
+  fastify.post('/belege/:id/drucken', auth, async (request, reply) => {
+    const params = IdParamSchema.safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
+    if (!(await pruefeBelegGehoertZuMandant(opts.db, params.data.id, request.user.mandantId)))
+      return reply.status(404).send({ fehler: 'Beleg nicht gefunden' })
 
     try {
       await druckeBeleg(opts.db, params.data.id)
       return reply.send({ erfolgreich: true })
     } catch (err) {
-      if (err instanceof DruckerError) {
+      if (err instanceof DruckerError)
         return reply.status(err.httpStatus).send({ fehler: err.message })
-      }
       fastify.log.error({ err }, 'Reprint fehlgeschlagen')
       return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
     }
   })
 
-  // GET /kassen/:id/kds — KDS-Konfiguration auslesen
-  fastify.get('/kassen/:id/kds', { onRequest: [fastify.authenticate] }, async (request, reply) => {
+  // ── GET /kassen/:id/kds ─────────────────────────────────────────────────────
+  fastify.get('/kassen/:id/kds', auth, async (request, reply) => {
     const params = IdParamSchema.safeParse(request.params)
     if (!params.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
-    if (!(await pruefeKasseGehoertZuMandant(opts.db, params.data.id, request.user.mandantId))) {
+    if (!(await pruefeKasseGehoertZuMandant(opts.db, params.data.id, request.user.mandantId)))
       return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
-    }
     const [kasse] = await opts.db.select().from(kassen).where(eq(kassen.id, params.data.id)).limit(1)
     if (!kasse) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
-    return reply.send({
-      kdsAktiv:     kasse.kdsAktiv,
-      kdsPort:      kasse.kdsPort,
-      kdsStationen: kasse.kdsStationen,
-    })
+    return reply.send({ kdsAktiv: kasse.kdsAktiv, kdsPort: kasse.kdsPort, kdsStationen: kasse.kdsStationen })
   })
 
-  // PATCH /kassen/:id/kds — KDS-Stationen + Port + Aktiv
-  fastify.patch('/kassen/:id/kds', { onRequest: [fastify.authenticate] }, async (request, reply) => {
+  // ── PATCH /kassen/:id/kds ───────────────────────────────────────────────────
+  fastify.patch('/kassen/:id/kds', auth, async (request, reply) => {
     const params = IdParamSchema.safeParse(request.params)
     if (!params.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
-    if (!(await pruefeKasseGehoertZuMandant(opts.db, params.data.id, request.user.mandantId))) {
+    if (!(await pruefeKasseGehoertZuMandant(opts.db, params.data.id, request.user.mandantId)))
       return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
-    }
 
     const KdsConfigSchema = z.object({
       kdsAktiv:     z.boolean().optional(),
@@ -142,20 +185,15 @@ export const druckerRoute: FastifyPluginAsync<DruckerRouteOptions> = async (fast
 
     const [updated] = await opts.db.update(kassen).set(update).where(eq(kassen.id, params.data.id)).returning()
     if (!updated) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
-    return reply.send({
-      kdsAktiv:     updated.kdsAktiv,
-      kdsPort:      updated.kdsPort,
-      kdsStationen: updated.kdsStationen,
-    })
+    return reply.send({ kdsAktiv: updated.kdsAktiv, kdsPort: updated.kdsPort, kdsStationen: updated.kdsStationen })
   })
 
-  // POST /kassen/:id/drucker/test (Testdruck)
-  fastify.post('/kassen/:id/drucker/test', { onRequest: [fastify.authenticate] }, async (request, reply) => {
+  // ── POST /kassen/:id/drucker/test ───────────────────────────────────────────
+  fastify.post('/kassen/:id/drucker/test', auth, async (request, reply) => {
     const params = IdParamSchema.safeParse(request.params)
     if (!params.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
-    if (!(await pruefeKasseGehoertZuMandant(opts.db, params.data.id, request.user.mandantId))) {
+    if (!(await pruefeKasseGehoertZuMandant(opts.db, params.data.id, request.user.mandantId)))
       return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
-    }
 
     const [kasse] = await opts.db.select().from(kassen).where(eq(kassen.id, params.data.id)).limit(1)
     if (!kasse) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
@@ -163,7 +201,6 @@ export const druckerRoute: FastifyPluginAsync<DruckerRouteOptions> = async (fast
     const config = druckerConfigVonKasse(kasse)
     if (!config) return reply.status(409).send({ fehler: 'Drucker nicht konfiguriert oder deaktiviert' })
 
-    // Mini-Testdruck
     const bytes = Buffer.concat([
       ep.init(),
       ep.selectCodepage(19),
@@ -183,11 +220,26 @@ export const druckerRoute: FastifyPluginAsync<DruckerRouteOptions> = async (fast
 
     try {
       await sendBytes(bytes, config)
+      // Testdruck in Druckhistorie loggen
+      await opts.db.insert(druckLog).values({
+        mandantId:  request.user.mandantId,
+        kasseId:    kasse.id,
+        druckerIp:  config.ip,
+        druckerTyp: 'test',
+        erfolg:     true,
+      })
       return reply.send({ erfolgreich: true })
     } catch (err) {
-      if (err instanceof DruckerError) {
+      await opts.db.insert(druckLog).values({
+        mandantId:  request.user.mandantId,
+        kasseId:    kasse.id,
+        druckerIp:  config.ip,
+        druckerTyp: 'test',
+        erfolg:     false,
+        fehlerText: err instanceof Error ? err.message : String(err),
+      }).catch(() => {})
+      if (err instanceof DruckerError)
         return reply.status(err.httpStatus).send({ fehler: err.message })
-      }
       return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
     }
   })

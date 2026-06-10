@@ -405,10 +405,27 @@ export const posConfigApi = {
 // ---------------------------------------------------------------------------
 
 export interface DruckerConfig {
-  druckerIp:     string | null
-  druckerPort:   number
-  druckerAktiv:  boolean
-  druckerBreite: number
+  druckerIp:         string | null
+  druckerPort:       number
+  druckerAktiv:      boolean
+  druckerBreite:     number
+  druckerTimeoutSek: number
+}
+
+export interface DruckerStatus {
+  online:    boolean | null
+  geprüftAm?: string
+  grund?:     string
+}
+
+export interface DruckLogEintrag {
+  id:         string
+  druckerIp:  string
+  druckerTyp: string
+  belegId:    string | null
+  erfolg:     boolean
+  fehlerText: string | null
+  erstelltAt: string
 }
 
 export const druckerApi = {
@@ -420,6 +437,10 @@ export const druckerApi = {
     request<{ erfolgreich: boolean }>('POST', `/api/kassen/${kasseId}/drucker/test`),
   reprint:    (belegId: string) =>
     request<{ erfolgreich: boolean }>('POST', `/api/belege/${belegId}/drucken`),
+  status:     (kasseId: string) =>
+    request<DruckerStatus>('GET', `/api/kassen/${kasseId}/drucker/status`),
+  log:        (kasseId: string) =>
+    request<DruckLogEintrag[]>('GET', `/api/kassen/${kasseId}/drucker/log`),
 }
 
 // ---------------------------------------------------------------------------

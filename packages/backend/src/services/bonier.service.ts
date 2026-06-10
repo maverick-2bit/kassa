@@ -14,7 +14,7 @@ import type { Db } from '../db/client.js'
 import { artikel, bonierdrucker, kategorien, kassen } from '../db/schema.js'
 import { baueBonierbon, generiereBonNummer } from './kds/bonierbon.js'
 import { sendeBonierbon, type KdsZiel } from './kds/sender.js'
-import { druckeBonierbon } from './bonierdrucker.service.js'
+import { druckeBonierbonDirekt } from './bonierdrucker.service.js'
 import { emitKasseEvent } from '../sse/event-bus.js'
 import { logBonierEreignis } from './tisch-tab.service.js'
 import { kdsBonErstellen } from './kds/kds-store.service.js'
@@ -197,7 +197,7 @@ export async function bonierBestellung(
       preisLabel:  '',
     }))
     try {
-      await druckeBonierbon(drucker.ip, drucker.port, input.tisch, input.kellner, zeilen)
+      await druckeBonierbonDirekt(drucker.ip, drucker.port, input.tisch, input.kellner, zeilen)
       druckerErgebnisse.push({
         druckerId:   drucker.id,
         name:        drucker.name,

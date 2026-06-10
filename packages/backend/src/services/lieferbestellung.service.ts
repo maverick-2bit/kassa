@@ -208,12 +208,13 @@ export async function erstelleBestellung(
 ): Promise<LieferbestellungResponse> {
   const [kasse] = await db
     .select({
-      mandantId:    kassen.mandantId,
-      kassenId:     kassen.kassenId,
-      druckerIp:    kassen.druckerIp,
-      druckerPort:  kassen.druckerPort,
-      druckerAktiv: kassen.druckerAktiv,
-      druckerBreite: kassen.druckerBreite,
+      mandantId:         kassen.mandantId,
+      kassenId:          kassen.kassenId,
+      druckerIp:         kassen.druckerIp,
+      druckerPort:       kassen.druckerPort,
+      druckerAktiv:      kassen.druckerAktiv,
+      druckerBreite:     kassen.druckerBreite,
+      druckerTimeoutSek: kassen.druckerTimeoutSek,
     })
     .from(kassen)
     .where(eq(kassen.id, kasseId))
@@ -360,11 +361,12 @@ export async function druckeLieferbestellung(
   // Kasse laden
   const [kasse] = await db
     .select({
-      kassenId:      kassen.kassenId,
-      druckerIp:     kassen.druckerIp,
-      druckerPort:   kassen.druckerPort,
-      druckerAktiv:  kassen.druckerAktiv,
-      druckerBreite: kassen.druckerBreite,
+      kassenId:          kassen.kassenId,
+      druckerIp:         kassen.druckerIp,
+      druckerPort:       kassen.druckerPort,
+      druckerAktiv:      kassen.druckerAktiv,
+      druckerBreite:     kassen.druckerBreite,
+      druckerTimeoutSek: kassen.druckerTimeoutSek,
     })
     .from(kassen)
     .where(eq(kassen.id, row.kasseId))

@@ -11,15 +11,16 @@ import { bonierdrucker } from '../db/schema.js'
 
 function toDto(row: typeof bonierdrucker.$inferSelect): Bonierdrucker {
   return {
-    id:        row.id,
-    mandantId: row.mandantId,
-    name:      row.name,
-    ip:        row.ip,
-    port:      row.port,
-    istBackup: row.istBackup,
-    aktiv:     row.aktiv,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
+    id:         row.id,
+    mandantId:  row.mandantId,
+    name:       row.name,
+    ip:         row.ip,
+    port:       row.port,
+    istBackup:  row.istBackup,
+    fallbackId: row.fallbackId ?? null,
+    aktiv:      row.aktiv,
+    createdAt:  row.createdAt.toISOString(),
+    updatedAt:  row.updatedAt.toISOString(),
   }
 }
 
@@ -58,8 +59,9 @@ export async function aktualisiereBonierdrucker(
   if (update.name      !== undefined) values.name      = update.name
   if (update.ip        !== undefined) values.ip        = update.ip
   if (update.port      !== undefined) values.port      = update.port
-  if (update.istBackup !== undefined) values.istBackup = update.istBackup
-  if (update.aktiv     !== undefined) values.aktiv     = update.aktiv
+  if (update.istBackup  !== undefined) values.istBackup  = update.istBackup
+  if (update.fallbackId !== undefined) values.fallbackId = update.fallbackId ?? null
+  if (update.aktiv      !== undefined) values.aktiv      = update.aktiv
 
   const [updated] = await db
     .update(bonierdrucker)
@@ -128,46 +130,38 @@ export interface BonierdruckZeile {
   preisLabel:  string
 }
 
-/** Druckt einen Bonierbon an einen konkreten Drucker (IP:Port). */
-export function druckeBonierbon(
-  ip: string,
-  port: number,
-  tischNummer: string,
-  kellner: string,
-  zeilen: BonierdruckZeile[],
-): Promise<void> {
+/** Baut den ESC/POS-Buffer für einen Bonierbon zusammen. */
+function baueBonierbon(tischNummer: string, kellner: string, zeilen: BonierdruckZeile[]): Buffer {
+  const ESC = 0x1b
+  const GS  = 0x1d
+  const parts: Buffer[] = []
+  const add = (data: number[] | Buffer | string) => {
+    if (typeof data === 'string') parts.push(Buffer.from(data, 'utf8'))
+    else parts.push(Buffer.from(data))
+  }
+
+  add([ESC, 0x40])
+  add([ESC, 0x61, 0x01])
+  add([ESC, 0x21, 0x10])
+  add(`Tisch ${tischNummer}\n`)
+  add([ESC, 0x21, 0x00])
+  add(`${kellner}  ${new Date().toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' })}\n`)
+  add('--------------------------------\n')
+  add([ESC, 0x61, 0x00])
+  for (const z of zeilen) {
+    const links  = `${z.menge}x ${z.bezeichnung}`
+    const rechts = z.preisLabel
+    const leer   = Math.max(1, 32 - links.length - rechts.length)
+    add(`${links}${' '.repeat(leer)}${rechts}\n`)
+  }
+  add('--------------------------------\n')
+  add([GS, 0x56, 0x42, 0x00])
+  return Buffer.concat(parts)
+}
+
+function sendTcp(ip: string, port: number, bon: Buffer): Promise<void> {
   return new Promise((resolve, reject) => {
     const socket = new net.Socket()
-    const ESC = 0x1b
-    const GS  = 0x1d
-
-    // Bon zusammenbauen
-    const parts: Buffer[] = []
-    const add = (data: number[] | Buffer | string) => {
-      if (typeof data === 'string') parts.push(Buffer.from(data, 'utf8'))
-      else parts.push(Buffer.from(data))
-    }
-
-    add([ESC, 0x40])                          // Reset
-    add([ESC, 0x61, 0x01])                    // Zentriert
-    add([ESC, 0x21, 0x10])                    // Doppelte Höhe
-    add(`Tisch ${tischNummer}\n`)
-    add([ESC, 0x21, 0x00])                    // Normal
-    add(`${kellner}  ${new Date().toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' })}\n`)
-    add('--------------------------------\n')
-    add([ESC, 0x61, 0x00])                    // Links
-
-    for (const z of zeilen) {
-      const links  = `${z.menge}x ${z.bezeichnung}`
-      const rechts = z.preisLabel
-      const leer   = Math.max(1, 32 - links.length - rechts.length)
-      add(`${links}${' '.repeat(leer)}${rechts}\n`)
-    }
-
-    add('--------------------------------\n')
-    add([GS, 0x56, 0x42, 0x00])              // Cut
-
-    const bon = Buffer.concat(parts)
     socket.setTimeout(5000)
     socket.connect(port, ip, () => {
       socket.write(bon, () => { socket.destroy(); resolve() })
@@ -175,4 +169,60 @@ export function druckeBonierbon(
     socket.on('timeout', () => { socket.destroy(); reject(new Error('Timeout')) })
     socket.on('error', (err) => reject(err))
   })
+}
+
+/**
+ * Druckt einen Bonierbon an einen konkreten Drucker.
+ * Bei Fehler wird automatisch der Fallback-Drucker versucht (wenn konfiguriert).
+ */
+export async function druckeBonierbon(
+  db:          Db,
+  druckerId:   string,
+  mandantId:   string,
+  tischNummer: string,
+  kellner:     string,
+  zeilen:      BonierdruckZeile[],
+): Promise<void> {
+  const [drucker] = await db
+    .select()
+    .from(bonierdrucker)
+    .where(and(eq(bonierdrucker.id, druckerId), eq(bonierdrucker.mandantId, mandantId)))
+    .limit(1)
+
+  if (!drucker) throw new Error(`Bonierdrucker ${druckerId} nicht gefunden`)
+
+  const bon = baueBonierbon(tischNummer, kellner, zeilen)
+
+  try {
+    await sendTcp(drucker.ip, drucker.port, bon)
+  } catch (primaryErr) {
+    // Fallback versuchen wenn konfiguriert
+    if (drucker.fallbackId) {
+      const [fallback] = await db
+        .select()
+        .from(bonierdrucker)
+        .where(and(eq(bonierdrucker.id, drucker.fallbackId), eq(bonierdrucker.mandantId, mandantId)))
+        .limit(1)
+
+      if (fallback?.aktiv) {
+        await sendTcp(fallback.ip, fallback.port, bon)
+        return  // Fallback erfolgreich
+      }
+    }
+    throw primaryErr  // Kein Fallback oder Fallback auch gescheitert
+  }
+}
+
+/**
+ * Legacy-Wrapper für Aufrufer die nur IP+Port übergeben (ohne DB-Lookup).
+ * Kein Fallback verfügbar.
+ */
+export function druckeBonierbonDirekt(
+  ip:          string,
+  port:        number,
+  tischNummer: string,
+  kellner:     string,
+  zeilen:      BonierdruckZeile[],
+): Promise<void> {
+  return sendTcp(ip, port, baueBonierbon(tischNummer, kellner, zeilen))
 }

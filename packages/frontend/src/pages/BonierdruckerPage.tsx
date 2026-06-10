@@ -50,10 +50,11 @@ function BonierdruckerFormular({
 
   const submit = handleSubmit((v) => {
     onSubmit({
-      name:      v.name.trim(),
-      ip:        v.ip.trim(),
-      port:      parseInt(v.port, 10) || 9100,
-      istBackup: v.istBackup,
+      name:       v.name.trim(),
+      ip:         v.ip.trim(),
+      port:       parseInt(v.port, 10) || 9100,
+      istBackup:  v.istBackup,
+      fallbackId: null,
     })
   })
 

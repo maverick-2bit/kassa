@@ -94,6 +94,8 @@ export const kassen = pgTable('kassen', {
   druckerAktiv:          boolean('drucker_aktiv').notNull().default(false),
   /** Zeichen pro Zeile — 32 für 58mm-Papier, 42 oder 48 für 80mm */
   druckerBreite:         integer('drucker_breite_zeichen').notNull().default(42),
+  /** TCP-Timeout in Sekunden (Standard: 5) */
+  druckerTimeoutSek:     integer('drucker_timeout_sek').notNull().default(5),
 
   // KDS-Konfiguration (Küchen-Display-System)
   /** Mapping Stations-Slug → IP-Adresse, z. B. { kueche: "192.168.192.210" } */
@@ -471,6 +473,8 @@ export const bonierdrucker = pgTable('bonierdrucker', {
   port:        integer('port').notNull().default(9100),
   /** Backup-Drucker: empfängt automatisch eine Kopie jedes Bonierbons */
   istBackup:   boolean('ist_backup').notNull().default(false),
+  /** Fallback-Drucker: wird verwendet wenn dieser Drucker nicht erreichbar ist */
+  fallbackId:  uuid('fallback_id').references((): AnyPgColumn => bonierdrucker.id, { onDelete: 'set null' }),
   aktiv:       boolean('aktiv').notNull().default(true),
   createdAt:   timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt:   timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -905,3 +909,26 @@ export interface KdsPosition {
 
 export type KdsBon    = typeof kdsBons.$inferSelect
 export type NewKdsBon = typeof kdsBons.$inferInsert
+
+// ---------------------------------------------------------------------------
+// Druck-Log — Protokoll aller Druckversuche (Bon, Bonierbon, Test)
+// ---------------------------------------------------------------------------
+
+export const druckLog = pgTable('druck_log', {
+  id:          uuid('id').primaryKey().defaultRandom(),
+  mandantId:   uuid('mandant_id').notNull().references(() => mandanten.id, { onDelete: 'cascade' }),
+  kasseId:     uuid('kasse_id').references(() => kassen.id, { onDelete: 'set null' }),
+  druckerIp:   varchar('drucker_ip', { length: 64 }).notNull(),
+  /** 'bon' | 'bonierbon' | 'test' */
+  druckerTyp:  varchar('drucker_typ', { length: 20 }).notNull(),
+  belegId:     uuid('beleg_id'),
+  erfolg:      boolean('erfolg').notNull(),
+  fehlerText:  text('fehler_text'),
+  erstelltAt:  timestamp('erstellt_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  mandantIdx: index('druck_log_mandant_idx').on(t.mandantId, t.erstelltAt),
+  kasseIdx:   index('druck_log_kasse_idx').on(t.kasseId,   t.erstelltAt),
+}))
+
+export type DruckLogEintrag    = typeof druckLog.$inferSelect
+export type NewDruckLogEintrag = typeof druckLog.$inferInsert

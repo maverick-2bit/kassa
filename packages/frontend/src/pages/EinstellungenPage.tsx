@@ -523,53 +523,90 @@ function DruckerSektion() {
   const identity    = getKasseIdentity()!
   const queryClient = useQueryClient()
   const [form, setForm] = useState<DruckerConfig>({
-    druckerIp: '', druckerPort: 9100, druckerAktiv: false, druckerBreite: 42,
+    druckerIp: '', druckerPort: 9100, druckerAktiv: false, druckerBreite: 42, druckerTimeoutSek: 5,
   })
-  const [meldung, setMeldung] = useState<{ typ: 'ok' | 'fehler'; text: string } | null>(null)
+  const [meldung, setMeldung]   = useState<{ typ: 'ok' | 'fehler'; text: string } | null>(null)
+  const [logOffen, setLogOffen] = useState(false)
 
   const cfgQuery = useQuery({
     queryKey: ['drucker', identity.kasseId],
     queryFn:  () => druckerApi.get(identity.kasseId),
   })
 
+  const statusQuery = useQuery({
+    queryKey:        ['drucker-status', identity.kasseId],
+    queryFn:         () => druckerApi.status(identity.kasseId),
+    refetchInterval: 30_000,
+    enabled:         !!cfgQuery.data?.druckerAktiv && !!cfgQuery.data?.druckerIp,
+  })
+
+  const logQuery = useQuery({
+    queryKey: ['drucker-log', identity.kasseId],
+    queryFn:  () => druckerApi.log(identity.kasseId),
+    enabled:  logOffen,
+  })
+
   useEffect(() => {
     if (cfgQuery.data) {
       setForm({
-        druckerIp:     cfgQuery.data.druckerIp ?? '',
-        druckerPort:   cfgQuery.data.druckerPort,
-        druckerAktiv:  cfgQuery.data.druckerAktiv,
-        druckerBreite: cfgQuery.data.druckerBreite,
+        druckerIp:         cfgQuery.data.druckerIp ?? '',
+        druckerPort:       cfgQuery.data.druckerPort,
+        druckerAktiv:      cfgQuery.data.druckerAktiv,
+        druckerBreite:     cfgQuery.data.druckerBreite,
+        druckerTimeoutSek: cfgQuery.data.druckerTimeoutSek ?? 5,
       })
     }
   }, [cfgQuery.data])
 
   const speichern = useMutation({
     mutationFn: () => druckerApi.patch(identity.kasseId, {
-      druckerIp:     form.druckerIp?.trim() || null,
-      druckerPort:   form.druckerPort,
-      druckerAktiv:  form.druckerAktiv,
-      druckerBreite: form.druckerBreite,
+      druckerIp:         form.druckerIp?.trim() || null,
+      druckerPort:       form.druckerPort,
+      druckerAktiv:      form.druckerAktiv,
+      druckerBreite:     form.druckerBreite,
+      druckerTimeoutSek: form.druckerTimeoutSek,
     }),
     onSuccess: () => {
       setMeldung({ typ: 'ok', text: 'Drucker-Einstellungen gespeichert' })
       queryClient.invalidateQueries({ queryKey: ['drucker', identity.kasseId] })
+      queryClient.invalidateQueries({ queryKey: ['drucker-status', identity.kasseId] })
     },
     onError: (err) => setMeldung({ typ: 'fehler', text: err instanceof Error ? err.message : String(err) }),
   })
 
   const testdruck = useMutation({
     mutationFn: () => druckerApi.test(identity.kasseId),
-    onSuccess:  () => setMeldung({ typ: 'ok', text: 'Testdruck gesendet — bitte am Drucker prüfen' }),
-    onError:    (err) => setMeldung({ typ: 'fehler', text: err instanceof Error ? err.message : String(err) }),
+    onSuccess:  () => {
+      setMeldung({ typ: 'ok', text: 'Testdruck gesendet — bitte am Drucker prüfen' })
+      queryClient.invalidateQueries({ queryKey: ['drucker-log', identity.kasseId] })
+      queryClient.invalidateQueries({ queryKey: ['drucker-status', identity.kasseId] })
+    },
+    onError: (err) => setMeldung({ typ: 'fehler', text: err instanceof Error ? err.message : String(err) }),
   })
+
+  // Status-Dot
+  const status = statusQuery.data
+  const statusDot = !cfgQuery.data?.druckerAktiv || !cfgQuery.data?.druckerIp ? null
+    : statusQuery.isLoading ? '⬜'
+    : status?.online === true  ? '🟢'
+    : status?.online === false ? '🔴'
+    : '⬜'
 
   return (
     <section className="rounded-lg bg-white shadow-sm border border-gray-200 p-6 space-y-5">
-      <div>
-        <h2 className="text-base font-semibold text-gray-900">Bondrucker (ESC/POS via TCP)</h2>
-        <p className="text-sm text-gray-500 mt-0.5">
-          Netzwerkdrucker (Epson TM-T20, Star TSP100, Bixolon SRP, …)
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-base font-semibold text-gray-900">Bondrucker (ESC/POS via TCP)</h2>
+          <p className="text-sm text-gray-500 mt-0.5">
+            Netzwerkdrucker (Epson TM-T20, Star TSP100, Bixolon SRP, …)
+          </p>
+        </div>
+        {statusDot && (
+          <div className="flex items-center gap-1.5 text-xs text-gray-500 shrink-0">
+            <span>{statusDot}</span>
+            <span>{status?.online === true ? 'Online' : status?.online === false ? 'Offline' : 'Unbekannt'}</span>
+          </div>
+        )}
       </div>
 
       {cfgQuery.isLoading ? (
@@ -605,17 +642,28 @@ function DruckerSektion() {
             </Field>
           </div>
 
-          <Field label="Papierbreite" hint="Zeichen pro Zeile">
-            <select
-              className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500/40"
-              value={form.druckerBreite}
-              onChange={(e) => setForm({ ...form, druckerBreite: parseInt(e.target.value, 10) })}
-            >
-              <option value={32}>58mm (32 Zeichen)</option>
-              <option value={42}>80mm Standard (42 Zeichen)</option>
-              <option value={48}>80mm Kompakt (48 Zeichen)</option>
-            </select>
-          </Field>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Field label="Papierbreite" hint="Zeichen pro Zeile">
+              <select
+                className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500/40"
+                value={form.druckerBreite}
+                onChange={(e) => setForm({ ...form, druckerBreite: parseInt(e.target.value, 10) })}
+              >
+                <option value={32}>58mm (32 Zeichen)</option>
+                <option value={42}>80mm Standard (42 Zeichen)</option>
+                <option value={48}>80mm Kompakt (48 Zeichen)</option>
+              </select>
+            </Field>
+            <Field label="Timeout" hint="Sekunden bis Verbindungsabbruch (1–30)">
+              <Input
+                type="number"
+                min={1}
+                max={30}
+                value={form.druckerTimeoutSek}
+                onChange={(e) => setForm({ ...form, druckerTimeoutSek: Math.min(30, Math.max(1, parseInt(e.target.value || '5', 10))) })}
+              />
+            </Field>
+          </div>
 
           {meldung && (
             <div className={`rounded-md p-3 text-sm ${
@@ -635,7 +683,56 @@ function DruckerSektion() {
             >
               Testdruck
             </Button>
+            <button
+              type="button"
+              onClick={() => setLogOffen(v => !v)}
+              className="ml-auto text-xs text-gray-400 hover:text-brand-700 underline underline-offset-2"
+            >
+              {logOffen ? 'Verlauf ausblenden' : 'Druckverlauf anzeigen'}
+            </button>
           </div>
+
+          {/* Druckhistorie */}
+          {logOffen && (
+            <div className="border-t border-gray-100 pt-4">
+              <h3 className="text-sm font-semibold text-gray-700 mb-2">Druckverlauf (letzte 50)</h3>
+              {logQuery.isLoading ? (
+                <p className="text-xs text-gray-400">Wird geladen…</p>
+              ) : !logQuery.data?.length ? (
+                <p className="text-xs text-gray-400">Noch keine Druckversuche protokolliert.</p>
+              ) : (
+                <div className="overflow-x-auto rounded-lg border border-gray-200">
+                  <table className="w-full text-xs">
+                    <thead className="bg-gray-50 text-gray-500 uppercase tracking-wide">
+                      <tr>
+                        <th className="px-3 py-2 text-left">Zeit</th>
+                        <th className="px-3 py-2 text-left">Typ</th>
+                        <th className="px-3 py-2 text-left">Status</th>
+                        <th className="px-3 py-2 text-left">Fehler</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {logQuery.data.map(e => (
+                        <tr key={e.id} className={`${e.erfolg ? '' : 'bg-red-50'}`}>
+                          <td className="px-3 py-1.5 font-mono text-gray-600 whitespace-nowrap">
+                            {new Date(e.erstelltAt).toLocaleString('de-AT', { dateStyle: 'short', timeStyle: 'medium' })}
+                          </td>
+                          <td className="px-3 py-1.5 capitalize text-gray-700">{e.druckerTyp}</td>
+                          <td className="px-3 py-1.5">
+                            {e.erfolg
+                              ? <span className="text-green-700 font-medium">✓ OK</span>
+                              : <span className="text-red-700 font-medium">✗ Fehler</span>
+                            }
+                          </td>
+                          <td className="px-3 py-1.5 text-gray-500 max-w-xs truncate">{e.fehlerText ?? '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
         </>
       )}
     </section>

@@ -5,32 +5,36 @@ import { z } from 'zod'
 // ---------------------------------------------------------------------------
 
 export const BonierdruckerSchema = z.object({
-  id:        z.string().uuid(),
-  mandantId: z.string().uuid(),
-  name:      z.string(),
-  ip:        z.string(),
-  port:      z.number().int(),
-  istBackup: z.boolean(),
-  aktiv:     z.boolean(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
+  id:         z.string().uuid(),
+  mandantId:  z.string().uuid(),
+  name:       z.string(),
+  ip:         z.string(),
+  port:       z.number().int(),
+  istBackup:  z.boolean(),
+  /** UUID des Fallback-Druckers (wenn dieser nicht erreichbar ist) */
+  fallbackId: z.string().uuid().nullable(),
+  aktiv:      z.boolean(),
+  createdAt:  z.string(),
+  updatedAt:  z.string(),
 })
 export type Bonierdrucker = z.infer<typeof BonierdruckerSchema>
 
 export const BonierdruckerInputSchema = z.object({
-  name:      z.string().trim().min(1, 'Name erforderlich').max(80),
-  ip:        z.string().trim().min(1, 'IP-Adresse erforderlich').max(64),
-  port:      z.number().int().min(1).max(65535).default(9100),
-  istBackup: z.boolean().default(false),
+  name:       z.string().trim().min(1, 'Name erforderlich').max(80),
+  ip:         z.string().trim().min(1, 'IP-Adresse erforderlich').max(64),
+  port:       z.number().int().min(1).max(65535).default(9100),
+  istBackup:  z.boolean().default(false),
+  fallbackId: z.string().uuid().nullable().default(null),
 })
 export type BonierdruckerInput = z.infer<typeof BonierdruckerInputSchema>
 
 export const BonierdruckerUpdateSchema = z.object({
-  name:      z.string().trim().min(1).max(80).optional(),
-  ip:        z.string().trim().min(1).max(64).optional(),
-  port:      z.number().int().min(1).max(65535).optional(),
-  istBackup: z.boolean().optional(),
-  aktiv:     z.boolean().optional(),
+  name:       z.string().trim().min(1).max(80).optional(),
+  ip:         z.string().trim().min(1).max(64).optional(),
+  port:       z.number().int().min(1).max(65535).optional(),
+  istBackup:  z.boolean().optional(),
+  fallbackId: z.string().uuid().nullable().optional(),
+  aktiv:      z.boolean().optional(),
 })
 export type BonierdruckerUpdate = z.infer<typeof BonierdruckerUpdateSchema>
 
