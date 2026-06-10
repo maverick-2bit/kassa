@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { QRCodeSVG } from 'qrcode.react'
 import { ALLE_STATIONEN, STATION_LABELS, type Station, type ZvtConfig } from '@kassa/shared'
-import { druckerApi, kdsApi, zvtApi, downloadDepExport, healthApi, mandantApi, kasseApi, type DruckerConfig, type KdsConfig } from '../lib/api'
+import { druckerApi, kdsApi, zvtApi, downloadDepExport, healthApi, mandantApi, kasseApi, tischplanApi, type DruckerConfig, type KdsConfig } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { getAuth, hasModul, updateKasseBezeichnung } from '../lib/auth'
 import { Field } from '../components/ui/Field'
@@ -24,6 +25,7 @@ export function EinstellungenPage() {
       <ZvtSektion />
       <RksvExportSektion />
       {hasModul('gastro') && <TischplanSektion />}
+      <GastQrCodeSektion />
       <SystemInfoSektion />
     </div>
   )
@@ -279,6 +281,236 @@ function TischplanSektion() {
         Der fertige Plan erscheint auf der Tische-Seite als grafische Ansicht.
       </p>
       <TischplanEditor />
+    </section>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Gast-QR-Code-Generator
+// ---------------------------------------------------------------------------
+
+function GastQrCodeSektion() {
+  const auth       = getAuth()!
+  const kassen     = auth.kassen
+
+  // Standard-Basis-URL: selber Host, Port 8082 (Produktion) oder 5177 (Dev)
+  const defaultBase = window.location.hostname === 'localhost'
+    ? `${window.location.protocol}//${window.location.hostname}:5177`
+    : `${window.location.protocol}//${window.location.hostname}:8082`
+
+  const [basisUrl, setBasisUrl]       = useState(defaultBase)
+  const [kasseId, setKasseId]         = useState(kassen[0]?.id ?? '')
+  const [tisch, setTisch]             = useState('')
+  const [manuellerTisch, setManuell]  = useState('')
+  const svgRef                        = useRef<HTMLDivElement>(null)
+
+  // Tischplan laden wenn Kasse gewählt
+  const { data: bereiche } = useQuery({
+    queryKey: ['tischplan-bereiche-qr', kasseId],
+    queryFn:  () => tischplanApi.listeBereiche(kasseId),
+    enabled:  !!kasseId,
+  })
+
+  const alleTische = bereiche?.flatMap(b =>
+    b.elemente.map(e => ({ bezeichnung: e.bezeichnung, bereich: b.name }))
+  ) ?? []
+
+  const aktiverTisch = tisch || manuellerTisch
+  const gastUrl = aktiverTisch && kasseId
+    ? `${basisUrl}/gast?kasseId=${encodeURIComponent(kasseId)}&tisch=${encodeURIComponent(aktiverTisch)}`
+    : ''
+
+  function svgHerunterladen() {
+    if (!svgRef.current) return
+    const svg = svgRef.current.querySelector('svg')
+    if (!svg) return
+    const blob = new Blob([svg.outerHTML], { type: 'image/svg+xml' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download = `qr-${aktiverTisch.replace(/\s+/g, '-').toLowerCase()}.svg`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  function allesDrucken() {
+    window.print()
+  }
+
+  return (
+    <section className="rounded-lg border border-gray-200 bg-white p-5 space-y-5">
+      <div>
+        <h2 className="text-base font-semibold text-gray-900">Gast-Bestellsystem QR-Codes</h2>
+        <p className="text-sm text-gray-500 mt-0.5">
+          QR-Codes für Tische generieren — Gäste scannen und bestellen direkt.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {/* Konfiguration */}
+        <div className="space-y-4">
+          {/* Basis-URL */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+              Gast-App URL
+            </label>
+            <input
+              type="url"
+              value={basisUrl}
+              onChange={e => setBasisUrl(e.target.value)}
+              placeholder="http://192.168.1.100:8082"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none font-mono"
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              Produktiv: IP des Servers + Port 8082 · Dev: Port 5177
+            </p>
+          </div>
+
+          {/* Kasse */}
+          {kassen.length > 1 && (
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                Kasse
+              </label>
+              <select
+                value={kasseId}
+                onChange={e => { setKasseId(e.target.value); setTisch('') }}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 outline-none"
+              >
+                {kassen.map(k => (
+                  <option key={k.id} value={k.id}>{k.bezeichnung ?? k.kassenId}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Tisch aus Tischplan */}
+          {alleTische.length > 0 ? (
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                Tisch
+              </label>
+              <select
+                value={tisch}
+                onChange={e => { setTisch(e.target.value); setManuell('') }}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 outline-none"
+              >
+                <option value="">— Tisch wählen —</option>
+                {bereiche?.map(b => (
+                  <optgroup key={b.id} label={b.name}>
+                    {b.elemente.map(e => (
+                      <option key={e.id} value={e.bezeichnung}>{e.bezeichnung}</option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+              <p className="text-xs text-gray-400 mt-1">oder manuell eingeben:</p>
+              <input
+                type="text"
+                value={manuellerTisch}
+                onChange={e => { setManuell(e.target.value); setTisch('') }}
+                placeholder="z. B. Tisch 7"
+                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 outline-none"
+              />
+            </div>
+          ) : (
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                Tischbezeichnung
+              </label>
+              <input
+                type="text"
+                value={manuellerTisch}
+                onChange={e => setManuell(e.target.value)}
+                placeholder="z. B. Tisch 7, Bar, Terrasse"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 outline-none"
+              />
+            </div>
+          )}
+        </div>
+
+        {/* QR-Code Vorschau */}
+        <div className="flex flex-col items-center justify-center gap-4 bg-gray-50 rounded-xl border border-gray-200 p-6">
+          {aktiverTisch && gastUrl ? (
+            <>
+              <div ref={svgRef} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                <QRCodeSVG
+                  value={gastUrl}
+                  size={180}
+                  level="M"
+                  includeMargin={false}
+                />
+              </div>
+              <p className="text-sm font-bold text-gray-900 text-center">{aktiverTisch}</p>
+              <p className="text-xs text-gray-400 text-center break-all font-mono leading-relaxed max-w-full">
+                {gastUrl}
+              </p>
+              <div className="flex gap-2 w-full">
+                <button
+                  onClick={() => navigator.clipboard.writeText(gastUrl)}
+                  className="flex-1 py-2 rounded-lg border border-gray-300 text-gray-700 text-xs font-medium hover:bg-gray-100 transition"
+                >
+                  📋 URL kopieren
+                </button>
+                <button
+                  onClick={svgHerunterladen}
+                  className="flex-1 py-2 rounded-lg bg-brand-600 text-white text-xs font-medium hover:bg-brand-700 transition"
+                >
+                  ⬇ SVG laden
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="text-center text-gray-400 space-y-2">
+              <div className="text-5xl opacity-30">▦</div>
+              <p className="text-sm">Tisch wählen um QR-Code zu generieren</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Alle Tische auf einmal drucken */}
+      {alleTische.length > 0 && basisUrl && kasseId && (
+        <div className="border-t border-gray-100 pt-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-900">Alle Tische drucken</p>
+              <p className="text-xs text-gray-500 mt-0.5">{alleTische.length} Tische — öffnet Druckansicht mit allen QR-Codes</p>
+            </div>
+            <button
+              onClick={() => {
+                const html = `<!doctype html><html><head><meta charset="utf-8"><title>Tisch QR-Codes</title>
+                <style>
+                  body{font-family:sans-serif;margin:0}
+                  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;padding:16px}
+                  .karte{border:1px solid #e5e7eb;border-radius:12px;padding:16px;text-align:center;break-inside:avoid}
+                  .name{font-size:14px;font-weight:700;margin-top:8px;color:#111}
+                  .url{font-size:9px;color:#9ca3af;word-break:break-all;margin-top:4px}
+                  @media print{@page{margin:12mm}}
+                </style></head><body>
+                <div class="grid">
+                ${alleTische.map(t => {
+                  const url = `${basisUrl}/gast?kasseId=${encodeURIComponent(kasseId)}&tisch=${encodeURIComponent(t.bezeichnung)}`
+                  // Simple QR-Link via Google Charts API als Fallback (oder canvas in Prod)
+                  return `<div class="karte">
+                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(url)}" width="150" height="150" />
+                    <div class="name">${t.bezeichnung}</div>
+                    <div class="url">${t.bereich}</div>
+                  </div>`
+                }).join('')}
+                </div></body></html>`
+                const win = window.open('', '_blank')
+                win?.document.write(html)
+                win?.document.close()
+                win?.print()
+              }}
+              className="px-4 py-2 rounded-lg bg-gray-800 text-white text-sm font-medium hover:bg-gray-700 transition"
+            >
+              🖨 Alle drucken
+            </button>
+          </div>
+        </div>
+      )}
     </section>
   )
 }

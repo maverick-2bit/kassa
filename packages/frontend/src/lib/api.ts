@@ -623,6 +623,8 @@ export const zvtApi = {
 export const tischplanApi = {
   listeBereiche: (kasseId: string) =>
     request<TischplanBereich[]>('GET', `/api/tischplan/bereiche?kasseId=${kasseId}`),
+  listeElemente: (kasseId: string) =>
+    request<TischplanElement[]>('GET', `/api/tischplan/elemente?kasseId=${kasseId}`),
 
   erstelleBereich: (input: TischplanBereichErstellen) =>
     request<TischplanBereich>('POST', '/api/tischplan/bereiche', input),
