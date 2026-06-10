@@ -40,15 +40,21 @@ export type MandantModuleUpdate = z.infer<typeof MandantModuleUpdateSchema>
 // ---------------------------------------------------------------------------
 
 export const MandantStammdatenSchema = z.object({
-  firmenname:    z.string(),
-  uid:           z.string(),
-  belegFusstext: z.string().nullable(),
+  firmenname:               z.string(),
+  uid:                      z.string(),
+  belegFusstext:            z.string().nullable(),
+  belegKopftext:            z.string().nullable(),
+  belegZeigeSteuertabelle:  z.boolean(),
+  belegZeigeQr:             z.boolean(),
 })
 export type MandantStammdaten = z.infer<typeof MandantStammdatenSchema>
 
-/** Nur belegFusstext ist über die UI editierbar; firmenname/uid bleiben RKSV-seitig fixiert */
+/** Nur Layout-Felder editierbar; firmenname/uid bleiben RKSV-seitig fixiert */
 export const MandantStammdatenUpdateSchema = z.object({
-  belegFusstext: z.string().trim().max(500, 'Maximal 500 Zeichen').nullable().optional(),
+  belegFusstext:           z.string().trim().max(500).nullable().optional(),
+  belegKopftext:           z.string().trim().max(300).nullable().optional(),
+  belegZeigeSteuertabelle: z.boolean().optional(),
+  belegZeigeQr:            z.boolean().optional(),
 })
 export type MandantStammdatenUpdate = z.infer<typeof MandantStammdatenUpdateSchema>
 

@@ -83,9 +83,12 @@ export const mandantRoute: FastifyPluginAsync<MandantRouteOptions> = async (fast
   fastify.get('/mandanten/stammdaten', guard, async (request, reply) => {
     const [row] = await opts.db
       .select({
-        firmenname:    mandanten.firmenname,
-        uid:           mandanten.uid,
-        belegFusstext: mandanten.belegFusstext,
+        firmenname:               mandanten.firmenname,
+        uid:                      mandanten.uid,
+        belegFusstext:            mandanten.belegFusstext,
+        belegKopftext:            mandanten.belegKopftext,
+        belegZeigeSteuertabelle:  mandanten.belegZeigeSteuertabelle,
+        belegZeigeQr:             mandanten.belegZeigeQr,
       })
       .from(mandanten)
       .where(eq(mandanten.id, request.user.mandantId))
@@ -110,14 +113,20 @@ export const mandantRoute: FastifyPluginAsync<MandantRouteOptions> = async (fast
     const [row] = await opts.db
       .update(mandanten)
       .set({
-        belegFusstext: body.data.belegFusstext ?? null,
-        updatedAt:     new Date(),
+        ...(body.data.belegFusstext           !== undefined && { belegFusstext:           body.data.belegFusstext ?? null }),
+        ...(body.data.belegKopftext           !== undefined && { belegKopftext:           body.data.belegKopftext ?? null }),
+        ...(body.data.belegZeigeSteuertabelle !== undefined && { belegZeigeSteuertabelle: body.data.belegZeigeSteuertabelle }),
+        ...(body.data.belegZeigeQr            !== undefined && { belegZeigeQr:            body.data.belegZeigeQr }),
+        updatedAt: new Date(),
       })
       .where(eq(mandanten.id, request.user.mandantId))
       .returning({
-        firmenname:    mandanten.firmenname,
-        uid:           mandanten.uid,
-        belegFusstext: mandanten.belegFusstext,
+        firmenname:               mandanten.firmenname,
+        uid:                      mandanten.uid,
+        belegFusstext:            mandanten.belegFusstext,
+        belegKopftext:            mandanten.belegKopftext,
+        belegZeigeSteuertabelle:  mandanten.belegZeigeSteuertabelle,
+        belegZeigeQr:             mandanten.belegZeigeQr,
       })
 
     if (!row) return reply.status(404).send({ fehler: 'Mandant nicht gefunden' })

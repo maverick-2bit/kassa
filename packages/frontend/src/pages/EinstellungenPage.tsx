@@ -19,7 +19,7 @@ export function EinstellungenPage() {
         <p className="mt-1 text-sm text-gray-500">Drucker, Hardware-Anbindung, Belegtext und Tischplan</p>
       </header>
       <KasseBezeichnungSektion />
-      <StammdatenSektion />
+      <RechnungslayoutSektion />
       <DruckerSektion />
       <KdsSektion />
       <ZvtSektion />
@@ -98,10 +98,85 @@ function KasseBezeichnungSektion() {
 // Mandanten-Stammdaten (Firmeninfo + Belegfußtext)
 // ---------------------------------------------------------------------------
 
-function StammdatenSektion() {
+/** Kleine Belegvorschau — zeigt wie der Bon aussehen wird */
+function BelegVorschau({
+  firmenname, uid, kopftext, fusstext, steuertabelle, qr,
+}: {
+  firmenname: string; uid: string
+  kopftext: string; fusstext: string
+  steuertabelle: boolean; qr: boolean
+}) {
+  const line = '─'.repeat(28)
+  return (
+    <div className="font-mono text-[10px] leading-[1.5] bg-white border border-gray-200 rounded-lg p-4 shadow-inner select-none overflow-hidden">
+      {/* Kopf */}
+      <p className="text-center font-bold text-[11px]">{firmenname || 'Firmenname'}</p>
+      {kopftext && kopftext.split('\n').map((l, i) => (
+        <p key={i} className="text-center text-gray-600">{l}</p>
+      ))}
+      <p className="text-center text-gray-500">UID: {uid || 'ATU12345678'}</p>
+      <p className="text-gray-300 my-1">{line}</p>
+
+      {/* Beispiel-Positionen */}
+      <div className="space-y-0.5">
+        <div className="flex justify-between"><span>2× Espresso</span><span>€ 5,60</span></div>
+        <div className="flex justify-between"><span>1× Melange</span><span>€ 3,80</span></div>
+        <div className="flex justify-between"><span>1× Apfelstrudel</span><span>€ 4,50</span></div>
+      </div>
+
+      <p className="text-gray-300 my-1">{line}</p>
+      <div className="flex justify-between font-bold text-[11px]">
+        <span>GESAMT</span><span>€ 13,90</span>
+      </div>
+      <div className="flex justify-between text-gray-500 mt-0.5">
+        <span>Bar</span><span>€ 20,00</span>
+      </div>
+      <div className="flex justify-between text-gray-500">
+        <span>Rückgeld</span><span>€ 6,10</span>
+      </div>
+
+      {/* Steuertabelle */}
+      {steuertabelle && (
+        <>
+          <p className="text-gray-300 my-1">{line}</p>
+          <p className="text-gray-500">Steuern</p>
+          <div className="grid grid-cols-4 gap-x-2 text-gray-500 mt-0.5">
+            <span>Satz</span><span className="text-right">Netto</span><span className="text-right">Steuer</span><span className="text-right">Brutto</span>
+            <span>A 20%</span><span className="text-right">11,58</span><span className="text-right">2,32</span><span className="text-right">13,90</span>
+          </div>
+        </>
+      )}
+
+      {/* Fußzeile */}
+      <p className="text-gray-300 my-1">{line}</p>
+      {fusstext ? fusstext.split('\n').map((l, i) => (
+        <p key={i} className="text-center text-gray-500">{l}</p>
+      )) : <p className="text-center text-gray-300 italic">Fußtext hier</p>}
+
+      {/* QR-Platzhalter */}
+      {qr && (
+        <div className="flex flex-col items-center mt-2 gap-1">
+          <div className="w-12 h-12 bg-gray-100 border border-gray-200 rounded flex items-center justify-center text-gray-300 text-lg">
+            ▦
+          </div>
+          <p className="text-gray-400 text-[9px]">Digitaler Beleg</p>
+        </div>
+      )}
+
+      {/* RKSV-Footer (immer sichtbar) */}
+      <p className="text-gray-300 mt-1">{line}</p>
+      <p className="text-gray-400 text-[9px] text-center">_R1_ AT1 2024-06-11T… €13,90 MdGjKs… =</p>
+    </div>
+  )
+}
+
+function RechnungslayoutSektion() {
   const queryClient = useQueryClient()
-  const [fusstext, setFusstext] = useState('')
-  const [meldung, setMeldung]   = useState<{ typ: 'ok' | 'fehler'; text: string } | null>(null)
+  const [kopftext,  setKopftext]  = useState('')
+  const [fusstext,  setFusstext]  = useState('')
+  const [steuertab, setSteuertab] = useState(true)
+  const [zeigQr,    setZeigQr]    = useState(false)
+  const [meldung,   setMeldung]   = useState<{ typ: 'ok' | 'fehler'; text: string } | null>(null)
 
   const stammdatenQuery = useQuery({
     queryKey: ['mandant-stammdaten'],
@@ -109,88 +184,181 @@ function StammdatenSektion() {
   })
 
   useEffect(() => {
-    if (stammdatenQuery.data) {
-      setFusstext(stammdatenQuery.data.belegFusstext ?? '')
+    const d = stammdatenQuery.data
+    if (d) {
+      setKopftext(d.belegKopftext ?? '')
+      setFusstext(d.belegFusstext ?? '')
+      setSteuertab(d.belegZeigeSteuertabelle)
+      setZeigQr(d.belegZeigeQr)
     }
   }, [stammdatenQuery.data])
 
   const speichern = useMutation({
     mutationFn: () => mandantApi.patchStammdaten({
-      belegFusstext: fusstext.trim() || null,
+      belegKopftext:           kopftext.trim()  || null,
+      belegFusstext:           fusstext.trim()  || null,
+      belegZeigeSteuertabelle: steuertab,
+      belegZeigeQr:            zeigQr,
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mandant-stammdaten'] })
-      setMeldung({ typ: 'ok', text: 'Einstellungen gespeichert' })
+      setMeldung({ typ: 'ok', text: 'Rechnungslayout gespeichert' })
     },
     onError: (err) => setMeldung({ typ: 'fehler', text: err instanceof Error ? err.message : String(err) }),
   })
 
   const d = stammdatenQuery.data
 
+  const hatAenderung = d != null && (
+    kopftext.trim()  !== (d.belegKopftext  ?? '') ||
+    fusstext.trim()  !== (d.belegFusstext  ?? '') ||
+    steuertab        !== d.belegZeigeSteuertabelle ||
+    zeigQr           !== d.belegZeigeQr
+  )
+
   return (
-    <section className="rounded-lg bg-white shadow-sm border border-gray-200 p-6 space-y-4">
+    <section className="rounded-lg bg-white shadow-sm border border-gray-200 p-6 space-y-5">
       <div>
-        <h2 className="text-base font-semibold text-gray-900">Unternehmensdaten &amp; Belegtext</h2>
+        <h2 className="text-base font-semibold text-gray-900">Rechnungslayout</h2>
         <p className="text-sm text-gray-500 mt-0.5">
-          Firmenname und UID sind RKSV-seitig festgelegt. Der Belegfußtext erscheint auf
-          allen ausgedruckten Belegen und PDFs.
+          Kopf- und Fußtext, Steuertabelle, QR-Code — mit Live-Vorschau.
         </p>
       </div>
 
       {stammdatenQuery.isLoading ? (
         <p className="text-sm text-gray-500">Wird geladen…</p>
       ) : d ? (
-        <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <p className="text-xs font-medium text-gray-500 mb-1">Firmenname</p>
-              <p className="text-sm font-medium text-gray-800 bg-gray-50 rounded-md px-3 py-2 border border-gray-200">
-                {d.firmenname}
-              </p>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+          {/* Linke Spalte: Editierfelder */}
+          <div className="space-y-4">
+
+            {/* Firmenname / UID (nur Anzeige) */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-1">Firmenname</p>
+                <p className="text-sm font-medium text-gray-800 bg-gray-50 rounded-md px-3 py-2 border border-gray-200 truncate">
+                  {d.firmenname}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-1">UID-Nummer</p>
+                <p className="text-sm font-mono text-gray-800 bg-gray-50 rounded-md px-3 py-2 border border-gray-200">
+                  {d.uid}
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="text-xs font-medium text-gray-500 mb-1">UID-Nummer</p>
-              <p className="text-sm font-mono text-gray-800 bg-gray-50 rounded-md px-3 py-2 border border-gray-200">
-                {d.uid}
-              </p>
-            </div>
-          </div>
 
-          <Field
-            label="Belegfußtext"
-            hint="Z. B. Adresse, Telefon, Website, Dankestext — erscheint am Ende jedes Belegs / PDFs"
-          >
-            <textarea
-              value={fusstext}
-              onChange={e => { setFusstext(e.target.value); setMeldung(null) }}
-              rows={3}
-              maxLength={500}
-              placeholder="z. B. Musterstraße 1, 1010 Wien • Tel: +43 1 234567 • www.beispiel.at"
-              className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm
-                         placeholder-gray-400 shadow-sm resize-y
-                         focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
-            />
-            <p className="text-xs text-gray-400 mt-1 text-right">{fusstext.length}/500</p>
-          </Field>
-
-          {meldung && (
-            <div className={`rounded-md p-3 text-sm ${
-              meldung.typ === 'ok'
-                ? 'bg-green-50 border border-green-200 text-green-700'
-                : 'bg-red-50 border border-red-200 text-red-700'
-            }`}>{meldung.text}</div>
-          )}
-
-          <div className="pt-2 border-t border-gray-200">
-            <Button
-              onClick={() => { setMeldung(null); speichern.mutate() }}
-              loading={speichern.isPending}
-              disabled={fusstext.trim() === (d.belegFusstext ?? '')}
+            <Field
+              label="Kopftext"
+              hint="Erscheint unter dem Firmennamen — z. B. Adresse, Slogan"
             >
-              Belegtext speichern
-            </Button>
+              <textarea
+                value={kopftext}
+                onChange={e => { setKopftext(e.target.value); setMeldung(null) }}
+                rows={2}
+                maxLength={300}
+                placeholder={'Musterstraße 1, 1010 Wien\nTel: +43 1 234567'}
+                className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm
+                           placeholder-gray-400 shadow-sm resize-y
+                           focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+              />
+              <p className="text-xs text-gray-400 mt-1 text-right">{kopftext.length}/300</p>
+            </Field>
+
+            <Field
+              label="Fußtext"
+              hint="Dankestext, Website, Öffnungszeiten o. ä. — am Ende des Bons"
+            >
+              <textarea
+                value={fusstext}
+                onChange={e => { setFusstext(e.target.value); setMeldung(null) }}
+                rows={3}
+                maxLength={500}
+                placeholder={'Vielen Dank für Ihren Besuch!\nwww.beispiel.at'}
+                className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm
+                           placeholder-gray-400 shadow-sm resize-y
+                           focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+              />
+              <p className="text-xs text-gray-400 mt-1 text-right">{fusstext.length}/500</p>
+            </Field>
+
+            {/* Schalter */}
+            <div className="space-y-3 pt-1">
+              <label className="flex items-center justify-between gap-3 cursor-pointer">
+                <div>
+                  <p className="text-sm font-medium text-gray-900">Steuertabelle anzeigen</p>
+                  <p className="text-xs text-gray-500">Aufschlüsselung nach Steuersatz am Bonende</p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={steuertab}
+                  onClick={() => { setSteuertab(v => !v); setMeldung(null) }}
+                  className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors focus:outline-none ${
+                    steuertab ? 'bg-brand-600' : 'bg-gray-200'
+                  }`}
+                >
+                  <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                    steuertab ? 'translate-x-5' : 'translate-x-0'
+                  }`} />
+                </button>
+              </label>
+
+              <label className="flex items-center justify-between gap-3 cursor-pointer">
+                <div>
+                  <p className="text-sm font-medium text-gray-900">QR-Code drucken</p>
+                  <p className="text-xs text-gray-500">Link zum digitalen Beleg als QR am Bonende</p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={zeigQr}
+                  onClick={() => { setZeigQr(v => !v); setMeldung(null) }}
+                  className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors focus:outline-none ${
+                    zeigQr ? 'bg-brand-600' : 'bg-gray-200'
+                  }`}
+                >
+                  <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                    zeigQr ? 'translate-x-5' : 'translate-x-0'
+                  }`} />
+                </button>
+              </label>
+            </div>
+
+            {meldung && (
+              <div className={`rounded-md p-3 text-sm ${
+                meldung.typ === 'ok'
+                  ? 'bg-green-50 border border-green-200 text-green-700'
+                  : 'bg-red-50 border border-red-200 text-red-700'
+              }`}>{meldung.text}</div>
+            )}
+
+            <div className="pt-2 border-t border-gray-200">
+              <Button
+                onClick={() => { setMeldung(null); speichern.mutate() }}
+                loading={speichern.isPending}
+                disabled={!hatAenderung}
+              >
+                Layout speichern
+              </Button>
+            </div>
           </div>
-        </>
+
+          {/* Rechte Spalte: Live-Vorschau */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Vorschau</p>
+            <BelegVorschau
+              firmenname={d.firmenname}
+              uid={d.uid}
+              kopftext={kopftext}
+              fusstext={fusstext}
+              steuertabelle={steuertab}
+              qr={zeigQr}
+            />
+          </div>
+
+        </div>
       ) : null}
     </section>
   )

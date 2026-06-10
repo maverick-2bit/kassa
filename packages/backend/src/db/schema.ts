@@ -39,7 +39,13 @@ export const mandanten = pgTable('mandanten', {
   status:       varchar('status', { length: 20 }).notNull().default('aktiv'),
 
   /** Freitext-Fußzeile auf Belegen / PDFs — z. B. Adresse, Dankestext, Website */
-  belegFusstext:       text('beleg_fusstext'),
+  belegFusstext:            text('beleg_fusstext'),
+  /** Optionaler Kopftext unterhalb des Firmennamens (Adresse, Slogan o. ä.) */
+  belegKopftext:            text('beleg_kopftext'),
+  /** Steuertabelle (Normal/Ermäßigt/Null) am Ende des Belegs anzeigen */
+  belegZeigeSteuertabelle:  boolean('beleg_zeige_steuertabelle').notNull().default(true),
+  /** QR-Code für digitalen Beleg am Ende drucken */
+  belegZeigeQr:             boolean('beleg_zeige_qr').notNull().default(false),
 
   // Gebuchte / aktivierte Funktions-Module
   /** Gastro-Betrieb: Tische, Tisch-Tabs, grafischer Tischplan, Bonierdrucker */
