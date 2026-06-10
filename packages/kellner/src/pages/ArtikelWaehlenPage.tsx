@@ -19,6 +19,9 @@ interface KorbItem {
 
 type Phase = 'artikel' | 'modifikatoren'
 
+// gruppeId → (modId → menge)
+type ModMengenMap = Map<string, Map<string, number>>
+
 // ---------------------------------------------------------------------------
 // Haupt-Komponente
 // ---------------------------------------------------------------------------
@@ -30,13 +33,14 @@ export function ArtikelWaehlenPage() {
   const identity  = getKasseIdentity()!
   const auth      = getAuth()!
 
-  const [aktivKat,       setAktivKat]       = useState<string | null>(null)
-  const [korb,           setKorb]           = useState<KorbItem[]>([])
-  const [phase,          setPhase]          = useState<Phase>('artikel')
+  const [aktivKat,         setAktivKat]         = useState<string | null>(null)
+  const [korb,             setKorb]             = useState<KorbItem[]>([])
+  const [phase,            setPhase]            = useState<Phase>('artikel')
   const [aktuellerArtikel, setAktuellerArtikel] = useState<Artikel | null>(null)
   const [aktuelleGruppen,  setAktuelleGruppen]  = useState<ModifikatorGruppe[]>([])
-  const [modAuswahl,     setModAuswahl]     = useState<Map<string, string[]>>(new Map())
-  const [fehler,         setFehler]         = useState<string | null>(null)
+  const [modMengen,        setModMengen]        = useState<ModMengenMap>(new Map())
+  const [artikelMenge,     setArtikelMenge]     = useState(1)
+  const [fehler,           setFehler]           = useState<string | null>(null)
 
   const katQuery = useQuery({
     queryKey: ['kategorien'],
@@ -50,10 +54,9 @@ export function ArtikelWaehlenPage() {
     staleTime: 30_000,
   })
 
-  const kategorien = katQuery.data ?? []
+  const kategorien  = katQuery.data ?? []
   const alleArtikel = artikelQuery.data ?? []
 
-  // Erste Kategorie vorbelegen
   if (kategorien.length > 0 && aktivKat === null) {
     setAktivKat(kategorien[0]!.id)
   }
@@ -62,30 +65,70 @@ export function ArtikelWaehlenPage() {
     .filter(a => a.kategorieId === aktivKat)
     .sort((a, b) => a.reihenfolge - b.reihenfolge)
 
-  function mengeVon(artikelId: string) {
+  function mengeImKorb(artikelId: string) {
     return korb.filter(k => k.artikel.id === artikelId).reduce((s, k) => s + k.menge, 0)
   }
 
-  async function artikelWaehlen(artikel: Artikel) {
-    const gruppen = await modifikatorApi.getGruppenFuerArtikel(artikel.id).catch(() => [])
-    const pflicht = gruppen.filter(g => g.typ === 'pflicht' && g.aktiv)
-    if (pflicht.length > 0) {
-      setAktuellerArtikel(artikel)
-      setAktuelleGruppen(gruppen.filter(g => g.aktiv))
-      setModAuswahl(new Map())
+  // ---------------------------------------------------------------------------
+  // Modifikator-Mengen-Helfer
+  // ---------------------------------------------------------------------------
+
+  function getModMenge(gruppeId: string, modId: string): number {
+    return modMengen.get(gruppeId)?.get(modId) ?? 0
+  }
+
+  function gruppenGesamtMenge(gruppeId: string): number {
+    const m = modMengen.get(gruppeId)
+    if (!m) return 0
+    return [...m.values()].reduce((s, v) => s + v, 0)
+  }
+
+  function aendereModMenge(gruppeId: string, modId: string, delta: number, maxAuswahl: number | null) {
+    setModMengen(prev => {
+      const next = new Map(prev)
+      const gruppe = new Map(next.get(gruppeId) ?? [])
+      const aktuell = gruppe.get(modId) ?? 0
+      const neu = Math.max(0, aktuell + delta)
+
+      if (delta > 0 && maxAuswahl !== null) {
+        const gesamtOhneAktuell = gruppenGesamtMenge(gruppeId) - aktuell
+        if (gesamtOhneAktuell + neu > maxAuswahl) return prev
+      }
+
+      if (neu === 0) gruppe.delete(modId)
+      else gruppe.set(modId, neu)
+
+      next.set(gruppeId, gruppe)
+      return next
+    })
+  }
+
+  // ---------------------------------------------------------------------------
+  // Artikel-Screen: Artikel ohne Modifikatoren direkt in Korb
+  // ---------------------------------------------------------------------------
+
+  async function artikelWaehlen(a: Artikel) {
+    const gruppen = await modifikatorApi.getGruppenFuerArtikel(a.id).catch(() => [])
+    const aktiv   = gruppen.filter(g => g.aktiv)
+    if (aktiv.length > 0) {
+      setAktuellerArtikel(a)
+      setAktuelleGruppen(aktiv)
+      setModMengen(new Map())
+      setArtikelMenge(1)
+      setFehler(null)
       setPhase('modifikatoren')
     } else {
-      addToKorb(artikel, 1, [])
+      addToKorb(a, 1, [])
     }
   }
 
-  function addToKorb(artikel: Artikel, menge: number, modifikatoren: ModifikatorAuswahl[]) {
+  function addToKorb(a: Artikel, menge: number, mods: ModifikatorAuswahl[]) {
     setKorb(prev => {
       const idx = prev.findIndex(k =>
-        k.artikel.id === artikel.id &&
-        JSON.stringify(k.modifikatoren) === JSON.stringify(modifikatoren)
+        k.artikel.id === a.id &&
+        JSON.stringify(k.modifikatoren) === JSON.stringify(mods)
       )
-      if (idx === -1) return [...prev, { artikel, menge, modifikatoren }]
+      if (idx === -1) return [...prev, { artikel: a, menge, modifikatoren: mods }]
       return prev.map((k, i) => i === idx ? { ...k, menge: k.menge + menge } : k)
     })
   }
@@ -101,34 +144,27 @@ export function ArtikelWaehlenPage() {
     })
   }
 
-  function modToggle(gruppeId: string, modId: string, maxAuswahl: number | null) {
-    setModAuswahl(prev => {
-      const next = new Map(prev)
-      const aktuelle = next.get(gruppeId) ?? []
-      if (aktuelle.includes(modId)) {
-        next.set(gruppeId, aktuelle.filter(id => id !== modId))
-      } else if (maxAuswahl === null || aktuelle.length < maxAuswahl) {
-        next.set(gruppeId, [...aktuelle, modId])
-      } else if (maxAuswahl === 1) {
-        next.set(gruppeId, [modId])
-      }
-      return next
-    })
-  }
+  // ---------------------------------------------------------------------------
+  // Modifikatoren-Screen: Validierung + Buchung
+  // ---------------------------------------------------------------------------
 
-  function modBestätigen() {
-    if (!aktuellerArtikel) return
-    const pflichtGruppen = aktuelleGruppen.filter(g => g.typ === 'pflicht')
-    for (const g of pflichtGruppen) {
-      if (!modAuswahl.get(g.id)?.length) {
-        setFehler(`Bitte "${g.name}" wählen`)
-        return
+  /** Validiert, baut Mods-Array und bucht in den Korb. Gibt false zurück bei Fehler. */
+  function versucheHinzufügen(): boolean {
+    if (!aktuellerArtikel) return false
+
+    for (const g of aktuelleGruppen.filter(g => g.typ === 'pflicht')) {
+      if (gruppenGesamtMenge(g.id) === 0) {
+        setFehler(`Bitte mindestens eine Option für „${g.name}" wählen`)
+        return false
       }
     }
+
     const mods: ModifikatorAuswahl[] = []
     for (const g of aktuelleGruppen) {
-      const gewaehlte = modAuswahl.get(g.id) ?? []
-      for (const modId of gewaehlte) {
+      const gruppeMap = modMengen.get(g.id)
+      if (!gruppeMap) continue
+      for (const [modId, menge] of gruppeMap) {
+        if (menge === 0) continue
         const mod = g.modifikatoren.find(m => m.id === modId)
         if (mod) mods.push({
           modifikatorId: mod.id,
@@ -136,24 +172,44 @@ export function ArtikelWaehlenPage() {
           gruppeName:    g.name,
           name:          mod.name,
           aufschlagCent: mod.aufschlagCent,
+          menge,
         })
       }
     }
-    const aufschlag = mods.reduce((s, m) => s + m.aufschlagCent, 0)
+
+    // Gesamtaufschlag: Aufschlag × Menge pro Mod
+    const aufschlag = mods.reduce((s, m) => s + m.aufschlagCent * (m.menge ?? 1), 0)
     addToKorb(
       { ...aktuellerArtikel, preisBruttoCent: aktuellerArtikel.preisBruttoCent + aufschlag },
-      1,
+      artikelMenge,
       mods,
     )
+    setFehler(null)
+    return true
+  }
+
+  function buchenUndWeiter() {
+    if (!versucheHinzufügen()) return
     setPhase('artikel')
     setAktuellerArtikel(null)
+  }
+
+  function nochEinmal() {
+    if (!versucheHinzufügen()) return
+    // Selber Artikel, komplett frische Konfiguration
+    setModMengen(new Map())
+    setArtikelMenge(1)
     setFehler(null)
   }
+
+  // ---------------------------------------------------------------------------
+  // Zum Tab bonieren
+  // ---------------------------------------------------------------------------
 
   const speichernMutation = useMutation({
     mutationFn: async () => {
       const tab = await tischTabApi.get(tabId!)
-      const neuePositionen = [
+      return tischTabApi.aktualisierePositionen(tab.id, [
         ...tab.positionen,
         ...korb.map(k => ({
           artikelId:       k.artikel.id,
@@ -163,8 +219,7 @@ export function ArtikelWaehlenPage() {
           station:         k.artikel.station ?? undefined,
           modifikatoren:   k.modifikatoren.length > 0 ? k.modifikatoren : undefined,
         })),
-      ]
-      return tischTabApi.aktualisierePositionen(tab.id, neuePositionen)
+      ])
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tisch-tab', tabId] })
@@ -173,69 +228,167 @@ export function ArtikelWaehlenPage() {
     onError: (err) => setFehler(err instanceof Error ? err.message : 'Fehler'),
   })
 
-  const korbGesamt  = korb.reduce((s, k) => s + k.artikel.preisBruttoCent * k.menge, 0)
-  const korbAnzahl  = korb.reduce((s, k) => s + k.menge, 0)
+  const korbGesamt = korb.reduce((s, k) => s + k.artikel.preisBruttoCent * k.menge, 0)
+  const korbAnzahl = korb.reduce((s, k) => s + k.menge, 0)
 
   // ---------------------------------------------------------------------------
   // Modifikatoren-Screen
   // ---------------------------------------------------------------------------
 
   if (phase === 'modifikatoren' && aktuellerArtikel) {
+    const basisPreis = aktuellerArtikel.preisBruttoCent
+    // Vorschau-Gesamtpreis inklusive aller gewählten Aufschläge × Mengen
+    const aufschlagVorschau = aktuelleGruppen.flatMap(g =>
+      g.modifikatoren.map(m => (modMengen.get(g.id)?.get(m.id) ?? 0) * m.aufschlagCent)
+    ).reduce((s, v) => s + v, 0)
+    const einzelPreis = basisPreis + aufschlagVorschau
+    const gesamtPreis = einzelPreis * artikelMenge
+
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col max-w-lg mx-auto">
-        <div className="bg-white border-b border-gray-200 px-4 py-4 flex items-center gap-3 sticky top-0 z-10">
-          <button onClick={() => { setPhase('artikel'); setFehler(null) }} className="text-gray-400 text-2xl leading-none">‹</button>
-          <div className="flex-1">
-            <h1 className="font-black text-gray-900 text-lg leading-tight">{aktuellerArtikel.bezeichnung}</h1>
-            <p className="text-xs text-gray-500">Optionen wählen</p>
+
+        {/* Header */}
+        <div className="bg-white border-b border-gray-200 px-4 py-4 sticky top-0 z-10">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => { setPhase('artikel'); setFehler(null) }}
+              className="text-gray-400 text-2xl leading-none shrink-0"
+            >‹</button>
+            <div className="flex-1 min-w-0">
+              <h1 className="font-black text-gray-900 text-lg leading-tight truncate">
+                {aktuellerArtikel.bezeichnung}
+              </h1>
+              <p className="text-xs text-gray-500">Optionen &amp; Menge</p>
+            </div>
+          </div>
+
+          {/* Artikelmenge-Zähler */}
+          <div className="mt-3 flex items-center justify-between bg-gray-50 rounded-2xl px-4 py-3">
+            <div>
+              <p className="text-xs text-gray-500 font-medium">Anzahl</p>
+              <p className="text-sm font-mono text-gray-700 mt-0.5">
+                {formatPreis(einzelPreis)} × {artikelMenge} = <span className="font-black text-green-700">{formatPreis(gesamtPreis)}</span>
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setArtikelMenge(m => Math.max(1, m - 1))}
+                className="w-10 h-10 rounded-xl border-2 border-green-300 text-green-700 font-black text-xl flex items-center justify-center active:scale-90 transition"
+              >−</button>
+              <span className="w-8 text-center font-black text-xl text-gray-900">{artikelMenge}</span>
+              <button
+                onClick={() => setArtikelMenge(m => m + 1)}
+                className="w-10 h-10 rounded-xl bg-green-600 text-white font-black text-xl flex items-center justify-center active:scale-90 transition"
+              >+</button>
+            </div>
           </div>
         </div>
 
-        <div className="flex-1 p-4 space-y-5 pb-32">
-          {aktuelleGruppen.map(g => (
-            <div key={g.id}>
-              <div className="flex items-center gap-2 mb-2">
-                <p className="font-bold text-gray-900 text-sm">{g.name}</p>
-                {g.typ === 'pflicht' && (
-                  <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold">Pflicht</span>
-                )}
-                {g.maxAuswahl && g.typ !== 'pflicht' && (
-                  <span className="text-xs text-gray-400">max. {g.maxAuswahl}</span>
-                )}
+        {/* Gruppen */}
+        <div className="flex-1 p-4 space-y-6 pb-36">
+          {aktuelleGruppen.map(g => {
+            const gesamtMenge = gruppenGesamtMenge(g.id)
+            const maxErreicht = g.maxAuswahl !== null && gesamtMenge >= g.maxAuswahl
+
+            return (
+              <div key={g.id}>
+                <div className="flex items-center gap-2 mb-3">
+                  <p className="font-black text-gray-900">{g.name}</p>
+                  {g.typ === 'pflicht' ? (
+                    <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold">
+                      Pflicht
+                    </span>
+                  ) : (
+                    <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">
+                      Optional
+                    </span>
+                  )}
+                  {g.maxAuswahl !== null && (
+                    <span className="text-xs text-gray-400 ml-auto">
+                      {gesamtMenge}/{g.maxAuswahl}
+                    </span>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  {g.modifikatoren.filter(m => m.aktiv).map(m => {
+                    const menge   = getModMenge(g.id, m.id)
+                    const gesperrt = menge === 0 && maxErreicht
+
+                    return (
+                      <div
+                        key={m.id}
+                        className={`bg-white rounded-2xl border-2 px-4 py-3 flex items-center gap-3 transition ${
+                          menge > 0
+                            ? 'border-green-500'
+                            : gesperrt
+                            ? 'border-gray-100 opacity-40'
+                            : 'border-gray-200'
+                        }`}
+                      >
+                        {/* Name + Aufschlag */}
+                        <div className="flex-1 min-w-0">
+                          <p className={`font-semibold text-sm ${menge > 0 ? 'text-green-900' : 'text-gray-900'}`}>
+                            {m.name}
+                          </p>
+                          {m.aufschlagCent !== 0 && (
+                            <p className={`text-xs font-mono mt-0.5 ${m.aufschlagCent > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                              {m.aufschlagCent > 0 ? '+' : ''}{formatPreis(m.aufschlagCent)}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Menge-Zähler */}
+                        {menge === 0 ? (
+                          <button
+                            onClick={() => aendereModMenge(g.id, m.id, 1, g.maxAuswahl)}
+                            disabled={gesperrt}
+                            className="w-9 h-9 rounded-xl bg-green-600 text-white font-black text-xl flex items-center justify-center active:scale-90 transition disabled:opacity-30 shrink-0"
+                          >+</button>
+                        ) : (
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button
+                              onClick={() => aendereModMenge(g.id, m.id, -1, g.maxAuswahl)}
+                              className="w-8 h-8 rounded-xl border-2 border-green-300 text-green-700 font-black text-lg flex items-center justify-center active:scale-90 transition"
+                            >−</button>
+                            <span className="w-6 text-center font-black text-gray-900 text-sm">{menge}</span>
+                            <button
+                              onClick={() => aendereModMenge(g.id, m.id, 1, g.maxAuswahl)}
+                              disabled={maxErreicht}
+                              className="w-8 h-8 rounded-xl bg-green-600 text-white font-black text-lg flex items-center justify-center active:scale-90 transition disabled:opacity-30"
+                            >+</button>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
-              <div className="space-y-2">
-                {g.modifikatoren.filter(m => m.aktiv).map(m => {
-                  const sel = modAuswahl.get(g.id)?.includes(m.id) ?? false
-                  return (
-                    <button
-                      key={m.id}
-                      onClick={() => modToggle(g.id, m.id, g.maxAuswahl)}
-                      className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border-2 transition ${
-                        sel ? 'border-green-500 bg-green-50' : 'border-gray-200 bg-white'
-                      }`}
-                    >
-                      <span className={`font-semibold text-sm ${sel ? 'text-green-800' : 'text-gray-900'}`}>
-                        {m.name}
-                      </span>
-                      <span className={`text-sm font-mono ${sel ? 'text-green-700' : 'text-gray-500'}`}>
-                        {m.aufschlagCent > 0 ? `+${formatPreis(m.aufschlagCent)}` : ''}
-                      </span>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
 
+        {/* Footer: zwei Buttons */}
         <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto bg-white border-t border-gray-200 p-4 space-y-2">
-          {fehler && <p className="text-red-500 text-sm text-center">{fehler}</p>}
-          <button
-            onClick={modBestätigen}
-            className="w-full py-4 rounded-2xl bg-green-600 text-white font-black text-lg active:scale-95 transition"
-          >
-            Hinzufügen
-          </button>
+          {fehler && <p className="text-red-500 text-sm text-center font-medium">{fehler}</p>}
+
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={nochEinmal}
+              className="py-4 rounded-2xl border-2 border-green-500 text-green-700 font-black text-sm active:scale-95 transition flex flex-col items-center gap-0.5"
+            >
+              <span>Noch einmal</span>
+              <span className="text-xs font-normal text-green-600 opacity-80">{aktuellerArtikel.bezeichnung}</span>
+            </button>
+
+            <button
+              onClick={buchenUndWeiter}
+              className="py-4 rounded-2xl bg-green-600 text-white font-black text-sm active:scale-95 transition flex flex-col items-center gap-0.5"
+            >
+              <span>Buchen &amp; weiter</span>
+              <span className="text-xs font-normal opacity-80">{formatPreis(gesamtPreis)}</span>
+            </button>
+          </div>
         </div>
       </div>
     )
@@ -257,7 +410,6 @@ export function ArtikelWaehlenPage() {
           <span className="text-xs text-gray-400">{auth.user.name}</span>
         </div>
 
-        {/* Kategorie-Tabs */}
         {kategorien.length > 0 && (
           <div className="mt-3 flex gap-1 overflow-x-auto pb-1 scrollbar-none">
             {kategorien.map(k => (
@@ -292,7 +444,7 @@ export function ArtikelWaehlenPage() {
         )}
 
         {artikelInKat.map(a => {
-          const menge = mengeVon(a.id)
+          const menge      = mengeImKorb(a.id)
           const ausverkauft = a.lagerstandMenge !== null && a.lagerstandMenge !== undefined && a.lagerstandMenge <= 0
           return (
             <div
@@ -311,24 +463,18 @@ export function ArtikelWaehlenPage() {
                 <button
                   onClick={() => artikelWaehlen(a)}
                   className="w-10 h-10 rounded-xl bg-green-600 text-white font-black text-xl flex items-center justify-center active:scale-90 transition shrink-0"
-                >
-                  +
-                </button>
+                >+</button>
               ) : (
                 <div className="flex items-center gap-2 shrink-0">
                   <button
                     onClick={() => removeFromKorb(a.id)}
                     className="w-9 h-9 rounded-xl border-2 border-green-300 text-green-600 font-black text-xl flex items-center justify-center active:scale-90 transition"
-                  >
-                    −
-                  </button>
+                  >−</button>
                   <span className="w-6 text-center font-black text-gray-900">{menge}</span>
                   <button
                     onClick={() => artikelWaehlen(a)}
                     className="w-9 h-9 rounded-xl bg-green-600 text-white font-black text-xl flex items-center justify-center active:scale-90 transition"
-                  >
-                    +
-                  </button>
+                  >+</button>
                 </div>
               )}
             </div>

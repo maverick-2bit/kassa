@@ -91,5 +91,7 @@ export const ModifikatorAuswahlSchema = z.object({
   gruppeName:     z.string(),
   name:           z.string(),
   aufschlagCent:  z.number().int(),
+  /** Anzahl dieser Option — Standard 1 wenn nicht gesetzt */
+  menge:          z.number().int().positive().optional(),
 })
 export type ModifikatorAuswahl = z.infer<typeof ModifikatorAuswahlSchema>
