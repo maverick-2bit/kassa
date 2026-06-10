@@ -1,0 +1,13 @@
+{
+  "name": "Kassa",
+  "short_name": "Kassa",
+  "description": "Österreichische Kassenlösung",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#4f46e5",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

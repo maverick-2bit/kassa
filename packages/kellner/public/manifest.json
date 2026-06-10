@@ -1,0 +1,13 @@
+{
+  "name": "Kellner",
+  "short_name": "Kellner",
+  "description": "Kellner-App für die Bestellaufnahme",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#16a34a",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

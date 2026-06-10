@@ -1,0 +1,13 @@
+{
+  "name": "Speisekarte",
+  "short_name": "Bestellen",
+  "description": "Gast-Bestellsystem",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#f97316",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
