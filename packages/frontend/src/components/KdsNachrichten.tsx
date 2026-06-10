@@ -9,6 +9,7 @@ import { useCallback, useState } from 'react'
 import type { KasseEvent, KdsNachrichtEvent } from '@kassa/shared'
 import { STATION_LABELS } from '@kassa/shared'
 import { useKasseEvents } from '../lib/sse'
+import { getKasseIdentity } from '../lib/kasse'
 
 type Station = keyof typeof STATION_LABELS
 
@@ -40,6 +41,13 @@ export function KdsNachrichten() {
 
   const handleEvent = useCallback((event: KasseEvent) => {
     if (event.typ !== 'kds_nachricht') return
+
+    // Gezielte Nachricht? Prüfen ob diese Kasse gemeint ist.
+    if (event.kasseIds.length > 0) {
+      const identity = getKasseIdentity()
+      if (!identity || !event.kasseIds.includes(identity.kasseId)) return
+    }
+
     spielTon()
     setNachrichten(prev => [...prev, event])
   }, [])

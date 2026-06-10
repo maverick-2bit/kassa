@@ -3,15 +3,19 @@
  *
  *   GET  /api/kds/events?station=kueche&token=<jwt>   SSE-Stream
  *   GET  /api/kds/bons?station=kueche                 Aktive Bons laden
+ *   GET  /api/kds/kassen                              Kassen-Liste (für Chat-Targeting)
  *   POST /api/kds/bon/:id/erledigt                    Bon abschließen
  *   POST /api/kds/bon/:id/teilbon                     Teilbon
+ *   POST /api/kds/nachricht                           Nachricht an Kellner
  */
 
 import type { FastifyPluginAsync } from 'fastify'
+import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 import type { Db } from '../db/client.js'
 import { onKdsEvent } from '../sse/kds-event-bus.js'
 import { emitKasseEvent } from '../sse/event-bus.js'
+import { kassen } from '../db/schema.js'
 import {
   kdsOffeneBons,
   kdsUebersicht,
@@ -25,8 +29,10 @@ const IdParam          = z.object({ id: z.string().uuid() })
 const StationQuery     = z.object({ station: z.string().min(1) })
 const TeilbonBody      = z.object({ positionIds: z.array(z.string().uuid()).min(1) })
 const NachrichtBody    = z.object({
-  text:    z.string().min(1).max(500),
-  station: z.string().min(1),
+  text:     z.string().min(1).max(500),
+  station:  z.string().min(1),
+  /** Leer = Broadcast an alle Kassen des Mandanten */
+  kasseIds: z.array(z.string().uuid()).default([]),
 })
 
 export const kdsRoute: FastifyPluginAsync<KdsRouteOptions> = async (fastify, opts) => {
@@ -133,6 +139,20 @@ export const kdsRoute: FastifyPluginAsync<KdsRouteOptions> = async (fastify, opt
     },
   )
 
+  // ── Kassen-Liste für Chat-Targeting ────────────────────────────────────────
+  fastify.get(
+    '/kds/kassen',
+    { onRequest: [fastify.authenticate] },
+    async (request, reply) => {
+      const rows = await opts.db
+        .select({ id: kassen.id, kassenId: kassen.kassenId, bezeichnung: kassen.bezeichnung })
+        .from(kassen)
+        .where(eq(kassen.mandantId, request.user.mandantId))
+        .orderBy(kassen.kassenId)
+      return reply.send(rows)
+    },
+  )
+
   // ── Nachricht an Kellner senden ────────────────────────────────────────────
   fastify.post(
     '/kds/nachricht',
@@ -142,10 +162,11 @@ export const kdsRoute: FastifyPluginAsync<KdsRouteOptions> = async (fastify, opt
       if (!b.success) return reply.status(400).send({ fehler: b.error.issues })
 
       emitKasseEvent(request.user.mandantId, {
-        typ:     'kds_nachricht',
-        text:    b.data.text,
-        station: b.data.station,
-        zeit:    new Date().toISOString(),
+        typ:      'kds_nachricht',
+        text:     b.data.text,
+        station:  b.data.station,
+        zeit:     new Date().toISOString(),
+        kasseIds: b.data.kasseIds,
       })
 
       return reply.send({ erfolgreich: true })

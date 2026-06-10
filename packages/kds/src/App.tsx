@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import type { KdsBon, KdsStation, KdsSseEvent } from './types'
 import { STATION_LABELS, STATION_FARBEN } from './types'
-import { fetchBons, nachrichtSenden } from './api'
+import { fetchBons, ladeKassen, nachrichtSenden, type KdsKasse } from './api'
 import { useKdsSse } from './hooks/useKdsSse'
 import { BonKarte } from './components/BonKarte'
 
@@ -84,10 +84,11 @@ function UhrDisplay() {
 }
 
 interface GesendeteNachricht {
-  text:  string
-  zeit:  string
-  ok:    boolean
-  fehler?: string
+  text:      string
+  zeit:      string
+  ok:        boolean
+  empfaenger: string   // "Alle Kassen" oder Kassen-Namen
+  fehler?:   string
 }
 
 function ChatPanel({
@@ -98,23 +99,60 @@ function ChatPanel({
   farbe:   string
   onClose: () => void
 }) {
-  const [text, setText]           = useState('')
-  const [senden, setSenden]       = useState(false)
-  const [verlauf, setVerlauf]     = useState<GesendeteNachricht[]>([])
-  const inputRef                  = useRef<HTMLTextAreaElement>(null)
+  const [text, setText]               = useState('')
+  const [senden, setSenden]           = useState(false)
+  const [verlauf, setVerlauf]         = useState<GesendeteNachricht[]>([])
+  const [kassen, setKassen]           = useState<KdsKasse[]>([])
+  const [gewaehlteIds, setGewaehlteIds] = useState<string[]>([])   // leer = alle
+  const inputRef                      = useRef<HTMLTextAreaElement>(null)
 
-  useEffect(() => { inputRef.current?.focus() }, [])
+  // Kassen beim Öffnen laden
+  useEffect(() => {
+    ladeKassen(token)
+      .then(setKassen)
+      .catch(() => { /* bei Fehler einfach leer lassen — Broadcast klappt trotzdem */ })
+    inputRef.current?.focus()
+  }, [token])
+
+  const alleGewaehlt = gewaehlteIds.length === 0
+
+  function toggleKasse(id: string) {
+    setGewaehlteIds(prev =>
+      prev.includes(id) ? prev.filter(k => k !== id) : [...prev, id]
+    )
+  }
+
+  function empfaengerLabel(): string {
+    if (alleGewaehlt) return 'Alle Kassen'
+    return gewaehlteIds
+      .map(id => kassen.find(k => k.id === id))
+      .filter(Boolean)
+      .map(k => k!.bezeichnung ?? k!.kassenId)
+      .join(', ')
+  }
 
   async function absenden() {
     const msg = text.trim()
     if (!msg || senden) return
     setSenden(true)
+    const label = empfaengerLabel()
     try {
-      await nachrichtSenden(msg, station, token)
-      setVerlauf(v => [...v, { text: msg, zeit: new Date().toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' }), ok: true }])
+      await nachrichtSenden(msg, station, token, gewaehlteIds)
+      setVerlauf(v => [...v, {
+        text:       msg,
+        zeit:       new Date().toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' }),
+        ok:         true,
+        empfaenger: label,
+      }])
       setText('')
     } catch (e) {
-      setVerlauf(v => [...v, { text: msg, zeit: new Date().toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' }), ok: false, fehler: e instanceof Error ? e.message : 'Fehler' }])
+      setVerlauf(v => [...v, {
+        text:       msg,
+        zeit:       new Date().toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' }),
+        ok:         false,
+        empfaenger: label,
+        fehler:     e instanceof Error ? e.message : 'Fehler',
+      }])
     } finally {
       setSenden(false)
       inputRef.current?.focus()
@@ -123,10 +161,10 @@ function ChatPanel({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-zinc-900 rounded-2xl w-full max-w-md flex flex-col shadow-2xl border border-zinc-700" style={{ maxHeight: '80vh' }}>
+      <div className="bg-zinc-900 rounded-2xl w-full max-w-md flex flex-col shadow-2xl border border-zinc-700" style={{ maxHeight: '85vh' }}>
 
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800 shrink-0">
           <div className="flex items-center gap-3">
             <span className="text-2xl">💬</span>
             <div>
@@ -137,14 +175,49 @@ function ChatPanel({
           <button
             onClick={onClose}
             className="text-zinc-500 hover:text-white transition text-xl font-bold w-8 h-8 flex items-center justify-center rounded-lg hover:bg-zinc-800"
-          >
-            ✕
-          </button>
+          >✕</button>
         </div>
+
+        {/* Empfänger-Selektor */}
+        {kassen.length > 1 && (
+          <div className="px-5 py-3 border-b border-zinc-800 shrink-0">
+            <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-2">Empfänger</p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => setGewaehlteIds([])}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  alleGewaehlt
+                    ? 'text-white'
+                    : 'bg-zinc-800 text-zinc-400 hover:text-white'
+                }`}
+                style={alleGewaehlt ? { backgroundColor: farbe } : {}}
+              >
+                📢 Alle Kassen
+              </button>
+              {kassen.map(k => {
+                const aktiv = gewaehlteIds.includes(k.id)
+                return (
+                  <button
+                    key={k.id}
+                    onClick={() => toggleKasse(k.id)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                      aktiv
+                        ? 'text-white'
+                        : 'bg-zinc-800 text-zinc-400 hover:text-white'
+                    }`}
+                    style={aktiv ? { backgroundColor: farbe } : {}}
+                  >
+                    {k.bezeichnung ?? k.kassenId}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Verlauf */}
         {verlauf.length > 0 && (
-          <div className="flex-1 overflow-auto px-5 py-3 space-y-2">
+          <div className="flex-1 overflow-auto px-5 py-3 space-y-2 min-h-0">
             {verlauf.map((m, i) => (
               <div key={i} className={`rounded-xl px-4 py-2.5 text-sm ${m.ok ? 'bg-zinc-800' : 'bg-red-900/40 border border-red-700'}`}>
                 <div className="flex items-start justify-between gap-2">
@@ -152,7 +225,7 @@ function ChatPanel({
                   <span className="text-zinc-500 text-xs shrink-0 mt-0.5">{m.zeit}</span>
                 </div>
                 {m.ok ? (
-                  <p className="text-xs text-green-400 mt-1">✓ Gesendet</p>
+                  <p className="text-xs text-green-400 mt-1">✓ Gesendet an: {m.empfaenger}</p>
                 ) : (
                   <p className="text-xs text-red-400 mt-1">✗ {m.fehler}</p>
                 )}
@@ -162,7 +235,7 @@ function ChatPanel({
         )}
 
         {/* Eingabe */}
-        <div className="px-5 py-4 space-y-3">
+        <div className="px-5 py-4 space-y-3 shrink-0">
           <textarea
             ref={inputRef}
             value={text}
@@ -174,11 +247,13 @@ function ChatPanel({
             className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 text-sm border border-zinc-700 focus:outline-none focus:border-zinc-500 resize-none placeholder-zinc-600"
           />
           <div className="flex items-center justify-between gap-3">
-            <span className="text-xs text-zinc-600">{text.length}/500</span>
+            <span className="text-xs text-zinc-500 truncate">
+              → {empfaengerLabel()}
+            </span>
             <button
               onClick={absenden}
               disabled={!text.trim() || senden}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm text-white transition disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm text-white transition disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
               style={{ backgroundColor: farbe }}
             >
               {senden ? '⏳ Senden…' : '📤 Senden'}

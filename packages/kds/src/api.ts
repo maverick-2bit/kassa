@@ -41,12 +41,30 @@ export async function bonTeilbon(bonId: string, positionIds: string[], token: st
   return res.json()
 }
 
-/** Nachricht an alle Kellner senden */
-export async function nachrichtSenden(text: string, station: string, token: string): Promise<void> {
+export interface KdsKasse {
+  id:          string
+  kassenId:    string
+  bezeichnung: string | null
+}
+
+/** Alle Kassen des Mandanten laden (für Chat-Targeting) */
+export async function ladeKassen(token: string): Promise<KdsKasse[]> {
+  const res = await fetch(`${BASE}/kassen`, { headers: headers(token) })
+  if (!res.ok) throw new Error(`Fehler: ${res.status}`)
+  return res.json()
+}
+
+/** Nachricht an Kellner senden — kasseIds leer = Broadcast an alle */
+export async function nachrichtSenden(
+  text:     string,
+  station:  string,
+  token:    string,
+  kasseIds: string[] = [],
+): Promise<void> {
   const res = await fetch(`${BASE}/nachricht`, {
     method:  'POST',
     headers: headers(token),
-    body:    JSON.stringify({ text, station }),
+    body:    JSON.stringify({ text, station, kasseIds }),
   })
   if (!res.ok) throw new Error(`Fehler: ${res.status}`)
 }

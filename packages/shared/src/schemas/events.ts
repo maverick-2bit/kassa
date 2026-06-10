@@ -41,6 +41,11 @@ export const KdsNachrichtEventSchema = z.object({
   station: z.string(),
   /** ISO-8601-Timestamp */
   zeit:    z.string(),
+  /**
+   * Gezielte Empfänger-Kassen (UUIDs).
+   * Leer = Broadcast an alle Kassen des Mandanten.
+   */
+  kasseIds: z.array(z.string().uuid()).default([]),
 })
 export type KdsNachrichtEvent = z.infer<typeof KdsNachrichtEventSchema>
 
