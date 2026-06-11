@@ -3,13 +3,29 @@ import { useMutation } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { LoginInputSchema, type LoginInput } from '@kassa/shared'
-import { authApi } from '../lib/api'
+import { LoginInputSchema, type LoginInput, type Startseite } from '@kassa/shared'
+import { authApi, posConfigApi } from '../lib/api'
 import { setAuth } from '../lib/auth'
 import { getKasseIdentity, setKasseIdentity } from '../lib/kasse'
 import { Field } from '../components/ui/Field'
 import { Input } from '../components/ui/Input'
 import { Button } from '../components/ui/Button'
+
+const STARTSEITE_PFAD: Record<Startseite, string> = {
+  tische:          '/tische',
+  kasse:           '/kasse',
+  kasse_favoriten: '/kasse?tab=favoriten',
+  dashboard:       '/dashboard',
+}
+
+async function leseStartseitePfad(kasseId: string): Promise<string> {
+  try {
+    const cfg = await posConfigApi.get(kasseId)
+    return STARTSEITE_PFAD[cfg.startseite] ?? '/tische'
+  } catch {
+    return '/tische'
+  }
+}
 
 type Tab = 'passwort' | 'pin'
 
@@ -48,8 +64,8 @@ export function LoginPage() {
         </div>
 
         {tab === 'pin'
-          ? <PinLoginForm onNavigate={() => navigate('/tische')} />
-          : <PasswortLoginForm onNavigate={() => navigate('/tische')} />
+          ? <PinLoginForm onNavigate={(pfad) => navigate(pfad)} />
+          : <PasswortLoginForm onNavigate={(pfad) => navigate(pfad)} />
         }
       </div>
     </div>
@@ -60,7 +76,7 @@ export function LoginPage() {
 // PIN-Login
 // ---------------------------------------------------------------------------
 
-function PinLoginForm({ onNavigate }: { onNavigate: () => void }) {
+function PinLoginForm({ onNavigate }: { onNavigate: (pfad: string) => void }) {
   const [pin, setPin]         = useState('')
   const [fehler, setFehler]   = useState<string | null>(null)
   const inputRef              = useRef<HTMLInputElement>(null)
@@ -69,7 +85,7 @@ function PinLoginForm({ onNavigate }: { onNavigate: () => void }) {
 
   const mutation = useMutation({
     mutationFn: authApi.pinLogin,
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       setAuth(data)
       // Kasse wechseln: wenn aktuelle Kasse nicht in den zugewiesenen ist, auf die erste umschalten
       const aktuelle = getKasseIdentity()
@@ -77,7 +93,9 @@ function PinLoginForm({ onNavigate }: { onNavigate: () => void }) {
       if (!passt && data.kassen[0]) {
         setKasseIdentity({ mandantId: data.mandant.id, kasseId: data.kassen[0].id })
       }
-      onNavigate()
+      const kasseId = getKasseIdentity()?.kasseId
+      const pfad = kasseId ? await leseStartseitePfad(kasseId) : '/tische'
+      onNavigate(pfad)
     },
     onError: (err) => {
       setFehler(err instanceof Error ? err.message : 'PIN ungültig')
@@ -177,7 +195,7 @@ function PinLoginForm({ onNavigate }: { onNavigate: () => void }) {
 // Passwort-Login
 // ---------------------------------------------------------------------------
 
-function PasswortLoginForm({ onNavigate }: { onNavigate: () => void }) {
+function PasswortLoginForm({ onNavigate }: { onNavigate: (pfad: string) => void }) {
   const [serverFehler, setServerFehler] = useState<string | null>(null)
 
   const {
@@ -191,12 +209,14 @@ function PasswortLoginForm({ onNavigate }: { onNavigate: () => void }) {
 
   const mutation = useMutation({
     mutationFn: authApi.login,
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       setAuth(data)
       if (data.kassen.length === 1 && data.kassen[0]) {
         setKasseIdentity({ mandantId: data.mandant.id, kasseId: data.kassen[0].id })
       }
-      onNavigate()
+      const kasseId = getKasseIdentity()?.kasseId
+      const pfad = kasseId ? await leseStartseitePfad(kasseId) : '/tische'
+      onNavigate(pfad)
     },
     onError: (err) => setServerFehler(err instanceof Error ? err.message : 'Login fehlgeschlagen'),
   })

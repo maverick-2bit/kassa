@@ -67,6 +67,8 @@ interface Props {
   sichtbareKategorieIds?: string[] | undefined
   /** Artikelbilder anzeigen (default: true) */
   artikelbilderAktiv?:  boolean
+  /** Initialer Tab: Kategorie-ID oder '__favoriten__' (default: null = Alle) */
+  initialKategorieId?:  string | null
 }
 
 // ---------------------------------------------------------------------------
@@ -76,8 +78,8 @@ interface Props {
 // Sentinel für den Favoriten-Tab
 const FAVORITEN_TAB_ID = '__favoriten__'
 
-export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClick, loading, sichtbareKategorieIds, artikelbilderAktiv = true }: Props) {
-  const [aktivKategorieId, setAktivKategorieId] = useState<string | null>(null)
+export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClick, loading, sichtbareKategorieIds, artikelbilderAktiv = true, initialKategorieId = null }: Props) {
+  const [aktivKategorieId, setAktivKategorieId] = useState<string | null>(initialKategorieId)
   const [modArtikel, setModArtikel] = useState<Artikel | null>(null)
 
   // Scroll-State für Fade-Ränder der Kategorieleiste

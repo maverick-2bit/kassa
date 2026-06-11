@@ -114,6 +114,8 @@ export const kassen = pgTable('kassen', {
   erlaubteZahlungsarten: jsonb('erlaubte_zahlungsarten').notNull().default(['bar', 'karte', 'sonstige']),
   /** Artikelbilder im Kassen-Raster anzeigen */
   artikelbilderAktiv:    boolean('artikel_bilder_aktiv').notNull().default(true),
+  /** Startseite nach Login: tische | kasse | kasse_favoriten | dashboard */
+  startseite:            varchar('startseite', { length: 20 }).notNull().default('tische'),
 
   // ZVT-Kartenterminal-Konfiguration (Hobex/Payroc & kompatible über Standard-ZVT-Protokoll)
   zvtIp:                 varchar('zvt_ip',   { length: 64 }),

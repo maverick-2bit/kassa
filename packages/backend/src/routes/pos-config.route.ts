@@ -18,10 +18,13 @@ export interface PosConfigRouteOptions { db: Db }
 
 const KasseIdParam = z.object({ kasseId: z.string().uuid() })
 
+const StartseitenEnum = z.enum(['tische', 'kasse', 'kasse_favoriten', 'dashboard'])
+
 const PosConfigBodySchema = z.object({
   sichtbareKategorieIds: z.array(z.string().uuid()).optional(),
   erlaubteZahlungsarten: z.array(z.enum(['bar', 'karte', 'sonstige'])).optional(),
   artikelbilderAktiv:    z.boolean().optional(),
+  startseite:            StartseitenEnum.optional(),
 })
 
 export const posConfigRoute: FastifyPluginAsync<PosConfigRouteOptions> = async (fastify, opts) => {
@@ -32,7 +35,7 @@ export const posConfigRoute: FastifyPluginAsync<PosConfigRouteOptions> = async (
     if (!p.success) return reply.status(400).send({ fehler: 'Ungültige Kassen-ID' })
 
     const [kasse] = await opts.db
-      .select({ erlaubteZahlungsarten: kassen.erlaubteZahlungsarten, artikelbilderAktiv: kassen.artikelbilderAktiv })
+      .select({ erlaubteZahlungsarten: kassen.erlaubteZahlungsarten, artikelbilderAktiv: kassen.artikelbilderAktiv, startseite: kassen.startseite })
       .from(kassen)
       .where(and(eq(kassen.id, p.data.kasseId), eq(kassen.mandantId, request.user.mandantId)))
       .limit(1)
@@ -47,6 +50,7 @@ export const posConfigRoute: FastifyPluginAsync<PosConfigRouteOptions> = async (
       sichtbareKategorieIds: sichtbarkeit.map(r => r.kategorieId),
       erlaubteZahlungsarten: kasse.erlaubteZahlungsarten as string[],
       artikelbilderAktiv:    kasse.artikelbilderAktiv,
+      startseite:            kasse.startseite,
     })
   })
 
@@ -66,12 +70,13 @@ export const posConfigRoute: FastifyPluginAsync<PosConfigRouteOptions> = async (
     if (!kasse) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
 
     await opts.db.transaction(async (tx) => {
-      // Zahlungsarten + Darstellungsoptionen
-      if (body.data.erlaubteZahlungsarten !== undefined || body.data.artikelbilderAktiv !== undefined) {
+      // Zahlungsarten + Darstellungsoptionen + Startseite
+      if (body.data.erlaubteZahlungsarten !== undefined || body.data.artikelbilderAktiv !== undefined || body.data.startseite !== undefined) {
         await tx.update(kassen)
           .set({
             ...(body.data.erlaubteZahlungsarten !== undefined && { erlaubteZahlungsarten: body.data.erlaubteZahlungsarten }),
             ...(body.data.artikelbilderAktiv    !== undefined && { artikelbilderAktiv:    body.data.artikelbilderAktiv }),
+            ...(body.data.startseite            !== undefined && { startseite:            body.data.startseite }),
             updatedAt: new Date(),
           })
           .where(eq(kassen.id, p.data.kasseId))

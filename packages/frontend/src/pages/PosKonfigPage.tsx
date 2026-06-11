@@ -25,12 +25,19 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { Artikel, Kategorie } from '@kassa/shared'
+import type { Artikel, Kategorie, Startseite } from '@kassa/shared'
 import { artikelApi, kategorieApi, posConfigApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { Button } from '../components/ui/Button'
 
 type Tab = 'warengruppen' | 'artikel' | 'favoriten' | 'zahlungsarten'
+
+const STARTSEITEN: { value: Startseite; label: string; beschreibung: string }[] = [
+  { value: 'tische',          label: 'Tische',             beschreibung: 'Tischübersicht (Gastro)' },
+  { value: 'kasse',           label: 'Kasse',              beschreibung: 'Artikel-Raster' },
+  { value: 'kasse_favoriten', label: 'Kasse – Favoriten',  beschreibung: 'Favoriten-Tab direkt öffnen' },
+  { value: 'dashboard',       label: 'Dashboard',          beschreibung: 'Tagesübersicht' },
+]
 
 const ZAHLUNGSARTEN = [
   { key: 'bar',      label: 'Barzahlung' },
@@ -402,6 +409,9 @@ function TabZahlungsarten({ kasseId }: { kasseId: string }) {
   const [artikelbilder, setArtikelbilder] = useState<boolean>(
     () => posQuery.data?.artikelbilderAktiv ?? true
   )
+  const [startseite, setStartseite] = useState<Startseite>(
+    () => posQuery.data?.startseite ?? 'tische'
+  )
 
   // Sync wenn posQuery geladen (z.B. nach erstem Render)
   const posDataRef = posQuery.data
@@ -409,6 +419,7 @@ function TabZahlungsarten({ kasseId }: { kasseId: string }) {
     if (posDataRef) {
       setErlaubte(new Set(posDataRef.erlaubteZahlungsarten))
       setArtikelbilder(posDataRef.artikelbilderAktiv)
+      setStartseite(posDataRef.startseite)
     }
   })
 
@@ -421,6 +432,12 @@ function TabZahlungsarten({ kasseId }: { kasseId: string }) {
   const bildMut = useMutation({
     mutationFn: (aktiv: boolean) =>
       posConfigApi.update(kasseId, { artikelbilderAktiv: aktiv }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['pos-config', kasseId] }),
+  })
+
+  const startseiteMut = useMutation({
+    mutationFn: (s: Startseite) =>
+      posConfigApi.update(kasseId, { startseite: s }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['pos-config', kasseId] }),
   })
 
@@ -440,6 +457,11 @@ function TabZahlungsarten({ kasseId }: { kasseId: string }) {
     const next = !artikelbilder
     setArtikelbilder(next)
     bildMut.mutate(next)
+  }
+
+  const handleStartseite = (s: Startseite) => {
+    setStartseite(s)
+    startseiteMut.mutate(s)
   }
 
   return (
@@ -480,6 +502,30 @@ function TabZahlungsarten({ kasseId }: { kasseId: string }) {
             </p>
           </div>
         </label>
+      </div>
+
+      {/* Startseite */}
+      <div className="border-t border-gray-200 pt-5 space-y-3">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Startseite nach Login</p>
+        <p className="text-sm text-gray-500">
+          Welche Seite wird nach dem Einloggen an dieser Kasse geöffnet?
+        </p>
+        {STARTSEITEN.map(({ value, label, beschreibung }) => (
+          <label key={value} className="flex items-center gap-3 cursor-pointer rounded-xl border border-gray-200 bg-white px-4 py-3 hover:bg-gray-50">
+            <input
+              type="radio"
+              name="startseite"
+              value={value}
+              checked={startseite === value}
+              onChange={() => handleStartseite(value)}
+              className="h-4 w-4 border-gray-300 text-brand-600 focus:ring-brand-500"
+            />
+            <div>
+              <p className="text-sm font-medium text-gray-800">{label}</p>
+              <p className="text-xs text-gray-400 mt-0.5">{beschreibung}</p>
+            </div>
+          </label>
+        ))}
       </div>
     </div>
   )

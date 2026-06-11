@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useOffline } from '../lib/useOffline'
 import type {
@@ -68,6 +68,8 @@ export function KassePage() {
   const queryClient = useQueryClient()
   const { online, queueCount } = useOffline()
   const [offlineBelegGespeichert, setOfflineBelegGespeichert] = useState(false)
+  const [searchParams] = useSearchParams()
+  const initialKategorieId = searchParams.get('tab') === 'favoriten' ? '__favoriten__' : null
 
   const [modus, setModus] = useState<'verkauf' | 'angebot'>('verkauf')
   const [korb, setKorb] = useState<KorbPosition[]>([])
@@ -565,6 +567,7 @@ export function KassePage() {
               loading={artikelQuery.isLoading}
               sichtbareKategorieIds={posConfigQuery.data?.sichtbareKategorieIds}
               artikelbilderAktiv={posConfigQuery.data?.artikelbilderAktiv ?? true}
+              initialKategorieId={initialKategorieId}
             />
           </div>
         </section>
