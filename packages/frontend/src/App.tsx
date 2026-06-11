@@ -35,6 +35,10 @@ import { ModifikatorenPage } from './pages/ModifikatorenPage'
 import { ReservierungenPage } from './pages/ReservierungenPage'
 import { OnlineBuchungPage } from './pages/OnlineBuchungPage'
 import { ZeiterfassungPage } from './pages/ZeiterfassungPage'
+import { ExportPage } from './pages/ExportPage'
+import { WerbefolienPage } from './pages/WerbefolienPage'
+import { DienstplanPage } from './pages/DienstplanPage'
+import { SelfCheckoutPage } from './pages/SelfCheckoutPage'
 import type { Berechtigung, MandantModul } from '@kassa/shared'
 import { getAuth, hasBerechtigung, hasModul, setOnUnauthorized } from './lib/auth'
 import { getKasseIdentity } from './lib/kasse'
@@ -59,7 +63,8 @@ function AppRoutes() {
     <Routes>
       <Route path="/setup" element={<SetupPage />} />
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/buchung" element={<OnlineBuchungPage />} />
+      <Route path="/buchung"      element={<OnlineBuchungPage />} />
+      <Route path="/selfcheckout" element={<SelfCheckoutPage />} />
       <Route path="/pruefung/:token" element={<PruefungsansichtPage />} />
       <Route element={<Layout />}>
         <Route path="/dashboard"        element={<Require b="belege.lesen"                 ><DashboardPage /></Require>} />
@@ -90,6 +95,9 @@ function AppRoutes() {
         <Route path="/lieferanten"    element={<Require b="artikel.verwalten"            ><LieferantenPage /></Require>} />
         <Route path="/bestellliste"   element={<Require b="artikel.verwalten"            ><BestelllistePage /></Require>} />
         <Route path="/dep-export"           element={<Require b="einstellungen"                ><DepExportPage /></Require>} />
+        <Route path="/bmd-export"           element={<Require b="einstellungen"                ><ExportPage /></Require>} />
+        <Route path="/werbefolien"           element={<Require b="einstellungen"                ><WerbefolienPage /></Require>} />
+        <Route path="/dienstplan"            element={<Require b="einstellungen"    m="zeiterfassung" ><DienstplanPage /></Require>} />
         <Route path="/finanzpruefung"      element={<Require b="einstellungen"                ><FinanzpruefungPage /></Require>} />
         <Route path="/kassen-startseite"   element={<Require b="einstellungen"                ><KassenStartseiteSeite /></Require>} />
       </Route>

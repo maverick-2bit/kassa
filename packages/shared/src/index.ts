@@ -317,6 +317,8 @@ export {
   LagerstandWarnungEventSchema,
   KdsNachrichtEventSchema,
   GastBestellungEventSchema,
+  NeueReservierungEventSchema,
+  ZahlungAngefordertEventSchema,
   KasseEventSchema,
 } from './schemas/events.js'
 export type {
@@ -325,6 +327,8 @@ export type {
   LagerstandWarnungEvent,
   KdsNachrichtEvent,
   GastBestellungEvent,
+  NeueReservierungEvent,
+  ZahlungAngefordertEvent,
   KasseEvent,
 } from './schemas/events.js'
 
@@ -503,6 +507,33 @@ export type {
   OnlineBuchungInfo,
   OnlineBuchungInput,
 } from './schemas/reservierung.js'
+
+// Dienstplan
+export {
+  DienstplanStatusSchema,
+  DIENSTPLAN_STATUS_LABELS,
+  DienstplanSchichtInputSchema,
+  DienstplanSchichtUpdateSchema,
+  DienstplanSchichtResponseSchema,
+} from './schemas/dienstplan.js'
+export type {
+  DienstplanStatus,
+  DienstplanSchichtInput,
+  DienstplanSchichtUpdate,
+  DienstplanSchichtResponse,
+} from './schemas/dienstplan.js'
+
+// Werbefolien
+export {
+  WerbefolieInputSchema,
+  WerbefolieUpdateSchema,
+  WerbefolieResponseSchema,
+} from './schemas/werbefolien.js'
+export type {
+  WerbefolieInput,
+  WerbefolieUpdate,
+  WerbefolieResponse,
+} from './schemas/werbefolien.js'
 
 // Lieferbestellungen (Lieferando / Mergeport)
 export {

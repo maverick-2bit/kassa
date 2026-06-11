@@ -1,10 +1,10 @@
 /**
  * Kundendisplay — zeigt den aktuellen Warenkorb der Kasse in Echtzeit.
  *
- * URL: http://<server>:8081?kasseId=<uuid>
+ * URL: http://<server>:8081?kasseId=<uuid>&mandantId=<uuid>
  *
  * Zustände:
- *   leer          → Begrüßungsbildschirm
+ *   leer          → Werbefolien-Slideshow (wenn mandantId gesetzt und Folien vorhanden)
  *   warenkorb     → Artikel-Liste mit laufender Summe
  *   beleg_erstellt → Dankeschön-Bildschirm (5 Sekunden)
  */
@@ -82,7 +82,9 @@ function Uhrzeit() {
 // ---------------------------------------------------------------------------
 
 export default function App() {
-  const kasseId = new URLSearchParams(window.location.search).get('kasseId') ?? ''
+  const params    = new URLSearchParams(window.location.search)
+  const kasseId   = params.get('kasseId')   ?? ''
+  const mandantId = params.get('mandantId') ?? ''
   const [state, setState] = useState<DisplayEvent>({ typ: 'leer' })
 
   useDisplaySse(kasseId, useCallback((ev) => setState(ev), []))
@@ -112,7 +114,7 @@ export default function App() {
 
       {/* Haupt-Bereich */}
       <div className="flex-1 flex flex-col">
-        {state.typ === 'leer' && <LeerBildschirm />}
+        {state.typ === 'leer' && <LeerBildschirm mandantId={mandantId} />}
         {state.typ === 'warenkorb' && <WarenkorbAnsicht positionen={state.positionen} summeCent={state.summeCent} />}
         {state.typ === 'beleg_erstellt' && <DankeschoenBildschirm belegNummer={state.belegNummer} summeCent={state.summeCent} />}
       </div>
@@ -124,7 +126,79 @@ export default function App() {
 // Leerer Bildschirm
 // ---------------------------------------------------------------------------
 
-function LeerBildschirm() {
+// ---------------------------------------------------------------------------
+// Werbefolien-Typen
+// ---------------------------------------------------------------------------
+
+interface Werbefolie {
+  id:              string
+  titel:           string
+  bildBase64:      string
+  mimeType:        string
+  anzeigedauerSek: number
+}
+
+function useWerbefolien(mandantId: string) {
+  const [folien, setFolien] = useState<Werbefolie[]>([])
+
+  useEffect(() => {
+    if (!mandantId) return
+    const laden = async () => {
+      try {
+        const res = await fetch(`/api/werbefolien/public/${mandantId}`)
+        if (res.ok) setFolien(await res.json() as Werbefolie[])
+      } catch {}
+    }
+    laden()
+    const id = setInterval(laden, 60_000) // alle 60s neu laden
+    return () => clearInterval(id)
+  }, [mandantId])
+
+  return folien
+}
+
+function LeerBildschirm({ mandantId }: { mandantId: string }) {
+  const folien  = useWerbefolien(mandantId)
+  const [index, setIndex] = useState(0)
+  const aktive  = folien.filter(f => f.bildBase64)
+
+  useEffect(() => {
+    if (aktive.length < 2) return
+    const folie = aktive[index]
+    if (!folie) return
+    const id = setTimeout(() => setIndex(i => (i + 1) % aktive.length), folie.anzeigedauerSek * 1000)
+    return () => clearTimeout(id)
+  }, [index, aktive])
+
+  if (aktive.length > 0) {
+    const folie = aktive[index % aktive.length]!
+    return (
+      <div className="flex-1 relative overflow-hidden bg-black">
+        <img
+          key={folie.id}
+          src={`data:${folie.mimeType};base64,${folie.bildBase64}`}
+          alt={folie.titel || 'Werbung'}
+          className="absolute inset-0 w-full h-full object-cover transition-opacity duration-1000"
+        />
+        {folie.titel && (
+          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent px-8 py-6">
+            <p className="text-white text-2xl font-bold">{folie.titel}</p>
+          </div>
+        )}
+        {aktive.length > 1 && (
+          <div className="absolute bottom-4 right-4 flex gap-1.5">
+            {aktive.map((_, i) => (
+              <div
+                key={i}
+                className={`h-2 rounded-full transition-all ${i === index % aktive.length ? 'w-6 bg-white' : 'w-2 bg-white/40'}`}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="flex-1 flex flex-col items-center justify-center gap-6 p-12">
       <div className="w-24 h-24 rounded-full bg-gray-800 flex items-center justify-center">

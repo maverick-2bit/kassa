@@ -35,9 +35,12 @@ import { listeKassenbuchBuchungen } from '../services/kassenbuch.service.js'
 import { pruefeKasseGehoertZuMandant } from '../auth/scope.js'
 import { eq } from 'drizzle-orm'
 import { kassen, mandanten } from '../db/schema.js'
+import type { Config } from '../config.js'
+import { isEmailAktiv, sendeTagesabschlussEmail } from '../services/email.service.js'
 
 export interface BelegRouteOptions {
-  deps: BelegServiceDeps
+  deps:   BelegServiceDeps
+  config: Config
 }
 
 const ListQuerySchema = z.object({
@@ -316,6 +319,30 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
       })
 
       await sendBytes(bytes, druckerConfig)
+
+      // Tagesabschluss-E-Mail an konfigurierten Empfänger senden
+      if (kasse.abschlussEmail && isEmailAktiv(opts.config)) {
+        sendeTagesabschlussEmail(kasse.abschlussEmail, {
+          firmenname:              mandant.firmenname,
+          kassenId:                kasse.kassenId,
+          datum:                   ta.datum,
+          nettoUmsatzCent:         ta.nettoUmsatzCent,
+          barCent:                 ta.barCent,
+          karteCent:               ta.karteCent,
+          sonstigCent:             ta.sonstigCent,
+          anzahlBarzahlungsbelege: ta.anzahlBarzahlungsbelege,
+          anzahlStornobelege:      ta.anzahlStornobelege,
+          mwst:                    ta.mwst.map(m => ({
+            satz:       m.label,
+            nettoCent:  m.nettoCent,
+            steuerCent: m.ustCent,
+            bruttoCent: m.bruttoCent,
+          })),
+        }, opts.config).catch((err) => {
+          fastify.log.warn({ err }, 'Tagesabschluss-E-Mail konnte nicht gesendet werden')
+        })
+      }
+
       return reply.send({ erfolgreich: true })
     } catch (err) {
       if (err instanceof TagesabschlussError) {

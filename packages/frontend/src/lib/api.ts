@@ -1,4 +1,10 @@
 import type {
+  DienstplanSchichtInput,
+  DienstplanSchichtResponse,
+  DienstplanSchichtUpdate,
+  WerbefolieInput,
+  WerbefolieResponse,
+  WerbefolieUpdate,
   AngebotInput,
   AngebotResponse,
   AngebotStatus,
@@ -1090,6 +1096,138 @@ export const zeiterfassungApi = {
     request<ArbeitszeitResponse>('PATCH', `/api/zeiterfassung/${id}`, input),
   loeschen: (id: string): Promise<void> =>
     request<void>('DELETE', `/api/zeiterfassung/${id}`),
+}
+
+// ---------------------------------------------------------------------------
+// BMD-Export
+// ---------------------------------------------------------------------------
+
+export async function downloadBmdExport(opts: {
+  kasseId:  string
+  vonDatum?: string
+  bisDatum?: string
+}): Promise<{ anzahl: number }> {
+  const params = new URLSearchParams({ kasseId: opts.kasseId })
+  if (opts.vonDatum) params.set('vonDatum', opts.vonDatum)
+  if (opts.bisDatum) params.set('bisDatum', opts.bisDatum)
+
+  const token = getToken()
+  const res = await fetch(`/api/export/bmd?${params}`, {
+    headers: { Authorization: token ? `Bearer ${token}` : '' },
+  })
+
+  if (res.status === 401) { handleUnauthorized(); throw new ApiError(401, 'Nicht angemeldet') }
+  if (!res.ok) {
+    const text = await res.text()
+    const fehler = text ? (JSON.parse(text) as { fehler?: string })?.fehler ?? `HTTP ${res.status}` : `HTTP ${res.status}`
+    throw new ApiError(res.status, fehler)
+  }
+
+  const anzahl = parseInt(res.headers.get('X-Anzahl-Belege') ?? '0', 10)
+  const disposition = res.headers.get('Content-Disposition') ?? ''
+  const filename = disposition.match(/filename="([^"]+)"/)?.[1] ?? 'bmd-export.csv'
+
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+
+  return { anzahl }
+}
+
+// ---------------------------------------------------------------------------
+// Werbefolien
+// ---------------------------------------------------------------------------
+
+export const werbefolienApi = {
+  list: (): Promise<WerbefolieResponse[]> =>
+    request<WerbefolieResponse[]>('GET', '/api/werbefolien'),
+  erstellen: (input: WerbefolieInput): Promise<WerbefolieResponse> =>
+    request<WerbefolieResponse>('POST', '/api/werbefolien', input),
+  aktualisieren: (id: string, input: WerbefolieUpdate): Promise<WerbefolieResponse> =>
+    request<WerbefolieResponse>('PATCH', `/api/werbefolien/${id}`, input),
+  loeschen: (id: string): Promise<void> =>
+    request<void>('DELETE', `/api/werbefolien/${id}`),
+}
+
+// ---------------------------------------------------------------------------
+// Dienstplan
+// ---------------------------------------------------------------------------
+
+export const dienstplanApi = {
+  list: (opts: { kasseId?: string; userId?: string; datumVon?: string; datumBis?: string; limit?: number } = {}): Promise<DienstplanSchichtResponse[]> => {
+    const p = new URLSearchParams()
+    if (opts.kasseId)  p.set('kasseId',  opts.kasseId)
+    if (opts.userId)   p.set('userId',   opts.userId)
+    if (opts.datumVon) p.set('datumVon', opts.datumVon)
+    if (opts.datumBis) p.set('datumBis', opts.datumBis)
+    if (opts.limit)    p.set('limit',    String(opts.limit))
+    return request<DienstplanSchichtResponse[]>('GET', `/api/dienstplan?${p.toString()}`)
+  },
+  erstellen: (input: DienstplanSchichtInput): Promise<DienstplanSchichtResponse> =>
+    request<DienstplanSchichtResponse>('POST', '/api/dienstplan', input),
+  aktualisieren: (id: string, input: DienstplanSchichtUpdate): Promise<DienstplanSchichtResponse> =>
+    request<DienstplanSchichtResponse>('PATCH', `/api/dienstplan/${id}`, input),
+  loeschen: (id: string): Promise<void> =>
+    request<void>('DELETE', `/api/dienstplan/${id}`),
+}
+
+// ---------------------------------------------------------------------------
+// Self-Checkout (öffentlich)
+// ---------------------------------------------------------------------------
+
+export interface SelfCheckoutTab {
+  tabId?:    string
+  tisch:     string
+  kellner?:  string
+  offen:     boolean
+  positionen: { bezeichnung: string; menge: number; preisCent: number; gesamtCent: number }[]
+  summeCent:  number
+  geoffnetAm?: string
+}
+
+export const selfcheckoutApi = {
+  ladeTab: async (kasseId: string, tisch: string): Promise<SelfCheckoutTab> => {
+    const params = new URLSearchParams({ kasseId, tisch })
+    const res = await fetch(`/api/selfcheckout?${params}`)
+    if (!res.ok) {
+      const body = await res.json() as { fehler?: string }
+      throw new Error(body.fehler ?? 'Fehler beim Laden')
+    }
+    return res.json() as Promise<SelfCheckoutTab>
+  },
+  zahlungAnfordern: async (kasseId: string, tisch: string): Promise<{ erfolgreich: boolean; summeCent: number }> => {
+    const res = await fetch('/api/selfcheckout/zahlung-anfordern', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ kasseId, tisch }),
+    })
+    if (!res.ok) {
+      const body = await res.json() as { fehler?: string }
+      throw new Error(body.fehler ?? 'Fehler')
+    }
+    return res.json() as Promise<{ erfolgreich: boolean; summeCent: number }>
+  },
+}
+
+// ---------------------------------------------------------------------------
+// Kassen-Erweiterungseinstellungen
+// ---------------------------------------------------------------------------
+
+export const kasseErweiterungApi = {
+  getAbschlussEmail: (kasseId: string): Promise<{ abschlussEmail: string | null }> =>
+    request('GET', `/api/kassen/${kasseId}/abschluss-email`),
+  setAbschlussEmail: (kasseId: string, abschlussEmail: string | null): Promise<{ abschlussEmail: string | null }> =>
+    request('PATCH', `/api/kassen/${kasseId}/abschluss-email`, { abschlussEmail }),
+  getSelfCheckout: (kasseId: string): Promise<{ selfCheckoutAktiv: boolean; selfCheckoutUrl: string }> =>
+    request('GET', `/api/kassen/${kasseId}/self-checkout`),
+  setSelfCheckout: (kasseId: string, aktiv: boolean): Promise<{ selfCheckoutAktiv: boolean }> =>
+    request('PATCH', `/api/kassen/${kasseId}/self-checkout`, { aktiv }),
 }
 
 export { ApiError }

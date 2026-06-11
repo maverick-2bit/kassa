@@ -36,6 +36,13 @@
       "when": 1749902400000,
       "tag": "0013_zeiterfassung",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1749988800000,
+      "tag": "0014_erweiterungen",
+      "breakpoints": true
     }
   ]
 }

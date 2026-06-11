@@ -68,6 +68,15 @@ export const NeueReservierungEventSchema = z.object({
 })
 export type NeueReservierungEvent = z.infer<typeof NeueReservierungEventSchema>
 
+export const ZahlungAngefordertEventSchema = z.object({
+  typ:         z.literal('zahlung_angefordert'),
+  kasseId:     z.string().uuid(),
+  tischNummer: z.string(),
+  tabId:       z.string().uuid(),
+  summeCent:   z.number().int(),
+})
+export type ZahlungAngefordertEvent = z.infer<typeof ZahlungAngefordertEventSchema>
+
 export const KasseEventSchema = z.discriminatedUnion('typ', [
   BonierbonEventSchema,
   NeueBestellungEventSchema,
@@ -75,5 +84,6 @@ export const KasseEventSchema = z.discriminatedUnion('typ', [
   KdsNachrichtEventSchema,
   GastBestellungEventSchema,
   NeueReservierungEventSchema,
+  ZahlungAngefordertEventSchema,
 ])
 export type KasseEvent = z.infer<typeof KasseEventSchema>

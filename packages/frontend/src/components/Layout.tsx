@@ -61,6 +61,7 @@ function Header() {
           {hasBerechtigung('kasse')             && hasModul('mergeport')       && <NavItem to="/lieferungen">Lieferungen</NavItem>}
           {hasBerechtigung('kasse')             && hasModul('reservierungen')  && <NavItem to="/reservierungen">Reservierungen</NavItem>}
           {hasBerechtigung('einstellungen')     && hasModul('zeiterfassung')   && <NavItem to="/zeiterfassung">Zeiterfassung</NavItem>}
+          {hasBerechtigung('einstellungen')     && hasModul('zeiterfassung')   && <NavItem to="/dienstplan">Dienstplan</NavItem>}
           {hasBerechtigung('kasse')             && hasModul('angebote')   && <NavItem to="/angebote">Angebote</NavItem>}
           {hasBerechtigung('belege.lesen')                                && <NavItem to="/belege">Belege</NavItem>}
           {hasBerechtigung('belege.lesen')                                && <NavItem to="/tagesabschluss">Abschluss</NavItem>}
@@ -72,6 +73,8 @@ function Header() {
           {hasBerechtigung('einstellungen')                               && <NavItem to="/kassen-startseite">Startseiten</NavItem>}
           {hasBerechtigung('einstellungen')     && hasModul('gastro')     && <NavItem to="/bonierdrucker">Bonierdrucker</NavItem>}
           {hasBerechtigung('einstellungen')                               && <NavItem to="/dep-export">DEP-Export</NavItem>}
+          {hasBerechtigung('einstellungen')                               && <NavItem to="/bmd-export">BMD-Export</NavItem>}
+          {hasBerechtigung('einstellungen')                               && <NavItem to="/werbefolien">Werbefolien</NavItem>}
           {hasBerechtigung('einstellungen')                               && <NavItem to="/finanzpruefung">Finanzprüfung</NavItem>}
           {hasBerechtigung('einstellungen')                               && <NavItem to="/module">Module</NavItem>}
           {hasBerechtigung('user.verwalten')                              && <NavItem to="/benutzer">Benutzer</NavItem>}

@@ -4,19 +4,19 @@
  *  GET    /api/reservierungen?kasseId=&datumVon=&datumBis=&limit=
  *  POST   /api/reservierungen
  *  PATCH  /api/reservierungen/:id
+ *    → Sendet Bestätigungs-E-Mail wenn status='bestaetigt' und E-Mail vorhanden
  *  DELETE /api/reservierungen/:id
  *
  *  GET    /api/kassen/:kasseId/online-buchung
- *    → Liefert onlineBuchungAktiv-Flag für Einstellungsseite
  *  PATCH  /api/kassen/:kasseId/online-buchung
- *    → Schaltet Online-Buchung an/aus
  */
 
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { and, eq } from 'drizzle-orm'
 import type { Db } from '../db/client.js'
-import { kassen } from '../db/schema.js'
+import type { Config } from '../config.js'
+import { kassen, mandanten } from '../db/schema.js'
 import { ReservierungInputSchema, ReservierungUpdateSchema } from '@kassa/shared'
 import {
   erstelleReservierung,
@@ -25,8 +25,12 @@ import {
   loescheReservierung,
 } from '../services/reservierung.service.js'
 import { pruefeKasseGehoertZuMandant } from '../auth/scope.js'
+import {
+  isEmailAktiv,
+  sendeReservierungsBestaetigung,
+} from '../services/email.service.js'
 
-export interface ReservierungRouteOptions { db: Db }
+export interface ReservierungRouteOptions { db: Db; config: Config }
 
 const ListQuerySchema = z.object({
   kasseId:  z.string().uuid().optional(),
@@ -35,7 +39,7 @@ const ListQuerySchema = z.object({
   limit:    z.coerce.number().int().min(1).max(1000).optional(),
 })
 
-const IdParam = z.object({ id: z.string().uuid() })
+const IdParam    = z.object({ id: z.string().uuid() })
 const KasseParam = z.object({ kasseId: z.string().uuid() })
 
 export const reservierungRoute: FastifyPluginAsync<ReservierungRouteOptions> = async (fastify, opts) => {
@@ -83,6 +87,27 @@ export const reservierungRoute: FastifyPluginAsync<ReservierungRouteOptions> = a
 
     try {
       const res = await aktualisiereReservierung(opts.db, p.data.id, request.user.mandantId, body.data)
+
+      // Bestätigungs-E-Mail versenden wenn Status auf 'bestaetigt' gesetzt wird
+      if (body.data.status === 'bestaetigt' && res.email && isEmailAktiv(opts.config)) {
+        const [mandant] = await opts.db.select({ firmenname: mandanten.firmenname }).from(mandanten).where(eq(mandanten.id, request.user.mandantId)).limit(1)
+
+        if (mandant) {
+          sendeReservierungsBestaetigung(res.email, {
+            firmenname:     mandant.firmenname,
+            name:           res.name,
+            datum:          res.datum,
+            zeitVon:        res.zeitVon,
+            dauer:          res.dauer,
+            personenAnzahl: res.personenAnzahl,
+            tischLabel:     res.tischLabel ?? null,
+            notiz:          res.notiz ?? null,
+          }, opts.config).catch((err) => {
+            fastify.log.warn({ err }, 'Reservierungs-Bestätigungs-E-Mail konnte nicht gesendet werden')
+          })
+        }
+      }
+
       return reply.send(res)
     } catch (err) {
       return reply.status(404).send({ fehler: err instanceof Error ? err.message : 'Fehler' })
@@ -147,5 +172,81 @@ export const reservierungRoute: FastifyPluginAsync<ReservierungRouteOptions> = a
       onlineBuchungAktiv: updated.onlineBuchungAktiv,
       buchungUrl: `${baseUrl}/buchung?kasseId=${p.data.kasseId}`,
     })
+  })
+
+  // ---- GET /kassen/:kasseId/self-checkout ----
+  fastify.get('/kassen/:kasseId/self-checkout', guard, async (request, reply) => {
+    const p = KasseParam.safeParse(request.params)
+    if (!p.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
+
+    const [kasse] = await opts.db
+      .select({ selfCheckoutAktiv: kassen.selfCheckoutAktiv })
+      .from(kassen)
+      .where(and(eq(kassen.id, p.data.kasseId), eq(kassen.mandantId, request.user.mandantId)))
+      .limit(1)
+
+    if (!kasse) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
+
+    const baseUrl = (request.headers['x-forwarded-proto'] ?? 'https') +
+      '://' + (request.headers['x-forwarded-host'] ?? request.hostname)
+
+    return reply.send({
+      selfCheckoutAktiv: kasse.selfCheckoutAktiv,
+      selfCheckoutUrl:   `${baseUrl}/selfcheckout?kasseId=${p.data.kasseId}`,
+    })
+  })
+
+  // ---- PATCH /kassen/:kasseId/self-checkout ----
+  fastify.patch('/kassen/:kasseId/self-checkout', guard, async (request, reply) => {
+    const p = KasseParam.safeParse(request.params)
+    if (!p.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
+
+    const body = z.object({ aktiv: z.boolean() }).safeParse(request.body)
+    if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
+
+    const [updated] = await opts.db
+      .update(kassen)
+      .set({ selfCheckoutAktiv: body.data.aktiv, updatedAt: new Date() })
+      .where(and(eq(kassen.id, p.data.kasseId), eq(kassen.mandantId, request.user.mandantId)))
+      .returning({ selfCheckoutAktiv: kassen.selfCheckoutAktiv })
+
+    if (!updated) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
+
+    return reply.send({ selfCheckoutAktiv: updated.selfCheckoutAktiv })
+  })
+
+  // ---- GET /kassen/:kasseId/abschluss-email ----
+  fastify.get('/kassen/:kasseId/abschluss-email', guard, async (request, reply) => {
+    const p = KasseParam.safeParse(request.params)
+    if (!p.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
+
+    const [kasse] = await opts.db
+      .select({ abschlussEmail: kassen.abschlussEmail })
+      .from(kassen)
+      .where(and(eq(kassen.id, p.data.kasseId), eq(kassen.mandantId, request.user.mandantId)))
+      .limit(1)
+
+    if (!kasse) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
+
+    return reply.send({ abschlussEmail: kasse.abschlussEmail })
+  })
+
+  // ---- PATCH /kassen/:kasseId/abschluss-email ----
+  fastify.patch('/kassen/:kasseId/abschluss-email', guard, async (request, reply) => {
+    const p = KasseParam.safeParse(request.params)
+    if (!p.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
+
+    const body = z.object({ abschlussEmail: z.string().email().nullable() }).safeParse(request.body)
+    if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
+
+    const [updated] = await opts.db
+      .update(kassen)
+      .set({ abschlussEmail: body.data.abschlussEmail, updatedAt: new Date() })
+      .where(and(eq(kassen.id, p.data.kasseId), eq(kassen.mandantId, request.user.mandantId)))
+      .returning({ abschlussEmail: kassen.abschlussEmail })
+
+    if (!updated) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
+
+    return reply.send({ abschlussEmail: updated.abschlussEmail })
   })
 }

@@ -133,6 +133,11 @@ export const kassen = pgTable('kassen', {
   /** Öffentlichen Online-Buchungslink für Gäste freischalten */
   onlineBuchungAktiv:    boolean('online_buchung_aktiv').notNull().default(false),
 
+  /** E-Mail-Adresse für automatische Tagesabschluss-Zusammenfassung (Feature 7) */
+  abschlussEmail:        text('abschluss_email'),
+  /** Self-Checkout via QR — Gäste können offene Rechnung einsehen und Zahlung anfordern */
+  selfCheckoutAktiv:     boolean('self_checkout_aktiv').notNull().default(false),
+
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
@@ -1035,3 +1040,52 @@ export const arbeitszeiten = pgTable('arbeitszeiten', {
 
 export type Arbeitszeit    = typeof arbeitszeiten.$inferSelect
 export type NewArbeitszeit = typeof arbeitszeiten.$inferInsert
+
+// ---------------------------------------------------------------------------
+// Werbefolien — Slideshow-Inhalte für Kundendisplay im Leerlauf (Feature 6)
+// ---------------------------------------------------------------------------
+
+export const werbefolien = pgTable('werbefolien', {
+  id:               uuid('id').primaryKey().defaultRandom(),
+  mandantId:        uuid('mandant_id').notNull().references(() => mandanten.id),
+  titel:            text('titel').notNull().default(''),
+  bildBase64:       text('bild_base64').notNull(),
+  mimeType:         varchar('mime_type', { length: 50 }).notNull().default('image/jpeg'),
+  reihenfolge:      integer('reihenfolge').notNull().default(0),
+  aktiv:            boolean('aktiv').notNull().default(true),
+  anzeigedauerSek:  integer('anzeigedauer_sek').notNull().default(8),
+  createdAt:        timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:        timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  mandantReihenfolgeIdx: index('werbefolien_mandant_idx').on(t.mandantId, t.reihenfolge),
+}))
+
+export type Werbefolie    = typeof werbefolien.$inferSelect
+export type NewWerbefolie = typeof werbefolien.$inferInsert
+
+// ---------------------------------------------------------------------------
+// Dienstplan-Schichten (Feature 3)
+// ---------------------------------------------------------------------------
+
+export const dienstplanSchichten = pgTable('dienstplan_schichten', {
+  id:             uuid('id').primaryKey().defaultRandom(),
+  mandantId:      uuid('mandant_id').notNull().references(() => mandanten.id),
+  kasseId:        uuid('kasse_id').notNull().references(() => kassen.id, { onDelete: 'cascade' }),
+  userId:         uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  userName:       text('user_name').notNull(),
+  datum:          varchar('datum', { length: 10 }).notNull(),  // YYYY-MM-DD
+  beginnGeplant:  varchar('beginn_geplant', { length: 5 }).notNull(), // HH:MM
+  endeGeplant:    varchar('ende_geplant',   { length: 5 }).notNull(), // HH:MM
+  position:       text('position'),
+  notiz:          text('notiz'),
+  /** geplant | bestaetigt | krank | abwesend */
+  status:         varchar('status', { length: 20 }).notNull().default('geplant'),
+  createdAt:      timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:      timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  mandantDatumIdx: index('dienstplan_mandant_datum_idx').on(t.mandantId, t.datum),
+  kasseDatumIdx:   index('dienstplan_kasse_datum_idx').on(t.kasseId,   t.datum),
+}))
+
+export type DienstplanSchicht    = typeof dienstplanSchichten.$inferSelect
+export type NewDienstplanSchicht = typeof dienstplanSchichten.$inferInsert

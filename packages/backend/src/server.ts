@@ -47,6 +47,10 @@ import { monitoringRoute }       from './routes/monitoring.route.js'
 import { reservierungRoute }     from './routes/reservierung.route.js'
 import { buchungRoute }          from './routes/buchung.route.js'
 import { zeiterfassungRoute }    from './routes/zeiterfassung.route.js'
+import { exportRoute }           from './routes/export.route.js'
+import { werbefolienRoute }      from './routes/werbefolien.route.js'
+import { dienstplanRoute }       from './routes/dienstplan.route.js'
+import { selfcheckoutRoute }     from './routes/selfcheckout.route.js'
 
 export interface ServerDeps {
   config:          Config
@@ -122,7 +126,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
 
     // Geschützte Routen — alle Handler verlangen JWT via onRequest-Hook in den Routes
     await api.register(artikelRoute, { db:   deps.db })
-    await api.register(belegRoute,   { deps: deps.belegDeps })
+    await api.register(belegRoute,   { deps: deps.belegDeps, config: deps.config })
     await api.register(druckerRoute, { db:   deps.db })
     await api.register(bonierRoute,  { deps: { db: deps.db } })
     await api.register(tischTabRoute, { deps: { db: deps.db, belegDeps: deps.belegDeps } })
@@ -152,9 +156,13 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     await api.register(kdsRoute,                { db: deps.db })
     await api.register(gastRoute,               { db: deps.db })
     await api.register(emailRoute,              { db: deps.db, config: deps.config })
-    await api.register(reservierungRoute,       { db: deps.db })
-    await api.register(buchungRoute,            { db: deps.db })
+    await api.register(reservierungRoute,       { db: deps.db, config: deps.config })
+    await api.register(buchungRoute,            { db: deps.db, config: deps.config })
     await api.register(zeiterfassungRoute,      { db: deps.db })
+    await api.register(exportRoute,             { db: deps.db })
+    await api.register(werbefolienRoute,        { db: deps.db })
+    await api.register(dienstplanRoute,         { db: deps.db })
+    await api.register(selfcheckoutRoute,       { db: deps.db })
   }, { prefix: '/api' })
 
   await fastify.register(monitoringRoute, { db: deps.db })
