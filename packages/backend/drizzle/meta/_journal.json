@@ -15,6 +15,13 @@
       "when": 1779808551584,
       "tag": "0001_audit_log",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1749729600000,
+      "tag": "0011_lieferbestellungen",
+      "breakpoints": true
     }
   ]
 }
