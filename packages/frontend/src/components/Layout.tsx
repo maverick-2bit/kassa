@@ -76,6 +76,9 @@ function Header() {
         {auth && (
           <div className="flex items-center gap-3">
             <JahresbelegHeaderChip />
+            <span className="hidden sm:inline text-[10px] font-mono text-gray-400 select-none bg-gray-100 px-1.5 py-0.5 rounded">
+              v{__APP_VERSION__}
+            </span>
             <div className="text-right text-xs">
               <p className="font-medium text-gray-900">{auth.user.name}</p>
               <p className="text-gray-500">{auth.mandant.firmenname}</p>
