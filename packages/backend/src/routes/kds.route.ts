@@ -21,13 +21,25 @@ import {
   kdsUebersicht,
   kdsBonErledigt,
   kdsBonTeilbon,
+  kdsArchivBons,
+  kdsBonNachdrucken,
 } from '../services/kds/kds-store.service.js'
 
 export interface KdsRouteOptions { db: Db }
 
 const IdParam          = z.object({ id: z.string().uuid() })
 const StationQuery     = z.object({ station: z.string().min(1) })
-const TeilbonBody      = z.object({ positionIds: z.array(z.string().uuid()).min(1) })
+const ArchivQuery      = z.object({
+  station: z.string().optional(),
+  limit:   z.coerce.number().int().min(1).max(200).default(50),
+  offset:  z.coerce.number().int().min(0).default(0),
+})
+const TeilbonBody      = z.object({
+  positionsMengen: z.array(z.object({
+    id:    z.string().uuid(),
+    menge: z.number().int().positive(),
+  })).min(1),
+})
 const NachrichtBody    = z.object({
   text:     z.string().min(1).max(500),
   station:  z.string().min(1),
@@ -205,6 +217,38 @@ export const kdsRoute: FastifyPluginAsync<KdsRouteOptions> = async (fastify, opt
     },
   )
 
+  // ── Archiv ──────────────────────────────────────────────────────────────────
+  fastify.get(
+    '/kds/archiv',
+    { onRequest: [fastify.authenticate] },
+    async (request, reply) => {
+      const q = ArchivQuery.safeParse(request.query)
+      if (!q.success) return reply.status(400).send({ fehler: q.error.issues })
+
+      const bons = await kdsArchivBons(
+        opts.db,
+        request.user.mandantId,
+        q.data.station ?? null,
+        q.data.limit,
+        q.data.offset,
+      )
+      return reply.send(bons)
+    },
+  )
+
+  // ── Nachdrucken ─────────────────────────────────────────────────────────────
+  fastify.post(
+    '/kds/bon/:id/nachdrucken',
+    { onRequest: [fastify.authenticate] },
+    async (request, reply) => {
+      const p = IdParam.safeParse(request.params)
+      if (!p.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
+
+      const ergebnis = await kdsBonNachdrucken(opts.db, p.data.id, request.user.mandantId)
+      return reply.send(ergebnis)
+    },
+  )
+
   // ── Teilbon ─────────────────────────────────────────────────────────────────
   fastify.post(
     '/kds/bon/:id/teilbon',
@@ -220,7 +264,7 @@ export const kdsRoute: FastifyPluginAsync<KdsRouteOptions> = async (fastify, opt
         opts.db,
         p.data.id,
         request.user.mandantId,
-        b.data.positionIds,
+        b.data.positionsMengen,
       )
       if (!result) return reply.status(404).send({ fehler: 'Bon nicht gefunden oder bereits erledigt' })
 

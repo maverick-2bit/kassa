@@ -30,12 +30,16 @@ export async function bonErledigt(bonId: string, token: string) {
   return res.json()
 }
 
-/** Teilbon – ausgewählte Positionen als erledigt markieren */
-export async function bonTeilbon(bonId: string, positionIds: string[], token: string) {
+/** Teilbon – Positionen mit Teilmenge senden */
+export async function bonTeilbon(
+  bonId:      string,
+  posMengen:  { id: string; menge: number }[],
+  token:      string,
+) {
   const res = await fetch(`${BASE}/bon/${bonId}/teilbon`, {
     method: 'POST',
     headers: headers(token),
-    body: JSON.stringify({ positionIds }),
+    body: JSON.stringify({ positionsMengen: posMengen }),
   })
   if (!res.ok) throw new Error(`Fehler: ${res.status}`)
   return res.json()
@@ -72,4 +76,50 @@ export async function nachrichtSenden(
 /** SSE-URL für eine Station */
 export function kdsEventSourceUrl(station: string, token: string) {
   return `${BASE}/events?station=${station}&token=${encodeURIComponent(token)}`
+}
+
+/** Archiv-Bons laden (alle Stationen oder gefiltert) */
+export async function ladeArchiv(
+  token:    string,
+  station?: string,
+  limit    = 50,
+  offset   = 0,
+): Promise<ArchivBon[]> {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) })
+  if (station) params.set('station', station)
+  const res = await fetch(`${BASE}/archiv?${params}`, { headers: headers(token) })
+  if (!res.ok) throw new Error(`Fehler: ${res.status}`)
+  return res.json()
+}
+
+/** Bon nachdrucken (an alle konfigurierten Bonierdrucker) */
+export async function bonNachdrucken(
+  bonId: string,
+  token: string,
+): Promise<{ gedruckt: number; fehler: number }> {
+  const res = await fetch(`${BASE}/bon/${bonId}/nachdrucken`, {
+    method: 'POST',
+    headers: headers(token),
+  })
+  if (!res.ok) throw new Error(`Fehler: ${res.status}`)
+  return res.json()
+}
+
+export interface ArchivBon {
+  id:         string
+  bonNummer:  string
+  station:    string
+  tisch:      string
+  bereich?:   string
+  kellner:    string
+  positionen: Array<{
+    id:             string
+    bezeichnung:    string
+    menge:          number
+    erledigtMenge?: number
+    details?:       string
+    erledigt:       boolean
+  }>
+  status:     string
+  erstelltAt: string
 }

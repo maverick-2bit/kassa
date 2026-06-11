@@ -20,11 +20,12 @@ export const STATION_FARBEN: Record<KdsStation, string> = {
 }
 
 export interface KdsPosition {
-  id:          string   // uuid, eindeutig pro Position
-  bezeichnung: string
-  menge:       number
-  details?:    string
-  erledigt:    boolean
+  id:             string   // uuid, eindeutig pro Position
+  bezeichnung:    string
+  menge:          number
+  erledigtMenge?: number   // bereits gesendete Teilmenge
+  details?:       string
+  erledigt:       boolean
 }
 
 export interface KdsBon {
@@ -43,5 +44,5 @@ export type KdsSseEvent =
   | { typ: 'snapshot';        bons: KdsBon[] }
   | { typ: 'neuer_bon';       bon: KdsBon }
   | { typ: 'bon_erledigt';    bonId: string }
-  | { typ: 'position_toggle'; bonId: string; positionId: string; erledigt: boolean }
+  | { typ: 'position_toggle'; bonId: string; positionId: string; erledigt: boolean; erledigtMenge?: number }
   | { typ: 'kellner_antwort'; text: string; kasseBezeichnung: string; zeit: string }

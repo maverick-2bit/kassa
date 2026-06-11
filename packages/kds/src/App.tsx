@@ -1,9 +1,11 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import type { KdsBon, KdsStation, KdsSseEvent } from './types'
 import { STATION_LABELS, STATION_FARBEN } from './types'
 import { fetchBons, ladeKassen, nachrichtSenden, type KdsKasse } from './api'
 import { useKdsSse } from './hooks/useKdsSse'
 import { BonKarte } from './components/BonKarte'
+import { GrossAnzeige } from './components/GrossAnzeige'
+import { BonArchiv } from './components/BonArchiv'
 
 // Konfiguration aus URL-Parametern
 function getConfig() {
@@ -279,6 +281,7 @@ export default function App() {
   const [fehler, setFehler] = useState<string | null>(null)
   const [chatOffen, setChatOffen]   = useState(false)
   const [antworten, setAntworten]   = useState<KellerAntwort[]>([])
+  const [ansicht, setAnsicht]       = useState<'kds' | 'gross' | 'archiv'>('kds')
 
   const { station, token } = config
   const istKonfiguriert     = Boolean(token)
@@ -326,9 +329,14 @@ export default function App() {
         setBons(prev => prev.map(b =>
           b.id !== event.bonId ? b : {
             ...b,
-            positionen: b.positionen.map(p =>
-              p.id === event.positionId ? { ...p, erledigt: event.erledigt } : p
-            ),
+            positionen: b.positionen.map(p => {
+              if (p.id !== event.positionId) return p
+              return {
+                ...p,
+                erledigt: event.erledigt,
+                ...(event.erledigtMenge !== undefined ? { erledigtMenge: event.erledigtMenge } : {}),
+              }
+            }),
           }
         ))
         break
@@ -358,6 +366,21 @@ export default function App() {
   const handleErledigt = useCallback((bonId: string) => {
     setBons(prev => prev.filter(b => b.id !== bonId))
   }, [])
+
+  // Aggregierte offene Artikel über alle Bons dieser Station
+  const aggregiertArtikel = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const bon of bons) {
+      for (const pos of bon.positionen) {
+        if (pos.erledigt) continue
+        const offen = pos.menge - (pos.erledigtMenge ?? 0)
+        if (offen <= 0) continue
+        const key = pos.bezeichnung + (pos.details ? ` · ${pos.details}` : '')
+        map.set(key, (map.get(key) ?? 0) + offen)
+      }
+    }
+    return [...map.entries()].sort((a, b) => b[1] - a[1])
+  }, [bons])
 
   if (!istKonfiguriert) {
     return (
@@ -389,7 +412,23 @@ export default function App() {
             {bons.length} offen
           </span>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setAnsicht('gross')}
+            title="Großanzeige öffnen"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-sm font-medium transition"
+          >
+            <span>⬛</span>
+            <span className="hidden sm:inline">Großanzeige</span>
+          </button>
+          <button
+            onClick={() => setAnsicht('archiv')}
+            title="Bon-Archiv öffnen"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-sm font-medium transition"
+          >
+            <span>📋</span>
+            <span className="hidden sm:inline">Archiv</span>
+          </button>
           <button
             onClick={() => setChatOffen(true)}
             title="Nachricht an Kellner senden"
@@ -401,6 +440,28 @@ export default function App() {
           <UhrDisplay />
         </div>
       </div>
+
+      {ansicht === 'gross' && (
+        <div className="fixed inset-0 z-40">
+          <GrossAnzeige
+            bons={bons}
+            station={station}
+            farbe={farbe}
+            onZurueck={() => setAnsicht('kds')}
+          />
+        </div>
+      )}
+
+      {ansicht === 'archiv' && (
+        <div className="fixed inset-0 z-40">
+          <BonArchiv
+            station={station}
+            token={token}
+            farbe={farbe}
+            onZurueck={() => setAnsicht('kds')}
+          />
+        </div>
+      )}
 
       {chatOffen && (
         <ChatPanel
@@ -459,25 +520,66 @@ export default function App() {
         </div>
       )}
 
-      {/* Bons-Grid */}
-      <div className="flex-1 overflow-auto p-4">
-        {bons.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full gap-3 text-zinc-600">
-            <div className="text-6xl">✓</div>
-            <div className="text-xl font-bold">Keine offenen Bestellungen</div>
+      {/* Haupt-Bereich: Aggregations-Spalte links + Bons-Grid rechts */}
+      <div className="flex-1 flex overflow-hidden">
+
+        {/* Linke Aggregations-Spalte */}
+        <div
+          className="w-52 shrink-0 flex flex-col border-r border-zinc-800 overflow-y-auto"
+          style={{ background: '#111113' }}
+        >
+          <div className="px-3 pt-3 pb-2">
+            <p className="text-xs font-black uppercase tracking-widest text-zinc-500">
+              Offen gesamt
+            </p>
           </div>
-        ) : (
-          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 auto-rows-max">
-            {bons.map(bon => (
-              <BonKarte
-                key={bon.id}
-                bon={bon}
-                token={token}
-                onErledigt={handleErledigt}
-              />
-            ))}
-          </div>
-        )}
+          {aggregiertArtikel.length === 0 ? (
+            <div className="flex-1 flex items-center justify-center">
+              <span className="text-zinc-700 text-sm">–</span>
+            </div>
+          ) : (
+            <div className="flex-1 px-2 pb-3 space-y-1">
+              {aggregiertArtikel.map(([bezeichnung, menge]) => (
+                <div
+                  key={bezeichnung}
+                  className="flex items-start gap-2 px-2 py-1.5 rounded-lg hover:bg-zinc-800/60 transition-colors"
+                >
+                  <span
+                    className="text-base font-black tabular-nums shrink-0 min-w-[2rem] text-right"
+                    style={{ color: farbe }}
+                  >
+                    {menge}×
+                  </span>
+                  <span className="text-sm text-zinc-200 font-medium leading-tight break-words">
+                    {bezeichnung}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Bons-Grid */}
+        <div className="flex-1 overflow-auto p-4">
+          {bons.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full gap-3 text-zinc-600">
+              <div className="text-6xl">✓</div>
+              <div className="text-xl font-bold">Keine offenen Bestellungen</div>
+            </div>
+          ) : (
+            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 auto-rows-max">
+              {bons.map(bon => (
+                <BonKarte
+                  key={bon.id}
+                  bon={bon}
+                  token={token}
+                  onErledigt={handleErledigt}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
       </div>
 
     </div>

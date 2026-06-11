@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import type { KdsBon, KdsPosition } from '../types'
 import { bonErledigt, bonTeilbon } from '../api'
 
@@ -8,9 +8,16 @@ interface BonKarteProps {
   onErledigt: (bonId: string) => void
 }
 
-/** Alter-Badge: grün < 5min, gelb < 10min, rot >= 10min */
+/** Alter-Badge: grün < 5min, gelb < 10min, rot >= 10min — tickt jede Minute */
 function AlterBadge({ erstelltAt }: { erstelltAt: string }) {
-  const minuten = Math.floor((Date.now() - new Date(erstelltAt).getTime()) / 60_000)
+  const berechne = () => Math.floor((Date.now() - new Date(erstelltAt).getTime()) / 60_000)
+  const [minuten, setMinuten] = useState(berechne)
+
+  useEffect(() => {
+    const id = setInterval(() => setMinuten(berechne()), 60_000)
+    return () => clearInterval(id)
+  }, [erstelltAt])
+
   const [cls, label] =
     minuten < 5  ? ['bg-emerald-700 text-emerald-100', `${minuten}m`] :
     minuten < 10 ? ['bg-amber-600 text-amber-100',   `${minuten}m`] :
@@ -22,25 +29,25 @@ function AlterBadge({ erstelltAt }: { erstelltAt: string }) {
   )
 }
 
+function offeneMenge(pos: KdsPosition): number {
+  return pos.menge - (pos.erledigtMenge ?? 0)
+}
+
 export function BonKarte({ bon, token, onErledigt }: BonKarteProps) {
   const [positionen, setPositionen] = useState<KdsPosition[]>(bon.positionen)
-  const [teilbonModus, setTeilbonModus]  = useState(false)
-  const [ausgewaehlt, setAusgewaehlt]    = useState<Set<string>>(new Set())
-  const [loading, setLoading]            = useState(false)
+  const [teilbonModus, setTeilbonModus] = useState(false)
+  // Map: positionId → wie viele senden
+  const [ausgewaehlt, setAusgewaehlt] = useState<Map<string, number>>(new Map())
+  const [loading, setLoading]         = useState(false)
 
-  const togglePosition = useCallback((id: string) => {
-    if (teilbonModus) {
-      setAusgewaehlt(prev => {
-        const next = new Set(prev)
-        next.has(id) ? next.delete(id) : next.add(id)
-        return next
-      })
-    } else {
-      setPositionen(prev =>
-        prev.map(p => p.id === id ? { ...p, erledigt: !p.erledigt } : p)
-      )
-    }
-  }, [teilbonModus])
+  function setMenge(posId: string, wert: number) {
+    setAusgewaehlt(prev => {
+      const next = new Map(prev)
+      if (wert <= 0) next.delete(posId)
+      else           next.set(posId, wert)
+      return next
+    })
+  }
 
   const handleErledigt = useCallback(async () => {
     setLoading(true)
@@ -55,15 +62,28 @@ export function BonKarte({ bon, token, onErledigt }: BonKarteProps) {
   }, [bon.id, token, onErledigt])
 
   const handleTeilbon = useCallback(async () => {
-    if (ausgewaehlt.size === 0) return
+    const posMengen = [...ausgewaehlt.entries()]
+      .filter(([, m]) => m > 0)
+      .map(([id, menge]) => ({ id, menge }))
+    if (posMengen.length === 0) return
+
     setLoading(true)
     try {
-      await bonTeilbon(bon.id, [...ausgewaehlt], token)
-      // Ausgewählte Positionen als erledigt markieren
+      await bonTeilbon(bon.id, posMengen, token)
+      // Lokaler Update: erledigtMenge akkumulieren
       setPositionen(prev =>
-        prev.map(p => ausgewaehlt.has(p.id) ? { ...p, erledigt: true } : p)
+        prev.map(p => {
+          const zuSenden = ausgewaehlt.get(p.id) ?? 0
+          if (zuSenden === 0) return p
+          const neueErledigtMenge = (p.erledigtMenge ?? 0) + zuSenden
+          return {
+            ...p,
+            erledigtMenge: neueErledigtMenge,
+            erledigt:      neueErledigtMenge >= p.menge,
+          }
+        })
       )
-      setAusgewaehlt(new Set())
+      setAusgewaehlt(new Map())
       setTeilbonModus(false)
     } catch (e) {
       alert('Fehler: ' + (e instanceof Error ? e.message : e))
@@ -72,7 +92,8 @@ export function BonKarte({ bon, token, onErledigt }: BonKarteProps) {
     }
   }, [bon.id, ausgewaehlt, token])
 
-  const alleErledigt = positionen.every(p => p.erledigt)
+  const alleErledigt     = positionen.every(p => p.erledigt)
+  const totalAusgewaehlt = [...ausgewaehlt.values()].reduce((s, n) => s + n, 0)
 
   return (
     <div className="bg-zinc-900 border border-zinc-700 rounded-2xl overflow-hidden flex flex-col">
@@ -94,23 +115,57 @@ export function BonKarte({ bon, token, onErledigt }: BonKarteProps) {
       {/* Positionen */}
       <div className="flex-1 divide-y divide-zinc-800">
         {positionen.map(pos => {
-          const istAusgewaehlt = ausgewaehlt.has(pos.id)
+          const offen    = offeneMenge(pos)
+          const gewaehlt = ausgewaehlt.get(pos.id) ?? 0
+
+          if (!teilbonModus) {
+            // Normalmodus: Zeile zeigt offene/gesamt Menge
+            return (
+              <div
+                key={pos.id}
+                className={[
+                  'w-full text-left px-4 py-3 flex items-center gap-3',
+                  pos.erledigt ? 'opacity-40 text-zinc-500' : 'text-white',
+                ].join(' ')}
+              >
+                <span className={`text-xl font-black w-12 shrink-0 tabular-nums ${pos.erledigt ? 'text-zinc-500' : 'text-amber-400'}`}>
+                  {pos.erledigt ? (
+                    `${pos.menge}×`
+                  ) : pos.erledigtMenge ? (
+                    <span>
+                      <span className="text-zinc-500 line-through text-base">{pos.menge}</span>
+                      <span className="text-amber-400">/{offen}×</span>
+                    </span>
+                  ) : (
+                    `${pos.menge}×`
+                  )}
+                </span>
+                <span className={`flex-1 text-lg font-semibold leading-tight ${pos.erledigt ? 'line-through' : ''}`}>
+                  {pos.bezeichnung}
+                  {pos.details && (
+                    <span className="block text-sm font-normal text-zinc-400">{pos.details}</span>
+                  )}
+                </span>
+                {pos.erledigtMenge !== undefined && !pos.erledigt && (
+                  <span className="text-xs text-emerald-500 font-bold shrink-0">
+                    {pos.erledigtMenge} gesendet
+                  </span>
+                )}
+              </div>
+            )
+          }
+
+          // Teilbon-Modus
           return (
-            <button
+            <div
               key={pos.id}
-              onClick={() => togglePosition(pos.id)}
               className={[
-                'w-full text-left px-4 py-3 flex items-center gap-3 transition-colors',
-                pos.erledigt
-                  ? 'opacity-40 line-through text-zinc-500'
-                  : 'text-white active:bg-zinc-700',
-                teilbonModus && istAusgewaehlt
-                  ? 'bg-blue-900/60'
-                  : '',
+                'px-4 py-3 flex items-center gap-3',
+                pos.erledigt ? 'opacity-40 text-zinc-500' : 'text-white',
               ].join(' ')}
             >
-              <span className="text-xl font-black w-8 shrink-0 text-amber-400">
-                {pos.menge}×
+              <span className="text-xl font-black w-12 shrink-0 tabular-nums text-amber-400">
+                {offen}×
               </span>
               <span className="flex-1 text-lg font-semibold leading-tight">
                 {pos.bezeichnung}
@@ -118,14 +173,36 @@ export function BonKarte({ bon, token, onErledigt }: BonKarteProps) {
                   <span className="block text-sm font-normal text-zinc-400">{pos.details}</span>
                 )}
               </span>
-              {teilbonModus && !pos.erledigt && (
-                <span className={`w-6 h-6 rounded border-2 flex items-center justify-center shrink-0 ${
-                  istAusgewaehlt ? 'bg-blue-500 border-blue-500' : 'border-zinc-500'
-                }`}>
-                  {istAusgewaehlt && <span className="text-white text-xs">✓</span>}
-                </span>
+
+              {!pos.erledigt && offen > 0 && (
+                offen === 1 ? (
+                  // Checkbox bei Einzelstück
+                  <button
+                    onClick={() => setMenge(pos.id, gewaehlt > 0 ? 0 : 1)}
+                    className={`w-7 h-7 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
+                      gewaehlt > 0 ? 'bg-blue-500 border-blue-500' : 'border-zinc-500 hover:border-zinc-400'
+                    }`}
+                  >
+                    {gewaehlt > 0 && <span className="text-white text-xs">✓</span>}
+                  </button>
+                ) : (
+                  // Stepper bei mehreren
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={() => setMenge(pos.id, Math.max(0, gewaehlt - 1))}
+                      className="w-8 h-8 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-white font-bold text-lg flex items-center justify-center transition-colors"
+                    >−</button>
+                    <span className={`w-10 text-center font-black tabular-nums text-lg ${gewaehlt > 0 ? 'text-blue-400' : 'text-zinc-500'}`}>
+                      {gewaehlt}
+                    </span>
+                    <button
+                      onClick={() => setMenge(pos.id, Math.min(offen, gewaehlt + 1))}
+                      className="w-8 h-8 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-white font-bold text-lg flex items-center justify-center transition-colors"
+                    >+</button>
+                  </div>
+                )
               )}
-            </button>
+            </div>
           )
         })}
       </div>
@@ -157,17 +234,17 @@ export function BonKarte({ bon, token, onErledigt }: BonKarteProps) {
         ) : (
           <>
             <button
-              onClick={() => { setTeilbonModus(false); setAusgewaehlt(new Set()) }}
+              onClick={() => { setTeilbonModus(false); setAusgewaehlt(new Map()) }}
               className="flex-1 py-3 rounded-xl bg-zinc-700 text-zinc-200 font-bold text-sm active:bg-zinc-600"
             >
               Abbrechen
             </button>
             <button
               onClick={handleTeilbon}
-              disabled={loading || ausgewaehlt.size === 0}
+              disabled={loading || totalAusgewaehlt === 0}
               className="flex-1 py-3 rounded-xl bg-blue-600 text-white font-bold text-sm active:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
-              {loading ? '…' : `Teilbon (${ausgewaehlt.size})`}
+              {loading ? '…' : `Senden (${totalAusgewaehlt})`}
             </button>
           </>
         )}

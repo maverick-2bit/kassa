@@ -12,7 +12,7 @@ export type KdsSseEvent =
   | { typ: 'snapshot';        bons: KdsBonDto[] }
   | { typ: 'neuer_bon';       bon: KdsBonDto }
   | { typ: 'bon_erledigt';    bonId: string }
-  | { typ: 'position_toggle'; bonId: string; positionId: string; erledigt: boolean }
+  | { typ: 'position_toggle'; bonId: string; positionId: string; erledigt: boolean; erledigtMenge?: number }
   | { typ: 'kellner_antwort'; text: string; kasseBezeichnung: string; zeit: string }
 
 export interface KdsBonDto {
@@ -27,11 +27,12 @@ export interface KdsBonDto {
 }
 
 export interface KdsPositionDto {
-  id:          string
-  bezeichnung: string
-  menge:       number
-  details?:    string
-  erledigt:    boolean
+  id:             string
+  bezeichnung:    string
+  menge:          number
+  erledigtMenge?: number
+  details?:       string
+  erledigt:       boolean
 }
 
 const bus = new EventEmitter()

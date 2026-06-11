@@ -906,11 +906,12 @@ export const kdsBons = pgTable('kds_bons', {
 }))
 
 export interface KdsPosition {
-  id:          string
-  bezeichnung: string
-  menge:       number
-  details?:    string
-  erledigt:    boolean
+  id:             string
+  bezeichnung:    string
+  menge:          number
+  erledigtMenge?: number
+  details?:       string
+  erledigt:       boolean
 }
 
 export type KdsBon    = typeof kdsBons.$inferSelect
