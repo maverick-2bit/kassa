@@ -2,7 +2,8 @@ import { z } from 'zod'
 
 export const WerbefolieInputSchema = z.object({
   titel:           z.string().max(100).default(''),
-  bildBase64:      z.string().min(10),
+  // max ~2,2 MB Binärbild — muss unter dem Fastify-bodyLimit (4 MiB) bleiben
+  bildBase64:      z.string().min(10).max(3_000_000),
   mimeType:        z.string().regex(/^image\/(jpeg|png|webp|gif)$/).default('image/jpeg'),
   reihenfolge:     z.number().int().min(0).default(0),
   aktiv:           z.boolean().default(true),

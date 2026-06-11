@@ -33,6 +33,27 @@ interface TabPosition {
   preisBruttoCent:  number
 }
 
+// Debounce pro Tab — der öffentliche Endpunkt darf das Personal nicht
+// mit wiederholten Anforderungen fluten (max. 1 pro Tab alle 30s)
+const ANFORDERUNG_SPERRE_MS = 30_000
+const letzteAnforderung = new Map<string, number>()
+
+function darfAnfordern(tabId: string): boolean {
+  const jetzt  = Date.now()
+  const letzte = letzteAnforderung.get(tabId)
+  if (letzte !== undefined && jetzt - letzte < ANFORDERUNG_SPERRE_MS) return false
+
+  // Map klein halten — abgelaufene Einträge gelegentlich entsorgen
+  if (letzteAnforderung.size > 500) {
+    for (const [k, t] of letzteAnforderung) {
+      if (jetzt - t >= ANFORDERUNG_SPERRE_MS) letzteAnforderung.delete(k)
+    }
+  }
+
+  letzteAnforderung.set(tabId, jetzt)
+  return true
+}
+
 export const selfcheckoutRoute: FastifyPluginAsync<SelfCheckoutRouteOptions> = async (fastify, opts) => {
   // ---- GET /selfcheckout ----
   fastify.get('/selfcheckout', async (request, reply) => {
@@ -106,6 +127,10 @@ export const selfcheckoutRoute: FastifyPluginAsync<SelfCheckoutRouteOptions> = a
       .limit(1)
 
     if (!tab) return reply.status(404).send({ fehler: 'Kein offener Tisch gefunden' })
+
+    if (!darfAnfordern(tab.id)) {
+      return reply.status(429).send({ fehler: 'Zahlung wurde bereits angefordert — ein Mitarbeiter ist unterwegs.' })
+    }
 
     const positionen = (tab.positionen as TabPosition[]) ?? []
     const summeCent  = positionen.reduce((s, p) => s + p.preisBruttoCent * p.menge, 0)

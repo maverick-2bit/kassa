@@ -68,6 +68,8 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
       level: deps.config.LOG_LEVEL,
     },
     disableRequestLogging: deps.config.NODE_ENV === 'test',
+    // Werbefolien-Uploads (Base64-Bilder) brauchen mehr als das 1-MiB-Default
+    bodyLimit: 4 * 1024 * 1024,
   })
 
   await fastify.register(cors, {

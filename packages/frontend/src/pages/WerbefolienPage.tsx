@@ -139,18 +139,50 @@ function WerbefolieFormModal({ initial, onClose, onSaved }: FormModalProps) {
   const [fehler,         setFehler]         = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const handleDatei = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleDatei = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    setMimeType(file.type)
-    const reader = new FileReader()
-    reader.onload = (ev) => {
-      const result = ev.target?.result as string
-      // result ist "data:image/jpeg;base64,/9j/..."
-      const b64 = result.split(',')[1] ?? ''
-      setBildBase64(b64)
+    setFehler('')
+
+    // GIFs nicht über Canvas schicken (Animation ginge verloren) — nur Größe prüfen
+    if (file.type === 'image/gif') {
+      if (file.size > 700_000) {
+        setFehler('GIF zu groß (max. 700 KB). Bitte verkleinern oder als JPEG hochladen.')
+        return
+      }
+      const reader = new FileReader()
+      reader.onload = (ev) => {
+        const result = ev.target?.result as string
+        setBildBase64(result.split(',')[1] ?? '')
+        setMimeType('image/gif')
+      }
+      reader.readAsDataURL(file)
+      return
     }
-    reader.readAsDataURL(file)
+
+    // Bild auf max. 1920px verkleinern und als JPEG kodieren — hält den
+    // Upload unter dem Server-Body-Limit, egal wie groß das Original ist
+    try {
+      const bitmap = await createImageBitmap(file)
+      const maxKante = 1920
+      const skala  = Math.min(1, maxKante / Math.max(bitmap.width, bitmap.height))
+      const breite = Math.round(bitmap.width  * skala)
+      const hoehe  = Math.round(bitmap.height * skala)
+
+      const canvas = document.createElement('canvas')
+      canvas.width  = breite
+      canvas.height = hoehe
+      const ctx = canvas.getContext('2d')
+      if (!ctx) throw new Error('Canvas nicht verfügbar')
+      ctx.drawImage(bitmap, 0, 0, breite, hoehe)
+      bitmap.close()
+
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.82)
+      setBildBase64(dataUrl.split(',')[1] ?? '')
+      setMimeType('image/jpeg')
+    } catch {
+      setFehler('Bild konnte nicht verarbeitet werden. Bitte JPEG, PNG oder WebP verwenden.')
+    }
   }
 
   const handleSpeichern = async () => {

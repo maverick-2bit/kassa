@@ -42,22 +42,32 @@ function useDisplaySse(kasseId: string, onEvent: (e: DisplayEvent) => void) {
   const onEventRef = useRef(onEvent)
   onEventRef.current = onEvent
 
-  const connect = useCallback(() => {
-    const es = new EventSource(`/sse/display?kasseId=${kasseId}`)
-    es.onmessage = (e) => {
-      try { onEventRef.current(JSON.parse(e.data) as DisplayEvent) } catch {}
-    }
-    es.onerror = () => {
-      es.close()
-      setTimeout(connect, 3000)
-    }
-    return es
-  }, [kasseId])
-
   useEffect(() => {
-    const es = connect()
-    return () => es.close()
-  }, [connect])
+    let es: EventSource | null = null
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+    let destroyed = false
+
+    const connect = () => {
+      if (destroyed) return
+      es = new EventSource(`/sse/display?kasseId=${kasseId}`)
+      es.onmessage = (e) => {
+        try { onEventRef.current(JSON.parse(e.data) as DisplayEvent) } catch {}
+      }
+      es.onerror = () => {
+        es?.close()
+        es = null
+        if (!destroyed) reconnectTimer = setTimeout(connect, 3000)
+      }
+    }
+
+    connect()
+
+    return () => {
+      destroyed = true
+      if (reconnectTimer) clearTimeout(reconnectTimer)
+      es?.close()
+    }
+  }, [kasseId])
 }
 
 // ---------------------------------------------------------------------------
@@ -140,17 +150,24 @@ interface Werbefolie {
 
 function useWerbefolien(mandantId: string) {
   const [folien, setFolien] = useState<Werbefolie[]>([])
+  const etagRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (!mandantId) return
     const laden = async () => {
       try {
-        const res = await fetch(`/api/werbefolien/public/${mandantId}`)
-        if (res.ok) setFolien(await res.json() as Werbefolie[])
+        const res = await fetch(`/api/werbefolien/public/${mandantId}`, {
+          headers: etagRef.current ? { 'If-None-Match': etagRef.current } : {},
+        })
+        if (res.status === 304) return // unverändert — Bilder nicht neu übertragen
+        if (res.ok) {
+          etagRef.current = res.headers.get('ETag')
+          setFolien(await res.json() as Werbefolie[])
+        }
       } catch {}
     }
     laden()
-    const id = setInterval(laden, 60_000) // alle 60s neu laden
+    const id = setInterval(laden, 60_000) // alle 60s auf Änderungen prüfen
     return () => clearInterval(id)
   }, [mandantId])
 

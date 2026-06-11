@@ -116,14 +116,26 @@ export const werbefolienRoute: FastifyPluginAsync<WerbefolienRouteOptions> = asy
     const p = MandantParam.safeParse(request.params)
     if (!p.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
 
-    const rows = await opts.db
+    // ETag aus id+updatedAt — das Kundendisplay pollt jede Minute, die Bilder
+    // (Base64, teils MB-groß) werden nur bei tatsächlicher Änderung übertragen
+    const meta = await opts.db
+      .select({ id: werbefolien.id, updatedAt: werbefolien.updatedAt })
+      .from(werbefolien)
+      .where(and(eq(werbefolien.mandantId, p.data.mandantId), eq(werbefolien.aktiv, true)))
+      .orderBy(asc(werbefolien.reihenfolge), asc(werbefolien.createdAt))
+
+    const etag = `"${meta.map(m => `${m.id}:${m.updatedAt.getTime()}`).join(',') || 'leer'}"`
+    if (request.headers['if-none-match'] === etag) {
+      return reply.status(304).header('ETag', etag).send()
+    }
+
+    const rows = meta.length === 0 ? [] : await opts.db
       .select()
       .from(werbefolien)
       .where(and(eq(werbefolien.mandantId, p.data.mandantId), eq(werbefolien.aktiv, true)))
       .orderBy(asc(werbefolien.reihenfolge), asc(werbefolien.createdAt))
 
-    // Kein bildBase64 im Public-Endpoint um Traffic zu sparen — das Bild wird separat abgerufen
-    return reply.send(rows.map(row => ({
+    return reply.header('ETag', etag).send(rows.map(row => ({
       id:              row.id,
       titel:           row.titel,
       bildBase64:      row.bildBase64,

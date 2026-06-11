@@ -1,4 +1,4 @@
-import { and, between, eq } from 'drizzle-orm'
+import { and, between, eq, gte, lte } from 'drizzle-orm'
 import type { Db } from '../db/client.js'
 import { dienstplanSchichten, users } from '../db/schema.js'
 import type { DienstplanSchichtInput, DienstplanSchichtUpdate, DienstplanStatus } from '@kassa/shared'
@@ -7,7 +7,9 @@ import { pruefeKasseGehoertZuMandant } from '../auth/scope.js'
 function minutenZwischen(von: string, bis: string): number {
   const [vh, vm] = von.split(':').map(Number)
   const [bh, bm] = bis.split(':').map(Number)
-  return (bh! * 60 + bm!) - (vh! * 60 + vm!)
+  const diff = (bh! * 60 + bm!) - (vh! * 60 + vm!)
+  // Schichten über Mitternacht (z.B. 22:00–06:00) laufen in den nächsten Tag
+  return diff < 0 ? diff + 24 * 60 : diff
 }
 
 function toDto(row: typeof dienstplanSchichten.$inferSelect) {
@@ -40,7 +42,9 @@ export async function listeSchichten(
   if (opts.datumVon && opts.datumBis) {
     conditions.push(between(dienstplanSchichten.datum, opts.datumVon, opts.datumBis))
   } else if (opts.datumVon) {
-    conditions.push(eq(dienstplanSchichten.datum, opts.datumVon))
+    conditions.push(gte(dienstplanSchichten.datum, opts.datumVon))
+  } else if (opts.datumBis) {
+    conditions.push(lte(dienstplanSchichten.datum, opts.datumBis))
   }
 
   const rows = await db
@@ -68,6 +72,7 @@ export async function erstelleSchicht(
     .limit(1)
 
   if (!user) throw new Error('Benutzer nicht gefunden')
+  if (!user.aktiv) throw new Error('Benutzer ist deaktiviert')
 
   const [row] = await db
     .insert(dienstplanSchichten)

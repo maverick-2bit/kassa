@@ -127,6 +127,11 @@ export function ExportPage() {
           <li>0% Erlöse → 4020</li>
         </ul>
         <p className="mt-2">Bitte überprüfen Sie die Kontonummern mit Ihrer Buchhaltung.</p>
+        <p className="mt-1">
+          <strong>Hinweis:</strong> Bei Belegen mit gemischter Zahlung (z.B. Bar + Karte) wird
+          der gesamte Betrag dem Konto der ersten Zahlungsart zugeordnet. Solche Belege müssen
+          in der Buchhaltung manuell aufgeteilt werden.
+        </p>
       </div>
     </div>
   )

@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import type { BonierbonEvent, GastBestellungEvent, KasseEvent, LagerstandWarnungEvent } from '@kassa/shared'
+import type { BonierbonEvent, GastBestellungEvent, KasseEvent, LagerstandWarnungEvent, ZahlungAngefordertEvent } from '@kassa/shared'
 import { STATION_LABELS } from '@kassa/shared'
 import { useKasseEvents } from '../lib/sse'
 import { formatPreis } from '../lib/format'
@@ -19,10 +19,16 @@ let nextId = 0
 export function KdsToasts() {
   const [toasts, setToasts]             = useState<Toast[]>([])
   const [gastBestellungen, setGastBest] = useState<GastBestellungEvent[]>([])
+  const [zahlungen, setZahlungen]       = useState<ZahlungAngefordertEvent[]>([])
 
   const handleEvent = useCallback((event: KasseEvent) => {
     if (event.typ === 'neue_gastbestellung') {
       setGastBest(prev => [...prev, event])
+      return
+    }
+    if (event.typ === 'zahlung_angefordert') {
+      // Doppelte Anforderungen für denselben Tab nicht stapeln
+      setZahlungen(prev => prev.some(z => z.tabId === event.tabId) ? prev : [...prev, event])
       return
     }
     if (event.typ !== 'bonierbon' && event.typ !== 'lagerstand_warnung') return
@@ -43,10 +49,39 @@ export function KdsToasts() {
 
   useKasseEvents(handleEvent)
 
-  if (toasts.length === 0 && gastBestellungen.length === 0) return null
+  if (toasts.length === 0 && gastBestellungen.length === 0 && zahlungen.length === 0) return null
 
   return (
     <>
+      {/* Zahlungs-Anforderungen (Self-Checkout) — persistent, oben rechts */}
+      {zahlungen.length > 0 && (
+        <div className="fixed top-20 left-4 z-50 flex flex-col gap-2 items-start">
+          {zahlungen.map((z) => (
+            <div key={z.tabId} className="w-72 rounded-lg border-2 border-amber-400 shadow-lg bg-amber-50 text-sm overflow-hidden">
+              <div className="bg-amber-400 px-3 py-2 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">💶</span>
+                  <span className="font-black text-amber-900 text-sm">Zahlung angefordert!</span>
+                </div>
+                <button onClick={() => setZahlungen(prev => prev.filter(x => x.tabId !== z.tabId))} className="text-amber-800 hover:text-amber-900 font-bold">×</button>
+              </div>
+              <div className="px-3 py-2.5 space-y-1">
+                <p className="font-semibold text-gray-900">Tisch: <span className="text-amber-700">{z.tischNummer}</span></p>
+                <p className="text-xs text-gray-600">Offener Betrag: {formatPreis(z.summeCent)}</p>
+              </div>
+              <div className="px-3 pb-2.5">
+                <button
+                  onClick={() => setZahlungen(prev => prev.filter(x => x.tabId !== z.tabId))}
+                  className="w-full py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold transition"
+                >
+                  ✓ Übernommen
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Gast-Bestellungen — persistent, oben rechts */}
       {gastBestellungen.length > 0 && (
         <div className="fixed top-20 right-4 z-50 flex flex-col gap-2 items-end">

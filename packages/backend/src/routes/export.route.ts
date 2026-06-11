@@ -7,7 +7,7 @@
 
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
-import { and, between, eq, inArray, sql } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import type { Db } from '../db/client.js'
 import { belege, kassen, mandanten } from '../db/schema.js'
 import { pruefeKasseGehoertZuMandant } from '../auth/scope.js'
@@ -49,9 +49,11 @@ export const exportRoute: FastifyPluginAsync<ExportRouteOptions> = async (fastif
     const [mandant] = await opts.db.select().from(mandanten).where(eq(mandanten.id, request.user.mandantId)).limit(1)
     if (!kasse || !mandant) return reply.status(404).send({ fehler: 'Nicht gefunden' })
 
-    // Beleg-Rohdaten laden (barzahlung + storno, kein Null/Monats/Jahresbeleg)
-    const vonDate = q.data.vonDatum ? new Date(q.data.vonDatum + 'T00:00:00+01:00') : new Date(new Date().getFullYear(), 0, 1)
-    const bisDate = q.data.bisDatum ? new Date(q.data.bisDatum + 'T23:59:59+01:00') : new Date()
+    // Beleg-Rohdaten laden (barzahlung + storno, kein Null/Monats/Jahresbeleg).
+    // Datumsvergleich in Europe/Vienna — berücksichtigt Sommer-/Winterzeit korrekt.
+    const heuteWien = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Vienna' })
+    const von = q.data.vonDatum ?? `${heuteWien.slice(0, 4)}-01-01`
+    const bis = q.data.bisDatum ?? heuteWien
 
     const rows = await opts.db
       .select()
@@ -59,7 +61,7 @@ export const exportRoute: FastifyPluginAsync<ExportRouteOptions> = async (fastif
       .where(and(
         eq(belege.kasseId, q.data.kasseId),
         inArray(belege.belegTyp, ['barzahlung', 'storno']),
-        between(belege.belegDatum, vonDate, bisDate),
+        sql`(${belege.belegDatum} AT TIME ZONE 'Europe/Vienna')::date BETWEEN ${von} AND ${bis}`,
       ))
       .orderBy(belege.belegDatum)
 
@@ -71,12 +73,8 @@ export const exportRoute: FastifyPluginAsync<ExportRouteOptions> = async (fastif
     ]
 
     const fmt = (cent: number) => (cent / 100).toFixed(2).replace('.', ',')
-    const fmtDatum = (d: Date) => {
-      const day   = String(d.getDate()).padStart(2, '0')
-      const month = String(d.getMonth() + 1).padStart(2, '0')
-      const year  = d.getFullYear()
-      return `${day}.${month}.${year}`
-    }
+    const fmtDatum = (d: Date) =>
+      d.toLocaleDateString('de-AT', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/Vienna' })
 
     for (const beleg of rows) {
       const vorzeichen = beleg.belegTyp === 'storno' ? -1 : 1
@@ -126,14 +124,12 @@ export const exportRoute: FastifyPluginAsync<ExportRouteOptions> = async (fastif
       }
     }
 
-    const von = q.data.vonDatum ?? new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10)
-    const bis = q.data.bisDatum ?? new Date().toISOString().slice(0, 10)
     const dateiname = `BMD_${kasse.kassenId}_${von}_${bis}.csv`
 
     return reply
       .header('Content-Type', 'text/csv; charset=utf-8')
       .header('Content-Disposition', `attachment; filename="${dateiname}"`)
       .header('X-Anzahl-Belege', String(rows.length))
-      .send('﻿' + csvZeilen.join('\r\n'))
+      .send(String.fromCharCode(0xFEFF) + csvZeilen.join('\r\n'))  // BOM für Excel-UTF-8-Erkennung
   })
 }
