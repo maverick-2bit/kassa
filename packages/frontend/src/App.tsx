@@ -25,6 +25,7 @@ import { KassensturzPage } from './pages/KassensturzPage'
 import { BonierdruckerPage } from './pages/BonierdruckerPage'
 import { KassenbuchPage } from './pages/KassenbuchPage'
 import { PosKonfigPage } from './pages/PosKonfigPage'
+import { KassenStartseiteSeite } from './pages/KassenStartseiteSeite'
 import { DepExportPage } from './pages/DepExportPage'
 import { FinanzpruefungPage } from './pages/FinanzpruefungPage'
 import { PruefungsansichtPage } from './pages/PruefungsansichtPage'
@@ -82,8 +83,9 @@ function AppRoutes() {
         <Route path="/lieferungen"    element={<Require b="kasse"            m="mergeport"><LieferungenPage /></Require>} />
         <Route path="/lieferanten"    element={<Require b="artikel.verwalten"            ><LieferantenPage /></Require>} />
         <Route path="/bestellliste"   element={<Require b="artikel.verwalten"            ><BestelllistePage /></Require>} />
-        <Route path="/dep-export"       element={<Require b="einstellungen"                ><DepExportPage /></Require>} />
-        <Route path="/finanzpruefung"  element={<Require b="einstellungen"                ><FinanzpruefungPage /></Require>} />
+        <Route path="/dep-export"           element={<Require b="einstellungen"                ><DepExportPage /></Require>} />
+        <Route path="/finanzpruefung"      element={<Require b="einstellungen"                ><FinanzpruefungPage /></Require>} />
+        <Route path="/kassen-startseite"   element={<Require b="einstellungen"                ><KassenStartseiteSeite /></Require>} />
       </Route>
       <Route path="*" element={<Navigate to={getInitialRoute()} replace />} />
     </Routes>
