@@ -23,9 +23,10 @@ export type FinanzOnlineCredentialsInput = z.infer<typeof FinanzOnlineCredential
 // ---------------------------------------------------------------------------
 
 export const SetupModuleSchema = z.object({
-  gastro:    z.boolean().default(true),
-  angebote:  z.boolean().default(false),
-  mergeport: z.boolean().default(false),
+  gastro:         z.boolean().default(true),
+  angebote:       z.boolean().default(false),
+  mergeport:      z.boolean().default(false),
+  reservierungen: z.boolean().default(false),
 })
 export type SetupModule = z.infer<typeof SetupModuleSchema>
 
@@ -40,7 +41,7 @@ export const SetupInputSchema = z.object({
   /** Optional: Gültigkeitsdauer des Zertifikats in Tagen (Standard: 5 Jahre) */
   zertifikatGueltigkeitTage: z.number().int().min(30).max(3650).optional(),
   /** Welche Module beim Setup aktiviert werden sollen */
-  module: SetupModuleSchema.default({ gastro: true, angebote: false, mergeport: false }),
+  module: SetupModuleSchema.default({ gastro: true, angebote: false, mergeport: false, reservierungen: false }),
 })
 
 export type SetupInput = z.infer<typeof SetupInputSchema>

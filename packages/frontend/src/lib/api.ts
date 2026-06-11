@@ -98,6 +98,11 @@ import type {
   Lieferant,
   LieferantInput,
   LieferantUpdate,
+  ReservierungResponse,
+  ReservierungInput,
+  ReservierungUpdate,
+  OnlineBuchungInfo,
+  OnlineBuchungInput,
 } from '@kassa/shared'
 import { getToken, handleUnauthorized } from './auth.js'
 
@@ -1000,6 +1005,59 @@ export const displayApi = {
 export const emailApi = {
   sendBeleg: (belegId: string, empfaenger: string) =>
     request<{ erfolgreich: boolean }>('POST', `/api/belege/${belegId}/email`, { empfaenger }),
+}
+
+// ---------------------------------------------------------------------------
+// Tischreservierungen
+// ---------------------------------------------------------------------------
+
+export const reservierungApi = {
+  list: (opts: { kasseId?: string; datumVon?: string; datumBis?: string; limit?: number } = {}): Promise<ReservierungResponse[]> => {
+    const p = new URLSearchParams()
+    if (opts.kasseId)  p.set('kasseId',  opts.kasseId)
+    if (opts.datumVon) p.set('datumVon', opts.datumVon)
+    if (opts.datumBis) p.set('datumBis', opts.datumBis)
+    if (opts.limit)    p.set('limit',    String(opts.limit))
+    return request<ReservierungResponse[]>('GET', `/api/reservierungen?${p.toString()}`)
+  },
+  erstellen: (input: ReservierungInput): Promise<ReservierungResponse> =>
+    request<ReservierungResponse>('POST', '/api/reservierungen', input),
+  aktualisieren: (id: string, input: ReservierungUpdate): Promise<ReservierungResponse> =>
+    request<ReservierungResponse>('PATCH', `/api/reservierungen/${id}`, input),
+  loeschen: (id: string): Promise<void> =>
+    request<void>('DELETE', `/api/reservierungen/${id}`),
+  getOnlineBuchung: (kasseId: string): Promise<{ onlineBuchungAktiv: boolean; buchungUrl: string }> =>
+    request('GET', `/api/kassen/${kasseId}/online-buchung`),
+  setOnlineBuchung: (kasseId: string, aktiv: boolean): Promise<{ onlineBuchungAktiv: boolean; buchungUrl: string }> =>
+    request('PATCH', `/api/kassen/${kasseId}/online-buchung`, { aktiv }),
+}
+
+// Öffentliche Buchungs-API (kein JWT)
+export const buchungApi = {
+  getInfo: async (kasseId: string): Promise<OnlineBuchungInfo> => {
+    const res = await fetch(`/api/buchung/${kasseId}`)
+    if (!res.ok) throw new Error('Buchungsinfo nicht verfügbar')
+    return res.json() as Promise<OnlineBuchungInfo>
+  },
+  buchen: async (kasseId: string, input: OnlineBuchungInput): Promise<{ id: string; datum: string; zeitVon: string; name: string; onlineToken: string }> => {
+    const res = await fetch(`/api/buchung/${kasseId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    })
+    if (!res.ok) {
+      const body = await res.json() as { fehler?: string }
+      throw new Error(body.fehler ?? 'Buchung fehlgeschlagen')
+    }
+    return res.json() as Promise<{ id: string; datum: string; zeitVon: string; name: string; onlineToken: string }>
+  },
+  stornieren: async (kasseId: string, token: string): Promise<void> => {
+    const res = await fetch(`/api/buchung/${kasseId}/stornieren/${token}`, { method: 'POST' })
+    if (!res.ok) {
+      const body = await res.json() as { fehler?: string }
+      throw new Error(body.fehler ?? 'Stornierung fehlgeschlagen')
+    }
+  },
 }
 
 export { ApiError }

@@ -26,9 +26,10 @@ export const mandantRoute: FastifyPluginAsync<MandantRouteOptions> = async (fast
   fastify.get('/mandanten/module', guard, async (request, reply) => {
     const [row] = await opts.db
       .select({
-        modulGastroAktiv:    mandanten.modulGastroAktiv,
-        modulAngeboteAktiv:  mandanten.modulAngeboteAktiv,
-        modulMergeportAktiv: mandanten.modulMergeportAktiv,
+        modulGastroAktiv:         mandanten.modulGastroAktiv,
+        modulAngeboteAktiv:       mandanten.modulAngeboteAktiv,
+        modulMergeportAktiv:      mandanten.modulMergeportAktiv,
+        modulReservierungenAktiv: mandanten.modulReservierungenAktiv,
       })
       .from(mandanten)
       .where(eq(mandanten.id, request.user.mandantId))
@@ -52,14 +53,16 @@ export const mandantRoute: FastifyPluginAsync<MandantRouteOptions> = async (fast
     if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
 
     const updates: Partial<{
-      modulGastroAktiv:    boolean
-      modulAngeboteAktiv:  boolean
-      modulMergeportAktiv: boolean
+      modulGastroAktiv:         boolean
+      modulAngeboteAktiv:       boolean
+      modulMergeportAktiv:      boolean
+      modulReservierungenAktiv: boolean
     }> = {}
 
-    if (body.data.modulGastroAktiv    !== undefined) updates.modulGastroAktiv    = body.data.modulGastroAktiv
-    if (body.data.modulAngeboteAktiv  !== undefined) updates.modulAngeboteAktiv  = body.data.modulAngeboteAktiv
-    if (body.data.modulMergeportAktiv !== undefined) updates.modulMergeportAktiv = body.data.modulMergeportAktiv
+    if (body.data.modulGastroAktiv         !== undefined) updates.modulGastroAktiv         = body.data.modulGastroAktiv
+    if (body.data.modulAngeboteAktiv       !== undefined) updates.modulAngeboteAktiv       = body.data.modulAngeboteAktiv
+    if (body.data.modulMergeportAktiv      !== undefined) updates.modulMergeportAktiv      = body.data.modulMergeportAktiv
+    if (body.data.modulReservierungenAktiv !== undefined) updates.modulReservierungenAktiv = body.data.modulReservierungenAktiv
 
     if (Object.keys(updates).length === 0) {
       return reply.status(400).send({ fehler: 'Keine Änderungen angegeben' })
@@ -70,9 +73,10 @@ export const mandantRoute: FastifyPluginAsync<MandantRouteOptions> = async (fast
       .set({ ...updates, updatedAt: new Date() })
       .where(eq(mandanten.id, request.user.mandantId))
       .returning({
-        modulGastroAktiv:    mandanten.modulGastroAktiv,
-        modulAngeboteAktiv:  mandanten.modulAngeboteAktiv,
-        modulMergeportAktiv: mandanten.modulMergeportAktiv,
+        modulGastroAktiv:         mandanten.modulGastroAktiv,
+        modulAngeboteAktiv:       mandanten.modulAngeboteAktiv,
+        modulMergeportAktiv:      mandanten.modulMergeportAktiv,
+        modulReservierungenAktiv: mandanten.modulReservierungenAktiv,
       })
 
     if (!row) return reply.status(404).send({ fehler: 'Mandant nicht gefunden' })

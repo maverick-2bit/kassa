@@ -120,9 +120,10 @@ export async function fuehreSetupDurch(
     const [mandant] = await tx.insert(mandanten).values({
       firmenname:          input.firmenname,
       uid:                 input.uid,
-      modulGastroAktiv:    input.module?.gastro    ?? true,
-      modulAngeboteAktiv:  input.module?.angebote  ?? false,
-      modulMergeportAktiv: input.module?.mergeport ?? false,
+      modulGastroAktiv:         input.module?.gastro         ?? true,
+      modulAngeboteAktiv:       input.module?.angebote       ?? false,
+      modulMergeportAktiv:      input.module?.mergeport      ?? false,
+      modulReservierungenAktiv: input.module?.reservierungen ?? false,
     }).returning({ id: mandanten.id })
 
     if (!mandant) throw new Error('Mandant konnte nicht angelegt werden')

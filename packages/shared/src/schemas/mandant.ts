@@ -4,13 +4,14 @@ import { z } from 'zod'
 // Mandanten-Module
 // ---------------------------------------------------------------------------
 
-export const MandantModulSchema = z.enum(['gastro', 'angebote', 'mergeport'])
+export const MandantModulSchema = z.enum(['gastro', 'angebote', 'mergeport', 'reservierungen'])
 export type MandantModul = z.infer<typeof MandantModulSchema>
 
 export const MANDANT_MODUL_LABELS: Record<MandantModul, string> = {
-  gastro:    'Gastro & Tischverwaltung',
-  angebote:  'Angebote & Lieferscheine',
-  mergeport: 'Lieferservice-Integration',
+  gastro:         'Gastro & Tischverwaltung',
+  angebote:       'Angebote & Lieferscheine',
+  mergeport:      'Lieferservice-Integration',
+  reservierungen: 'Tischreservierungen',
 }
 
 export const MANDANT_MODUL_BESCHREIBUNGEN: Record<MandantModul, string> = {
@@ -23,12 +24,16 @@ export const MANDANT_MODUL_BESCHREIBUNGEN: Record<MandantModul, string> = {
   mergeport:
     'Eingehende Bestellungen von Lieferando, Mergeport und eigenen Quellen ' +
     'über Webhooks empfangen und verwalten.',
+  reservierungen:
+    'Tischreservierungen verwalten — intern anlegen und optional einen ' +
+    'öffentlichen Online-Buchungslink für Gäste aktivieren.',
 }
 
 export const MandantModuleSchema = z.object({
-  modulGastroAktiv:    z.boolean(),
-  modulAngeboteAktiv:  z.boolean(),
-  modulMergeportAktiv: z.boolean(),
+  modulGastroAktiv:          z.boolean(),
+  modulAngeboteAktiv:        z.boolean(),
+  modulMergeportAktiv:       z.boolean(),
+  modulReservierungenAktiv:  z.boolean(),
 })
 export type MandantModule = z.infer<typeof MandantModuleSchema>
 

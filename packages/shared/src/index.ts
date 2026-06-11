@@ -465,6 +465,27 @@ export type {
   KassenbuchResponse,
 } from './schemas/kassenbuch.js'
 
+// Tischreservierungen
+export {
+  ReservierungStatusSchema,
+  RESERVIERUNG_STATUS_LABELS,
+  ReservierungQuelleSchema,
+  ReservierungInputSchema,
+  ReservierungUpdateSchema,
+  ReservierungResponseSchema,
+  OnlineBuchungInfoSchema,
+  OnlineBuchungInputSchema,
+} from './schemas/reservierung.js'
+export type {
+  ReservierungStatus,
+  ReservierungQuelle,
+  ReservierungInput,
+  ReservierungUpdate,
+  ReservierungResponse,
+  OnlineBuchungInfo,
+  OnlineBuchungInput,
+} from './schemas/reservierung.js'
+
 // Lieferbestellungen (Lieferando / Mergeport)
 export {
   LieferbestellungStatusSchema,

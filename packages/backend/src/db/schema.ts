@@ -53,7 +53,9 @@ export const mandanten = pgTable('mandanten', {
   /** Angebotswesen: Angebote, Lieferscheine, Zielrechnungen */
   modulAngeboteAktiv:  boolean('modul_angebote_aktiv').notNull().default(false),
   /** Lieferservice-Integration: Lieferando, Mergeport und eigene Webhooks */
-  modulMergeportAktiv: boolean('modul_mergeport_aktiv').notNull().default(false),
+  modulMergeportAktiv:      boolean('modul_mergeport_aktiv').notNull().default(false),
+  /** Tischreservierungen: intern + optionaler Online-Buchungslink */
+  modulReservierungenAktiv: boolean('modul_reservierungen_aktiv').notNull().default(false),
 
   createdAt:    timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt:    timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -126,6 +128,8 @@ export const kassen = pgTable('kassen', {
 
   /** Geheimnis für eingehende Lieferando/Mergeport-Webhooks (URL-Parameter secret=…) */
   webhookSecret:         text('webhook_secret').notNull().$defaultFn(() => randomUUID()),
+  /** Öffentlichen Online-Buchungslink für Gäste freischalten */
+  onlineBuchungAktiv:    boolean('online_buchung_aktiv').notNull().default(false),
 
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -961,3 +965,40 @@ export const dbSicherungen = pgTable('db_sicherungen', {
 
 export type DbSicherung    = typeof dbSicherungen.$inferSelect
 export type NewDbSicherung = typeof dbSicherungen.$inferInsert
+
+// ---------------------------------------------------------------------------
+// Tischreservierungen
+// ---------------------------------------------------------------------------
+
+export const reservierungen = pgTable('reservierungen', {
+  id:             uuid('id').primaryKey().defaultRandom(),
+  mandantId:      uuid('mandant_id').notNull().references(() => mandanten.id),
+  kasseId:        uuid('kasse_id').notNull().references(() => kassen.id, { onDelete: 'cascade' }),
+
+  datum:          varchar('datum', { length: 10 }).notNull(),  // YYYY-MM-DD
+  zeitVon:        varchar('zeit_von', { length: 5 }).notNull(), // HH:MM
+  dauer:          integer('dauer').notNull().default(90),       // Minuten
+
+  personenAnzahl: integer('personen_anzahl').notNull(),
+  name:           text('name').notNull(),
+  telefon:        text('telefon'),
+  email:          text('email'),
+  notiz:          text('notiz'),
+  tischLabel:     text('tisch_label'),
+
+  /** wartend | bestaetigt | erschienen | nicht_erschienen | storniert */
+  status:         varchar('status', { length: 20 }).notNull().default('bestaetigt'),
+  /** intern | online */
+  quelle:         varchar('quelle', { length: 10 }).notNull().default('intern'),
+  onlineToken:    uuid('online_token').notNull().$defaultFn(() => randomUUID()),
+
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  mandantDatumIdx: index('reservierungen_mandant_datum_idx').on(t.mandantId, t.datum),
+  kasseDatumIdx:   index('reservierungen_kasse_datum_idx').on(t.kasseId, t.datum),
+  onlineTokenIdx:  uniqueIndex('reservierungen_online_token_idx').on(t.onlineToken),
+}))
+
+export type Reservierung    = typeof reservierungen.$inferSelect
+export type NewReservierung = typeof reservierungen.$inferInsert

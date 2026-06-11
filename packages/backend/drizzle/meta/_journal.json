@@ -22,6 +22,13 @@
       "when": 1749729600000,
       "tag": "0011_lieferbestellungen",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1749816000000,
+      "tag": "0012_reservierungen",
+      "breakpoints": true
     }
   ]
 }
