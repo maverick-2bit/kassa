@@ -124,6 +124,7 @@ export async function fuehreSetupDurch(
       modulAngeboteAktiv:       input.module?.angebote       ?? false,
       modulMergeportAktiv:      input.module?.mergeport      ?? false,
       modulReservierungenAktiv: input.module?.reservierungen ?? false,
+      modulZeiterfassungAktiv:  input.module?.zeiterfassung  ?? false,
     }).returning({ id: mandanten.id })
 
     if (!mandant) throw new Error('Mandant konnte nicht angelegt werden')

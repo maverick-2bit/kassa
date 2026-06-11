@@ -30,6 +30,7 @@ export const mandantRoute: FastifyPluginAsync<MandantRouteOptions> = async (fast
         modulAngeboteAktiv:       mandanten.modulAngeboteAktiv,
         modulMergeportAktiv:      mandanten.modulMergeportAktiv,
         modulReservierungenAktiv: mandanten.modulReservierungenAktiv,
+        modulZeiterfassungAktiv:  mandanten.modulZeiterfassungAktiv,
       })
       .from(mandanten)
       .where(eq(mandanten.id, request.user.mandantId))
@@ -57,12 +58,14 @@ export const mandantRoute: FastifyPluginAsync<MandantRouteOptions> = async (fast
       modulAngeboteAktiv:       boolean
       modulMergeportAktiv:      boolean
       modulReservierungenAktiv: boolean
+      modulZeiterfassungAktiv:  boolean
     }> = {}
 
     if (body.data.modulGastroAktiv         !== undefined) updates.modulGastroAktiv         = body.data.modulGastroAktiv
     if (body.data.modulAngeboteAktiv       !== undefined) updates.modulAngeboteAktiv       = body.data.modulAngeboteAktiv
     if (body.data.modulMergeportAktiv      !== undefined) updates.modulMergeportAktiv      = body.data.modulMergeportAktiv
     if (body.data.modulReservierungenAktiv !== undefined) updates.modulReservierungenAktiv = body.data.modulReservierungenAktiv
+    if (body.data.modulZeiterfassungAktiv  !== undefined) updates.modulZeiterfassungAktiv  = body.data.modulZeiterfassungAktiv
 
     if (Object.keys(updates).length === 0) {
       return reply.status(400).send({ fehler: 'Keine Änderungen angegeben' })
@@ -77,6 +80,7 @@ export const mandantRoute: FastifyPluginAsync<MandantRouteOptions> = async (fast
         modulAngeboteAktiv:       mandanten.modulAngeboteAktiv,
         modulMergeportAktiv:      mandanten.modulMergeportAktiv,
         modulReservierungenAktiv: mandanten.modulReservierungenAktiv,
+        modulZeiterfassungAktiv:  mandanten.modulZeiterfassungAktiv,
       })
 
     if (!row) return reply.status(404).send({ fehler: 'Mandant nicht gefunden' })

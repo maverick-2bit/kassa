@@ -103,6 +103,11 @@ import type {
   ReservierungUpdate,
   OnlineBuchungInfo,
   OnlineBuchungInput,
+  ArbeitszeitResponse,
+  ArbeitszeitInput,
+  ArbeitszeitUpdate,
+  StempelInput,
+  StempelResponse,
 } from '@kassa/shared'
 import { getToken, handleUnauthorized } from './auth.js'
 
@@ -1058,6 +1063,33 @@ export const buchungApi = {
       throw new Error(body.fehler ?? 'Stornierung fehlgeschlagen')
     }
   },
+}
+
+// ---------------------------------------------------------------------------
+// Personalzeiterfassung
+// ---------------------------------------------------------------------------
+
+export const zeiterfassungApi = {
+  stempeln: (input: StempelInput): Promise<StempelResponse> =>
+    request<StempelResponse>('POST', '/api/zeiterfassung/stempeln', input),
+  aktuell: (): Promise<ArbeitszeitResponse[]> =>
+    request<ArbeitszeitResponse[]>('GET', '/api/zeiterfassung/aktuell'),
+  list: (opts: { kasseId?: string; userId?: string; datumVon?: string; datumBis?: string; nurOffen?: boolean; limit?: number } = {}): Promise<ArbeitszeitResponse[]> => {
+    const p = new URLSearchParams()
+    if (opts.kasseId)  p.set('kasseId',  opts.kasseId)
+    if (opts.userId)   p.set('userId',   opts.userId)
+    if (opts.datumVon) p.set('datumVon', opts.datumVon)
+    if (opts.datumBis) p.set('datumBis', opts.datumBis)
+    if (opts.nurOffen) p.set('nurOffen', 'true')
+    if (opts.limit)    p.set('limit',    String(opts.limit))
+    return request<ArbeitszeitResponse[]>('GET', `/api/zeiterfassung?${p.toString()}`)
+  },
+  erstellen: (input: ArbeitszeitInput): Promise<ArbeitszeitResponse> =>
+    request<ArbeitszeitResponse>('POST', '/api/zeiterfassung', input),
+  aktualisieren: (id: string, input: ArbeitszeitUpdate): Promise<ArbeitszeitResponse> =>
+    request<ArbeitszeitResponse>('PATCH', `/api/zeiterfassung/${id}`, input),
+  loeschen: (id: string): Promise<void> =>
+    request<void>('DELETE', `/api/zeiterfassung/${id}`),
 }
 
 export { ApiError }

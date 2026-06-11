@@ -465,6 +465,24 @@ export type {
   KassenbuchResponse,
 } from './schemas/kassenbuch.js'
 
+// Personalzeiterfassung
+export {
+  Arbeitszeit_QuelleSchema,
+  ArbeitszeitInputSchema,
+  ArbeitszeitUpdateSchema,
+  ArbeitszeitResponseSchema,
+  StempelInputSchema,
+  StempelResponseSchema,
+} from './schemas/zeiterfassung.js'
+export type {
+  ArbeitszeiteQuelle,
+  ArbeitszeitInput,
+  ArbeitszeitUpdate,
+  ArbeitszeitResponse,
+  StempelInput,
+  StempelResponse,
+} from './schemas/zeiterfassung.js'
+
 // Tischreservierungen
 export {
   ReservierungStatusSchema,

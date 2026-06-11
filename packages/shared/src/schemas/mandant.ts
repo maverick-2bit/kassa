@@ -4,7 +4,7 @@ import { z } from 'zod'
 // Mandanten-Module
 // ---------------------------------------------------------------------------
 
-export const MandantModulSchema = z.enum(['gastro', 'angebote', 'mergeport', 'reservierungen'])
+export const MandantModulSchema = z.enum(['gastro', 'angebote', 'mergeport', 'reservierungen', 'zeiterfassung'])
 export type MandantModul = z.infer<typeof MandantModulSchema>
 
 export const MANDANT_MODUL_LABELS: Record<MandantModul, string> = {
@@ -12,6 +12,7 @@ export const MANDANT_MODUL_LABELS: Record<MandantModul, string> = {
   angebote:       'Angebote & Lieferscheine',
   mergeport:      'Lieferservice-Integration',
   reservierungen: 'Tischreservierungen',
+  zeiterfassung:  'Personalzeiterfassung',
 }
 
 export const MANDANT_MODUL_BESCHREIBUNGEN: Record<MandantModul, string> = {
@@ -27,6 +28,9 @@ export const MANDANT_MODUL_BESCHREIBUNGEN: Record<MandantModul, string> = {
   reservierungen:
     'Tischreservierungen verwalten — intern anlegen und optional einen ' +
     'öffentlichen Online-Buchungslink für Gäste aktivieren.',
+  zeiterfassung:
+    'Mitarbeiter stempeln per PIN ein und aus. Schichtübersicht, ' +
+    'Stundenauswertung und Monatsexport für die Lohnverrechnung.',
 }
 
 export const MandantModuleSchema = z.object({
@@ -34,6 +38,7 @@ export const MandantModuleSchema = z.object({
   modulAngeboteAktiv:        z.boolean(),
   modulMergeportAktiv:       z.boolean(),
   modulReservierungenAktiv:  z.boolean(),
+  modulZeiterfassungAktiv:   z.boolean(),
 })
 export type MandantModule = z.infer<typeof MandantModuleSchema>
 

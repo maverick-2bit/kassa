@@ -34,6 +34,7 @@ import { BestelllistePage } from './pages/BestelllistePage'
 import { ModifikatorenPage } from './pages/ModifikatorenPage'
 import { ReservierungenPage } from './pages/ReservierungenPage'
 import { OnlineBuchungPage } from './pages/OnlineBuchungPage'
+import { ZeiterfassungPage } from './pages/ZeiterfassungPage'
 import type { Berechtigung, MandantModul } from '@kassa/shared'
 import { getAuth, hasBerechtigung, hasModul, setOnUnauthorized } from './lib/auth'
 import { getKasseIdentity } from './lib/kasse'
@@ -85,6 +86,7 @@ function AppRoutes() {
         <Route path="/gutscheine"     element={<Require b="kasse"                        ><GutscheinPage /></Require>} />
         <Route path="/lieferungen"     element={<Require b="kasse"            m="mergeport"      ><LieferungenPage /></Require>} />
         <Route path="/reservierungen"  element={<Require b="kasse"            m="reservierungen" ><ReservierungenPage /></Require>} />
+        <Route path="/zeiterfassung"   element={<Require b="einstellungen"    m="zeiterfassung"  ><ZeiterfassungPage /></Require>} />
         <Route path="/lieferanten"    element={<Require b="artikel.verwalten"            ><LieferantenPage /></Require>} />
         <Route path="/bestellliste"   element={<Require b="artikel.verwalten"            ><BestelllistePage /></Require>} />
         <Route path="/dep-export"           element={<Require b="einstellungen"                ><DepExportPage /></Require>} />

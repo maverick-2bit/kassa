@@ -29,6 +29,13 @@
       "when": 1749816000000,
       "tag": "0012_reservierungen",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1749902400000,
+      "tag": "0013_zeiterfassung",
+      "breakpoints": true
     }
   ]
 }

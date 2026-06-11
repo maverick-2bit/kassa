@@ -46,6 +46,7 @@ import { emailRoute }            from './routes/email.route.js'
 import { monitoringRoute }       from './routes/monitoring.route.js'
 import { reservierungRoute }     from './routes/reservierung.route.js'
 import { buchungRoute }          from './routes/buchung.route.js'
+import { zeiterfassungRoute }    from './routes/zeiterfassung.route.js'
 
 export interface ServerDeps {
   config:          Config
@@ -153,6 +154,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     await api.register(emailRoute,              { db: deps.db, config: deps.config })
     await api.register(reservierungRoute,       { db: deps.db })
     await api.register(buchungRoute,            { db: deps.db })
+    await api.register(zeiterfassungRoute,      { db: deps.db })
   }, { prefix: '/api' })
 
   await fastify.register(monitoringRoute, { db: deps.db })

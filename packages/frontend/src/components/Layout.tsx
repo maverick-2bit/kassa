@@ -60,6 +60,7 @@ function Header() {
           {hasBerechtigung('kasse')                                       && <NavItem to="/gutscheine">Gutscheine</NavItem>}
           {hasBerechtigung('kasse')             && hasModul('mergeport')       && <NavItem to="/lieferungen">Lieferungen</NavItem>}
           {hasBerechtigung('kasse')             && hasModul('reservierungen')  && <NavItem to="/reservierungen">Reservierungen</NavItem>}
+          {hasBerechtigung('einstellungen')     && hasModul('zeiterfassung')   && <NavItem to="/zeiterfassung">Zeiterfassung</NavItem>}
           {hasBerechtigung('kasse')             && hasModul('angebote')   && <NavItem to="/angebote">Angebote</NavItem>}
           {hasBerechtigung('belege.lesen')                                && <NavItem to="/belege">Belege</NavItem>}
           {hasBerechtigung('belege.lesen')                                && <NavItem to="/tagesabschluss">Abschluss</NavItem>}

@@ -56,6 +56,8 @@ export const mandanten = pgTable('mandanten', {
   modulMergeportAktiv:      boolean('modul_mergeport_aktiv').notNull().default(false),
   /** Tischreservierungen: intern + optionaler Online-Buchungslink */
   modulReservierungenAktiv: boolean('modul_reservierungen_aktiv').notNull().default(false),
+  /** Personalzeiterfassung: PIN-Stempeluhr + Stundenauswertung */
+  modulZeiterfassungAktiv:  boolean('modul_zeiterfassung_aktiv').notNull().default(false),
 
   createdAt:    timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt:    timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1002,3 +1004,34 @@ export const reservierungen = pgTable('reservierungen', {
 
 export type Reservierung    = typeof reservierungen.$inferSelect
 export type NewReservierung = typeof reservierungen.$inferInsert
+
+// ---------------------------------------------------------------------------
+// Personalzeiterfassung — Arbeitszeiten (Schichten)
+// ---------------------------------------------------------------------------
+
+export const arbeitszeiten = pgTable('arbeitszeiten', {
+  id:           uuid('id').primaryKey().defaultRandom(),
+  mandantId:    uuid('mandant_id').notNull().references(() => mandanten.id),
+  kasseId:      uuid('kasse_id').notNull().references(() => kassen.id, { onDelete: 'cascade' }),
+  userId:       uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  /** Denormalisiert für Anzeige/Export, auch wenn User gelöscht wird */
+  userName:     text('user_name').notNull(),
+
+  beginn:       timestamp('beginn', { withTimezone: true }).notNull(),
+  ende:         timestamp('ende',   { withTimezone: true }),
+  pauseMinuten: integer('pause_minuten').notNull().default(0),
+
+  notiz:        text('notiz'),
+  /** pin = Stempel via PIN-Terminal; admin = manueller Eintrag */
+  quelle:       varchar('quelle', { length: 10 }).notNull().default('pin'),
+
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  mandantUserIdx: index('arbeitszeiten_mandant_user_idx').on(t.mandantId, t.userId),
+  mandantBeginnIdx: index('arbeitszeiten_mandant_beginn_idx').on(t.mandantId, t.beginn),
+  offenesIdx: index('arbeitszeiten_offenes_idx').on(t.mandantId, t.userId, t.ende),
+}))
+
+export type Arbeitszeit    = typeof arbeitszeiten.$inferSelect
+export type NewArbeitszeit = typeof arbeitszeiten.$inferInsert
