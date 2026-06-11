@@ -22,7 +22,10 @@ const BestellPosition = z.object({
 const BestellungBody = z.object({
   kasseId:     z.string().uuid(),
   tischNummer: z.string().min(1).max(40),
-  positionen:  z.array(BestellPosition).min(1).max(50),
+  positionen:  z.array(BestellPosition).min(1).max(50).refine(
+    arr => new Set(arr.map(p => p.artikelId)).size === arr.length,
+    { message: 'Doppelte artikelId' },
+  ),
 })
 
 export const gastRoute: FastifyPluginAsync<GastRouteOptions> = async (fastify, opts) => {
@@ -112,14 +115,16 @@ export const gastRoute: FastifyPluginAsync<GastRouteOptions> = async (fastify, o
 
       if (!kasse) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
 
-      // Artikel-Preise aus der DB laden (nie vom Client übernehmen)
-      const artikelIds = positionen.map(p => p.artikelId)
+      // Artikel-Preise und Verfügbarkeit aus der DB laden (nie vom Client übernehmen)
+      const artikelIds = [...new Set(positionen.map(p => p.artikelId))]
       const dbArtikel  = await opts.db
         .select({
           id:              artikel.id,
           bezeichnung:     artikel.bezeichnung,
           preisBruttoCent: artikel.preisBruttoCent,
           aktiv:           artikel.aktiv,
+          lagerstandAktiv: artikel.lagerstandAktiv,
+          lagerstandMenge: artikel.lagerstandMenge,
         })
         .from(artikel)
         .where(and(eq(artikel.mandantId, kasse.mandantId), inArray(artikel.id, artikelIds)))
@@ -130,6 +135,9 @@ export const gastRoute: FastifyPluginAsync<GastRouteOptions> = async (fastify, o
         const a = artikelMap.get(p.artikelId)
         if (!a || !a.aktiv) {
           return reply.status(400).send({ fehler: 'Artikel nicht verfügbar' })
+        }
+        if (a.lagerstandAktiv && (a.lagerstandMenge === null || a.lagerstandMenge <= 0)) {
+          return reply.status(400).send({ fehler: 'Artikel nicht mehr verfügbar' })
         }
       }
 

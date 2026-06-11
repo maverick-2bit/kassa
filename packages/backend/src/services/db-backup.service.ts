@@ -22,7 +22,9 @@ export async function erstelleDbSicherung(
   const dateipfad = join(dir, dateiname)
 
   let fehler: string | undefined
+  let spawnFehler: string | undefined
 
+  try {
   await new Promise<void>((res, rej) => {
     // Passwort aus der URL extrahieren und via PGPASSWORD übergeben (nie als CLI-Argument)
     const urlObj   = new URL(databaseUrl)
@@ -64,6 +66,11 @@ export async function erstelleDbSicherung(
     dump.on('close', (code) => { dumpCode = code ?? 1; trySettle() })
     out.on('finish', () => { outFinished = true; trySettle() })
   })
+  } catch (e) {
+    // Fehler festhalten aber weiter ausführen, um den Eintrag in der DB zu schreiben
+    spawnFehler = e instanceof Error ? e.message : String(e)
+    if (!fehler) fehler = spawnFehler
+  }
 
   const fileInfo = await stat(dateipfad).catch(() => ({ size: 0 }))
 
@@ -75,6 +82,8 @@ export async function erstelleDbSicherung(
     erfolgreich:  !fehler,
     ...(fehler !== undefined ? { fehler } : {}),
   }).returning()
+
+  if (spawnFehler) throw new Error(spawnFehler)
 
   return rows[0]!
 }
