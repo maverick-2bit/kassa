@@ -37,8 +37,11 @@ const ArchivQuery      = z.object({
 const TeilbonBody      = z.object({
   positionsMengen: z.array(z.object({
     id:    z.string().uuid(),
-    menge: z.number().int().positive(),
-  })).min(1),
+    menge: z.number().int().positive().max(999),
+  })).min(1).refine(
+    arr => new Set(arr.map(p => p.id)).size === arr.length,
+    { message: 'Doppelte positionId' },
+  ),
 })
 const NachrichtBody    = z.object({
   text:     z.string().min(1).max(500),

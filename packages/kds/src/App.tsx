@@ -282,6 +282,7 @@ export default function App() {
   const [chatOffen, setChatOffen]   = useState(false)
   const [antworten, setAntworten]   = useState<KellerAntwort[]>([])
   const [ansicht, setAnsicht]       = useState<'kds' | 'gross' | 'archiv'>('kds')
+  const audioCtxRef = useRef<AudioContext | null>(null)
 
   const { station, token } = config
   const istKonfiguriert     = Boolean(token)
@@ -306,9 +307,13 @@ export default function App() {
       case 'neuer_bon':
         setBons(prev => {
           if (prev.some(b => b.id === event.bon.id)) return prev
-          // Ton abspielen
+          // Ton abspielen – geteilter AudioContext (Browser-Cap: max ~6 Instanzen)
           try {
-            const ctx = new AudioContext()
+            if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
+              audioCtxRef.current = new AudioContext()
+            }
+            const ctx = audioCtxRef.current
+            if (ctx.state === 'suspended') { void ctx.resume() }
             const osc = ctx.createOscillator()
             const gain = ctx.createGain()
             osc.connect(gain); gain.connect(ctx.destination)
@@ -343,7 +348,11 @@ export default function App() {
 
       case 'kellner_antwort':
         try {
-          const ctx = new AudioContext()
+          if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
+            audioCtxRef.current = new AudioContext()
+          }
+          const ctx = audioCtxRef.current
+          if (ctx.state === 'suspended') { void ctx.resume() }
           const osc = ctx.createOscillator()
           const gain = ctx.createGain()
           osc.connect(gain); gain.connect(ctx.destination)

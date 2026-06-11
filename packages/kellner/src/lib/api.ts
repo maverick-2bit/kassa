@@ -35,7 +35,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   if (!res.ok) {
     const text = await res.text().catch(() => '')
     let msg = `HTTP ${res.status}`
-    try { msg = (JSON.parse(text) as { message?: string }).message ?? msg } catch { /* ignore */ }
+    try { msg = (JSON.parse(text) as { fehler?: string }).fehler ?? msg } catch { /* ignore */ }
     throw new Error(msg)
   }
   return res.json() as Promise<T>

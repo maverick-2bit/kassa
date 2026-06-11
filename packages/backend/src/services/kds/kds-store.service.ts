@@ -3,7 +3,7 @@
  * Speichert und verwaltet aktive Bonierbons für das Browser-KDS.
  */
 
-import { eq, and, desc, or } from 'drizzle-orm'
+import { eq, and, desc, or, sql } from 'drizzle-orm'
 import { randomUUID } from 'node:crypto'
 import type { Db } from '../../db/client.js'
 import { kdsBons, bonierdrucker, type KdsPosition } from '../../db/schema.js'
@@ -66,18 +66,24 @@ export async function kdsBonErstellen(db: Db, eingabe: NeueBonEingabe): Promise<
 /** Übersicht: Anzahl offener Bons pro Station (für Dashboard) */
 export async function kdsUebersicht(db: Db, mandantId: string): Promise<{ total: number; perStation: Record<string, number> }> {
   const rows = await db
-    .select()
+    .select({
+      station: kdsBons.station,
+      anzahl:  sql<number>`count(*)::int`,
+    })
     .from(kdsBons)
     .where(and(
       eq(kdsBons.mandantId, mandantId),
       eq(kdsBons.status, 'offen'),
     ))
+    .groupBy(kdsBons.station)
 
   const perStation: Record<string, number> = {}
+  let total = 0
   for (const row of rows) {
-    perStation[row.station] = (perStation[row.station] ?? 0) + 1
+    perStation[row.station] = row.anzahl
+    total += row.anzahl
   }
-  return { total: rows.length, perStation }
+  return { total, perStation }
 }
 
 /** Alle offenen Bons einer Station laden */
@@ -143,12 +149,17 @@ export async function kdsBonTeilbon(
 
   if (!bon || bon.status !== 'offen') return null
 
-  const mengenMap = new Map(posMengen.map(p => [p.id, p.menge]))
+  // Doppelte positionIds summieren statt stillschweigend überschreiben
+  const mengenMap = new Map<string, number>()
+  for (const { id, menge } of posMengen) {
+    mengenMap.set(id, (mengenMap.get(id) ?? 0) + menge)
+  }
 
   const aktualisiert: KdsPosition[] = bon.positionen.map(p => {
     const zuSenden = mengenMap.get(p.id)
     if (!zuSenden) return p
-    const neueErledigtMenge = (p.erledigtMenge ?? 0) + zuSenden
+    // erledigtMenge auf maximal menge begrenzen
+    const neueErledigtMenge = Math.min((p.erledigtMenge ?? 0) + zuSenden, p.menge)
     const vollstaendig = neueErledigtMenge >= p.menge
     return {
       ...p,
@@ -199,8 +210,8 @@ export async function kdsArchivBons(
   offset:    number,
 ) {
   const where = station
-    ? and(eq(kdsBons.mandantId, mandantId), eq(kdsBons.station, station))
-    : eq(kdsBons.mandantId, mandantId)
+    ? and(eq(kdsBons.mandantId, mandantId), eq(kdsBons.status, 'erledigt'), eq(kdsBons.station, station))
+    : and(eq(kdsBons.mandantId, mandantId), eq(kdsBons.status, 'erledigt'))
 
   const rows = await db
     .select()

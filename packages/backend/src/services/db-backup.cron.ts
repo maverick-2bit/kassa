@@ -17,13 +17,22 @@ function msZumNaechsten3Uhr(): number {
   return Math.max(ziel.getTime() - wien.getTime(), 0)
 }
 
+let aktiverCron: { timer: ReturnType<typeof setTimeout>; interval: ReturnType<typeof setInterval> | null } | null = null
+
 export function starteDbBackupCron(
   db:          Db,
   databaseUrl: string,
   backupDir:   string,
   retention:   number,
   log:         Logger,
-): void {
+): () => void {
+  // Vorherigen Cron stoppen (Hot-Reload-Schutz)
+  if (aktiverCron) {
+    clearTimeout(aktiverCron.timer)
+    if (aktiverCron.interval) clearInterval(aktiverCron.interval)
+    aktiverCron = null
+  }
+
   async function sichern(): Promise<void> {
     try {
       const s = await erstelleDbSicherung(db, databaseUrl, backupDir, true)
@@ -34,13 +43,20 @@ export function starteDbBackupCron(
     }
   }
 
-  function planeNaechsten(): void {
-    const delay = msZumNaechsten3Uhr()
-    setTimeout(() => {
-      void sichern()
-      setInterval(() => void sichern(), 24 * 60 * 60 * 1000)
-    }, delay)
-  }
+  const delay = msZumNaechsten3Uhr()
+  const timer = setTimeout(() => {
+    void sichern()
+    const interval = setInterval(() => void sichern(), 24 * 60 * 60 * 1000)
+    if (aktiverCron) aktiverCron.interval = interval
+  }, delay)
 
-  planeNaechsten()
+  aktiverCron = { timer, interval: null }
+
+  return () => {
+    if (aktiverCron) {
+      clearTimeout(aktiverCron.timer)
+      if (aktiverCron.interval) clearInterval(aktiverCron.interval)
+      aktiverCron = null
+    }
+  }
 }

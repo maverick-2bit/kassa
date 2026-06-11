@@ -6,7 +6,7 @@
  */
 
 import type { FastifyPluginAsync } from 'fastify'
-import { and, eq, asc } from 'drizzle-orm'
+import { and, eq, asc, inArray } from 'drizzle-orm'
 import { z } from 'zod'
 import type { Db } from '../db/client.js'
 import { artikel, kategorien, kassen, kassekategorieSichtbarkeit, tischTabs } from '../db/schema.js'
@@ -15,10 +15,8 @@ import { emitKasseEvent } from '../sse/event-bus.js'
 export interface GastRouteOptions { db: Db }
 
 const BestellPosition = z.object({
-  artikelId:    z.string().uuid(),
-  bezeichnung:  z.string(),
-  menge:        z.number().int().min(1).max(50),
-  preisBruttoCent: z.number().int().min(0),
+  artikelId: z.string().uuid(),
+  menge:     z.number().int().min(1).max(50),
 })
 
 const BestellungBody = z.object({
@@ -114,15 +112,39 @@ export const gastRoute: FastifyPluginAsync<GastRouteOptions> = async (fastify, o
 
       if (!kasse) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
 
-      // Neuen Tab anlegen
-      const tabPositionen = positionen.map(p => ({
-        artikelId:       p.artikelId,
-        bezeichnung:     p.bezeichnung,
-        preisBruttoCent: p.preisBruttoCent,
-        menge:           p.menge,
-      }))
+      // Artikel-Preise aus der DB laden (nie vom Client übernehmen)
+      const artikelIds = positionen.map(p => p.artikelId)
+      const dbArtikel  = await opts.db
+        .select({
+          id:              artikel.id,
+          bezeichnung:     artikel.bezeichnung,
+          preisBruttoCent: artikel.preisBruttoCent,
+          aktiv:           artikel.aktiv,
+        })
+        .from(artikel)
+        .where(and(eq(artikel.mandantId, kasse.mandantId), inArray(artikel.id, artikelIds)))
 
-      const gesamtbetragCent = positionen.reduce(
+      const artikelMap = new Map(dbArtikel.map(a => [a.id, a]))
+
+      for (const p of positionen) {
+        const a = artikelMap.get(p.artikelId)
+        if (!a || !a.aktiv) {
+          return reply.status(400).send({ fehler: 'Artikel nicht verfügbar' })
+        }
+      }
+
+      // Neuen Tab anlegen
+      const tabPositionen = positionen.map(p => {
+        const a = artikelMap.get(p.artikelId)!
+        return {
+          artikelId:       p.artikelId,
+          bezeichnung:     a.bezeichnung,
+          preisBruttoCent: a.preisBruttoCent,
+          menge:           p.menge,
+        }
+      })
+
+      const gesamtbetragCent = tabPositionen.reduce(
         (sum, p) => sum + p.preisBruttoCent * p.menge, 0
       )
 

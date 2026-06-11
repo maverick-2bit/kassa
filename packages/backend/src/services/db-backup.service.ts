@@ -24,8 +24,14 @@ export async function erstelleDbSicherung(
   let fehler: string | undefined
 
   await new Promise<void>((res, rej) => {
-    const dump = spawn('pg_dump', ['--no-password', databaseUrl], {
-      env: { ...process.env },
+    // Passwort aus der URL extrahieren und via PGPASSWORD übergeben (nie als CLI-Argument)
+    const urlObj   = new URL(databaseUrl)
+    const password = urlObj.password ? decodeURIComponent(urlObj.password) : ''
+    urlObj.password = ''
+    const urlSansPw = urlObj.toString()
+
+    const dump = spawn('pg_dump', ['--no-password', urlSansPw], {
+      env: { ...process.env, ...(password ? { PGPASSWORD: password } : {}) },
     })
     const gzip = spawn('gzip', ['-c'])
     const out  = createWriteStream(dateipfad)
@@ -37,13 +43,26 @@ export async function erstelleDbSicherung(
     dump.stderr.on('data', (d: Buffer) => { stderrBuf += d.toString() })
     gzip.stderr.on('data', (d: Buffer) => { stderrBuf += d.toString() })
 
-    dump.on('error', rej)
-    gzip.on('error', rej)
+    const onError = (e: Error) => { out.destroy(); rej(e) }
+    dump.on('error', onError)
+    gzip.on('error', onError)
     out.on('error', rej)
-    out.on('finish', () => {
+
+    let dumpCode: number | null = null
+    let outFinished = false
+
+    function trySettle() {
+      if (dumpCode === null || !outFinished) return
       if (stderrBuf.trim()) fehler = stderrBuf.trim().slice(0, 500)
-      res()
-    })
+      if (dumpCode !== 0) {
+        rej(new Error(`pg_dump fehlgeschlagen (exit ${dumpCode}): ${fehler ?? ''}`.trimEnd()))
+      } else {
+        res()
+      }
+    }
+
+    dump.on('close', (code) => { dumpCode = code ?? 1; trySettle() })
+    out.on('finish', () => { outFinished = true; trySettle() })
   })
 
   const fileInfo = await stat(dateipfad).catch(() => ({ size: 0 }))
