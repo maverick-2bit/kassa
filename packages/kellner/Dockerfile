@@ -12,9 +12,12 @@ RUN pnpm install --frozen-lockfile
 
 FROM deps AS builder
 WORKDIR /app
+COPY tsconfig.base.json ./
 COPY packages/shared  ./packages/shared
 COPY packages/kellner ./packages/kellner
-RUN pnpm --filter @kassa/kellner build
+# shared zuerst bauen (kellner importiert Typen und Schemas daraus)
+RUN pnpm --filter @kassa/shared build && \
+    pnpm --filter @kassa/kellner build
 
 FROM nginx:1.27-alpine AS runtime
 COPY --from=builder /app/packages/kellner/dist /usr/share/nginx/html
