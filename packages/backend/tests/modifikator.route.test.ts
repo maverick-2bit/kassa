@@ -6,8 +6,8 @@ import { describe, it, expect } from 'vitest'
 import { buildTestServer, TEST_MANDANT_ID } from './helpers/testServer.js'
 import type { Db } from '../src/db/client.js'
 
-const GRUPPE_ID  = 'gd000000-0000-0000-0000-000000000001'
-const MOD_ID     = 'md000000-0000-0000-0000-000000000001'
+const GRUPPE_ID  = 'dd000000-0000-0000-0000-000000000001'
+const MOD_ID     = 'ed000000-0000-0000-0000-000000000001'
 const ARTIKEL_ID = 'ad000000-0000-0000-0000-000000000001'
 
 // ---------------------------------------------------------------------------
@@ -38,6 +38,7 @@ function mockDb({ selects = [], inserts = [], updates = [], deletes = [] }: DbQu
       from: () => ({
         where: () => makeResult(selects[si++] ?? []),
         orderBy: () => ({ where: () => makeResult(selects[si++] ?? []) }),
+        innerJoin: () => ({ where: () => makeResult(selects[si++] ?? []) }),
       }),
     }),
     insert: () => ({

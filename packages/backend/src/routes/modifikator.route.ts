@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify'
+import { z } from 'zod'
 import {
   ModifikatorGruppeErstellenSchema,
   ModifikatorGruppeAktualisierenSchema,
@@ -24,6 +25,10 @@ import type { Db } from '../db/client.js'
 export interface ModifikatorRouteOptions {
   db: Db
 }
+
+const IdParam        = z.object({ id: z.string().uuid() })
+const GruppeIdParam  = z.object({ gruppeId: z.string().uuid() })
+const ArtikelIdParam = z.object({ artikelId: z.string().uuid() })
 
 export const modifikatorRoute: FastifyPluginAsync<ModifikatorRouteOptions> = async (fastify, opts) => {
   const auth = { onRequest: [fastify.authenticate] }
@@ -51,7 +56,9 @@ export const modifikatorRoute: FastifyPluginAsync<ModifikatorRouteOptions> = asy
   })
 
   fastify.patch('/modifikator-gruppen/:id', auth, async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const params = IdParam.safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
+    const { id } = params.data
     const parsed = ModifikatorGruppeAktualisierenSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     try {
@@ -64,7 +71,9 @@ export const modifikatorRoute: FastifyPluginAsync<ModifikatorRouteOptions> = asy
   })
 
   fastify.delete('/modifikator-gruppen/:id', auth, async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const params = IdParam.safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
+    const { id } = params.data
     try {
       await loescheGruppe(id, request.user.mandantId, db)
       return reply.status(204).send()
@@ -79,7 +88,9 @@ export const modifikatorRoute: FastifyPluginAsync<ModifikatorRouteOptions> = asy
   // -------------------------------------------------------------------------
 
   fastify.post('/modifikator-gruppen/:gruppeId/modifikatoren', auth, async (request, reply) => {
-    const { gruppeId } = request.params as { gruppeId: string }
+    const params = GruppeIdParam.safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
+    const { gruppeId } = params.data
     const parsed = ModifikatorErstellenSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     try {
@@ -92,7 +103,9 @@ export const modifikatorRoute: FastifyPluginAsync<ModifikatorRouteOptions> = asy
   })
 
   fastify.patch('/modifikatoren/:id', auth, async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const params = IdParam.safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
+    const { id } = params.data
     const parsed = ModifikatorAktualisierenSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     try {
@@ -105,7 +118,9 @@ export const modifikatorRoute: FastifyPluginAsync<ModifikatorRouteOptions> = asy
   })
 
   fastify.delete('/modifikatoren/:id', auth, async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const params = IdParam.safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
+    const { id } = params.data
     try {
       await loescheModifikator(id, request.user.mandantId, db)
       return reply.status(204).send()
@@ -126,7 +141,9 @@ export const modifikatorRoute: FastifyPluginAsync<ModifikatorRouteOptions> = asy
   // -------------------------------------------------------------------------
 
   fastify.get('/artikel/:artikelId/modifikator-gruppen', auth, async (request, reply) => {
-    const { artikelId } = request.params as { artikelId: string }
+    const params = ArtikelIdParam.safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
+    const { artikelId } = params.data
     try {
       const gruppen = await getGruppenFuerArtikel(artikelId, request.user.mandantId, db)
       return reply.send(gruppen)
@@ -137,7 +154,9 @@ export const modifikatorRoute: FastifyPluginAsync<ModifikatorRouteOptions> = asy
   })
 
   fastify.put('/artikel/:artikelId/modifikator-gruppen', auth, async (request, reply) => {
-    const { artikelId } = request.params as { artikelId: string }
+    const params = ArtikelIdParam.safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
+    const { artikelId } = params.data
     const parsed = ArtikelGruppenZuweisungSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     try {

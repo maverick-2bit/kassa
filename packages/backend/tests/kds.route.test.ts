@@ -7,7 +7,7 @@ import { buildTestServer, TEST_MANDANT_ID } from './helpers/testServer.js'
 import type { Db } from '../src/db/client.js'
 
 const BON_ID  = 'bd000000-0000-0000-0000-000000000001'
-const POS_ID  = 'pd000000-0000-0000-0000-000000000001'
+const POS_ID  = 'cd000000-0000-0000-0000-000000000001'
 
 // ---------------------------------------------------------------------------
 // Mock-Hilfsfunktionen
@@ -105,14 +105,21 @@ describe('GET /api/kds/events', () => {
   it('200 und liefert SSE-Stream bei gültigem Token + Station', async () => {
     const srv = await buildTestServer(mockDb({ selects: [[bonRow()]] }))
     const token = srv.signTestToken()
+    // SSE-Verbindung bleibt offen — Stream-Modus nutzen und nach dem Snapshot abbrechen
     const res = await srv.fastify.inject({
-      method: 'GET',
-      url:    `/api/kds/events?station=kueche&token=${token}`,
+      method:          'GET',
+      url:             `/api/kds/events?station=kueche&token=${token}`,
+      payloadAsStream: true,
     })
     expect(res.statusCode).toBe(200)
     expect(res.headers['content-type']).toContain('text/event-stream')
-    expect(res.body).toContain('data:')
-    expect(res.body).toContain('"typ":"snapshot"')
+    const stream = res.stream()
+    const chunk = await new Promise<string>(resolve => {
+      stream.once('data', (d: Buffer) => resolve(d.toString()))
+    })
+    expect(chunk).toContain('data:')
+    expect(chunk).toContain('"typ":"snapshot"')
+    stream.destroy()
     await srv.close()
   })
 })
@@ -246,7 +253,7 @@ describe('POST /api/kds/bon/:id/teilbon', () => {
     const res = await srv.fastify.inject({
       method:  'POST',
       url:     `/api/kds/bon/${BON_ID}/teilbon`,
-      payload: { positionIds: [POS_ID] },
+      payload: { positionsMengen: [{ id: POS_ID, menge: 1 }] },
     })
     expect(res.statusCode).toBe(401)
     await srv.close()
@@ -258,25 +265,25 @@ describe('POST /api/kds/bon/:id/teilbon', () => {
       method:  'POST',
       url:     '/api/kds/bon/keine-uuid/teilbon',
       headers: srv.authHeader(),
-      payload: { positionIds: [POS_ID] },
+      payload: { positionsMengen: [{ id: POS_ID, menge: 1 }] },
     })
     expect(res.statusCode).toBe(400)
     await srv.close()
   })
 
-  it('400 wenn positionIds leer', async () => {
+  it('400 wenn positionsMengen leer', async () => {
     const srv = await buildTestServer(mockDb())
     const res = await srv.fastify.inject({
       method:  'POST',
       url:     `/api/kds/bon/${BON_ID}/teilbon`,
       headers: srv.authHeader(),
-      payload: { positionIds: [] },
+      payload: { positionsMengen: [] },
     })
     expect(res.statusCode).toBe(400)
     await srv.close()
   })
 
-  it('400 wenn positionIds fehlt', async () => {
+  it('400 wenn positionsMengen fehlt', async () => {
     const srv = await buildTestServer(mockDb())
     const res = await srv.fastify.inject({
       method:  'POST',
@@ -294,7 +301,7 @@ describe('POST /api/kds/bon/:id/teilbon', () => {
       method:  'POST',
       url:     `/api/kds/bon/${BON_ID}/teilbon`,
       headers: srv.authHeader(),
-      payload: { positionIds: [POS_ID] },
+      payload: { positionsMengen: [{ id: POS_ID, menge: 1 }] },
     })
     expect(res.statusCode).toBe(404)
     await srv.close()
@@ -302,7 +309,7 @@ describe('POST /api/kds/bon/:id/teilbon', () => {
 
   it('200 bei erfolgreichem Teilbon', async () => {
     const updatedBon = bonRow({
-      positionen: [{ id: POS_ID, bezeichnung: 'Schnitzel', menge: 1, erledigt: true }],
+      positionen: [{ id: POS_ID, bezeichnung: 'Schnitzel', menge: 1, erledigtMenge: 1, erledigt: true }],
       status: 'erledigt',
     })
     const srv = await buildTestServer(mockDb({
@@ -313,7 +320,7 @@ describe('POST /api/kds/bon/:id/teilbon', () => {
       method:  'POST',
       url:     `/api/kds/bon/${BON_ID}/teilbon`,
       headers: srv.authHeader(),
-      payload: { positionIds: [POS_ID] },
+      payload: { positionsMengen: [{ id: POS_ID, menge: 1 }] },
     })
     expect(res.statusCode).toBe(200)
     expect(res.json().erfolgreich).toBe(true)
