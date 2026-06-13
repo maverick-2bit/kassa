@@ -1,4 +1,6 @@
-CREATE TABLE "lieferbestellungen" (
+-- IF NOT EXISTS: 0000_initial_schema.sql wurde nachträglich regeneriert und
+-- enthält diese Tabelle bereits — auf frischen Datenbanken wäre sie hier doppelt.
+CREATE TABLE IF NOT EXISTS "lieferbestellungen" (
 	"id"                  uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"mandant_id"          uuid NOT NULL REFERENCES "mandanten"("id"),
 	"kasse_id"            uuid NOT NULL REFERENCES "kassen"("id") ON DELETE CASCADE,
@@ -16,6 +18,6 @@ CREATE TABLE "lieferbestellungen" (
 	"updated_at"          timestamp with time zone NOT NULL DEFAULT now()
 );
 
-CREATE INDEX "lieferbestellungen_kasse_idx"  ON "lieferbestellungen" ("kasse_id");
-CREATE INDEX "lieferbestellungen_status_idx" ON "lieferbestellungen" ("mandant_id", "status");
-CREATE UNIQUE INDEX "lieferbestellungen_externe_idx" ON "lieferbestellungen" ("provider", "externe_id");
+CREATE INDEX IF NOT EXISTS "lieferbestellungen_kasse_idx"  ON "lieferbestellungen" ("kasse_id");
+CREATE INDEX IF NOT EXISTS "lieferbestellungen_status_idx" ON "lieferbestellungen" ("mandant_id", "status");
+CREATE UNIQUE INDEX IF NOT EXISTS "lieferbestellungen_externe_idx" ON "lieferbestellungen" ("provider", "externe_id");

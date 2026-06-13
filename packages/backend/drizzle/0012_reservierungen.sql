@@ -1,7 +1,7 @@
-ALTER TABLE "mandanten" ADD COLUMN "modul_reservierungen_aktiv" boolean NOT NULL DEFAULT false;
-ALTER TABLE "kassen"    ADD COLUMN "online_buchung_aktiv"        boolean NOT NULL DEFAULT false;
+ALTER TABLE "mandanten" ADD COLUMN IF NOT EXISTS "modul_reservierungen_aktiv" boolean NOT NULL DEFAULT false;
+ALTER TABLE "kassen"    ADD COLUMN IF NOT EXISTS "online_buchung_aktiv"        boolean NOT NULL DEFAULT false;
 
-CREATE TABLE "reservierungen" (
+CREATE TABLE IF NOT EXISTS "reservierungen" (
 	"id"               uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"mandant_id"       uuid NOT NULL REFERENCES "mandanten"("id"),
 	"kasse_id"         uuid NOT NULL REFERENCES "kassen"("id") ON DELETE CASCADE,
@@ -21,6 +21,6 @@ CREATE TABLE "reservierungen" (
 	"updated_at"       timestamp with time zone NOT NULL DEFAULT now()
 );
 
-CREATE INDEX        "reservierungen_mandant_datum_idx" ON "reservierungen" ("mandant_id", "datum");
-CREATE INDEX        "reservierungen_kasse_datum_idx"   ON "reservierungen" ("kasse_id",   "datum");
-CREATE UNIQUE INDEX "reservierungen_online_token_idx"  ON "reservierungen" ("online_token");
+CREATE INDEX IF NOT EXISTS "reservierungen_mandant_datum_idx" ON "reservierungen" ("mandant_id", "datum");
+CREATE INDEX IF NOT EXISTS "reservierungen_kasse_datum_idx"   ON "reservierungen" ("kasse_id",   "datum");
+CREATE UNIQUE INDEX IF NOT EXISTS "reservierungen_online_token_idx"  ON "reservierungen" ("online_token");

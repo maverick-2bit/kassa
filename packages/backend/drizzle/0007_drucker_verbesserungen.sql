@@ -22,5 +22,5 @@ CREATE TABLE IF NOT EXISTS druck_log (
   erstellt_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX druck_log_mandant_idx ON druck_log (mandant_id, erstellt_at DESC);
-CREATE INDEX druck_log_kasse_idx   ON druck_log (kasse_id,   erstellt_at DESC);
+CREATE INDEX IF NOT EXISTS druck_log_mandant_idx ON druck_log (mandant_id, erstellt_at DESC);
+CREATE INDEX IF NOT EXISTS druck_log_kasse_idx   ON druck_log (kasse_id,   erstellt_at DESC);

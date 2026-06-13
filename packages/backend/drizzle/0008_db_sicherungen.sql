@@ -12,4 +12,4 @@ CREATE TABLE IF NOT EXISTS "db_sicherungen" (
   "fehler"           text
 );
 
-CREATE INDEX "db_sicherungen_erstellt_idx" ON "db_sicherungen" ("erstellt_am" DESC);
+CREATE INDEX IF NOT EXISTS "db_sicherungen_erstellt_idx" ON "db_sicherungen" ("erstellt_am" DESC);

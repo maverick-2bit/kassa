@@ -1,11 +1,11 @@
 -- Feature 7: Tagesabschluss-E-Mail pro Kasse
-ALTER TABLE "kassen" ADD COLUMN "abschluss_email" text;
+ALTER TABLE "kassen" ADD COLUMN IF NOT EXISTS "abschluss_email" text;
 
 -- Feature 5: Self-Checkout via QR
-ALTER TABLE "kassen" ADD COLUMN "self_checkout_aktiv" boolean NOT NULL DEFAULT false;
+ALTER TABLE "kassen" ADD COLUMN IF NOT EXISTS "self_checkout_aktiv" boolean NOT NULL DEFAULT false;
 
 -- Feature 6: Kundendisplay-Werbefolien
-CREATE TABLE "werbefolien" (
+CREATE TABLE IF NOT EXISTS "werbefolien" (
 	"id"               uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"mandant_id"       uuid NOT NULL REFERENCES "mandanten"("id"),
 	"titel"            text NOT NULL DEFAULT '',
@@ -17,10 +17,10 @@ CREATE TABLE "werbefolien" (
 	"created_at"       timestamp with time zone NOT NULL DEFAULT now(),
 	"updated_at"       timestamp with time zone NOT NULL DEFAULT now()
 );
-CREATE INDEX "werbefolien_mandant_idx" ON "werbefolien" ("mandant_id", "reihenfolge");
+CREATE INDEX IF NOT EXISTS "werbefolien_mandant_idx" ON "werbefolien" ("mandant_id", "reihenfolge");
 
 -- Feature 3: Dienstplan-Schichten
-CREATE TABLE "dienstplan_schichten" (
+CREATE TABLE IF NOT EXISTS "dienstplan_schichten" (
 	"id"              uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"mandant_id"      uuid NOT NULL REFERENCES "mandanten"("id"),
 	"kasse_id"        uuid NOT NULL REFERENCES "kassen"("id") ON DELETE CASCADE,
@@ -35,5 +35,5 @@ CREATE TABLE "dienstplan_schichten" (
 	"created_at"      timestamp with time zone NOT NULL DEFAULT now(),
 	"updated_at"      timestamp with time zone NOT NULL DEFAULT now()
 );
-CREATE INDEX "dienstplan_mandant_datum_idx" ON "dienstplan_schichten" ("mandant_id", "datum");
-CREATE INDEX "dienstplan_kasse_datum_idx"   ON "dienstplan_schichten" ("kasse_id",   "datum");
+CREATE INDEX IF NOT EXISTS "dienstplan_mandant_datum_idx" ON "dienstplan_schichten" ("mandant_id", "datum");
+CREATE INDEX IF NOT EXISTS "dienstplan_kasse_datum_idx"   ON "dienstplan_schichten" ("kasse_id",   "datum");

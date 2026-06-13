@@ -1,6 +1,6 @@
-ALTER TABLE "mandanten" ADD COLUMN "modul_zeiterfassung_aktiv" boolean NOT NULL DEFAULT false;
+ALTER TABLE "mandanten" ADD COLUMN IF NOT EXISTS "modul_zeiterfassung_aktiv" boolean NOT NULL DEFAULT false;
 
-CREATE TABLE "arbeitszeiten" (
+CREATE TABLE IF NOT EXISTS "arbeitszeiten" (
 	"id"             uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"mandant_id"     uuid NOT NULL REFERENCES "mandanten"("id"),
 	"kasse_id"       uuid NOT NULL REFERENCES "kassen"("id") ON DELETE CASCADE,
@@ -15,6 +15,6 @@ CREATE TABLE "arbeitszeiten" (
 	"updated_at"     timestamp with time zone NOT NULL DEFAULT now()
 );
 
-CREATE INDEX "arbeitszeiten_mandant_user_idx"   ON "arbeitszeiten" ("mandant_id", "user_id");
-CREATE INDEX "arbeitszeiten_mandant_beginn_idx" ON "arbeitszeiten" ("mandant_id", "beginn");
-CREATE INDEX "arbeitszeiten_offenes_idx"        ON "arbeitszeiten" ("mandant_id", "user_id", "ende");
+CREATE INDEX IF NOT EXISTS "arbeitszeiten_mandant_user_idx"   ON "arbeitszeiten" ("mandant_id", "user_id");
+CREATE INDEX IF NOT EXISTS "arbeitszeiten_mandant_beginn_idx" ON "arbeitszeiten" ("mandant_id", "beginn");
+CREATE INDEX IF NOT EXISTS "arbeitszeiten_offenes_idx"        ON "arbeitszeiten" ("mandant_id", "user_id", "ende");

@@ -40,6 +40,52 @@ jobs:
       - name: Tests ausführen
         run: pnpm test
 
+  # ── Integrationstests (echtes PostgreSQL) ────────────────────────────────────
+  integration:
+    name: Integrationstests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER:     kassa
+          POSTGRES_PASSWORD: kassa
+          POSTGRES_DB:       kassa
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U kassa"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: pnpm einrichten
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Node.js einrichten
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Abhängigkeiten installieren
+        run: pnpm install --frozen-lockfile
+
+      - name: Backend samt Abhängigkeiten bauen
+        run: pnpm --filter @kassa/backend... build
+
+      - name: Integrationstests ausführen
+        run: pnpm --filter @kassa/backend test:integration
+        env:
+          TEST_DATABASE_URL: postgresql://kassa:kassa@localhost:5432/kassa
+
   # ── Docker-Images bauen (nur auf master, nach erfolgreichem Test) ─────────────
   docker:
     name: Docker Build

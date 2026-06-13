@@ -5,5 +5,7 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['tests/**/*.test.ts'],
+    // Integrationstests brauchen ein echtes PostgreSQL → eigener Lauf via test:integration
+    exclude: ['**/node_modules/**', 'tests/integration/**'],
   },
 })

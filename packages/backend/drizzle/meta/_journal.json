@@ -17,31 +17,94 @@
       "breakpoints": true
     },
     {
+      "idx": 2,
+      "version": "7",
+      "when": 1779808552000,
+      "tag": "0002_kassenbuch",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1779808553000,
+      "tag": "0003_belegfusstext",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1779808554000,
+      "tag": "0004_kunden_notizen",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1779808555000,
+      "tag": "0006_kds_bons",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1779808556000,
+      "tag": "0007_drucker_verbesserungen",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1779808557000,
+      "tag": "0008_db_sicherungen",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1779808558000,
+      "tag": "0009_beleg_layout",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1779808559000,
+      "tag": "0010_kassen_startseite",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1779808560000,
+      "tag": "0011_lieferbestellungen",
+      "breakpoints": true
+    },
+    {
       "idx": 11,
       "version": "7",
-      "when": 1749729600000,
-      "tag": "0011_lieferbestellungen",
+      "when": 1779808561000,
+      "tag": "0012_reservierungen",
       "breakpoints": true
     },
     {
       "idx": 12,
       "version": "7",
-      "when": 1749816000000,
-      "tag": "0012_reservierungen",
+      "when": 1779808562000,
+      "tag": "0013_zeiterfassung",
       "breakpoints": true
     },
     {
       "idx": 13,
       "version": "7",
-      "when": 1749902400000,
-      "tag": "0013_zeiterfassung",
+      "when": 1779808563000,
+      "tag": "0014_erweiterungen",
       "breakpoints": true
     },
     {
       "idx": 14,
       "version": "7",
-      "when": 1749988800000,
-      "tag": "0014_erweiterungen",
+      "when": 1779808564000,
+      "tag": "0015_schema_sync",
       "breakpoints": true
     }
   ]

@@ -11,6 +11,7 @@
     "start:prod": "node dist/index.js",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:migrate:run": "tsx --env-file=.env src/db/migrate-cli.ts",
