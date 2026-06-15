@@ -6,7 +6,7 @@
   "main": "./dist/index.js",
   "scripts": {
     "build": "tsc",
-    "dev": "node --watch --env-file=.env --experimental-strip-types src/index.ts",
+    "dev": "tsx watch --env-file=.env src/index.ts",
     "start": "node --env-file=.env dist/index.js",
     "start:prod": "node dist/index.js",
     "test": "vitest run",
