@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { NavLink, Outlet, useNavigate, Link } from 'react-router-dom'
 import { useQueries } from '@tanstack/react-query'
 import { clearAuth, getAuth, hasBerechtigung, hasModul } from '../lib/auth'
@@ -12,7 +13,13 @@ export function Layout() {
       <OfflineStatusBar />
       <Header />
       <main className="flex-1">
-        <Outlet />
+        <Suspense fallback={
+          <div className="flex items-center justify-center py-20">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-300 border-t-gray-700" />
+          </div>
+        }>
+          <Outlet />
+        </Suspense>
       </main>
       <footer className="border-t border-gray-100 py-2 text-center">
         <span className="text-[11px] text-gray-400 select-none">
