@@ -16,6 +16,8 @@ WORKDIR /app
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY packages/shared/package.json    ./packages/shared/
 COPY packages/frontend/package.json  ./packages/frontend/
+# Vendored xlsx-Tarball (file:-Dependency) muss vor dem Install vorhanden sein
+COPY packages/frontend/vendor        ./packages/frontend/vendor
 
 RUN pnpm install --frozen-lockfile
 
