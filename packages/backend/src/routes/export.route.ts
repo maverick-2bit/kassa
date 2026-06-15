@@ -60,7 +60,7 @@ export const exportRoute: FastifyPluginAsync<ExportRouteOptions> = async (fastif
       .from(belege)
       .where(and(
         eq(belege.kasseId, q.data.kasseId),
-        inArray(belege.belegTyp, ['barzahlung', 'storno']),
+        inArray(belege.belegTyp, ['Barzahlungsbeleg', 'Stornobeleg']),
         sql`(${belege.belegDatum} AT TIME ZONE 'Europe/Vienna')::date BETWEEN ${von} AND ${bis}`,
       ))
       .orderBy(belege.belegDatum)
@@ -77,10 +77,10 @@ export const exportRoute: FastifyPluginAsync<ExportRouteOptions> = async (fastif
       d.toLocaleDateString('de-AT', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/Vienna' })
 
     for (const beleg of rows) {
-      const vorzeichen = beleg.belegTyp === 'storno' ? -1 : 1
+      const vorzeichen = beleg.belegTyp === 'Stornobeleg' ? -1 : 1
       const datum      = fmtDatum(new Date(beleg.belegDatum))
       const nr         = String(beleg.belegNummer)
-      const text       = beleg.belegTyp === 'storno' ? `Storno Beleg #${nr}` : `Kassenbon #${nr}`
+      const text       = beleg.belegTyp === 'Stornobeleg' ? `Storno Beleg #${nr}` : `Kassenbon #${nr}`
 
       // Zahlungsart-Zeile(n)
       const zahlungsarten: { art: string; cent: number }[] = []
