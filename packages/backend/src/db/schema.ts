@@ -821,8 +821,11 @@ export const auditLogs = pgTable('audit_logs', {
   userAgent: text('user_agent'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
-  mandantIdx: index('audit_logs_mandant_idx').on(t.mandantId),
-  createdIdx: index('audit_logs_created_idx').on(t.createdAt),
+  // Komposit deckt den einzigen Reader (Filter mandantId + Sortierung createdAt
+  // DESC, siehe audit.route.ts) ohne separaten Sort-Schritt ab und ersetzt die
+  // beiden vormaligen Einzel-Indizes (mandantId allein = Präfix; createdAt
+  // allein hatte keinen Reader). Weniger Index-Pflege bei jedem Audit-Insert.
+  mandantCreatedIdx: index('audit_logs_mandant_created_idx').on(t.mandantId, t.createdAt),
 }))
 
 export type AuditLog    = typeof auditLogs.$inferSelect
