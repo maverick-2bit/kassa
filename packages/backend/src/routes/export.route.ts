@@ -77,7 +77,11 @@ export const exportRoute: FastifyPluginAsync<ExportRouteOptions> = async (fastif
       d.toLocaleDateString('de-AT', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/Vienna' })
 
     for (const beleg of rows) {
-      const vorzeichen = beleg.belegTyp === 'Stornobeleg' ? -1 : 1
+      // Stornobelege speichern ihre Betraege bereits negiert (negierte Positionen
+      // + negierte Zahlungsaufteilung, siehe erstelleStornobeleg). Die gespeicherten
+      // Werte werden daher direkt uebernommen — KEINE zusaetzliche Vorzeichen-
+      // Multiplikation, sonst hoebe sich die Negation auf und der Storno erschiene
+      // positiv (Umsatz wuerde verdoppelt statt aufgehoben).
       const datum      = fmtDatum(new Date(beleg.belegDatum))
       const nr         = String(beleg.belegNummer)
       const text       = beleg.belegTyp === 'Stornobeleg' ? `Storno Beleg #${nr}` : `Kassenbon #${nr}`
@@ -87,9 +91,6 @@ export const exportRoute: FastifyPluginAsync<ExportRouteOptions> = async (fastif
       if (beleg.summeBarCent   !== 0) zahlungsarten.push({ art: 'bar',     cent: beleg.summeBarCent })
       if (beleg.summeKarteCent !== 0) zahlungsarten.push({ art: 'karte',   cent: beleg.summeKarteCent })
       if (beleg.summeSonstigeCent !== 0) zahlungsarten.push({ art: 'sonstige', cent: beleg.summeSonstigeCent })
-
-      // Bruttogesamtbetrag
-      const bruttoCent = vorzeichen * (beleg.summeBarCent + beleg.summeKarteCent + beleg.summeSonstigeCent)
 
       // Pro Steuersatz eine Zeile
       const satzFelder: { konto: string; steuercode: string; nettoCent: number; ustCent: number; bruttoCent: number }[] = []
@@ -105,7 +106,7 @@ export const exportRoute: FastifyPluginAsync<ExportRouteOptions> = async (fastif
         const netto = Math.round(brutto / (1 + satz / 100))
         const ust   = brutto - netto
         const cfg   = MWST_ERLOES_KONTO[`${satz}%`] ?? { konto: '4000', steuercode: '000' }
-        satzFelder.push({ konto: cfg.konto, steuercode: cfg.steuercode, nettoCent: vorzeichen * netto, ustCent: vorzeichen * ust, bruttoCent: vorzeichen * brutto })
+        satzFelder.push({ konto: cfg.konto, steuercode: cfg.steuercode, nettoCent: netto, ustCent: ust, bruttoCent: brutto })
       }
 
       addSatz(normal,      20, '20%')
