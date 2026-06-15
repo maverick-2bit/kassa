@@ -9,6 +9,7 @@ import { runMigrations } from './db/migrate.js'
 import { buildServer } from './server.js'
 import { starteDepSicherungsCron } from './services/dep-sicherung.cron.js'
 import { starteDbBackupCron }      from './services/db-backup.cron.js'
+import { erstelleStubFinanzOnlineClient } from './services/finanz-online.stub.js'
 
 async function main(): Promise<void> {
   const config = loadConfig()
@@ -20,12 +21,24 @@ async function main(): Promise<void> {
 
   const { db, sql } = createDbWithPool(config.DATABASE_URL)
 
+  // FinanzOnline-Stub für lokale Entwicklung/E2E — in Produktion strikt verboten.
+  if (config.FO_STUB && config.NODE_ENV === 'production') {
+    throw new Error('FO_STUB=true ist in Produktion nicht erlaubt — eine gestubte FinanzOnline-Registrierung ist keine gültige RKSV-Anmeldung.')
+  }
+  const rksvOptionen = config.FO_STUB
+    ? { finanzOnlineClient: erstelleStubFinanzOnlineClient() }
+    : undefined
+  if (config.FO_STUB) {
+    console.warn('⚠️  FO_STUB aktiv — FinanzOnline wird gestubt (nur für Entwicklung/Test).')
+  }
+
   const server = await buildServer({
     config,
     db,
     setupDeps: {
       db,
       masterPassphrase: config.MASTER_PASSPHRASE,
+      ...(rksvOptionen && { rksvOptionen }),
     },
     belegDeps: {
       db,

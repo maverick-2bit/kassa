@@ -16,6 +16,12 @@ const ConfigSchema = z.object({
   LOG_LEVEL:         z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   CORS_ORIGIN:       z.string().default('http://localhost:5173'),
   NODE_ENV:          z.enum(['development', 'test', 'production']).default('development'),
+  /**
+   * Stubt FinanzOnline (keine echten SOAP-Calls) — für lokale Entwicklung/E2E,
+   * damit eine Kasse ohne echte FO-Testzugangsdaten eingerichtet werden kann.
+   * In Produktion verboten (index.ts bricht beim Start ab).
+   */
+  FO_STUB:           z.string().optional().default('false').transform(v => v === 'true' || v === '1'),
   /** Verzeichnis für DEP-Sicherungsdateien (absolut oder relativ zum CWD) */
   DEP_BACKUP_DIR:    z.string().default('./dep-backups'),
   /** Verzeichnis für PostgreSQL-DB-Dumps */
