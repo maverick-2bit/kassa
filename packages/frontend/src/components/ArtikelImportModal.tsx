@@ -62,7 +62,7 @@ export function ArtikelImportModal({ open, kategorien, mandantId, onClose }: Pro
     setFehlerMsg(null)
     try {
       const buffer  = await file.arrayBuffer()
-      const geparst = parseArtikelExcel(buffer, kategorien)
+      const geparst = await parseArtikelExcel(buffer, kategorien)
       if (geparst.length === 0) {
         setFehlerMsg('Keine Datenzeilen gefunden. Bitte prüfe das Format der Datei.')
         return

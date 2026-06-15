@@ -10,7 +10,8 @@
  *   (das Modal kann sie automatisch anlegen oder der User wählt eine vorhandene).
  */
 
-import * as XLSX from 'xlsx'
+// xlsx wird dynamisch importiert (siehe unten), damit die ~1 MB grosse Library
+// nicht ins Initial-Bundle wandert — sie wird nur beim Excel-Im-/Export geladen.
 import {
   MWST_LABELS,
   STATION_LABELS,
@@ -98,10 +99,11 @@ const BEISPIEL_ZEILE = [
  *                         Sonst nur ein Beispiel-Datensatz (grau, als Referenz).
  * @param kategorien       Für die Kategorie-Namen bei bestehendem Export.
  */
-export function exportArtikelVorlage(
+export async function exportArtikelVorlage(
   existingArtikel?: Artikel[],
   kategorien?: Kategorie[],
-): void {
+): Promise<void> {
+  const XLSX = await import('xlsx')
   const wb = XLSX.utils.book_new()
 
   // ---- Hauptblatt ----
@@ -244,10 +246,11 @@ export interface GeparsterArtikel {
  * Unbekannte Kategorienamen werden NICHT als Fehler gewertet –
  * das Modal kann sie automatisch anlegen.
  */
-export function parseArtikelExcel(
+export async function parseArtikelExcel(
   buffer: ArrayBuffer,
   kategorien: Kategorie[],
-): GeparsterArtikel[] {
+): Promise<GeparsterArtikel[]> {
+  const XLSX = await import('xlsx')
   const wb = XLSX.read(buffer, { type: 'array' })
   const wsName = wb.SheetNames[0]
   if (!wsName) return []

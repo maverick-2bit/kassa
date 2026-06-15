@@ -255,14 +255,14 @@ export function ArtikelPage() {
           <div className="flex items-center gap-2">
             <Button
               variant="secondary"
-              onClick={() => exportArtikelVorlage(undefined, katList.data ?? [])}
+              onClick={() => { void exportArtikelVorlage(undefined, katList.data ?? []) }}
               title="Leere Excel-Vorlage herunterladen (mit Dropdowns für Kategorie, MwSt & Station)"
             >
               Vorlage
             </Button>
             <Button
               variant="secondary"
-              onClick={() => exportArtikelVorlage(list.data ?? [], katList.data ?? [])}
+              onClick={() => { void exportArtikelVorlage(list.data ?? [], katList.data ?? []) }}
               title="Alle Artikel als Excel exportieren"
             >
               Exportieren
