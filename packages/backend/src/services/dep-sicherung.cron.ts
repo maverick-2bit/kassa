@@ -17,11 +17,20 @@ function msZumNaechsten2Uhr(): number {
   return Math.max(ziel.getTime() - wien.getTime(), 0)
 }
 
+let aktiverCron: { timer: ReturnType<typeof setTimeout>; interval: ReturnType<typeof setInterval> | null } | null = null
+
 export function starteDepSicherungsCron(
   db:        Db,
   backupDir: string,
   log:       Logger,
-): void {
+): () => void {
+  // Vorherigen Cron stoppen (Hot-Reload-Schutz)
+  if (aktiverCron) {
+    clearTimeout(aktiverCron.timer)
+    if (aktiverCron.interval) clearInterval(aktiverCron.interval)
+    aktiverCron = null
+  }
+
   async function pruefeUndSichere(): Promise<void> {
     try {
       const kassen = await findeKassenOhneSicherung(db)
@@ -42,12 +51,20 @@ export function starteDepSicherungsCron(
   void pruefeUndSichere()
 
   // Täglich um 2:00 Uhr Wien
-  function planeNaechsten(): void {
-    const delay = msZumNaechsten2Uhr()
-    setTimeout(() => {
-      void pruefeUndSichere()
-      setInterval(() => void pruefeUndSichere(), 24 * 60 * 60 * 1000)
-    }, delay)
+  const delay = msZumNaechsten2Uhr()
+  const timer = setTimeout(() => {
+    void pruefeUndSichere()
+    const interval = setInterval(() => void pruefeUndSichere(), 24 * 60 * 60 * 1000)
+    if (aktiverCron) aktiverCron.interval = interval
+  }, delay)
+
+  aktiverCron = { timer, interval: null }
+
+  return () => {
+    if (aktiverCron) {
+      clearTimeout(aktiverCron.timer)
+      if (aktiverCron.interval) clearInterval(aktiverCron.interval)
+      aktiverCron = null
+    }
   }
-  planeNaechsten()
 }

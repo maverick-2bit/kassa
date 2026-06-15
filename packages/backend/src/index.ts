@@ -4,7 +4,7 @@
  */
 
 import { loadConfig } from './config.js'
-import { createDb } from './db/client.js'
+import { createDbWithPool } from './db/client.js'
 import { runMigrations } from './db/migrate.js'
 import { buildServer } from './server.js'
 import { starteDepSicherungsCron } from './services/dep-sicherung.cron.js'
@@ -18,7 +18,7 @@ async function main(): Promise<void> {
   await runMigrations(config.DATABASE_URL)
   console.info('Migrationen abgeschlossen.')
 
-  const db     = createDb(config.DATABASE_URL)
+  const { db, sql } = createDbWithPool(config.DATABASE_URL)
 
   const server = await buildServer({
     config,
@@ -36,13 +36,56 @@ async function main(): Promise<void> {
     dbBackupRetention: config.DB_BACKUP_RETENTION,
   })
 
-  starteDepSicherungsCron(db, config.DEP_BACKUP_DIR, server.log)
-  starteDbBackupCron(db, config.DATABASE_URL, config.DB_BACKUP_DIR, config.DB_BACKUP_RETENTION, server.log)
+  const stopDepCron = starteDepSicherungsCron(db, config.DEP_BACKUP_DIR, server.log)
+  const stopDbCron  = starteDbBackupCron(db, config.DATABASE_URL, config.DB_BACKUP_DIR, config.DB_BACKUP_RETENTION, server.log)
+
+  // Letzte Auffanglinie für verirrte Fehler — protokollieren statt stillem Absturz
+  process.on('unhandledRejection', (reason) => {
+    server.log.error({ err: reason }, 'Unbehandelte Promise-Rejection')
+  })
+  process.on('uncaughtException', (err) => {
+    server.log.fatal({ err }, 'Unbehandelte Ausnahme — Prozess wird beendet')
+    // Bei einem unbekannten Fehlerzustand ist ein sauberer Neustart sicherer
+    // als ein weiterlaufender Prozess mit korrupter Laufzeit.
+    void shutdown('uncaughtException', 1)
+  })
+
+  let beendet = false
+  async function shutdown(signal: string, exitCode = 0): Promise<void> {
+    if (beendet) return
+    beendet = true
+    server.log.info(`${signal} empfangen — fahre sauber herunter…`)
+
+    // Failsafe: falls das Schließen hängt, nach 10s hart beenden
+    const failsafe = setTimeout(() => {
+      server.log.error('Graceful Shutdown überschritt 10s — erzwinge Beendigung')
+      process.exit(exitCode || 1)
+    }, 10_000)
+    failsafe.unref()
+
+    try {
+      stopDepCron()
+      stopDbCron()
+      await server.close()   // keine neuen Requests, laufende abwarten
+      await sql.end({ timeout: 5 }) // DB-Pool drainen
+      server.log.info('Sauber heruntergefahren.')
+    } catch (err) {
+      server.log.error({ err }, 'Fehler beim Herunterfahren')
+      exitCode = exitCode || 1
+    } finally {
+      clearTimeout(failsafe)
+      process.exit(exitCode)
+    }
+  }
+
+  process.on('SIGTERM', () => void shutdown('SIGTERM'))
+  process.on('SIGINT',  () => void shutdown('SIGINT'))
 
   try {
     await server.listen({ port: config.PORT, host: '0.0.0.0' })
   } catch (err) {
     server.log.error(err)
+    await sql.end({ timeout: 5 })
     process.exit(1)
   }
 }
