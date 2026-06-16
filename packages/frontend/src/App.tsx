@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, type ComponentType } from 'react'
 import { Navigate, Route, BrowserRouter as Router, Routes, useNavigate } from 'react-router-dom'
 import { Layout } from './components/Layout'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import type { Berechtigung, MandantModul } from '@kassa/shared'
 import { getAuth, hasBerechtigung, hasModul, setOnUnauthorized } from './lib/auth'
 import { getKasseIdentity } from './lib/kasse'
@@ -81,6 +82,7 @@ function AppRoutes() {
   }, [navigate])
 
   return (
+    <ErrorBoundary>
     <Suspense fallback={<SeitenLader />}>
       <Routes>
         <Route path="/setup" element={<SetupPage />} />
@@ -126,6 +128,7 @@ function AppRoutes() {
         <Route path="*" element={<Navigate to={getInitialRoute()} replace />} />
       </Routes>
     </Suspense>
+    </ErrorBoundary>
   )
 }
 

@@ -1,25 +1,32 @@
 import { Suspense } from 'react'
-import { NavLink, Outlet, useNavigate, Link } from 'react-router-dom'
+import { NavLink, Outlet, useNavigate, useLocation, Link } from 'react-router-dom'
 import { useQueries } from '@tanstack/react-query'
 import { clearAuth, getAuth, hasBerechtigung, hasModul } from '../lib/auth'
 import { kasseApi } from '../lib/api'
 import { KdsToasts } from './KdsToasts'
 import { KdsNachrichten } from './KdsNachrichten'
 import { OfflineStatusBar } from './OfflineStatusBar'
+import { ErrorBoundary } from './ErrorBoundary'
 
 export function Layout() {
+  const location = useLocation()
   return (
     <div className="min-h-screen flex flex-col">
       <OfflineStatusBar />
       <Header />
       <main className="flex-1">
-        <Suspense fallback={
-          <div className="flex items-center justify-center py-20">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-300 border-t-gray-700" />
-          </div>
-        }>
-          <Outlet />
-        </Suspense>
+        {/* ErrorBoundary pro Route: ein Defekt in einer Seite legt nicht die
+            ganze Kasse lahm; Header/Nav bleiben bedienbar. resetKey=Pfad sorgt
+            dafuer, dass der Fehler beim Wegnavigieren verschwindet. */}
+        <ErrorBoundary resetKey={location.pathname}>
+          <Suspense fallback={
+            <div className="flex items-center justify-center py-20">
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-300 border-t-gray-700" />
+            </div>
+          }>
+            <Outlet />
+          </Suspense>
+        </ErrorBoundary>
       </main>
       <footer className="border-t border-gray-100 py-2 text-center">
         <span className="text-[11px] text-gray-400 select-none">
