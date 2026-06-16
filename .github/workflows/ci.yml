@@ -34,6 +34,9 @@ jobs:
       - name: Abhängigkeiten installieren
         run: pnpm install --frozen-lockfile
 
+      - name: Migrations-Integrität prüfen (Journal ↔ SQL-Dateien)
+        run: pnpm --filter @kassa/backend check:migrations
+
       - name: Bauen (alle Pakete)
         run: pnpm build
 
@@ -86,11 +89,90 @@ jobs:
         env:
           TEST_DATABASE_URL: postgresql://kassa:kassa@localhost:5432/kassa
 
-  # ── Docker-Images bauen (nur auf master, nach erfolgreichem Test) ─────────────
+  # ── Dependency-Audit (Build rot bei high/critical) ───────────────────────────
+  audit:
+    name: Security-Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: pnpm einrichten
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Node.js einrichten
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Abhängigkeiten installieren
+        run: pnpm install --frozen-lockfile
+
+      # Schlägt nur bei high/critical fehl; moderate/low werden gemeldet, brechen
+      # den Build aber nicht (sonst Dauer-Rot durch Advisories ohne Fix).
+      - name: Produktions-Abhängigkeiten auditieren
+        run: pnpm audit --prod --audit-level high
+
+  # ── End-to-End (Playwright, echtes PostgreSQL, FinanzOnline gestubt) ──────────
+  e2e:
+    name: E2E
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER:     kassa
+          POSTGRES_PASSWORD: kassa
+          POSTGRES_DB:       kassa
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U kassa"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: pnpm einrichten
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Node.js einrichten
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Abhängigkeiten installieren
+        run: pnpm install --frozen-lockfile
+
+      # @kassa/shared + @kassa/rksv bauen (Backend via tsx und Frontend-Build
+      # importieren daraus). Der E2E-Runner baut das Frontend selbst (vite build).
+      - name: Backend-Abhängigkeiten bauen
+        run: pnpm --filter @kassa/backend... build
+
+      - name: Playwright-Browser installieren
+        run: pnpm --filter @kassa/frontend exec playwright install --with-deps chromium
+
+      - name: E2E ausführen
+        run: pnpm --filter @kassa/frontend test:e2e
+        env:
+          E2E_BASIS_DATABASE_URL: postgresql://kassa:kassa@localhost:5432/kassa
+
+  # ── Docker-Images bauen (nur auf master, nach allen grünen Gates) ─────────────
   docker:
     name: Docker Build
     runs-on: ubuntu-latest
-    needs: test
+    needs: [test, integration, e2e]
     if: github.ref == 'refs/heads/master' && github.event_name == 'push'
 
     steps:

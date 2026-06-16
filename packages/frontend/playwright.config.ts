@@ -27,10 +27,10 @@ export default defineConfig({
   },
   webServer: [
     {
-      // Backend gegen die frische E2E-DB, FinanzOnline gestubt.
-      // --env-file=.env liefert die Secrets; gesetzte process.env-Variablen
-      // (DATABASE_URL, FO_STUB, …) haben Vorrang vor der .env-Datei.
-      command: 'npx tsx --env-file=.env src/index.ts',
+      // Backend gegen die frische E2E-DB, FinanzOnline gestubt. Alle benoetigten
+      // Variablen kommen direkt aus env (KEIN --env-file=.env) — so laeuft der
+      // E2E-Lauf auch in CI ohne Secret-Management oder .env-Datei.
+      command: 'npx tsx src/index.ts',
       cwd: backendDir,
       // Auf echte Bereitschaft warten (HTTP 200), nicht nur auf den offenen Port —
       // sonst rennt der erste Request gegen ein noch migrierendes Backend.
@@ -38,11 +38,13 @@ export default defineConfig({
       reuseExistingServer: false,
       timeout: 90_000,
       env: {
-        DATABASE_URL: E2E_DB_URL,
-        FO_STUB:      'true',
-        NODE_ENV:     'test',
-        PORT:         '3000',
-        LOG_LEVEL:    'warn',
+        DATABASE_URL:      E2E_DB_URL,
+        FO_STUB:           'true',
+        NODE_ENV:          'test',
+        PORT:              '3000',
+        LOG_LEVEL:         'warn',
+        MASTER_PASSPHRASE: 'e2e-master-passphrase-0123456789',
+        JWT_SECRET:        'e2e-jwt-secret-key-mindestens-32-zeichen-lang',
       },
     },
     {
