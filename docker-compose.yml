@@ -36,8 +36,10 @@ services:
       NODE_ENV:          production
       DB_BACKUP_DIR:     /data/db-backups
       DB_BACKUP_RETENTION: ${DB_BACKUP_RETENTION:-30}
+      DEP_BACKUP_DIR:    /data/dep-backups
     volumes:
       - db_backups:/data/db-backups
+      - dep_backups:/data/dep-backups
     healthcheck:
       # wget ist in alpine enthalten; node:22-alpine bringt es mit
       test:         ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health | grep -q 'ok'"]
@@ -106,6 +108,35 @@ services:
     ports:
       - "${KELLNER_PORT:-8083}:80"
 
+  # ── Off-Site-Backup (restic → S3-kompatibel) ────────────────────────────────
+  # Schiebt die vom Backend erzeugten DB- und DEP-Sicherungen verschlüsselt und
+  # dedupliziert an externen Object-Storage. Ohne RESTIC_REPOSITORY/RESTIC_PASSWORD
+  # tut der Service nichts (loggt eine Warnung) — Backup ist also opt-in.
+  backup:
+    image: restic/restic:0.17.3
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "/restic-backup.sh"]
+    depends_on:
+      - backend
+    environment:
+      RESTIC_REPOSITORY:     ${RESTIC_REPOSITORY:-}
+      RESTIC_PASSWORD:       ${RESTIC_PASSWORD:-}
+      AWS_ACCESS_KEY_ID:     ${RESTIC_S3_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${RESTIC_S3_SECRET_ACCESS_KEY:-}
+      # Aufbewahrung im externen Repo (restic forget --prune)
+      RESTIC_KEEP_DAILY:     ${RESTIC_KEEP_DAILY:-14}
+      RESTIC_KEEP_WEEKLY:    ${RESTIC_KEEP_WEEKLY:-8}
+      RESTIC_KEEP_MONTHLY:   ${RESTIC_KEEP_MONTHLY:-84}   # 7 Jahre (RKSV-Aufbewahrung)
+      # Lauf-Uhrzeit (Stunde, lokale Containerzeit) — nach den Backend-Crons (2-3 Uhr)
+      BACKUP_STUNDE:         ${BACKUP_STUNDE:-4}
+    volumes:
+      - db_backups:/data/db-backups:ro
+      - dep_backups:/data/dep-backups:ro
+      - restic_cache:/root/.cache/restic
+      - ./ops/backup/restic-backup.sh:/restic-backup.sh:ro
+
 volumes:
   postgres_data:
   db_backups:
+  dep_backups:
+  restic_cache:
