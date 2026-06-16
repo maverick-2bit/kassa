@@ -100,6 +100,12 @@ S3-kompatiblen Object-Storage. Aktivierung über `.env`
 (`RESTIC_REPOSITORY`, `RESTIC_PASSWORD`, S3-Zugangsdaten — siehe `.env.example`).
 Ohne diese Variablen ist der Service inaktiv.
 
+Der Backup-Service hat einen **Healthcheck**: er wird *unhealthy*, sobald der
+letzte erfolgreiche Off-Site-Lauf älter als `BACKUP_MAX_AGE_STUNDEN` (Default 26 h)
+ist — sichtbar in `docker ps` und für externes Monitoring abgreifbar. Beim Start
+läuft sofort ein erstes Backup, danach täglich. Status prüfen:
+`docker compose ps backup` (Spalte STATUS) bzw. `docker compose logs backup`.
+
 **Restore-Runbook:**
 ```bash
 # 1. Sicherungen aus dem Off-Site-Repo holen

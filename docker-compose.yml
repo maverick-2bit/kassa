@@ -133,10 +133,21 @@ services:
       - db_backups:/data/db-backups:ro
       - dep_backups:/data/dep-backups:ro
       - restic_cache:/root/.cache/restic
+      - backup_status:/status
       - ./ops/backup/restic-backup.sh:/restic-backup.sh:ro
+      - ./ops/backup/restic-healthcheck.sh:/restic-healthcheck.sh:ro
+    healthcheck:
+      # Ungesund, wenn das letzte erfolgreiche Backup zu alt ist (oder nie lief).
+      # Deaktiviertes Backup (kein Repo) gilt als gesund.
+      test:         ["CMD", "/bin/sh", "/restic-healthcheck.sh"]
+      interval:     1h
+      timeout:      10s
+      retries:      2
+      start_period: 30m   # Zeit für den initialen Backup-Lauf beim Start
 
 volumes:
   postgres_data:
   db_backups:
   dep_backups:
   restic_cache:
+  backup_status:
