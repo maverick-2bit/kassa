@@ -9,3 +9,7 @@ coverage/
 # Playwright E2E-Artefakte
 test-results/
 playwright-report/
+
+# Backend-Runtime-Ausgaben (DEP- und DB-Backups)
+dep-backups/
+db-backups/
