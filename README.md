@@ -79,8 +79,62 @@ CI sicher, dass Journal und SQL-Dateien 1:1 übereinstimmen.
   ist kein Schlüssel mehr entschlüsselbar und jede Kasse muss neu eingerichtet
   werden — sicher und dauerhaft aufbewahren.
 
-## CI
+### Topologie: eine Box pro Lokal
+
+Empfohlen wird **ein eigener Rechner (Mini-PC/NUC) pro Lokal**, der Backend,
+Postgres und die Frontends via Docker Compose betreibt. Das passt zur
+Single-Instance-Architektur und dazu, dass Drucker (ESC/POS) und Kartenterminal
+(ZVT) per TCP im **lokalen Netz** erreichbar sein müssen.
+
+**Autostart nach Stromausfall:** Docker am Host beim Boot aktivieren
+(`systemctl enable docker`); die Services haben `restart: unless-stopped` und
+starten dann automatisch wieder.
+
+### Off-Site-Backup (dringend empfohlen)
+
+Postgres-Daten und die lokalen Sicherungen liegen sonst nur auf der Box — bei
+Defekt/Diebstahl wären die Fiskaldaten (7 Jahre Aufbewahrungspflicht) verloren.
+Der optionale `backup`-Service (siehe `docker-compose.yml`) schiebt die vom
+Backend erzeugten DB- und DEP-Sicherungen mit **restic** verschlüsselt an
+S3-kompatiblen Object-Storage. Aktivierung über `.env`
+(`RESTIC_REPOSITORY`, `RESTIC_PASSWORD`, S3-Zugangsdaten — siehe `.env.example`).
+Ohne diese Variablen ist der Service inaktiv.
+
+Der Backup-Service hat einen **Healthcheck**: er wird *unhealthy*, sobald der
+letzte erfolgreiche Off-Site-Lauf älter als `BACKUP_MAX_AGE_STUNDEN` (Default 26 h)
+ist — sichtbar in `docker ps` und für externes Monitoring abgreifbar. Beim Start
+läuft sofort ein erstes Backup, danach täglich. Status prüfen:
+`docker compose ps backup` (Spalte STATUS) bzw. `docker compose logs backup`.
+
+**Restore-Runbook:**
+```bash
+# 1. Sicherungen aus dem Off-Site-Repo holen
+docker run --rm -e RESTIC_REPOSITORY=... -e RESTIC_PASSWORD=... \
+  -e AWS_ACCESS_KEY_ID=... -e AWS_SECRET_ACCESS_KEY=... \
+  -v "$PWD/restore:/restore" restic/restic:0.17.3 restore latest --target /restore
+# 2. Jüngsten Postgres-Dump aus restore/data/db-backups in die DB einspielen
+#    (Format/Befehl siehe db-backup.service); danach Stack starten:
+docker compose up -d
+```
+
+### RKSV-Ausfallprozedur
+
+Steht die Box (Hardware/Strom), kann nicht signiert werden. Gemäß RKSV:
+Geschäftsfälle weiter aufzeichnen (Papierbeleg/Notlösung), den Ausfall
+dokumentieren und nach Wiederherstellung die Belege nacherfassen. Dauert der
+Ausfall länger als 48 h, ist er FinanzOnline zu melden. Der Frontend-Offline-
+Modus (Service Worker/IndexedDB) puffert die Bedienung, ersetzt aber **nicht**
+die Signierung — die braucht das Backend.
+
+## CI / Deployment
 
 `.github/workflows/ci.yml` (push/PR auf `master`):
 Build + Unit-Tests, Migrations-Integrität, Integrationstests (Postgres-Service),
-E2E (Playwright), Security-Audit (Build rot bei high/critical), Docker-Builds.
+E2E (Playwright), Security-Audit (Build rot bei high/critical).
+
+Auf `master`-Push werden zusätzlich versionierte Docker-Images nach **GHCR**
+gepusht (`ghcr.io/<owner>/kassa-<service>:latest` + `:<sha>`). Deployment auf der
+Box: gewünschtes `:<sha>`-Tag in der Compose-Datei pinnen und `docker compose pull
+&& docker compose up -d`. Rollback = vorheriges `:<sha>`-Tag erneut ausrollen.
+Eine Fiskalkasse **nie** automatisch (z. B. Watchtower) aktualisieren — Updates
+immer kontrolliert und getestet einspielen.
