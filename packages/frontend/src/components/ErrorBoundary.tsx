@@ -3,9 +3,9 @@ import { Component, type ErrorInfo, type ReactNode } from 'react'
 interface Props {
   children: ReactNode
   /** Optionaler Reset-Schluessel — aendert er sich, wird die Boundary zurueckgesetzt. */
-  resetKey?: string
+  resetKey?: string | undefined
 }
-interface State { fehler: Error | null; vorigerKey?: string }
+interface State { fehler: Error | null; vorigerKey?: string | undefined }
 
 /**
  * Faengt Render-/Lazy-Load-Fehler ab, damit ein Defekt in EINEM Bereich nicht
