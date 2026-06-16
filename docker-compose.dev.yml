@@ -1,0 +1,26 @@
+# =============================================================================
+# Dev-Override für lokale Entwicklung / Ausprobieren.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+#
+# Bringt eine voll lauffähige Kasse hoch — OHNE echte FinanzOnline-Zugangsdaten
+# (FO_STUB) und OHNE eigene .env (Dev-Default-Secrets). Damit kann man die
+# Kassen-Einrichtung und das Kassieren komplett lokal durchspielen.
+#
+# ⚠️  NIEMALS in Produktion verwenden: FO_STUB stubt die FinanzOnline-
+#     Registrierung (keine gültige RKSV-Anmeldung) und die Secrets sind öffentlich.
+#     Das Backend verweigert FO_STUB=true ohnehin bei NODE_ENV=production.
+# =============================================================================
+services:
+  postgres:
+    environment:
+      POSTGRES_PASSWORD: kassa
+
+  backend:
+    environment:
+      DATABASE_URL:      postgresql://kassa:kassa@postgres:5432/kassa
+      MASTER_PASSPHRASE: dev-master-passphrase-min-16-zeichen
+      JWT_SECRET:        dev-jwt-secret-mindestens-32-zeichen-lang-0123456789
+      NODE_ENV:          development
+      FO_STUB:           "true"
+      CORS_ORIGIN:       http://localhost
