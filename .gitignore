@@ -5,3 +5,7 @@ dist/
 .env
 .env.local
 coverage/
+
+# Playwright E2E-Artefakte
+test-results/
+playwright-report/
