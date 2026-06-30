@@ -84,6 +84,12 @@ interface SigniereInput {
   /** Kunden-Zuordnung (optional, nur bei Barzahlungsbeleg) */
   kundeId?:       string | undefined
   kundeSnapshot?: KundeSnapshot | undefined
+  /**
+   * SEE-Wiederinbetriebnahme: erzwingt echte Signierung (ignoriert ein
+   * gesetztes seeAusgefallenSeit) und setzt das Ausfall-Flag bei Erfolg zurück.
+   * Schlägt die Signierung fehl, rollt die Transaktion zurück → Ausfall bleibt.
+   */
+  wiederherstellung?: boolean
 }
 
 async function signiereImTx(
@@ -141,7 +147,28 @@ async function signiereImTx(
       belegTyp:     input.belegTyp,
       positionen,
     }
-    const signed = signiereBeleg(raw, kontext)
+    // Signieren — mit SEE-Ausfallbehandlung:
+    //  - Ausfall aktiv (Flag gesetzt): Beleg trägt den Ausfallmarker statt Signatur.
+    //  - Wiederherstellung: erzwingt echte Signierung; scheitert sie, propagiert
+    //    der Fehler und rollt die Transaktion zurück (Ausfall bleibt bestehen).
+    //  - Normalfall: scheitert die ECDSA-Signierung, wird automatisch in den
+    //    Ausfallmodus gewechselt (Beleg mit Marker), Zähler vorher zurückgesetzt.
+    const ausfallAktiv = kasse.seeAusgefallenSeit != null && !input.wiederherstellung
+    let signed: SignedBeleg
+    let ausfallNeuErkannt = false
+
+    if (ausfallAktiv) {
+      signed = signiereBeleg(raw, kontext, { ausfallModus: true })
+    } else {
+      try {
+        signed = signiereBeleg(raw, kontext)
+      } catch (signErr) {
+        if (input.wiederherstellung) throw signErr
+        umsatzzaehler.setze(kasse.umsatzzaehlerCent)
+        signed = signiereBeleg(raw, kontext, { ausfallModus: true })
+        ausfallNeuErkannt = true
+      }
+    }
 
     // Optional: Zahlungssumme prüfen
     if (input.validatePayment) {
@@ -183,14 +210,18 @@ async function signiereImTx(
     if (!persisted) throw new BelegError(500, 'Beleg konnte nicht gespeichert werden')
 
     // Kasse aktualisieren
-    await tx.update(kassen)
-      .set({
-        umsatzzaehlerCent:   umsatzzaehler.aktuell,
-        letzteBelegNummer:   signed.belegNummer,
-        letzterSignaturwert: signed.signaturwert,
-        updatedAt:           new Date(),
-      })
-      .where(eq(kassen.id, kasse.id))
+    const kasseUpdate: Partial<typeof kassen.$inferInsert> = {
+      umsatzzaehlerCent:   umsatzzaehler.aktuell,
+      letzteBelegNummer:   signed.belegNummer,
+      letzterSignaturwert: signed.signaturwert,
+      updatedAt:           new Date(),
+    }
+    if (input.wiederherstellung) {
+      kasseUpdate.seeAusgefallenSeit = null            // SEE wieder in Betrieb
+    } else if (ausfallNeuErkannt && kasse.seeAusgefallenSeit == null) {
+      kasseUpdate.seeAusgefallenSeit = new Date()       // Ausfall erstmals erkannt
+    }
+    await tx.update(kassen).set(kasseUpdate).where(eq(kassen.id, kasse.id))
 
     return { signed, persisted }
   })
@@ -453,6 +484,96 @@ export async function erstelleJahresbeleg(input: JahresbelegInput, deps: BelegSe
   // via BMF FinanzOnline App (Belegcheck, QR-Code scannen) — gesetzlich vorgeschrieben
   // gemäß RKSV § 8 Abs. 3. Das Frontend zeigt nach der Erstellung einen Prüfhinweis.
   return erstelleNullartigenBeleg('Jahresbeleg', input.kasseId, deps)
+}
+
+// ---------------------------------------------------------------------------
+// SEE-Ausfall / Wiederinbetriebnahme
+// ---------------------------------------------------------------------------
+
+/** RKSV: Ein Ausfall ab dieser Dauer ist FinanzOnline zu melden (48 Stunden). */
+const FON_MELDE_SCHWELLE_MIN = 48 * 60
+
+export interface SeeStatus {
+  ausgefallen:      boolean
+  /** ISO-Zeitstempel des Ausfallbeginns, null wenn in Betrieb */
+  seit:             string | null
+  dauerMinuten:     number | null
+  /** true, wenn die Ausfalldauer die FinanzOnline-Meldeschwelle (48h) erreicht */
+  fonMeldungNoetig: boolean
+}
+
+function baueSeeStatus(seit: Date | null, bezug: Date = new Date()): SeeStatus {
+  if (!seit) return { ausgefallen: false, seit: null, dauerMinuten: null, fonMeldungNoetig: false }
+  const dauerMinuten = Math.max(0, Math.floor((bezug.getTime() - seit.getTime()) / 60_000))
+  return {
+    ausgefallen:      true,
+    seit:             seit.toISOString(),
+    dauerMinuten,
+    fonMeldungNoetig: dauerMinuten >= FON_MELDE_SCHWELLE_MIN,
+  }
+}
+
+/** Aktuellen SEE-Status einer Kasse abfragen. */
+export async function holeSeeStatus(kasseId: string, deps: BelegServiceDeps): Promise<SeeStatus> {
+  const rows = await deps.db
+    .select({ seit: kassen.seeAusgefallenSeit })
+    .from(kassen).where(eq(kassen.id, kasseId)).limit(1)
+  if (!rows[0]) throw new BelegError(404, 'Kasse nicht gefunden')
+  return baueSeeStatus(rows[0].seit)
+}
+
+/**
+ * SEE-Ausfall melden: ab sofort tragen neue Belege den Ausfallmarker statt einer
+ * Signatur. Idempotent — ein bereits laufender Ausfall behält seinen Beginn.
+ */
+export async function meldeSeeAusfall(kasseId: string, deps: BelegServiceDeps): Promise<SeeStatus> {
+  return deps.db.transaction(async (tx) => {
+    const rows = await tx.select().from(kassen).where(eq(kassen.id, kasseId)).for('update')
+    const kasse = rows[0]
+    if (!kasse) throw new BelegError(404, 'Kasse nicht gefunden')
+    if (kasse.seeAusgefallenSeit != null) return baueSeeStatus(kasse.seeAusgefallenSeit)
+
+    const jetzt = new Date()
+    await tx.update(kassen)
+      .set({ seeAusgefallenSeit: jetzt, updatedAt: jetzt })
+      .where(eq(kassen.id, kasseId))
+    return baueSeeStatus(jetzt, jetzt)
+  })
+}
+
+export interface WiederherstellungErgebnis {
+  /** Status vor der Wiederherstellung (Dauer des Ausfalls). */
+  behobenerAusfall: SeeStatus
+  /** Signierter Nullbeleg als Nachweis der Wiederinbetriebnahme. */
+  sammelbeleg:      BelegResponse
+}
+
+/**
+ * SEE-Wiederinbetriebnahme: erstellt einen signierten Nullbeleg (Sammelbeleg)
+ * als Nachweis und setzt das Ausfall-Flag zurück — beides atomar. Gelingt die
+ * Signierung nicht (SEE weiterhin gestört), bleibt der Ausfall bestehen.
+ */
+export async function meldeSeeWiederherstellung(
+  kasseId: string,
+  deps:    BelegServiceDeps,
+): Promise<WiederherstellungErgebnis> {
+  const vorher = await deps.db
+    .select({ seit: kassen.seeAusgefallenSeit })
+    .from(kassen).where(eq(kassen.id, kasseId)).limit(1)
+  if (!vorher[0]) throw new BelegError(404, 'Kasse nicht gefunden')
+  if (vorher[0].seit == null) throw new BelegError(409, 'Kein SEE-Ausfall aktiv')
+
+  const behobenerAusfall = baueSeeStatus(vorher[0].seit)
+
+  const { signed, persisted } = await signiereImTx({
+    kasseId,
+    belegTyp:          'Nullbeleg',
+    belegDaten:        { positionen: [], zahlung: NULL_ZAHLUNG },
+    validatePayment:   false,
+    wiederherstellung: true,
+  }, deps)
+
+  return { behobenerAusfall, sammelbeleg: toDto(persisted, signed.positionen) }
 }
 
 // ---------------------------------------------------------------------------

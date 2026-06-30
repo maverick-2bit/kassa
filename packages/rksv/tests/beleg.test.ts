@@ -18,6 +18,8 @@ import {
   erstelleStartbeleg,
   berechneBetraege,
   verifiziereBelegSignatur,
+  SEE_AUSFALL_SIGNATUR,
+  istAusfallBeleg,
   Umsatzzaehler,
   type SignierungsKontext,
 } from '../src/beleg.js'
@@ -269,6 +271,72 @@ describe('verifiziereBelegSignatur (Tamper-Detection)', () => {
     const beleg = signiereBarzahlung(2000)
     const fremd = await generateSEE({ kassenId: 'ANDERE-KASSE', uid: 'ATU00000000', firmenname: 'Fremd GmbH' })
     expect(verifiziereBelegSignatur(beleg, fremd.zertifikatDER)).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// SEE-Ausfall
+// ---------------------------------------------------------------------------
+
+describe('signiereBeleg – SEE-Ausfallmodus', () => {
+  function barzahlung(belegNummer: number, betragCent: number, kontext: SignierungsKontext, ausfall: boolean) {
+    return signiereBeleg({
+      kassenId:     'TEST-KASSE-001',
+      belegNummer,
+      datumUhrzeit: new Date('2026-04-01T09:00:00'),
+      belegTyp:     'Barzahlungsbeleg',
+      positionen: [{ bezeichnung: 'Test', menge: 1, einzelpreisBreutto: betragCent, mwstSatz: 'normal' }],
+    }, kontext, { ausfallModus: ausfall })
+  }
+
+  it('setzt den BMF-Marker statt einer ECDSA-Signatur', () => {
+    const { kontext } = erstelleStartbeleg('TEST-KASSE-001', see)
+    kontext.letzterSignaturwert = 'startbelegSig'
+    const beleg = barzahlung(2, 2000, kontext, true)
+
+    expect(beleg.signaturwert).toBe(SEE_AUSFALL_SIGNATUR)
+    expect(beleg.ausgefallen).toBe(true)
+    expect(istAusfallBeleg(beleg.signaturwert)).toBe(true)
+    expect(beleg.maschinenlesbareCode.endsWith(`_${SEE_AUSFALL_SIGNATUR}`)).toBe(true)
+    // Marker dekodiert zur lesbaren BMF-Zeichenkette
+    expect(Buffer.from(beleg.signaturwert, 'base64url').toString('utf8'))
+      .toBe('Sicherheitseinrichtung ausgefallen')
+  })
+
+  it('verschlüsselt den Umsatzzähler weiterhin und erhöht ihn', () => {
+    const { kontext } = erstelleStartbeleg('TEST-KASSE-001', see)
+    kontext.letzterSignaturwert = 'sig'
+    const vorher = kontext.umsatzzaehler.aktuell
+
+    const beleg = barzahlung(2, 1500, kontext, true)
+
+    expect(kontext.umsatzzaehler.aktuell).toBe(vorher + 1500n)
+    expect(beleg.umsatzzaehlerVerschluesselt).toBeTruthy()
+    const decrypted = entschluesselUmsatzzaehler(
+      Buffer.from(beleg.umsatzzaehlerVerschluesselt, 'base64url'), see.zertifikatDER, see.kassenId, 2,
+    )
+    expect(decrypted).toBe(vorher + 1500n)
+  })
+
+  it('ein Ausfallbeleg verifiziert NICHT gegen das Zertifikat', () => {
+    const { kontext } = erstelleStartbeleg('TEST-KASSE-001', see)
+    kontext.letzterSignaturwert = 'sig'
+    const beleg = barzahlung(2, 2000, kontext, true)
+    expect(verifiziereBelegSignatur(beleg, see.zertifikatDER)).toBe(false)
+  })
+
+  it('die Kette läuft über den Ausfall hinweg weiter (Marker → Folgebeleg)', () => {
+    const { beleg: start, kontext } = erstelleStartbeleg('TEST-KASSE-001', see)
+
+    const ausfall = barzahlung(2, 1000, kontext, true)
+    kontext.letzterSignaturwert = ausfall.signaturwert // = Marker
+
+    const danach = barzahlung(3, 500, kontext, false) // SEE wieder da, normal signiert
+    kontext.letzterSignaturwert = danach.signaturwert
+
+    // sigVorbeleg des Folgebelegs hängt am (Marker-)Signaturwert des Vorbelegs
+    expect(istAusfallBeleg(danach.signaturwert)).toBe(false)
+    expect(pruefeKette([start, ausfall, danach])).toBe(true)
   })
 })
 
