@@ -19,7 +19,7 @@ export type OfflineEvent =
 
 type OfflineListener = (event: OfflineEvent) => void
 
-class OfflineManager {
+export class OfflineManager {
   private listeners:   Set<OfflineListener> = new Set()
   private _online:     boolean              = navigator.onLine
   private _queueCount: number               = 0
