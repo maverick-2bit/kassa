@@ -2,8 +2,15 @@ import type { FastifyPluginAsync } from 'fastify'
 import { sql } from 'drizzle-orm'
 import os from 'node:os'
 import type { Db } from '../db/client.js'
+import { holeBackupStatus } from '../services/monitoring.service.js'
 
-export interface MonitoringRouteOptions { db: Db }
+export interface MonitoringRouteOptions {
+  db: Db
+  /** Token für den externen Monitoring-Endpoint; leer = Endpoint deaktiviert. */
+  monitoringToken?: string | undefined
+  dbBackupMaxStunden:  number
+  depBackupMaxStunden: number
+}
 
 const START_TIME = Date.now()
 
@@ -12,6 +19,35 @@ const require = createRequire(import.meta.url)
 const { version } = require('../../package.json') as { version: string }
 
 export const monitoringRoute: FastifyPluginAsync<MonitoringRouteOptions> = async (fastify, opts) => {
+
+  // ── Externer Monitoring-Endpoint (token-geschützt, für Uptime-Monitore) ──────
+  // 200 = gesund, 503 = degradiert (DB weg ODER eine Sicherung veraltet).
+  // Ohne MONITORING_TOKEN deaktiviert (404).
+  fastify.get<{ Querystring: { token?: string } }>('/api/monitoring/status', async (request, reply) => {
+    if (!opts.monitoringToken) {
+      return reply.status(404).send({ fehler: 'Monitoring-Endpoint nicht konfiguriert' })
+    }
+    if (request.query.token !== opts.monitoringToken) {
+      return reply.status(401).send({ fehler: 'Ungültiges Token' })
+    }
+
+    let dbOk = false
+    try { await opts.db.execute(sql`SELECT 1`); dbOk = true } catch { /* DB weg */ }
+
+    const backups = await holeBackupStatus(opts.db, opts.dbBackupMaxStunden, opts.depBackupMaxStunden)
+    const gesund  = dbOk && backups.gesund
+
+    return reply.status(gesund ? 200 : 503).send({
+      status:    gesund ? 'ok' : 'degraded',
+      timestamp: new Date().toISOString(),
+      version,
+      checks: {
+        db:        dbOk ? 'ok' : 'unreachable',
+        dbBackup:  backups.dbBackup,
+        depBackup: backups.depBackup,
+      },
+    })
+  })
 
   fastify.get('/api/admin/monitoring', {
     onRequest: [fastify.authenticate],
@@ -44,6 +80,9 @@ export const monitoringRoute: FastifyPluginAsync<MonitoringRouteOptions> = async
     const freeMem = os.freemem()
     const totalMem = os.totalmem()
 
+    // Backup-Frische (DB-Dump + DEP-Archiv)
+    const backups = await holeBackupStatus(opts.db, opts.dbBackupMaxStunden, opts.depBackupMaxStunden)
+
     return reply.send({
       timestamp:  new Date().toISOString(),
       uptimeSek,
@@ -54,6 +93,7 @@ export const monitoringRoute: FastifyPluginAsync<MonitoringRouteOptions> = async
         ok:       dbOk,
         latenzMs: dbLatenzMs,
       },
+      backups,
       memory: {
         heapUsedMb:  toMb(mem.heapUsed),
         heapTotalMb: toMb(mem.heapTotal),

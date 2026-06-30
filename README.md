@@ -106,6 +106,10 @@ ist — sichtbar in `docker ps` und für externes Monitoring abgreifbar. Beim St
 läuft sofort ein erstes Backup, danach täglich. Status prüfen:
 `docker compose ps backup` (Spalte STATUS) bzw. `docker compose logs backup`.
 
+**Backup verifizieren (auf der Box):** `./ops/backup/test-backup.sh` löst einen
+Backup-Lauf aus, prüft Repository-Erreichbarkeit, macht eine Restore-Probe und
+zeigt den Healthcheck-Status — bricht beim ersten Fehler ab.
+
 **Restore-Runbook:**
 ```bash
 # 1. Sicherungen aus dem Off-Site-Repo holen
@@ -116,6 +120,23 @@ docker run --rm -e RESTIC_REPOSITORY=... -e RESTIC_PASSWORD=... \
 #    (Format/Befehl siehe db-backup.service); danach Stack starten:
 docker compose up -d
 ```
+
+### Externes Monitoring
+
+Der Endpoint **`GET /api/monitoring/status?token=<MONITORING_TOKEN>`** liefert
+maschinenlesbar den DB- und Backup-Frische-Status und antwortet mit **HTTP 200**
+(gesund) bzw. **503** (degradiert — DB nicht erreichbar ODER eine Sicherung älter
+als `DB_/DEP_BACKUP_MAX_AGE_STUNDEN`). Ohne gesetztes `MONITORING_TOKEN` ist der
+Endpoint deaktiviert (404).
+
+Einen Uptime-Monitor (z. B. **Healthchecks.io**, **Uptime Kuma**) auf diese URL
+zeigen lassen — er alarmiert dann bei 503 oder Nichterreichbarkeit über den
+gewünschten Kanal (E-Mail, Push, Slack …). So fällt auf der unbeaufsichtigten
+Box ein gestopptes Backup oder DB-Ausfall sofort auf. `fehlt` (noch keine
+Sicherung) gilt bewusst NICHT als degradiert (frische Installation).
+
+Eine detaillierte Live-Übersicht (DB-Latenz, Speicher/CPU, Backup-Block) bietet
+zusätzlich `GET /api/admin/monitoring` (Admin-Login erforderlich).
 
 ### RKSV-Ausfallprozedur
 
