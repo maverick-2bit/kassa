@@ -106,6 +106,10 @@ ist — sichtbar in `docker ps` und für externes Monitoring abgreifbar. Beim St
 läuft sofort ein erstes Backup, danach täglich. Status prüfen:
 `docker compose ps backup` (Spalte STATUS) bzw. `docker compose logs backup`.
 
+**Backup verifizieren (auf der Box):** `./ops/backup/test-backup.sh` löst einen
+Backup-Lauf aus, prüft Repository-Erreichbarkeit, macht eine Restore-Probe und
+zeigt den Healthcheck-Status — bricht beim ersten Fehler ab.
+
 **Restore-Runbook:**
 ```bash
 # 1. Sicherungen aus dem Off-Site-Repo holen
