@@ -24,6 +24,14 @@ import { angebotApi, artikelApi, belegApi, bonierApi, gutscheinApi, kategorieApi
 import { getKasseIdentity } from '../lib/kasse'
 import { getAuth, hasBerechtigung } from '../lib/auth'
 import { formatPreis } from '../lib/format'
+import {
+  positionsPreisCent,
+  warenkorbSummeCent,
+  rabattBetragCent,
+  preisNachPositionsRabattCent,
+  barEingabeCent,
+  zahlungsAufteilung,
+} from '../lib/warenkorb'
 import { druckeAngebot, druckeGutschein, druckeLiferschein } from '../lib/rechnung'
 import { Button } from '../components/ui/Button'
 import { Modal } from '../components/ui/Modal'
@@ -169,16 +177,8 @@ export function KassePage() {
     return map
   }, [modGruppenQuery.data, modZuweisungenQuery.data])
 
-  const summeCent = useMemo(
-    () => korb.reduce((sum, p) => sum + p.preisCent * p.menge, 0),
-    [korb],
-  )
-
-  const rabattCent = useMemo(() => {
-    if (!rabatt || summeCent === 0) return 0
-    if (rabatt.typ === 'prozent') return Math.round(summeCent * rabatt.prozent / 100)
-    return Math.min(rabatt.betragCent, summeCent)
-  }, [rabatt, summeCent])
+  const summeCent  = useMemo(() => warenkorbSummeCent(korb), [korb])
+  const rabattCent = useMemo(() => rabattBetragCent(summeCent, rabatt), [rabatt, summeCent])
 
   const summeNachRabattCent = summeCent - rabattCent
 
@@ -187,16 +187,10 @@ export function KassePage() {
   const summeNachGutscheinCent = Math.max(0, summeNachRabattCent - gutscheinCent)
 
   // Zahlungsberechnung -------------------------------------------------------
-  const barCentEingabe = useMemo(() => {
-    const v = parseFloat(barEuro.replace(',', '.'))
-    return isNaN(v) || v < 0 ? 0 : Math.round(v * 100)
-  }, [barEuro])
-  /** Bar-Anteil im Beleg (max. verbleibender Rechnungsbetrag nach Gutschein) */
-  const barCentBeleg   = Math.min(barCentEingabe, summeNachGutscheinCent)
-  /** Karten-Anteil = Rest nach Bar */
-  const karteCentBeleg = summeNachGutscheinCent - barCentBeleg
-  /** Wechselgeld — nur anzeigen, nicht auf Beleg */
-  const wechselgeld    = Math.max(0, barCentEingabe - summeNachGutscheinCent)
+  const barCentEingabe = useMemo(() => barEingabeCent(barEuro), [barEuro])
+  // Bar-Anteil (gedeckelt), Karten-Rest und Wechselgeld in einem Schritt.
+  const { barCentBeleg, karteCentBeleg, wechselgeldCent: wechselgeld } =
+    zahlungsAufteilung(summeNachGutscheinCent, barCentEingabe)
 
   // ---------------------------------------------------------------------------
   // Warenkorb-Aktionen
@@ -204,8 +198,7 @@ export function KassePage() {
 
   const addArtikel = (a: Artikel, modifikatoren: ModifikatorAuswahl[]) => {
     setFehler(null)
-    const aufschlag  = modifikatoren.reduce((s, m) => s + m.aufschlagCent, 0)
-    const preisCent  = a.preisBruttoCent + aufschlag
+    const preisCent  = positionsPreisCent(a.preisBruttoCent, modifikatoren)
     setKorb((prev) => {
       if (modifikatoren.length === 0) {
         const existing = prev.find(
@@ -231,10 +224,7 @@ export function KassePage() {
   const applyArtikelRabatt = (idx: number, r: RabattInput) => {
     setKorb(prev => prev.map((p, i) => {
       if (i !== idx || p.typ !== 'artikel') return p
-      const discount = r.typ === 'prozent'
-        ? Math.round(p.originalPreisCent * r.prozent / 100)
-        : Math.min(r.betragCent, p.originalPreisCent)
-      return { ...p, preisCent: Math.max(0, p.originalPreisCent - discount) }
+      return { ...p, preisCent: preisNachPositionsRabattCent(p.originalPreisCent, r) }
     }))
     setArtikelRabattIdx(null)
   }
