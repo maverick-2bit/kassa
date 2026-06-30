@@ -1,0 +1,17 @@
+[Unit]
+Description=Kassa Gast-Bestellsystem (nginx)
+After=backend.service
+
+[Container]
+ContainerName=gast
+# In Produktion auf ein :<sha>-Tag pinnen (Rollback). NICHT auto-updaten.
+Image=ghcr.io/maverick-2bit/kassa-gast:latest
+Network=kassa.network
+PublishPort=8082:80
+
+[Service]
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

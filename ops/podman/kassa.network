@@ -1,0 +1,10 @@
+# Quadlet-Netzwerk für den Kassa-Stack (Podman + systemd).
+# Container im selben Netz lösen sich per ContainerName auf (DNS) — genau wie
+# die Compose-Service-Namen, daher funktionieren nginx-Upstream (backend:3000)
+# und DATABASE_URL (Host: postgres) unverändert.
+[Network]
+# Optionaler fester Name; sonst vergibt Quadlet "systemd-kassa".
+NetworkName=kassa
+
+[Install]
+WantedBy=multi-user.target

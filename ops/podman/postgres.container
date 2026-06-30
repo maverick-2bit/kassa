@@ -1,0 +1,24 @@
+[Unit]
+Description=Kassa PostgreSQL
+After=network-online.target
+
+[Container]
+ContainerName=postgres
+Image=docker.io/library/postgres:17-alpine
+Network=kassa.network
+Environment=POSTGRES_DB=kassa
+Environment=POSTGRES_USER=kassa
+# POSTGRES_PASSWORD kommt aus der Datei (mind. die DB-Zeile sollte gesetzt sein)
+EnvironmentFile=/etc/kassa/kassa.env
+Volume=kassa-pgdata.volume:/var/lib/postgresql/data
+HealthCmd=pg_isready -U kassa -d kassa
+HealthInterval=5s
+HealthTimeout=5s
+HealthRetries=10
+
+[Service]
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

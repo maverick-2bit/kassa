@@ -1,0 +1,30 @@
+[Unit]
+Description=Kassa Off-Site-Backup (restic)
+After=backend.service
+
+[Container]
+ContainerName=backup
+Image=docker.io/restic/restic:0.17.3
+Network=kassa.network
+EnvironmentFile=/etc/kassa/kassa.env
+# Skripte nach /etc/kassa/ kopieren (siehe README) — Bind-Mount read-only.
+Volume=/etc/kassa/restic-backup.sh:/restic-backup.sh:ro
+Volume=/etc/kassa/restic-healthcheck.sh:/restic-healthcheck.sh:ro
+Volume=kassa-db-backups.volume:/data/db-backups:ro
+Volume=kassa-dep-backups.volume:/data/dep-backups:ro
+Volume=kassa-restic-cache.volume:/root/.cache/restic
+Volume=kassa-backup-status.volume:/status
+Entrypoint=/bin/sh
+Exec=/restic-backup.sh
+HealthCmd=/bin/sh /restic-healthcheck.sh
+HealthInterval=1h
+HealthTimeout=10s
+HealthRetries=2
+HealthStartPeriod=30m
+
+[Service]
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target

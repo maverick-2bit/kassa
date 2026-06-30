@@ -1,3 +1,9 @@
 # Shell-Skripte MÜSSEN LF haben — laufen in Linux-Containern (CRLF bricht /bin/sh).
 *.sh text eol=lf
 ops/backup/restic-backup.sh text eol=lf
+
+# Quadlet-/systemd-Units + Env-Dateien: LF erzwingen (CRLF bricht das Parsing).
+*.container text eol=lf
+*.network   text eol=lf
+*.volume    text eol=lf
+ops/podman/kassa.env.example text eol=lf

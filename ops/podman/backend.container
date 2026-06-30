@@ -1,0 +1,31 @@
+[Unit]
+Description=Kassa Backend (Fastify)
+# Wartet, bis Postgres als Service läuft. systemd kennt kein "healthy"-Gate;
+# Restart=always überbrückt das Rennen, falls die DB noch nicht annimmt.
+Requires=postgres.service
+After=postgres.service
+
+[Container]
+ContainerName=backend
+# In Produktion auf ein :<sha>-Tag pinnen (Rollback). NICHT auto-updaten.
+Image=ghcr.io/maverick-2bit/kassa-backend:latest
+Network=kassa.network
+EnvironmentFile=/etc/kassa/kassa.env
+Environment=PORT=3000
+Environment=NODE_ENV=production
+Environment=DB_BACKUP_DIR=/data/db-backups
+Environment=DEP_BACKUP_DIR=/data/dep-backups
+Volume=kassa-db-backups.volume:/data/db-backups
+Volume=kassa-dep-backups.volume:/data/dep-backups
+HealthCmd=wget -qO- http://localhost:3000/api/health | grep -q ok
+HealthInterval=10s
+HealthTimeout=5s
+HealthRetries=5
+HealthStartPeriod=30s
+
+[Service]
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
