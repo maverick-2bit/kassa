@@ -1,3 +1,6 @@
 # Shell-Skripte MÜSSEN LF haben — laufen in Linux-Containern (CRLF bricht /bin/sh).
 *.sh text eol=lf
 ops/backup/restic-backup.sh text eol=lf
+
+# Compose-Dateien LF erzwingen (Inline-Shell in Services darf kein CRLF tragen).
+docker-compose*.yml text eol=lf

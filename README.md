@@ -110,6 +110,19 @@ läuft sofort ein erstes Backup, danach täglich. Status prüfen:
 Backup-Lauf aus, prüft Repository-Erreichbarkeit, macht eine Restore-Probe und
 zeigt den Healthcheck-Status — bricht beim ersten Fehler ab.
 
+**Backup lokal testen (ohne Cloud-Account):** `docker-compose.minio.yml` stellt
+ein lokales MinIO als S3-Ziel bereit und legt das Bucket automatisch an:
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.minio.yml up -d --build
+# Kasse einrichten (http://localhost) + einloggen, dann Sicherungen erzeugen,
+# damit das Backup nicht leer ist (als Admin per API mit JWT):
+#   curl -X POST http://localhost:3000/api/db-sicherungen  -H "Authorization: Bearer <JWT>"
+#   curl -X POST http://localhost:3000/api/dep-sicherungen -H "Authorization: Bearer <JWT>" \
+#        -H "Content-Type: application/json" -d '{"kasseId":"<uuid>","format":"dep7"}'
+./ops/backup/test-backup.sh
+```
+Nur für Tests — MinIO läuft hier auf derselben Box und ist kein echtes Off-Site-Ziel.
+
 **Restore-Runbook:**
 ```bash
 # 1. Sicherungen aus dem Off-Site-Repo holen

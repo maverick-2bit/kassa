@@ -168,6 +168,52 @@ jobs:
         env:
           E2E_BASIS_DATABASE_URL: postgresql://kassa:kassa@localhost:5432/kassa
 
+  # ── Backup-E2E: Off-Site-Backup gegen lokales MinIO (der "Box-Test") ─────────
+  backup-e2e:
+    name: Backup-E2E (restic → MinIO)
+    runs-on: ubuntu-latest
+    env:
+      # Dev- + MinIO-Override: Backend bootet ohne echte Secrets, restic zeigt
+      # auf lokales MinIO. In jedem Schritt verfügbar.
+      COMPOSE: docker compose -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.minio.yml
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Minimal-.env (Basis-Interpolation; Dev-Override setzt die echten Werte)
+        run: |
+          cat > .env <<'EOF'
+          POSTGRES_PASSWORD=kassa
+          MASTER_PASSPHRASE=ci-master-passphrase-1234567890
+          JWT_SECRET=ci-jwt-secret-key-mindestens-32-zeichen-lang
+          EOF
+
+      - name: Stack starten (Backend + Backup + MinIO, ohne Frontends)
+        run: $COMPOSE up -d --build backup
+
+      - name: Auf restic-Repository warten
+        run: |
+          for i in $(seq 1 60); do
+            $COMPOSE exec -T backup restic snapshots >/dev/null 2>&1 && { echo "Repo bereit"; exit 0; }
+            echo "warte auf restic/MinIO ($i) ..."; sleep 2
+          done
+          echo "Repo wurde nicht rechtzeitig erreichbar"; exit 1
+
+      - name: Dummy-Sicherung erzeugen (nicht-leeres Backup)
+        run: $COMPOSE exec -T backend sh -c 'mkdir -p /data/db-backups && echo CI-dump > /data/db-backups/ci-test.sql'
+
+      - name: Backup verifizieren (ops/backup/test-backup.sh)
+        run: ./ops/backup/test-backup.sh
+
+      - name: Logs bei Fehler
+        if: failure()
+        run: $COMPOSE logs --tail=200
+
+      - name: Aufräumen
+        if: always()
+        run: $COMPOSE down -v
+
   # ── Docker-Images bauen & nach GHCR pushen (nur auf master, nach grünen Gates) ─
   docker:
     name: Docker Build & Push
