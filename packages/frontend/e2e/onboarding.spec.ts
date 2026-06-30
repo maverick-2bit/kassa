@@ -106,4 +106,86 @@ test('Kassier-Flow: Artikel in den Warenkorb, Barzahlung erzeugt signierten Bele
   await expect(page.getByText(/Beleg #\d+ erstellt/)).toBeVisible({ timeout: 20_000 })
 })
 
+/**
+ * Rabatt- + Modifikator-Flow: Artikel mit Pflicht-Modifikator (Aufschlag) in den
+ * Warenkorb, dann Gesamt-Rabatt (10 %) anwenden und bar bezahlen.
+ *
+ * Treibt die UI-Geldlogik (lib/warenkorb: positionsPreisCent, rabattBetragCent,
+ * zahlungsAufteilung) durch den echten Browser inkl. RKSV-Signierung. Der
+ * Rabattbetrag 0,35 € beweist die gesamte Kette: 10 % auf den MODIFIZIERTEN
+ * Preis 350 (= 300 Basis + 50 Aufschlag). Wäre der Aufschlag nicht geflossen,
+ * stünden hier 0,30 €.
+ */
+test('Rabatt + Modifikator: Aufschlag und 10%-Rabatt fließen korrekt in den signierten Beleg', async ({ page, request }) => {
+  // Login + Seed via API (Kasse stammt aus dem Onboarding-Test oben)
+  const login = await (await request.post('/api/auth/login', {
+    data: { email: ADMIN_EMAIL, passwort: ADMIN_PASSWORT },
+  })).json()
+  const token      = login.token as string
+  const mandantId  = login.mandant.id as string
+  const kasseId    = login.kassen[0].id as string
+  const authHeader = { Authorization: `Bearer ${token}` }
+
+  // Kategorie + Artikel "Cola" (3,00 €)
+  const kat = await (await request.post('/api/kategorien', {
+    headers: authHeader,
+    data: { name: 'Kaltgetränke', farbe: 'blau', reihenfolge: 1 },
+  })).json()
+  const artikel = await (await request.post('/api/artikel', {
+    headers: authHeader,
+    data: { bezeichnung: 'Cola', preisBruttoCent: 300, mwstSatz: 'normal', kategorieId: kat.id },
+  })).json()
+
+  // Modifikator-Gruppe "Größe" (Pflicht, max. 1) mit Option "Groß" (+0,50 €)
+  const gruppe = await (await request.post('/api/modifikator-gruppen', {
+    headers: authHeader,
+    data: { name: 'Größe', typ: 'pflicht', maxAuswahl: 1, reihenfolge: 0 },
+  })).json()
+  await request.post(`/api/modifikator-gruppen/${gruppe.id}/modifikatoren`, {
+    headers: authHeader,
+    data: { name: 'Groß', aufschlagCent: 50, reihenfolge: 0 },
+  })
+  await request.put(`/api/artikel/${artikel.id}/modifikator-gruppen`, {
+    headers: authHeader,
+    data: { gruppenIds: [gruppe.id] },
+  })
+
+  // Auth + Kassen-Identitaet in den Browser injizieren (statt Login-UI)
+  await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
+    localStorage.setItem('kassa:token', d.token)
+    localStorage.setItem('kassa:auth', d.authJson)
+    localStorage.setItem('kassa:mandantId', d.mandantId)
+    localStorage.setItem('kassa:kasseId', d.kasseId)
+  }, {
+    token,
+    authJson: JSON.stringify({ user: login.user, mandant: login.mandant, kassen: login.kassen }),
+    mandantId,
+    kasseId,
+  })
+
+  await page.goto('/kasse')
+
+  // Cola-Kachel anklicken -> Modifikator-Dialog (Artikel hat eine Pflicht-Gruppe)
+  await page.getByRole('button', { name: /Cola/ }).first().click()
+
+  // Pflicht-Option "Groß" (+0,50) waehlen, dann hinzufuegen
+  await page.getByRole('button', { name: /Groß/ }).click()
+  await page.getByRole('button', { name: /Hinzufügen/ }).click()
+
+  // Gesamtrabatt hinzufuegen (Modal oeffnet mit Default 10 %) und anwenden
+  await page.getByRole('button', { name: '+ Rabatt hinzufügen' }).click()
+  await page.getByRole('button', { name: 'Rabatt anwenden' }).click()
+
+  // Beweis der Geldkette: Rabattzeile zeigt "Rabatt (10%)" und -0,35 EUR
+  // (10 % auf 350 = 35 Cent; bei fehlendem Aufschlag waeren es 0,30 EUR)
+  await expect(page.getByText(/Rabatt \(10%\)/)).toBeVisible()
+  await expect(page.getByText(/0,35/)).toBeVisible()
+
+  // Bar exakt (= 3,15 EUR nach Rabatt) und signierten Beleg erstellen
+  await page.getByRole('button', { name: 'Exakt' }).click()
+  await page.getByRole('button', { name: 'Bon erstellen' }).click()
+
+  await expect(page.getByText(/Beleg #\d+ erstellt/)).toBeVisible({ timeout: 20_000 })
+})
+
 })
