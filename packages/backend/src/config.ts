@@ -22,6 +22,17 @@ const ConfigSchema = z.object({
    * In Produktion verboten (index.ts bricht beim Start ab).
    */
   FO_STUB:           z.string().optional().default('false').transform(v => v === 'true' || v === '1'),
+
+  /**
+   * Geheimes Token für den externen Monitoring-Endpoint (GET /api/monitoring/status
+   * ?token=…). Nicht gesetzt = Endpoint deaktiviert (404). Für Uptime-Monitore
+   * (Healthchecks.io, Uptime Kuma): 200 = gesund, 503 = degradiert.
+   */
+  MONITORING_TOKEN:  z.string().optional(),
+  /** Schwelle (Stunden), ab der die letzte DB-Sicherung als veraltet gilt. */
+  DB_BACKUP_MAX_AGE_STUNDEN:  z.coerce.number().int().min(1).default(26),
+  /** Schwelle (Stunden), ab der die letzte DEP-Sicherung als veraltet gilt. */
+  DEP_BACKUP_MAX_AGE_STUNDEN: z.coerce.number().int().min(1).default(26),
   /** Verzeichnis für DEP-Sicherungsdateien (absolut oder relativ zum CWD) */
   DEP_BACKUP_DIR:    z.string().default('./dep-backups'),
   /** Verzeichnis für PostgreSQL-DB-Dumps */

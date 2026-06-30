@@ -37,6 +37,7 @@ services:
       DB_BACKUP_DIR:     /data/db-backups
       DB_BACKUP_RETENTION: ${DB_BACKUP_RETENTION:-30}
       DEP_BACKUP_DIR:    /data/dep-backups
+      MONITORING_TOKEN:  ${MONITORING_TOKEN:-}
     volumes:
       - db_backups:/data/db-backups
       - dep_backups:/data/dep-backups

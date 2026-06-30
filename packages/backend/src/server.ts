@@ -167,7 +167,12 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     await api.register(selfcheckoutRoute,       { db: deps.db })
   }, { prefix: '/api' })
 
-  await fastify.register(monitoringRoute, { db: deps.db })
+  await fastify.register(monitoringRoute, {
+    db: deps.db,
+    monitoringToken:     deps.config.MONITORING_TOKEN,
+    dbBackupMaxStunden:  deps.config.DB_BACKUP_MAX_AGE_STUNDEN,
+    depBackupMaxStunden: deps.config.DEP_BACKUP_MAX_AGE_STUNDEN,
+  })
 
   // Globaler Fehler-Handler — fängt alle unbehandelten Fehler ab
   fastify.setErrorHandler((error, request, reply) => {

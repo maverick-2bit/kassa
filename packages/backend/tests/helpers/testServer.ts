@@ -45,6 +45,9 @@ export async function buildTestServer(db: Db, opts: BuildTestServerOptions = {})
       LOG_LEVEL:         'fatal',
       CORS_ORIGIN:       '*',
       NODE_ENV:          'test',
+      MONITORING_TOKEN:  'test-monitoring-token',
+      DB_BACKUP_MAX_AGE_STUNDEN:  26,
+      DEP_BACKUP_MAX_AGE_STUNDEN: 26,
     },
     db,
     setupDeps: {
