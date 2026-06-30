@@ -1,0 +1,55 @@
+# =============================================================================
+# Lokales S3-Ziel (MinIO) zum TESTEN des Off-Site-Backups — OHNE Cloud-Account.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.minio.yml up -d --build
+#   ./ops/backup/test-backup.sh
+#
+# Macht den restic-Backup-Service gegen ein lokales MinIO laufen (Bucket wird
+# automatisch angelegt). NUR für Test/Entwicklung — niemals als echtes,
+# dauerhaftes Backup-Ziel verwenden (läuft auf derselben Box, unverschlüsselt).
+# =============================================================================
+services:
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER:     minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9001:9001"   # Web-Konsole (http://localhost:9001) — optional zum Reinschauen
+    volumes:
+      - minio_data:/data
+
+  # Legt das Bucket an und beendet sich dann (idempotent).
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >
+        until mc alias set local http://minio:9000 minioadmin minioadmin >/dev/null 2>&1; do
+          echo 'warte auf MinIO ...'; sleep 1;
+        done;
+        mc mb -p local/kassa-backup || true;
+        echo 'MinIO-Bucket "kassa-backup" bereit'
+    restart: "no"
+
+  # restic-Backup-Service auf das lokale MinIO zeigen lassen (überschreibt RESTIC_*).
+  backup:
+    depends_on:
+      backend:
+        condition: service_started
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      RESTIC_REPOSITORY:     s3:http://minio:9000/kassa-backup
+      RESTIC_PASSWORD:       test-restic-passwort
+      AWS_ACCESS_KEY_ID:     minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      AWS_DEFAULT_REGION:    us-east-1
+
+volumes:
+  minio_data:
