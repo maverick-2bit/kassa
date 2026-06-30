@@ -18,6 +18,15 @@ import { STATION_LABELS } from '@kassa/shared'
 import { artikelApi, belegApi, bonierApi, kategorieApi, modifikatorApi, posConfigApi, tischTabApi, zvtApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
+import { warenkorbSummeCent, positionsPreisCent, rabattBetragCent } from '../lib/warenkorb'
+import {
+  summeMitPosRabattenCent,
+  positionsSummeCent,
+  zahlerSubtotalCent,
+  zahlungCent,
+  splitValidierung,
+  rabattierterEinzelpreisCent,
+} from '../lib/tischtab'
 import { Button } from '../components/ui/Button'
 import { Modal } from '../components/ui/Modal'
 import { Input } from '../components/ui/Input'
@@ -154,25 +163,16 @@ export function TischTabPage() {
     return merged
   }, [tab, korb])
 
-  const korbSummeCent = useMemo(
-    () => korb.reduce((s, p) => s + p.preisCent * p.menge, 0),
-    [korb],
-  )
+  const korbSummeCent = useMemo(() => warenkorbSummeCent(korb), [korb])
 
   // Tab-Summe mit Positions-Rabatten
-  const tabSummeMitPosRabatten = useMemo(() => {
-    if (!tab) return 0
-    return tab.positionen.reduce(
-      (s, p, i) => s + (posRabatte[i] ?? p.preisBruttoCent) * p.menge, 0
-    )
-  }, [tab, posRabatte])
+  const tabSummeMitPosRabatten = useMemo(
+    () => tab ? summeMitPosRabattenCent(tab.positionen, posRabatte) : 0,
+    [tab, posRabatte],
+  )
 
   const gesamtVorRabatt = tabSummeMitPosRabatten + korbSummeCent
-  const rabattCent = useMemo(() => {
-    if (!rabatt || gesamtVorRabatt === 0) return 0
-    if (rabatt.typ === 'prozent') return Math.round(gesamtVorRabatt * rabatt.prozent / 100)
-    return Math.min(rabatt.betragCent, gesamtVorRabatt)
-  }, [rabatt, gesamtVorRabatt])
+  const rabattCent = useMemo(() => rabattBetragCent(gesamtVorRabatt, rabatt), [rabatt, gesamtVorRabatt])
   const gesamt = gesamtVorRabatt - rabattCent
 
   // ---------------------------------------------------------------------------
@@ -181,8 +181,7 @@ export function TischTabPage() {
 
   const addArtikel = (a: Artikel, modifikatoren: ModifikatorAuswahl[]) => {
     setFehler(null)
-    const aufschlag = modifikatoren.reduce((s, m) => s + m.aufschlagCent, 0)
-    const preisCent = a.preisBruttoCent + aufschlag
+    const preisCent = positionsPreisCent(a.preisBruttoCent, modifikatoren)
     setKorb(prev => {
       // Ohne Modifikatoren: bestehende Zeile erhöhen
       if (modifikatoren.length === 0) {
@@ -1113,31 +1112,9 @@ function SplitModal({ open, tab, loading, fehler, onSubmit, onClose }: SplitModa
   const updateKarte = (zahlerId: number, val: string) =>
     setZahler(prev => prev.map(z => z.id === zahlerId ? { ...z, karte: val.replace(/[^0-9]/g, '') } : z))
 
-  // Validation
-  const positionsfehler: string[] = []
-  for (const [posIdx, p] of tab.positionen.entries()) {
-    const zugewiesen = zahler.reduce((s, z) => s + (z.mengen[posIdx] ?? 0), 0)
-    if (zugewiesen !== p.menge) {
-      positionsfehler.push(`${p.bezeichnung}: ${zugewiesen} von ${p.menge} zugewiesen`)
-    }
-  }
-
-  const zahlungsfehler: string[] = []
-  const zahlungenMitPositionen = zahler.filter(z =>
-    tab.positionen.some((_, i) => (z.mengen[i] ?? 0) > 0)
-  )
-  for (const z of zahlungenMitPositionen) {
-    const subtotal = tab.positionen.reduce(
-      (s, p, i) => s + p.preisBruttoCent * (z.mengen[i] ?? 0), 0
-    )
-    const bar   = parseInt(z.barInput || '0', 10) || 0
-    const karte = parseInt(z.karte   || '0', 10) || 0
-    if (bar + karte !== subtotal) {
-      zahlungsfehler.push(`Zahler ${zahler.indexOf(z) + 1}: ${formatPreis(bar + karte)} statt ${formatPreis(subtotal)}`)
-    }
-  }
-
-  const kannSubmit = positionsfehler.length === 0 && zahlungsfehler.length === 0 && zahlungenMitPositionen.length >= 2
+  // Validation (reine Logik in lib/tischtab)
+  const { positionsfehler, zahlungsfehler, zahlerMitPositionen: zahlungenMitPositionen, kannSubmit } =
+    splitValidierung(tab.positionen, zahler, formatPreis)
 
   const handleSubmit = () => {
     const zahlungen = zahlungenMitPositionen.map(z => ({
@@ -1145,8 +1122,8 @@ function SplitModal({ open, tab, loading, fehler, onSubmit, onClose }: SplitModa
         .map((p, i) => ({ ...p, menge: z.mengen[i] ?? 0 }))
         .filter(p => p.menge > 0),
       zahlung: {
-        barCent:      parseInt(z.barInput || '0', 10) || 0,
-        karteCent:    parseInt(z.karte    || '0', 10) || 0,
+        barCent:      zahlungCent(z.barInput),
+        karteCent:    zahlungCent(z.karte),
         sonstigeCent: 0,
       },
     }))
@@ -1218,13 +1195,11 @@ function SplitModal({ open, tab, loading, fehler, onSubmit, onClose }: SplitModa
         {/* Zahlungsfelder pro Zahler */}
         <div className="space-y-3 pt-1 border-t border-gray-200">
           {zahler.map((z, i) => {
-            const subtotal = tab.positionen.reduce(
-              (s, p, posIdx) => s + p.preisBruttoCent * (z.mengen[posIdx] ?? 0), 0
-            )
+            const subtotal = zahlerSubtotalCent(tab.positionen, z.mengen)
             const hatPositionen = subtotal > 0
             if (!hatPositionen) return null
-            const bar   = parseInt(z.barInput || '0', 10) || 0
-            const karte = parseInt(z.karte    || '0', 10) || 0
+            const bar   = zahlungCent(z.barInput)
+            const karte = zahlungCent(z.karte)
             const diff  = subtotal - bar - karte
             return (
               <div key={z.id} className="rounded-lg border border-gray-200 p-3 space-y-2">
@@ -1326,16 +1301,9 @@ function ArtikelRabatteModal({ open, positionen, posRabatte, onBestaetigen, onCl
 
   const applyRabatt = (idx: number) => {
     const basis = positionen[idx]!.preisBruttoCent
-    let neuerPreis: number
-    if (rabattTyp === 'prozent') {
-      const p = parseInt(prozentInput || '0', 10) || 0
-      if (p <= 0 || p > 100) return
-      neuerPreis = Math.max(0, basis - Math.round(basis * p / 100))
-    } else {
-      const b = parseInt(betragInput || '0', 10) || 0
-      if (b <= 0) return
-      neuerPreis = Math.max(0, basis - b)
-    }
+    const wert  = zahlungCent(rabattTyp === 'prozent' ? prozentInput : betragInput)
+    const neuerPreis = rabattierterEinzelpreisCent(basis, rabattTyp, wert)
+    if (neuerPreis === null) return
     setLokaleRabatte(prev => ({ ...prev, [idx]: neuerPreis }))
     setAktiverIdx(null)
     setProzentInput('')
@@ -1350,10 +1318,8 @@ function ArtikelRabatteModal({ open, positionen, posRabatte, onBestaetigen, onCl
     })
   }
 
-  const gesamtNachRabatt = positionen.reduce(
-    (s, p, i) => s + (lokaleRabatte[i] ?? p.preisBruttoCent) * p.menge, 0
-  )
-  const gesamtOriginal = positionen.reduce((s, p) => s + p.preisBruttoCent * p.menge, 0)
+  const gesamtNachRabatt = summeMitPosRabattenCent(positionen, lokaleRabatte)
+  const gesamtOriginal   = positionsSummeCent(positionen)
 
   return (
     <Modal open={open} onClose={onClose} title="Artikel-Rabatte" size="lg">
