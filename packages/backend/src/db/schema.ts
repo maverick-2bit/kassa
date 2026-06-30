@@ -93,6 +93,9 @@ export const kassen = pgTable('kassen', {
   letzteBelegNummer:     integer('letzte_beleg_nummer').notNull().default(0),
   letzterSignaturwert:   text('letzter_signaturwert'),
 
+  /** Gesetzt, solange die SEE ausgefallen ist (Belege tragen den Ausfallmarker, statt signiert zu sein). NULL = SEE in Betrieb. */
+  seeAusgefallenSeit:    timestamp('see_ausgefallen_seit', { withTimezone: true }),
+
   // FinanzOnline-Status
   bei_fo_registriert:    boolean('bei_fo_registriert').notNull().default(false),
   fo_pruefwert:          text('fo_pruefwert'),

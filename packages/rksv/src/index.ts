@@ -51,6 +51,8 @@ export {
   erstelleStartbeleg,
   erstelleNullbeleg,
   verifiziereBelegSignatur,
+  SEE_AUSFALL_SIGNATUR,
+  istAusfallBeleg,
 } from './beleg.js'
 export type { SignierungsKontext, VerifizierbarerBeleg } from './beleg.js'
 

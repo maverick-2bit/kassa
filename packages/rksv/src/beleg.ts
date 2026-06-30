@@ -152,6 +152,25 @@ function baueMaschinenlesbareCodeOhneSig(
 }
 
 // ---------------------------------------------------------------------------
+// SEE-Ausfall
+// ---------------------------------------------------------------------------
+
+/**
+ * BMF-Marker für den SEE-Ausfall: fällt die Signaturerstellungseinheit aus,
+ * werden Belege weiter ausgegeben, der Signaturwert wird aber durch die
+ * base64(url)-kodierte Zeichenkette „Sicherheitseinrichtung ausgefallen"
+ * ersetzt (RKSV / BMF-Detailspezifikation §). Bei Wiederinbetriebnahme ist ein
+ * signierter (Sammel-)Beleg zu erstellen.
+ */
+export const SEE_AUSFALL_SIGNATUR: string =
+  Buffer.from('Sicherheitseinrichtung ausgefallen', 'utf8').toString('base64url')
+
+/** true, wenn der Signaturwert der BMF-Ausfallmarker ist (Beleg unsigniert). */
+export function istAusfallBeleg(signaturwert: string): boolean {
+  return signaturwert === SEE_AUSFALL_SIGNATUR
+}
+
+// ---------------------------------------------------------------------------
 // Hauptfunktion: Beleg signieren
 // ---------------------------------------------------------------------------
 
@@ -167,8 +186,13 @@ export interface SignierungsKontext {
  *
  * @param raw     Rohdaten des Belegs
  * @param kontext Signierungskontext mit SEE, Umsatzzähler und Vorgänger-Signaturwert
+ * @param opts    `ausfallModus`: statt ECDSA-Signatur den SEE-Ausfallmarker setzen
  */
-export function signiereBeleg(raw: RawBeleg, kontext: SignierungsKontext): SignedBeleg {
+export function signiereBeleg(
+  raw: RawBeleg,
+  kontext: SignierungsKontext,
+  opts: { ausfallModus?: boolean } = {},
+): SignedBeleg {
   const { see, umsatzzaehler, letzterSignaturwert } = kontext
 
   // 1. Beträge summieren
@@ -206,8 +230,10 @@ export function signiereBeleg(raw: RawBeleg, kontext: SignierungsKontext): Signe
     sigVorbeleg,
   )
 
-  // 6. Signieren
-  const signaturwert = signiere(codeOhneSig, see)
+  // 6. Signieren — im Ausfallmodus den BMF-Marker statt der ECDSA-Signatur
+  const signaturwert = opts.ausfallModus
+    ? SEE_AUSFALL_SIGNATUR
+    : signiere(codeOhneSig, see)
 
   // 7. Vollständiger maschinenlesbarer Code
   const maschinenlesbareCode = `${codeOhneSig}_${signaturwert}`
@@ -220,6 +246,7 @@ export function signiereBeleg(raw: RawBeleg, kontext: SignierungsKontext): Signe
     sigVorbeleg,
     signaturwert,
     maschinenlesbareCode,
+    ...(opts.ausfallModus && { ausgefallen: true }),
   }
 }
 

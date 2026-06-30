@@ -104,6 +104,13 @@ export interface SignedBeleg extends RawBeleg {
   signaturwert: string
   /** Vollständiger QR-Code-Inhalt gemäß BMF-Spezifikation */
   maschinenlesbareCode: string
+  /**
+   * true, wenn der Beleg im SEE-Ausfallmodus erzeugt wurde: statt einer
+   * ECDSA-Signatur trägt `signaturwert` den BMF-Marker für „Sicherheits-
+   * einrichtung ausgefallen". Der Beleg ist regulär verkettet, aber nicht
+   * kryptographisch signiert.
+   */
+  ausgefallen?: boolean
 }
 
 // ---------------------------------------------------------------------------

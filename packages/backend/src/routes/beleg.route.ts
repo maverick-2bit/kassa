@@ -22,6 +22,9 @@ import {
   listeBelege,
   erstelleDep7Json,
   erstelleDep131Json,
+  holeSeeStatus,
+  meldeSeeAusfall,
+  meldeSeeWiederherstellung,
   BelegError,
   type BelegServiceDeps,
 } from '../services/beleg.service.js'
@@ -126,6 +129,51 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     if (!(await pruefeKasseScope(request, reply, opts.deps, parsed.data.kasseId))) return
     return fuehreAus(fastify, reply, opts.deps, () => erstelleJahresbeleg(parsed.data, opts.deps))
+  })
+
+  // -------------------------------------------------------------------------
+  // SEE-Ausfall / Wiederinbetriebnahme
+  // -------------------------------------------------------------------------
+
+  fastify.get('/belege/see-status', guard, async (request, reply) => {
+    const parsed = z.object({ kasseId: z.string().uuid() }).safeParse(request.query)
+    if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
+    if (!(await pruefeKasseScope(request, reply, opts.deps, parsed.data.kasseId))) return
+    try {
+      return reply.send(await holeSeeStatus(parsed.data.kasseId, opts.deps))
+    } catch (err) {
+      if (err instanceof BelegError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      fastify.log.error({ err }, 'SEE-Status fehlgeschlagen')
+      return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
+    }
+  })
+
+  fastify.post('/belege/see-ausfall', guard, async (request, reply) => {
+    const parsed = z.object({ kasseId: z.string().uuid() }).safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
+    if (!(await pruefeKasseScope(request, reply, opts.deps, parsed.data.kasseId))) return
+    try {
+      return reply.send(await meldeSeeAusfall(parsed.data.kasseId, opts.deps))
+    } catch (err) {
+      if (err instanceof BelegError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      fastify.log.error({ err }, 'SEE-Ausfall melden fehlgeschlagen')
+      return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
+    }
+  })
+
+  fastify.post('/belege/see-wiederherstellung', guard, async (request, reply) => {
+    const parsed = z.object({ kasseId: z.string().uuid() }).safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
+    if (!(await pruefeKasseScope(request, reply, opts.deps, parsed.data.kasseId))) return
+    try {
+      const ergebnis = await meldeSeeWiederherstellung(parsed.data.kasseId, opts.deps)
+      tryDruckeBeleg(opts.deps.db, ergebnis.sammelbeleg.id, fastify.log)
+      return reply.status(201).send(ergebnis)
+    } catch (err) {
+      if (err instanceof BelegError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      fastify.log.error({ err }, 'SEE-Wiederherstellung fehlgeschlagen')
+      return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
+    }
   })
 
   fastify.get('/belege', guard, async (request, reply) => {
