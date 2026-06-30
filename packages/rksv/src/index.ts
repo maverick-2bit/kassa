@@ -50,8 +50,9 @@ export {
   signiereBeleg,
   erstelleStartbeleg,
   erstelleNullbeleg,
+  verifiziereBelegSignatur,
 } from './beleg.js'
-export type { SignierungsKontext } from './beleg.js'
+export type { SignierungsKontext, VerifizierbarerBeleg } from './beleg.js'
 
 // DEP7 + DEP131
 export { erstelleDEP7Export, mergeDEP7Exports, validiereDEP7, dep7ZuJson, dep7AusJson, erstelleDEP131Export, dep131ZuJson } from './dep.js'

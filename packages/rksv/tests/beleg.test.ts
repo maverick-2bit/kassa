@@ -17,6 +17,7 @@ import {
   signiereBeleg,
   erstelleStartbeleg,
   berechneBetraege,
+  verifiziereBelegSignatur,
   Umsatzzaehler,
   type SignierungsKontext,
 } from '../src/beleg.js'
@@ -211,6 +212,63 @@ describe('Signaturkette', () => {
     // Signaturwert manipulieren
     const manipuliert = { ...start, signaturwert: 'MANIPULIERT' }
     expect(pruefeKette([manipuliert, beleg2])).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// verifiziereBelegSignatur — Tamper-Detection auf Feldebene
+// ---------------------------------------------------------------------------
+// pruefeKette erkennt nur eine gebrochene Verkettung. Eine veränderte Position
+// (z. B. nachträglich gesenkter Betrag in der DB) lässt die Kette intakt — nur
+// die ECDSA-Signaturprüfung über die Felder deckt das auf.
+
+describe('verifiziereBelegSignatur (Tamper-Detection)', () => {
+  function signiereBarzahlung(betragCent: number) {
+    const { kontext } = erstelleStartbeleg('TEST-KASSE-001', see)
+    kontext.letzterSignaturwert = 'startbelegSig'
+    return signiereBeleg({
+      kassenId:     'TEST-KASSE-001',
+      belegNummer:  2,
+      datumUhrzeit: new Date('2026-03-15T10:30:00'),
+      belegTyp:     'Barzahlungsbeleg',
+      positionen: [
+        { bezeichnung: 'Test', menge: 1, einzelpreisBreutto: betragCent, mwstSatz: 'normal' },
+      ],
+    }, kontext)
+  }
+
+  it('unveränderter Beleg verifiziert gegen das Zertifikat', () => {
+    const beleg = signiereBarzahlung(2000)
+    expect(verifiziereBelegSignatur(beleg, see.zertifikatDER)).toBe(true)
+  })
+
+  it('manipulierter Betrag wird erkannt', () => {
+    const beleg = signiereBarzahlung(2000)
+    const manipuliert = { ...beleg, betraege: { ...beleg.betraege, normal: 1000 } }
+    expect(verifiziereBelegSignatur(manipuliert, see.zertifikatDER)).toBe(false)
+  })
+
+  it('manipulierte Belegnummer wird erkannt', () => {
+    const beleg = signiereBarzahlung(2000)
+    expect(verifiziereBelegSignatur({ ...beleg, belegNummer: 99 }, see.zertifikatDER)).toBe(false)
+  })
+
+  it('manipuliertes Datum wird erkannt', () => {
+    const beleg = signiereBarzahlung(2000)
+    const manipuliert = { ...beleg, datumUhrzeit: new Date('2026-03-15T10:30:01') }
+    expect(verifiziereBelegSignatur(manipuliert, see.zertifikatDER)).toBe(false)
+  })
+
+  it('manipulierter Umsatzzähler wird erkannt', () => {
+    const beleg = signiereBarzahlung(2000)
+    const manipuliert = { ...beleg, umsatzzaehlerVerschluesselt: beleg.umsatzzaehlerVerschluesselt.slice(0, -2) + 'AA' }
+    expect(verifiziereBelegSignatur(manipuliert, see.zertifikatDER)).toBe(false)
+  })
+
+  it('falsches Zertifikat verifiziert nicht', async () => {
+    const beleg = signiereBarzahlung(2000)
+    const fremd = await generateSEE({ kassenId: 'ANDERE-KASSE', uid: 'ATU00000000', firmenname: 'Fremd GmbH' })
+    expect(verifiziereBelegSignatur(beleg, fremd.zertifikatDER)).toBe(false)
   })
 })
 

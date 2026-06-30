@@ -15,7 +15,6 @@ import {
   createSign,
   createVerify,
   createPrivateKey,
-  createPublicKey,
   X509Certificate,
   type KeyObject,
 } from 'node:crypto'
@@ -119,11 +118,9 @@ export function signiere(daten: string, config: SEEConfig): string {
  */
 export function verifiziere(daten: string, signaturBase64url: string, config: SEEConfig): boolean {
   try {
-    const pubKey = createPublicKey({
-      key:    config.zertifikatDER,
-      format: 'der',
-      type:   'spki',
-    })
+    // zertifikatDER ist ein vollständiges X.509-Zertifikat (siehe generateSEE);
+    // der öffentliche Schlüssel wird daraus extrahiert.
+    const pubKey = new X509Certificate(config.zertifikatDER).publicKey
 
     const verify = createVerify('SHA256')
     verify.update(daten, 'utf8')

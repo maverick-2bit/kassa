@@ -24,7 +24,7 @@ import type {
 } from './types.js'
 import { verschluesselUmsatzzaehler } from './crypto/aes-icm.js'
 import { startbelegVorSignatur, folgebelegVorSignatur } from './crypto/chain.js'
-import { signiere, zertifikatSN as ladeZertifikatSN } from './see.js'
+import { signiere, verifiziere, zertifikatSN as ladeZertifikatSN } from './see.js'
 
 // ---------------------------------------------------------------------------
 // Umsatzzähler-State
@@ -267,4 +267,48 @@ export function erstelleNullbeleg(
   const beleg = signiereBeleg(raw, kontext)
   kontext.letzterSignaturwert = beleg.signaturwert
   return beleg
+}
+
+// ---------------------------------------------------------------------------
+// Verifikation: erkennt nachträgliche Manipulation eines Belegs
+// ---------------------------------------------------------------------------
+
+/** Die strukturierten Felder, aus denen der signierte Code rekonstruiert wird. */
+export interface VerifizierbarerBeleg {
+  kassenId:                    string
+  belegNummer:                 number
+  datumUhrzeit:                Date
+  betraege:                    BetraegeSummen
+  umsatzzaehlerVerschluesselt: string
+  zertifikatSN:                string
+  sigVorbeleg:                 string
+  signaturwert:                string
+}
+
+/**
+ * Prüft die ECDSA-Signatur eines Belegs gegen seine strukturierten Felder.
+ *
+ * Der signierte maschinenlesbare Code wird aus den Feldern (Betrag, Datum,
+ * Umsatzzähler, …) NEU aufgebaut und gegen den gespeicherten Signaturwert
+ * verifiziert. Wurde ein Feld nachträglich verändert — etwa ein Betrag direkt
+ * in der Datenbank — passt die Signatur nicht mehr und die Prüfung schlägt
+ * fehl. Es wird nur das öffentliche Zertifikat benötigt.
+ *
+ * @returns true, wenn die Signatur zu den Feldern passt (unverändert)
+ */
+export function verifiziereBelegSignatur(beleg: VerifizierbarerBeleg, zertifikatDER: Buffer): boolean {
+  const codeOhneSig = baueMaschinenlesbareCodeOhneSig(
+    beleg.kassenId,
+    beleg.belegNummer,
+    beleg.datumUhrzeit,
+    beleg.betraege,
+    beleg.umsatzzaehlerVerschluesselt,
+    beleg.zertifikatSN,
+    beleg.sigVorbeleg,
+  )
+  return verifiziere(codeOhneSig, beleg.signaturwert, {
+    kassenId:      beleg.kassenId,
+    zertifikatDER,
+    privateKeyDER: Buffer.alloc(0), // bei der Verifikation ungenutzt
+  })
 }
