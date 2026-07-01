@@ -35,7 +35,23 @@ export const SetupInputSchema = z.object({
   firmenname: z.string().trim().min(1, 'Firmenname ist erforderlich'),
   uid:        z.string().trim().regex(/^ATU\d{8}$/, 'UID ungültig (Format: ATU + 8 Ziffern)'),
   kassenId:   z.string().trim().min(1, 'Kassen-ID ist erforderlich').max(40),
-  finanzOnline: FinanzOnlineCredentialsSchema,
+  /**
+   * FinanzOnline-Zugangsdaten. Optional: fehlen sie (oder sind alle Felder
+   * leer), wird die Kasse provisorisch (ohne FON-Registrierung) eingerichtet —
+   * die Registrierung ist später nachzutragen. Teilangaben (nur 1–2 Felder)
+   * sind ein Fehler: entweder alle drei oder keines.
+   */
+  finanzOnline: z.preprocess((v) => {
+    if (v && typeof v === 'object') {
+      const o = v as Record<string, unknown>
+      const leer =
+        !String(o.teilnehmerId ?? '').trim() &&
+        !String(o.benutzerkennung ?? '').trim() &&
+        !String(o.pin ?? '').trim()
+      if (leer) return undefined
+    }
+    return v
+  }, FinanzOnlineCredentialsSchema.optional()),
   umgebung:   z.enum(['test', 'produktion']).default('test'),
   /** Admin-Benutzer für den ersten Login nach Setup */
   admin:      AdminUserInputSchema,

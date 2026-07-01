@@ -25,6 +25,8 @@ import {
   holeSeeStatus,
   meldeSeeAusfall,
   meldeSeeWiederherstellung,
+  holeFoRegistrierungStatus,
+  registriereKasseBeiFinanzOnline,
   BelegError,
   type BelegServiceDeps,
 } from '../services/beleg.service.js'
@@ -182,6 +184,43 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
     } catch (err) {
       if (err instanceof BelegError) return reply.status(err.httpStatus).send({ fehler: err.message })
       fastify.log.error({ err }, 'SEE-Wiederherstellung fehlgeschlagen')
+      return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
+    }
+  })
+
+  // -------------------------------------------------------------------------
+  // FinanzOnline-Registrierung (Status + Nachtrag)
+  // -------------------------------------------------------------------------
+
+  fastify.get('/belege/fo-status', guard, async (request, reply) => {
+    const parsed = z.object({ kasseId: z.string().uuid() }).safeParse(request.query)
+    if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
+    if (!(await pruefeKasseScope(request, reply, opts.deps, parsed.data.kasseId))) return
+    try {
+      return reply.send(await holeFoRegistrierungStatus(parsed.data.kasseId, opts.deps))
+    } catch (err) {
+      if (err instanceof BelegError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      fastify.log.error({ err }, 'FO-Status fehlgeschlagen')
+      return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
+    }
+  })
+
+  fastify.post('/belege/fo-registrierung', guard, async (request, reply) => {
+    const parsed = z.object({
+      kasseId: z.string().uuid(),
+      credentials: z.object({
+        teilnehmerId:    z.string().min(1),
+        benutzerkennung: z.string().min(1),
+        pin:             z.string().min(1),
+      }),
+    }).safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
+    if (!(await pruefeKasseScope(request, reply, opts.deps, parsed.data.kasseId))) return
+    try {
+      return reply.send(await registriereKasseBeiFinanzOnline(parsed.data.kasseId, parsed.data.credentials, opts.deps))
+    } catch (err) {
+      if (err instanceof BelegError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      fastify.log.error({ err }, 'FO-Registrierung (Nachtrag) fehlgeschlagen')
       return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
     }
   })
