@@ -109,7 +109,7 @@ export function KategorieFormular({ initial, bonierdrucker, onSubmit, onCancel, 
         </div>
       )}
 
-      <div className="flex justify-end gap-2 pt-2 border-t border-gray-200">
+      <div className="flex justify-end gap-2 pt-2 border-t border-line">
         <Button variant="secondary" type="button" onClick={onCancel}>Abbrechen</Button>
         <Button type="submit" loading={loading}>
           {initial ? 'Speichern' : 'Anlegen'}

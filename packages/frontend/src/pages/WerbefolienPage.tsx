@@ -28,8 +28,8 @@ export function WerbefolienPage() {
     <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Werbefolien</h1>
-          <p className="mt-1 text-sm text-gray-500">
+          <h1 className="text-2xl font-bold text-ink">Werbefolien</h1>
+          <p className="mt-1 text-sm text-ink-muted">
             Werden als Slideshow auf dem Kundendisplay angezeigt wenn kein Warenkorb aktiv ist.
           </p>
         </div>
@@ -45,22 +45,22 @@ export function WerbefolienPage() {
       </div>
 
       {isLoading ? (
-        <div className="text-center py-12 text-gray-400">Laden…</div>
+        <div className="text-center py-12 text-ink-subtle">Laden…</div>
       ) : folien.length === 0 ? (
-        <div className="text-center py-16 border-2 border-dashed border-gray-200 rounded-xl">
-          <svg className="mx-auto h-12 w-12 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <div className="text-center py-16 border-2 border-dashed border-line rounded-xl">
+          <svg className="mx-auto h-12 w-12 text-ink-subtle" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
           </svg>
-          <p className="mt-3 text-sm text-gray-500">Noch keine Werbefolien. Jetzt die erste hinzufügen!</p>
+          <p className="mt-3 text-sm text-ink-muted">Noch keine Werbefolien. Jetzt die erste hinzufügen!</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {folien.map((folie) => (
             <div
               key={folie.id}
-              className={`relative rounded-xl border overflow-hidden ${folie.aktiv ? 'border-gray-200' : 'border-gray-100 opacity-60'}`}
+              className={`relative rounded-xl border overflow-hidden ${folie.aktiv ? 'border-line' : 'border-line opacity-60'}`}
             >
-              <div className="aspect-video bg-gray-100 overflow-hidden">
+              <div className="aspect-video bg-panel-2 overflow-hidden">
                 <img
                   src={`data:${folie.mimeType};base64,${folie.bildBase64}`}
                   alt={folie.titel || 'Folie'}
@@ -70,23 +70,23 @@ export function WerbefolienPage() {
               <div className="p-3 space-y-2">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-gray-900 truncate">
-                      {folie.titel || <span className="text-gray-400 italic">Ohne Titel</span>}
+                    <p className="text-sm font-semibold text-ink truncate">
+                      {folie.titel || <span className="text-ink-subtle italic">Ohne Titel</span>}
                     </p>
-                    <p className="text-xs text-gray-500">{folie.anzeigedauerSek}s · Reihenfolge {folie.reihenfolge}</p>
+                    <p className="text-xs text-ink-muted">{folie.anzeigedauerSek}s · Reihenfolge {folie.reihenfolge}</p>
                   </div>
                   <button
                     onClick={() => toggleAktiv.mutate({ id: folie.id, aktiv: !folie.aktiv })}
-                    className={`shrink-0 relative inline-flex h-5 w-9 items-center rounded-full transition ${folie.aktiv ? 'bg-brand-600' : 'bg-gray-200'}`}
+                    className={`shrink-0 relative inline-flex h-5 w-9 items-center rounded-full transition ${folie.aktiv ? 'bg-brand-600' : 'bg-panel-2'}`}
                     title={folie.aktiv ? 'Deaktivieren' : 'Aktivieren'}
                   >
-                    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition ${folie.aktiv ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
+                    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-panel shadow transition ${folie.aktiv ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
                   </button>
                 </div>
                 <div className="flex gap-2">
                   <button
                     onClick={() => { setEditTarget(folie); setShowForm(true) }}
-                    className="flex-1 text-xs text-center py-1.5 rounded-md border border-gray-200 hover:bg-gray-50 text-gray-700"
+                    className="flex-1 text-xs text-center py-1.5 rounded-md border border-line hover:bg-panel-2 text-ink"
                   >
                     Bearbeiten
                   </button>
@@ -209,14 +209,14 @@ function WerbefolieFormModal({ initial, onClose, onSaved }: FormModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md space-y-5 p-6 max-h-[90vh] overflow-y-auto">
+      <div className="bg-panel rounded-xl shadow-xl w-full max-w-md space-y-5 p-6 max-h-[90vh] overflow-y-auto">
         <h2 className="text-lg font-semibold">{initial ? 'Folie bearbeiten' : 'Neue Folie'}</h2>
 
         <div className="space-y-4">
           <div>
-            <label className="text-sm font-medium text-gray-700">Bild</label>
+            <label className="text-sm font-medium text-ink">Bild</label>
             <div
-              className="mt-1 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-lg p-4 cursor-pointer hover:border-brand-400 transition"
+              className="mt-1 flex flex-col items-center justify-center border-2 border-dashed border-line-strong rounded-lg p-4 cursor-pointer hover:border-brand-400 transition"
               onClick={() => fileRef.current?.click()}
             >
               {bildBase64 ? (
@@ -227,10 +227,10 @@ function WerbefolieFormModal({ initial, onClose, onSaved }: FormModalProps) {
                 />
               ) : (
                 <>
-                  <svg className="h-8 w-8 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="h-8 w-8 text-ink-subtle" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" />
                   </svg>
-                  <p className="text-sm text-gray-500 mt-1">Bild auswählen (JPEG, PNG, WebP)</p>
+                  <p className="text-sm text-ink-muted mt-1">Bild auswählen (JPEG, PNG, WebP)</p>
                 </>
               )}
             </div>
@@ -238,35 +238,35 @@ function WerbefolieFormModal({ initial, onClose, onSaved }: FormModalProps) {
           </div>
 
           <div>
-            <label className="text-sm font-medium text-gray-700">Titel (optional)</label>
+            <label className="text-sm font-medium text-ink">Titel (optional)</label>
             <input
               value={titel}
               onChange={e => setTitel(e.target.value)}
-              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+              className="mt-1 w-full rounded-md border border-line-strong px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
               placeholder="z.B. Sommerangebot 2026"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-sm font-medium text-gray-700">Anzeigedauer (Sek.)</label>
+              <label className="text-sm font-medium text-ink">Anzeigedauer (Sek.)</label>
               <input
                 type="number"
                 min={2}
                 max={60}
                 value={anzeigedauer}
                 onChange={e => setAnzeigedauer(parseInt(e.target.value))}
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                className="mt-1 w-full rounded-md border border-line-strong px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
               />
             </div>
             <div>
-              <label className="text-sm font-medium text-gray-700">Reihenfolge</label>
+              <label className="text-sm font-medium text-ink">Reihenfolge</label>
               <input
                 type="number"
                 min={0}
                 value={reihenfolge}
                 onChange={e => setReihenfolge(parseInt(e.target.value))}
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                className="mt-1 w-full rounded-md border border-line-strong px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
               />
             </div>
           </div>
@@ -276,9 +276,9 @@ function WerbefolieFormModal({ initial, onClose, onSaved }: FormModalProps) {
               type="checkbox"
               checked={aktiv}
               onChange={e => setAktiv(e.target.checked)}
-              className="rounded border-gray-300 text-brand-600"
+              className="rounded border-line-strong text-brand-600"
             />
-            <span className="text-sm text-gray-700">Folie aktiviert</span>
+            <span className="text-sm text-ink">Folie aktiviert</span>
           </label>
         </div>
 
@@ -287,7 +287,7 @@ function WerbefolieFormModal({ initial, onClose, onSaved }: FormModalProps) {
         <div className="flex gap-3 pt-2">
           <button
             onClick={onClose}
-            className="flex-1 rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            className="flex-1 rounded-md border border-line-strong px-4 py-2 text-sm font-medium text-ink hover:bg-panel-2"
           >
             Abbrechen
           </button>

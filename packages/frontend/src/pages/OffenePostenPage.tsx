@@ -42,27 +42,27 @@ function ZahlungModal({ op, loading, onSubmit, onClose }: ZahlungModalProps) {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-lg bg-gray-50 border border-gray-200 p-4 space-y-1.5 text-sm">
+      <div className="rounded-lg bg-panel-2 border border-line p-4 space-y-1.5 text-sm">
         <div className="flex justify-between">
-          <span className="text-gray-500">Posten-Nr.</span>
+          <span className="text-ink-muted">Posten-Nr.</span>
           <span className="font-mono">OP-{String(op.nummer).padStart(4, '0')}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-gray-500">Ursprungsbetrag</span>
+          <span className="text-ink-muted">Ursprungsbetrag</span>
           <span className="font-mono">{formatPreis(op.betragCent)}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-gray-500">Bereits bezahlt</span>
+          <span className="text-ink-muted">Bereits bezahlt</span>
           <span className="font-mono text-green-700">{formatPreis(op.bezahltCent)}</span>
         </div>
-        <div className="flex justify-between border-t border-gray-200 pt-1.5 font-semibold">
+        <div className="flex justify-between border-t border-line pt-1.5 font-semibold">
           <span>Restbetrag</span>
           <span className="font-mono text-red-700">{formatPreis(op.restCent)}</span>
         </div>
       </div>
 
       <label className="block">
-        <span className="text-sm font-medium text-gray-700">Zahlung (€)</span>
+        <span className="text-sm font-medium text-ink">Zahlung (€)</span>
         <Input
           autoFocus
           inputMode="decimal"
@@ -77,7 +77,7 @@ function ZahlungModal({ op, loading, onSubmit, onClose }: ZahlungModalProps) {
         <button
           type="button"
           onClick={() => setBetragEuro((op.restCent / 100).toFixed(2).replace('.', ','))}
-          className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition"
+          className="rounded-md border border-line-strong px-3 py-1.5 text-xs font-medium text-ink-muted hover:bg-panel-2 transition"
         >
           Vollständig
         </button>
@@ -131,34 +131,34 @@ export function OffenePostenPage() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-6">
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Offene Posten</h1>
+      <h1 className="text-2xl font-bold text-ink mb-6">Offene Posten</h1>
 
       {/* Statistik */}
       {stats && (
         <div className="grid grid-cols-2 gap-4 mb-6">
           <div className="rounded-xl border border-red-200 bg-red-50 p-4">
             <p className="text-2xl font-bold text-red-700">{stats.anzahl}</p>
-            <p className="text-xs text-gray-500 mt-0.5">Unbezahlte Posten</p>
+            <p className="text-xs text-ink-muted mt-0.5">Unbezahlte Posten</p>
           </div>
           <div className="rounded-xl border border-red-200 bg-red-50 p-4">
             <p className="text-2xl font-bold text-red-700">{formatPreis(stats.gesamtRestCent)}</p>
-            <p className="text-xs text-gray-500 mt-0.5">Offener Gesamtbetrag</p>
+            <p className="text-xs text-ink-muted mt-0.5">Offener Gesamtbetrag</p>
           </div>
         </div>
       )}
 
       {/* Filter + Suche */}
       <div className="flex gap-3 mb-4">
-        <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+        <div className="flex rounded-lg border border-line overflow-hidden">
           {(['offen', 'teilbezahlt', 'bezahlt', 'alle'] as const).map(s => (
             <button
               key={s}
               type="button"
               onClick={() => setStatusFilter(s)}
-              className={`px-3 py-1.5 text-xs font-medium border-r border-gray-200 last:border-0 transition ${
+              className={`px-3 py-1.5 text-xs font-medium border-r border-line last:border-0 transition ${
                 statusFilter === s
                   ? 'bg-brand-600 text-white'
-                  : 'bg-white text-gray-600 hover:bg-gray-50'
+                  : 'bg-panel text-ink-muted hover:bg-panel-2'
               }`}
             >
               {s === 'alle' ? 'Alle' : OFFENER_POSTEN_STATUS_LABELS[s]}
@@ -170,24 +170,24 @@ export function OffenePostenPage() {
           placeholder="Kunde oder Nummer suchen…"
           value={suche}
           onChange={e => setSuche(e.target.value)}
-          className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+          className="flex-1 px-3 py-1.5 border border-line rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
         />
       </div>
 
       {/* Tabelle */}
       {isLoading ? (
-        <p className="text-gray-500 text-sm">Lade…</p>
+        <p className="text-ink-muted text-sm">Lade…</p>
       ) : angezeigt.length === 0 ? (
-        <div className="text-center py-16 text-gray-500">
+        <div className="text-center py-16 text-ink-muted">
           {liste.length === 0
             ? 'Keine Offenen Posten vorhanden.'
             : 'Kein Eintrag entspricht dem Filter.'}
         </div>
       ) : (
-        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+        <div className="bg-panel border border-line rounded-xl overflow-hidden">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-200 bg-gray-50 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              <tr className="border-b border-line bg-panel-2 text-xs font-semibold text-ink-muted uppercase tracking-wider">
                 <th className="px-4 py-3 text-left">Nr.</th>
                 <th className="px-4 py-3 text-left">Datum</th>
                 <th className="px-4 py-3 text-left">Kunde</th>
@@ -201,24 +201,24 @@ export function OffenePostenPage() {
             </thead>
             <tbody>
               {angezeigt.map((op, idx) => (
-                <tr key={op.id} className={`border-b border-gray-100 last:border-0 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}`}>
-                  <td className="px-4 py-3 font-mono text-gray-500 text-xs">
+                <tr key={op.id} className={`border-b border-line last:border-0 ${idx % 2 === 0 ? 'bg-panel' : 'bg-panel-2/40'}`}>
+                  <td className="px-4 py-3 font-mono text-ink-muted text-xs">
                     OP-{String(op.nummer).padStart(4, '0')}
                   </td>
-                  <td className="px-4 py-3 text-gray-600">
+                  <td className="px-4 py-3 text-ink-muted">
                     {new Date(op.datum).toLocaleDateString('de-AT')}
                   </td>
-                  <td className="px-4 py-3 font-medium text-gray-900">
+                  <td className="px-4 py-3 font-medium text-ink">
                     {op.kunde?.bezeichnung ?? '–'}
                   </td>
-                  <td className="px-4 py-3 text-right font-mono text-gray-500 text-xs">
+                  <td className="px-4 py-3 text-right font-mono text-ink-muted text-xs">
                     {op.belegNummer ? `#${op.belegNummer}` : '–'}
                   </td>
                   <td className="px-4 py-3 text-right font-mono">{formatPreis(op.betragCent)}</td>
                   <td className="px-4 py-3 text-right font-mono text-green-700">
                     {op.bezahltCent > 0 ? formatPreis(op.bezahltCent) : '–'}
                   </td>
-                  <td className={`px-4 py-3 text-right font-mono font-semibold ${op.restCent > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                  <td className={`px-4 py-3 text-right font-mono font-semibold ${op.restCent > 0 ? 'text-red-600' : 'text-ink-subtle'}`}>
                     {op.restCent > 0 ? formatPreis(op.restCent) : '–'}
                   </td>
                   <td className="px-4 py-3 text-center">

@@ -209,17 +209,17 @@ export function SetupForm({ onSubmit, loading = false, error }: Props) {
               className={`flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition ${
                 module?.[modul]
                   ? 'border-brand-400 bg-brand-50/50 ring-1 ring-brand-400'
-                  : 'border-gray-200 hover:border-gray-300'
+                  : 'border-line hover:border-line-strong'
               }`}
             >
               <input
                 type="checkbox"
-                className="mt-0.5 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                className="mt-0.5 rounded border-line-strong text-brand-600 focus:ring-brand-500"
                 {...register(`module.${modul}`)}
               />
               <div>
-                <p className="text-sm font-medium text-gray-900">{MANDANT_MODUL_LABELS[modul]}</p>
-                <p className="text-xs text-gray-500 mt-0.5">{MANDANT_MODUL_BESCHREIBUNGEN[modul]}</p>
+                <p className="text-sm font-medium text-ink">{MANDANT_MODUL_LABELS[modul]}</p>
+                <p className="text-xs text-ink-muted mt-0.5">{MANDANT_MODUL_BESCHREIBUNGEN[modul]}</p>
               </div>
             </label>
           ))}
@@ -232,7 +232,7 @@ export function SetupForm({ onSubmit, loading = false, error }: Props) {
         </div>
       )}
 
-      <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
+      <div className="flex justify-end gap-3 pt-4 border-t border-line">
         <Button type="submit" loading={loading}>
           Kasse einrichten
         </Button>
@@ -248,8 +248,8 @@ export function SetupForm({ onSubmit, loading = false, error }: Props) {
 function SectionHeader({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
     <div>
-      <h2 className="text-base font-semibold text-gray-900">{title}</h2>
-      {subtitle && <p className="text-sm text-gray-500 mt-0.5">{subtitle}</p>}
+      <h2 className="text-base font-semibold text-ink">{title}</h2>
+      {subtitle && <p className="text-sm text-ink-muted mt-0.5">{subtitle}</p>}
     </div>
   )
 }
@@ -268,13 +268,13 @@ function UmgebungOption({ value, checked, title, description, register }: Umgebu
       className={`relative flex cursor-pointer rounded-lg border p-3 ${
         checked
           ? 'border-brand-500 ring-1 ring-brand-500 bg-brand-50/50'
-          : 'border-gray-300 hover:border-gray-400'
+          : 'border-line-strong hover:border-line-strong'
       }`}
     >
       <input type="radio" value={value} className="sr-only" {...register} />
       <span className="flex flex-1 flex-col">
-        <span className="text-sm font-medium text-gray-900">{title}</span>
-        <span className="mt-1 text-xs text-gray-500">{description}</span>
+        <span className="text-sm font-medium text-ink">{title}</span>
+        <span className="mt-1 text-xs text-ink-muted">{description}</span>
       </span>
       {checked && (
         <svg className="h-5 w-5 text-brand-500 shrink-0" viewBox="0 0 20 20" fill="currentColor">

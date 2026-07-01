@@ -117,11 +117,11 @@ export function BerichtePage() {
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 sm:py-8 space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Berichte</h1>
-        <p className="mt-1 text-sm text-gray-500">Umsatz- und Artikel-Auswertungen</p>
+        <h1 className="text-2xl font-bold text-ink">Berichte</h1>
+        <p className="mt-1 text-sm text-ink-muted">Umsatz- und Artikel-Auswertungen</p>
       </div>
 
-      <div className="flex gap-1 border-b border-gray-200 overflow-x-auto">
+      <div className="flex gap-1 border-b border-line overflow-x-auto">
         {TABS.map(([tab, label]) => (
           <button
             key={tab}
@@ -130,7 +130,7 @@ export function BerichtePage() {
             className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition whitespace-nowrap ${
               aktTab === tab
                 ? 'border-brand-600 text-brand-700'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                : 'border-transparent text-ink-muted hover:text-ink hover:border-line-strong'
             }`}
           >
             {label}
@@ -209,10 +209,10 @@ function UmsatzBericht() {
   return (
     <div className="space-y-6">
       {/* Filter-Panel */}
-      <div className="rounded-lg bg-white shadow-sm border border-gray-200 p-4 space-y-4">
+      <div className="rounded-lg bg-panel shadow-sm border border-line p-4 space-y-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+            <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wide mb-2">
               Zeitraum
             </label>
             <div className="space-y-1">
@@ -224,7 +224,7 @@ function UmsatzBericht() {
                   className={`w-full text-left px-3 py-1.5 rounded text-sm transition ${
                     preset === opt.key
                       ? 'bg-brand-50 text-brand-700 font-medium'
-                      : 'text-gray-700 hover:bg-gray-100'
+                      : 'text-ink hover:bg-panel-2'
                   }`}
                 >
                   {opt.label}
@@ -235,35 +235,35 @@ function UmsatzBericht() {
 
           <div className="space-y-3">
             <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+              <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wide mb-2">
                 Datum
               </label>
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-500 w-6">Von</span>
+                  <span className="text-xs text-ink-muted w-6">Von</span>
                   <input
                     type="date"
                     value={von}
                     max={bis}
                     onChange={(e) => { setVon(e.target.value); setPreset('individuell') }}
-                    className="flex-1 rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+                    className="flex-1 rounded border border-line-strong px-2 py-1.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
                   />
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-500 w-6">Bis</span>
+                  <span className="text-xs text-ink-muted w-6">Bis</span>
                   <input
                     type="date"
                     value={bis}
                     min={von}
                     max={heute()}
                     onChange={(e) => { setBis(e.target.value); setPreset('individuell') }}
-                    className="flex-1 rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+                    className="flex-1 rounded border border-line-strong px-2 py-1.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
                   />
                 </div>
               </div>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+              <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wide mb-2">
                 Gruppierung
               </label>
               <div className="flex gap-1">
@@ -275,7 +275,7 @@ function UmsatzBericht() {
                     className={`flex-1 px-2 py-1.5 rounded text-xs font-medium border transition ${
                       gruppierung === g
                         ? 'bg-brand-600 text-white border-brand-600'
-                        : 'text-gray-600 border-gray-300 hover:bg-gray-50'
+                        : 'text-ink-muted border-line-strong hover:bg-panel-2'
                     }`}
                   >
                     {g === 'tag' ? 'Tag' : g === 'woche' ? 'Woche' : 'Monat'}
@@ -288,25 +288,25 @@ function UmsatzBericht() {
           <div className="space-y-3">
             {kassenAnzeige.length > 1 && (
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wide mb-2">
                   Kasse
                 </label>
                 <div className="space-y-1">
                   <label className="flex items-center gap-2 text-sm cursor-pointer">
                     <input type="checkbox" checked={alleKassenGewaehlt} onChange={() => setKasseIds([])} className="rounded" />
-                    <span className={alleKassenGewaehlt ? 'font-medium text-gray-900' : 'text-gray-600'}>Alle Kassen</span>
+                    <span className={alleKassenGewaehlt ? 'font-medium text-ink' : 'text-ink-muted'}>Alle Kassen</span>
                   </label>
                   {kassenAnzeige.map(k => (
                     <label key={k.id} className="flex items-center gap-2 text-sm cursor-pointer">
                       <input type="checkbox" checked={kasseIds.includes(k.id)} onChange={() => toggleKasse(k.id)} className="rounded" />
-                      <span className={kasseIds.includes(k.id) ? 'font-medium text-gray-900' : 'text-gray-600'}>{k.label}</span>
+                      <span className={kasseIds.includes(k.id) ? 'font-medium text-ink' : 'text-ink-muted'}>{k.label}</span>
                     </label>
                   ))}
                 </div>
               </div>
             )}
             <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Filter</label>
+              <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wide mb-2">Filter</label>
               <label className="flex items-center gap-2 text-sm cursor-pointer">
                 <input type="checkbox" checked={nurZiel} onChange={(e) => setNurZiel(e.target.checked)} className="rounded" />
                 <span>Nur Zielrechnungen</span>
@@ -315,11 +315,11 @@ function UmsatzBericht() {
           </div>
         </div>
 
-        <div className="pt-2 border-t border-gray-100 flex items-center justify-between gap-3 flex-wrap">
+        <div className="pt-2 border-t border-line flex items-center justify-between gap-3 flex-wrap">
           <button
             type="button"
             onClick={() => berichtApi.buchungsjournalDownload({ kasseIds, von, bis })}
-            className="text-xs text-gray-500 hover:text-brand-700 underline underline-offset-2"
+            className="text-xs text-ink-muted hover:text-brand-700 underline underline-offset-2"
           >
             Buchungsjournal exportieren (DATEV/BMD)
           </button>
@@ -382,10 +382,10 @@ function ArtikelBericht() {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-lg bg-white shadow-sm border border-gray-200 p-4 space-y-4">
+      <div className="rounded-lg bg-panel shadow-sm border border-line p-4 space-y-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Zeitraum</label>
+            <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wide mb-2">Zeitraum</label>
             <div className="space-y-1">
               {ZEITRAUM_OPTIONEN.map(opt => (
                 <button
@@ -393,7 +393,7 @@ function ArtikelBericht() {
                   type="button"
                   onClick={() => waehlePreset(opt.key)}
                   className={`w-full text-left px-3 py-1.5 rounded text-sm transition ${
-                    preset === opt.key ? 'bg-brand-50 text-brand-700 font-medium' : 'text-gray-700 hover:bg-gray-100'
+                    preset === opt.key ? 'bg-brand-50 text-brand-700 font-medium' : 'text-ink hover:bg-panel-2'
                   }`}
                 >
                   {opt.label}
@@ -403,22 +403,22 @@ function ArtikelBericht() {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Datum</label>
+            <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wide mb-2">Datum</label>
             <div className="space-y-2">
               <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500 w-6">Von</span>
+                <span className="text-xs text-ink-muted w-6">Von</span>
                 <input
                   type="date" value={von} max={bis}
                   onChange={(e) => { setVon(e.target.value); setPreset('individuell') }}
-                  className="flex-1 rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+                  className="flex-1 rounded border border-line-strong px-2 py-1.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
                 />
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500 w-6">Bis</span>
+                <span className="text-xs text-ink-muted w-6">Bis</span>
                 <input
                   type="date" value={bis} min={von} max={heute()}
                   onChange={(e) => { setBis(e.target.value); setPreset('individuell') }}
-                  className="flex-1 rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+                  className="flex-1 rounded border border-line-strong px-2 py-1.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
                 />
               </div>
             </div>
@@ -426,16 +426,16 @@ function ArtikelBericht() {
 
           {kassenAnzeige.length > 1 && (
             <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Kasse</label>
+              <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wide mb-2">Kasse</label>
               <div className="space-y-1">
                 <label className="flex items-center gap-2 text-sm cursor-pointer">
                   <input type="checkbox" checked={alleKassenGewaehlt} onChange={() => setKasseIds([])} className="rounded" />
-                  <span className={alleKassenGewaehlt ? 'font-medium text-gray-900' : 'text-gray-600'}>Alle Kassen</span>
+                  <span className={alleKassenGewaehlt ? 'font-medium text-ink' : 'text-ink-muted'}>Alle Kassen</span>
                 </label>
                 {kassenAnzeige.map(k => (
                   <label key={k.id} className="flex items-center gap-2 text-sm cursor-pointer">
                     <input type="checkbox" checked={kasseIds.includes(k.id)} onChange={() => toggleKasse(k.id)} className="rounded" />
-                    <span className={kasseIds.includes(k.id) ? 'font-medium text-gray-900' : 'text-gray-600'}>{k.label}</span>
+                    <span className={kasseIds.includes(k.id) ? 'font-medium text-ink' : 'text-ink-muted'}>{k.label}</span>
                   </label>
                 ))}
               </div>
@@ -443,7 +443,7 @@ function ArtikelBericht() {
           )}
         </div>
 
-        <div className="pt-2 border-t border-gray-100 flex justify-end">
+        <div className="pt-2 border-t border-line flex justify-end">
           <Button onClick={ladeBericht} loading={isLoading}>Bericht laden</Button>
         </div>
       </div>
@@ -461,7 +461,7 @@ function ArtikelBericht() {
 function ArtikelBerichtTabelle({ data }: { data: ArtikelBerichtResponse }) {
   if (data.zeilen.length === 0) {
     return (
-      <div className="rounded-lg bg-white shadow-sm border border-gray-200 p-8 text-center text-sm text-gray-500">
+      <div className="rounded-lg bg-panel shadow-sm border border-line p-8 text-center text-sm text-ink-muted">
         Keine Belege im gewählten Zeitraum.
       </div>
     )
@@ -471,9 +471,9 @@ function ArtikelBerichtTabelle({ data }: { data: ArtikelBerichtResponse }) {
   const gesamtMenge  = data.zeilen.reduce((s, z) => s + z.mengeSumme, 0)
 
   return (
-    <div className="rounded-lg bg-white shadow-sm border border-gray-200 overflow-hidden">
-      <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-gray-700">
+    <div className="rounded-lg bg-panel shadow-sm border border-line overflow-hidden">
+      <div className="px-4 py-3 bg-panel-2 border-b border-line flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-ink">
           {data.zeilen.length} Artikel ({formatDatumAnzeige(data.von)} – {formatDatumAnzeige(data.bis)})
         </h2>
         <CsvExportButton onClick={() => {
@@ -491,7 +491,7 @@ function ArtikelBerichtTabelle({ data }: { data: ArtikelBerichtResponse }) {
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500 border-b border-gray-200">
+          <thead className="bg-panel-2 text-left text-xs uppercase tracking-wide text-ink-muted border-b border-line">
             <tr>
               <th className="px-4 py-2 font-semibold">#</th>
               <th className="px-4 py-2 font-semibold">Artikel</th>
@@ -500,27 +500,27 @@ function ArtikelBerichtTabelle({ data }: { data: ArtikelBerichtResponse }) {
               <th className="px-4 py-2 font-semibold text-right">Anteil</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-line">
             {data.zeilen.map((z, i) => (
-              <tr key={z.bezeichnung} className="hover:bg-gray-50">
-                <td className="px-4 py-2 text-gray-400 font-mono text-xs">{i + 1}</td>
-                <td className="px-4 py-2 text-gray-900">{z.bezeichnung}</td>
-                <td className="px-4 py-2 text-right font-mono text-gray-700">{z.mengeSumme}</td>
-                <td className="px-4 py-2 text-right font-mono font-semibold text-gray-900">
+              <tr key={z.bezeichnung} className="hover:bg-panel-2">
+                <td className="px-4 py-2 text-ink-subtle font-mono text-xs">{i + 1}</td>
+                <td className="px-4 py-2 text-ink">{z.bezeichnung}</td>
+                <td className="px-4 py-2 text-right font-mono text-ink">{z.mengeSumme}</td>
+                <td className="px-4 py-2 text-right font-mono font-semibold text-ink">
                   {formatPreis(z.umsatzCent)}
                 </td>
-                <td className="px-4 py-2 text-right text-gray-500 text-xs">
+                <td className="px-4 py-2 text-right text-ink-muted text-xs">
                   {gesamtUmsatz !== 0 ? `${Math.round(Math.abs(z.umsatzCent / gesamtUmsatz) * 100)} %` : ''}
                 </td>
               </tr>
             ))}
           </tbody>
           <tfoot>
-            <tr className="border-t-2 border-gray-300 bg-gray-50 font-semibold">
+            <tr className="border-t-2 border-line-strong bg-panel-2 font-semibold">
               <td className="px-4 py-2" colSpan={2}>Gesamt</td>
-              <td className="px-4 py-2 text-right font-mono text-gray-900">{gesamtMenge}</td>
-              <td className="px-4 py-2 text-right font-mono text-gray-900">{formatPreis(gesamtUmsatz)}</td>
-              <td className="px-4 py-2 text-right text-gray-400 text-xs">100 %</td>
+              <td className="px-4 py-2 text-right font-mono text-ink">{gesamtMenge}</td>
+              <td className="px-4 py-2 text-right font-mono text-ink">{formatPreis(gesamtUmsatz)}</td>
+              <td className="px-4 py-2 text-right text-ink-subtle text-xs">100 %</td>
             </tr>
           </tfoot>
         </table>
@@ -536,7 +536,7 @@ function ArtikelBerichtTabelle({ data }: { data: ArtikelBerichtResponse }) {
 function BerichtErgebnis({ data, gruppierung }: { data: BerichtResponse; gruppierung: BerichtGruppierung }) {
   if (data.zeilen.length === 0) {
     return (
-      <div className="rounded-lg bg-white shadow-sm border border-gray-200 p-8 text-center text-sm text-gray-500">
+      <div className="rounded-lg bg-panel shadow-sm border border-line p-8 text-center text-sm text-ink-muted">
         Keine Belege im gewählten Zeitraum.
       </div>
     )
@@ -563,9 +563,9 @@ function BerichtErgebnis({ data, gruppierung }: { data: BerichtResponse; gruppie
       <UmsatzBalkendiagramm data={data} />
 
       {/* Tabelle */}
-      <div className="rounded-lg bg-white shadow-sm border border-gray-200 overflow-hidden">
-        <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-gray-700">
+      <div className="rounded-lg bg-panel shadow-sm border border-line overflow-hidden">
+        <div className="px-4 py-3 bg-panel-2 border-b border-line flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-ink">
             {data.zeilen.length} {gruppierung === 'tag' ? 'Tage' : gruppierung === 'woche' ? 'Wochen' : 'Monate'}
             {' '}({formatDatumAnzeige(data.von)} – {formatDatumAnzeige(data.bis)})
           </h2>
@@ -594,7 +594,7 @@ function BerichtErgebnis({ data, gruppierung }: { data: BerichtResponse; gruppie
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500 border-b border-gray-200">
+            <thead className="bg-panel-2 text-left text-xs uppercase tracking-wide text-ink-muted border-b border-line">
               <tr>
                 <th className="px-4 py-2 font-semibold">Periode</th>
                 <th className="px-4 py-2 font-semibold text-right">Belege</th>
@@ -607,25 +607,25 @@ function BerichtErgebnis({ data, gruppierung }: { data: BerichtResponse; gruppie
                 )}
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-line">
               {data.zeilen.map((z) => (
-                <tr key={z.periode} className="hover:bg-gray-50">
-                  <td className="px-4 py-2 font-medium text-gray-900">{z.periode}</td>
-                  <td className="px-4 py-2 text-right text-gray-700">{z.anzahlBelege}</td>
-                  <td className={`px-4 py-2 text-right ${z.anzahlStornos > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                <tr key={z.periode} className="hover:bg-panel-2">
+                  <td className="px-4 py-2 font-medium text-ink">{z.periode}</td>
+                  <td className="px-4 py-2 text-right text-ink">{z.anzahlBelege}</td>
+                  <td className={`px-4 py-2 text-right ${z.anzahlStornos > 0 ? 'text-red-600' : 'text-ink-subtle'}`}>
                     {z.anzahlStornos > 0 ? z.anzahlStornos : '—'}
                   </td>
-                  <td className="px-4 py-2 text-right font-mono font-semibold text-gray-900">
+                  <td className="px-4 py-2 text-right font-mono font-semibold text-ink">
                     {formatPreis(z.umsatzCent)}
                   </td>
-                  <td className="px-4 py-2 text-right font-mono text-gray-700">
+                  <td className="px-4 py-2 text-right font-mono text-ink">
                     {z.barCent !== 0 ? formatPreis(z.barCent) : '—'}
                   </td>
-                  <td className="px-4 py-2 text-right font-mono text-gray-700">
+                  <td className="px-4 py-2 text-right font-mono text-ink">
                     {z.karteCent !== 0 ? formatPreis(z.karteCent) : '—'}
                   </td>
                   {g.sonstigCent !== 0 && (
-                    <td className="px-4 py-2 text-right font-mono text-gray-700">
+                    <td className="px-4 py-2 text-right font-mono text-ink">
                       {z.sonstigCent !== 0 ? formatPreis(z.sonstigCent) : '—'}
                     </td>
                   )}
@@ -633,23 +633,23 @@ function BerichtErgebnis({ data, gruppierung }: { data: BerichtResponse; gruppie
               ))}
             </tbody>
             <tfoot>
-              <tr className="border-t-2 border-gray-300 bg-gray-50 font-semibold">
-                <td className="px-4 py-2 text-gray-900">Gesamt</td>
-                <td className="px-4 py-2 text-right text-gray-900">{g.anzahlBelege}</td>
-                <td className={`px-4 py-2 text-right ${g.anzahlStornos > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+              <tr className="border-t-2 border-line-strong bg-panel-2 font-semibold">
+                <td className="px-4 py-2 text-ink">Gesamt</td>
+                <td className="px-4 py-2 text-right text-ink">{g.anzahlBelege}</td>
+                <td className={`px-4 py-2 text-right ${g.anzahlStornos > 0 ? 'text-red-600' : 'text-ink-subtle'}`}>
                   {g.anzahlStornos > 0 ? g.anzahlStornos : '—'}
                 </td>
-                <td className="px-4 py-2 text-right font-mono text-gray-900">
+                <td className="px-4 py-2 text-right font-mono text-ink">
                   {formatPreis(g.umsatzCent)}
                 </td>
-                <td className="px-4 py-2 text-right font-mono text-gray-700">
+                <td className="px-4 py-2 text-right font-mono text-ink">
                   {g.barCent !== 0 ? formatPreis(g.barCent) : '—'}
                 </td>
-                <td className="px-4 py-2 text-right font-mono text-gray-700">
+                <td className="px-4 py-2 text-right font-mono text-ink">
                   {g.karteCent !== 0 ? formatPreis(g.karteCent) : '—'}
                 </td>
                 {g.sonstigCent !== 0 && (
-                  <td className="px-4 py-2 text-right font-mono text-gray-700">
+                  <td className="px-4 py-2 text-right font-mono text-ink">
                     {formatPreis(g.sonstigCent)}
                   </td>
                 )}
@@ -661,9 +661,9 @@ function BerichtErgebnis({ data, gruppierung }: { data: BerichtResponse; gruppie
 
       {/* USt-Aufteilung */}
       {g.mwst.length > 0 && (
-        <div className="rounded-lg bg-white shadow-sm border border-gray-200 overflow-hidden">
-          <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-gray-700">USt-Aufteilung</h2>
+        <div className="rounded-lg bg-panel shadow-sm border border-line overflow-hidden">
+          <div className="px-4 py-3 bg-panel-2 border-b border-line flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-ink">USt-Aufteilung</h2>
             <CsvExportButton onClick={() => {
               const kopfzeile = ['Steuersatz', 'Brutto (€)', 'Netto (€)', 'USt (€)']
               const datenzeilen = g.mwst.map(z => [
@@ -677,7 +677,7 @@ function BerichtErgebnis({ data, gruppierung }: { data: BerichtResponse; gruppie
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="text-left text-xs uppercase tracking-wide text-gray-500">
+              <thead className="text-left text-xs uppercase tracking-wide text-ink-muted">
                 <tr>
                   <th className="px-4 py-2 font-semibold">Steuersatz</th>
                   <th className="px-4 py-2 font-semibold text-right">Brutto</th>
@@ -685,25 +685,25 @@ function BerichtErgebnis({ data, gruppierung }: { data: BerichtResponse; gruppie
                   <th className="px-4 py-2 font-semibold text-right">USt</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-line">
                 {g.mwst.map((z) => (
                   <tr key={z.satzKey}>
-                    <td className="px-4 py-2 text-gray-700">{z.label}</td>
-                    <td className="px-4 py-2 text-right font-mono text-gray-900">{formatPreis(z.bruttoCent)}</td>
-                    <td className="px-4 py-2 text-right font-mono text-gray-600">{formatPreis(z.nettoCent)}</td>
-                    <td className="px-4 py-2 text-right font-mono text-gray-600">{formatPreis(z.ustCent)}</td>
+                    <td className="px-4 py-2 text-ink">{z.label}</td>
+                    <td className="px-4 py-2 text-right font-mono text-ink">{formatPreis(z.bruttoCent)}</td>
+                    <td className="px-4 py-2 text-right font-mono text-ink-muted">{formatPreis(z.nettoCent)}</td>
+                    <td className="px-4 py-2 text-right font-mono text-ink-muted">{formatPreis(z.ustCent)}</td>
                   </tr>
                 ))}
                 {g.mwst.length > 1 && (
-                  <tr className="border-t-2 border-gray-300 font-semibold bg-gray-50">
-                    <td className="px-4 py-2 text-gray-900">Gesamt</td>
-                    <td className="px-4 py-2 text-right font-mono text-gray-900">
+                  <tr className="border-t-2 border-line-strong font-semibold bg-panel-2">
+                    <td className="px-4 py-2 text-ink">Gesamt</td>
+                    <td className="px-4 py-2 text-right font-mono text-ink">
                       {formatPreis(g.mwst.reduce((s, z) => s + z.bruttoCent, 0))}
                     </td>
-                    <td className="px-4 py-2 text-right font-mono text-gray-700">
+                    <td className="px-4 py-2 text-right font-mono text-ink">
                       {formatPreis(g.mwst.reduce((s, z) => s + z.nettoCent, 0))}
                     </td>
-                    <td className="px-4 py-2 text-right font-mono text-gray-700">
+                    <td className="px-4 py-2 text-right font-mono text-ink">
                       {formatPreis(g.mwst.reduce((s, z) => s + z.ustCent, 0))}
                     </td>
                   </tr>
@@ -728,12 +728,12 @@ function Kachel({ label, wert, sub, hervor }: {
   hervor?: boolean
 }) {
   return (
-    <div className={`rounded-lg border p-4 ${hervor ? 'bg-brand-50 border-brand-200' : 'bg-white border-gray-200'} shadow-sm`}>
-      <p className="text-xs text-gray-500">{label}</p>
-      <p className={`font-mono font-semibold text-xl mt-1 ${hervor ? 'text-brand-700' : 'text-gray-900'}`}>
+    <div className={`rounded-lg border p-4 ${hervor ? 'bg-brand-50 border-brand-200' : 'bg-panel border-line'} shadow-sm`}>
+      <p className="text-xs text-ink-muted">{label}</p>
+      <p className={`font-mono font-semibold text-xl mt-1 ${hervor ? 'text-brand-700' : 'text-ink'}`}>
         {wert}
       </p>
-      {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
+      {sub && <p className="text-xs text-ink-subtle mt-0.5">{sub}</p>}
     </div>
   )
 }
@@ -820,15 +820,15 @@ function FilterPanel({
   const alleKassenGewaehlt = kasseIds.length === 0
 
   return (
-    <div className="rounded-lg bg-white shadow-sm border border-gray-200 p-4 space-y-4">
+    <div className="rounded-lg bg-panel shadow-sm border border-line p-4 space-y-4">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div>
-          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Zeitraum</label>
+          <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wide mb-2">Zeitraum</label>
           <div className="space-y-1">
             {ZEITRAUM_OPTIONEN.map(opt => (
               <button key={opt.key} type="button" onClick={() => onPreset(opt.key)}
                 className={`w-full text-left px-3 py-1.5 rounded text-sm transition ${
-                  preset === opt.key ? 'bg-brand-50 text-brand-700 font-medium' : 'text-gray-700 hover:bg-gray-100'
+                  preset === opt.key ? 'bg-brand-50 text-brand-700 font-medium' : 'text-ink hover:bg-panel-2'
                 }`}>
                 {opt.label}
               </button>
@@ -838,19 +838,19 @@ function FilterPanel({
 
         <div className="space-y-3">
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Datum</label>
+            <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wide mb-2">Datum</label>
             <div className="space-y-2">
               <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500 w-6">Von</span>
+                <span className="text-xs text-ink-muted w-6">Von</span>
                 <input type="date" value={von} max={bis}
                   onChange={e => { onVon(e.target.value); onPreset('individuell') }}
-                  className="flex-1 rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none" />
+                  className="flex-1 rounded border border-line-strong px-2 py-1.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none" />
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500 w-6">Bis</span>
+                <span className="text-xs text-ink-muted w-6">Bis</span>
                 <input type="date" value={bis} min={von} max={heute()}
                   onChange={e => { onBis(e.target.value); onPreset('individuell') }}
-                  className="flex-1 rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none" />
+                  className="flex-1 rounded border border-line-strong px-2 py-1.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none" />
               </div>
             </div>
           </div>
@@ -859,23 +859,23 @@ function FilterPanel({
 
         {kassenAnzeige.length > 1 && (
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Kasse</label>
+            <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wide mb-2">Kasse</label>
             <div className="space-y-1">
               <label className="flex items-center gap-2 text-sm cursor-pointer">
                 <input type="checkbox" checked={alleKassenGewaehlt} onChange={() => { for (const k of kassenAnzeige) onToggleKasse(k.id); }} className="rounded" />
-                <span className={alleKassenGewaehlt ? 'font-medium text-gray-900' : 'text-gray-600'}>Alle Kassen</span>
+                <span className={alleKassenGewaehlt ? 'font-medium text-ink' : 'text-ink-muted'}>Alle Kassen</span>
               </label>
               {kassenAnzeige.map(k => (
                 <label key={k.id} className="flex items-center gap-2 text-sm cursor-pointer">
                   <input type="checkbox" checked={kasseIds.includes(k.id)} onChange={() => onToggleKasse(k.id)} className="rounded" />
-                  <span className={kasseIds.includes(k.id) ? 'font-medium text-gray-900' : 'text-gray-600'}>{k.label}</span>
+                  <span className={kasseIds.includes(k.id) ? 'font-medium text-ink' : 'text-ink-muted'}>{k.label}</span>
                 </label>
               ))}
             </div>
           </div>
         )}
       </div>
-      <div className="pt-2 border-t border-gray-100 flex justify-end">
+      <div className="pt-2 border-t border-line flex justify-end">
         <Button onClick={onLaden} loading={isLoading}>Bericht laden</Button>
       </div>
     </div>
@@ -946,9 +946,9 @@ function GesamtumsatzErgebnis({ data, von, bis }: { data: BerichtGesamt; von: st
       </div>
 
       {data.mwst.length > 0 && (
-        <div className="rounded-lg bg-white shadow-sm border border-gray-200 overflow-hidden">
-          <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-gray-700">USt-Aufteilung</h2>
+        <div className="rounded-lg bg-panel shadow-sm border border-line overflow-hidden">
+          <div className="px-4 py-3 bg-panel-2 border-b border-line flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-ink">USt-Aufteilung</h2>
             <CsvExportButton onClick={() => {
               const kopfzeile = ['Steuersatz', 'Brutto (€)', 'Netto (€)', 'USt (€)', 'Anteil (%)']
               const datenzeilen = data.mwst.map(z => [
@@ -962,7 +962,7 @@ function GesamtumsatzErgebnis({ data, von, bis }: { data: BerichtGesamt; von: st
             }} />
           </div>
           <table className="w-full text-sm">
-            <thead className="text-left text-xs uppercase tracking-wide text-gray-500">
+            <thead className="text-left text-xs uppercase tracking-wide text-ink-muted">
               <tr>
                 <th className="px-4 py-2 font-semibold">Steuersatz</th>
                 <th className="px-4 py-2 font-semibold text-right">Brutto</th>
@@ -971,14 +971,14 @@ function GesamtumsatzErgebnis({ data, von, bis }: { data: BerichtGesamt; von: st
                 <th className="px-4 py-2 font-semibold text-right">Anteil</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-line">
               {data.mwst.map(z => (
-                <tr key={z.satzKey} className="hover:bg-gray-50">
-                  <td className="px-4 py-2 text-gray-700">{z.label}</td>
-                  <td className="px-4 py-2 text-right font-mono text-gray-900">{formatPreis(z.bruttoCent)}</td>
-                  <td className="px-4 py-2 text-right font-mono text-gray-600">{formatPreis(z.nettoCent)}</td>
-                  <td className="px-4 py-2 text-right font-mono text-gray-600">{formatPreis(z.ustCent)}</td>
-                  <td className="px-4 py-2 text-right text-gray-500 text-xs">{pct(z.bruttoCent, data.umsatzCent)}</td>
+                <tr key={z.satzKey} className="hover:bg-panel-2">
+                  <td className="px-4 py-2 text-ink">{z.label}</td>
+                  <td className="px-4 py-2 text-right font-mono text-ink">{formatPreis(z.bruttoCent)}</td>
+                  <td className="px-4 py-2 text-right font-mono text-ink-muted">{formatPreis(z.nettoCent)}</td>
+                  <td className="px-4 py-2 text-right font-mono text-ink-muted">{formatPreis(z.ustCent)}</td>
+                  <td className="px-4 py-2 text-right text-ink-muted text-xs">{pct(z.bruttoCent, data.umsatzCent)}</td>
                 </tr>
               ))}
             </tbody>
@@ -1018,7 +1018,7 @@ function ZahlungsartBericht() {
 function ZahlungsartErgebnis({ data }: { data: BerichtResponse }) {
   const g = data.gesamt
   if (g.anzahlBelege === 0) {
-    return <div className="rounded-lg bg-white border border-gray-200 p-8 text-center text-sm text-gray-500">Keine Belege im gewählten Zeitraum.</div>
+    return <div className="rounded-lg bg-panel border border-line p-8 text-center text-sm text-ink-muted">Keine Belege im gewählten Zeitraum.</div>
   }
 
   const zahlarten = [
@@ -1031,13 +1031,13 @@ function ZahlungsartErgebnis({ data }: { data: BerichtResponse }) {
     <div className="space-y-4">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {zahlarten.map(z => (
-          <div key={z.label} className="rounded-lg border border-gray-200 bg-white shadow-sm p-4">
+          <div key={z.label} className="rounded-lg border border-line bg-panel shadow-sm p-4">
             <div className="flex justify-between items-start mb-2">
-              <p className="text-xs text-gray-500">{z.label}</p>
-              <span className="text-xs font-medium text-gray-500">{pct(z.cent, g.umsatzCent)}</span>
+              <p className="text-xs text-ink-muted">{z.label}</p>
+              <span className="text-xs font-medium text-ink-muted">{pct(z.cent, g.umsatzCent)}</span>
             </div>
-            <p className="font-mono font-semibold text-xl text-gray-900">{formatPreis(z.cent)}</p>
-            <div className="mt-3 h-2 rounded-full bg-gray-100 overflow-hidden">
+            <p className="font-mono font-semibold text-xl text-ink">{formatPreis(z.cent)}</p>
+            <div className="mt-3 h-2 rounded-full bg-panel-2 overflow-hidden">
               <div
                 className={`h-full rounded-full ${z.farbe}`}
                 style={{ width: g.umsatzCent !== 0 ? `${Math.round(Math.abs(z.cent / g.umsatzCent) * 100)}%` : '0%' }}
@@ -1047,9 +1047,9 @@ function ZahlungsartErgebnis({ data }: { data: BerichtResponse }) {
         ))}
       </div>
 
-      <div className="rounded-lg bg-white shadow-sm border border-gray-200 overflow-hidden">
-        <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-gray-700">Verlauf ({formatDatumAnzeige(data.von)} – {formatDatumAnzeige(data.bis)})</h2>
+      <div className="rounded-lg bg-panel shadow-sm border border-line overflow-hidden">
+        <div className="px-4 py-3 bg-panel-2 border-b border-line flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-ink">Verlauf ({formatDatumAnzeige(data.von)} – {formatDatumAnzeige(data.bis)})</h2>
           <CsvExportButton onClick={() => {
             const kopfzeile = ['Periode', 'Bar (€)', 'Karte (€)', 'Sonstige (€)', 'Gesamt (€)']
             const datenzeilen = data.zeilen.map(z => [
@@ -1071,7 +1071,7 @@ function ZahlungsartErgebnis({ data }: { data: BerichtResponse }) {
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500 border-b border-gray-200">
+            <thead className="bg-panel-2 text-left text-xs uppercase tracking-wide text-ink-muted border-b border-line">
               <tr>
                 <th className="px-4 py-2 font-semibold">Periode</th>
                 <th className="px-4 py-2 font-semibold text-right">Bar</th>
@@ -1080,24 +1080,24 @@ function ZahlungsartErgebnis({ data }: { data: BerichtResponse }) {
                 <th className="px-4 py-2 font-semibold text-right">Gesamt</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-line">
               {data.zeilen.map(z => (
-                <tr key={z.periode} className="hover:bg-gray-50">
-                  <td className="px-4 py-2 font-medium text-gray-900">{z.periode}</td>
-                  <td className="px-4 py-2 text-right font-mono text-gray-700">{z.barCent !== 0 ? formatPreis(z.barCent) : '—'}</td>
-                  <td className="px-4 py-2 text-right font-mono text-gray-700">{z.karteCent !== 0 ? formatPreis(z.karteCent) : '—'}</td>
-                  {g.sonstigCent !== 0 && <td className="px-4 py-2 text-right font-mono text-gray-700">{z.sonstigCent !== 0 ? formatPreis(z.sonstigCent) : '—'}</td>}
-                  <td className="px-4 py-2 text-right font-mono font-semibold text-gray-900">{formatPreis(z.umsatzCent)}</td>
+                <tr key={z.periode} className="hover:bg-panel-2">
+                  <td className="px-4 py-2 font-medium text-ink">{z.periode}</td>
+                  <td className="px-4 py-2 text-right font-mono text-ink">{z.barCent !== 0 ? formatPreis(z.barCent) : '—'}</td>
+                  <td className="px-4 py-2 text-right font-mono text-ink">{z.karteCent !== 0 ? formatPreis(z.karteCent) : '—'}</td>
+                  {g.sonstigCent !== 0 && <td className="px-4 py-2 text-right font-mono text-ink">{z.sonstigCent !== 0 ? formatPreis(z.sonstigCent) : '—'}</td>}
+                  <td className="px-4 py-2 text-right font-mono font-semibold text-ink">{formatPreis(z.umsatzCent)}</td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
-              <tr className="border-t-2 border-gray-300 bg-gray-50 font-semibold">
-                <td className="px-4 py-2 text-gray-900">Gesamt</td>
+              <tr className="border-t-2 border-line-strong bg-panel-2 font-semibold">
+                <td className="px-4 py-2 text-ink">Gesamt</td>
                 <td className="px-4 py-2 text-right font-mono">{g.barCent !== 0 ? formatPreis(g.barCent) : '—'}</td>
                 <td className="px-4 py-2 text-right font-mono">{g.karteCent !== 0 ? formatPreis(g.karteCent) : '—'}</td>
                 {g.sonstigCent !== 0 && <td className="px-4 py-2 text-right font-mono">{formatPreis(g.sonstigCent)}</td>}
-                <td className="px-4 py-2 text-right font-mono text-gray-900">{formatPreis(g.umsatzCent)}</td>
+                <td className="px-4 py-2 text-right font-mono text-ink">{formatPreis(g.umsatzCent)}</td>
               </tr>
             </tfoot>
           </table>
@@ -1165,7 +1165,7 @@ function StundenDiagramm({ data }: { data: StundenBerichtResponse }) {
 
   if (gesamtUmsatz === 0) {
     return (
-      <div className="rounded-lg bg-white shadow-sm border border-gray-200 p-8 text-center text-sm text-gray-500">
+      <div className="rounded-lg bg-panel shadow-sm border border-line p-8 text-center text-sm text-ink-muted">
         Keine Belege im gewählten Zeitraum.
       </div>
     )
@@ -1189,9 +1189,9 @@ function StundenDiagramm({ data }: { data: StundenBerichtResponse }) {
         <Kachel label="Aktive Stunden" wert={String(aktiveStunden.length)} sub="Stunden mit Umsatz" />
       </div>
 
-      <div className="rounded-lg bg-white shadow-sm border border-gray-200 overflow-hidden">
-        <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-gray-700">
+      <div className="rounded-lg bg-panel shadow-sm border border-line overflow-hidden">
+        <div className="px-4 py-3 bg-panel-2 border-b border-line flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-ink">
             Umsatz nach Tageszeit ({formatDatumAnzeige(data.von)} – {formatDatumAnzeige(data.bis)})
           </h2>
           <CsvExportButton onClick={() => {
@@ -1212,19 +1212,19 @@ function StundenDiagramm({ data }: { data: StundenBerichtResponse }) {
             const istSpitze = z.umsatzCent === maxUmsatz && z.umsatzCent > 0
             return (
               <div key={z.stunde} className="flex items-center gap-3 group">
-                <span className="text-xs font-mono text-gray-500 w-12 shrink-0 text-right">
+                <span className="text-xs font-mono text-ink-muted w-12 shrink-0 text-right">
                   {z.stunde.toString().padStart(2, '0')}:00
                 </span>
-                <div className="flex-1 h-6 bg-gray-100 rounded overflow-hidden">
+                <div className="flex-1 h-6 bg-panel-2 rounded overflow-hidden">
                   <div
                     className={`h-full rounded transition-all ${istSpitze ? 'bg-brand-500' : 'bg-brand-300'}`}
                     style={{ width: `${balkenBreite}%` }}
                   />
                 </div>
-                <span className={`text-xs font-mono w-28 shrink-0 text-right ${z.umsatzCent > 0 ? 'text-gray-900 font-semibold' : 'text-gray-300'}`}>
+                <span className={`text-xs font-mono w-28 shrink-0 text-right ${z.umsatzCent > 0 ? 'text-ink font-semibold' : 'text-ink-subtle'}`}>
                   {z.umsatzCent > 0 ? formatPreis(z.umsatzCent) : '—'}
                 </span>
-                <span className="text-xs text-gray-400 w-14 shrink-0 text-right">
+                <span className="text-xs text-ink-subtle w-14 shrink-0 text-right">
                   {z.anzahlBelege > 0 ? `${z.anzahlBelege} Bel.` : ''}
                 </span>
               </div>
@@ -1234,13 +1234,13 @@ function StundenDiagramm({ data }: { data: StundenBerichtResponse }) {
       </div>
 
       {/* Detailtabelle */}
-      <div className="rounded-lg bg-white shadow-sm border border-gray-200 overflow-hidden">
-        <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
-          <h2 className="text-sm font-semibold text-gray-700">Stundendetails</h2>
+      <div className="rounded-lg bg-panel shadow-sm border border-line overflow-hidden">
+        <div className="px-4 py-3 bg-panel-2 border-b border-line">
+          <h2 className="text-sm font-semibold text-ink">Stundendetails</h2>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500 border-b border-gray-200">
+            <thead className="bg-panel-2 text-left text-xs uppercase tracking-wide text-ink-muted border-b border-line">
               <tr>
                 <th className="px-4 py-2 font-semibold">Stunde</th>
                 <th className="px-4 py-2 font-semibold text-right">Belege</th>
@@ -1250,17 +1250,17 @@ function StundenDiagramm({ data }: { data: StundenBerichtResponse }) {
                 <th className="px-4 py-2 font-semibold text-right">Anteil</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-line">
               {data.zeilen.filter(z => z.umsatzCent > 0).map(z => (
-                <tr key={z.stunde} className="hover:bg-gray-50">
-                  <td className="px-4 py-2 font-medium text-gray-900 font-mono">
+                <tr key={z.stunde} className="hover:bg-panel-2">
+                  <td className="px-4 py-2 font-medium text-ink font-mono">
                     {z.stunde.toString().padStart(2, '0')}:00–{(z.stunde + 1).toString().padStart(2, '0')}:00
                   </td>
-                  <td className="px-4 py-2 text-right text-gray-700">{z.anzahlBelege}</td>
-                  <td className="px-4 py-2 text-right font-mono font-semibold text-gray-900">{formatPreis(z.umsatzCent)}</td>
-                  <td className="px-4 py-2 text-right font-mono text-gray-600">{z.barCent > 0 ? formatPreis(z.barCent) : '—'}</td>
-                  <td className="px-4 py-2 text-right font-mono text-gray-600">{z.karteCent > 0 ? formatPreis(z.karteCent) : '—'}</td>
-                  <td className="px-4 py-2 text-right text-gray-500 text-xs">
+                  <td className="px-4 py-2 text-right text-ink">{z.anzahlBelege}</td>
+                  <td className="px-4 py-2 text-right font-mono font-semibold text-ink">{formatPreis(z.umsatzCent)}</td>
+                  <td className="px-4 py-2 text-right font-mono text-ink-muted">{z.barCent > 0 ? formatPreis(z.barCent) : '—'}</td>
+                  <td className="px-4 py-2 text-right font-mono text-ink-muted">{z.karteCent > 0 ? formatPreis(z.karteCent) : '—'}</td>
+                  <td className="px-4 py-2 text-right text-ink-muted text-xs">
                     {gesamtUmsatz > 0 ? `${Math.round((z.umsatzCent / gesamtUmsatz) * 100)} %` : ''}
                   </td>
                 </tr>
@@ -1289,9 +1289,9 @@ function UmsatzBalkendiagramm({ data }: { data: BerichtResponse }) {
     : data.zeilen
 
   return (
-    <div className="rounded-lg bg-white shadow-sm border border-gray-200 overflow-hidden">
-      <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
-        <h2 className="text-sm font-semibold text-gray-700">Verlauf</h2>
+    <div className="rounded-lg bg-panel shadow-sm border border-line overflow-hidden">
+      <div className="px-4 py-3 bg-panel-2 border-b border-line">
+        <h2 className="text-sm font-semibold text-ink">Verlauf</h2>
       </div>
       <div className="px-4 pt-4 pb-2 overflow-x-auto">
         <div
@@ -1313,7 +1313,7 @@ function UmsatzBalkendiagramm({ data }: { data: BerichtResponse }) {
                     <br />
                     <span className="font-mono">{formatPreis(z.umsatzCent)}</span>
                     {z.anzahlBelege > 0 && (
-                      <><br /><span className="text-gray-300">{z.anzahlBelege} Bel.</span></>
+                      <><br /><span className="text-ink-subtle">{z.anzahlBelege} Bel.</span></>
                     )}
                   </div>
                   <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900" />
@@ -1322,13 +1322,13 @@ function UmsatzBalkendiagramm({ data }: { data: BerichtResponse }) {
                 <div className="flex-1 flex items-end w-full">
                   <div
                     className={`w-full rounded-t transition-colors ${
-                      z.umsatzCent > 0 ? 'bg-brand-400 group-hover:bg-brand-500' : 'bg-gray-100'
+                      z.umsatzCent > 0 ? 'bg-brand-400 group-hover:bg-brand-500' : 'bg-panel-2'
                     }`}
                     style={{ height: `${barH}px` }}
                   />
                 </div>
                 {/* Label */}
-                <span className="text-[9px] text-gray-400 mt-1 w-full text-center truncate leading-tight px-0.5">
+                <span className="text-[9px] text-ink-subtle mt-1 w-full text-center truncate leading-tight px-0.5">
                   {z.periode.length > 7 ? z.periode.slice(-5) : z.periode}
                 </span>
               </div>
@@ -1441,11 +1441,11 @@ function VergleichBericht() {
   return (
     <div className="space-y-6">
       {/* Filter */}
-      <div className="rounded-lg bg-white shadow-sm border border-gray-200 p-4 space-y-4">
+      <div className="rounded-lg bg-panel shadow-sm border border-line p-4 space-y-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           {/* Preset-Auswahl */}
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+            <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wide mb-2">
               Vergleich
             </label>
             <div className="space-y-2">
@@ -1457,11 +1457,11 @@ function VergleichBericht() {
                   className={`w-full text-left px-3 py-2 rounded border transition ${
                     preset === opt.key
                       ? 'bg-brand-50 border-brand-300 text-brand-700'
-                      : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
+                      : 'bg-panel border-line text-ink hover:bg-panel-2'
                   }`}
                 >
                   <div className="text-sm font-medium">{opt.label}</div>
-                  <div className="text-xs text-gray-400">{opt.sublabel}</div>
+                  <div className="text-xs text-ink-subtle">{opt.sublabel}</div>
                 </button>
               ))}
             </div>
@@ -1469,7 +1469,7 @@ function VergleichBericht() {
 
           {/* Zeitraum-Vorschau */}
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+            <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wide mb-2">
               Zeiträume
             </label>
             {(() => {
@@ -1482,9 +1482,9 @@ function VergleichBericht() {
                       {formatDatumAnzeige(zt.vonAkt)} – {formatDatumAnzeige(zt.bisAkt)}
                     </p>
                   </div>
-                  <div className="rounded border border-gray-200 bg-gray-50 p-3">
-                    <p className="text-xs font-semibold text-gray-500 mb-0.5">Vorperiode</p>
-                    <p className="text-sm font-mono text-gray-700">
+                  <div className="rounded border border-line bg-panel-2 p-3">
+                    <p className="text-xs font-semibold text-ink-muted mb-0.5">Vorperiode</p>
+                    <p className="text-sm font-mono text-ink">
                       {formatDatumAnzeige(zt.vonVor)} – {formatDatumAnzeige(zt.bisVor)}
                     </p>
                   </div>
@@ -1496,16 +1496,16 @@ function VergleichBericht() {
           {/* Kassen */}
           {kassenAnzeige.length > 1 && (
             <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Kasse</label>
+              <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wide mb-2">Kasse</label>
               <div className="space-y-1">
                 <label className="flex items-center gap-2 text-sm cursor-pointer">
                   <input type="checkbox" checked={alleKassenGewaehlt} onChange={() => setKasseIds([])} className="rounded" />
-                  <span className={alleKassenGewaehlt ? 'font-medium text-gray-900' : 'text-gray-600'}>Alle Kassen</span>
+                  <span className={alleKassenGewaehlt ? 'font-medium text-ink' : 'text-ink-muted'}>Alle Kassen</span>
                 </label>
                 {kassenAnzeige.map(k => (
                   <label key={k.id} className="flex items-center gap-2 text-sm cursor-pointer">
                     <input type="checkbox" checked={kasseIds.includes(k.id)} onChange={() => toggleKasse(k.id)} className="rounded" />
-                    <span className={kasseIds.includes(k.id) ? 'font-medium text-gray-900' : 'text-gray-600'}>{k.label}</span>
+                    <span className={kasseIds.includes(k.id) ? 'font-medium text-ink' : 'text-ink-muted'}>{k.label}</span>
                   </label>
                 ))}
               </div>
@@ -1513,7 +1513,7 @@ function VergleichBericht() {
           )}
         </div>
 
-        <div className="pt-2 border-t border-gray-100 flex justify-end">
+        <div className="pt-2 border-t border-line flex justify-end">
           <Button onClick={ladeBericht} loading={isLoading}>
             {optionInfo.label} vs. {optionInfo.sublabel.replace('vs. ', '')} laden
           </Button>
@@ -1583,10 +1583,10 @@ function VergleichErgebnis({
           <p className="font-mono font-bold text-xl mt-1 text-brand-800">{formatPreis(a.umsatzCent)}</p>
           <p className="text-xs text-brand-500 mt-0.5">{a.anzahlBelege} Belege</p>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-4">
-          <p className="text-xs text-gray-500 font-medium">{vorLabel}</p>
-          <p className="font-mono font-semibold text-xl mt-1 text-gray-700">{formatPreis(v.umsatzCent)}</p>
-          <p className="text-xs text-gray-400 mt-0.5">{v.anzahlBelege} Belege</p>
+        <div className="rounded-lg border border-line bg-panel shadow-sm p-4">
+          <p className="text-xs text-ink-muted font-medium">{vorLabel}</p>
+          <p className="font-mono font-semibold text-xl mt-1 text-ink">{formatPreis(v.umsatzCent)}</p>
+          <p className="text-xs text-ink-subtle mt-0.5">{v.anzahlBelege} Belege</p>
         </div>
         <div className={`rounded-lg border shadow-sm p-4 ${deltaPositiv ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
           <p className={`text-xs font-medium ${deltaPositiv ? 'text-green-600' : 'text-red-600'}`}>Differenz</p>
@@ -1612,9 +1612,9 @@ function VergleichErgebnis({
 
       {/* Zahlungsarten-Vergleich */}
       {zahlarten.length > 0 && (
-        <div className="rounded-lg bg-white shadow-sm border border-gray-200 overflow-hidden">
-          <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
-            <h2 className="text-sm font-semibold text-gray-700">Zahlungsarten</h2>
+        <div className="rounded-lg bg-panel shadow-sm border border-line overflow-hidden">
+          <div className="px-4 py-3 bg-panel-2 border-b border-line">
+            <h2 className="text-sm font-semibold text-ink">Zahlungsarten</h2>
           </div>
           <div className="p-4 space-y-4">
             {zahlarten.map(z => {
@@ -1622,7 +1622,7 @@ function VergleichErgebnis({
               return (
                 <div key={z.label}>
                   <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-sm text-gray-700">{z.label}</span>
+                    <span className="text-sm text-ink">{z.label}</span>
                     {absDeltaChip(z.deltaCent, formatPreis)}
                   </div>
                   <div className="space-y-1">
@@ -1632,15 +1632,15 @@ function VergleichErgebnis({
                         <div className="h-full rounded-full bg-brand-400"
                           style={{ width: `${Math.round((z.aktCent / maxV) * 100)}%` }} />
                       </div>
-                      <span className="text-xs font-mono text-gray-700 w-24 text-right shrink-0">{formatPreis(z.aktCent)}</span>
+                      <span className="text-xs font-mono text-ink w-24 text-right shrink-0">{formatPreis(z.aktCent)}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-400 w-20 shrink-0">{vorLabel}</span>
-                      <div className="flex-1 h-5 bg-gray-100 rounded-full overflow-hidden">
+                      <span className="text-xs text-ink-subtle w-20 shrink-0">{vorLabel}</span>
+                      <div className="flex-1 h-5 bg-panel-2 rounded-full overflow-hidden">
                         <div className="h-full rounded-full bg-gray-300"
                           style={{ width: `${Math.round((z.vorCent / maxV) * 100)}%` }} />
                       </div>
-                      <span className="text-xs font-mono text-gray-400 w-24 text-right shrink-0">{formatPreis(z.vorCent)}</span>
+                      <span className="text-xs font-mono text-ink-subtle w-24 text-right shrink-0">{formatPreis(z.vorCent)}</span>
                     </div>
                   </div>
                 </div>
@@ -1651,9 +1651,9 @@ function VergleichErgebnis({
       )}
 
       {/* Vergleichs-Tabelle */}
-      <div className="rounded-lg bg-white shadow-sm border border-gray-200 overflow-hidden">
-        <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-gray-700">Kennzahlen im Vergleich</h2>
+      <div className="rounded-lg bg-panel shadow-sm border border-line overflow-hidden">
+        <div className="px-4 py-3 bg-panel-2 border-b border-line flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-ink">Kennzahlen im Vergleich</h2>
           <CsvExportButton onClick={() => {
             const kopfzeile = ['Kennzahl', aktLabel, vorLabel, 'Differenz', 'Veränderung (%)']
             const rows: string[][] = [
@@ -1666,22 +1666,22 @@ function VergleichErgebnis({
           }} />
         </div>
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500 border-b border-gray-200">
+          <thead className="bg-panel-2 text-xs uppercase tracking-wide text-ink-muted border-b border-line">
             <tr>
               <th className="px-4 py-2 font-semibold text-left">Kennzahl</th>
               <th className="px-4 py-2 font-semibold text-right text-brand-700">{aktLabel}</th>
-              <th className="px-4 py-2 font-semibold text-right text-gray-500">{vorLabel}</th>
+              <th className="px-4 py-2 font-semibold text-right text-ink-muted">{vorLabel}</th>
               <th className="px-4 py-2 font-semibold text-right">Differenz</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-line">
             <VergleichZeile label="Netto-Umsatz"  aktStr={formatPreis(a.umsatzCent)} vorStr={formatPreis(v.umsatzCent)} deltaStr={`${delta >= 0 ? '+' : ''}${formatPreis(delta)}`}  pos={delta >= 0} />
             <VergleichZeile label="Barzahlung"    aktStr={formatPreis(a.barCent)}    vorStr={formatPreis(v.barCent)}    deltaStr={`${deltaBarCent >= 0 ? '+' : ''}${formatPreis(deltaBarCent)}`}    pos={deltaBarCent >= 0} />
             <VergleichZeile label="Kartenzahlung" aktStr={formatPreis(a.karteCent)}  vorStr={formatPreis(v.karteCent)}  deltaStr={`${deltaKarteCent >= 0 ? '+' : ''}${formatPreis(deltaKarteCent)}`}  pos={deltaKarteCent >= 0} />
             <VergleichZeile label="Belege"        aktStr={String(a.anzahlBelege)}    vorStr={String(v.anzahlBelege)}    deltaStr={`${deltaBelege >= 0 ? '+' : ''}${deltaBelege}`}                     pos={deltaBelege >= 0} />
           </tbody>
         </table>
-        <div className="px-4 py-2 bg-gray-50 border-t border-gray-200 text-xs text-gray-400">
+        <div className="px-4 py-2 bg-panel-2 border-t border-line text-xs text-ink-subtle">
           {aktLabel}: {formatDatumAnzeige(akt.von)} – {formatDatumAnzeige(akt.bis)}
           {' · '}
           {vorLabel}: {formatDatumAnzeige(vor.von)} – {formatDatumAnzeige(vor.bis)}
@@ -1699,10 +1699,10 @@ function VergleichZeile({ label, aktStr, vorStr, deltaStr, pos }: {
   pos:      boolean
 }) {
   return (
-    <tr className="hover:bg-gray-50">
-      <td className="px-4 py-2 text-gray-700">{label}</td>
+    <tr className="hover:bg-panel-2">
+      <td className="px-4 py-2 text-ink">{label}</td>
       <td className="px-4 py-2 text-right font-mono font-semibold text-brand-800">{aktStr}</td>
-      <td className="px-4 py-2 text-right font-mono text-gray-500">{vorStr}</td>
+      <td className="px-4 py-2 text-right font-mono text-ink-muted">{vorStr}</td>
       <td className={`px-4 py-2 text-right font-mono text-xs ${pos ? 'text-green-700' : 'text-red-700'}`}>
         {deltaStr}
       </td>
@@ -1712,15 +1712,15 @@ function VergleichZeile({ label, aktStr, vorStr, deltaStr, pos }: {
 
 function WarengruppeTabelle({ data }: { data: WarengruppeBerichtResponse }) {
   if (data.zeilen.length === 0) {
-    return <div className="rounded-lg bg-white border border-gray-200 p-8 text-center text-sm text-gray-500">Keine Belege im gewählten Zeitraum.</div>
+    return <div className="rounded-lg bg-panel border border-line p-8 text-center text-sm text-ink-muted">Keine Belege im gewählten Zeitraum.</div>
   }
 
   const gesamtUmsatz = data.zeilen.reduce((s, z) => s + z.umsatzCent, 0)
 
   return (
-    <div className="rounded-lg bg-white shadow-sm border border-gray-200 overflow-hidden">
-      <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-gray-700">
+    <div className="rounded-lg bg-panel shadow-sm border border-line overflow-hidden">
+      <div className="px-4 py-3 bg-panel-2 border-b border-line flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-ink">
           {data.zeilen.length} Warengruppen ({formatDatumAnzeige(data.von)} – {formatDatumAnzeige(data.bis)})
         </h2>
         <CsvExportButton onClick={() => {
@@ -1742,7 +1742,7 @@ function WarengruppeTabelle({ data }: { data: WarengruppeBerichtResponse }) {
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500 border-b border-gray-200">
+          <thead className="bg-panel-2 text-left text-xs uppercase tracking-wide text-ink-muted border-b border-line">
             <tr>
               <th className="px-4 py-2 font-semibold">Warengruppe</th>
               <th className="px-4 py-2 font-semibold text-right">Menge</th>
@@ -1751,17 +1751,17 @@ function WarengruppeTabelle({ data }: { data: WarengruppeBerichtResponse }) {
               <th className="px-4 py-2 font-semibold">Verteilung</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-line">
             {data.zeilen.map(z => {
               const anteil = gesamtUmsatz !== 0 ? Math.round(Math.abs(z.umsatzCent / gesamtUmsatz) * 100) : 0
               return (
-                <tr key={z.kategorieName} className="hover:bg-gray-50">
-                  <td className="px-4 py-2 text-gray-900 font-medium">{z.kategorieName}</td>
-                  <td className="px-4 py-2 text-right font-mono text-gray-700">{z.mengeSumme}</td>
-                  <td className="px-4 py-2 text-right font-mono font-semibold text-gray-900">{formatPreis(z.umsatzCent)}</td>
-                  <td className="px-4 py-2 text-right text-gray-500 text-xs">{anteil} %</td>
+                <tr key={z.kategorieName} className="hover:bg-panel-2">
+                  <td className="px-4 py-2 text-ink font-medium">{z.kategorieName}</td>
+                  <td className="px-4 py-2 text-right font-mono text-ink">{z.mengeSumme}</td>
+                  <td className="px-4 py-2 text-right font-mono font-semibold text-ink">{formatPreis(z.umsatzCent)}</td>
+                  <td className="px-4 py-2 text-right text-ink-muted text-xs">{anteil} %</td>
                   <td className="px-4 py-2 w-32">
-                    <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+                    <div className="h-2 rounded-full bg-panel-2 overflow-hidden">
                       <div className="h-full rounded-full bg-brand-500" style={{ width: `${anteil}%` }} />
                     </div>
                   </td>
@@ -1770,11 +1770,11 @@ function WarengruppeTabelle({ data }: { data: WarengruppeBerichtResponse }) {
             })}
           </tbody>
           <tfoot>
-            <tr className="border-t-2 border-gray-300 bg-gray-50 font-semibold">
-              <td className="px-4 py-2 text-gray-900">Gesamt</td>
+            <tr className="border-t-2 border-line-strong bg-panel-2 font-semibold">
+              <td className="px-4 py-2 text-ink">Gesamt</td>
               <td className="px-4 py-2 text-right font-mono">{data.zeilen.reduce((s, z) => s + z.mengeSumme, 0)}</td>
-              <td className="px-4 py-2 text-right font-mono text-gray-900">{formatPreis(gesamtUmsatz)}</td>
-              <td className="px-4 py-2 text-right text-gray-400 text-xs">100 %</td>
+              <td className="px-4 py-2 text-right font-mono text-ink">{formatPreis(gesamtUmsatz)}</td>
+              <td className="px-4 py-2 text-right text-ink-subtle text-xs">100 %</td>
               <td className="px-4 py-2" />
             </tr>
           </tfoot>
@@ -1821,55 +1821,55 @@ function KellnerBericht() {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-lg bg-white shadow-sm border border-gray-200 p-4 space-y-4">
+      <div className="rounded-lg bg-panel shadow-sm border border-line p-4 space-y-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Zeitraum</label>
+            <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wide mb-2">Zeitraum</label>
             <div className="space-y-1">
               {ZEITRAUM_OPTIONEN.map(opt => (
                 <button key={opt.key} type="button" onClick={() => waehlePreset(opt.key)}
-                  className={`w-full text-left px-3 py-1.5 rounded text-sm transition ${preset === opt.key ? 'bg-brand-50 text-brand-700 font-medium' : 'text-gray-700 hover:bg-gray-100'}`}>
+                  className={`w-full text-left px-3 py-1.5 rounded text-sm transition ${preset === opt.key ? 'bg-brand-50 text-brand-700 font-medium' : 'text-ink hover:bg-panel-2'}`}>
                   {opt.label}
                 </button>
               ))}
             </div>
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Datum</label>
+            <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wide mb-2">Datum</label>
             <div className="space-y-2">
               <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500 w-6">Von</span>
+                <span className="text-xs text-ink-muted w-6">Von</span>
                 <input type="date" value={von} max={bis} onChange={e => { setVon(e.target.value); setPreset('individuell') }}
-                  className="flex-1 rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-brand-500 outline-none" />
+                  className="flex-1 rounded border border-line-strong px-2 py-1.5 text-sm focus:border-brand-500 outline-none" />
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500 w-6">Bis</span>
+                <span className="text-xs text-ink-muted w-6">Bis</span>
                 <input type="date" value={bis} min={von} max={heute()} onChange={e => { setBis(e.target.value); setPreset('individuell') }}
-                  className="flex-1 rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-brand-500 outline-none" />
+                  className="flex-1 rounded border border-line-strong px-2 py-1.5 text-sm focus:border-brand-500 outline-none" />
               </div>
             </div>
           </div>
           {kassenAnzeige.length > 1 && (
             <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Kasse</label>
+              <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wide mb-2">Kasse</label>
               <div className="space-y-1">
                 <label className="flex items-center gap-2 text-sm cursor-pointer">
                   <input type="checkbox" checked={kasseIds.length === 0} onChange={() => setKasseIds([])} className="rounded" />
-                  <span className={kasseIds.length === 0 ? 'font-medium text-gray-900' : 'text-gray-600'}>Alle Kassen</span>
+                  <span className={kasseIds.length === 0 ? 'font-medium text-ink' : 'text-ink-muted'}>Alle Kassen</span>
                 </label>
                 {kassenAnzeige.map(k => (
                   <label key={k.id} className="flex items-center gap-2 text-sm cursor-pointer">
                     <input type="checkbox" checked={kasseIds.includes(k.id)}
                       onChange={() => setKasseIds(prev => prev.includes(k.id) ? prev.filter(x => x !== k.id) : [...prev, k.id])}
                       className="rounded" />
-                    <span className={kasseIds.includes(k.id) ? 'font-medium text-gray-900' : 'text-gray-600'}>{k.label}</span>
+                    <span className={kasseIds.includes(k.id) ? 'font-medium text-ink' : 'text-ink-muted'}>{k.label}</span>
                   </label>
                 ))}
               </div>
             </div>
           )}
         </div>
-        <div className="pt-2 border-t border-gray-100 flex justify-end">
+        <div className="pt-2 border-t border-line flex justify-end">
           <Button onClick={ladeBericht} loading={isLoading}>Bericht laden</Button>
         </div>
       </div>
@@ -1900,15 +1900,15 @@ function KassenVergleichBericht() {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-lg bg-white shadow-sm border border-gray-200 p-4 space-y-4">
+      <div className="rounded-lg bg-panel shadow-sm border border-line p-4 space-y-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Zeitraum</label>
+            <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wide mb-2">Zeitraum</label>
             <div className="space-y-1">
               {ZEITRAUM_OPTIONEN.map(opt => (
                 <button key={opt.key} type="button" onClick={() => waehlePreset(opt.key)}
                   className={`w-full text-left px-3 py-1.5 rounded text-sm transition ${
-                    preset === opt.key ? 'bg-brand-50 text-brand-700 font-medium' : 'text-gray-700 hover:bg-gray-100'
+                    preset === opt.key ? 'bg-brand-50 text-brand-700 font-medium' : 'text-ink hover:bg-panel-2'
                   }`}>
                   {opt.label}
                 </button>
@@ -1916,24 +1916,24 @@ function KassenVergleichBericht() {
             </div>
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Datum</label>
+            <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wide mb-2">Datum</label>
             <div className="space-y-2">
               <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500 w-6">Von</span>
+                <span className="text-xs text-ink-muted w-6">Von</span>
                 <input type="date" value={von} max={bis}
                   onChange={e => { setVon(e.target.value); waehlePreset('individuell') }}
-                  className="flex-1 rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none" />
+                  className="flex-1 rounded border border-line-strong px-2 py-1.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none" />
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500 w-6">Bis</span>
+                <span className="text-xs text-ink-muted w-6">Bis</span>
                 <input type="date" value={bis} min={von} max={heute()}
                   onChange={e => { setBis(e.target.value); waehlePreset('individuell') }}
-                  className="flex-1 rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none" />
+                  className="flex-1 rounded border border-line-strong px-2 py-1.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none" />
               </div>
             </div>
           </div>
         </div>
-        <div className="pt-2 border-t border-gray-100 flex justify-end">
+        <div className="pt-2 border-t border-line flex justify-end">
           <Button onClick={() => setGeladenerFilter({ von, bis })} loading={isLoading}>Bericht laden</Button>
         </div>
       </div>
@@ -1952,7 +1952,7 @@ function KassenVergleichTabelle({ data }: { data: KassenVergleichResponse }) {
   const g = data.gesamt
 
   if (data.zeilen.length === 0) {
-    return <div className="rounded-lg bg-white border border-gray-200 p-8 text-center text-sm text-gray-500">Keine Kassen gefunden.</div>
+    return <div className="rounded-lg bg-panel border border-line p-8 text-center text-sm text-ink-muted">Keine Kassen gefunden.</div>
   }
 
   const maxUmsatz = Math.max(...data.zeilen.map(z => Math.abs(z.umsatzCent)), 1)
@@ -1973,34 +1973,34 @@ function KassenVergleichTabelle({ data }: { data: KassenVergleichResponse }) {
           const anteil = g.umsatzCent !== 0 ? Math.round(Math.abs(z.umsatzCent / g.umsatzCent) * 100) : 0
           const balkenBreite = Math.round(Math.abs(z.umsatzCent / maxUmsatz) * 100)
           return (
-            <div key={z.kasseId} className="rounded-lg border border-gray-200 bg-white shadow-sm p-4 space-y-3">
+            <div key={z.kasseId} className="rounded-lg border border-line bg-panel shadow-sm p-4 space-y-3">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="font-semibold text-gray-900">{z.bezeichnung ?? z.kassenId}</p>
-                  <p className="text-xs text-gray-400 font-mono">{z.kassenId}</p>
+                  <p className="font-semibold text-ink">{z.bezeichnung ?? z.kassenId}</p>
+                  <p className="text-xs text-ink-subtle font-mono">{z.kassenId}</p>
                 </div>
-                <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">{anteil} %</span>
+                <span className="text-xs font-medium text-ink-muted bg-panel-2 px-2 py-0.5 rounded-full">{anteil} %</span>
               </div>
               <div>
                 <div className="flex justify-between items-baseline mb-1">
-                  <span className="text-2xl font-mono font-bold text-gray-900">{formatPreis(z.umsatzCent)}</span>
+                  <span className="text-2xl font-mono font-bold text-ink">{formatPreis(z.umsatzCent)}</span>
                 </div>
-                <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+                <div className="h-2 rounded-full bg-panel-2 overflow-hidden">
                   <div className="h-full rounded-full bg-brand-500" style={{ width: `${balkenBreite}%` }} />
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-2 text-xs text-center border-t border-gray-100 pt-2">
+              <div className="grid grid-cols-3 gap-2 text-xs text-center border-t border-line pt-2">
                 <div>
-                  <p className="text-gray-400">Belege</p>
-                  <p className="font-semibold text-gray-700">{z.anzahlBelege}</p>
+                  <p className="text-ink-subtle">Belege</p>
+                  <p className="font-semibold text-ink">{z.anzahlBelege}</p>
                 </div>
                 <div>
-                  <p className="text-gray-400">Ø Bon</p>
-                  <p className="font-semibold text-gray-700 font-mono">{formatPreis(z.avgBonCent)}</p>
+                  <p className="text-ink-subtle">Ø Bon</p>
+                  <p className="font-semibold text-ink font-mono">{formatPreis(z.avgBonCent)}</p>
                 </div>
                 <div>
-                  <p className="text-gray-400">Karte</p>
-                  <p className="font-semibold text-gray-700">{pct(z.karteCent, z.umsatzCent) || '—'}</p>
+                  <p className="text-ink-subtle">Karte</p>
+                  <p className="font-semibold text-ink">{pct(z.karteCent, z.umsatzCent) || '—'}</p>
                 </div>
               </div>
             </div>
@@ -2009,9 +2009,9 @@ function KassenVergleichTabelle({ data }: { data: KassenVergleichResponse }) {
       </div>
 
       {/* Detail-Tabelle + CSV */}
-      <div className="rounded-lg bg-white shadow-sm border border-gray-200 overflow-hidden">
-        <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-gray-700">
+      <div className="rounded-lg bg-panel shadow-sm border border-line overflow-hidden">
+        <div className="px-4 py-3 bg-panel-2 border-b border-line flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-ink">
             {data.zeilen.length} Kassen ({formatDatumAnzeige(data.von)} – {formatDatumAnzeige(data.bis)})
           </h2>
           <CsvExportButton onClick={() => {
@@ -2034,7 +2034,7 @@ function KassenVergleichTabelle({ data }: { data: KassenVergleichResponse }) {
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500 border-b border-gray-200">
+            <thead className="bg-panel-2 text-left text-xs uppercase tracking-wide text-ink-muted border-b border-line">
               <tr>
                 <th className="px-4 py-2 font-semibold">Kasse</th>
                 <th className="px-4 py-2 font-semibold text-right">Belege</th>
@@ -2047,26 +2047,26 @@ function KassenVergleichTabelle({ data }: { data: KassenVergleichResponse }) {
                 <th className="px-4 py-2 w-24" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-line">
               {data.zeilen.map((z: KassenVergleichZeile) => {
                 const anteil = g.umsatzCent !== 0 ? Math.round(Math.abs(z.umsatzCent / g.umsatzCent) * 100) : 0
                 return (
-                  <tr key={z.kasseId} className="hover:bg-gray-50">
+                  <tr key={z.kasseId} className="hover:bg-panel-2">
                     <td className="px-4 py-2">
-                      <p className="font-medium text-gray-900">{z.bezeichnung ?? z.kassenId}</p>
-                      <p className="text-xs text-gray-400 font-mono">{z.kassenId}</p>
+                      <p className="font-medium text-ink">{z.bezeichnung ?? z.kassenId}</p>
+                      <p className="text-xs text-ink-subtle font-mono">{z.kassenId}</p>
                     </td>
-                    <td className="px-4 py-2 text-right font-mono text-gray-700">{z.anzahlBelege}</td>
-                    <td className={`px-4 py-2 text-right font-mono ${z.anzahlStornos > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                    <td className="px-4 py-2 text-right font-mono text-ink">{z.anzahlBelege}</td>
+                    <td className={`px-4 py-2 text-right font-mono ${z.anzahlStornos > 0 ? 'text-red-600' : 'text-ink-subtle'}`}>
                       {z.anzahlStornos > 0 ? z.anzahlStornos : '—'}
                     </td>
-                    <td className="px-4 py-2 text-right font-mono font-semibold text-gray-900">{formatPreis(z.umsatzCent)}</td>
-                    <td className="px-4 py-2 text-right font-mono text-gray-700">{z.barCent > 0 ? formatPreis(z.barCent) : '—'}</td>
-                    <td className="px-4 py-2 text-right font-mono text-gray-700">{z.karteCent > 0 ? formatPreis(z.karteCent) : '—'}</td>
-                    <td className="px-4 py-2 text-right font-mono text-gray-600">{z.anzahlBelege > 0 ? formatPreis(z.avgBonCent) : '—'}</td>
-                    <td className="px-4 py-2 text-right text-gray-500 text-xs">{anteil} %</td>
+                    <td className="px-4 py-2 text-right font-mono font-semibold text-ink">{formatPreis(z.umsatzCent)}</td>
+                    <td className="px-4 py-2 text-right font-mono text-ink">{z.barCent > 0 ? formatPreis(z.barCent) : '—'}</td>
+                    <td className="px-4 py-2 text-right font-mono text-ink">{z.karteCent > 0 ? formatPreis(z.karteCent) : '—'}</td>
+                    <td className="px-4 py-2 text-right font-mono text-ink-muted">{z.anzahlBelege > 0 ? formatPreis(z.avgBonCent) : '—'}</td>
+                    <td className="px-4 py-2 text-right text-ink-muted text-xs">{anteil} %</td>
                     <td className="px-4 py-2">
-                      <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+                      <div className="h-2 rounded-full bg-panel-2 overflow-hidden">
                         <div className="h-full rounded-full bg-brand-500" style={{ width: `${anteil}%` }} />
                       </div>
                     </td>
@@ -2075,19 +2075,19 @@ function KassenVergleichTabelle({ data }: { data: KassenVergleichResponse }) {
               })}
             </tbody>
             <tfoot>
-              <tr className="border-t-2 border-gray-300 bg-gray-50 font-semibold">
-                <td className="px-4 py-2 text-gray-900">Gesamt</td>
+              <tr className="border-t-2 border-line-strong bg-panel-2 font-semibold">
+                <td className="px-4 py-2 text-ink">Gesamt</td>
                 <td className="px-4 py-2 text-right font-mono">{g.anzahlBelege}</td>
-                <td className={`px-4 py-2 text-right font-mono ${g.anzahlStornos > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                <td className={`px-4 py-2 text-right font-mono ${g.anzahlStornos > 0 ? 'text-red-600' : 'text-ink-subtle'}`}>
                   {g.anzahlStornos > 0 ? g.anzahlStornos : '—'}
                 </td>
-                <td className="px-4 py-2 text-right font-mono text-gray-900">{formatPreis(g.umsatzCent)}</td>
+                <td className="px-4 py-2 text-right font-mono text-ink">{formatPreis(g.umsatzCent)}</td>
                 <td className="px-4 py-2 text-right font-mono">{g.barCent > 0 ? formatPreis(g.barCent) : '—'}</td>
                 <td className="px-4 py-2 text-right font-mono">{g.karteCent > 0 ? formatPreis(g.karteCent) : '—'}</td>
-                <td className="px-4 py-2 text-right font-mono text-gray-600">
+                <td className="px-4 py-2 text-right font-mono text-ink-muted">
                   {g.anzahlBelege > 0 ? formatPreis(Math.round(g.umsatzCent / g.anzahlBelege)) : '—'}
                 </td>
-                <td className="px-4 py-2 text-right text-gray-400 text-xs">100 %</td>
+                <td className="px-4 py-2 text-right text-ink-subtle text-xs">100 %</td>
                 <td className="px-4 py-2" />
               </tr>
             </tfoot>
@@ -2102,7 +2102,7 @@ function KellnerBerichtTabelle({ data }: { data: KellnerBerichtResponse }) {
   const maxUmsatz = Math.max(...data.zeilen.map(z => Math.abs(z.umsatzCent)), 1)
 
   if (data.zeilen.length === 0) {
-    return <p className="text-sm text-gray-500">Keine Daten für diesen Zeitraum.</p>
+    return <p className="text-sm text-ink-muted">Keine Daten für diesen Zeitraum.</p>
   }
 
   return (
@@ -2114,39 +2114,39 @@ function KellnerBerichtTabelle({ data }: { data: KellnerBerichtResponse }) {
           { label: 'Umsatz gesamt', wert: data.gesamt.umsatzCent,    fmt: formatPreis },
           { label: 'Ø pro Kellner', wert: data.zeilen.length > 0 ? Math.round(data.gesamt.umsatzCent / data.zeilen.length) : 0, fmt: formatPreis },
         ] as const).map(k => (
-          <div key={k.label} className="rounded-lg border border-gray-200 bg-white p-4">
-            <p className="text-xs text-gray-500">{k.label}</p>
-            <p className="mt-1 text-xl font-bold text-gray-900">{k.fmt(k.wert)}</p>
+          <div key={k.label} className="rounded-lg border border-line bg-panel p-4">
+            <p className="text-xs text-ink-muted">{k.label}</p>
+            <p className="mt-1 text-xl font-bold text-ink">{k.fmt(k.wert)}</p>
           </div>
         ))}
       </div>
 
-      <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+      <div className="rounded-lg border border-line bg-panel overflow-hidden">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-gray-200 bg-gray-50">
-              <th className="px-4 py-3 text-left font-semibold text-gray-700">Kellner</th>
-              <th className="px-4 py-3 text-right font-semibold text-gray-700">Belege</th>
-              <th className="px-4 py-3 text-right font-semibold text-gray-700">Stornos</th>
-              <th className="px-4 py-3 text-right font-semibold text-gray-700">Bar</th>
-              <th className="px-4 py-3 text-right font-semibold text-gray-700">Karte</th>
-              <th className="px-4 py-3 text-right font-semibold text-gray-700">Umsatz</th>
+            <tr className="border-b border-line bg-panel-2">
+              <th className="px-4 py-3 text-left font-semibold text-ink">Kellner</th>
+              <th className="px-4 py-3 text-right font-semibold text-ink">Belege</th>
+              <th className="px-4 py-3 text-right font-semibold text-ink">Stornos</th>
+              <th className="px-4 py-3 text-right font-semibold text-ink">Bar</th>
+              <th className="px-4 py-3 text-right font-semibold text-ink">Karte</th>
+              <th className="px-4 py-3 text-right font-semibold text-ink">Umsatz</th>
               <th className="px-4 py-3 w-28" />
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-line">
             {data.zeilen.map((z: KellnerBerichtZeile) => {
               const anteil = Math.round(Math.abs(z.umsatzCent / maxUmsatz) * 100)
               return (
-                <tr key={z.kellner} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 font-medium text-gray-900">{z.kellner}</td>
-                  <td className="px-4 py-3 text-right font-mono text-gray-700">{z.anzahlBelege}</td>
-                  <td className="px-4 py-3 text-right font-mono text-gray-500">{z.anzahlStornos || '—'}</td>
-                  <td className="px-4 py-3 text-right font-mono text-gray-700">{formatPreis(z.barCent)}</td>
-                  <td className="px-4 py-3 text-right font-mono text-gray-700">{formatPreis(z.karteCent)}</td>
-                  <td className="px-4 py-3 text-right font-mono font-semibold text-gray-900">{formatPreis(z.umsatzCent)}</td>
+                <tr key={z.kellner} className="hover:bg-panel-2">
+                  <td className="px-4 py-3 font-medium text-ink">{z.kellner}</td>
+                  <td className="px-4 py-3 text-right font-mono text-ink">{z.anzahlBelege}</td>
+                  <td className="px-4 py-3 text-right font-mono text-ink-muted">{z.anzahlStornos || '—'}</td>
+                  <td className="px-4 py-3 text-right font-mono text-ink">{formatPreis(z.barCent)}</td>
+                  <td className="px-4 py-3 text-right font-mono text-ink">{formatPreis(z.karteCent)}</td>
+                  <td className="px-4 py-3 text-right font-mono font-semibold text-ink">{formatPreis(z.umsatzCent)}</td>
                   <td className="px-4 py-3">
-                    <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+                    <div className="h-2 rounded-full bg-panel-2 overflow-hidden">
                       <div className="h-full rounded-full bg-brand-500" style={{ width: `${anteil}%` }} />
                     </div>
                   </td>
@@ -2155,13 +2155,13 @@ function KellnerBerichtTabelle({ data }: { data: KellnerBerichtResponse }) {
             })}
           </tbody>
           <tfoot>
-            <tr className="border-t-2 border-gray-300 bg-gray-50 font-semibold">
-              <td className="px-4 py-3 text-gray-900">Gesamt</td>
+            <tr className="border-t-2 border-line-strong bg-panel-2 font-semibold">
+              <td className="px-4 py-3 text-ink">Gesamt</td>
               <td className="px-4 py-3 text-right font-mono">{data.gesamt.anzahlBelege}</td>
-              <td className="px-4 py-3 text-right font-mono text-gray-500">{data.gesamt.anzahlStornos || '—'}</td>
+              <td className="px-4 py-3 text-right font-mono text-ink-muted">{data.gesamt.anzahlStornos || '—'}</td>
               <td className="px-4 py-3 text-right font-mono">{formatPreis(data.gesamt.barCent)}</td>
               <td className="px-4 py-3 text-right font-mono">{formatPreis(data.gesamt.karteCent)}</td>
-              <td className="px-4 py-3 text-right font-mono text-gray-900">{formatPreis(data.gesamt.umsatzCent)}</td>
+              <td className="px-4 py-3 text-right font-mono text-ink">{formatPreis(data.gesamt.umsatzCent)}</td>
               <td className="px-4 py-3" />
             </tr>
           </tfoot>
@@ -2217,7 +2217,7 @@ function WochentagKassenFilter({ kasseIds, onToggle }: { kasseIds: string[]; onT
           className={`px-3 py-1 rounded-full text-xs font-medium border transition ${
             kasseIds.includes(k.id)
               ? 'bg-brand-600 text-white border-brand-600'
-              : 'bg-white text-gray-600 border-gray-300 hover:border-brand-400'
+              : 'bg-panel text-ink-muted border-line-strong hover:border-brand-400'
           }`}
         >
           {k.bezeichnung ?? k.kassenId}
@@ -2251,11 +2251,11 @@ function WochentagBericht() {
   return (
     <div className="space-y-6">
       {/* Kassen-Filter + Laden-Button */}
-      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-4 space-y-4">
+      <div className="rounded-lg border border-line bg-panel shadow-sm p-4 space-y-4">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
-            <p className="text-sm font-semibold text-gray-900">Wochentag-Auswertung</p>
-            <p className="text-xs text-gray-500">Letzte 90 Tage ({formatDatumAnzeige(datumVon)} – {formatDatumAnzeige(datumBis)})</p>
+            <p className="text-sm font-semibold text-ink">Wochentag-Auswertung</p>
+            <p className="text-xs text-ink-muted">Letzte 90 Tage ({formatDatumAnzeige(datumVon)} – {formatDatumAnzeige(datumBis)})</p>
           </div>
           <Button onClick={() => setGeladen(true)} disabled={isLoading}>
             {isLoading ? 'Wird geladen…' : geladen ? 'Aktualisieren' : 'Laden'}
@@ -2304,9 +2304,9 @@ function WochentagBericht() {
           )}
 
           {/* Balkendiagramm Ø-Umsatz */}
-          <div className="rounded-lg bg-white shadow-sm border border-gray-200 overflow-hidden">
-            <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-gray-700">Ø Umsatz pro Wochentag</h2>
+          <div className="rounded-lg bg-panel shadow-sm border border-line overflow-hidden">
+            <div className="px-4 py-3 bg-panel-2 border-b border-line flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-ink">Ø Umsatz pro Wochentag</h2>
               <CsvExportButton onClick={() => {
                 const kopfzeile = ['Wochentag', 'Anz. Tage', 'Ø Umsatz (€)', 'Gesamt (€)', 'Ø Belege']
                 const datenzeilen = zeilen.map(z => [
@@ -2325,19 +2325,19 @@ function WochentagBericht() {
                 const istBester = z.tag === besterTag?.tag && z.umsatzAvgCent > 0
                 return (
                   <div key={z.tag} className="flex items-center gap-3">
-                    <span className={`text-xs font-semibold w-8 shrink-0 ${istBester ? 'text-brand-700' : 'text-gray-500'}`}>
+                    <span className={`text-xs font-semibold w-8 shrink-0 ${istBester ? 'text-brand-700' : 'text-ink-muted'}`}>
                       {WOCHENTAG_KURZ[z.tag]}
                     </span>
-                    <div className="flex-1 h-7 bg-gray-100 rounded overflow-hidden">
+                    <div className="flex-1 h-7 bg-panel-2 rounded overflow-hidden">
                       <div
                         className={`h-full rounded transition-all ${istBester ? 'bg-brand-500' : 'bg-brand-300'}`}
                         style={{ width: `${balken}%` }}
                       />
                     </div>
-                    <span className={`text-sm font-mono w-24 shrink-0 text-right ${z.umsatzAvgCent > 0 ? 'font-semibold text-gray-900' : 'text-gray-300'}`}>
+                    <span className={`text-sm font-mono w-24 shrink-0 text-right ${z.umsatzAvgCent > 0 ? 'font-semibold text-ink' : 'text-ink-subtle'}`}>
                       {z.umsatzAvgCent > 0 ? formatPreis(z.umsatzAvgCent) : '—'}
                     </span>
-                    <span className="text-xs text-gray-400 w-16 shrink-0 text-right">
+                    <span className="text-xs text-ink-subtle w-16 shrink-0 text-right">
                       {z.tage > 0 ? `${z.tage} Tage` : ''}
                     </span>
                   </div>
@@ -2347,13 +2347,13 @@ function WochentagBericht() {
           </div>
 
           {/* Detail-Tabelle */}
-          <div className="rounded-lg bg-white shadow-sm border border-gray-200 overflow-hidden">
-            <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
-              <h2 className="text-sm font-semibold text-gray-700">Details nach Wochentag</h2>
+          <div className="rounded-lg bg-panel shadow-sm border border-line overflow-hidden">
+            <div className="px-4 py-3 bg-panel-2 border-b border-line">
+              <h2 className="text-sm font-semibold text-ink">Details nach Wochentag</h2>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500 border-b border-gray-200">
+                <thead className="bg-panel-2 text-left text-xs uppercase tracking-wide text-ink-muted border-b border-line">
                   <tr>
                     <th className="px-4 py-2 font-semibold">Wochentag</th>
                     <th className="px-4 py-2 font-semibold text-right">Tage erfasst</th>
@@ -2363,24 +2363,24 @@ function WochentagBericht() {
                     <th className="px-4 py-2 font-semibold text-right">Anteil</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-line">
                   {zeilen.map(z => {
                     const gesamtSum = zeilen.reduce((s, z2) => s + z2.umsatzSumCent, 0)
                     const istBester = z.tag === besterDay(zeilen)
                     return (
-                      <tr key={z.tag} className={`hover:bg-gray-50 ${istBester ? 'bg-brand-50' : ''}`}>
-                        <td className="px-4 py-2.5 font-medium text-gray-900">{WOCHENTAG_NAMEN[z.tag]}</td>
-                        <td className="px-4 py-2.5 text-right text-gray-700">{z.tage}</td>
-                        <td className="px-4 py-2.5 text-right font-mono font-semibold text-gray-900">
+                      <tr key={z.tag} className={`hover:bg-panel-2 ${istBester ? 'bg-brand-50' : ''}`}>
+                        <td className="px-4 py-2.5 font-medium text-ink">{WOCHENTAG_NAMEN[z.tag]}</td>
+                        <td className="px-4 py-2.5 text-right text-ink">{z.tage}</td>
+                        <td className="px-4 py-2.5 text-right font-mono font-semibold text-ink">
                           {z.umsatzAvgCent > 0 ? formatPreis(z.umsatzAvgCent) : '—'}
                         </td>
-                        <td className="px-4 py-2.5 text-right font-mono text-gray-600">
+                        <td className="px-4 py-2.5 text-right font-mono text-ink-muted">
                           {z.umsatzSumCent > 0 ? formatPreis(z.umsatzSumCent) : '—'}
                         </td>
-                        <td className="px-4 py-2.5 text-right text-gray-600">
+                        <td className="px-4 py-2.5 text-right text-ink-muted">
                           {z.tage > 0 ? (z.belegeSumme / z.tage).toFixed(1) : '—'}
                         </td>
-                        <td className="px-4 py-2.5 text-right text-gray-500 text-xs">
+                        <td className="px-4 py-2.5 text-right text-ink-muted text-xs">
                           {gesamtSum > 0 && z.umsatzSumCent > 0
                             ? `${Math.round((z.umsatzSumCent / gesamtSum) * 100)} %`
                             : '—'}

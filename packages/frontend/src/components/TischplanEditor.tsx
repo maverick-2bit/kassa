@@ -27,7 +27,7 @@ import { Input } from './ui/Input'
 // ---------------------------------------------------------------------------
 
 const FARBE_BG: Record<TischplanFarbe, string> = {
-  grau:   'bg-gray-200 border-gray-400',
+  grau:   'bg-panel-2 border-line-strong',
   rot:    'bg-red-200 border-red-500',
   orange: 'bg-orange-200 border-orange-500',
   gelb:   'bg-yellow-200 border-yellow-500',
@@ -118,7 +118,7 @@ export function TischplanEditor() {
     onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
   })
 
-  if (isLoading) return <p className="text-sm text-gray-500">Wird geladen…</p>
+  if (isLoading) return <p className="text-sm text-ink-muted">Wird geladen…</p>
 
   return (
     <div className="space-y-4">
@@ -200,7 +200,7 @@ export function TischplanEditor() {
           )}
         </div>
       ) : (
-        <p className="text-sm text-gray-400">Bereich auswählen oder neu anlegen.</p>
+        <p className="text-sm text-ink-subtle">Bereich auswählen oder neu anlegen.</p>
       )}
     </div>
   )
@@ -243,7 +243,7 @@ function BereichTab({
 
   return (
     <div className={`flex items-center rounded-full border px-3 h-8 text-sm font-medium gap-1 ${
-      aktiv ? 'bg-brand-600 text-white border-brand-700' : 'bg-gray-100 text-gray-700 border-gray-300'
+      aktiv ? 'bg-brand-600 text-white border-brand-700' : 'bg-panel-2 text-ink border-line-strong'
     }`}>
       <button type="button" onClick={onClick}>{bereich.name}</button>
       {aktiv && (
@@ -344,11 +344,11 @@ function PlanCanvas({
       onPointerMove={onCanvasPointerMove}
       onPointerUp={onCanvasPointerUp}
       onPointerLeave={onCanvasPointerUp}
-      className="relative w-full aspect-[4/3] bg-gray-50 rounded-xl border-2 border-dashed border-gray-300 overflow-hidden select-none"
+      className="relative w-full aspect-[4/3] bg-panel-2 rounded-xl border-2 border-dashed border-line-strong overflow-hidden select-none"
     >
       {bereich.elemente.length === 0 && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <p className="text-sm text-gray-400">Klicke auf „+ Tisch hinzufügen"</p>
+          <p className="text-sm text-ink-subtle">Klicke auf „+ Tisch hinzufügen"</p>
         </div>
       )}
 
@@ -416,11 +416,11 @@ function ElementPanel({
   onDelete: () => void
 }) {
   return (
-    <div className="w-48 shrink-0 space-y-3 bg-white rounded-lg border border-gray-200 p-3">
-      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Tisch</p>
+    <div className="w-48 shrink-0 space-y-3 bg-panel rounded-lg border border-line p-3">
+      <p className="text-xs font-semibold text-ink-muted uppercase tracking-wide">Tisch</p>
 
       <label className="block">
-        <span className="text-xs font-medium text-gray-600">Bezeichnung</span>
+        <span className="text-xs font-medium text-ink-muted">Bezeichnung</span>
         <Input
           value={el.bezeichnung}
           onChange={(e) => onUpdate({ bezeichnung: e.target.value })}
@@ -430,11 +430,11 @@ function ElementPanel({
       </label>
 
       <label className="block">
-        <span className="text-xs font-medium text-gray-600">Form</span>
+        <span className="text-xs font-medium text-ink-muted">Form</span>
         <select
           value={el.form}
           onChange={(e) => onUpdate({ form: e.target.value as TischplanForm })}
-          className="mt-0.5 w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+          className="mt-0.5 w-full rounded-md border border-line-strong px-2 py-1 text-sm"
         >
           {(Object.keys(TISCHPLAN_FORM_LABELS) as TischplanForm[]).map((f) => (
             <option key={f} value={f}>{TISCHPLAN_FORM_LABELS[f]}</option>
@@ -443,7 +443,7 @@ function ElementPanel({
       </label>
 
       <div>
-        <span className="text-xs font-medium text-gray-600">Farbe</span>
+        <span className="text-xs font-medium text-ink-muted">Farbe</span>
         <div className="mt-1 grid grid-cols-4 gap-1">
           {ALLE_FARBEN.map((f) => (
             <button
@@ -461,7 +461,7 @@ function ElementPanel({
 
       <div className="grid grid-cols-2 gap-1.5">
         <label className="block">
-          <span className="text-xs font-medium text-gray-600">Breite %</span>
+          <span className="text-xs font-medium text-ink-muted">Breite %</span>
           <Input
             type="number" min="4" max="40"
             value={Math.round(el.breite)}
@@ -470,7 +470,7 @@ function ElementPanel({
           />
         </label>
         <label className="block">
-          <span className="text-xs font-medium text-gray-600">Höhe %</span>
+          <span className="text-xs font-medium text-ink-muted">Höhe %</span>
           <Input
             type="number" min="4" max="40"
             value={Math.round(el.hoehe)}

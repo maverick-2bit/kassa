@@ -9,13 +9,13 @@ const BELEGTYP_FARBE: Record<string, string> = {
   Barzahlungsbeleg: 'bg-green-100 text-green-700',
   Stornobeleg:      'bg-red-100 text-red-700',
   Startbeleg:       'bg-blue-100 text-blue-700',
-  Nullbeleg:        'bg-gray-100 text-gray-600',
+  Nullbeleg:        'bg-panel-2 text-ink-muted',
   Monatsbeleg:      'bg-amber-100 text-amber-700',
   Jahresbeleg:      'bg-violet-100 text-violet-700',
 }
 
 function BelegTypBadge({ typ }: { typ: string }) {
-  const farbe = BELEGTYP_FARBE[typ] ?? 'bg-gray-100 text-gray-600'
+  const farbe = BELEGTYP_FARBE[typ] ?? 'bg-panel-2 text-ink-muted'
   return (
     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${farbe}`}>
       {typ}
@@ -29,16 +29,16 @@ function BelegZeile({ beleg, onClick }: { beleg: BelegResponse; onClick: () => v
     <button
       type="button"
       onClick={onClick}
-      className="w-full text-left flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition"
+      className="w-full text-left flex items-center gap-3 px-4 py-3 hover:bg-panel-2 transition"
     >
-      <span className="text-xs text-gray-400 w-12 shrink-0 text-right">#{beleg.belegNummer}</span>
+      <span className="text-xs text-ink-subtle w-12 shrink-0 text-right">#{beleg.belegNummer}</span>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <BelegTypBadge typ={beleg.belegTyp} />
-          <span className="text-xs text-gray-500">{formatDatum(beleg.belegDatum)}</span>
+          <span className="text-xs text-ink-muted">{formatDatum(beleg.belegDatum)}</span>
         </div>
       </div>
-      <span className="text-sm font-medium text-gray-800 shrink-0">
+      <span className="text-sm font-medium text-ink shrink-0">
         {formatPreis(gesamt)}
       </span>
     </button>
@@ -53,13 +53,13 @@ function BelegDetail({ beleg, onClose }: { beleg: BelegResponse; onClose: () => 
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4">
-      <div className="bg-white rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl">
-        <div className="sticky top-0 bg-white border-b border-gray-100 px-5 py-4 flex items-center justify-between">
+      <div className="bg-panel rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl">
+        <div className="sticky top-0 bg-panel border-b border-line px-5 py-4 flex items-center justify-between">
           <div>
-            <p className="font-semibold text-gray-900">Beleg #{beleg.belegNummer}</p>
-            <p className="text-xs text-gray-500">{formatDatum(beleg.belegDatum)}</p>
+            <p className="font-semibold text-ink">Beleg #{beleg.belegNummer}</p>
+            <p className="text-xs text-ink-muted">{formatDatum(beleg.belegDatum)}</p>
           </div>
-          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+          <button type="button" onClick={onClose} className="text-ink-subtle hover:text-ink-muted text-xl leading-none">✕</button>
         </div>
 
         <div className="px-5 py-4 space-y-4">
@@ -67,14 +67,14 @@ function BelegDetail({ beleg, onClose }: { beleg: BelegResponse; onClose: () => 
 
           {positionen.length > 0 && (
             <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Positionen</p>
+              <p className="text-xs font-semibold text-ink-muted uppercase tracking-wide mb-2">Positionen</p>
               <div className="space-y-1">
                 {positionen.map((p, i) => (
                   <div key={i} className="flex justify-between text-sm">
-                    <span className="text-gray-700">
+                    <span className="text-ink">
                       {p.menge}× {p.bezeichnung}
                     </span>
-                    <span className="text-gray-800 font-medium">
+                    <span className="text-ink font-medium">
                       {formatPreis(p.menge * p.einzelpreisBreutto)}
                     </span>
                   </div>
@@ -83,31 +83,31 @@ function BelegDetail({ beleg, onClose }: { beleg: BelegResponse; onClose: () => 
             </div>
           )}
 
-          <div className="border-t border-gray-100 pt-3 space-y-1">
+          <div className="border-t border-line pt-3 space-y-1">
             <div className="flex justify-between text-sm font-semibold">
               <span>Gesamt</span>
               <span>{formatPreis(gesamt)}</span>
             </div>
             {beleg.summeBarCent > 0 && (
-              <div className="flex justify-between text-xs text-gray-500">
+              <div className="flex justify-between text-xs text-ink-muted">
                 <span>Bar</span><span>{formatPreis(beleg.summeBarCent)}</span>
               </div>
             )}
             {beleg.summeKarteCent > 0 && (
-              <div className="flex justify-between text-xs text-gray-500">
+              <div className="flex justify-between text-xs text-ink-muted">
                 <span>Karte</span><span>{formatPreis(beleg.summeKarteCent)}</span>
               </div>
             )}
             {beleg.summeSonstigeCent > 0 && (
-              <div className="flex justify-between text-xs text-gray-500">
+              <div className="flex justify-between text-xs text-ink-muted">
                 <span>Sonstige</span><span>{formatPreis(beleg.summeSonstigeCent)}</span>
               </div>
             )}
           </div>
 
-          <div className="border-t border-gray-100 pt-3 space-y-1">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">RKSV-Signatur</p>
-            <p className="text-xs text-gray-400 font-mono break-all leading-relaxed">
+          <div className="border-t border-line pt-3 space-y-1">
+            <p className="text-xs font-semibold text-ink-muted uppercase tracking-wide">RKSV-Signatur</p>
+            <p className="text-xs text-ink-subtle font-mono break-all leading-relaxed">
               {beleg.maschinenlesbareCode}
             </p>
           </div>
@@ -144,7 +144,7 @@ export function PruefungsansichtPage() {
   if (query.isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-500">Prüfungsdaten werden geladen…</p>
+        <p className="text-ink-muted">Prüfungsdaten werden geladen…</p>
       </div>
     )
   }
@@ -155,8 +155,8 @@ export function PruefungsansichtPage() {
       <div className="min-h-screen flex items-center justify-center px-4">
         <div className="max-w-sm text-center space-y-3">
           <p className="text-4xl">🔒</p>
-          <p className="text-lg font-semibold text-gray-800">Zugriff nicht möglich</p>
-          <p className="text-sm text-gray-500">{msg}</p>
+          <p className="text-lg font-semibold text-ink">Zugriff nicht möglich</p>
+          <p className="text-sm text-ink-muted">{msg}</p>
         </div>
       </div>
     )
@@ -166,15 +166,15 @@ export function PruefungsansichtPage() {
   const gueltigBis = new Date(daten.token.gueltigBis)
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-panel-2">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 px-4 py-4">
+      <header className="bg-panel border-b border-line px-4 py-4">
         <div className="mx-auto max-w-3xl flex items-center justify-between flex-wrap gap-3">
           <div>
-            <p className="font-semibold text-gray-900">
+            <p className="font-semibold text-ink">
               Finanzprüfung — {daten.kasseBezeichnung ?? daten.kassenId}
             </p>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-ink-muted">
               Kassen-ID: {daten.kassenId} · Read-only · Gültig bis:{' '}
               {gueltigBis.toLocaleDateString('de-AT', { timeZone: 'Europe/Vienna' })}
             </p>
@@ -192,19 +192,19 @@ export function PruefungsansichtPage() {
 
       {/* Beleg-Liste */}
       <main className="mx-auto max-w-3xl px-4 py-6">
-        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-            <p className="text-sm font-semibold text-gray-800">
+        <div className="bg-panel border border-line rounded-xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-line flex items-center justify-between">
+            <p className="text-sm font-semibold text-ink">
               {daten.belege.length} {daten.belege.length === 1 ? 'Beleg' : 'Belege'}
             </p>
-            <p className="text-xs text-gray-400">Klick für Details</p>
+            <p className="text-xs text-ink-subtle">Klick für Details</p>
           </div>
           {daten.belege.length === 0 ? (
-            <div className="px-4 py-8 text-center text-sm text-gray-400">
+            <div className="px-4 py-8 text-center text-sm text-ink-subtle">
               Keine Belege vorhanden.
             </div>
           ) : (
-            <div className="divide-y divide-gray-100">
+            <div className="divide-y divide-line">
               {daten.belege.map(b => (
                 <BelegZeile key={b.id} beleg={b} onClick={() => setAusgewaehlt(b)} />
               ))}

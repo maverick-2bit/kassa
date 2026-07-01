@@ -107,7 +107,7 @@ export function ModifikatorModal({ open, artikel, gruppen, onOk, onClose }: Prop
       size="md"
     >
       {aktiveGruppen.length === 0 ? (
-        <p className="text-sm text-gray-500 py-4 text-center">Keine Optionen verfügbar.</p>
+        <p className="text-sm text-ink-muted py-4 text-center">Keine Optionen verfügbar.</p>
       ) : (
         <div className="space-y-5">
           {aktiveGruppen.map(gruppe => {
@@ -119,7 +119,7 @@ export function ModifikatorModal({ open, artikel, gruppen, onOk, onClose }: Prop
             return (
               <div key={gruppe.id}>
                 <div className="flex items-baseline gap-2 mb-2">
-                  <h3 className="text-sm font-semibold text-gray-800">{gruppe.name}</h3>
+                  <h3 className="text-sm font-semibold text-ink">{gruppe.name}</h3>
                   {isPflicht && (
                     <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full ${
                       isErfuellt
@@ -130,10 +130,10 @@ export function ModifikatorModal({ open, artikel, gruppen, onOk, onClose }: Prop
                     </span>
                   )}
                   {!isPflicht && (
-                    <span className="text-xs text-gray-400">Optional</span>
+                    <span className="text-xs text-ink-subtle">Optional</span>
                   )}
                   {max !== Infinity && max > 1 && (
-                    <span className="text-xs text-gray-400">max. {max}</span>
+                    <span className="text-xs text-ink-subtle">max. {max}</span>
                   )}
                 </div>
 
@@ -157,10 +157,10 @@ export function ModifikatorModal({ open, artikel, gruppen, onOk, onClose }: Prop
                           ${isGewählt
                             ? 'border-brand-500 bg-brand-50 text-brand-800 font-medium ring-1 ring-brand-400'
                             : istAusverkauft
-                            ? 'border-gray-200 bg-gray-50 text-gray-300 cursor-not-allowed'
+                            ? 'border-line bg-panel-2 text-ink-subtle cursor-not-allowed'
                             : istDeaktiviert
-                            ? 'border-gray-200 bg-gray-50 text-gray-300 cursor-not-allowed'
-                            : 'border-gray-200 bg-white hover:border-brand-300 hover:bg-brand-50 text-gray-700'
+                            ? 'border-line bg-panel-2 text-ink-subtle cursor-not-allowed'
+                            : 'border-line bg-panel hover:border-brand-300 hover:bg-brand-50 text-ink'
                           }
                         `}
                       >
@@ -192,8 +192,8 @@ export function ModifikatorModal({ open, artikel, gruppen, onOk, onClose }: Prop
           })}
 
           {/* Gesamtpreis-Vorschau */}
-          <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-            <span className="text-sm text-gray-600">
+          <div className="flex items-center justify-between pt-2 border-t border-line">
+            <span className="text-sm text-ink-muted">
               {formatPreis(basisPreis)}
               {gesamtAufschlag !== 0 && (
                 <span className={`ml-1 text-xs ${gesamtAufschlag > 0 ? 'text-orange-600' : 'text-green-600'}`}>
@@ -201,7 +201,7 @@ export function ModifikatorModal({ open, artikel, gruppen, onOk, onClose }: Prop
                 </span>
               )}
             </span>
-            <span className="text-base font-bold text-gray-900">{formatPreis(gesamtPreis)}</span>
+            <span className="text-base font-bold text-ink">{formatPreis(gesamtPreis)}</span>
           </div>
 
           {!isValid && (

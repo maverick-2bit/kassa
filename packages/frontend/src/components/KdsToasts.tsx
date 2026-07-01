@@ -66,8 +66,8 @@ export function KdsToasts() {
                 <button onClick={() => setZahlungen(prev => prev.filter(x => x.tabId !== z.tabId))} className="text-amber-800 hover:text-amber-900 font-bold">×</button>
               </div>
               <div className="px-3 py-2.5 space-y-1">
-                <p className="font-semibold text-gray-900">Tisch: <span className="text-amber-700">{z.tischNummer}</span></p>
-                <p className="text-xs text-gray-600">Offener Betrag: {formatPreis(z.summeCent)}</p>
+                <p className="font-semibold text-ink">Tisch: <span className="text-amber-700">{z.tischNummer}</span></p>
+                <p className="text-xs text-ink-muted">Offener Betrag: {formatPreis(z.summeCent)}</p>
               </div>
               <div className="px-3 pb-2.5">
                 <button
@@ -95,8 +95,8 @@ export function KdsToasts() {
                 <button onClick={() => setGastBest(prev => prev.filter((_, j) => j !== i))} className="text-green-800 hover:text-green-900 font-bold">×</button>
               </div>
               <div className="px-3 py-2.5 space-y-1">
-                <p className="font-semibold text-gray-900">Tisch: <span className="text-green-700">{g.tischNummer}</span></p>
-                <p className="text-xs text-gray-600">{g.anzahlPositionen} Artikel · {formatPreis(g.gesamtbetragCent)}</p>
+                <p className="font-semibold text-ink">Tisch: <span className="text-green-700">{g.tischNummer}</span></p>
+                <p className="text-xs text-ink-muted">{g.anzahlPositionen} Artikel · {formatPreis(g.gesamtbetragCent)}</p>
               </div>
               <div className="px-3 pb-2.5">
                 <button
@@ -194,14 +194,14 @@ function BonierbonToast({
             {alleErfolgreich ? 'Boniert' : hatFehler && event.stationen.every((s) => !s.erfolgreich) ? 'Bonierung fehlgeschlagen' : 'Bonierung teilweise fehlgeschlagen'}
             {' '}— Tisch {event.tisch}
           </p>
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-ink-muted">
             {event.kellner} · {timestamp.toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
           </p>
         </div>
         <button
           type="button"
           onClick={onClose}
-          className="text-gray-400 hover:text-gray-600 shrink-0 leading-none"
+          className="text-ink-subtle hover:text-ink-muted shrink-0 leading-none"
           aria-label="Schließen"
         >
           ×

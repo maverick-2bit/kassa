@@ -298,8 +298,8 @@ export function ArtikelPage() {
         {/* Header */}
         <div className="flex flex-wrap items-end justify-between gap-3 mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Artikel</h1>
-            <p className="mt-1 text-sm text-gray-500">
+            <h1 className="text-2xl font-bold text-ink">Artikel</h1>
+            <p className="mt-1 text-sm text-ink-muted">
               Artikelstamm verwalten — Bezeichnung, Preis, MwSt-Satz, Kategorie
             </p>
           </div>
@@ -330,10 +330,10 @@ export function ArtikelPage() {
 
         {/* Filter */}
         <div className="mb-4 flex items-center gap-2">
-          <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+          <label className="inline-flex items-center gap-2 text-sm text-ink">
             <input
               type="checkbox"
-              className="rounded border-gray-300 text-brand-500 focus:ring-brand-500"
+              className="rounded border-line-strong text-brand-500 focus:ring-brand-500"
               checked={nurAktive}
               onChange={(e) => setNurAktive(e.target.checked)}
             />
@@ -342,21 +342,21 @@ export function ArtikelPage() {
         </div>
 
         {/* Liste */}
-        <div className="rounded-lg bg-white shadow-sm border border-gray-200 overflow-hidden">
+        <div className="rounded-lg bg-panel shadow-sm border border-line overflow-hidden">
           {list.isLoading ? (
-            <div className="p-8 text-center text-sm text-gray-500">Wird geladen…</div>
+            <div className="p-8 text-center text-sm text-ink-muted">Wird geladen…</div>
           ) : list.isError ? (
             <div className="p-8 text-center text-sm text-red-600">
               Fehler: {list.error instanceof Error ? list.error.message : 'Unbekannt'}
             </div>
           ) : list.data && list.data.length === 0 ? (
             <div className="p-8 text-center">
-              <p className="text-sm text-gray-500">Noch keine Artikel angelegt.</p>
+              <p className="text-sm text-ink-muted">Noch keine Artikel angelegt.</p>
               <Button className="mt-4" onClick={openNew}>Ersten Artikel anlegen</Button>
             </div>
           ) : (
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
+              <thead className="bg-panel-2 text-left text-xs uppercase tracking-wide text-ink-muted">
                 <tr>
                   <th className="px-2 py-2 font-semibold text-center" title="Reihenfolge innerhalb der Warengruppe">Sort.</th>
                   <th className="px-4 py-2 font-semibold">Bezeichnung</th>
@@ -369,7 +369,7 @@ export function ArtikelPage() {
                   <th className="px-4 py-2"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-line">
                 {artikelSortiert.map((a) => {
                   const pos = katPos.get(a.id) ?? { idx: 0, anzahl: 1 }
                   return (
@@ -378,25 +378,25 @@ export function ArtikelPage() {
                       <div className="flex items-center justify-center gap-0.5">
                         <button type="button" aria-label="Nach oben" disabled={pos.idx === 0 || reihenfolgeMut.isPending}
                           onClick={() => verschiebeArtikel(a, -1)}
-                          className="flex h-6 w-6 items-center justify-center rounded text-gray-500 hover:text-brand-600 hover:bg-gray-100 disabled:opacity-25 disabled:hover:bg-transparent">
+                          className="flex h-6 w-6 items-center justify-center rounded text-ink-muted hover:text-brand-600 hover:bg-panel-2 disabled:opacity-25 disabled:hover:bg-transparent">
                           <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 5l5 7H5l5-7Z" /></svg>
                         </button>
                         <button type="button" aria-label="Nach unten" disabled={pos.idx === pos.anzahl - 1 || reihenfolgeMut.isPending}
                           onClick={() => verschiebeArtikel(a, 1)}
-                          className="flex h-6 w-6 items-center justify-center rounded text-gray-500 hover:text-brand-600 hover:bg-gray-100 disabled:opacity-25 disabled:hover:bg-transparent">
+                          className="flex h-6 w-6 items-center justify-center rounded text-ink-muted hover:text-brand-600 hover:bg-panel-2 disabled:opacity-25 disabled:hover:bg-transparent">
                           <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 15l-5-7h10l-5 7Z" /></svg>
                         </button>
                       </div>
                     </td>
-                    <td className="px-4 py-2.5 font-medium text-gray-900">{a.bezeichnung}</td>
-                    <td className="px-4 py-2.5 text-gray-500 text-xs">
-                      {katNameFuerId(a.kategorieId) ?? <span className="text-gray-300">—</span>}
+                    <td className="px-4 py-2.5 font-medium text-ink">{a.bezeichnung}</td>
+                    <td className="px-4 py-2.5 text-ink-muted text-xs">
+                      {katNameFuerId(a.kategorieId) ?? <span className="text-ink-subtle">—</span>}
                     </td>
-                    <td className="px-4 py-2.5 text-gray-500 font-mono text-xs">
+                    <td className="px-4 py-2.5 text-ink-muted font-mono text-xs">
                       {a.artikelnummer ?? '—'}
                     </td>
-                    <td className="px-4 py-2.5 text-gray-600">{MWST_LABELS[a.mwstSatz]}</td>
-                    <td className="px-4 py-2.5 text-right font-mono text-gray-900">
+                    <td className="px-4 py-2.5 text-ink-muted">{MWST_LABELS[a.mwstSatz]}</td>
+                    <td className="px-4 py-2.5 text-right font-mono text-ink">
                       {formatPreis(a.preisBruttoCent)}
                     </td>
                     <td className="px-4 py-2.5 text-right">
@@ -410,10 +410,10 @@ export function ArtikelPage() {
                             {a.lagerstandMenge}
                           </span>
                         ) : (
-                          <span className="text-xs text-gray-400">∞</span>
+                          <span className="text-xs text-ink-subtle">∞</span>
                         )
                       ) : (
-                        <span className="text-xs text-gray-300">—</span>
+                        <span className="text-xs text-ink-subtle">—</span>
                       )}
                     </td>
                     <td className="px-4 py-2.5">
@@ -422,7 +422,7 @@ export function ArtikelPage() {
                           aktiv
                         </span>
                       ) : (
-                        <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
+                        <span className="inline-flex items-center rounded-full bg-panel-2 px-2 py-0.5 text-xs font-medium text-ink-muted">
                           deaktiviert
                         </span>
                       )}
@@ -469,24 +469,24 @@ export function ArtikelPage() {
       {/* ------------------------------------------------------------------ */}
       {/* Kategorien-Bereich (aufklappbar)                                    */}
       {/* ------------------------------------------------------------------ */}
-      <div className="rounded-lg bg-white shadow-sm border border-gray-200">
+      <div className="rounded-lg bg-panel shadow-sm border border-line">
         <button
           type="button"
           onClick={() => setKatPanelOffen(o => !o)}
           className="w-full flex items-center justify-between px-4 py-3 text-left"
         >
           <div>
-            <h2 className="text-base font-semibold text-gray-900">Kategorien</h2>
-            <p className="text-xs text-gray-500 mt-0.5">
+            <h2 className="text-base font-semibold text-ink">Kategorien</h2>
+            <p className="text-xs text-ink-muted mt-0.5">
               Artikel-Kategorien für Tab-Gruppierung in der Kassen-Ansicht
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-xs text-gray-400">
+            <span className="text-xs text-ink-subtle">
               {katList.data?.filter(k => k.aktiv).length ?? 0} aktiv
             </span>
             <svg
-              className={`h-4 w-4 text-gray-400 transition-transform ${katPanelOffen ? 'rotate-180' : ''}`}
+              className={`h-4 w-4 text-ink-subtle transition-transform ${katPanelOffen ? 'rotate-180' : ''}`}
               viewBox="0 0 20 20" fill="currentColor"
             >
               <path fillRule="evenodd" d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06z" clipRule="evenodd" />
@@ -495,20 +495,20 @@ export function ArtikelPage() {
         </button>
 
         {katPanelOffen && (
-          <div className="border-t border-gray-200">
+          <div className="border-t border-line">
             <div className="px-4 py-3 flex justify-end">
               <Button onClick={openNewKat}>+ Neue Kategorie</Button>
             </div>
 
             {katList.isLoading ? (
-              <div className="px-4 pb-4 text-sm text-gray-500">Wird geladen…</div>
+              <div className="px-4 pb-4 text-sm text-ink-muted">Wird geladen…</div>
             ) : !katList.data || katList.data.length === 0 ? (
               <div className="px-4 pb-6 text-center">
-                <p className="text-sm text-gray-500">Noch keine Kategorien angelegt.</p>
+                <p className="text-sm text-ink-muted">Noch keine Kategorien angelegt.</p>
               </div>
             ) : (
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
+                <thead className="bg-panel-2 text-left text-xs uppercase tracking-wide text-ink-muted">
                   <tr>
                     <th className="px-4 py-2 font-semibold">Name</th>
                     <th className="px-4 py-2 font-semibold">Farbe</th>
@@ -517,23 +517,23 @@ export function ArtikelPage() {
                     <th className="px-4 py-2"></th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-line">
                   {katList.data
                     .sort((a, b) => a.reihenfolge - b.reihenfolge || a.name.localeCompare(b.name))
                     .map((k) => (
                       <tr key={k.id} className={k.aktiv ? '' : 'opacity-60'}>
-                        <td className="px-4 py-2.5 font-medium text-gray-900">{k.name}</td>
+                        <td className="px-4 py-2.5 font-medium text-ink">{k.name}</td>
                         <td className="px-4 py-2.5">
                           <FarbChip farbe={k.farbe} />
                         </td>
-                        <td className="px-4 py-2.5 text-gray-500">{k.reihenfolge}</td>
+                        <td className="px-4 py-2.5 text-ink-muted">{k.reihenfolge}</td>
                         <td className="px-4 py-2.5">
                           {k.aktiv ? (
                             <span className="inline-flex items-center rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">
                               aktiv
                             </span>
                           ) : (
-                            <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
+                            <span className="inline-flex items-center rounded-full bg-panel-2 px-2 py-0.5 text-xs font-medium text-ink-muted">
                               deaktiviert
                             </span>
                           )}
@@ -572,24 +572,24 @@ export function ArtikelPage() {
       {/* ------------------------------------------------------------------ */}
       {/* Modifikator-Gruppen-Bereich (aufklappbar)                           */}
       {/* ------------------------------------------------------------------ */}
-      <div className="rounded-lg bg-white shadow-sm border border-gray-200">
+      <div className="rounded-lg bg-panel shadow-sm border border-line">
         <button
           type="button"
           onClick={() => setModPanelOffen(o => !o)}
           className="w-full flex items-center justify-between px-4 py-3 text-left"
         >
           <div>
-            <h2 className="text-base font-semibold text-gray-900">Modifikator-Gruppen</h2>
-            <p className="text-xs text-gray-500 mt-0.5">
+            <h2 className="text-base font-semibold text-ink">Modifikator-Gruppen</h2>
+            <p className="text-xs text-ink-muted mt-0.5">
               Varianten und Extras — z. B. Größe, Sauce, Garpunkt
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-xs text-gray-400">
+            <span className="text-xs text-ink-subtle">
               {modGruppenQuery.data?.filter(g => g.aktiv).length ?? 0} aktiv
             </span>
             <svg
-              className={`h-4 w-4 text-gray-400 transition-transform ${modPanelOffen ? 'rotate-180' : ''}`}
+              className={`h-4 w-4 text-ink-subtle transition-transform ${modPanelOffen ? 'rotate-180' : ''}`}
               viewBox="0 0 20 20" fill="currentColor"
             >
               <path fillRule="evenodd" d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06z" clipRule="evenodd" />
@@ -598,7 +598,7 @@ export function ArtikelPage() {
         </button>
 
         {modPanelOffen && (
-          <div className="border-t border-gray-200">
+          <div className="border-t border-line">
             <div className="px-4 py-3 flex justify-end">
               <Button onClick={() => { setEditingModGruppe(null); setModGruppeError(null); setModGruppeModalOpen(true) }}>
                 + Neue Gruppe
@@ -606,29 +606,29 @@ export function ArtikelPage() {
             </div>
 
             {modGruppenQuery.isLoading ? (
-              <div className="px-4 pb-4 text-sm text-gray-500">Wird geladen…</div>
+              <div className="px-4 pb-4 text-sm text-ink-muted">Wird geladen…</div>
             ) : !modGruppenQuery.data || modGruppenQuery.data.length === 0 ? (
               <div className="px-4 pb-6 text-center">
-                <p className="text-sm text-gray-500">Noch keine Modifikator-Gruppen angelegt.</p>
+                <p className="text-sm text-ink-muted">Noch keine Modifikator-Gruppen angelegt.</p>
               </div>
             ) : (
-              <div className="divide-y divide-gray-100 pb-2">
+              <div className="divide-y divide-line pb-2">
                 {modGruppenQuery.data
                   .sort((a, b) => a.reihenfolge - b.reihenfolge || a.name.localeCompare(b.name))
                   .map((gruppe) => (
                     <div key={gruppe.id} className={`px-4 py-3 ${gruppe.aktiv ? '' : 'opacity-60'}`}>
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
-                          <span className="font-medium text-sm text-gray-900">{gruppe.name}</span>
+                          <span className="font-medium text-sm text-ink">{gruppe.name}</span>
                           <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
                             gruppe.typ === 'pflicht'
                               ? 'bg-red-100 text-red-700'
-                              : 'bg-gray-100 text-gray-600'
+                              : 'bg-panel-2 text-ink-muted'
                           }`}>
                             {gruppe.typ === 'pflicht' ? 'Pflicht' : 'Optional'}
                           </span>
                           {gruppe.maxAuswahl && (
-                            <span className="text-xs text-gray-400">max. {gruppe.maxAuswahl}</span>
+                            <span className="text-xs text-ink-subtle">max. {gruppe.maxAuswahl}</span>
                           )}
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
@@ -646,7 +646,7 @@ export function ArtikelPage() {
                           <button
                             type="button"
                             onClick={() => { setEditingModGruppe(gruppe); setModGruppeError(null); setModGruppeModalOpen(true) }}
-                            className="text-xs text-gray-500 hover:underline"
+                            className="text-xs text-ink-muted hover:underline"
                           >
                             Bearbeiten
                           </button>
@@ -674,8 +674,8 @@ export function ArtikelPage() {
                                 key={m.id}
                                 className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs ${
                                   m.aktiv
-                                    ? 'border-gray-200 bg-gray-50 text-gray-700'
-                                    : 'border-gray-100 bg-gray-50 text-gray-300'
+                                    ? 'border-line bg-panel-2 text-ink'
+                                    : 'border-line bg-panel-2 text-ink-subtle'
                                 }`}
                               >
                                 {m.name}
@@ -691,7 +691,7 @@ export function ArtikelPage() {
                                   onClick={() => setBestandModal({ modId: m.id, name: m.name, current: m.lagerstandMenge })}
                                   className={`rounded px-1 text-[10px] font-medium leading-none transition
                                     ${m.lagerstandMenge === null
-                                      ? 'text-gray-300 hover:text-blue-500'
+                                      ? 'text-ink-subtle hover:text-blue-500'
                                       : m.lagerstandMenge === 0
                                       ? 'bg-red-100 text-red-600 hover:bg-red-200'
                                       : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
@@ -706,7 +706,7 @@ export function ArtikelPage() {
                                       modLoeschen.mutate(m.id)
                                     }
                                   }}
-                                  className="text-gray-300 hover:text-red-500 ml-0.5"
+                                  className="text-ink-subtle hover:text-red-500 ml-0.5"
                                 >×</button>
                               </span>
                             ))}
@@ -868,7 +868,7 @@ function ModifikatorGruppeFormular({
   return (
     <div className="space-y-4">
       <label className="block">
-        <span className="text-sm font-medium text-gray-700">Name</span>
+        <span className="text-sm font-medium text-ink">Name</span>
         <Input
           autoFocus
           value={name}
@@ -880,7 +880,7 @@ function ModifikatorGruppeFormular({
       </label>
 
       <fieldset>
-        <legend className="text-sm font-medium text-gray-700 mb-1.5">Typ</legend>
+        <legend className="text-sm font-medium text-ink mb-1.5">Typ</legend>
         <div className="flex gap-4">
           {(['optional', 'pflicht'] as const).map((t) => (
             <label key={t} className="inline-flex items-center gap-1.5 text-sm cursor-pointer">
@@ -898,7 +898,7 @@ function ModifikatorGruppeFormular({
       </fieldset>
 
       <label className="block">
-        <span className="text-sm font-medium text-gray-700">Max. Auswahl</span>
+        <span className="text-sm font-medium text-ink">Max. Auswahl</span>
         <Input
           inputMode="numeric"
           value={maxAuswahl}
@@ -906,7 +906,7 @@ function ModifikatorGruppeFormular({
           placeholder="Leer = unbegrenzt"
           className="mt-1 w-40"
         />
-        <p className="mt-0.5 text-xs text-gray-400">Leer = unbegrenzt viele Optionen wählbar</p>
+        <p className="mt-0.5 text-xs text-ink-subtle">Leer = unbegrenzt viele Optionen wählbar</p>
       </label>
 
       {fehler && (
@@ -953,7 +953,7 @@ function ModifikatorFormular({
   return (
     <div className="space-y-4">
       <label className="block">
-        <span className="text-sm font-medium text-gray-700">Bezeichnung</span>
+        <span className="text-sm font-medium text-ink">Bezeichnung</span>
         <Input
           autoFocus
           value={name}
@@ -965,7 +965,7 @@ function ModifikatorFormular({
       </label>
 
       <label className="block">
-        <span className="text-sm font-medium text-gray-700">Aufschlag (€)</span>
+        <span className="text-sm font-medium text-ink">Aufschlag (€)</span>
         <Input
           inputMode="decimal"
           value={aufschlagStr}
@@ -974,13 +974,13 @@ function ModifikatorFormular({
           placeholder="0.00"
           className="mt-1 w-32"
         />
-        <p className="mt-0.5 text-xs text-gray-400">
+        <p className="mt-0.5 text-xs text-ink-subtle">
           Positiv = Aufpreis, Negativ = Rabatt, 0 = gratis
         </p>
       </label>
 
       <label className="block">
-        <span className="text-sm font-medium text-gray-700">Anfangsbestand</span>
+        <span className="text-sm font-medium text-ink">Anfangsbestand</span>
         <Input
           type="number"
           min="0"
@@ -990,7 +990,7 @@ function ModifikatorFormular({
           placeholder="Leer = unbegrenzt"
           className="mt-1 w-36"
         />
-        <p className="mt-0.5 text-xs text-gray-400">
+        <p className="mt-0.5 text-xs text-ink-subtle">
           Leer = kein Countdown, eine Zahl aktiviert den Lagerstand für diese Variante
         </p>
       </label>
@@ -1037,12 +1037,12 @@ function BestandSetzenModal({
   return (
     <Modal open onClose={onClose} title={`Lagerstand: ${name}`} size="sm">
       <div className="space-y-4">
-        <p className="text-sm text-gray-600">
+        <p className="text-sm text-ink-muted">
           Bestand für diese Variante setzen. Bei Erreichen von&nbsp;0 wird sie
           im Bestelldialog gesperrt.
         </p>
         <label className="block">
-          <span className="text-sm font-medium text-gray-700">Aktueller Bestand</span>
+          <span className="text-sm font-medium text-ink">Aktueller Bestand</span>
           <Input
             autoFocus
             type="number"
@@ -1054,7 +1054,7 @@ function BestandSetzenModal({
             placeholder="Leer = kein Countdown"
             className="mt-1 w-36"
           />
-          <p className="mt-0.5 text-xs text-gray-400">
+          <p className="mt-0.5 text-xs text-ink-subtle">
             Leer = kein Countdown (unbegrenzt)
           </p>
         </label>
@@ -1155,10 +1155,10 @@ function ArtikelGruppenZuweisungModal({
         <div className="space-y-3">
           <div className="flex items-center gap-2">
             <input value={gruppenName} onChange={e => setGruppenName(e.target.value)} placeholder="Bezeichnung (z. B. Beilage)"
-              className="flex-1 rounded-md border border-gray-300 px-2.5 py-1.5 text-sm" />
-            <label className="inline-flex items-center gap-1.5 text-xs text-gray-600 whitespace-nowrap">
+              className="flex-1 rounded-md border border-line-strong px-2.5 py-1.5 text-sm" />
+            <label className="inline-flex items-center gap-1.5 text-xs text-ink-muted whitespace-nowrap">
               <input type="checkbox" checked={pflicht} onChange={e => setPflicht(e.target.checked)}
-                className="rounded border-gray-300 text-brand-600" />
+                className="rounded border-line-strong text-brand-600" />
               Pflicht (1 Auswahl)
             </label>
           </div>
@@ -1167,15 +1167,15 @@ function ArtikelGruppenZuweisungModal({
               <div key={idx} className="flex items-center gap-2">
                 <input value={o.name} placeholder="Option (z. B. Pommes)"
                   onChange={e => setOptionen(prev => prev.map((x, i) => i === idx ? { ...x, name: e.target.value } : x))}
-                  className="flex-1 rounded-md border border-gray-300 px-2.5 py-1.5 text-sm" />
+                  className="flex-1 rounded-md border border-line-strong px-2.5 py-1.5 text-sm" />
                 <div className="flex items-center gap-1">
-                  <span className="text-xs text-gray-400">+€</span>
+                  <span className="text-xs text-ink-subtle">+€</span>
                   <input value={o.aufschlag} inputMode="decimal" placeholder="0,00"
                     onChange={e => setOptionen(prev => prev.map((x, i) => i === idx ? { ...x, aufschlag: e.target.value.replace(/[^0-9.,]/g, '') } : x))}
-                    className="w-16 rounded-md border border-gray-300 px-2 py-1.5 text-sm text-right" />
+                    className="w-16 rounded-md border border-line-strong px-2 py-1.5 text-sm text-right" />
                 </div>
                 <button type="button" onClick={() => setOptionen(prev => prev.length > 1 ? prev.filter((_, i) => i !== idx) : prev)}
-                  className="text-gray-300 hover:text-red-500 px-1" aria-label="Option entfernen">×</button>
+                  className="text-ink-subtle hover:text-red-500 px-1" aria-label="Option entfernen">×</button>
               </div>
             ))}
             <button type="button" onClick={() => setOptionen(prev => [...prev, { name: '', aufschlag: '' }])}
@@ -1199,18 +1199,18 @@ function ArtikelGruppenZuweisungModal({
       size="md"
     >
       {zuweisungQuery.isLoading ? (
-        <p className="text-sm text-gray-500 py-4">Wird geladen…</p>
+        <p className="text-sm text-ink-muted py-4">Wird geladen…</p>
       ) : (
         <div className="space-y-4">
           {inlineEditor}
 
           {aktiveGruppen.length === 0 ? (
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-ink-muted">
               Noch keine Optionen angelegt — oben direkt welche für diesen Artikel erstellen.
             </p>
           ) : (
           <>
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-ink-muted">
             Oder vorhandene Optionsgruppen für diesen Artikel aktivieren:
           </p>
           <div className="space-y-2">
@@ -1219,7 +1219,7 @@ function ArtikelGruppenZuweisungModal({
               return (
                 <label
                   key={gruppe.id}
-                  className="flex items-start gap-3 rounded-lg border border-gray-200 px-3 py-2.5 cursor-pointer hover:bg-gray-50"
+                  className="flex items-start gap-3 rounded-lg border border-line px-3 py-2.5 cursor-pointer hover:bg-panel-2"
                 >
                   <input
                     type="checkbox"
@@ -1232,18 +1232,18 @@ function ArtikelGruppenZuweisungModal({
                         return next
                       })
                     }}
-                    className="mt-0.5 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                    className="mt-0.5 rounded border-line-strong text-brand-600 focus:ring-brand-500"
                   />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-gray-900">{gruppe.name}</span>
+                      <span className="text-sm font-medium text-ink">{gruppe.name}</span>
                       <span className={`text-xs px-1.5 rounded-full ${
-                        gruppe.typ === 'pflicht' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'
+                        gruppe.typ === 'pflicht' ? 'bg-red-100 text-red-700' : 'bg-panel-2 text-ink-muted'
                       }`}>
                         {gruppe.typ === 'pflicht' ? 'Pflicht' : 'Optional'}
                       </span>
                     </div>
-                    <p className="text-xs text-gray-400 mt-0.5">
+                    <p className="text-xs text-ink-subtle mt-0.5">
                       {gruppe.modifikatoren.filter(m => m.aktiv).map(m => m.name).join(', ') || 'Keine Optionen'}
                     </p>
                   </div>
@@ -1279,7 +1279,7 @@ function ArtikelGruppenZuweisungModal({
 import type { KategorieFarbe } from '@kassa/shared'
 
 const CHIP_KLASSEN: Record<KategorieFarbe, string> = {
-  grau:   'bg-gray-200 text-gray-700',
+  grau:   'bg-panel-2 text-ink',
   rot:    'bg-red-100 text-red-700',
   orange: 'bg-orange-100 text-orange-700',
   gelb:   'bg-yellow-100 text-yellow-700',

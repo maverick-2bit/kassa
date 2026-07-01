@@ -148,14 +148,14 @@ export function BestelllistePage() {
     [...new Set(basisZeilen.map(z => z.lieferantId))].filter(Boolean),
   [basisZeilen])
 
-  if (artikelLaed) return <div className="p-8 text-sm text-gray-500">Wird geladen…</div>
+  if (artikelLaed) return <div className="p-8 text-sm text-ink-muted">Wird geladen…</div>
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-6">
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Bestellliste</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
+          <h1 className="text-2xl font-bold text-ink">Bestellliste</h1>
+          <p className="text-sm text-ink-muted mt-0.5">
             {basisZeilen.length === 0
               ? 'Alle Bestände sind ausreichend.'
               : `${basisZeilen.length} Artikel unter Mindestbestand`}
@@ -165,14 +165,14 @@ export function BestelllistePage() {
           <button
             type="button"
             onClick={() => window.print()}
-            className="px-3 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 transition"
+            className="px-3 py-2 rounded-lg border border-line-strong text-sm font-medium text-ink hover:bg-panel-2 transition"
           >
             Drucken
           </button>
           <button
             type="button"
             onClick={() => exportiereCsv(gefilterteZeilen, lieferantenNamenMap)}
-            className="px-3 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 transition"
+            className="px-3 py-2 rounded-lg border border-line-strong text-sm font-medium text-ink hover:bg-panel-2 transition"
           >
             CSV-Export
           </button>
@@ -190,17 +190,17 @@ export function BestelllistePage() {
           {lieferantenMitBestellung.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-5">
               <button type="button" onClick={() => setFilterLieferant('alle')}
-                className={`px-3 py-1.5 rounded-full text-sm font-medium border transition ${filterLieferant === 'alle' ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-700 border-gray-300 hover:border-brand-400'}`}>
+                className={`px-3 py-1.5 rounded-full text-sm font-medium border transition ${filterLieferant === 'alle' ? 'bg-brand-600 text-white border-brand-600' : 'bg-panel text-ink border-line-strong hover:border-brand-400'}`}>
                 Alle
               </button>
               {lieferantenMitBestellung.map(lid => (
                 <button key={lid} type="button" onClick={() => setFilterLieferant(lid!)}
-                  className={`px-3 py-1.5 rounded-full text-sm font-medium border transition ${filterLieferant === lid ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-700 border-gray-300 hover:border-brand-400'}`}>
+                  className={`px-3 py-1.5 rounded-full text-sm font-medium border transition ${filterLieferant === lid ? 'bg-brand-600 text-white border-brand-600' : 'bg-panel text-ink border-line-strong hover:border-brand-400'}`}>
                   {lieferantenMap.get(lid!)?.name ?? lid}
                 </button>
               ))}
               <button type="button" onClick={() => setFilterLieferant('ohne')}
-                className={`px-3 py-1.5 rounded-full text-sm font-medium border transition ${filterLieferant === 'ohne' ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-700 border-gray-300 hover:border-brand-400'}`}>
+                className={`px-3 py-1.5 rounded-full text-sm font-medium border transition ${filterLieferant === 'ohne' ? 'bg-brand-600 text-white border-brand-600' : 'bg-panel text-ink border-line-strong hover:border-brand-400'}`}>
                 Ohne Lieferant
               </button>
             </div>
@@ -211,28 +211,28 @@ export function BestelllistePage() {
             {[...gruppen.entries()].map(([gruppeKey, zeilen]) => {
               const lieferant = gruppeKey !== '__ohne__' ? lieferantenMap.get(gruppeKey) : null
               return (
-                <div key={gruppeKey} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                <div key={gruppeKey} className="bg-panel rounded-xl border border-line overflow-hidden">
                   {/* Gruppen-Header */}
-                  <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between flex-wrap gap-2">
+                  <div className="px-4 py-3 bg-panel-2 border-b border-line flex items-center justify-between flex-wrap gap-2">
                     <div>
-                      <p className="font-semibold text-gray-800">
+                      <p className="font-semibold text-ink">
                         {lieferant ? lieferant.name : 'Ohne Lieferant'}
                       </p>
                       {lieferant && (
-                        <div className="flex gap-4 text-xs text-gray-500 mt-0.5">
+                        <div className="flex gap-4 text-xs text-ink-muted mt-0.5">
                           {lieferant.kontakt && <span>{lieferant.kontakt}</span>}
                           {lieferant.email   && <a href={`mailto:${lieferant.email}`} className="text-brand-600 hover:underline">{lieferant.email}</a>}
                           {lieferant.telefon && <a href={`tel:${lieferant.telefon}`}  className="text-brand-600 hover:underline">{lieferant.telefon}</a>}
                         </div>
                       )}
                     </div>
-                    <p className="text-xs text-gray-500">{zeilen.length} Artikel</p>
+                    <p className="text-xs text-ink-muted">{zeilen.length} Artikel</p>
                   </div>
 
                   {/* Artikel-Tabelle */}
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="text-xs font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-100">
+                      <tr className="text-xs font-semibold text-ink-muted uppercase tracking-wide border-b border-line">
                         <th className="px-4 py-2 text-left">Artikel</th>
                         <th className="px-4 py-2 text-right">Aktuell</th>
                         <th className="px-4 py-2 text-right">Mindest</th>
@@ -240,14 +240,14 @@ export function BestelllistePage() {
                         <th className="px-4 py-2 text-center">Status</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100">
+                    <tbody className="divide-y divide-line">
                       {zeilen.map(z => (
-                        <tr key={z.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 font-medium text-gray-900">{z.bezeichnung}</td>
-                          <td className="px-4 py-3 text-right font-mono text-gray-600">
+                        <tr key={z.id} className="hover:bg-panel-2">
+                          <td className="px-4 py-3 font-medium text-ink">{z.bezeichnung}</td>
+                          <td className="px-4 py-3 text-right font-mono text-ink-muted">
                             {z.lagerstandMenge ?? 0}
                           </td>
-                          <td className="px-4 py-3 text-right font-mono text-gray-500">
+                          <td className="px-4 py-3 text-right font-mono text-ink-muted">
                             {z.mindestbestand ?? '–'}
                           </td>
                           <td className="px-4 py-3 text-right">
@@ -256,7 +256,7 @@ export function BestelllistePage() {
                               min={0}
                               value={z.bestellmenge}
                               onChange={e => setMenge(z.id, parseInt(e.target.value) || 0)}
-                              className="w-24 text-right border border-gray-300 rounded-md px-2 py-1 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-brand-500"
+                              className="w-24 text-right border border-line-strong rounded-md px-2 py-1 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-brand-500"
                             />
                           </td>
                           <td className="px-4 py-3 text-center">

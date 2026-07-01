@@ -32,8 +32,8 @@ export function KassenStartseiteSeite() {
   return (
     <div className="mx-auto max-w-2xl px-4 py-8 space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Kassen-Startseiten</h1>
-        <p className="mt-1 text-sm text-gray-500">
+        <h1 className="text-2xl font-bold text-ink">Kassen-Startseiten</h1>
+        <p className="mt-1 text-sm text-ink-muted">
           Welche Seite öffnet sich nach dem Login an jeder Kasse?
         </p>
       </div>
@@ -47,20 +47,20 @@ export function KassenStartseiteSeite() {
           return (
             <div
               key={kasse.id}
-              className="flex items-center gap-4 rounded-xl border border-gray-200 bg-white px-5 py-4 shadow-sm"
+              className="flex items-center gap-4 rounded-xl border border-line bg-panel px-5 py-4 shadow-sm"
             >
               {/* Kassen-Info */}
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-gray-900 truncate">
+                <p className="text-sm font-semibold text-ink truncate">
                   {kasse.bezeichnung ?? kasse.kassenId}
                 </p>
-                <p className="text-xs text-gray-400 font-mono">{kasse.kassenId}</p>
+                <p className="text-xs text-ink-subtle font-mono">{kasse.kassenId}</p>
               </div>
 
               {/* Startseite-Dropdown */}
               <div className="flex items-center gap-2 shrink-0">
                 {saveMut.isPending && saveMut.variables?.kasseId === kasse.id && (
-                  <span className="text-xs text-gray-400">Speichern…</span>
+                  <span className="text-xs text-ink-subtle">Speichern…</span>
                 )}
                 <select
                   disabled={isLoading}
@@ -68,7 +68,7 @@ export function KassenStartseiteSeite() {
                   onChange={(e) =>
                     saveMut.mutate({ kasseId: kasse.id, startseite: e.target.value as Startseite })
                   }
-                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-800 shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:opacity-50"
+                  className="rounded-lg border border-line-strong bg-panel px-3 py-2 text-sm font-medium text-ink shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:opacity-50"
                 >
                   {STARTSEITEN.map(s => (
                     <option key={s.value} value={s.value}>{s.label}</option>
@@ -80,13 +80,13 @@ export function KassenStartseiteSeite() {
         })}
 
         {kassen.length === 0 && (
-          <div className="rounded-lg border-2 border-dashed border-gray-200 p-10 text-center text-sm text-gray-400">
+          <div className="rounded-lg border-2 border-dashed border-line p-10 text-center text-sm text-ink-subtle">
             Keine Kassen gefunden.
           </div>
         )}
       </div>
 
-      <p className="text-xs text-gray-400">
+      <p className="text-xs text-ink-subtle">
         Die Einstellung gilt sofort beim nächsten Login an der jeweiligen Kasse.
       </p>
     </div>

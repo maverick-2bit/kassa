@@ -41,7 +41,7 @@ const STATUS_FARBE: Record<ReservierungStatus, string> = {
   wartend:          'bg-amber-100 text-amber-800 border-amber-300',
   bestaetigt:       'bg-blue-100  text-blue-800  border-blue-200',
   erschienen:       'bg-green-100 text-green-800 border-green-200',
-  nicht_erschienen: 'bg-gray-100  text-gray-500  border-gray-200',
+  nicht_erschienen: 'bg-panel-2  text-ink-muted  border-line',
   storniert:        'bg-red-50    text-red-500   border-red-200',
 }
 
@@ -108,7 +108,7 @@ export function ReservierungenPage() {
       {/* Kopfzeile */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-ink flex items-center gap-2">
             Reservierungen
             {wartendAnzahl > 0 && (
               <span className="inline-flex items-center justify-center min-w-[1.5rem] h-6 rounded-full bg-amber-500 text-white text-xs font-bold px-1.5">
@@ -116,7 +116,7 @@ export function ReservierungenPage() {
               </span>
             )}
           </h1>
-          <p className="mt-0.5 text-sm text-gray-500">
+          <p className="mt-0.5 text-sm text-ink-muted">
             {datumLabel(wochenStart)} – {datumLabel(wochenEnde)}
           </p>
         </div>
@@ -141,7 +141,7 @@ export function ReservierungenPage() {
 
       {/* Wochenkalender */}
       {isLoading ? (
-        <div className="flex-1 flex items-center justify-center text-sm text-gray-400">
+        <div className="flex-1 flex items-center justify-center text-sm text-ink-subtle">
           Wird geladen…
         </div>
       ) : isError ? (
@@ -160,13 +160,13 @@ export function ReservierungenPage() {
                 <div className={`text-center text-xs font-semibold py-1.5 rounded-t border ${
                   istHeute
                     ? 'bg-brand-600 text-white border-brand-600'
-                    : 'bg-gray-50 text-gray-600 border-gray-200'
+                    : 'bg-panel-2 text-ink-muted border-line'
                 }`}>
                   {datumLabel(tag)}
                 </div>
-                <div className="flex-1 border border-t-0 border-gray-200 rounded-b bg-white p-1.5 space-y-1.5 min-h-[120px]">
+                <div className="flex-1 border border-t-0 border-line rounded-b bg-panel p-1.5 space-y-1.5 min-h-[120px]">
                   {tagesRes.length === 0 ? (
-                    <p className="text-xs text-gray-300 text-center pt-3">—</p>
+                    <p className="text-xs text-ink-subtle text-center pt-3">—</p>
                   ) : (
                     tagesRes.map(r => (
                       <button
@@ -186,7 +186,7 @@ export function ReservierungenPage() {
                     setEditTarget(null)
                     setFormOffen(true)
                   }}
-                  className="mt-1 text-[10px] text-gray-400 hover:text-brand-600 text-center w-full py-0.5"
+                  className="mt-1 text-[10px] text-ink-subtle hover:text-brand-600 text-center w-full py-0.5"
                   data-datum={tag}
                 >
                   + hinzufügen
@@ -270,12 +270,12 @@ function ReservierungDetail({
       </div>
 
       <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-        <div><dt className="text-gray-500 text-xs">Datum</dt><dd className="font-medium">{r.datum}</dd></div>
-        <div><dt className="text-gray-500 text-xs">Uhrzeit</dt><dd className="font-medium">{r.zeitVon} ({r.dauer} min)</dd></div>
-        <div><dt className="text-gray-500 text-xs">Personen</dt><dd className="font-medium">{r.personenAnzahl}</dd></div>
-        {r.tischLabel && <div><dt className="text-gray-500 text-xs">Tisch</dt><dd className="font-medium">{r.tischLabel}</dd></div>}
-        {r.telefon    && <div><dt className="text-gray-500 text-xs">Telefon</dt><dd>{r.telefon}</dd></div>}
-        {r.email      && <div className="col-span-2"><dt className="text-gray-500 text-xs">E-Mail</dt><dd>{r.email}</dd></div>}
+        <div><dt className="text-ink-muted text-xs">Datum</dt><dd className="font-medium">{r.datum}</dd></div>
+        <div><dt className="text-ink-muted text-xs">Uhrzeit</dt><dd className="font-medium">{r.zeitVon} ({r.dauer} min)</dd></div>
+        <div><dt className="text-ink-muted text-xs">Personen</dt><dd className="font-medium">{r.personenAnzahl}</dd></div>
+        {r.tischLabel && <div><dt className="text-ink-muted text-xs">Tisch</dt><dd className="font-medium">{r.tischLabel}</dd></div>}
+        {r.telefon    && <div><dt className="text-ink-muted text-xs">Telefon</dt><dd>{r.telefon}</dd></div>}
+        {r.email      && <div className="col-span-2"><dt className="text-ink-muted text-xs">E-Mail</dt><dd>{r.email}</dd></div>}
       </dl>
 
       {r.notiz && (
@@ -284,7 +284,7 @@ function ReservierungDetail({
         </div>
       )}
 
-      <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-200">
+      <div className="flex flex-wrap gap-2 pt-2 border-t border-line">
         {naechster && (
           <Button onClick={() => onStatusChange(naechster)} loading={loading}>
             → {RESERVIERUNG_STATUS_LABELS[naechster]}
@@ -383,70 +383,70 @@ function ReservierungForm({
     >
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Datum *</label>
+          <label className="block text-xs font-medium text-ink-muted mb-1">Datum *</label>
           <input type="date" required value={datum} onChange={e => setDatum(e.target.value)}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+            className="w-full border border-line-strong rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Uhrzeit *</label>
+          <label className="block text-xs font-medium text-ink-muted mb-1">Uhrzeit *</label>
           <input type="time" required value={zeitVon} onChange={e => setZeitVon(e.target.value)}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+            className="w-full border border-line-strong rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Dauer (Min)</label>
+          <label className="block text-xs font-medium text-ink-muted mb-1">Dauer (Min)</label>
           <select value={dauer} onChange={e => setDauer(e.target.value)}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
+            className="w-full border border-line-strong rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
             {[30, 60, 90, 120, 150, 180, 240].map(m => (
               <option key={m} value={m}>{m} min</option>
             ))}
           </select>
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Personen *</label>
+          <label className="block text-xs font-medium text-ink-muted mb-1">Personen *</label>
           <input type="number" required min={1} max={100} value={personenAnzahl}
             onChange={e => setPersonenAnzahl(e.target.value)}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+            className="w-full border border-line-strong rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
         </div>
       </div>
 
       <div>
-        <label className="block text-xs font-medium text-gray-600 mb-1">Name *</label>
+        <label className="block text-xs font-medium text-ink-muted mb-1">Name *</label>
         <input type="text" required value={name} onChange={e => setName(e.target.value)}
           placeholder="Mustermann"
-          className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+          className="w-full border border-line-strong rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
       </div>
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Telefon</label>
+          <label className="block text-xs font-medium text-ink-muted mb-1">Telefon</label>
           <input type="tel" value={telefon} onChange={e => setTelefon(e.target.value)}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+            className="w-full border border-line-strong rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Tisch</label>
+          <label className="block text-xs font-medium text-ink-muted mb-1">Tisch</label>
           <input type="text" value={tischLabel} onChange={e => setTischLabel(e.target.value)}
             placeholder="z. B. Tisch 5"
-            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+            className="w-full border border-line-strong rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
         </div>
       </div>
 
       <div>
-        <label className="block text-xs font-medium text-gray-600 mb-1">E-Mail</label>
+        <label className="block text-xs font-medium text-ink-muted mb-1">E-Mail</label>
         <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-          className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+          className="w-full border border-line-strong rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
       </div>
 
       <div>
-        <label className="block text-xs font-medium text-gray-600 mb-1">Notiz</label>
+        <label className="block text-xs font-medium text-ink-muted mb-1">Notiz</label>
         <textarea rows={2} value={notiz} onChange={e => setNotiz(e.target.value)}
-          className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none" />
+          className="w-full border border-line-strong rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none" />
       </div>
 
       {fehler && (
         <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{fehler}</div>
       )}
 
-      <div className="flex gap-2 justify-end pt-1 border-t border-gray-100">
+      <div className="flex gap-2 justify-end pt-1 border-t border-line">
         <Button variant="secondary" type="button" onClick={onAbbrechen}>Abbrechen</Button>
         <Button type="submit" loading={speichernMut.isPending}>
           {initial ? 'Speichern' : 'Anlegen'}
@@ -485,23 +485,23 @@ function OnlineBuchungKarte({ kasseId }: { kasseId: string }) {
 
   return (
     <details
-      className="rounded-lg border border-gray-200 bg-white"
+      className="rounded-lg border border-line bg-panel"
       open={offen}
       onToggle={(e) => setOffen((e.target as HTMLDetailsElement).open)}
     >
-      <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-lg select-none">
+      <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-ink hover:bg-panel-2 rounded-lg select-none">
         Online-Buchungslink
         {!offen && (
-          <span className="ml-2 text-xs text-gray-400 font-normal">
+          <span className="ml-2 text-xs text-ink-subtle font-normal">
             — Gäste können direkt online reservieren
           </span>
         )}
       </summary>
-      <div className="border-t border-gray-200 px-4 py-4 space-y-4">
+      <div className="border-t border-line px-4 py-4 space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium text-gray-700">Online-Buchung aktiv</p>
-            <p className="text-xs text-gray-400 mt-0.5">
+            <p className="text-sm font-medium text-ink">Online-Buchung aktiv</p>
+            <p className="text-xs text-ink-subtle mt-0.5">
               Gäste können über den Link direkt reservieren
             </p>
           </div>
@@ -510,10 +510,10 @@ function OnlineBuchungKarte({ kasseId }: { kasseId: string }) {
             onClick={() => data && toggleMut.mutate(!data.onlineBuchungAktiv)}
             disabled={toggleMut.isPending || !data}
             className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
-              data?.onlineBuchungAktiv ? 'bg-brand-600' : 'bg-gray-200'
+              data?.onlineBuchungAktiv ? 'bg-brand-600' : 'bg-panel-2'
             }`}
           >
-            <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+            <span className={`inline-block h-4 w-4 transform rounded-full bg-panel shadow transition-transform ${
               data?.onlineBuchungAktiv ? 'translate-x-6' : 'translate-x-1'
             }`} />
           </button>
@@ -521,11 +521,11 @@ function OnlineBuchungKarte({ kasseId }: { kasseId: string }) {
 
         {data?.buchungUrl && (
           <div>
-            <p className="text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">
+            <p className="text-xs font-semibold text-ink-muted mb-1 uppercase tracking-wide">
               Buchungs-URL
             </p>
             <div className="flex items-center gap-2">
-              <code className="flex-1 rounded bg-gray-100 border border-gray-200 px-3 py-2 text-xs font-mono text-gray-700 break-all select-all">
+              <code className="flex-1 rounded bg-panel-2 border border-line px-3 py-2 text-xs font-mono text-ink break-all select-all">
                 {data.buchungUrl}
               </code>
               <button
@@ -536,7 +536,7 @@ function OnlineBuchungKarte({ kasseId }: { kasseId: string }) {
                 {kopiert ? '✓' : 'Kopieren'}
               </button>
             </div>
-            <p className="text-xs text-gray-400 mt-2">
+            <p className="text-xs text-ink-subtle mt-2">
               Teile diese URL als QR-Code oder Link auf deiner Website / Speisekarte.
             </p>
           </div>

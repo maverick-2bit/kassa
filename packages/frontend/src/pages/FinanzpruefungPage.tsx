@@ -59,15 +59,15 @@ export function FinanzpruefungPage() {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
-      <h1 className="text-2xl font-bold text-gray-900 mb-1">Finanzprüfungs-Modus</h1>
-      <p className="text-sm text-gray-500 mb-8">
+      <h1 className="text-2xl font-bold text-ink mb-1">Finanzprüfungs-Modus</h1>
+      <p className="text-sm text-ink-muted mb-8">
         Erstelle zeitlich begrenzte Prüfer-Links, über die das Finanzamt oder der Steuerberater
         Belege einsehen und DEP7-Dateien herunterladen kann — ohne Admin-Zugang.
       </p>
 
       {/* Kasse wählen */}
-      <section className="bg-white border border-gray-200 rounded-xl p-6 mb-5 space-y-3">
-        <h2 className="font-semibold text-gray-800">Kasse</h2>
+      <section className="bg-panel border border-line rounded-xl p-6 mb-5 space-y-3">
+        <h2 className="font-semibold text-ink">Kasse</h2>
         <div className="flex flex-wrap gap-2">
           {kassen.map(k => (
             <button
@@ -77,7 +77,7 @@ export function FinanzpruefungPage() {
               className={`px-4 py-2 rounded-lg text-sm font-medium border transition ${
                 kasseId === k.id
                   ? 'bg-brand-600 text-white border-brand-600'
-                  : 'bg-white text-gray-700 border-gray-300 hover:border-brand-400'
+                  : 'bg-panel text-ink border-line-strong hover:border-brand-400'
               }`}
             >
               {k.bezeichnung ?? k.kassenId}
@@ -87,11 +87,11 @@ export function FinanzpruefungPage() {
       </section>
 
       {/* Neuen Token erstellen */}
-      <section className="bg-white border border-gray-200 rounded-xl p-6 mb-5 space-y-4">
-        <h2 className="font-semibold text-gray-800">Neuen Prüfer-Link erstellen</h2>
+      <section className="bg-panel border border-line rounded-xl p-6 mb-5 space-y-4">
+        <h2 className="font-semibold text-ink">Neuen Prüfer-Link erstellen</h2>
 
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">
+          <label className="block text-xs font-medium text-ink-muted mb-1">
             Gültigkeitsdauer
           </label>
           <div className="flex gap-2 flex-wrap">
@@ -103,7 +103,7 @@ export function FinanzpruefungPage() {
                 className={`px-3 py-1.5 rounded-md text-sm font-medium border transition ${
                   tage === d
                     ? 'bg-brand-600 text-white border-brand-600'
-                    : 'bg-white text-gray-700 border-gray-300 hover:border-brand-400'
+                    : 'bg-panel text-ink border-line-strong hover:border-brand-400'
                 }`}
               >
                 {d} Tage
@@ -113,7 +113,7 @@ export function FinanzpruefungPage() {
         </div>
 
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">
+          <label className="block text-xs font-medium text-ink-muted mb-1">
             Beschreibung (optional)
           </label>
           <input
@@ -122,7 +122,7 @@ export function FinanzpruefungPage() {
             onChange={e => setBeschreibung(e.target.value)}
             placeholder="z. B. Jahresprüfung 2025 – Finanzamt Wien"
             maxLength={200}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+            className="w-full border border-line-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
           />
         </div>
 
@@ -143,13 +143,13 @@ export function FinanzpruefungPage() {
       </section>
 
       {/* Token-Liste */}
-      <section className="bg-white border border-gray-200 rounded-xl p-6">
-        <h2 className="font-semibold text-gray-800 mb-4">Ausgestellte Links</h2>
+      <section className="bg-panel border border-line rounded-xl p-6">
+        <h2 className="font-semibold text-ink mb-4">Ausgestellte Links</h2>
 
         {tokensQuery.isLoading ? (
-          <p className="text-sm text-gray-400">Lädt…</p>
+          <p className="text-sm text-ink-subtle">Lädt…</p>
         ) : tokens.length === 0 ? (
-          <p className="text-sm text-gray-400">Noch keine Prüfer-Links erstellt.</p>
+          <p className="text-sm text-ink-subtle">Noch keine Prüfer-Links erstellt.</p>
         ) : (
           <div className="space-y-3">
             {tokens.map(t => {
@@ -159,19 +159,19 @@ export function FinanzpruefungPage() {
                 <div
                   key={t.id}
                   className={`rounded-lg border p-4 space-y-2 ${
-                    ungueltig ? 'border-gray-100 bg-gray-50 opacity-60' : 'border-gray-200'
+                    ungueltig ? 'border-line bg-panel-2 opacity-60' : 'border-line'
                   }`}
                 >
                   <div className="flex items-start gap-2">
                     <div className="flex-1 min-w-0">
                       {t.beschreibung && (
-                        <p className="text-sm font-medium text-gray-800">{t.beschreibung}</p>
+                        <p className="text-sm font-medium text-ink">{t.beschreibung}</p>
                       )}
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-ink-muted">
                         Erstellt: {formatDatum(t.erstelltAm)} · Gültig bis: {formatDatum(t.gueltigBis)}
                       </p>
                       {t.letzteVerwendung && (
-                        <p className="text-xs text-gray-400">
+                        <p className="text-xs text-ink-subtle">
                           Zuletzt abgerufen: {formatDatum(t.letzteVerwendung)}
                         </p>
                       )}
@@ -180,7 +180,7 @@ export function FinanzpruefungPage() {
                       t.widerrufen
                         ? 'bg-red-100 text-red-700'
                         : abgelaufen
-                          ? 'bg-gray-100 text-gray-500'
+                          ? 'bg-panel-2 text-ink-muted'
                           : 'bg-green-100 text-green-700'
                     }`}>
                       {t.widerrufen ? 'Widerrufen' : abgelaufen ? 'Abgelaufen' : 'Aktiv'}

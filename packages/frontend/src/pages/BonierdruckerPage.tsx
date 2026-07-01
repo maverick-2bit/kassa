@@ -78,7 +78,7 @@ function BonierdruckerFormular({
       <label className="flex items-center gap-3 cursor-pointer rounded-lg border border-amber-200 bg-amber-50 p-3">
         <input
           type="checkbox"
-          className="h-4 w-4 rounded border-gray-300 text-amber-500 focus:ring-amber-400"
+          className="h-4 w-4 rounded border-line-strong text-amber-500 focus:ring-amber-400"
           {...register('istBackup')}
         />
         <div>
@@ -93,7 +93,7 @@ function BonierdruckerFormular({
         <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{fehler}</div>
       )}
 
-      <div className="flex justify-end gap-2 pt-2 border-t border-gray-200">
+      <div className="flex justify-end gap-2 pt-2 border-t border-line">
         <Button variant="secondary" type="button" onClick={onCancel}>Abbrechen</Button>
         <Button type="submit" loading={loading}>{initial ? 'Speichern' : 'Anlegen'}</Button>
       </div>
@@ -159,8 +159,8 @@ export function BonierdruckerPage() {
     <div className="mx-auto max-w-3xl px-4 py-8 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Bonierdrucker</h1>
-          <p className="mt-1 text-sm text-gray-500">
+          <h1 className="text-2xl font-bold text-ink">Bonierdrucker</h1>
+          <p className="mt-1 text-sm text-ink-muted">
             Zentral konfigurierte ESC/POS-Drucker für Bonierzettel. Werden automatisch an alle Kassen weitergegeben.
           </p>
         </div>
@@ -170,13 +170,13 @@ export function BonierdruckerPage() {
       </div>
 
       {query.isLoading && (
-        <div className="text-sm text-gray-400">Laden…</div>
+        <div className="text-sm text-ink-subtle">Laden…</div>
       )}
 
       {liste.length === 0 && !query.isLoading && (
-        <div className="rounded-xl border-2 border-dashed border-gray-200 p-12 text-center">
-          <p className="text-sm text-gray-400">Noch keine Bonierdrucker angelegt.</p>
-          <p className="mt-1 text-xs text-gray-300">Lege mindestens einen Backup-Drucker an, der alle Bons empfängt.</p>
+        <div className="rounded-xl border-2 border-dashed border-line p-12 text-center">
+          <p className="text-sm text-ink-subtle">Noch keine Bonierdrucker angelegt.</p>
+          <p className="mt-1 text-xs text-ink-subtle">Lege mindestens einen Backup-Drucker an, der alle Bons empfängt.</p>
         </div>
       )}
 
@@ -186,15 +186,15 @@ export function BonierdruckerPage() {
           return (
             <div
               key={d.id}
-              className={`flex items-center gap-4 rounded-xl border px-4 py-3 bg-white shadow-sm ${
+              className={`flex items-center gap-4 rounded-xl border px-4 py-3 bg-panel shadow-sm ${
                 !d.aktiv ? 'opacity-50' : ''
               }`}
             >
               {/* Icon */}
               <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg ${
-                d.istBackup ? 'bg-amber-100' : 'bg-gray-100'
+                d.istBackup ? 'bg-amber-100' : 'bg-panel-2'
               }`}>
-                <svg className={`h-5 w-5 ${d.istBackup ? 'text-amber-600' : 'text-gray-500'}`}
+                <svg className={`h-5 w-5 ${d.istBackup ? 'text-amber-600' : 'text-ink-muted'}`}
                   viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                   <path strokeLinecap="round" strokeLinejoin="round"
                     d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 0 1-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0 0 21 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 0 0-1.913-.247M6.34 18H5.25A2.25 2.25 0 0 1 3 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 0 1 1.913-.247m10.5 0a48.536 48.536 0 0 0-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008H18V10.5Zm-3 0h.008v.008H15V10.5Z" />
@@ -204,19 +204,19 @@ export function BonierdruckerPage() {
               {/* Info */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-medium text-gray-900">{d.name}</span>
+                  <span className="font-medium text-ink">{d.name}</span>
                   {d.istBackup && (
                     <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
                       Backup
                     </span>
                   )}
                   {!d.aktiv && (
-                    <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">
+                    <span className="inline-flex items-center rounded-full bg-panel-2 px-2 py-0.5 text-xs text-ink-muted">
                       Inaktiv
                     </span>
                   )}
                 </div>
-                <p className="text-sm text-gray-400 font-mono">{d.ip}:{d.port}</p>
+                <p className="text-sm text-ink-subtle font-mono">{d.ip}:{d.port}</p>
               </div>
 
               {/* Aktionen */}
@@ -227,7 +227,7 @@ export function BonierdruckerPage() {
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
                     status === 'ok'  ? 'bg-green-50 border-green-200 text-green-700' :
                     status === 'err' ? 'bg-red-50 border-red-200 text-red-700' :
-                    'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+                    'bg-panel border-line text-ink-muted hover:bg-panel-2'
                   }`}
                 >
                   {status === 'loading' ? '…' :
@@ -237,7 +237,7 @@ export function BonierdruckerPage() {
                 </button>
                 <button
                   onClick={() => { setEditing(d); setFehler(null); setModalOpen(true) }}
-                  className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+                  className="p-1.5 rounded-lg text-ink-subtle hover:text-ink-muted hover:bg-panel-2"
                   title="Bearbeiten"
                 >
                   <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
@@ -246,7 +246,7 @@ export function BonierdruckerPage() {
                 </button>
                 <button
                   onClick={() => { if (confirm(`"${d.name}" wirklich löschen?`)) del.mutate(d.id) }}
-                  className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50"
+                  className="p-1.5 rounded-lg text-ink-subtle hover:text-red-600 hover:bg-red-50"
                   title="Löschen"
                 >
                   <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">

@@ -52,8 +52,8 @@ export function TischePage() {
     <div className="mx-auto max-w-6xl px-4 py-6">
       <div className="mb-5 flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Tische</h1>
-          <p className="text-sm text-gray-500">
+          <h1 className="text-xl font-semibold text-ink">Tische</h1>
+          <p className="text-sm text-ink-muted">
             {tabsQuery.data?.length ?? 0} offene Tische
           </p>
         </div>
@@ -61,12 +61,12 @@ export function TischePage() {
         <div className="flex items-center gap-2">
           {/* Ansicht-Toggle — nur anzeigen wenn Tischplan vorhanden */}
           {hatPlan && (
-            <div className="flex rounded-lg border border-gray-300 overflow-hidden text-sm">
+            <div className="flex rounded-lg border border-line-strong overflow-hidden text-sm">
               <button
                 type="button"
                 onClick={() => setAnsicht('liste')}
                 className={`px-3 py-1.5 font-medium transition ${
-                  ansicht === 'liste' ? 'bg-brand-600 text-white' : 'text-gray-600 hover:bg-gray-100'
+                  ansicht === 'liste' ? 'bg-brand-600 text-white' : 'text-ink-muted hover:bg-panel-2'
                 }`}
               >
                 ☰ Liste
@@ -74,8 +74,8 @@ export function TischePage() {
               <button
                 type="button"
                 onClick={() => setAnsicht('plan')}
-                className={`px-3 py-1.5 font-medium transition border-l border-gray-300 ${
-                  ansicht === 'plan' ? 'bg-brand-600 text-white' : 'text-gray-600 hover:bg-gray-100'
+                className={`px-3 py-1.5 font-medium transition border-l border-line-strong ${
+                  ansicht === 'plan' ? 'bg-brand-600 text-white' : 'text-ink-muted hover:bg-panel-2'
                 }`}
               >
                 ⊞ Plan
@@ -88,7 +88,7 @@ export function TischePage() {
         </div>
       </div>
 
-      {tabsQuery.isLoading && <p className="text-sm text-gray-500">Wird geladen…</p>}
+      {tabsQuery.isLoading && <p className="text-sm text-ink-muted">Wird geladen…</p>}
       {tabsQuery.isError  && <p className="text-sm text-red-600">Fehler beim Laden der Tische.</p>}
 
       {/* ---- Plan-Ansicht ---- */}
@@ -103,9 +103,9 @@ export function TischePage() {
       {(ansicht === 'liste' || !hatPlan) && (
         <>
           {tabsQuery.data && tabsQuery.data.length === 0 && (
-            <div className="rounded-lg border border-dashed border-gray-300 p-12 text-center">
-              <p className="text-gray-500">Keine offenen Tische.</p>
-              <p className="mt-1 text-sm text-gray-400">Klicke auf «+ Neuer Tisch» um einen zu öffnen.</p>
+            <div className="rounded-lg border border-dashed border-line-strong p-12 text-center">
+              <p className="text-ink-muted">Keine offenen Tische.</p>
+              <p className="mt-1 text-sm text-ink-subtle">Klicke auf «+ Neuer Tisch» um einen zu öffnen.</p>
             </div>
           )}
           {tabsQuery.data && tabsQuery.data.length > 0 && (
@@ -220,10 +220,10 @@ function TischKarte({
         </span>
       </div>
       <p className={`mt-0.5 text-xs font-medium truncate ${farbe.kellnerText}`}>{tab.kellner}</p>
-      <p className="mt-2 text-sm font-semibold text-gray-900">
+      <p className="mt-2 text-sm font-semibold text-ink">
         {formatPreis(tab.summeGesamtCent)}
       </p>
-      <p className="text-xs text-gray-500">
+      <p className="text-xs text-ink-muted">
         {tab.positionen.reduce((n, p) => n + p.menge, 0)} Pos.
       </p>
     </button>
@@ -262,9 +262,9 @@ function TischListeGruppiert({
           {/* Tisch-Header wenn mehrere Gruppen */}
           {gruppe.length > 1 && (
             <div className="flex items-center gap-2 mb-2">
-              <span className="text-sm font-semibold text-gray-700">Tisch {tischNummer}</span>
-              <span className="text-xs text-gray-400">{gruppe.length} Gruppen</span>
-              <span className="flex-1 h-px bg-gray-200" />
+              <span className="text-sm font-semibold text-ink">Tisch {tischNummer}</span>
+              <span className="text-xs text-ink-subtle">{gruppe.length} Gruppen</span>
+              <span className="flex-1 h-px bg-panel-2" />
               <button
                 type="button"
                 onClick={() => onNeueGruppe(tischNummer)}
@@ -328,7 +328,7 @@ function NeuerTischForm({ kasseId, vorbelegterTisch, loading, fehler, onSubmit, 
   return (
     <div className="space-y-4">
       <label className="block">
-        <span className="text-sm font-medium text-gray-700">Tischnummer / -bezeichnung</span>
+        <span className="text-sm font-medium text-ink">Tischnummer / -bezeichnung</span>
         <Input
           autoFocus
           value={tischNummer}
@@ -339,7 +339,7 @@ function NeuerTischForm({ kasseId, vorbelegterTisch, loading, fehler, onSubmit, 
         />
       </label>
       <label className="block">
-        <span className="text-sm font-medium text-gray-700">Kellner</span>
+        <span className="text-sm font-medium text-ink">Kellner</span>
         <Input
           value={kellner}
           onChange={(e) => setKellner(e.target.value)}

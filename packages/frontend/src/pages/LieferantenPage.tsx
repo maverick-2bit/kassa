@@ -60,13 +60,13 @@ function LieferantFormular({
           onChange={e => setNotiz(e.target.value)}
           rows={3}
           placeholder="Lieferkonditionen, Mindestbestellwert, …"
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none"
+          className="w-full rounded-lg border border-line-strong px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none"
         />
       </Field>
       {fehler && (
         <p className="text-sm text-red-600">{fehler}</p>
       )}
-      <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+      <div className="flex justify-end gap-2 pt-2 border-t border-line">
         <Button variant="secondary" type="button" onClick={onCancel}>Abbrechen</Button>
         <Button type="submit" loading={loading} disabled={!name.trim()}>
           {initial ? 'Speichern' : 'Anlegen'}
@@ -110,32 +110,32 @@ export function LieferantenPage() {
     <div className="mx-auto max-w-3xl px-4 py-6">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Lieferanten</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Kontaktdaten für Bestellungen und Einkauf</p>
+          <h1 className="text-2xl font-bold text-ink">Lieferanten</h1>
+          <p className="text-sm text-ink-muted mt-0.5">Kontaktdaten für Bestellungen und Einkauf</p>
         </div>
         <Button onClick={() => { setModalOffen(true); setFehler(null) }}>+ Lieferant anlegen</Button>
       </div>
 
       {isLoading ? (
-        <p className="text-sm text-gray-500">Lädt…</p>
+        <p className="text-sm text-ink-muted">Lädt…</p>
       ) : liste.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-gray-300 py-16 text-center">
-          <p className="text-gray-500">Noch keine Lieferanten angelegt.</p>
-          <p className="text-sm text-gray-400 mt-1">Klicke auf «+ Lieferant anlegen».</p>
+        <div className="rounded-xl border border-dashed border-line-strong py-16 text-center">
+          <p className="text-ink-muted">Noch keine Lieferanten angelegt.</p>
+          <p className="text-sm text-ink-subtle mt-1">Klicke auf «+ Lieferant anlegen».</p>
         </div>
       ) : (
         <div className="space-y-3">
           {liste.map(l => (
-            <div key={l.id} className="rounded-xl border border-gray-200 bg-white p-4">
+            <div key={l.id} className="rounded-xl border border-line bg-panel p-4">
               <div className="flex items-start gap-4">
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-gray-900">{l.name}</p>
-                  <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-gray-500">
+                  <p className="font-semibold text-ink">{l.name}</p>
+                  <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-ink-muted">
                     {l.kontakt && <span>{l.kontakt}</span>}
                     {l.email   && <a href={`mailto:${l.email}`} className="text-brand-600 hover:underline">{l.email}</a>}
                     {l.telefon && <a href={`tel:${l.telefon}`}  className="text-brand-600 hover:underline">{l.telefon}</a>}
                   </div>
-                  {l.notiz && <p className="mt-1.5 text-xs text-gray-400 line-clamp-2">{l.notiz}</p>}
+                  {l.notiz && <p className="mt-1.5 text-xs text-ink-subtle line-clamp-2">{l.notiz}</p>}
                 </div>
                 <div className="flex gap-2 shrink-0">
                   <button type="button" onClick={() => { setBearbeiteter(l); setFehler(null) }}
@@ -180,7 +180,7 @@ export function LieferantenPage() {
       <Modal open={!!loeschKandidat} onClose={() => setLoeschKandidat(null)} title="Lieferant löschen">
         {loeschKandidat && (
           <div className="space-y-4">
-            <p className="text-sm text-gray-700">
+            <p className="text-sm text-ink">
               Soll <strong>{loeschKandidat.name}</strong> wirklich gelöscht werden?
               Artikel mit diesem Lieferanten bleiben erhalten.
             </p>

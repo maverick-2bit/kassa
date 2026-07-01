@@ -355,7 +355,7 @@ export function TischTabPage() {
   // UI
   // ---------------------------------------------------------------------------
 
-  if (tabQuery.isLoading) return <p className="p-6 text-sm text-gray-500">Wird geladen…</p>
+  if (tabQuery.isLoading) return <p className="p-6 text-sm text-ink-muted">Wird geladen…</p>
   if (!tab) return <p className="p-6 text-sm text-red-600">Tisch-Tab nicht gefunden.</p>
 
   return (
@@ -365,18 +365,18 @@ export function TischTabPage() {
         <button
           type="button"
           onClick={() => navigate('/tische')}
-          className="text-sm text-gray-500 hover:text-gray-800"
+          className="text-sm text-ink-muted hover:text-ink"
         >
           ← Tische
         </button>
         <div className="h-4 w-px bg-gray-300" />
-        <h1 className="text-lg font-semibold text-gray-900">
+        <h1 className="text-lg font-semibold text-ink">
           Tisch {tab.tischNummer}
         </h1>
         <button
           type="button"
           onClick={() => { setFehler(null); setUmbenennenOffen(true) }}
-          className="group flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800"
+          className="group flex items-center gap-1 text-sm text-ink-muted hover:text-ink"
           title="Partei umbenennen"
         >
           · {tab.kellner}
@@ -384,13 +384,13 @@ export function TischTabPage() {
             <path d="M13.586 3.586a2 2 0 1 1 2.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/>
           </svg>
         </button>
-        <span className="text-xs text-gray-400">
+        <span className="text-xs text-ink-subtle">
           Geöffnet {new Date(tab.geoffnetAm).toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' })} Uhr
         </span>
         <button
           type="button"
           onClick={() => setVerlaufOffen(true)}
-          className="ml-auto flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition"
+          className="ml-auto flex items-center gap-1.5 rounded-md border border-line bg-panel px-2.5 py-1 text-xs font-medium text-ink-muted hover:bg-panel-2 hover:text-ink transition"
         >
           <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
             <path fillRule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16zm1-12a1 1 0 1 0-2 0v4a1 1 0 0 0 .293.707l2.828 2.829a1 1 0 1 0 1.415-1.415L11 9.586V6z" clipRule="evenodd"/>
@@ -401,10 +401,10 @@ export function TischTabPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-4">
         {/* Linke Seite: Artikel-Buttons */}
-        <section className="bg-white rounded-lg shadow-sm border border-gray-200
+        <section className="bg-panel rounded-lg shadow-sm border border-line
                             flex flex-col lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)]">
           <div className="px-4 pt-4 pb-2 shrink-0">
-            <h2 className="text-sm font-semibold text-gray-700">Artikel nachbestellen</h2>
+            <h2 className="text-sm font-semibold text-ink">Artikel nachbestellen</h2>
           </div>
           <div className="flex-1 min-h-0 overflow-hidden px-4 pb-4">
             <ArtikelGrid
@@ -419,22 +419,22 @@ export function TischTabPage() {
         </section>
 
         {/* Rechte Seite: Tab + Warenkorb */}
-        <section className="bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col h-fit lg:sticky lg:top-20 max-h-[calc(100vh-6rem)]">
+        <section className="bg-panel rounded-lg shadow-sm border border-line flex flex-col h-fit lg:sticky lg:top-20 max-h-[calc(100vh-6rem)]">
           {/* Bestehende Positionen */}
-          <div className="px-4 py-3 border-b border-gray-200">
-            <h2 className="text-sm font-semibold text-gray-700">Laufende Bestellung</h2>
+          <div className="px-4 py-3 border-b border-line">
+            <h2 className="text-sm font-semibold text-ink">Laufende Bestellung</h2>
           </div>
           <div className="overflow-y-auto flex-1 px-4 py-3 max-h-[30vh]">
             {tab.positionen.length === 0 ? (
-              <p className="text-xs text-gray-400 text-center py-4">Noch keine Positionen.</p>
+              <p className="text-xs text-ink-subtle text-center py-4">Noch keine Positionen.</p>
             ) : (
               <ul className="space-y-1.5">
                 {tab.positionen.map((p, i) => (
                   <li key={i} className="flex justify-between text-sm">
-                    <span className="text-gray-800 flex-1">
+                    <span className="text-ink flex-1">
                       {p.menge}× {p.bezeichnung}
                     </span>
-                    <span className="font-mono text-gray-700 ml-2 shrink-0">
+                    <span className="font-mono text-ink ml-2 shrink-0">
                       {formatPreis(p.preisBruttoCent * p.menge)}
                     </span>
                   </li>
@@ -454,7 +454,7 @@ export function TischTabPage() {
                   {korb.map((p, idx) => (
                     <li key={idx} className="flex items-center gap-2 text-sm">
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium text-gray-900 truncate">{p.artikel.bezeichnung}</p>
+                        <p className="font-medium text-ink truncate">{p.artikel.bezeichnung}</p>
                         {p.modifikatoren.length > 0 && (
                           <p className="text-xs text-brand-600 truncate">
                             {p.modifikatoren.map(m => m.name).join(', ')}
@@ -472,7 +472,7 @@ export function TischTabPage() {
                       <button
                         type="button"
                         onClick={() => removeKorbArtikel(idx)}
-                        className="text-gray-300 hover:text-red-500 px-1"
+                        className="text-ink-subtle hover:text-red-500 px-1"
                       >×</button>
                     </li>
                   ))}
@@ -482,8 +482,8 @@ export function TischTabPage() {
           )}
 
           {/* Aktionsbereich */}
-          <div className="px-4 py-3 border-t border-gray-200 bg-gray-50 space-y-3">
-            <div className="flex items-center justify-between text-base font-bold text-gray-900">
+          <div className="px-4 py-3 border-t border-line bg-panel-2 space-y-3">
+            <div className="flex items-center justify-between text-base font-bold text-ink">
               <span>Gesamt</span>
               <span>{formatPreis(gesamt)}</span>
             </div>
@@ -562,7 +562,7 @@ export function TischTabPage() {
         title={`Tisch ${tab.tischNummer} bezahlen`}
       >
         <div className="space-y-4">
-          <div className="flex items-center justify-between text-sm text-gray-600">
+          <div className="flex items-center justify-between text-sm text-ink-muted">
             <span>Zwischensumme</span>
             <span>{formatPreis(gesamtVorRabatt)}</span>
           </div>
@@ -588,14 +588,14 @@ export function TischTabPage() {
             </button>
           )}
 
-          <div className="flex items-center justify-between text-base font-bold text-gray-900">
+          <div className="flex items-center justify-between text-base font-bold text-ink">
             <span>Zu zahlen</span>
             <span>{formatPreis(gesamt)}</span>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
-              <span className="text-xs font-medium text-gray-600">Bar (Cent)</span>
+              <span className="text-xs font-medium text-ink-muted">Bar (Cent)</span>
               <Input
                 autoFocus
                 inputMode="numeric"
@@ -606,7 +606,7 @@ export function TischTabPage() {
               />
             </label>
             <label className="block">
-              <span className="text-xs font-medium text-gray-600">Karte (Cent)</span>
+              <span className="text-xs font-medium text-ink-muted">Karte (Cent)</span>
               <Input
                 inputMode="numeric"
                 placeholder="0"
@@ -616,7 +616,7 @@ export function TischTabPage() {
               />
             </label>
           </div>
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-ink-muted">
             Schnellbuttons:&nbsp;
             <button type="button" onClick={() => { setBarInput(String(gesamt)); setKarteInput('') }} className="text-brand-600 hover:underline">Bar = Gesamt</button>
             {' · '}
@@ -675,7 +675,7 @@ export function TischTabPage() {
           <div className="space-y-4">
             {bonierungErgebnis.stationen.length > 0 && (
               <div className="space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">KDS-Stationen</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">KDS-Stationen</p>
                 <ul className="space-y-1.5">
                   {bonierungErgebnis.stationen.map((s) => (
                     <li
@@ -701,7 +701,7 @@ export function TischTabPage() {
 
             {bonierungErgebnis.drucker.length > 0 && (
               <div className="space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Bonierdrucker</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Bonierdrucker</p>
                 <ul className="space-y-1.5">
                   {bonierungErgebnis.drucker.map((d) => (
                     <li
@@ -727,7 +727,7 @@ export function TischTabPage() {
             )}
 
             {bonierungErgebnis.stationen.length === 0 && bonierungErgebnis.drucker.length === 0 && (
-              <p className="text-sm text-gray-500 text-center py-2">Keine Stationen oder Drucker konfiguriert.</p>
+              <p className="text-sm text-ink-muted text-center py-2">Keine Stationen oder Drucker konfiguriert.</p>
             )}
           </div>
         )}
@@ -801,7 +801,7 @@ function MengeButton({ onClick, children }: { onClick: () => void; children: str
     <button
       type="button"
       onClick={onClick}
-      className="h-5 w-5 rounded border border-gray-300 bg-white text-xs font-bold text-gray-700 hover:bg-gray-100"
+      className="h-5 w-5 rounded border border-line-strong bg-panel text-xs font-bold text-ink hover:bg-panel-2"
     >
       {children}
     </button>
@@ -815,7 +815,7 @@ function MengeButton({ onClick, children }: { onClick: () => void; children: str
 const EREIGNIS_CONFIG: Record<TabEreignis['typ'], { label: string; icon: string; color: string }> = {
   geoeffnet:               { label: 'Tisch geöffnet',        icon: '🟢', color: 'text-green-700  bg-green-50  border-green-200'  },
   bonierung:               { label: 'Boniert',               icon: '🍽',  color: 'text-blue-700   bg-blue-50   border-blue-200'   },
-  positionen_aktualisiert: { label: 'Positionen gespeichert',icon: '📝', color: 'text-gray-700   bg-gray-50   border-gray-200'   },
+  positionen_aktualisiert: { label: 'Positionen gespeichert',icon: '📝', color: 'text-ink   bg-panel-2   border-line'   },
   storno:                  { label: 'Storno',                icon: '✕',  color: 'text-red-700    bg-red-50    border-red-300'    },
   tisch_gewechselt:        { label: 'Tisch gewechselt',      icon: '⇄',  color: 'text-amber-700  bg-amber-50  border-amber-200'  },
   kellner_umbenannt:       { label: 'Partei umbenannt',      icon: '✏',  color: 'text-amber-700  bg-amber-50  border-amber-200'  },
@@ -905,13 +905,13 @@ function VerlaufModal({ open, tabId, tischNummer, onClose }: VerlaufModalProps) 
   return (
     <Modal open={open} onClose={onClose} title={`Verlauf — Tisch ${tischNummer}`} size="lg">
       {verlaufQuery.isLoading && (
-        <p className="text-sm text-gray-500 py-4 text-center">Wird geladen…</p>
+        <p className="text-sm text-ink-muted py-4 text-center">Wird geladen…</p>
       )}
       {verlaufQuery.isError && (
         <p className="text-sm text-red-600 py-4 text-center">Fehler beim Laden.</p>
       )}
       {verlaufQuery.data && verlaufQuery.data.length === 0 && (
-        <p className="text-sm text-gray-400 py-4 text-center">Noch keine Einträge.</p>
+        <p className="text-sm text-ink-subtle py-4 text-center">Noch keine Einträge.</p>
       )}
       {verlaufQuery.data && verlaufQuery.data.length > 0 && (
         <ol className="space-y-2">
@@ -968,7 +968,7 @@ function UmbenennenModal({ open, aktuellerName, loading, fehler, onSubmit, onClo
     <Modal open={open} onClose={onClose} title="Partei umbenennen">
       <div className="space-y-4">
         <label className="block">
-          <span className="text-sm font-medium text-gray-700">Name / Kellner</span>
+          <span className="text-sm font-medium text-ink">Name / Kellner</span>
           <Input
             autoFocus
             value={name}
@@ -1015,11 +1015,11 @@ function UmbuchenModal({ open, aktuellerTisch, loading, fehler, onSubmit, onClos
   return (
     <Modal open={open} onClose={onClose} title="Tisch wechseln">
       <div className="space-y-4">
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-ink-muted">
           Aktueller Tisch: <strong>{aktuellerTisch}</strong>
         </p>
         <label className="block">
-          <span className="text-sm font-medium text-gray-700">Neuer Tisch</span>
+          <span className="text-sm font-medium text-ink">Neuer Tisch</span>
           <Input
             autoFocus
             value={neuerTisch}
@@ -1142,23 +1142,23 @@ function SplitModal({ open, tab, loading, fehler, onSubmit, onClose }: SplitModa
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-200">
-                <th className="py-1.5 pr-3 text-left font-medium text-gray-600">Artikel</th>
+              <tr className="border-b border-line">
+                <th className="py-1.5 pr-3 text-left font-medium text-ink-muted">Artikel</th>
                 {zahler.map((z, i) => (
-                  <th key={z.id} className="px-2 py-1.5 text-center font-medium text-gray-600 min-w-[90px]">
+                  <th key={z.id} className="px-2 py-1.5 text-center font-medium text-ink-muted min-w-[90px]">
                     Zahler {i + 1}
                   </th>
                 ))}
-                <th className="pl-2 py-1.5 text-right font-medium text-gray-400 text-xs">Ges.</th>
+                <th className="pl-2 py-1.5 text-right font-medium text-ink-subtle text-xs">Ges.</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-line">
               {tab.positionen.map((p, posIdx) => {
                 const zugewiesen = zahler.reduce((s, z) => s + (z.mengen[posIdx] ?? 0), 0)
                 const ok = zugewiesen === p.menge
                 return (
                   <tr key={posIdx} className={ok ? '' : 'bg-red-50'}>
-                    <td className="py-1.5 pr-3 text-gray-800 truncate max-w-[140px]">
+                    <td className="py-1.5 pr-3 text-ink truncate max-w-[140px]">
                       {p.bezeichnung}
                     </td>
                     {zahler.map((z) => {
@@ -1173,7 +1173,7 @@ function SplitModal({ open, tab, loading, fehler, onSubmit, onClose }: SplitModa
                         </td>
                       )
                     })}
-                    <td className="pl-2 py-1.5 text-right text-xs text-gray-400">{p.menge}</td>
+                    <td className="pl-2 py-1.5 text-right text-xs text-ink-subtle">{p.menge}</td>
                   </tr>
                 )
               })}
@@ -1193,7 +1193,7 @@ function SplitModal({ open, tab, loading, fehler, onSubmit, onClose }: SplitModa
         )}
 
         {/* Zahlungsfelder pro Zahler */}
-        <div className="space-y-3 pt-1 border-t border-gray-200">
+        <div className="space-y-3 pt-1 border-t border-line">
           {zahler.map((z, i) => {
             const subtotal = zahlerSubtotalCent(tab.positionen, z.mengen)
             const hatPositionen = subtotal > 0
@@ -1202,14 +1202,14 @@ function SplitModal({ open, tab, loading, fehler, onSubmit, onClose }: SplitModa
             const karte = zahlungCent(z.karte)
             const diff  = subtotal - bar - karte
             return (
-              <div key={z.id} className="rounded-lg border border-gray-200 p-3 space-y-2">
+              <div key={z.id} className="rounded-lg border border-line p-3 space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-semibold text-gray-700">Zahler {i + 1}</span>
-                  <span className="text-sm font-bold text-gray-900">{formatPreis(subtotal)}</span>
+                  <span className="text-sm font-semibold text-ink">Zahler {i + 1}</span>
+                  <span className="text-sm font-bold text-ink">{formatPreis(subtotal)}</span>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <label className="block">
-                    <span className="text-xs text-gray-500">Bar (Cent)</span>
+                    <span className="text-xs text-ink-muted">Bar (Cent)</span>
                     <Input
                       inputMode="numeric"
                       placeholder="0"
@@ -1219,7 +1219,7 @@ function SplitModal({ open, tab, loading, fehler, onSubmit, onClose }: SplitModa
                     />
                   </label>
                   <label className="block">
-                    <span className="text-xs text-gray-500">Karte (Cent)</span>
+                    <span className="text-xs text-ink-muted">Karte (Cent)</span>
                     <Input
                       inputMode="numeric"
                       placeholder="0"
@@ -1231,7 +1231,7 @@ function SplitModal({ open, tab, loading, fehler, onSubmit, onClose }: SplitModa
                 </div>
                 <div className="flex gap-2 text-xs">
                   <button type="button" onClick={() => { updateBar(z.id, String(subtotal)); updateKarte(z.id, '') }} className="text-brand-600 hover:underline">Bar = {formatPreis(subtotal)}</button>
-                  <span className="text-gray-300">·</span>
+                  <span className="text-ink-subtle">·</span>
                   <button type="button" onClick={() => { updateKarte(z.id, String(subtotal)); updateBar(z.id, '') }} className="text-brand-600 hover:underline">Karte = {formatPreis(subtotal)}</button>
                 </div>
                 {diff !== 0 && (
@@ -1324,7 +1324,7 @@ function ArtikelRabatteModal({ open, positionen, posRabatte, onBestaetigen, onCl
   return (
     <Modal open={open} onClose={onClose} title="Artikel-Rabatte" size="lg">
       <div className="space-y-3">
-        <ul className="divide-y divide-gray-100">
+        <ul className="divide-y divide-line">
           {positionen.map((p, idx) => {
             const hatRabatt = idx in lokaleRabatte
             const aktuellerPreis = lokaleRabatte[idx] ?? p.preisBruttoCent
@@ -1333,13 +1333,13 @@ function ArtikelRabatteModal({ open, positionen, posRabatte, onBestaetigen, onCl
             return (
               <li key={idx} className="py-2.5 space-y-2">
                 <div className="flex items-center gap-2 text-sm">
-                  <span className="flex-1 text-gray-800 truncate">
+                  <span className="flex-1 text-ink truncate">
                     {p.menge}× {p.bezeichnung}
                   </span>
                   <div className="flex items-center gap-1.5 shrink-0">
                     {hatRabatt ? (
                       <>
-                        <span className="text-xs line-through text-gray-400">{formatPreis(p.preisBruttoCent)}</span>
+                        <span className="text-xs line-through text-ink-subtle">{formatPreis(p.preisBruttoCent)}</span>
                         <span className="text-sm font-medium text-green-700">{formatPreis(aktuellerPreis)}</span>
                         <button
                           type="button"
@@ -1348,13 +1348,13 @@ function ArtikelRabatteModal({ open, positionen, posRabatte, onBestaetigen, onCl
                         >×</button>
                       </>
                     ) : (
-                      <span className="text-sm font-mono text-gray-700">{formatPreis(p.preisBruttoCent)}</span>
+                      <span className="text-sm font-mono text-ink">{formatPreis(p.preisBruttoCent)}</span>
                     )}
                     {!istAktiv && (
                       <button
                         type="button"
                         onClick={() => { setAktiverIdx(idx); setProzentInput(''); setBetragInput(''); setRabattTyp('prozent') }}
-                        className="rounded border border-gray-200 bg-white px-1.5 py-0.5 text-xs text-gray-500 hover:border-brand-400 hover:text-brand-600 transition"
+                        className="rounded border border-line bg-panel px-1.5 py-0.5 text-xs text-ink-muted hover:border-brand-400 hover:text-brand-600 transition"
                       >
                         {hatRabatt ? 'ändern' : '% Rabatt'}
                       </button>
@@ -1364,13 +1364,13 @@ function ArtikelRabatteModal({ open, positionen, posRabatte, onBestaetigen, onCl
 
                 {istAktiv && (
                   <div className="flex items-center gap-2 pl-2 flex-wrap">
-                    <div className="flex rounded border border-gray-200 overflow-hidden text-xs">
+                    <div className="flex rounded border border-line overflow-hidden text-xs">
                       {(['prozent', 'betrag'] as const).map(t => (
                         <button
                           key={t}
                           type="button"
                           onClick={() => setRabattTyp(t)}
-                          className={`px-2 py-1 font-medium transition ${rabattTyp === t ? 'bg-brand-600 text-white' : 'bg-white text-gray-600'}`}
+                          className={`px-2 py-1 font-medium transition ${rabattTyp === t ? 'bg-brand-600 text-white' : 'bg-panel text-ink-muted'}`}
                         >
                           {t === 'prozent' ? '%' : '€'}
                         </button>
@@ -1385,13 +1385,13 @@ function ArtikelRabatteModal({ open, positionen, posRabatte, onBestaetigen, onCl
                           value={prozentInput}
                           onChange={e => setProzentInput(e.target.value.replace(/[^0-9]/g, ''))}
                           onKeyDown={e => e.key === 'Enter' && applyRabatt(idx)}
-                          className="w-14 rounded border border-gray-300 px-1.5 py-1 text-xs text-center"
+                          className="w-14 rounded border border-line-strong px-1.5 py-1 text-xs text-center"
                         />
-                        <span className="text-xs text-gray-400">%</span>
+                        <span className="text-xs text-ink-subtle">%</span>
                         <div className="flex gap-0.5">
                           {[5, 10, 15, 20].map(p => (
                             <button key={p} type="button" onClick={() => setProzentInput(String(p))}
-                              className={`rounded border px-1.5 py-0.5 text-xs transition ${prozentInput === String(p) ? 'border-brand-400 bg-brand-50 text-brand-700' : 'border-gray-200 bg-white text-gray-500'}`}
+                              className={`rounded border px-1.5 py-0.5 text-xs transition ${prozentInput === String(p) ? 'border-brand-400 bg-brand-50 text-brand-700' : 'border-line bg-panel text-ink-muted'}`}
                             >{p}%</button>
                           ))}
                         </div>
@@ -1405,16 +1405,16 @@ function ArtikelRabatteModal({ open, positionen, posRabatte, onBestaetigen, onCl
                           value={betragInput}
                           onChange={e => setBetragInput(e.target.value.replace(/[^0-9]/g, ''))}
                           onKeyDown={e => e.key === 'Enter' && applyRabatt(idx)}
-                          className="w-20 rounded border border-gray-300 px-1.5 py-1 text-xs text-center"
+                          className="w-20 rounded border border-line-strong px-1.5 py-1 text-xs text-center"
                         />
-                        <span className="text-xs text-gray-400">Cent</span>
+                        <span className="text-xs text-ink-subtle">Cent</span>
                       </div>
                     )}
                     <button type="button" onClick={() => applyRabatt(idx)}
                       className="rounded bg-brand-600 px-2 py-1 text-xs font-medium text-white hover:bg-brand-700"
                     >✓</button>
                     <button type="button" onClick={() => setAktiverIdx(null)}
-                      className="rounded border border-gray-200 px-2 py-1 text-xs text-gray-500 hover:bg-gray-50"
+                      className="rounded border border-line px-2 py-1 text-xs text-ink-muted hover:bg-panel-2"
                     >Abbruch</button>
                   </div>
                 )}

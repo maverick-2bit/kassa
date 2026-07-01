@@ -49,11 +49,11 @@ export function BonAnzeige({ beleg, codeAufgeklappt = false }: Props) {
       {/* Kopf */}
       <div className="flex items-start justify-between text-sm">
         <div>
-          <p className="font-semibold text-gray-900">{beleg.belegTyp}</p>
-          <p className="text-gray-500">{formatDatum(beleg.belegDatum)}</p>
+          <p className="font-semibold text-ink">{beleg.belegTyp}</p>
+          <p className="text-ink-muted">{formatDatum(beleg.belegDatum)}</p>
         </div>
         <div className="text-right">
-          <p className="text-gray-500">Beleg-Nr.</p>
+          <p className="text-ink-muted">Beleg-Nr.</p>
           <p className="font-mono font-semibold">#{beleg.belegNummer}</p>
         </div>
       </div>
@@ -78,7 +78,7 @@ export function BonAnzeige({ beleg, codeAufgeklappt = false }: Props) {
 
       {/* Positionen */}
       <table className="w-full text-sm">
-        <thead className="text-xs uppercase tracking-wide text-gray-500 border-b border-gray-200">
+        <thead className="text-xs uppercase tracking-wide text-ink-muted border-b border-line">
           <tr>
             <th className="py-1.5 text-left font-semibold">Artikel</th>
             <th className="py-1.5 text-right font-semibold">Menge</th>
@@ -86,10 +86,10 @@ export function BonAnzeige({ beleg, codeAufgeklappt = false }: Props) {
             <th className="py-1.5 text-right font-semibold">Summe</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-100">
+        <tbody className="divide-y divide-line">
           {beleg.positionen.map((p, i) => (
             <tr key={i}>
-              <td className="py-1.5 text-gray-900">{p.bezeichnung}</td>
+              <td className="py-1.5 text-ink">{p.bezeichnung}</td>
               <td className="py-1.5 text-right font-mono">{p.menge}</td>
               <td className="py-1.5 text-right font-mono">{formatPreis(p.einzelpreisBreutto)}</td>
               <td className="py-1.5 text-right font-mono font-medium">
@@ -102,9 +102,9 @@ export function BonAnzeige({ beleg, codeAufgeklappt = false }: Props) {
 
       {/* Steueraufteilung */}
       {steuerEintraege.length > 0 && (
-        <div className="border-t border-gray-200 pt-3 text-xs space-y-1">
+        <div className="border-t border-line pt-3 text-xs space-y-1">
           {steuerEintraege.map(([key, cent]) => (
-            <div key={key} className="flex justify-between text-gray-600">
+            <div key={key} className="flex justify-between text-ink-muted">
               <span>{MWST_LABELS[key]}</span>
               <span className="font-mono">{formatPreis(cent)}</span>
             </div>
@@ -113,13 +113,13 @@ export function BonAnzeige({ beleg, codeAufgeklappt = false }: Props) {
       )}
 
       {/* Gesamt */}
-      <div className="border-t border-gray-200 pt-3 flex items-center justify-between text-base font-bold">
+      <div className="border-t border-line pt-3 flex items-center justify-between text-base font-bold">
         <span>Gesamt</span>
         <span className="font-mono">{formatPreis(beleg.gesamtbetragCent)}</span>
       </div>
 
       {/* Zahlungsaufteilung */}
-      <div className="bg-gray-50 rounded-md p-3 text-sm space-y-1">
+      <div className="bg-panel-2 rounded-md p-3 text-sm space-y-1">
         {beleg.summeBarCent > 0 && (
           <div className="flex justify-between"><span>Bar</span><span className="font-mono">{formatPreis(beleg.summeBarCent)}</span></div>
         )}
@@ -132,7 +132,7 @@ export function BonAnzeige({ beleg, codeAufgeklappt = false }: Props) {
       </div>
 
       {/* Drucken */}
-      <div className="border-t border-gray-200 pt-3 flex items-center justify-between flex-wrap gap-2">
+      <div className="border-t border-line pt-3 flex items-center justify-between flex-wrap gap-2">
         <div>
           {druckStatus && (
             <p className={`text-xs ${druckStatus.typ === 'ok' ? 'text-green-600' : 'text-red-600'}`}>
@@ -160,7 +160,7 @@ export function BonAnzeige({ beleg, codeAufgeklappt = false }: Props) {
             type="button"
             onClick={() => { setDruckStatus(null); druckMutation.mutate() }}
             disabled={druckMutation.isPending}
-            className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-md border border-line-strong bg-panel px-3 py-1.5 text-sm font-medium text-ink hover:bg-panel-2 disabled:opacity-50"
           >
             <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
               <path fillRule="evenodd" d="M5 4v3H4a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h1v2a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-2h1a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-1V4a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2zm8 0H7v3h6V4zm0 8H7v4h6v-4z" clipRule="evenodd"/>
@@ -172,7 +172,7 @@ export function BonAnzeige({ beleg, codeAufgeklappt = false }: Props) {
             <button
               type="button"
               onClick={() => { setDruckStatus(null); setEmailOffen(true) }}
-              className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className="inline-flex items-center gap-1.5 rounded-md border border-line-strong bg-panel px-3 py-1.5 text-sm font-medium text-ink hover:bg-panel-2"
             >
               <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                 <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z"/>
@@ -189,7 +189,7 @@ export function BonAnzeige({ beleg, codeAufgeklappt = false }: Props) {
                 onChange={e => setEmailAdresse(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && emailAdresse.includes('@')) emailMutation.mutate() }}
                 placeholder="email@example.com"
-                className="rounded-md border border-gray-300 px-2.5 py-1.5 text-sm w-44 focus:outline-none focus:ring-1 focus:ring-brand-400"
+                className="rounded-md border border-line-strong px-2.5 py-1.5 text-sm w-44 focus:outline-none focus:ring-1 focus:ring-brand-400"
               />
               <button
                 type="button"
@@ -199,7 +199,7 @@ export function BonAnzeige({ beleg, codeAufgeklappt = false }: Props) {
               >
                 {emailMutation.isPending ? '…' : 'Senden'}
               </button>
-              <button type="button" onClick={() => setEmailOffen(false)} className="text-gray-400 hover:text-gray-600 px-1">✕</button>
+              <button type="button" onClick={() => setEmailOffen(false)} className="text-ink-subtle hover:text-ink-muted px-1">✕</button>
             </div>
           )}
         </div>
@@ -207,13 +207,13 @@ export function BonAnzeige({ beleg, codeAufgeklappt = false }: Props) {
 
       {/* RKSV-Code */}
       <details className="text-xs" open={codeAufgeklappt}>
-        <summary className="cursor-pointer text-gray-500 hover:text-gray-700">
+        <summary className="cursor-pointer text-ink-muted hover:text-ink">
           RKSV-Maschinencode anzeigen
         </summary>
-        <div className="mt-2 rounded border border-gray-200 bg-gray-50 p-2 font-mono text-[10px] break-all text-gray-700">
+        <div className="mt-2 rounded border border-line bg-panel-2 p-2 font-mono text-[10px] break-all text-ink">
           {beleg.maschinenlesbareCode}
         </div>
-        <p className="mt-1 text-gray-400">
+        <p className="mt-1 text-ink-subtle">
           Signaturzertifikat-SN: <span className="font-mono">{beleg.zertifikatSn}</span>
         </p>
       </details>

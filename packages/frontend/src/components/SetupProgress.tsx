@@ -35,11 +35,11 @@ export function SetupProgress({ schritte, pending = false }: Props) {
           <li key={typ} className="flex items-start gap-3">
             <StatusIcon status={status} pending={pending && !eintrag} />
             <div className="flex-1 min-w-0">
-              <p className={`text-sm font-medium ${status === 'fehler' ? 'text-red-700' : 'text-gray-800'}`}>
+              <p className={`text-sm font-medium ${status === 'fehler' ? 'text-red-700' : 'text-ink'}`}>
                 {SCHRITT_LABELS[typ]}
               </p>
               {eintrag?.meldung && (
-                <p className={`text-xs mt-0.5 ${status === 'fehler' ? 'text-red-600' : 'text-gray-500'}`}>
+                <p className={`text-xs mt-0.5 ${status === 'fehler' ? 'text-red-600' : 'text-ink-muted'}`}>
                   {eintrag.meldung}
                 </p>
               )}
@@ -81,6 +81,6 @@ function StatusIcon({ status, pending }: { status: string; pending: boolean }) {
     )
   }
   return (
-    <span className="mt-0.5 h-5 w-5 shrink-0 rounded-full border-2 border-gray-300" />
+    <span className="mt-0.5 h-5 w-5 shrink-0 rounded-full border-2 border-line-strong" />
   )
 }

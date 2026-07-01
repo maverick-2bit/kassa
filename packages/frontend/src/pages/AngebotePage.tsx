@@ -18,7 +18,7 @@ const STATUS_FARBE: Record<AngebotStatus, string> = {
   offen:      'bg-blue-100 text-blue-800 border-blue-200',
   angenommen: 'bg-green-100 text-green-800 border-green-200',
   abgelehnt:  'bg-red-100 text-red-800 border-red-200',
-  abgelaufen: 'bg-gray-100 text-gray-600 border-gray-200',
+  abgelaufen: 'bg-panel-2 text-ink-muted border-line',
 }
 
 function StatusBadge({ status }: { status: AngebotStatus }) {
@@ -42,7 +42,7 @@ interface AngebotDetailProps {
 
 const LS_STATUS_FARBE: Record<LiferscheinStatus, string> = {
   offen:         'bg-blue-100 text-blue-800 border-blue-200',
-  abgeschlossen: 'bg-gray-100 text-gray-600 border-gray-200',
+  abgeschlossen: 'bg-panel-2 text-ink-muted border-line',
 }
 
 function AngebotDetailModal({ angebot, onClose, onUpdate, updating }: AngebotDetailProps) {
@@ -88,58 +88,58 @@ function AngebotDetailModal({ angebot, onClose, onUpdate, updating }: AngebotDet
       {/* Kopfdaten */}
       <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
         <div>
-          <span className="text-gray-500 block text-xs uppercase tracking-wide mb-0.5">Angebotsnummer</span>
+          <span className="text-ink-muted block text-xs uppercase tracking-wide mb-0.5">Angebotsnummer</span>
           <span className="font-mono font-semibold">A-{String(angebot.nummer).padStart(4, '0')}</span>
         </div>
         <div>
-          <span className="text-gray-500 block text-xs uppercase tracking-wide mb-0.5">Datum</span>
+          <span className="text-ink-muted block text-xs uppercase tracking-wide mb-0.5">Datum</span>
           <span>{new Date(angebot.datum).toLocaleDateString('de-AT')}</span>
         </div>
         {angebot.gueltigBis && (
           <div>
-            <span className="text-gray-500 block text-xs uppercase tracking-wide mb-0.5">Gültig bis</span>
+            <span className="text-ink-muted block text-xs uppercase tracking-wide mb-0.5">Gültig bis</span>
             <span className={new Date(angebot.gueltigBis) < new Date() ? 'text-red-600 font-medium' : ''}>
               {angebot.gueltigBis}
             </span>
           </div>
         )}
         <div>
-          <span className="text-gray-500 block text-xs uppercase tracking-wide mb-0.5">Status</span>
+          <span className="text-ink-muted block text-xs uppercase tracking-wide mb-0.5">Status</span>
           <StatusBadge status={angebot.status} />
         </div>
         {angebot.kunde && (
           <div className="col-span-2">
-            <span className="text-gray-500 block text-xs uppercase tracking-wide mb-0.5">Kunde</span>
+            <span className="text-ink-muted block text-xs uppercase tracking-wide mb-0.5">Kunde</span>
             <span className="font-medium">{angebot.kunde.bezeichnung}</span>
-            {angebot.kunde.email && <span className="text-gray-500 ml-2 text-xs">{angebot.kunde.email}</span>}
+            {angebot.kunde.email && <span className="text-ink-muted ml-2 text-xs">{angebot.kunde.email}</span>}
           </div>
         )}
       </div>
 
       {/* Positionen */}
       <div>
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Positionen</p>
+        <p className="text-xs font-semibold text-ink-muted uppercase tracking-wide mb-2">Positionen</p>
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-gray-200 text-xs text-gray-500">
+            <tr className="border-b border-line text-xs text-ink-muted">
               <th className="text-left pb-1.5 font-medium">Bezeichnung</th>
               <th className="text-center pb-1.5 font-medium w-16">Menge</th>
               <th className="text-right pb-1.5 font-medium w-24">Einzelpreis</th>
               <th className="text-right pb-1.5 font-medium w-24">Gesamt</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-line">
             {angebot.positionen.map((p, i) => (
               <tr key={i}>
-                <td className="py-1.5 text-gray-800">{p.bezeichnung}</td>
-                <td className="py-1.5 text-center text-gray-600">{p.menge}</td>
-                <td className="py-1.5 text-right font-mono text-gray-700">{formatPreis(p.einzelpreisBreutto)}</td>
+                <td className="py-1.5 text-ink">{p.bezeichnung}</td>
+                <td className="py-1.5 text-center text-ink-muted">{p.menge}</td>
+                <td className="py-1.5 text-right font-mono text-ink">{formatPreis(p.einzelpreisBreutto)}</td>
                 <td className="py-1.5 text-right font-mono font-medium">{formatPreis(p.einzelpreisBreutto * p.menge)}</td>
               </tr>
             ))}
           </tbody>
           <tfoot>
-            <tr className="border-t-2 border-gray-300">
+            <tr className="border-t-2 border-line-strong">
               <td colSpan={3} className="pt-2 text-sm font-bold text-right pr-2">Angebotssumme</td>
               <td className="pt-2 text-right font-mono font-bold text-base">{formatPreis(angebot.gesamtbetragCent)}</td>
             </tr>
@@ -148,15 +148,15 @@ function AngebotDetailModal({ angebot, onClose, onUpdate, updating }: AngebotDet
       </div>
 
       {angebot.notiz && (
-        <div className="bg-gray-50 rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-700">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Notiz</p>
+        <div className="bg-panel-2 rounded-md border border-line px-3 py-2 text-sm text-ink">
+          <p className="text-xs font-semibold text-ink-muted uppercase tracking-wide mb-1">Notiz</p>
           <p className="whitespace-pre-wrap">{angebot.notiz}</p>
         </div>
       )}
 
       {/* Status ändern */}
-      <div className="space-y-2 pt-1 border-t border-gray-200">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Status ändern</p>
+      <div className="space-y-2 pt-1 border-t border-line">
+        <p className="text-xs font-semibold text-ink-muted uppercase tracking-wide">Status ändern</p>
         <div className="flex flex-wrap gap-2">
           {AENDERBARE_STATI.map((s) => (
             <button
@@ -166,7 +166,7 @@ function AngebotDetailModal({ angebot, onClose, onUpdate, updating }: AngebotDet
               className={`px-3 py-1.5 rounded-md border text-sm font-medium transition ${
                 neuerStatus === s
                   ? 'bg-brand-600 border-brand-600 text-white'
-                  : 'border-gray-300 text-gray-700 hover:border-brand-400'
+                  : 'border-line-strong text-ink hover:border-brand-400'
               }`}
             >
               {ANGEBOT_STATUS_LABELS[s]}
@@ -185,9 +185,9 @@ function AngebotDetailModal({ angebot, onClose, onUpdate, updating }: AngebotDet
       </div>
 
       {/* Lieferscheine zu diesem Angebot */}
-      <div className="space-y-2 pt-1 border-t border-gray-200">
+      <div className="space-y-2 pt-1 border-t border-line">
         <div className="flex items-center justify-between">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+          <p className="text-xs font-semibold text-ink-muted uppercase tracking-wide">
             Lieferscheine
           </p>
           <Button
@@ -201,25 +201,25 @@ function AngebotDetailModal({ angebot, onClose, onUpdate, updating }: AngebotDet
         </div>
 
         {lieferscheine.length === 0 ? (
-          <p className="text-xs text-gray-400 py-2">Noch keine Lieferscheine erstellt.</p>
+          <p className="text-xs text-ink-subtle py-2">Noch keine Lieferscheine erstellt.</p>
         ) : (
-          <div className="border border-gray-200 rounded-md overflow-hidden">
+          <div className="border border-line rounded-md overflow-hidden">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-200">
+              <thead className="bg-panel-2 border-b border-line">
                 <tr>
-                  <th className="text-left px-3 py-1.5 text-xs font-semibold text-gray-500">Nr.</th>
-                  <th className="text-left px-3 py-1.5 text-xs font-semibold text-gray-500">Datum</th>
-                  <th className="text-left px-3 py-1.5 text-xs font-semibold text-gray-500">Status</th>
+                  <th className="text-left px-3 py-1.5 text-xs font-semibold text-ink-muted">Nr.</th>
+                  <th className="text-left px-3 py-1.5 text-xs font-semibold text-ink-muted">Datum</th>
+                  <th className="text-left px-3 py-1.5 text-xs font-semibold text-ink-muted">Status</th>
                   <th className="px-3 py-1.5 w-16" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-line">
                 {lieferscheine.map((ls: LiferscheinResponse) => (
-                  <tr key={ls.id} className="hover:bg-gray-50">
-                    <td className="px-3 py-2 font-mono font-medium text-gray-800">
+                  <tr key={ls.id} className="hover:bg-panel-2">
+                    <td className="px-3 py-2 font-mono font-medium text-ink">
                       L-{String(ls.nummer).padStart(4, '0')}
                     </td>
-                    <td className="px-3 py-2 text-gray-600">
+                    <td className="px-3 py-2 text-ink-muted">
                       {new Date(ls.datum).toLocaleDateString('de-AT')}
                     </td>
                     <td className="px-3 py-2">
@@ -304,8 +304,8 @@ export function AngebotePage() {
   return (
     <div className="mx-auto max-w-5xl px-4 py-6">
       <div className="flex items-center justify-between mb-5">
-        <h1 className="text-xl font-bold text-gray-900">Angebote</h1>
-        <span className="text-sm text-gray-500">{angebote.length} Angebot{angebote.length !== 1 ? 'e' : ''}</span>
+        <h1 className="text-xl font-bold text-ink">Angebote</h1>
+        <span className="text-sm text-ink-muted">{angebote.length} Angebot{angebote.length !== 1 ? 'e' : ''}</span>
       </div>
 
       {/* Status-Filter */}
@@ -318,7 +318,7 @@ export function AngebotePage() {
             className={`px-3 py-1.5 rounded-full text-sm font-medium border transition ${
               statusFilter === f.value
                 ? 'bg-brand-600 border-brand-600 text-white'
-                : 'bg-white border-gray-300 text-gray-600 hover:border-brand-400'
+                : 'bg-panel border-line-strong text-ink-muted hover:border-brand-400'
             }`}
           >
             {f.label}
@@ -327,59 +327,59 @@ export function AngebotePage() {
       </div>
 
       {/* Liste */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+      <div className="bg-panel rounded-lg shadow-sm border border-line overflow-hidden">
         {angeboteQuery.isLoading ? (
-          <p className="text-sm text-gray-400 text-center py-12">Wird geladen…</p>
+          <p className="text-sm text-ink-subtle text-center py-12">Wird geladen…</p>
         ) : angebote.length === 0 ? (
-          <div className="text-center py-16 text-gray-400">
+          <div className="text-center py-16 text-ink-subtle">
             <p className="text-4xl mb-3">📋</p>
             <p className="text-sm font-medium">Keine Angebote vorhanden</p>
             <p className="text-xs mt-1">Erstelle ein Angebot über die Kasse im Angebot-Modus.</p>
           </div>
         ) : (
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200">
+            <thead className="bg-panel-2 border-b border-line">
               <tr>
-                <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wide text-gray-500">Nr.</th>
-                <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wide text-gray-500">Datum</th>
-                <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wide text-gray-500">Kunde</th>
-                <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wide text-gray-500">Gültig bis</th>
-                <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wide text-gray-500">Status</th>
-                <th className="text-right px-4 py-3 font-semibold text-xs uppercase tracking-wide text-gray-500">Betrag</th>
+                <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wide text-ink-muted">Nr.</th>
+                <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wide text-ink-muted">Datum</th>
+                <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wide text-ink-muted">Kunde</th>
+                <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wide text-ink-muted">Gültig bis</th>
+                <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wide text-ink-muted">Status</th>
+                <th className="text-right px-4 py-3 font-semibold text-xs uppercase tracking-wide text-ink-muted">Betrag</th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-line">
               {angebote.map((a) => {
                 const istAbgelaufen = a.gueltigBis && new Date(a.gueltigBis) < new Date() && a.status === 'offen'
                 return (
                   <tr
                     key={a.id}
-                    className="hover:bg-gray-50 transition cursor-pointer"
+                    className="hover:bg-panel-2 transition cursor-pointer"
                     onClick={() => setGewaehlt(a)}
                   >
-                    <td className="px-4 py-3 font-mono font-medium text-gray-800">
+                    <td className="px-4 py-3 font-mono font-medium text-ink">
                       A-{String(a.nummer).padStart(4, '0')}
                     </td>
-                    <td className="px-4 py-3 text-gray-600">
+                    <td className="px-4 py-3 text-ink-muted">
                       {new Date(a.datum).toLocaleDateString('de-AT')}
                     </td>
-                    <td className="px-4 py-3 text-gray-700">
-                      {a.kunde?.bezeichnung ?? <span className="text-gray-400 italic">—</span>}
+                    <td className="px-4 py-3 text-ink">
+                      {a.kunde?.bezeichnung ?? <span className="text-ink-subtle italic">—</span>}
                     </td>
                     <td className="px-4 py-3">
                       {a.gueltigBis ? (
-                        <span className={istAbgelaufen ? 'text-red-600 font-medium' : 'text-gray-600'}>
+                        <span className={istAbgelaufen ? 'text-red-600 font-medium' : 'text-ink-muted'}>
                           {a.gueltigBis}
                         </span>
                       ) : (
-                        <span className="text-gray-400">—</span>
+                        <span className="text-ink-subtle">—</span>
                       )}
                     </td>
                     <td className="px-4 py-3">
                       <StatusBadge status={a.status} />
                     </td>
-                    <td className="px-4 py-3 text-right font-mono font-semibold text-gray-800">
+                    <td className="px-4 py-3 text-right font-mono font-semibold text-ink">
                       {formatPreis(a.gesamtbetragCent)}
                     </td>
                     <td className="px-4 py-3 text-right">

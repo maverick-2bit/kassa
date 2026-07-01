@@ -56,7 +56,7 @@ export function UserVerwaltungPage() {
   return (
     <div className="mx-auto max-w-5xl px-4 py-6">
       <div className="mb-5 flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-gray-900">Benutzer</h1>
+        <h1 className="text-xl font-semibold text-ink">Benutzer</h1>
         <Button onClick={() => { setFehler(null); setNeuerUserOffen(true) }}>+ Neuer Benutzer</Button>
       </div>
 
@@ -64,46 +64,46 @@ export function UserVerwaltungPage() {
         <div className="mb-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">{fehler}</div>
       )}
 
-      {usersQuery.isLoading && <p className="text-sm text-gray-500">Wird geladen…</p>}
+      {usersQuery.isLoading && <p className="text-sm text-ink-muted">Wird geladen…</p>}
 
       {usersQuery.data && (
-        <div className="rounded-lg border border-gray-200 overflow-hidden">
+        <div className="rounded-lg border border-line overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200">
+            <thead className="bg-panel-2 border-b border-line">
               <tr>
-                <th className="px-4 py-2.5 text-left font-medium text-gray-600">Name</th>
-                <th className="px-4 py-2.5 text-left font-medium text-gray-600">E-Mail</th>
-                <th className="px-4 py-2.5 text-left font-medium text-gray-600">Rolle</th>
-                <th className="px-4 py-2.5 text-left font-medium text-gray-600">Berechtigungen</th>
-                <th className="px-4 py-2.5 text-left font-medium text-gray-600">PIN</th>
-                <th className="px-4 py-2.5 text-left font-medium text-gray-600">Status</th>
+                <th className="px-4 py-2.5 text-left font-medium text-ink-muted">Name</th>
+                <th className="px-4 py-2.5 text-left font-medium text-ink-muted">E-Mail</th>
+                <th className="px-4 py-2.5 text-left font-medium text-ink-muted">Rolle</th>
+                <th className="px-4 py-2.5 text-left font-medium text-ink-muted">Berechtigungen</th>
+                <th className="px-4 py-2.5 text-left font-medium text-ink-muted">PIN</th>
+                <th className="px-4 py-2.5 text-left font-medium text-ink-muted">Status</th>
                 <th className="px-4 py-2.5" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-line">
               {usersQuery.data.map((u) => (
                 <tr key={u.id} className={u.aktiv ? '' : 'opacity-50'}>
-                  <td className="px-4 py-3 font-medium text-gray-900">
+                  <td className="px-4 py-3 font-medium text-ink">
                     {u.name}
                     {u.id === auth.user.id && (
-                      <span className="ml-1.5 text-xs text-gray-400">(du)</span>
+                      <span className="ml-1.5 text-xs text-ink-subtle">(du)</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-gray-600">{u.email}</td>
+                  <td className="px-4 py-3 text-ink-muted">{u.email}</td>
                   <td className="px-4 py-3">
                     <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
                       u.rolle === 'admin'
                         ? 'bg-purple-100 text-purple-700'
-                        : 'bg-gray-100 text-gray-600'
+                        : 'bg-panel-2 text-ink-muted'
                     }`}>
                       {ROLLE_LABELS[u.rolle]}
                     </span>
                   </td>
                   <td className="px-4 py-3">
                     {u.rolle === 'admin' ? (
-                      <span className="text-xs text-gray-400">Alle</span>
+                      <span className="text-xs text-ink-subtle">Alle</span>
                     ) : (
-                      <span className="text-xs text-gray-600">
+                      <span className="text-xs text-ink-muted">
                         {u.berechtigungen.length === 0
                           ? '—'
                           : u.berechtigungen.map(b => BERECHTIGUNG_LABELS[b]).join(', ')}
@@ -120,7 +120,7 @@ export function UserVerwaltungPage() {
                     </button>
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`text-xs ${u.aktiv ? 'text-green-600' : 'text-gray-400'}`}>
+                    <span className={`text-xs ${u.aktiv ? 'text-green-600' : 'text-ink-subtle'}`}>
                       {u.aktiv ? 'Aktiv' : 'Inaktiv'}
                     </span>
                   </td>
@@ -129,7 +129,7 @@ export function UserVerwaltungPage() {
                       <button
                         type="button"
                         onClick={() => { setFehler(null); setEditUser(u) }}
-                        className="text-xs text-gray-500 hover:text-brand-600"
+                        className="text-xs text-ink-muted hover:text-brand-600"
                       >
                         Bearbeiten
                       </button>
@@ -137,7 +137,7 @@ export function UserVerwaltungPage() {
                         <button
                           type="button"
                           onClick={() => deactivateMutation.mutate(u.id)}
-                          className="text-xs text-gray-400 hover:text-red-600"
+                          className="text-xs text-ink-subtle hover:text-red-600"
                         >
                           Deaktivieren
                         </button>
@@ -267,17 +267,17 @@ function UserFormular({
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
         <label className="block">
-          <span className="text-xs font-medium text-gray-600">Name *</span>
+          <span className="text-xs font-medium text-ink-muted">Name *</span>
           <Input value={name} onChange={e => setName(e.target.value)} className="mt-0.5" autoFocus />
         </label>
         <label className="block">
-          <span className="text-xs font-medium text-gray-600">E-Mail {istNeu ? '*' : ''}</span>
+          <span className="text-xs font-medium text-ink-muted">E-Mail {istNeu ? '*' : ''}</span>
           <Input type="email" value={email} onChange={e => setEmail(e.target.value)} className="mt-0.5" />
         </label>
       </div>
 
       <label className="block">
-        <span className="text-xs font-medium text-gray-600">
+        <span className="text-xs font-medium text-ink-muted">
           Passwort {istNeu ? '* (min. 8 Zeichen)' : '(leer lassen = unverändert)'}
         </span>
         <Input type="password" value={passwort} onChange={e => setPasswort(e.target.value)} className="mt-0.5" />
@@ -285,11 +285,11 @@ function UserFormular({
 
       {istNeu && (
         <label className="block">
-          <span className="text-xs font-medium text-gray-600">Rolle</span>
+          <span className="text-xs font-medium text-ink-muted">Rolle</span>
           <select
             value={rolle}
             onChange={e => setRolle(e.target.value as 'admin' | 'kellner')}
-            className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+            className="mt-0.5 block w-full rounded-md border border-line-strong bg-panel px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
           >
             <option value="kellner">Kellner</option>
             <option value="admin">Administrator</option>
@@ -300,7 +300,7 @@ function UserFormular({
       {(istNeu ? rolle === 'kellner' : initialUser?.rolle === 'kellner') && (
         <>
           <fieldset>
-            <legend className="text-xs font-medium text-gray-600 mb-1.5">Berechtigungen</legend>
+            <legend className="text-xs font-medium text-ink-muted mb-1.5">Berechtigungen</legend>
             <div className="grid grid-cols-2 gap-1.5">
               {ALLE_BERECHTIGUNGEN.map((b) => (
                 <label key={b} className="flex items-center gap-2 cursor-pointer">
@@ -308,9 +308,9 @@ function UserFormular({
                     type="checkbox"
                     checked={berechtigungen.includes(b)}
                     onChange={() => toggleBerechtigung(b)}
-                    className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                    className="rounded border-line-strong text-brand-600 focus:ring-brand-500"
                   />
-                  <span className="text-sm text-gray-700">{BERECHTIGUNG_LABELS[b]}</span>
+                  <span className="text-sm text-ink">{BERECHTIGUNG_LABELS[b]}</span>
                 </label>
               ))}
             </div>
@@ -318,7 +318,7 @@ function UserFormular({
 
           {verfuegbareKassen.length > 0 && (
             <fieldset>
-              <legend className="text-xs font-medium text-gray-600 mb-1.5">Kassen-Zuordnung</legend>
+              <legend className="text-xs font-medium text-ink-muted mb-1.5">Kassen-Zuordnung</legend>
               <div className="flex flex-wrap gap-2">
                 {verfuegbareKassen.map((k) => (
                   <label key={k.id} className="flex items-center gap-1.5 cursor-pointer">
@@ -326,9 +326,9 @@ function UserFormular({
                       type="checkbox"
                       checked={kassenIds.includes(k.id)}
                       onChange={() => toggleKasse(k.id)}
-                      className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                      className="rounded border-line-strong text-brand-600 focus:ring-brand-500"
                     />
-                    <span className="text-sm text-gray-700">{k.kassenId}</span>
+                    <span className="text-sm text-ink">{k.kassenId}</span>
                   </label>
                 ))}
               </div>
@@ -374,13 +374,13 @@ function PinFormular({
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-gray-600">
+      <p className="text-sm text-ink-muted">
         {hatPin
           ? 'Neuen 4-stelligen PIN setzen oder PIN entfernen (Feld leer lassen).'
           : 'Einen 4-stelligen PIN vergeben. Der Kellner kann sich damit am POS anmelden.'}
       </p>
       <label className="block">
-        <span className="text-xs font-medium text-gray-600">Neuer PIN (4 Ziffern)</span>
+        <span className="text-xs font-medium text-ink-muted">Neuer PIN (4 Ziffern)</span>
         <Input
           type="password"
           inputMode="numeric"
@@ -394,7 +394,7 @@ function PinFormular({
       </label>
       {pin.length > 0 && (
         <label className="block">
-          <span className="text-xs font-medium text-gray-600">PIN wiederholen</span>
+          <span className="text-xs font-medium text-ink-muted">PIN wiederholen</span>
           <Input
             type="password"
             inputMode="numeric"

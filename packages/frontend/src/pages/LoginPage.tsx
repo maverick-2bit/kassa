@@ -34,7 +34,7 @@ export function LoginPage() {
   const [tab, setTab] = useState<Tab>('pin')
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 bg-gray-50">
+    <div className="min-h-screen flex items-center justify-center px-4 bg-panel-2">
       <div className="w-full max-w-md">
         <header className="mb-6 text-center">
           <div className="inline-flex items-center justify-center h-12 w-12 rounded-xl bg-brand-500 text-white mb-3">
@@ -42,11 +42,11 @@ export function LoginPage() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M3 3h18v4H3zM3 11h18v10H3zM7 15h2M7 18h2"/>
             </svg>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">Anmeldung</h1>
+          <h1 className="text-2xl font-bold text-ink">Anmeldung</h1>
         </header>
 
         {/* Tab-Umschalter */}
-        <div className="flex rounded-lg border border-gray-200 bg-gray-100 p-1 mb-4">
+        <div className="flex rounded-lg border border-line bg-panel-2 p-1 mb-4">
           {(['pin', 'passwort'] as Tab[]).map((t) => (
             <button
               key={t}
@@ -54,8 +54,8 @@ export function LoginPage() {
               onClick={() => setTab(t)}
               className={`flex-1 py-1.5 text-sm font-medium rounded-md transition ${
                 tab === t
-                  ? 'bg-white shadow-sm text-gray-900'
-                  : 'text-gray-500 hover:text-gray-700'
+                  ? 'bg-panel shadow-sm text-ink'
+                  : 'text-ink-muted hover:text-ink'
               }`}
             >
               {t === 'pin' ? 'PIN' : 'E-Mail & Passwort'}
@@ -117,8 +117,8 @@ function PinLoginForm({ onNavigate }: { onNavigate: (pfad: string) => void }) {
 
   if (!identity) {
     return (
-      <div className="rounded-xl bg-white shadow-sm border border-gray-200 p-6 text-center">
-        <p className="text-sm text-gray-500">Keine Kasse eingerichtet.</p>
+      <div className="rounded-xl bg-panel shadow-sm border border-line p-6 text-center">
+        <p className="text-sm text-ink-muted">Keine Kasse eingerichtet.</p>
         <button type="button" onClick={() => window.location.href = '/setup'} className="mt-2 text-sm text-brand-600 hover:underline">
           Kasse einrichten →
         </button>
@@ -127,8 +127,8 @@ function PinLoginForm({ onNavigate }: { onNavigate: (pfad: string) => void }) {
   }
 
   return (
-    <div className="rounded-xl bg-white shadow-sm border border-gray-200 p-6">
-      <p className="text-center text-sm text-gray-500 mb-5">PIN eingeben</p>
+    <div className="rounded-xl bg-panel shadow-sm border border-line p-6">
+      <p className="text-center text-sm text-ink-muted mb-5">PIN eingeben</p>
 
       {/* PIN-Punkte */}
       <div className="flex justify-center gap-3 mb-6">
@@ -138,7 +138,7 @@ function PinLoginForm({ onNavigate }: { onNavigate: (pfad: string) => void }) {
             className={`h-4 w-4 rounded-full border-2 transition ${
               pin.length > i
                 ? 'bg-brand-500 border-brand-500'
-                : 'bg-white border-gray-300'
+                : 'bg-panel border-line-strong'
             }`}
           />
         ))}
@@ -162,8 +162,8 @@ function PinLoginForm({ onNavigate }: { onNavigate: (pfad: string) => void }) {
               d === ''
                 ? 'cursor-default'
                 : d === '⌫'
-                ? 'bg-gray-100 hover:bg-gray-200 text-gray-600'
-                : 'bg-gray-50 hover:bg-brand-50 hover:text-brand-700 border border-gray-200 text-gray-800'
+                ? 'bg-panel-2 hover:bg-panel-2 text-ink-muted'
+                : 'bg-panel-2 hover:bg-brand-50 hover:text-brand-700 border border-line text-ink'
             } disabled:opacity-50`}
           >
             {d}
@@ -224,7 +224,7 @@ function PasswortLoginForm({ onNavigate }: { onNavigate: (pfad: string) => void 
   return (
     <form
       onSubmit={handleSubmit((data) => { setServerFehler(null); mutation.mutate(data) })}
-      className="rounded-xl bg-white shadow-sm border border-gray-200 p-6 space-y-4"
+      className="rounded-xl bg-panel shadow-sm border border-line p-6 space-y-4"
       noValidate
     >
       <Field label="E-Mail" htmlFor="email" required error={errors.email?.message}>
@@ -236,10 +236,10 @@ function PasswortLoginForm({ onNavigate }: { onNavigate: (pfad: string) => void 
       {serverFehler && (
         <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{serverFehler}</div>
       )}
-      <div className="pt-2 border-t border-gray-200">
+      <div className="pt-2 border-t border-line">
         <Button type="submit" loading={mutation.isPending} className="w-full">Einloggen</Button>
       </div>
-      <p className="text-center text-xs text-gray-500 pt-1">
+      <p className="text-center text-xs text-ink-muted pt-1">
         Noch keine Kasse?{' '}
         <button type="button" onClick={() => window.location.href = '/setup'} className="text-brand-600 hover:underline">
           Kasse einrichten

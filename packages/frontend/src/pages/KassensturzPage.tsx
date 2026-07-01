@@ -124,64 +124,64 @@ export function KassensturzPage() {
   return (
     <div className="mx-auto max-w-2xl px-4 py-6 sm:py-8 space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Kassensturz</h1>
-        <p className="mt-1 text-sm text-gray-500">Bargeld-Zählung und Soll/Ist-Vergleich</p>
+        <h1 className="text-2xl font-bold text-ink">Kassensturz</h1>
+        <p className="mt-1 text-sm text-ink-muted">Bargeld-Zählung und Soll/Ist-Vergleich</p>
       </div>
 
       {/* Datum */}
-      <div className="rounded-lg bg-white shadow-sm border border-gray-200 p-4 flex flex-wrap items-end gap-4">
+      <div className="rounded-lg bg-panel shadow-sm border border-line p-4 flex flex-wrap items-end gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Datum</label>
+          <label className="block text-sm font-medium text-ink mb-1">Datum</label>
           <input
             type="date"
             value={datum}
             max={heuteLokal()}
             onChange={e => { setDatum(e.target.value); reset() }}
-            className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+            className="rounded-md border border-line-strong px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="block text-sm font-medium text-ink mb-1">
             Startgeld / Wechselgeld
-            <span className="ml-1 text-gray-400 font-normal">(optional)</span>
+            <span className="ml-1 text-ink-subtle font-normal">(optional)</span>
           </label>
           <div className="flex items-center gap-1">
-            <span className="text-gray-500 text-sm">€</span>
+            <span className="text-ink-muted text-sm">€</span>
             <input
               type="text"
               inputMode="decimal"
               value={startgeld}
               onChange={e => { setStartgeld(e.target.value) }}
               placeholder="0,00"
-              className="w-24 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+              className="w-24 rounded-md border border-line-strong px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
             />
           </div>
         </div>
       </div>
 
       {/* Stückelung */}
-      <div className="rounded-lg bg-white shadow-sm border border-gray-200 overflow-hidden">
-        <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
-          <h2 className="text-sm font-semibold text-gray-700">Stückelung</h2>
+      <div className="rounded-lg bg-panel shadow-sm border border-line overflow-hidden">
+        <div className="px-4 py-3 bg-panel-2 border-b border-line">
+          <h2 className="text-sm font-semibold text-ink">Stückelung</h2>
         </div>
-        <div className="divide-y divide-gray-100">
+        <div className="divide-y divide-line">
           {STUECKELUNG.map(({ label, wertCent }) => {
             const count  = stueck[wertCent] ?? 0
             const gesamt = count * wertCent
             return (
               <div key={wertCent} className="flex items-center gap-3 px-4 py-2">
-                <span className="w-20 text-sm font-medium text-gray-700">{label}</span>
-                <span className="text-gray-400 text-sm">×</span>
+                <span className="w-20 text-sm font-medium text-ink">{label}</span>
+                <span className="text-ink-subtle text-sm">×</span>
                 <input
                   type="number"
                   min={0}
                   value={count === 0 ? '' : count}
                   onChange={e => setStueckCount(wertCent, e.target.value)}
                   placeholder="0"
-                  className="w-20 rounded-md border border-gray-300 px-2 py-1 text-sm text-right focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+                  className="w-20 rounded-md border border-line-strong px-2 py-1 text-sm text-right focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
                 />
-                <span className="text-gray-400 text-sm">=</span>
-                <span className={`ml-auto text-sm font-mono font-medium ${gesamt > 0 ? 'text-gray-900' : 'text-gray-300'}`}>
+                <span className="text-ink-subtle text-sm">=</span>
+                <span className={`ml-auto text-sm font-mono font-medium ${gesamt > 0 ? 'text-ink' : 'text-ink-subtle'}`}>
                   {formatPreis(gesamt)}
                 </span>
               </div>
@@ -191,14 +191,14 @@ export function KassensturzPage() {
       </div>
 
       {/* Ergebnis */}
-      <div className="rounded-lg bg-white shadow-sm border border-gray-200 overflow-hidden">
-        <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
-          <h2 className="text-sm font-semibold text-gray-700">
+      <div className="rounded-lg bg-panel shadow-sm border border-line overflow-hidden">
+        <div className="px-4 py-3 bg-panel-2 border-b border-line">
+          <h2 className="text-sm font-semibold text-ink">
             Ergebnis — {formatDatumAnzeige(datum)}
           </h2>
         </div>
         <div className="p-4 space-y-3">
-          {isLoading && <p className="text-sm text-gray-400">Lade Soll-Betrag…</p>}
+          {isLoading && <p className="text-sm text-ink-subtle">Lade Soll-Betrag…</p>}
           {isError && (
             <p className="text-sm text-red-600">
               {error instanceof Error ? error.message : 'Fehler beim Laden'}
@@ -215,7 +215,7 @@ export function KassensturzPage() {
                 wert={sollCent}
                 grau
               />
-              <div className={`flex items-center justify-between pt-3 border-t border-gray-200 text-base font-bold ${
+              <div className={`flex items-center justify-between pt-3 border-t border-line text-base font-bold ${
                 differenzCent === 0 ? 'text-green-700' :
                 differenzCent > 0  ? 'text-blue-700' : 'text-red-700'
               }`}>
@@ -290,8 +290,8 @@ function ErgebnisZeile({ label, wert, gross, grau, klein }: {
 }) {
   return (
     <div className={`flex items-center justify-between ${klein ? 'opacity-60' : ''}`}>
-      <span className={`text-sm ${grau ? 'text-gray-500' : 'text-gray-700'}`}>{label}</span>
-      <span className={`font-mono ${gross ? 'text-lg font-semibold text-gray-900' : 'text-sm text-gray-600'}`}>
+      <span className={`text-sm ${grau ? 'text-ink-muted' : 'text-ink'}`}>{label}</span>
+      <span className={`font-mono ${gross ? 'text-lg font-semibold text-ink' : 'text-sm text-ink-muted'}`}>
         {formatPreis(wert)}
       </span>
     </div>

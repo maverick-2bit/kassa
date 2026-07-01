@@ -29,13 +29,13 @@ const STATUS_FARBE: Record<LieferbestellungStatus, string> = {
   bestaetigt: 'bg-blue-100  text-blue-800  border-blue-200',
   fertig:     'bg-green-100 text-green-800 border-green-200',
   abgelehnt:  'bg-red-100   text-red-800   border-red-200',
-  storniert:  'bg-gray-100  text-gray-600  border-gray-200',
+  storniert:  'bg-panel-2  text-ink-muted  border-line',
 }
 
 const PROVIDER_FARBE: Record<string, string> = {
   lieferando: 'bg-orange-100 text-orange-800',
   mergeport:  'bg-purple-100 text-purple-800',
-  custom:     'bg-gray-100   text-gray-700',
+  custom:     'bg-panel-2   text-ink',
 }
 
 // ---------------------------------------------------------------------------
@@ -87,7 +87,7 @@ export function LieferungenPage() {
       {/* Kopfzeile */}
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-ink flex items-center gap-2">
             Lieferbestellungen
             {neuAnzahl > 0 && (
               <span className="inline-flex items-center justify-center min-w-[1.5rem] h-6 rounded-full bg-amber-500 text-white text-xs font-bold px-1.5">
@@ -95,7 +95,7 @@ export function LieferungenPage() {
               </span>
             )}
           </h1>
-          <p className="mt-1 text-sm text-gray-500">
+          <p className="mt-1 text-sm text-ink-muted">
             Eingehende Bestellungen von Lieferando, Mergeport und eigenen Quellen
           </p>
         </div>
@@ -112,7 +112,7 @@ export function LieferungenPage() {
 
       {/* Bestellungs-Liste */}
       {liste.isLoading ? (
-        <div className="rounded-lg border border-gray-200 bg-white p-8 text-center text-sm text-gray-400">
+        <div className="rounded-lg border border-line bg-panel p-8 text-center text-sm text-ink-subtle">
           Wird geladen…
         </div>
       ) : liste.isError ? (
@@ -120,10 +120,10 @@ export function LieferungenPage() {
           Fehler beim Laden: {liste.error instanceof Error ? liste.error.message : 'Unbekannt'}
         </div>
       ) : !liste.data || liste.data.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-gray-300 bg-white p-10 text-center">
+        <div className="rounded-lg border border-dashed border-line-strong bg-panel p-10 text-center">
           <p className="text-3xl mb-2">🛵</p>
-          <p className="text-gray-500 text-sm">Noch keine Bestellungen eingegangen.</p>
-          <p className="text-xs text-gray-400 mt-1">
+          <p className="text-ink-muted text-sm">Noch keine Bestellungen eingegangen.</p>
+          <p className="text-xs text-ink-subtle mt-1">
             Richte den Webhook bei deinem Lieferdienst ein — neue Bestellungen erscheinen hier automatisch.
           </p>
         </div>
@@ -181,36 +181,36 @@ function BestellungKarte({
 
   return (
     <div
-      className={`rounded-lg border bg-white shadow-sm transition
-        ${b.status === 'neu' ? 'border-amber-300 shadow-amber-100' : 'border-gray-200'}`}
+      className={`rounded-lg border bg-panel shadow-sm transition
+        ${b.status === 'neu' ? 'border-amber-300 shadow-amber-100' : 'border-line'}`}
     >
       <div
-        className="px-4 py-3 cursor-pointer hover:bg-gray-50 rounded-t-lg"
+        className="px-4 py-3 cursor-pointer hover:bg-panel-2 rounded-t-lg"
         onClick={onClick}
       >
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               {/* Provider-Badge */}
-              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${PROVIDER_FARBE[b.provider] ?? 'bg-gray-100 text-gray-700'}`}>
+              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${PROVIDER_FARBE[b.provider] ?? 'bg-panel-2 text-ink'}`}>
                 {LIEFERBESTELLUNG_PROVIDER_LABELS[b.provider] ?? b.provider}
               </span>
               {/* Status-Badge */}
               <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${STATUS_FARBE[b.status]}`}>
                 {LIEFERBESTELLUNG_STATUS_LABELS[b.status]}
               </span>
-              <span className="text-xs text-gray-400">#{b.externeId}</span>
+              <span className="text-xs text-ink-subtle">#{b.externeId}</span>
             </div>
-            <div className="mt-1.5 flex items-center gap-3 flex-wrap text-sm text-gray-600">
-              {b.lieferName    && <span className="font-medium text-gray-800">{b.lieferName}</span>}
+            <div className="mt-1.5 flex items-center gap-3 flex-wrap text-sm text-ink-muted">
+              {b.lieferName    && <span className="font-medium text-ink">{b.lieferName}</span>}
               {b.lieferTelefon && <span>📞 {b.lieferTelefon}</span>}
               {b.lieferAdresse && <span className="truncate max-w-xs">📍 {b.lieferAdresse}</span>}
             </div>
-            <p className="mt-1 text-xs text-gray-400">
+            <p className="mt-1 text-xs text-ink-subtle">
               {b.positionen.length} Pos. · {new Date(b.createdAt).toLocaleString('de-AT')}
             </p>
           </div>
-          <p className="text-lg font-bold text-gray-900 shrink-0">
+          <p className="text-lg font-bold text-ink shrink-0">
             {formatPreis(b.gesamtbetragCent)}
           </p>
         </div>
@@ -218,7 +218,7 @@ function BestellungKarte({
 
       {/* Schnell-Aktionen */}
       {istAktiv && (
-        <div className="px-4 py-2 border-t border-gray-100 flex gap-2 flex-wrap">
+        <div className="px-4 py-2 border-t border-line flex gap-2 flex-wrap">
           {b.status === 'neu' && (
             <Button
               size="sm"
@@ -278,45 +278,45 @@ function BestellungDetail({
     <div className="space-y-4">
       {/* Provider + Status */}
       <div className="flex items-center gap-2 flex-wrap">
-        <span className={`text-sm font-semibold px-2.5 py-1 rounded-full ${PROVIDER_FARBE[b.provider] ?? 'bg-gray-100 text-gray-700'}`}>
+        <span className={`text-sm font-semibold px-2.5 py-1 rounded-full ${PROVIDER_FARBE[b.provider] ?? 'bg-panel-2 text-ink'}`}>
           {LIEFERBESTELLUNG_PROVIDER_LABELS[b.provider] ?? b.provider}
         </span>
         <span className={`text-sm font-semibold px-2.5 py-1 rounded-full border ${STATUS_FARBE[b.status]}`}>
           {LIEFERBESTELLUNG_STATUS_LABELS[b.status]}
         </span>
-        <span className="text-sm text-gray-400 ml-auto">
+        <span className="text-sm text-ink-subtle ml-auto">
           {new Date(b.createdAt).toLocaleString('de-AT')}
         </span>
       </div>
 
       {/* Kundendaten */}
       {(b.lieferName || b.lieferTelefon || b.lieferAdresse) && (
-        <div className="rounded-md bg-gray-50 border border-gray-200 px-4 py-3 space-y-1 text-sm">
-          {b.lieferName    && <p><span className="text-gray-500 mr-2">Kunde:</span><strong>{b.lieferName}</strong></p>}
-          {b.lieferTelefon && <p><span className="text-gray-500 mr-2">Telefon:</span>{b.lieferTelefon}</p>}
-          {b.lieferAdresse && <p><span className="text-gray-500 mr-2">Adresse:</span>{b.lieferAdresse}</p>}
+        <div className="rounded-md bg-panel-2 border border-line px-4 py-3 space-y-1 text-sm">
+          {b.lieferName    && <p><span className="text-ink-muted mr-2">Kunde:</span><strong>{b.lieferName}</strong></p>}
+          {b.lieferTelefon && <p><span className="text-ink-muted mr-2">Telefon:</span>{b.lieferTelefon}</p>}
+          {b.lieferAdresse && <p><span className="text-ink-muted mr-2">Adresse:</span>{b.lieferAdresse}</p>}
         </div>
       )}
 
       {/* Positionen */}
       <div>
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Bestellpositionen</p>
-        <ul className="divide-y divide-gray-100 rounded-md border border-gray-200 overflow-hidden">
+        <p className="text-xs font-semibold text-ink-muted uppercase tracking-wide mb-2">Bestellpositionen</p>
+        <ul className="divide-y divide-line rounded-md border border-line overflow-hidden">
           {b.positionen.map((p, i) => (
-            <li key={i} className="flex justify-between items-start px-3 py-2.5 text-sm bg-white">
+            <li key={i} className="flex justify-between items-start px-3 py-2.5 text-sm bg-panel">
               <div className="flex-1 min-w-0">
-                <span className="font-medium text-gray-800">{p.bezeichnung}</span>
-                {p.notiz && <p className="text-xs text-gray-400 mt-0.5">{p.notiz}</p>}
+                <span className="font-medium text-ink">{p.bezeichnung}</span>
+                {p.notiz && <p className="text-xs text-ink-subtle mt-0.5">{p.notiz}</p>}
               </div>
               <div className="text-right shrink-0 ml-4">
-                <span className="text-gray-500 mr-2">×{p.menge}</span>
-                <span className="font-mono font-semibold text-gray-900">
+                <span className="text-ink-muted mr-2">×{p.menge}</span>
+                <span className="font-mono font-semibold text-ink">
                   {formatPreis(p.einzelpreisBreuttoCent * p.menge)}
                 </span>
               </div>
             </li>
           ))}
-          <li className="flex justify-between px-3 py-2.5 text-sm font-bold bg-gray-50">
+          <li className="flex justify-between px-3 py-2.5 text-sm font-bold bg-panel-2">
             <span>Gesamt</span>
             <span className="font-mono">{formatPreis(b.gesamtbetragCent)}</span>
           </li>
@@ -337,7 +337,7 @@ function BestellungDetail({
       )}
 
       {/* Aktionen */}
-      <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-200">
+      <div className="flex flex-wrap gap-2 pt-2 border-t border-line">
         {b.status === 'neu' && (
           <Button onClick={() => onStatusChange('bestaetigt')} loading={loading}>
             ✓ Bestätigen
@@ -392,13 +392,13 @@ function WebhookSetupKarte({
   }
 
   return (
-    <details className="rounded-lg border border-gray-200 bg-white" open={offen} onToggle={(e) => setOffen((e.target as HTMLDetailsElement).open)}>
-      <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-lg select-none">
+    <details className="rounded-lg border border-line bg-panel" open={offen} onToggle={(e) => setOffen((e.target as HTMLDetailsElement).open)}>
+      <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-ink hover:bg-panel-2 rounded-lg select-none">
         🔗 Webhook-URLs einrichten
-        {!offen && <span className="ml-2 text-xs text-gray-400 font-normal">— Lieferando, Mergeport, eigene Integration</span>}
+        {!offen && <span className="ml-2 text-xs text-ink-subtle font-normal">— Lieferando, Mergeport, eigene Integration</span>}
       </summary>
-      <div className="border-t border-gray-200 px-4 py-4 space-y-4">
-        <p className="text-sm text-gray-500">
+      <div className="border-t border-line px-4 py-4 space-y-4">
+        <p className="text-sm text-ink-muted">
           Trage diese URLs als Webhook-Ziel in deinen Lieferdienst ein.
           Das Secret ist bereits in der URL enthalten — bitte vertraulich behandeln.
         </p>
@@ -406,11 +406,11 @@ function WebhookSetupKarte({
           <div className="space-y-3">
             {(Object.entries(urls.urls) as [keyof typeof urls.urls, string][]).map(([provider, url]) => (
               <div key={provider}>
-                <p className="text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">
+                <p className="text-xs font-semibold text-ink-muted mb-1 uppercase tracking-wide">
                   {LIEFERBESTELLUNG_PROVIDER_LABELS[provider] ?? provider}
                 </p>
                 <div className="flex items-center gap-2">
-                  <code className="flex-1 rounded bg-gray-100 border border-gray-200 px-3 py-2 text-xs font-mono text-gray-700 break-all select-all">
+                  <code className="flex-1 rounded bg-panel-2 border border-line px-3 py-2 text-xs font-mono text-ink break-all select-all">
                     {url}
                   </code>
                   <button
@@ -423,12 +423,12 @@ function WebhookSetupKarte({
                 </div>
               </div>
             ))}
-            <p className="text-xs text-gray-400">
-              Das Secret lautet: <code className="bg-gray-100 px-1 rounded">{urls.webhookSecret}</code>
+            <p className="text-xs text-ink-subtle">
+              Das Secret lautet: <code className="bg-panel-2 px-1 rounded">{urls.webhookSecret}</code>
             </p>
           </div>
         ) : (
-          <p className="text-sm text-gray-400">Wird geladen…</p>
+          <p className="text-sm text-ink-subtle">Wird geladen…</p>
         )}
       </div>
     </details>

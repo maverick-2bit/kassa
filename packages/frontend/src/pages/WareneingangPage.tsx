@@ -218,14 +218,14 @@ export function WareneingangPage() {
 
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Wareneingang / Inventur</h1>
-        <p className="mt-1 text-sm text-gray-500">
+        <h1 className="text-2xl font-bold text-ink">Wareneingang / Inventur</h1>
+        <p className="mt-1 text-sm text-ink-muted">
           Lagerbestände schnell und übersichtlich pflegen — einzeln oder als Gesamtzählung.
         </p>
       </div>
 
       {/* Modus-Toggle */}
-      <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden shadow-sm">
+      <div className="inline-flex rounded-lg border border-line overflow-hidden shadow-sm">
         {(['wareneingang', 'inventur'] as const).map((m) => (
           <button
             key={m}
@@ -234,7 +234,7 @@ export function WareneingangPage() {
             className={`px-5 py-2.5 text-sm font-medium transition ${
               modus === m
                 ? 'bg-brand-600 text-white'
-                : 'bg-white text-gray-600 hover:bg-gray-50'
+                : 'bg-panel text-ink-muted hover:bg-panel-2'
             }`}
           >
             {m === 'wareneingang' ? '+ Wareneingang' : '✓ Inventur'}
@@ -243,7 +243,7 @@ export function WareneingangPage() {
       </div>
 
       {/* Modus-Erklärung */}
-      <div className="rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-600">
+      <div className="rounded-lg bg-panel-2 border border-line px-4 py-3 text-sm text-ink-muted">
         {modus === 'wareneingang' ? (
           <p>
             <strong>Wareneingang:</strong> Die eingegebene Menge wird zum bestehenden Bestand
@@ -263,23 +263,23 @@ export function WareneingangPage() {
         placeholder="Artikel oder Variante suchen …"
         value={suche}
         onChange={(e) => setSuche(e.target.value)}
-        className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm
+        className="w-full rounded-lg border border-line-strong px-3 py-2.5 text-sm
                    placeholder-gray-400 shadow-sm focus:border-brand-500 focus:ring-1
                    focus:ring-brand-500 outline-none"
       />
 
       {/* Laden */}
       {isLoading && (
-        <p className="text-sm text-gray-500 py-4 text-center">Wird geladen…</p>
+        <p className="text-sm text-ink-muted py-4 text-center">Wird geladen…</p>
       )}
 
       {/* Keine Einträge */}
       {keineEintraege && (
-        <div className="rounded-lg border border-dashed border-gray-300 p-8 text-center">
-          <p className="text-sm text-gray-500">
+        <div className="rounded-lg border border-dashed border-line-strong p-8 text-center">
+          <p className="text-sm text-ink-muted">
             Noch keine Artikel mit aktiviertem Lagerstand vorhanden.
           </p>
-          <p className="mt-1 text-xs text-gray-400">
+          <p className="mt-1 text-xs text-ink-subtle">
             Lagerstand in der <a href="/artikel" className="text-brand-600 hover:underline">Artikel-Verwaltung</a> aktivieren.
           </p>
         </div>
@@ -288,7 +288,7 @@ export function WareneingangPage() {
       {/* ---- Artikel mit Lagerstand ---- */}
       {artGefiltert.length > 0 && (
         <section className="space-y-2">
-          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
+          <h2 className="text-sm font-semibold text-ink-muted uppercase tracking-wide">
             Artikel-Lagerstand
           </h2>
           <Tabelle
@@ -303,7 +303,7 @@ export function WareneingangPage() {
       {/* ---- Varianten-Lagerstand ---- */}
       {varGefiltert.length > 0 && (
         <section className="space-y-2">
-          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
+          <h2 className="text-sm font-semibold text-ink-muted uppercase tracking-wide">
             Varianten-Lagerstand
           </h2>
           <Tabelle
@@ -317,7 +317,7 @@ export function WareneingangPage() {
 
       {/* Footer */}
       {!keineEintraege && !isLoading && (
-        <div className="flex items-center justify-between pt-2 border-t border-gray-200">
+        <div className="flex items-center justify-between pt-2 border-t border-line">
           <Button variant="secondary" onClick={handleZuruecksetzen}>
             Zurücksetzen
           </Button>
@@ -379,24 +379,24 @@ function Tabelle({
   }, [zeilen])
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white overflow-hidden shadow-sm">
+    <div className="rounded-lg border border-line bg-panel overflow-hidden shadow-sm">
       <table className="w-full text-sm">
-        <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500 border-b border-gray-200">
+        <thead className="bg-panel-2 text-left text-xs uppercase tracking-wide text-ink-muted border-b border-line">
           <tr>
             <th className="px-4 py-2.5 font-semibold">Bezeichnung</th>
             <th className="px-4 py-2.5 font-semibold text-right w-24">Aktuell</th>
             <th className="px-4 py-2.5 font-semibold text-right w-36">{spalteLabel}</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-100">
+        <tbody className="divide-y divide-line">
           {gruppiertNachKat.map((gruppe) => (
             <>
               {/* Kategorie-Trennzeile (nur bei Artikel-Zeilen mit Kategorie) */}
               {gruppe.kategorie && (
-                <tr key={`kat:${gruppe.kategorie}`} className="bg-gray-50">
+                <tr key={`kat:${gruppe.kategorie}`} className="bg-panel-2">
                   <td
                     colSpan={3}
-                    className="px-4 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-gray-400"
+                    className="px-4 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-ink-subtle"
                   >
                     {gruppe.kategorie}
                   </td>
@@ -409,12 +409,12 @@ function Tabelle({
                 return (
                   <tr
                     key={z.key}
-                    className={istNeu ? 'bg-brand-50' : 'hover:bg-gray-50'}
+                    className={istNeu ? 'bg-brand-50' : 'hover:bg-panel-2'}
                   >
-                    <td className="px-4 py-2.5 text-gray-900">{z.bezeichnung}</td>
-                    <td className="px-4 py-2.5 text-right font-mono text-gray-500 tabular-nums">
+                    <td className="px-4 py-2.5 text-ink">{z.bezeichnung}</td>
+                    <td className="px-4 py-2.5 text-right font-mono text-ink-muted tabular-nums">
                       {z.menge !== null ? z.menge : (
-                        <span className="text-gray-300">—</span>
+                        <span className="text-ink-subtle">—</span>
                       )}
                     </td>
                     <td className="px-4 py-2.5 text-right">
@@ -429,8 +429,8 @@ function Tabelle({
                           w-24 rounded-md border text-right px-2 py-1.5 text-sm tabular-nums
                           focus:outline-none focus:ring-2 focus:ring-brand-500
                           ${istNeu
-                            ? 'border-brand-400 bg-white font-semibold text-brand-800'
-                            : 'border-gray-300 bg-white text-gray-700'
+                            ? 'border-brand-400 bg-panel font-semibold text-brand-800'
+                            : 'border-line-strong bg-panel text-ink'
                           }
                         `}
                       />

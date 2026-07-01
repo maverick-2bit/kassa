@@ -76,7 +76,7 @@ function SortableItem({
 
   // Bedien-Element: eindeutige ↑/↓-Tasten (immer sichtbar, auch Touch) +
   // Griff-Symbol als Hinweis, dass man die ganze Zeile auch ziehen kann.
-  const pfeilKlasse = 'flex h-5 w-6 items-center justify-center rounded text-gray-500 hover:text-brand-600 hover:bg-gray-100 disabled:opacity-25 disabled:hover:bg-transparent disabled:hover:text-gray-500'
+  const pfeilKlasse = 'flex h-5 w-6 items-center justify-center rounded text-ink-muted hover:text-brand-600 hover:bg-panel-2 disabled:opacity-25 disabled:hover:bg-transparent disabled:hover:text-ink-muted'
   const handle = (
     <div className="flex items-center gap-0.5">
       {(onMoveUp || onMoveDown) && (
@@ -92,7 +92,7 @@ function SortableItem({
           </button>
         </div>
       )}
-      <span aria-hidden className="text-gray-300 select-none">
+      <span aria-hidden className="text-ink-subtle select-none">
         <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
           <path d="M7 4a1.3 1.3 0 1 1 0 2.6A1.3 1.3 0 0 1 7 4Zm6 0a1.3 1.3 0 1 1 0 2.6A1.3 1.3 0 0 1 13 4ZM7 8.7a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6Zm6 0a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6ZM7 13.4a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6Zm6 0a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6Z" />
         </svg>
@@ -187,7 +187,7 @@ function TabWarengruppen({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-ink-muted">
           Reihenfolge per Drag&nbsp;&amp;&nbsp;Drop anpassen (gilt für alle Kassen).
           Sichtbarkeit ist pro Kasse einstellbar.
         </p>
@@ -207,25 +207,25 @@ function TabWarengruppen({
                 onMoveDown={() => { setItems(prev => arrayMove(prev, i, i + 1)); setDirty(true) }}
                 istErster={i === 0} istLetzter={i === items.length - 1}>
                 {(handle) => (
-                  <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2.5 shadow-sm">
+                  <div className="flex items-center gap-3 rounded-xl border border-line bg-panel px-3 py-2.5 shadow-sm">
                     {handle}
                     <div
                       className="h-3 w-3 rounded-full flex-shrink-0"
                       style={{ backgroundColor: FARB_MAP[k.farbe] ?? '#9ca3af' }}
                     />
-                    <span className="flex-1 text-sm font-medium text-gray-800">{k.name}</span>
+                    <span className="flex-1 text-sm font-medium text-ink">{k.name}</span>
                     {!k.aktiv && (
-                      <span className="text-xs text-gray-400 italic">inaktiv</span>
+                      <span className="text-xs text-ink-subtle italic">inaktiv</span>
                     )}
                     {/* Toggle Sichtbarkeit pro Kasse */}
                     <button
                       onClick={() => toggleSichtbar(k.id)}
                       className={`relative inline-flex h-5 w-9 flex-shrink-0 rounded-full border-2 border-transparent transition-colors ${
-                        sichtbar.has(k.id) ? 'bg-brand-500' : 'bg-gray-200'
+                        sichtbar.has(k.id) ? 'bg-brand-500' : 'bg-panel-2'
                       }`}
                       title={sichtbar.has(k.id) ? 'In dieser Kasse sichtbar' : 'In dieser Kasse ausgeblendet'}
                     >
-                      <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                      <span className={`inline-block h-4 w-4 rounded-full bg-panel shadow transition-transform ${
                         sichtbar.has(k.id) ? 'translate-x-4' : 'translate-x-0'
                       }`} />
                     </button>
@@ -298,7 +298,7 @@ function TabArtikel({ kategorien, alleArtikel }: { kategorien: Kategorie[]; alle
             className={`px-3 py-1.5 rounded-full text-sm font-medium transition ${
               gewaehlteKatId === k.id
                 ? 'bg-brand-600 text-white'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                : 'bg-panel-2 text-ink-muted hover:bg-panel-2'
             }`}
           >
             {k.name}
@@ -307,7 +307,7 @@ function TabArtikel({ kategorien, alleArtikel }: { kategorien: Kategorie[]; alle
       </div>
 
       <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-ink-muted">
           {items.length} Artikel in dieser Warengruppe.
         </p>
         {dirty && (
@@ -319,7 +319,7 @@ function TabArtikel({ kategorien, alleArtikel }: { kategorien: Kategorie[]; alle
       </div>
 
       {items.length === 0 && (
-        <div className="rounded-lg border-2 border-dashed border-gray-200 p-8 text-center text-sm text-gray-400">
+        <div className="rounded-lg border-2 border-dashed border-line p-8 text-center text-sm text-ink-subtle">
           Keine Artikel in dieser Warengruppe.
         </div>
       )}
@@ -333,10 +333,10 @@ function TabArtikel({ kategorien, alleArtikel }: { kategorien: Kategorie[]; alle
                 onMoveDown={() => { setItems(prev => arrayMove(prev, i, i + 1)); setDirty(true) }}
                 istErster={i === 0} istLetzter={i === items.length - 1}>
                 {(handle) => (
-                  <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2.5 shadow-sm">
+                  <div className="flex items-center gap-3 rounded-xl border border-line bg-panel px-3 py-2.5 shadow-sm">
                     {handle}
-                    <span className="flex-1 text-sm font-medium text-gray-800">{a.bezeichnung}</span>
-                    <span className="text-xs text-gray-400 font-mono tabular-nums">
+                    <span className="flex-1 text-sm font-medium text-ink">{a.bezeichnung}</span>
+                    <span className="text-xs text-ink-subtle font-mono tabular-nums">
                       € {(a.preisBruttoCent / 100).toFixed(2).replace('.', ',')}
                     </span>
                     {a.istFavorit && (
@@ -443,15 +443,15 @@ function TabFavoriten({ alleArtikel }: { alleArtikel: Artikel[] }) {
     <div className="space-y-6">
       {/* Picker: Artikel zu Favoriten hinzufügen */}
       <div className="space-y-2">
-        <h3 className="text-sm font-semibold text-gray-800">Artikel hinzufügen</h3>
+        <h3 className="text-sm font-semibold text-ink">Artikel hinzufügen</h3>
         <input
           value={suche}
           onChange={e => setSuche(e.target.value)}
           placeholder="Artikel suchen…"
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+          className="w-full rounded-md border border-line-strong px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
         />
         {verfuegbar.length === 0 ? (
-          <p className="text-xs text-gray-400 py-2">
+          <p className="text-xs text-ink-subtle py-2">
             {suche.trim() ? 'Kein passender Artikel.' : 'Alle aktiven Artikel sind bereits Favoriten.'}
           </p>
         ) : (
@@ -461,12 +461,12 @@ function TabFavoriten({ alleArtikel }: { alleArtikel: Artikel[] }) {
                 key={a.id}
                 type="button"
                 onClick={() => hinzufuegen(a)}
-                className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs
-                           text-gray-700 hover:border-brand-400 hover:bg-brand-50 transition"
+                className="inline-flex items-center gap-1.5 rounded-full border border-line bg-panel px-3 py-1.5 text-xs
+                           text-ink hover:border-brand-400 hover:bg-brand-50 transition"
               >
                 <span className="text-brand-500 font-bold">+</span>
                 {a.bezeichnung}
-                <span className="text-gray-400 tabular-nums">{preis(a.preisBruttoCent)}</span>
+                <span className="text-ink-subtle tabular-nums">{preis(a.preisBruttoCent)}</span>
               </button>
             ))}
           </div>
@@ -476,8 +476,8 @@ function TabFavoriten({ alleArtikel }: { alleArtikel: Artikel[] }) {
       {/* Favoriten: Reihenfolge (Drag & Drop) + Entfernen */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-gray-800">
-            Favoriten <span className="font-normal text-gray-400">({items.length})</span>
+          <h3 className="text-sm font-semibold text-ink">
+            Favoriten <span className="font-normal text-ink-subtle">({items.length})</span>
           </h3>
           {dirty && (
             <Button
@@ -489,9 +489,9 @@ function TabFavoriten({ alleArtikel }: { alleArtikel: Artikel[] }) {
         </div>
 
         {items.length === 0 ? (
-          <div className="rounded-lg border-2 border-dashed border-gray-200 p-8 text-center">
-            <p className="text-sm text-gray-400">Noch keine Favoriten.</p>
-            <p className="mt-1 text-xs text-gray-300">Oben Artikel auswählen, dann per Ziehen anordnen.</p>
+          <div className="rounded-lg border-2 border-dashed border-line p-8 text-center">
+            <p className="text-sm text-ink-subtle">Noch keine Favoriten.</p>
+            <p className="mt-1 text-xs text-ink-subtle">Oben Artikel auswählen, dann per Ziehen anordnen.</p>
           </div>
         ) : (
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -503,16 +503,16 @@ function TabFavoriten({ alleArtikel }: { alleArtikel: Artikel[] }) {
                     onMoveDown={() => { setItems(prev => arrayMove(prev, i, i + 1)); setDirty(true) }}
                     istErster={i === 0} istLetzter={i === items.length - 1}>
                     {(handle) => (
-                      <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2.5 shadow-sm">
+                      <div className="flex items-center gap-3 rounded-xl border border-line bg-panel px-3 py-2.5 shadow-sm">
                         {handle}
                         <span className="text-amber-400">★</span>
-                        <span className="flex-1 text-sm font-medium text-gray-800">{a.bezeichnung}</span>
-                        <span className="text-xs text-gray-400 font-mono tabular-nums">{preis(a.preisBruttoCent)}</span>
+                        <span className="flex-1 text-sm font-medium text-ink">{a.bezeichnung}</span>
+                        <span className="text-xs text-ink-subtle font-mono tabular-nums">{preis(a.preisBruttoCent)}</span>
                         <button
                           type="button"
                           onClick={() => entfernen(a.id)}
                           title="Aus Favoriten entfernen"
-                          className="text-gray-300 hover:text-red-500 text-lg leading-none px-1"
+                          className="text-ink-subtle hover:text-red-500 text-lg leading-none px-1"
                         >
                           ×
                         </button>
@@ -605,36 +605,36 @@ function TabZahlungsarten({ kasseId }: { kasseId: string }) {
     <div className="space-y-6 max-w-sm">
       {/* Zahlungsarten */}
       <div className="space-y-3">
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-ink-muted">
           Welche Zahlungsarten sind an dieser Kasse verfügbar?
           Mindestens eine muss aktiviert sein.
         </p>
         {ZAHLUNGSARTEN.map(({ key, label }) => (
-          <label key={key} className="flex items-center gap-3 cursor-pointer rounded-xl border border-gray-200 bg-white px-4 py-3 hover:bg-gray-50">
+          <label key={key} className="flex items-center gap-3 cursor-pointer rounded-xl border border-line bg-panel px-4 py-3 hover:bg-panel-2">
             <input
               type="checkbox"
               checked={erlaubte.has(key)}
               onChange={() => toggleZahlung(key)}
-              className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+              className="h-4 w-4 rounded border-line-strong text-brand-600 focus:ring-brand-500"
             />
-            <span className="text-sm font-medium text-gray-800">{label}</span>
+            <span className="text-sm font-medium text-ink">{label}</span>
           </label>
         ))}
       </div>
 
       {/* Darstellung */}
-      <div className="border-t border-gray-200 pt-5 space-y-3">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Darstellung</p>
-        <label className="flex items-center gap-3 cursor-pointer rounded-xl border border-gray-200 bg-white px-4 py-3 hover:bg-gray-50">
+      <div className="border-t border-line pt-5 space-y-3">
+        <p className="text-xs font-semibold text-ink-muted uppercase tracking-wide">Darstellung</p>
+        <label className="flex items-center gap-3 cursor-pointer rounded-xl border border-line bg-panel px-4 py-3 hover:bg-panel-2">
           <input
             type="checkbox"
             checked={artikelbilder}
             onChange={toggleBilder}
-            className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+            className="h-4 w-4 rounded border-line-strong text-brand-600 focus:ring-brand-500"
           />
           <div>
-            <p className="text-sm font-medium text-gray-800">Artikelbilder anzeigen</p>
-            <p className="text-xs text-gray-400 mt-0.5">
+            <p className="text-sm font-medium text-ink">Artikelbilder anzeigen</p>
+            <p className="text-xs text-ink-subtle mt-0.5">
               Fotos im Artikel-Raster einblenden. Deaktivieren für kompaktere Ansicht.
             </p>
           </div>
@@ -642,24 +642,24 @@ function TabZahlungsarten({ kasseId }: { kasseId: string }) {
       </div>
 
       {/* Startseite */}
-      <div className="border-t border-gray-200 pt-5 space-y-3">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Startseite nach Login</p>
-        <p className="text-sm text-gray-500">
+      <div className="border-t border-line pt-5 space-y-3">
+        <p className="text-xs font-semibold text-ink-muted uppercase tracking-wide">Startseite nach Login</p>
+        <p className="text-sm text-ink-muted">
           Welche Seite wird nach dem Einloggen an dieser Kasse geöffnet?
         </p>
         {STARTSEITEN.map(({ value, label, beschreibung }) => (
-          <label key={value} className="flex items-center gap-3 cursor-pointer rounded-xl border border-gray-200 bg-white px-4 py-3 hover:bg-gray-50">
+          <label key={value} className="flex items-center gap-3 cursor-pointer rounded-xl border border-line bg-panel px-4 py-3 hover:bg-panel-2">
             <input
               type="radio"
               name="startseite"
               value={value}
               checked={startseite === value}
               onChange={() => handleStartseite(value)}
-              className="h-4 w-4 border-gray-300 text-brand-600 focus:ring-brand-500"
+              className="h-4 w-4 border-line-strong text-brand-600 focus:ring-brand-500"
             />
             <div>
-              <p className="text-sm font-medium text-gray-800">{label}</p>
-              <p className="text-xs text-gray-400 mt-0.5">{beschreibung}</p>
+              <p className="text-sm font-medium text-ink">{label}</p>
+              <p className="text-xs text-ink-subtle mt-0.5">{beschreibung}</p>
             </div>
           </label>
         ))}
@@ -711,22 +711,22 @@ export function PosKonfigPage() {
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">POS-Konfiguration</h1>
-        <p className="mt-1 text-sm text-gray-500">
+        <h1 className="text-2xl font-bold text-ink">POS-Konfiguration</h1>
+        <p className="mt-1 text-sm text-ink-muted">
           Sortierung und Darstellung im Kassensystem.
         </p>
       </div>
 
       {/* Tab-Navigation */}
-      <div className="flex gap-1 rounded-xl bg-gray-100 p-1">
+      <div className="flex gap-1 rounded-xl bg-panel-2 p-1">
         {tabs.map(t => (
           <button
             key={t.key}
             onClick={() => setAktuellerTab(t.key)}
             className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition ${
               aktuellerTab === t.key
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-500 hover:text-gray-700'
+                ? 'bg-panel text-ink shadow-sm'
+                : 'text-ink-muted hover:text-ink'
             }`}
           >
             {t.label}
@@ -735,7 +735,7 @@ export function PosKonfigPage() {
       </div>
 
       {isLoading ? (
-        <div className="text-sm text-gray-400 py-8 text-center">Laden…</div>
+        <div className="text-sm text-ink-subtle py-8 text-center">Laden…</div>
       ) : (
         <div>
           {aktuellerTab === 'warengruppen' && (

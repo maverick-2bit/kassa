@@ -70,8 +70,8 @@ function BuchungsFormular({ kasseId, firmenname }: { kasseId: string; firmenname
       <Wrapper firmenname={firmenname}>
         <div className="text-center space-y-4">
           <div className="text-5xl">✓</div>
-          <h2 className="text-xl font-bold text-gray-900">Anfrage erhalten!</h2>
-          <p className="text-gray-600 text-sm">
+          <h2 className="text-xl font-bold text-ink">Anfrage erhalten!</h2>
+          <p className="text-ink-muted text-sm">
             Ihre Reservierungsanfrage für <strong>{erfolg.name}</strong> am{' '}
             <strong>{erfolg.datum}</strong> um <strong>{erfolg.zeitVon} Uhr</strong> wurde
             übermittelt. Das Restaurant wird sie baldmöglichst bestätigen.
@@ -101,24 +101,24 @@ function BuchungsFormular({ kasseId, firmenname }: { kasseId: string; firmenname
       >
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Datum *</label>
+            <label className="block text-xs font-medium text-ink-muted mb-1">Datum *</label>
             <input type="date" required min={heuteISO()} value={datum}
               onChange={e => setDatum(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              className="w-full border border-line-strong rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Uhrzeit *</label>
+            <label className="block text-xs font-medium text-ink-muted mb-1">Uhrzeit *</label>
             <input type="time" required value={zeitVon}
               onChange={e => setZeitVon(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              className="w-full border border-line-strong rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
         </div>
 
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Personen *</label>
+          <label className="block text-xs font-medium text-ink-muted mb-1">Personen *</label>
           <select required value={personenAnzahl}
             onChange={e => setPersonenAnzahl(e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            className="w-full border border-line-strong rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
             {Array.from({ length: 20 }, (_, i) => i + 1).map(n => (
               <option key={n} value={n}>{n} Person{n > 1 ? 'en' : ''}</option>
             ))}
@@ -126,29 +126,29 @@ function BuchungsFormular({ kasseId, firmenname }: { kasseId: string; firmenname
         </div>
 
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Name *</label>
+          <label className="block text-xs font-medium text-ink-muted mb-1">Name *</label>
           <input type="text" required value={name} onChange={e => setName(e.target.value)}
             placeholder="Vor- und Nachname"
-            className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            className="w-full border border-line-strong rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
 
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Telefon</label>
+          <label className="block text-xs font-medium text-ink-muted mb-1">Telefon</label>
           <input type="tel" value={telefon} onChange={e => setTelefon(e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            className="w-full border border-line-strong rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
 
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">E-Mail</label>
+          <label className="block text-xs font-medium text-ink-muted mb-1">E-Mail</label>
           <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            className="w-full border border-line-strong rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
 
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Anmerkungen</label>
+          <label className="block text-xs font-medium text-ink-muted mb-1">Anmerkungen</label>
           <textarea rows={3} value={notiz} onChange={e => setNotiz(e.target.value)}
             placeholder="z. B. Kinderstuhl, Allergie, Geburtstag…"
-            className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+            className="w-full border border-line-strong rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
         </div>
 
         {fehlerText && (
@@ -165,7 +165,7 @@ function BuchungsFormular({ kasseId, firmenname }: { kasseId: string; firmenname
           {buchungMut.isPending ? 'Wird gesendet…' : 'Reservierungsanfrage senden'}
         </button>
 
-        <p className="text-center text-xs text-gray-400">
+        <p className="text-center text-xs text-ink-subtle">
           Ihre Anfrage wird vom Restaurant bestätigt.
         </p>
       </form>
@@ -179,11 +179,11 @@ function BuchungsFormular({ kasseId, firmenname }: { kasseId: string; firmenname
 
 function Wrapper({ firmenname, children }: { firmenname: string; children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-start py-10 px-4">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-md p-6 space-y-6">
+    <div className="min-h-screen bg-panel-2 flex flex-col items-center justify-start py-10 px-4">
+      <div className="w-full max-w-md bg-panel rounded-2xl shadow-md p-6 space-y-6">
         <div className="text-center">
-          <h1 className="text-xl font-bold text-gray-900">{firmenname}</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Online-Tischreservierung</p>
+          <h1 className="text-xl font-bold text-ink">{firmenname}</h1>
+          <p className="text-sm text-ink-muted mt-0.5">Online-Tischreservierung</p>
         </div>
         {children}
       </div>
@@ -193,18 +193,18 @@ function Wrapper({ firmenname, children }: { firmenname: string; children: React
 
 function LadeView() {
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <p className="text-gray-400 text-sm">Wird geladen…</p>
+    <div className="min-h-screen bg-panel-2 flex items-center justify-center">
+      <p className="text-ink-subtle text-sm">Wird geladen…</p>
     </div>
   )
 }
 
 function FehlerView({ text }: { text: string }) {
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
-      <div className="bg-white rounded-2xl shadow-md p-8 max-w-sm text-center space-y-2">
+    <div className="min-h-screen bg-panel-2 flex items-center justify-center px-4">
+      <div className="bg-panel rounded-2xl shadow-md p-8 max-w-sm text-center space-y-2">
         <p className="text-2xl">⚠️</p>
-        <p className="text-gray-700 text-sm">{text}</p>
+        <p className="text-ink text-sm">{text}</p>
       </div>
     </div>
   )

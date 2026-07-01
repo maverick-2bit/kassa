@@ -13,31 +13,31 @@ export function SetupSuccess({ data }: Props) {
             <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/>
           </svg>
         </span>
-        <h2 className="mt-4 text-2xl font-semibold text-gray-900">
+        <h2 className="mt-4 text-2xl font-semibold text-ink">
           Kasse erfolgreich eingerichtet
         </h2>
-        <p className="mt-2 max-w-sm text-sm text-gray-600">
+        <p className="mt-2 max-w-sm text-sm text-ink-muted">
           Die Kasse ist bei FinanzOnline registriert und der Startbeleg wurde geprüft.
           Sie können jetzt Belege erstellen.
         </p>
       </div>
 
-      <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm">
+      <div className="rounded-lg border border-line bg-panel-2 p-4 text-sm">
         <dl className="grid grid-cols-1 gap-y-2 sm:grid-cols-3 sm:gap-x-4">
           <div className="sm:col-span-1">
-            <dt className="font-medium text-gray-500">Startbeleg-Nr.</dt>
-            <dd className="text-gray-900">#{data.startbelegNummer}</dd>
+            <dt className="font-medium text-ink-muted">Startbeleg-Nr.</dt>
+            <dd className="text-ink">#{data.startbelegNummer}</dd>
           </div>
           {data.pruefwert && (
             <div className="sm:col-span-2">
-              <dt className="font-medium text-gray-500">FinanzOnline-Prüfwert</dt>
-              <dd className="font-mono text-xs text-gray-900 break-all">{data.pruefwert}</dd>
+              <dt className="font-medium text-ink-muted">FinanzOnline-Prüfwert</dt>
+              <dd className="font-mono text-xs text-ink break-all">{data.pruefwert}</dd>
             </div>
           )}
           {data.startbelegMaschinenlesbareCode && (
             <div className="sm:col-span-3">
-              <dt className="font-medium text-gray-500 mb-1">Maschinenlesbarer Code</dt>
-              <dd className="font-mono text-xs text-gray-700 break-all bg-white p-2 rounded border border-gray-200">
+              <dt className="font-medium text-ink-muted mb-1">Maschinenlesbarer Code</dt>
+              <dd className="font-mono text-xs text-ink break-all bg-panel p-2 rounded border border-line">
                 {data.startbelegMaschinenlesbareCode}
               </dd>
             </div>
@@ -45,7 +45,7 @@ export function SetupSuccess({ data }: Props) {
         </dl>
       </div>
 
-      <p className="text-center text-xs text-gray-500">
+      <p className="text-center text-xs text-ink-muted">
         Mandant: <span className="font-mono">{data.mandantId}</span> ·
         Kasse: <span className="font-mono">{data.kasseId}</span>
       </p>

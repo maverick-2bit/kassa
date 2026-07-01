@@ -20,7 +20,7 @@ import { ModifikatorModal } from './ModifikatorModal'
 // ---------------------------------------------------------------------------
 
 const FARBE_TAB_INAKTIV: Record<KategorieFarbe, string> = {
-  grau:   'bg-panel-2 text-ink hover:bg-gray-200',
+  grau:   'bg-panel-2 text-ink hover:bg-panel-2',
   rot:    'bg-red-50 text-red-700 hover:bg-red-100',
   orange: 'bg-orange-50 text-orange-700 hover:bg-orange-100',
   gelb:   'bg-yellow-50 text-yellow-700 hover:bg-yellow-100',
@@ -42,7 +42,7 @@ const FARBE_TAB_AKTIV: Record<KategorieFarbe, string> = {
 }
 
 const FARBE_ARTIKEL_HOVER: Record<KategorieFarbe, string> = {
-  grau:   'hover:border-gray-400 hover:bg-panel-2',
+  grau:   'hover:border-line-strong hover:bg-panel-2',
   rot:    'hover:border-red-400 hover:bg-red-50',
   orange: 'hover:border-orange-400 hover:bg-orange-50',
   gelb:   'hover:border-yellow-400 hover:bg-yellow-50',
@@ -185,11 +185,11 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
         <div className="relative shrink-0 mb-3">
           {fadeLinks && (
             <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-8 z-10
-                            bg-gradient-to-r from-white to-transparent" />
+                            bg-gradient-to-r from-panel to-transparent" />
           )}
           {fadeRechts && (
             <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 z-10
-                            bg-gradient-to-l from-white to-transparent" />
+                            bg-gradient-to-l from-panel to-transparent" />
           )}
           <div ref={scrollRef} className="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
             {/* Favoriten-Tab (nur wenn es Favoriten gibt) */}
@@ -386,7 +386,7 @@ function Anzahl({ wert, aktiv }: { wert: number; aktiv: boolean }) {
       className={`
         inline-flex items-center justify-center min-w-[1.25rem] h-5
         rounded-full text-[11px] font-semibold px-1 leading-none
-        ${aktiv ? 'bg-panel/25 text-current' : 'bg-black/10 text-current'}
+        ${aktiv ? 'bg-white/25 text-current' : 'bg-black/10 text-current'}
       `}
     >
       {wert}

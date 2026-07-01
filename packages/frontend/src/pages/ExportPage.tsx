@@ -31,14 +31,14 @@ export function ExportPage() {
   return (
     <div className="max-w-2xl mx-auto px-4 py-8 space-y-8">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Buchhaltungs-Export</h1>
-        <p className="mt-1 text-sm text-gray-500">
+        <h1 className="text-2xl font-bold text-ink">Buchhaltungs-Export</h1>
+        <p className="mt-1 text-sm text-ink-muted">
           Exportiert Belege im BMD NTCS CSV-Format für Ihre Buchhaltungssoftware.
         </p>
       </div>
 
       {/* BMD-Export */}
-      <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-5">
+      <div className="bg-panel border border-line rounded-xl p-6 space-y-5">
         <div className="flex items-start gap-4">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-50 shrink-0">
             <svg className="h-5 w-5 text-brand-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -46,8 +46,8 @@ export function ExportPage() {
             </svg>
           </div>
           <div>
-            <h2 className="text-base font-semibold text-gray-900">BMD NTCS Export</h2>
-            <p className="text-sm text-gray-500 mt-0.5">
+            <h2 className="text-base font-semibold text-ink">BMD NTCS Export</h2>
+            <p className="text-sm text-ink-muted mt-0.5">
               Buchungszeilen im BMD-CSV-Format mit Steuercodes, Konten und Beträgen.
               Geeignet für BMD NTCS, DATEV (mit Anpassungen) und vergleichbare Systeme.
             </p>
@@ -56,11 +56,11 @@ export function ExportPage() {
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="space-y-1">
-            <label className="text-sm font-medium text-gray-700">Kasse</label>
+            <label className="text-sm font-medium text-ink">Kasse</label>
             <select
               value={kasseId}
               onChange={e => setKasseId(e.target.value)}
-              className="w-full rounded-md border border-gray-300 text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
+              className="w-full rounded-md border border-line-strong text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
             >
               {kassen.map(k => (
                 <option key={k.id} value={k.id}>{k.kassenId}</option>
@@ -68,21 +68,21 @@ export function ExportPage() {
             </select>
           </div>
           <div className="space-y-1">
-            <label className="text-sm font-medium text-gray-700">Von</label>
+            <label className="text-sm font-medium text-ink">Von</label>
             <input
               type="date"
               value={vonDatum}
               onChange={e => setVonDatum(e.target.value)}
-              className="w-full rounded-md border border-gray-300 text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
+              className="w-full rounded-md border border-line-strong text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
             />
           </div>
           <div className="space-y-1">
-            <label className="text-sm font-medium text-gray-700">Bis</label>
+            <label className="text-sm font-medium text-ink">Bis</label>
             <input
               type="date"
               value={bisDatum}
               onChange={e => setBisDatum(e.target.value)}
-              className="w-full rounded-md border border-gray-300 text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
+              className="w-full rounded-md border border-line-strong text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
             />
           </div>
         </div>

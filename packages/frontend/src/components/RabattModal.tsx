@@ -58,7 +58,7 @@ export function RabattModal({ open, summeCent, onSubmit, onClose, titel, modus =
     <Modal open={open} onClose={onClose} title={titel ?? 'Rabatt hinzufügen'}>
       <div className="space-y-4">
         {/* Typ-Toggle */}
-        <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+        <div className="flex rounded-lg border border-line overflow-hidden">
           {(['prozent', 'betrag'] as const).map((t) => (
             <button
               key={t}
@@ -67,7 +67,7 @@ export function RabattModal({ open, summeCent, onSubmit, onClose, titel, modus =
               className={`flex-1 py-2 text-sm font-medium transition ${
                 typ === t
                   ? 'bg-brand-600 text-white'
-                  : 'bg-white text-gray-600 hover:bg-gray-50'
+                  : 'bg-panel text-ink-muted hover:bg-panel-2'
               }`}
             >
               {t === 'prozent' ? 'Prozent (%)' : 'Fixer Betrag (€)'}
@@ -77,7 +77,7 @@ export function RabattModal({ open, summeCent, onSubmit, onClose, titel, modus =
 
         {typ === 'prozent' ? (
           <div>
-            <span className="text-sm font-medium text-gray-700">Rabatt in Prozent</span>
+            <span className="text-sm font-medium text-ink">Rabatt in Prozent</span>
             <div className="mt-1 flex gap-2 items-center flex-wrap">
               <Input
                 autoFocus
@@ -96,7 +96,7 @@ export function RabattModal({ open, summeCent, onSubmit, onClose, titel, modus =
                     className={`rounded border px-2 py-1 text-xs font-medium transition ${
                       prozentInput === String(p)
                         ? 'border-brand-500 bg-brand-50 text-brand-700'
-                        : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                        : 'border-line bg-panel text-ink-muted hover:border-line-strong'
                     }`}
                   >
                     {p}%
@@ -107,7 +107,7 @@ export function RabattModal({ open, summeCent, onSubmit, onClose, titel, modus =
           </div>
         ) : (
           <label className="block">
-            <span className="text-sm font-medium text-gray-700">Betrag in Cent</span>
+            <span className="text-sm font-medium text-ink">Betrag in Cent</span>
             <Input
               autoFocus
               inputMode="numeric"
@@ -120,7 +120,7 @@ export function RabattModal({ open, summeCent, onSubmit, onClose, titel, modus =
         )}
 
         <label className="block">
-          <span className="text-sm font-medium text-gray-700">Bezeichnung (optional)</span>
+          <span className="text-sm font-medium text-ink">Bezeichnung (optional)</span>
           <Input
             placeholder="z. B. Mitarbeiterrabatt, Hausrunde …"
             value={bezeichnung}
