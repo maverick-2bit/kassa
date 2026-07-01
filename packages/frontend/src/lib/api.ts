@@ -539,6 +539,27 @@ export const belegApi = {
     request<BelegResponse>('POST', '/api/belege/monatsbeleg', input),
   jahresbeleg:(input: JahresbelegInput) =>
     request<BelegResponse>('POST', '/api/belege/jahresbeleg', input),
+
+  // SEE-Ausfall / Wiederinbetriebnahme
+  seeStatus: (kasseId: string) =>
+    request<SeeStatus>('GET', `/api/belege/see-status?kasseId=${kasseId}`),
+  seeAusfallMelden: (kasseId: string) =>
+    request<SeeStatus>('POST', '/api/belege/see-ausfall', { kasseId }),
+  seeWiederherstellen: (kasseId: string) =>
+    request<SeeWiederherstellung>('POST', '/api/belege/see-wiederherstellung', { kasseId }),
+}
+
+/** SEE-Ausfall-Status einer Kasse (siehe backend beleg.service). */
+export interface SeeStatus {
+  ausgefallen:      boolean
+  seit:             string | null
+  dauerMinuten:     number | null
+  fonMeldungNoetig: boolean
+}
+
+export interface SeeWiederherstellung {
+  behobenerAusfall: SeeStatus
+  sammelbeleg:      BelegResponse
 }
 
 export const berichtApi = {

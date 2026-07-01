@@ -6,6 +6,7 @@ import { kasseApi } from '../lib/api'
 import { KdsToasts } from './KdsToasts'
 import { KdsNachrichten } from './KdsNachrichten'
 import { OfflineStatusBar } from './OfflineStatusBar'
+import { SeeStatusBanner } from './SeeStatusBanner'
 import { ErrorBoundary } from './ErrorBoundary'
 
 export function Layout() {
@@ -13,6 +14,7 @@ export function Layout() {
   return (
     <div className="min-h-screen flex flex-col">
       <OfflineStatusBar />
+      <SeeStatusBanner />
       <Header />
       <main className="flex-1">
         {/* ErrorBoundary pro Route: ein Defekt in einer Seite legt nicht die
