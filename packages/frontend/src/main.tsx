@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { App } from './App'
 import { offlineManager } from './lib/offline'
 import { initTheme } from './lib/theme'
+import '@fontsource-variable/inter'
 import './index.css'
 
 // Theme (hell/dunkel) vor dem ersten Render setzen — kein Hell-Blitz

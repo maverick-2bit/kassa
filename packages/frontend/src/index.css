@@ -20,9 +20,9 @@
   --color-line-strong:var(--line-strong);  /* betonter Rahmen */
   --color-header:     var(--header);       /* dunkelblaue Kopfleiste */
 
-  /* Marken-/Akzentblau */
-  --color-brand-50:  #eff6ff;
-  --color-brand-100: #dbeafe;
+  /* Marken-/Akzentblau — Smarte Events (Logo-Royalblau) */
+  --color-brand-50:  #eef2ff;
+  --color-brand-100: #dbe4ff;
   --color-brand-500: var(--brand-500);
   --color-brand-600: var(--brand-600);
   --color-brand-700: var(--brand-700);
@@ -35,7 +35,7 @@
   --color-cat-teal:  #31708f;
   --color-cat-brown: #8a6d3b;
 
-  --font-sans: "Open Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-sans: "Inter Variable", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
 /* Helles Thema (Standard) */
@@ -48,10 +48,10 @@
   --ink-subtle: #8a95a1;
   --line:       #e2e6ea;
   --line-strong:#cdd3da;
-  --header:     #003455;
-  --brand-500:  #0072bb;
-  --brand-600:  #005a96;
-  --brand-700:  #004571;
+  --header:     #16224e;   /* Smarte-Events-Navy (Logo-Schriftzug) */
+  --brand-500:  #1d4ed8;   /* Smarte-Events-Royalblau */
+  --brand-600:  #1a44bb;
+  --brand-700:  #16388f;
   color-scheme: light;
 }
 
@@ -65,10 +65,10 @@
   --ink-subtle: #6b7783;
   --line:       #263442;
   --line-strong:#35485a;
-  --header:     #0b1a26;
-  --brand-500:  #2e90d6;
-  --brand-600:  #4aa3e0;
-  --brand-700:  #6cb6e8;
+  --header:     #0d1430;   /* dunkles Smarte-Events-Navy */
+  --brand-500:  #5b82f5;   /* aufgehelltes Royalblau für Dark Mode */
+  --brand-600:  #7599f7;
+  --brand-700:  #9bb5f9;
   color-scheme: dark;
 }
 
