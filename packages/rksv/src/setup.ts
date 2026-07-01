@@ -47,8 +47,13 @@ export interface KasseEinrichtenInput {
   uid: string
   /** Eindeutige Kassen-Identifikationsnummer (z.B. "KASSE-001") */
   kassenId: string
-  /** FinanzOnline-Zugangsdaten */
-  finanzOnline: FinanzOnlineCredentials
+  /**
+   * FinanzOnline-Zugangsdaten. Optional: Fehlen sie, wird die Kasse OHNE
+   * FinanzOnline-Registrierung eingerichtet (provisorisch, z. B. am Event) —
+   * SEE + Startbeleg werden lokal erstellt, die FON-Registrierung ist später
+   * nachzutragen.
+   */
+  finanzOnline?: FinanzOnlineCredentials
   /** 'test' für FinanzOnline-Testumgebung, 'produktion' für Echtbetrieb */
   umgebung?: 'produktion' | 'test'
   /** Gültigkeitsdauer des Zertifikats in Tagen (Standard: 1826 = 5 Jahre) */
@@ -87,6 +92,11 @@ export interface KasseEinrichtenErgebnis {
   letzterSignaturwert?: string
   /** Prüfwert von FinanzOnline (Bestätigung der Inbetriebnahme) */
   pruefwert?: string
+  /**
+   * true, wenn die Kasse bei FinanzOnline registriert und der Startbeleg
+   * geprüft wurde. false = provisorisch ohne FON eingerichtet (nachzutragen).
+   */
+  fonRegistriert: boolean
   /** Alle ausgeführten Schritte mit Status (für UI und Protokollierung) */
   schritte: EinrichtungsSchritt[]
   /** Erste fehlgeschlagene Schritt-Meldung */
@@ -124,14 +134,14 @@ export function validiereKasseEinrichtenInput(input: KasseEinrichtenInput): stri
   if (!input.kassenId?.trim()) {
     fehler.push('Kassen-ID ist erforderlich')
   }
-  if (!input.finanzOnline?.teilnehmerId?.trim()) {
-    fehler.push('FinanzOnline Teilnehmer-ID (TID) ist erforderlich')
-  }
-  if (!input.finanzOnline?.benutzerkennung?.trim()) {
-    fehler.push('FinanzOnline Benutzerkennung (BenID) ist erforderlich')
-  }
-  if (!input.finanzOnline?.pin?.trim()) {
-    fehler.push('FinanzOnline PIN ist erforderlich')
+  // FinanzOnline ist optional (provisorische Einrichtung). Wird aber ETWAS
+  // angegeben, müssen alle drei Felder vorhanden sein.
+  const fo = input.finanzOnline
+  const foAngegeben = !!(fo && (fo.teilnehmerId?.trim() || fo.benutzerkennung?.trim() || fo.pin?.trim()))
+  if (foAngegeben) {
+    if (!fo!.teilnehmerId?.trim())    fehler.push('FinanzOnline Teilnehmer-ID (TID) ist erforderlich')
+    if (!fo!.benutzerkennung?.trim()) fehler.push('FinanzOnline Benutzerkennung (BenID) ist erforderlich')
+    if (!fo!.pin?.trim())             fehler.push('FinanzOnline PIN ist erforderlich')
   }
 
   return fehler
@@ -190,7 +200,7 @@ export async function kasseAutomatischEinrichten(
   if (validierungFehler.length > 0) {
     const meldung = validierungFehler.join('; ')
     log('eingabe-validierung', 'fehler', meldung)
-    return { erfolgreich: false, schritte, fehler: meldung }
+    return { erfolgreich: false, fonRegistriert: false, schritte, fehler: meldung }
   }
   log('eingabe-validierung', 'erfolgreich', 'Eingabedaten gültig')
 
@@ -216,42 +226,51 @@ export async function kasseAutomatischEinrichten(
   } catch (err) {
     const meldung = err instanceof Error ? err.message : String(err)
     log('see-generierung', 'fehler', `Zertifikatsgenerierung fehlgeschlagen: ${meldung}`)
-    return { erfolgreich: false, schritte, fehler: meldung }
+    return { erfolgreich: false, fonRegistriert: false, schritte, fehler: meldung }
+  }
+
+  // FinanzOnline ist optional: fehlen die Zugangsdaten, wird die Kasse
+  // provisorisch (ohne FON-Registrierung) eingerichtet.
+  const fo = input.finanzOnline
+  const fonAktiv = !!(fo && fo.teilnehmerId?.trim() && fo.benutzerkennung?.trim() && fo.pin?.trim())
+
+  // -------------------------------------------------------------------------
+  // 2 + 3. FinanzOnline-Registrierung (SEE + Kasse) — nur wenn Zugangsdaten da
+  // -------------------------------------------------------------------------
+  if (fonAktiv) {
+    log('finanzonline-registrierung', 'startet',
+      `Registriere SEE und Kasse bei FinanzOnline (${umgebung})...`)
+
+    let registrierungErfolg: boolean
+    let registrierungFehler: string | undefined
+    try {
+      const ergebnis = await foClient.kasseInBetriebNehmen({
+        kassenId:      input.kassenId,
+        uid:           input.uid,
+        zertifikatDER: see.zertifikatDER,
+        credentials:   fo!,
+      })
+      registrierungErfolg = ergebnis.erfolgreich
+      registrierungFehler = ergebnis.fehler
+    } catch (err) {
+      registrierungErfolg = false
+      registrierungFehler = err instanceof Error ? err.message : String(err)
+    }
+
+    if (!registrierungErfolg) {
+      const meldung = registrierungFehler ?? 'Unbekannter Fehler'
+      log('finanzonline-registrierung', 'fehler', meldung)
+      return { erfolgreich: false, fonRegistriert: false, see, schritte, fehler: meldung }
+    }
+    log('finanzonline-registrierung', 'erfolgreich',
+      'SEE und Kasse erfolgreich bei FinanzOnline registriert')
+  } else {
+    log('finanzonline-registrierung', 'erfolgreich',
+      'FinanzOnline übersprungen — provisorische Einrichtung, Registrierung ist nachzutragen')
   }
 
   // -------------------------------------------------------------------------
-  // 2 + 3. FinanzOnline-Registrierung (SEE + Kasse)
-  // -------------------------------------------------------------------------
-  log('finanzonline-registrierung', 'startet',
-    `Registriere SEE und Kasse bei FinanzOnline (${umgebung})...`)
-
-  let registrierungErfolg: boolean
-  let registrierungFehler: string | undefined
-
-  try {
-    const ergebnis = await foClient.kasseInBetriebNehmen({
-      kassenId:      input.kassenId,
-      uid:           input.uid,
-      zertifikatDER: see.zertifikatDER,
-      credentials:   input.finanzOnline,
-    })
-    registrierungErfolg = ergebnis.erfolgreich
-    registrierungFehler = ergebnis.fehler
-  } catch (err) {
-    registrierungErfolg = false
-    registrierungFehler = err instanceof Error ? err.message : String(err)
-  }
-
-  if (!registrierungErfolg) {
-    const meldung = registrierungFehler ?? 'Unbekannter Fehler'
-    log('finanzonline-registrierung', 'fehler', meldung)
-    return { erfolgreich: false, see, schritte, fehler: meldung }
-  }
-  log('finanzonline-registrierung', 'erfolgreich',
-    'SEE und Kasse erfolgreich bei FinanzOnline registriert')
-
-  // -------------------------------------------------------------------------
-  // 4. Startbeleg erstellen
+  // 4. Startbeleg erstellen (immer)
   // -------------------------------------------------------------------------
   log('startbeleg-erstellung', 'startet', 'Erstelle Startbeleg...')
 
@@ -264,41 +283,46 @@ export async function kasseAutomatischEinrichten(
   } catch (err) {
     const meldung = err instanceof Error ? err.message : String(err)
     log('startbeleg-erstellung', 'fehler', `Startbeleg-Erstellung fehlgeschlagen: ${meldung}`)
-    return { erfolgreich: false, see, schritte, fehler: meldung }
+    return { erfolgreich: false, fonRegistriert: false, see, schritte, fehler: meldung }
   }
 
   // -------------------------------------------------------------------------
-  // 5. Startbeleg bei FinanzOnline prüfen lassen
+  // 5. Startbeleg bei FinanzOnline prüfen lassen — nur wenn FON aktiv
   // -------------------------------------------------------------------------
-  log('startbeleg-pruefung', 'startet', 'Lasse Startbeleg von FinanzOnline prüfen...')
-
-  let pruefungErfolg: boolean
   let pruefwert: string | undefined
-  let pruefungFehler: string | undefined
+  if (fonAktiv) {
+    log('startbeleg-pruefung', 'startet', 'Lasse Startbeleg von FinanzOnline prüfen...')
 
-  try {
-    const pruefung = await foClient.startbelegPruefen(startbeleg, input.finanzOnline)
-    pruefungErfolg = pruefung.erfolgreich
-    pruefwert      = pruefung.pruefwert
-    pruefungFehler = pruefung.fehler
-  } catch (err) {
-    pruefungErfolg = false
-    pruefungFehler = err instanceof Error ? err.message : String(err)
-  }
+    let pruefungErfolg: boolean
+    let pruefungFehler: string | undefined
+    try {
+      const pruefung = await foClient.startbelegPruefen(startbeleg, fo!)
+      pruefungErfolg = pruefung.erfolgreich
+      pruefwert      = pruefung.pruefwert
+      pruefungFehler = pruefung.fehler
+    } catch (err) {
+      pruefungErfolg = false
+      pruefungFehler = err instanceof Error ? err.message : String(err)
+    }
 
-  if (!pruefungErfolg) {
-    const meldung = pruefungFehler ?? 'Unbekannter Fehler'
-    log('startbeleg-pruefung', 'fehler', meldung)
-    return { erfolgreich: false, see, startbeleg, schritte, fehler: meldung }
+    if (!pruefungErfolg) {
+      const meldung = pruefungFehler ?? 'Unbekannter Fehler'
+      log('startbeleg-pruefung', 'fehler', meldung)
+      return { erfolgreich: false, fonRegistriert: false, see, startbeleg, schritte, fehler: meldung }
+    }
+    log('startbeleg-pruefung', 'erfolgreich',
+      pruefwert ? `Startbeleg geprüft (Prüfwert: ${pruefwert})` : 'Startbeleg geprüft')
+  } else {
+    log('startbeleg-pruefung', 'erfolgreich',
+      'Startbeleg-Prüfung übersprungen — bei FON-Nachtrag nachzuholen')
   }
-  log('startbeleg-pruefung', 'erfolgreich',
-    pruefwert ? `Startbeleg geprüft (Prüfwert: ${pruefwert})` : 'Startbeleg geprüft')
 
   // -------------------------------------------------------------------------
   // Erfolgreich abgeschlossen
   // -------------------------------------------------------------------------
   return {
     erfolgreich:         true,
+    fonRegistriert:      fonAktiv,
     see,
     startbeleg,
     letzterSignaturwert: startbeleg.signaturwert,

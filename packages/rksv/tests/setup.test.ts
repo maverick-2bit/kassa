@@ -91,11 +91,16 @@ describe('validiereKasseEinrichtenInput', () => {
     expect(fehler).toContain('Kassen-ID ist erforderlich')
   })
 
-  it('lehnt fehlende FinanzOnline-Daten ab', () => {
+  it('erlaubt komplett fehlende FinanzOnline-Daten (provisorische Einrichtung)', () => {
+    const { finanzOnline: _weg, ...ohneFo } = validerInput()
+    const fehler = validiereKasseEinrichtenInput(ohneFo as Parameters<typeof validiereKasseEinrichtenInput>[0])
+    expect(fehler).toHaveLength(0)
+  })
+
+  it('lehnt TEILWEISE FinanzOnline-Daten ab (alle drei oder keine)', () => {
     const fehler = validiereKasseEinrichtenInput(validerInput({
-      finanzOnline: { teilnehmerId: '', benutzerkennung: '', pin: '' },
+      finanzOnline: { teilnehmerId: 'TID-1', benutzerkennung: '', pin: '' },
     }))
-    expect(fehler.some(f => f.includes('Teilnehmer-ID'))).toBe(true)
     expect(fehler.some(f => f.includes('Benutzerkennung'))).toBe(true)
     expect(fehler.some(f => f.includes('PIN'))).toBe(true)
   })
@@ -166,6 +171,36 @@ describe('kasseAutomatischEinrichten – Happy Path', () => {
       expect.objectContaining({ belegTyp: 'Startbeleg' }),
       input.finanzOnline,
     )
+  })
+
+  it('setzt fonRegistriert=true bei erfolgreicher FON-Registrierung', async () => {
+    const ergebnis = await kasseAutomatischEinrichten(validerInput(), { finanzOnlineClient: mockClient() })
+    expect(ergebnis.fonRegistriert).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Provisorische Einrichtung (ohne FinanzOnline)
+// ---------------------------------------------------------------------------
+
+describe('kasseAutomatischEinrichten – ohne FinanzOnline (provisorisch)', () => {
+  it('richtet ohne FON-Daten ein, ruft den FON-Client NICHT, fonRegistriert=false', async () => {
+    const client = mockClient()
+    const { finanzOnline: _weg, ...ohneFo } = validerInput()
+
+    const ergebnis = await kasseAutomatischEinrichten(
+      ohneFo as Parameters<typeof kasseAutomatischEinrichten>[0],
+      { finanzOnlineClient: client },
+    )
+
+    expect(ergebnis.erfolgreich).toBe(true)
+    expect(ergebnis.fonRegistriert).toBe(false)
+    expect(ergebnis.see).toBeDefined()
+    expect(ergebnis.startbeleg?.belegTyp).toBe('Startbeleg')
+    expect(ergebnis.pruefwert).toBeUndefined()
+    // FON wird gar nicht kontaktiert
+    expect(client.kasseInBetriebNehmen).not.toHaveBeenCalled()
+    expect(client.startbelegPruefen).not.toHaveBeenCalled()
   })
 })
 

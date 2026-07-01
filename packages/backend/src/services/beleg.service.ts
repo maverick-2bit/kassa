@@ -40,7 +40,7 @@ import type {
 } from '@kassa/shared'
 import { ArtikelPositionSchema } from '@kassa/shared'
 import type { Db } from '../db/client.js'
-import { artikel, belege, kassen, kategorien, modifikatoren } from '../db/schema.js'
+import { artikel, belege, kassen, kategorien, mandanten, modifikatoren } from '../db/schema.js'
 import { erstelleKunde, ladeKundeSnapshot } from './kunde.service.js'
 import { decryptPrivateKey } from '../crypto/master-key.js'
 
@@ -114,7 +114,10 @@ async function signiereImTx(
     const kasse = kasseRows[0]
     if (!kasse)                    throw new BelegError(404, 'Kasse nicht gefunden')
     if (kasse.status !== 'aktiv')  throw new BelegError(409, `Kasse ist ${kasse.status}, keine neuen Belege möglich`)
-    if (!kasse.bei_fo_registriert) throw new BelegError(409, 'Kasse ist nicht bei FinanzOnline registriert')
+    // Hinweis: Eine NICHT bei FinanzOnline registrierte Kasse darf provisorisch
+    // Belege ausstellen (Event-Einrichtung ohne FON-Daten). Die Belege werden
+    // regulär signiert; die FON-Registrierung ist zeitnah nachzutragen. Das UI
+    // weist per Warnbanner darauf hin (siehe fo-Status/„FON nachtragen").
 
     // Zertifikats-Ablauf prüfen
     if (kasse.seeGueltigBis <= new Date()) {
@@ -637,6 +640,81 @@ export async function meldeSeeWiederherstellung(
     sammelbeleg: toDto(persisted, signed.positionen),
     ...(fon && { fonMeldung: fon }),
   }
+}
+
+// ---------------------------------------------------------------------------
+// FinanzOnline-Registrierung (Status + Nachtrag bei provisorischer Einrichtung)
+// ---------------------------------------------------------------------------
+
+export interface FoRegistrierungStatus {
+  registriert:    boolean
+  registriertAm:  string | null
+}
+
+/** FON-Registrierungsstatus einer Kasse (für den „ausstehend"-Warnbanner). */
+export async function holeFoRegistrierungStatus(kasseId: string, deps: BelegServiceDeps): Promise<FoRegistrierungStatus> {
+  const rows = await deps.db
+    .select({ reg: kassen.bei_fo_registriert, am: kassen.registriert_am })
+    .from(kassen).where(eq(kassen.id, kasseId)).limit(1)
+  if (!rows[0]) throw new BelegError(404, 'Kasse nicht gefunden')
+  return { registriert: rows[0].reg, registriertAm: rows[0].am ? rows[0].am.toISOString() : null }
+}
+
+/**
+ * Trägt die FinanzOnline-Registrierung einer provisorisch eingerichteten Kasse
+ * nach: registriert SEE + Kasse bei FON und lässt den bestehenden Startbeleg
+ * prüfen. Erst bei Erfolg wird die Kasse als registriert markiert.
+ */
+export async function registriereKasseBeiFinanzOnline(
+  kasseId:     string,
+  credentials: FinanzOnlineCredentials,
+  deps:        BelegServiceDeps,
+): Promise<FoRegistrierungStatus> {
+  const rows = await deps.db
+    .select({
+      kassenId:          kassen.kassenId,
+      umgebung:          kassen.umgebung,
+      seeZertifikatDer:  kassen.seeZertifikatDer,
+      registriert:       kassen.bei_fo_registriert,
+      uid:               mandanten.uid,
+    })
+    .from(kassen)
+    .innerJoin(mandanten, eq(kassen.mandantId, mandanten.id))
+    .where(eq(kassen.id, kasseId)).limit(1)
+  const k = rows[0]
+  if (!k) throw new BelegError(404, 'Kasse nicht gefunden')
+  if (k.registriert) throw new BelegError(409, 'Kasse ist bereits bei FinanzOnline registriert')
+
+  const client = deps.finanzOnlineClient
+    ?? new FinanzOnlineClient(k.umgebung === 'test' ? 'test' : 'produktion')
+  const zertifikatDER = Buffer.from(k.seeZertifikatDer, 'base64')
+
+  // 1. SEE + Kasse bei FinanzOnline registrieren
+  const reg = await client.kasseInBetriebNehmen({ kassenId: k.kassenId, uid: k.uid, zertifikatDER, credentials })
+  if (!reg.erfolgreich) throw new BelegError(502, reg.fehler ?? 'FinanzOnline-Registrierung fehlgeschlagen')
+
+  // 2. Bestehenden Startbeleg prüfen lassen
+  const [sb] = await deps.db
+    .select({ code: belege.maschinenlesbareCode })
+    .from(belege)
+    .where(and(eq(belege.kasseId, kasseId), eq(belege.belegTyp, 'Startbeleg'))).limit(1)
+  let pruefwert: string | undefined
+  if (sb) {
+    const pruef = await client.startbelegPruefen({ maschinenlesbareCode: sb.code } as unknown as SignedBeleg, credentials)
+    if (!pruef.erfolgreich) throw new BelegError(502, pruef.fehler ?? 'Startbeleg-Prüfung fehlgeschlagen')
+    pruefwert = pruef.pruefwert
+  }
+
+  // 3. Kasse als registriert markieren
+  const jetzt = new Date()
+  await deps.db.update(kassen).set({
+    bei_fo_registriert: true,
+    registriert_am:     jetzt,
+    ...(pruefwert && { fo_pruefwert: pruefwert }),
+    updatedAt:          jetzt,
+  }).where(eq(kassen.id, kasseId))
+
+  return { registriert: true, registriertAm: jetzt.toISOString() }
 }
 
 // ---------------------------------------------------------------------------
