@@ -216,6 +216,65 @@ export class FinanzOnlineClient {
     }
     return ergebnis
   }
+
+  // -------------------------------------------------------------------------
+  // SEE-Ausfall / Wiederinbetriebnahme melden
+  // -------------------------------------------------------------------------
+
+  /**
+   * Meldet den Ausfall der Signaturerstellungseinheit (SEE) an FinanzOnline.
+   * RKSV verlangt die Meldung eines Ausfalls, der länger als 48 Stunden dauert.
+   *
+   * Hinweis: Die Element-/Action-Namen folgen dem RKSV-WebService; sie sind vor
+   * dem Produktivbetrieb gegen die aktuelle BMF-WSDL zu verifizieren.
+   */
+  async seeAusfallMelden(
+    kassenId: string,
+    seriennummerZertifikat: string,
+    credentials: FinanzOnlineCredentials,
+  ): Promise<RegistrierungErgebnis> {
+    return this.seeStatusMelden('SEEAusfall', kassenId, seriennummerZertifikat, credentials)
+  }
+
+  /**
+   * Meldet die Wiederinbetriebnahme der SEE nach einem Ausfall an FinanzOnline.
+   */
+  async seeWiederinbetriebnahmeMelden(
+    kassenId: string,
+    seriennummerZertifikat: string,
+    credentials: FinanzOnlineCredentials,
+  ): Promise<RegistrierungErgebnis> {
+    return this.seeStatusMelden('SEEWiederinbetriebnahme', kassenId, seriennummerZertifikat, credentials)
+  }
+
+  private async seeStatusMelden(
+    operation: 'SEEAusfall' | 'SEEWiederinbetriebnahme',
+    kassenId: string,
+    seriennummerZertifikat: string,
+    credentials: FinanzOnlineCredentials,
+  ): Promise<RegistrierungErgebnis> {
+    const body = `
+      <rksv:${operation}>
+        <rksv:TID>${xmlEscape(credentials.teilnehmerId)}</rksv:TID>
+        <rksv:BenID>${xmlEscape(credentials.benutzerkennung)}</rksv:BenID>
+        <rksv:PIN>${xmlEscape(credentials.pin)}</rksv:PIN>
+        <rksv:KassenID>${xmlEscape(kassenId)}</rksv:KassenID>
+        <rksv:SeriennummerZertifikat>${xmlEscape(seriennummerZertifikat)}</rksv:SeriennummerZertifikat>
+      </rksv:${operation}>`
+
+    const xml  = await soapRequest(
+      this.endpoint,
+      `https://finanzonline.bmf.gv.at/fon/ws/rksv/${operation}`,
+      body,
+    )
+    const code = extractSoapValue(xml, 'Code')
+
+    const ergebnis: RegistrierungErgebnis = { erfolgreich: code === '000' }
+    if (code !== '000') {
+      ergebnis.fehler = `${operation} fehlgeschlagen (Code ${code}): ${extractSoapValue(xml, 'Info') ?? ''}`
+    }
+    return ergebnis
+  }
 }
 
 // ---------------------------------------------------------------------------

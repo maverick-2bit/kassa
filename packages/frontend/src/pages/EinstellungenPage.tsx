@@ -447,6 +447,9 @@ function SeeAusfallSektion() {
   const identity    = getKasseIdentity()!
   const queryClient = useQueryClient()
   const [meldung, setMeldung] = useState<{ typ: 'ok' | 'fehler'; text: string } | null>(null)
+  const [tid, setTid]       = useState('')
+  const [benId, setBenId]   = useState('')
+  const [pin, setPin]       = useState('')
 
   const statusQuery = useQuery({
     queryKey: ['see-status', identity.kasseId],
@@ -457,17 +460,29 @@ function SeeAusfallSektion() {
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['see-status', identity.kasseId] })
 
+  // FON-Zugangsdaten nur mitschicken, wenn alle drei Felder ausgefüllt sind.
+  const fonCreds = () =>
+    tid.trim() && benId.trim() && pin.trim()
+      ? { teilnehmerId: tid.trim(), benutzerkennung: benId.trim(), pin: pin.trim() }
+      : undefined
+
+  const fonText = (fon?: { versucht: boolean; erfolgreich: boolean; fehler?: string }) =>
+    !fon?.versucht ? ''
+      : fon.erfolgreich ? ' FinanzOnline-Meldung übermittelt.'
+      : ` FinanzOnline-Meldung fehlgeschlagen: ${fon.fehler ?? 'unbekannt'}.`
+
   const melden = useMutation({
-    mutationFn: () => belegApi.seeAusfallMelden(identity.kasseId),
-    onSuccess: () => { invalidate(); setMeldung({ typ: 'ok', text: 'SEE-Ausfall gemeldet — neue Belege tragen den Ausfallmarker.' }) },
+    mutationFn: () => belegApi.seeAusfallMelden(identity.kasseId, fonCreds()),
+    onSuccess: (res) => { invalidate(); setMeldung({ typ: 'ok', text: `SEE-Ausfall gemeldet — neue Belege tragen den Ausfallmarker.${fonText(res.fonMeldung)}` }) },
     onError: (err) => setMeldung({ typ: 'fehler', text: err instanceof Error ? err.message : String(err) }),
   })
 
   const wiederherstellen = useMutation({
-    mutationFn: () => belegApi.seeWiederherstellen(identity.kasseId),
+    mutationFn: () => belegApi.seeWiederherstellen(identity.kasseId, fonCreds()),
     onSuccess: (res) => {
       invalidate()
-      setMeldung({ typ: 'ok', text: `Wieder in Betrieb. Sammelbeleg #${res.sammelbeleg.belegNummer} signiert.` })
+      setPin('')
+      setMeldung({ typ: 'ok', text: `Wieder in Betrieb. Sammelbeleg #${res.sammelbeleg.belegNummer} signiert.${fonText(res.fonMeldung)}` })
     },
     onError: (err) => setMeldung({ typ: 'fehler', text: err instanceof Error ? err.message : String(err) }),
   })
@@ -496,6 +511,28 @@ function SeeAusfallSektion() {
           <><strong>In Betrieb</strong> — Belege werden signiert.</>
         )}
       </div>
+
+      {/* Optionale FinanzOnline-Meldung — nur gesendet, wenn alle drei Felder gefüllt sind */}
+      <details className="mb-4 rounded-md border border-gray-200 bg-gray-50 p-3">
+        <summary className="cursor-pointer text-sm font-medium text-gray-700">
+          FinanzOnline-Meldung (optional)
+        </summary>
+        <p className="mt-2 text-xs text-gray-500">
+          Nur nötig, um den Ausfall bzw. die Wiederinbetriebnahme direkt an FinanzOnline zu übermitteln
+          (Ausfall &gt; 48 h ist meldepflichtig). Die Zugangsdaten werden nicht gespeichert.
+        </p>
+        <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <Field label="Teilnehmer-ID">
+            <Input value={tid} onChange={e => setTid(e.target.value)} autoComplete="off" />
+          </Field>
+          <Field label="Benutzerkennung">
+            <Input value={benId} onChange={e => setBenId(e.target.value)} autoComplete="off" />
+          </Field>
+          <Field label="PIN">
+            <Input type="password" value={pin} onChange={e => setPin(e.target.value)} autoComplete="off" />
+          </Field>
+        </div>
+      </details>
 
       <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-200">
         {!ausgefallen ? (

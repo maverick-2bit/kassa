@@ -15,8 +15,10 @@ import type { FinanzOnlineClient } from '@kassa/rksv'
 export function erstelleStubFinanzOnlineClient(): FinanzOnlineClient {
   const ok = (pruefwert?: string) => Promise.resolve({ erfolgreich: true, ...(pruefwert && { pruefwert }) })
   return {
-    kasseInBetriebNehmen:     () => ok(),
-    startbelegPruefen:        () => ok('STUB-PRUEFWERT'),
-    kasseAusserBetriebNehmen: () => ok(),
+    kasseInBetriebNehmen:          () => ok(),
+    startbelegPruefen:             () => ok('STUB-PRUEFWERT'),
+    kasseAusserBetriebNehmen:      () => ok(),
+    seeAusfallMelden:              () => ok(),
+    seeWiederinbetriebnahmeMelden: () => ok(),
   } as unknown as FinanzOnlineClient
 }

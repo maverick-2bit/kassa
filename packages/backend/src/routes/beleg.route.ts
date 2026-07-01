@@ -52,6 +52,16 @@ const ListQuerySchema = z.object({
   kundeId: z.string().uuid().optional(),
 })
 
+/** SEE-Meldung: kasseId + optionale FinanzOnline-Zugangsdaten (für die FON-Meldung). */
+const SeeMeldungBodySchema = z.object({
+  kasseId: z.string().uuid(),
+  credentials: z.object({
+    teilnehmerId:    z.string().min(1),
+    benutzerkennung: z.string().min(1),
+    pin:             z.string().min(1),
+  }).optional(),
+})
+
 const DepExportQuerySchema = z.object({
   kasseId:  z.string().uuid(),
   vonDatum: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -149,11 +159,11 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
   })
 
   fastify.post('/belege/see-ausfall', guard, async (request, reply) => {
-    const parsed = z.object({ kasseId: z.string().uuid() }).safeParse(request.body)
+    const parsed = SeeMeldungBodySchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     if (!(await pruefeKasseScope(request, reply, opts.deps, parsed.data.kasseId))) return
     try {
-      return reply.send(await meldeSeeAusfall(parsed.data.kasseId, opts.deps))
+      return reply.send(await meldeSeeAusfall(parsed.data.kasseId, opts.deps, parsed.data.credentials))
     } catch (err) {
       if (err instanceof BelegError) return reply.status(err.httpStatus).send({ fehler: err.message })
       fastify.log.error({ err }, 'SEE-Ausfall melden fehlgeschlagen')
@@ -162,11 +172,11 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
   })
 
   fastify.post('/belege/see-wiederherstellung', guard, async (request, reply) => {
-    const parsed = z.object({ kasseId: z.string().uuid() }).safeParse(request.body)
+    const parsed = SeeMeldungBodySchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     if (!(await pruefeKasseScope(request, reply, opts.deps, parsed.data.kasseId))) return
     try {
-      const ergebnis = await meldeSeeWiederherstellung(parsed.data.kasseId, opts.deps)
+      const ergebnis = await meldeSeeWiederherstellung(parsed.data.kasseId, opts.deps, parsed.data.credentials)
       tryDruckeBeleg(opts.deps.db, ergebnis.sammelbeleg.id, fastify.log)
       return reply.status(201).send(ergebnis)
     } catch (err) {

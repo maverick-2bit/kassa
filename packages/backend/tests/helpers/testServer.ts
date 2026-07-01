@@ -55,7 +55,11 @@ export async function buildTestServer(db: Db, opts: BuildTestServerOptions = {})
       masterPassphrase: TEST_MASTER,
       ...(opts.finanzOnlineClient && { rksvOptionen: { finanzOnlineClient: opts.finanzOnlineClient } }),
     },
-    belegDeps: { db, masterPassphrase: TEST_MASTER },
+    belegDeps: {
+      db,
+      masterPassphrase: TEST_MASTER,
+      ...(opts.finanzOnlineClient && { finanzOnlineClient: opts.finanzOnlineClient }),
+    },
   })
 
   await fastify.ready()

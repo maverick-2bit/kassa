@@ -31,13 +31,21 @@ import { belege, kassen } from '../../src/db/schema.js'
 const ADMIN_EMAIL    = 'admin@see-ausfall.at'
 const ADMIN_PASSWORT = 'see-ausfall-passwort-123'
 
+// Spies für die FON-SEE-Meldungen (werden pro Test geprüft)
+const seeAusfallSpy = vi.fn().mockResolvedValue({ erfolgreich: true })
+const seeWiederSpy  = vi.fn().mockResolvedValue({ erfolgreich: true })
+
 function mockFoClient(): FinanzOnlineClient {
   return {
-    kasseInBetriebNehmen:     vi.fn().mockResolvedValue({ erfolgreich: true }),
-    startbelegPruefen:        vi.fn().mockResolvedValue({ erfolgreich: true, pruefwert: 'SA-PW' }),
-    kasseAusserBetriebNehmen: vi.fn(),
+    kasseInBetriebNehmen:          vi.fn().mockResolvedValue({ erfolgreich: true }),
+    startbelegPruefen:             vi.fn().mockResolvedValue({ erfolgreich: true, pruefwert: 'SA-PW' }),
+    kasseAusserBetriebNehmen:      vi.fn(),
+    seeAusfallMelden:              seeAusfallSpy,
+    seeWiederinbetriebnahmeMelden: seeWiederSpy,
   } as unknown as FinanzOnlineClient
 }
+
+const FON_CREDS = { teilnehmerId: 'TID-SA', benutzerkennung: 'BID-SA', pin: 'PIN-SA' }
 
 const setupInput = {
   firmenname: 'SEE-Ausfall GmbH',
@@ -162,14 +170,45 @@ describe('SEE-Ausfall + Wiederinbetriebnahme (Integration, echtes PostgreSQL)', 
     expect(status.dauerMinuten).toBeGreaterThanOrEqual(0)
   })
 
-  it('Wiederinbetriebnahme: signierter Sammelbeleg, Flag zurückgesetzt', async () => {
+  it('Ausfall-Meldung mit Zugangsdaten sendet die FON-SEE-Ausfallmeldung', async () => {
+    seeAusfallSpy.mockClear()
     const res = await srv.fastify.inject({
-      method: 'POST', url: '/api/belege/see-wiederherstellung', headers: auth(), payload: { kasseId },
+      method: 'POST', url: '/api/belege/see-ausfall', headers: auth(),
+      payload: { kasseId, credentials: FON_CREDS },
+    })
+    expect(res.statusCode).toBe(200)
+    const status = res.json()
+    // FON-Meldung wurde versucht und war (Stub) erfolgreich
+    expect(status.fonMeldung).toEqual({ versucht: true, erfolgreich: true })
+    // Client wurde mit KID + Zert-SN + Zugangsdaten aufgerufen
+    expect(seeAusfallSpy).toHaveBeenCalledTimes(1)
+    expect(seeAusfallSpy.mock.calls[0]![0]).toBe(kassenKID)
+    expect(seeAusfallSpy.mock.calls[0]![2]).toEqual(FON_CREDS)
+  })
+
+  it('ohne Zugangsdaten wird KEINE FON-Meldung gesendet', async () => {
+    seeAusfallSpy.mockClear()
+    const res = await srv.fastify.inject({
+      method: 'POST', url: '/api/belege/see-ausfall', headers: auth(), payload: { kasseId },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().fonMeldung).toBeUndefined()
+    expect(seeAusfallSpy).not.toHaveBeenCalled()
+  })
+
+  it('Wiederinbetriebnahme: signierter Sammelbeleg, Flag zurückgesetzt, FON gemeldet', async () => {
+    seeWiederSpy.mockClear()
+    const res = await srv.fastify.inject({
+      method: 'POST', url: '/api/belege/see-wiederherstellung', headers: auth(),
+      payload: { kasseId, credentials: FON_CREDS },
     })
     expect(res.statusCode).toBe(201)
     const ergebnis = res.json()
     expect(ergebnis.behobenerAusfall.ausgefallen).toBe(true) // Status VOR der Behebung
     expect(ergebnis.sammelbeleg.belegTyp).toBe('Nullbeleg')
+    expect(ergebnis.fonMeldung).toEqual({ versucht: true, erfolgreich: true })
+    expect(seeWiederSpy).toHaveBeenCalledTimes(1)
+    expect(seeWiederSpy.mock.calls[0]![0]).toBe(kassenKID)
 
     // Der Sammelbeleg ist echt signiert
     const [row] = await idb.db.select().from(belege).where(eq(belege.id, ergebnis.sammelbeleg.id))
