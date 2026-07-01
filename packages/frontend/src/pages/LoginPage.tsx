@@ -31,7 +31,9 @@ type Tab = 'passwort' | 'pin'
 
 export function LoginPage() {
   const navigate   = useNavigate()
-  const [tab, setTab] = useState<Tab>('pin')
+  // Ohne bekannte Kasse (frisches Gerät) zuerst den E-Mail-Login zeigen — der
+  // PIN-Login setzt eine bereits gewählte Kasse voraus.
+  const [tab, setTab] = useState<Tab>(() => (getKasseIdentity() ? 'pin' : 'passwort'))
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 bg-panel-2">
@@ -211,7 +213,12 @@ function PasswortLoginForm({ onNavigate }: { onNavigate: (pfad: string) => void 
     mutationFn: authApi.login,
     onSuccess: async (data) => {
       setAuth(data)
-      if (data.kassen.length === 1 && data.kassen[0]) {
+      // Aktive Kasse sicherstellen: wenn keine oder eine nicht (mehr) zugewiesene
+      // Kasse gewählt ist, auf die erste umschalten. Wichtig bei mehreren Kassen —
+      // sonst bleibt keine aktive Kasse gesetzt und Seiten crashen.
+      const aktuelle = getKasseIdentity()
+      const passt = aktuelle && data.kassen.some(k => k.id === aktuelle.kasseId)
+      if (!passt && data.kassen[0]) {
         setKasseIdentity({ mandantId: data.mandant.id, kasseId: data.kassen[0].id })
       }
       const kasseId = getKasseIdentity()?.kasseId

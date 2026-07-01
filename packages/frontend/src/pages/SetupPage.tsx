@@ -1,5 +1,5 @@
 import { useMutation } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import type { SetupInput } from '@kassa/shared'
 import { postSetup } from '../lib/api'
 import { setKasseIdentity } from '../lib/kasse'
@@ -97,6 +97,12 @@ function Header() {
       </h1>
       <p className="mt-2 text-sm text-ink-muted">
         Einmalige Anmeldung bei FinanzOnline gemäß RKSV
+      </p>
+      <p className="mt-3 text-sm text-ink-muted">
+        Kasse bereits eingerichtet?{' '}
+        <Link to="/login" className="font-medium text-brand-600 hover:underline">
+          Zur Anmeldung
+        </Link>
       </p>
     </header>
   )
