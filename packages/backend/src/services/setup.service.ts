@@ -77,7 +77,7 @@ export async function fuehreSetupDurch(
     firmenname:   input.firmenname,
     uid:          input.uid,
     kassenId:     input.kassenId,
-    finanzOnline: input.finanzOnline,
+    ...(input.finanzOnline && { finanzOnline: input.finanzOnline }),
     umgebung:     input.umgebung,
     ...(input.zertifikatGueltigkeitTage !== undefined && {
       zertifikatGueltigkeitTage: input.zertifikatGueltigkeitTage,
@@ -141,9 +141,9 @@ export async function fuehreSetupDurch(
       umsatzzaehlerCent:   0n,
       letzteBelegNummer:   startbeleg.belegNummer,
       letzterSignaturwert: startbeleg.signaturwert,
-      bei_fo_registriert:  true,
+      bei_fo_registriert:  ergebnis.fonRegistriert,
       ...(ergebnis.pruefwert && { fo_pruefwert: ergebnis.pruefwert }),
-      registriert_am:      new Date(),
+      ...(ergebnis.fonRegistriert && { registriert_am: new Date() }),
     }).returning({ id: kassen.id })
 
     if (!kasse) throw new Error('Kasse konnte nicht angelegt werden')

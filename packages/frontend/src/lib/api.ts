@@ -547,6 +547,17 @@ export const belegApi = {
     request<SeeStatus>('POST', '/api/belege/see-ausfall', { kasseId, ...(credentials && { credentials }) }),
   seeWiederherstellen: (kasseId: string, credentials?: FonCredentials) =>
     request<SeeWiederherstellung>('POST', '/api/belege/see-wiederherstellung', { kasseId, ...(credentials && { credentials }) }),
+
+  // FinanzOnline-Registrierung (Status + Nachtrag bei provisorischer Einrichtung)
+  foStatus: (kasseId: string) =>
+    request<FoRegistrierungStatus>('GET', `/api/belege/fo-status?kasseId=${kasseId}`),
+  foRegistrieren: (kasseId: string, credentials: FonCredentials) =>
+    request<FoRegistrierungStatus>('POST', '/api/belege/fo-registrierung', { kasseId, credentials }),
+}
+
+export interface FoRegistrierungStatus {
+  registriert:   boolean
+  registriertAm: string | null
 }
 
 /** FinanzOnline-Zugangsdaten (nur für die optionale SEE-Meldung, nicht gespeichert). */

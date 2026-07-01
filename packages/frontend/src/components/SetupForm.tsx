@@ -94,27 +94,33 @@ export function SetupForm({ onSubmit, loading = false, error }: Props) {
         </Field>
       </fieldset>
 
-      {/* Sektion: FinanzOnline */}
+      {/* Sektion: FinanzOnline (optional) */}
       <fieldset className="space-y-4">
         <SectionHeader
-          title="FinanzOnline-Zugang"
-          subtitle="Zugangsdaten Ihres FinanzOnline-Kontos. Werden nur für die Registrierung verwendet und nicht gespeichert."
+          title="FinanzOnline-Zugang (optional)"
+          subtitle="Zugangsdaten Ihres FinanzOnline-Kontos — nur für die Registrierung verwendet, nicht gespeichert."
         />
-        <Field label="Teilnehmer-ID (TID)" htmlFor="tid" required error={errors.finanzOnline?.teilnehmerId?.message}>
+        <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+          <strong>Kurzfristig ohne FinanzOnline?</strong> Diese Felder leer lassen — die Kasse wird
+          dann <em>provisorisch</em> eingerichtet und kann sofort kassieren. Die FinanzOnline-Registrierung
+          ist anschließend zeitnah nachzutragen (Warnhinweis erscheint danach in der App). Entweder alle
+          drei Felder ausfüllen oder alle leer lassen.
+        </div>
+        <Field label="Teilnehmer-ID (TID)" htmlFor="tid" error={errors.finanzOnline?.teilnehmerId?.message}>
           <Input
             id="tid"
             invalid={!!errors.finanzOnline?.teilnehmerId}
             {...register('finanzOnline.teilnehmerId')}
           />
         </Field>
-        <Field label="Benutzerkennung (BenID)" htmlFor="benid" required error={errors.finanzOnline?.benutzerkennung?.message}>
+        <Field label="Benutzerkennung (BenID)" htmlFor="benid" error={errors.finanzOnline?.benutzerkennung?.message}>
           <Input
             id="benid"
             invalid={!!errors.finanzOnline?.benutzerkennung}
             {...register('finanzOnline.benutzerkennung')}
           />
         </Field>
-        <Field label="PIN" htmlFor="pin" required error={errors.finanzOnline?.pin?.message}>
+        <Field label="PIN" htmlFor="pin" error={errors.finanzOnline?.pin?.message}>
           <Input
             id="pin"
             type="password"
