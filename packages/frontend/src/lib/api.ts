@@ -543,10 +543,24 @@ export const belegApi = {
   // SEE-Ausfall / Wiederinbetriebnahme
   seeStatus: (kasseId: string) =>
     request<SeeStatus>('GET', `/api/belege/see-status?kasseId=${kasseId}`),
-  seeAusfallMelden: (kasseId: string) =>
-    request<SeeStatus>('POST', '/api/belege/see-ausfall', { kasseId }),
-  seeWiederherstellen: (kasseId: string) =>
-    request<SeeWiederherstellung>('POST', '/api/belege/see-wiederherstellung', { kasseId }),
+  seeAusfallMelden: (kasseId: string, credentials?: FonCredentials) =>
+    request<SeeStatus>('POST', '/api/belege/see-ausfall', { kasseId, ...(credentials && { credentials }) }),
+  seeWiederherstellen: (kasseId: string, credentials?: FonCredentials) =>
+    request<SeeWiederherstellung>('POST', '/api/belege/see-wiederherstellung', { kasseId, ...(credentials && { credentials }) }),
+}
+
+/** FinanzOnline-Zugangsdaten (nur für die optionale SEE-Meldung, nicht gespeichert). */
+export interface FonCredentials {
+  teilnehmerId:    string
+  benutzerkennung: string
+  pin:             string
+}
+
+/** Ergebnis einer optionalen FinanzOnline-Meldung. */
+export interface FonMeldung {
+  versucht:    boolean
+  erfolgreich: boolean
+  fehler?:     string
 }
 
 /** SEE-Ausfall-Status einer Kasse (siehe backend beleg.service). */
@@ -555,11 +569,13 @@ export interface SeeStatus {
   seit:             string | null
   dauerMinuten:     number | null
   fonMeldungNoetig: boolean
+  fonMeldung?:      FonMeldung
 }
 
 export interface SeeWiederherstellung {
   behobenerAusfall: SeeStatus
   sammelbeleg:      BelegResponse
+  fonMeldung?:      FonMeldung
 }
 
 export const berichtApi = {

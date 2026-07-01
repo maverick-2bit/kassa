@@ -18,6 +18,8 @@ import {
   erstelleDEP131Export,
   dep7ZuJson,
   dep131ZuJson,
+  FinanzOnlineClient,
+  type FinanzOnlineCredentials,
   type BelegPosition,
   type BelegTyp,
   type DEP131BelegInput,
@@ -45,6 +47,11 @@ import { decryptPrivateKey } from '../crypto/master-key.js'
 export interface BelegServiceDeps {
   db:               Db
   masterPassphrase: string
+  /**
+   * Optionaler FinanzOnline-Client (Stub im Dev/E2E via FO_STUB). Fehlt er,
+   * wird für reale Meldungen ein Client passend zur Kassen-Umgebung erzeugt.
+   */
+  finanzOnlineClient?: FinanzOnlineClient
 }
 
 export class BelegError extends Error {
@@ -493,6 +500,14 @@ export async function erstelleJahresbeleg(input: JahresbelegInput, deps: BelegSe
 /** RKSV: Ein Ausfall ab dieser Dauer ist FinanzOnline zu melden (48 Stunden). */
 const FON_MELDE_SCHWELLE_MIN = 48 * 60
 
+/** Ergebnis einer optionalen FinanzOnline-Meldung (nur wenn Zugangsdaten übergeben). */
+export interface FonMeldungErgebnis {
+  /** true, wenn eine FON-Meldung überhaupt versucht wurde (Zugangsdaten vorhanden). */
+  versucht:     boolean
+  erfolgreich:  boolean
+  fehler?:      string
+}
+
 export interface SeeStatus {
   ausgefallen:      boolean
   /** ISO-Zeitstempel des Ausfallbeginns, null wenn in Betrieb */
@@ -500,6 +515,33 @@ export interface SeeStatus {
   dauerMinuten:     number | null
   /** true, wenn die Ausfalldauer die FinanzOnline-Meldeschwelle (48h) erreicht */
   fonMeldungNoetig: boolean
+  /** Ergebnis der FinanzOnline-Meldung, falls bei diesem Aufruf eine gesendet wurde. */
+  fonMeldung?:      FonMeldungErgebnis
+}
+
+/**
+ * Sendet — nur wenn Zugangsdaten übergeben wurden — die SEE-Statusmeldung an
+ * FinanzOnline. Läuft NACH der DB-Transaktion (kein Lock während des SOAP-Calls)
+ * und ist nicht-fatal: schlägt sie fehl, bleibt der lokale Zustand erhalten und
+ * das Ergebnis wird zurückgemeldet (Meldung kann wiederholt werden).
+ */
+async function sendeFonSeeMeldung(
+  deps:        BelegServiceDeps,
+  kasse:       { kassenId: string; seeZertifikatSn: string; umgebung: string },
+  operation:   'ausfall' | 'wiederinbetriebnahme',
+  credentials?: FinanzOnlineCredentials,
+): Promise<FonMeldungErgebnis | undefined> {
+  if (!credentials) return undefined
+  const client = deps.finanzOnlineClient
+    ?? new FinanzOnlineClient(kasse.umgebung === 'test' ? 'test' : 'produktion')
+  try {
+    const res = operation === 'ausfall'
+      ? await client.seeAusfallMelden(kasse.kassenId, kasse.seeZertifikatSn, credentials)
+      : await client.seeWiederinbetriebnahmeMelden(kasse.kassenId, kasse.seeZertifikatSn, credentials)
+    return { versucht: true, erfolgreich: res.erfolgreich, ...(res.fehler && { fehler: res.fehler }) }
+  } catch (err) {
+    return { versucht: true, erfolgreich: false, fehler: err instanceof Error ? err.message : String(err) }
+  }
 }
 
 function baueSeeStatus(seit: Date | null, bezug: Date = new Date()): SeeStatus {
@@ -526,19 +568,26 @@ export async function holeSeeStatus(kasseId: string, deps: BelegServiceDeps): Pr
  * SEE-Ausfall melden: ab sofort tragen neue Belege den Ausfallmarker statt einer
  * Signatur. Idempotent — ein bereits laufender Ausfall behält seinen Beginn.
  */
-export async function meldeSeeAusfall(kasseId: string, deps: BelegServiceDeps): Promise<SeeStatus> {
-  return deps.db.transaction(async (tx) => {
+export async function meldeSeeAusfall(
+  kasseId:      string,
+  deps:         BelegServiceDeps,
+  credentials?: FinanzOnlineCredentials,
+): Promise<SeeStatus> {
+  const kasse = await deps.db.transaction(async (tx) => {
     const rows = await tx.select().from(kassen).where(eq(kassen.id, kasseId)).for('update')
-    const kasse = rows[0]
-    if (!kasse) throw new BelegError(404, 'Kasse nicht gefunden')
-    if (kasse.seeAusgefallenSeit != null) return baueSeeStatus(kasse.seeAusgefallenSeit)
-
-    const jetzt = new Date()
-    await tx.update(kassen)
-      .set({ seeAusgefallenSeit: jetzt, updatedAt: jetzt })
-      .where(eq(kassen.id, kasseId))
-    return baueSeeStatus(jetzt, jetzt)
+    const k = rows[0]
+    if (!k) throw new BelegError(404, 'Kasse nicht gefunden')
+    if (k.seeAusgefallenSeit == null) {
+      const jetzt = new Date()
+      await tx.update(kassen).set({ seeAusgefallenSeit: jetzt, updatedAt: jetzt }).where(eq(kassen.id, kasseId))
+      return { ...k, seeAusgefallenSeit: jetzt }
+    }
+    return k
   })
+
+  const status = baueSeeStatus(kasse.seeAusgefallenSeit)
+  const fon = await sendeFonSeeMeldung(deps, kasse, 'ausfall', credentials)
+  return { ...status, ...(fon && { fonMeldung: fon }) }
 }
 
 export interface WiederherstellungErgebnis {
@@ -546,6 +595,8 @@ export interface WiederherstellungErgebnis {
   behobenerAusfall: SeeStatus
   /** Signierter Nullbeleg als Nachweis der Wiederinbetriebnahme. */
   sammelbeleg:      BelegResponse
+  /** Ergebnis der FinanzOnline-Meldung, falls Zugangsdaten übergeben wurden. */
+  fonMeldung?:      FonMeldungErgebnis
 }
 
 /**
@@ -554,11 +605,17 @@ export interface WiederherstellungErgebnis {
  * Signierung nicht (SEE weiterhin gestört), bleibt der Ausfall bestehen.
  */
 export async function meldeSeeWiederherstellung(
-  kasseId: string,
-  deps:    BelegServiceDeps,
+  kasseId:      string,
+  deps:         BelegServiceDeps,
+  credentials?: FinanzOnlineCredentials,
 ): Promise<WiederherstellungErgebnis> {
   const vorher = await deps.db
-    .select({ seit: kassen.seeAusgefallenSeit })
+    .select({
+      seit:            kassen.seeAusgefallenSeit,
+      kassenId:        kassen.kassenId,
+      seeZertifikatSn: kassen.seeZertifikatSn,
+      umgebung:        kassen.umgebung,
+    })
     .from(kassen).where(eq(kassen.id, kasseId)).limit(1)
   if (!vorher[0]) throw new BelegError(404, 'Kasse nicht gefunden')
   if (vorher[0].seit == null) throw new BelegError(409, 'Kein SEE-Ausfall aktiv')
@@ -573,7 +630,13 @@ export async function meldeSeeWiederherstellung(
     wiederherstellung: true,
   }, deps)
 
-  return { behobenerAusfall, sammelbeleg: toDto(persisted, signed.positionen) }
+  const fon = await sendeFonSeeMeldung(deps, vorher[0], 'wiederinbetriebnahme', credentials)
+
+  return {
+    behobenerAusfall,
+    sammelbeleg: toDto(persisted, signed.positionen),
+    ...(fon && { fonMeldung: fon }),
+  }
 }
 
 // ---------------------------------------------------------------------------

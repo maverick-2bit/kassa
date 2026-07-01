@@ -43,6 +43,7 @@ async function main(): Promise<void> {
     belegDeps: {
       db,
       masterPassphrase: config.MASTER_PASSPHRASE,
+      ...(rksvOptionen && { finanzOnlineClient: rksvOptionen.finanzOnlineClient }),
     },
     backupDir:         config.DEP_BACKUP_DIR,
     dbBackupDir:       config.DB_BACKUP_DIR,
