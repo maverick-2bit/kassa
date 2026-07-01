@@ -736,6 +736,11 @@ export function ArtikelPage() {
           kategorien={katList.data}
           bonierdrucker={bonierdruckerQuery.data}
           lieferanten={lieferantenQuery.data}
+          onNeueKategorie={async (name) => {
+            const neu = await kategorieApi.create({ name, farbe: 'grau', reihenfolge: katList.data?.length ?? 0 })
+            invalidateKategorien()
+            return neu
+          }}
           onSubmit={handleSubmit}
           onCancel={() => { setModalOpen(false); setEditing(null); setError(null) }}
           loading={create.isPending || update.isPending}
