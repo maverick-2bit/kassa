@@ -55,8 +55,8 @@ function Header() {
 
   return (
     <header className="bg-header text-white border-b border-black/20 sticky top-0 z-10">
-      <div className="mx-auto max-w-6xl px-4 py-3 flex items-center gap-6">
-        <div className="flex items-center gap-2">
+      <div className="px-4 py-3 flex items-start gap-4">
+        <div className="flex items-center gap-2 shrink-0 h-8">
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/15 text-white">
             <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path strokeLinecap="round" strokeLinejoin="round" d="M3 3h18v4H3zM3 11h18v10H3zM7 15h2M7 18h2"/>
@@ -64,7 +64,7 @@ function Header() {
           </span>
           <span className="font-semibold text-white">Kassa</span>
         </div>
-        <nav className="flex gap-1 flex-1">
+        <nav className="flex flex-wrap gap-1 flex-1 min-w-0">
           {hasBerechtigung('belege.lesen')                                && <NavItem to="/dashboard">Dashboard</NavItem>}
           {hasBerechtigung('tische')            && hasModul('gastro')    && <NavItem to="/tische">Tische</NavItem>}
           {hasBerechtigung('kasse')                                       && <NavItem to="/kasse">Kasse</NavItem>}
@@ -99,7 +99,7 @@ function Header() {
           {hasBerechtigung('user.verwalten')                              && <NavItem to="/benutzer">Benutzer</NavItem>}
         </nav>
         {auth && (
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 shrink-0 h-8">
             <JahresbelegHeaderChip />
             <ThemeToggle />
             <span className="hidden sm:inline text-[10px] font-mono text-white/50 select-none bg-white/10 px-1.5 py-0.5 rounded">
@@ -178,7 +178,7 @@ function NavItem({ to, children }: { to: string; children: string }) {
     <NavLink
       to={to}
       className={({ isActive }) =>
-        `px-3 py-1.5 text-sm font-medium rounded-md transition ${
+        `px-3 py-1.5 text-sm font-medium rounded-md transition shrink-0 whitespace-nowrap ${
           isActive
             ? 'bg-white/20 text-white'
             : 'text-white/70 hover:text-white hover:bg-white/10'
@@ -199,7 +199,7 @@ function ThemeToggle() {
       onClick={() => setMode(toggleTheme())}
       title={mode === 'dark' ? 'Zu hellem Modus wechseln' : 'Zu dunklem Modus wechseln'}
       aria-label="Farbschema umschalten"
-      className="flex h-7 w-7 items-center justify-center rounded-md text-white/70 hover:text-white hover:bg-white/10 transition"
+      className="flex h-8 w-8 items-center justify-center rounded-md border border-white/25 bg-white/10 text-white hover:bg-white/20 transition"
     >
       {mode === 'dark' ? (
         <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
