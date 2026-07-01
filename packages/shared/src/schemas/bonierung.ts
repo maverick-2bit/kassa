@@ -17,7 +17,8 @@ export const BonierungInputSchema = z.object({
   kasseId: z.string().uuid(),
   /** Optionaler Verweis auf den Tisch-Tab — wenn gesetzt, wird das Ereignis im Verlauf protokolliert */
   tabId:   z.string().uuid().optional(),
-  tisch:   z.string().trim().min(1).max(40),
+  /** Tischbezeichnung. Optional: leer = Direktverkauf an der Schank (Bon-Label „Direkt"). */
+  tisch:   z.string().trim().max(40).optional(),
   bereich: z.string().trim().max(60).optional(),
   kellner: z.string().trim().min(1).max(60),
   positionen: z.array(BonierungPositionSchema).min(1, 'Mindestens eine Position erforderlich'),

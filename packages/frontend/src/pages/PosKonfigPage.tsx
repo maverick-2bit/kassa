@@ -329,15 +329,23 @@ function TabFavoriten({ alleArtikel }: { alleArtikel: Artikel[] }) {
   const [suche, setSuche] = useState('')
 
   // Externe Änderungen (neue/geänderte Artikel, anderswo gesetzte Favoriten)
-  // übernehmen, sobald die Artikelliste neu geladen wurde — außer während einer
-  // noch nicht gespeicherten Umsortierung.
+  // übernehmen, sobald die Artikelliste neu geladen wurde — dabei die aktuelle
+  // Bildschirm-Reihenfolge ERHALTEN (nur neue hinten anhängen, entfernte raus),
+  // damit ein laufendes/ungespeichertes Umsortieren nicht zurückspringt.
   useEffect(() => {
     if (dirty) return
-    setItems(
-      alleArtikel
-        .filter(a => a.istFavorit && a.aktiv)
-        .sort((a, b) => a.favoritenReihenfolge - b.favoritenReihenfolge),
-    )
+    const favs = alleArtikel.filter(a => a.istFavorit && a.aktiv)
+    const favById = new Map(favs.map(a => [a.id, a]))
+    setItems(prev => {
+      const behalten = prev.filter(p => favById.has(p.id)).map(p => favById.get(p.id)!)
+      const behaltenIds = new Set(behalten.map(k => k.id))
+      const neue = favs
+        .filter(a => !behaltenIds.has(a.id))
+        .sort((a, b) => a.favoritenReihenfolge - b.favoritenReihenfolge)
+      // Nur ersetzen, wenn sich der Bestand wirklich geändert hat (verhindert Render-Schleifen)
+      if (behalten.length === prev.length && neue.length === 0) return prev
+      return [...behalten, ...neue]
+    })
   }, [alleArtikel, dirty])
 
   const preis = (c: number) => `€ ${(c / 100).toFixed(2).replace('.', ',')}`

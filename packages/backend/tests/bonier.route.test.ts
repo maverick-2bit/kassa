@@ -204,4 +204,24 @@ describe('POST /api/bestellung/bonieren', () => {
     expect(body.drucker[0].erfolgreich).toBe(false)  // TCP schlägt fehl
     await srv.close()
   }, 8_000)
+
+  it('200 ohne Tisch (Direktverkauf an der Schank)', async () => {
+    const srv = await buildTestServer(mockDb({
+      selects: [
+        [{ id: KASSE_ID }],
+        [kasseRow()],
+        [artikelRow()],
+        [backupDruckerRow()],
+      ],
+    }))
+    const { tisch: _tisch, ...ohneTisch } = gueltigeBestellung()
+    const res = await srv.fastify.inject({
+      method:  'POST', url: '/api/bestellung/bonieren',
+      headers: srv.authHeader(),
+      payload: ohneTisch,   // kein Tisch → provisorischer Schank-Bon
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().bonNummer).toBeDefined()
+    await srv.close()
+  }, 8_000)
 })
