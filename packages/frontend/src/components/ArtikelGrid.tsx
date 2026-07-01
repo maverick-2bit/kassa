@@ -20,7 +20,7 @@ import { ModifikatorModal } from './ModifikatorModal'
 // ---------------------------------------------------------------------------
 
 const FARBE_TAB_INAKTIV: Record<KategorieFarbe, string> = {
-  grau:   'bg-gray-100 text-gray-700 hover:bg-gray-200',
+  grau:   'bg-panel-2 text-ink hover:bg-gray-200',
   rot:    'bg-red-50 text-red-700 hover:bg-red-100',
   orange: 'bg-orange-50 text-orange-700 hover:bg-orange-100',
   gelb:   'bg-yellow-50 text-yellow-700 hover:bg-yellow-100',
@@ -42,7 +42,7 @@ const FARBE_TAB_AKTIV: Record<KategorieFarbe, string> = {
 }
 
 const FARBE_ARTIKEL_HOVER: Record<KategorieFarbe, string> = {
-  grau:   'hover:border-gray-400 hover:bg-gray-50',
+  grau:   'hover:border-gray-400 hover:bg-panel-2',
   rot:    'hover:border-red-400 hover:bg-red-50',
   orange: 'hover:border-orange-400 hover:bg-orange-50',
   gelb:   'hover:border-yellow-400 hover:bg-yellow-50',
@@ -50,6 +50,18 @@ const FARBE_ARTIKEL_HOVER: Record<KategorieFarbe, string> = {
   blau:   'hover:border-blue-400 hover:bg-blue-50',
   lila:   'hover:border-purple-400 hover:bg-purple-50',
   pink:   'hover:border-pink-400 hover:bg-pink-50',
+}
+
+// Farbiger Akzentstreifen je Kategorie (dezenter Farbcode statt Vollfläche).
+const FARBE_AKZENT: Record<KategorieFarbe, string> = {
+  grau:   'bg-gray-400',
+  rot:    'bg-red-500',
+  orange: 'bg-orange-500',
+  gelb:   'bg-yellow-500',
+  gruen:  'bg-green-500',
+  blau:   'bg-blue-500',
+  lila:   'bg-purple-500',
+  pink:   'bg-pink-500',
 }
 
 // ---------------------------------------------------------------------------
@@ -69,6 +81,8 @@ interface Props {
   artikelbilderAktiv?:  boolean
   /** Initialer Tab: Kategorie-ID oder '__favoriten__' (default: null = Alle) */
   initialKategorieId?:  string | null
+  /** Optional: artikelId → Menge im Warenkorb (zeigt ein Mengen-Badge auf der Kachel) */
+  mengenProArtikel?:    Map<string, number>
 }
 
 // ---------------------------------------------------------------------------
@@ -78,7 +92,12 @@ interface Props {
 // Sentinel für den Favoriten-Tab
 const FAVORITEN_TAB_ID = '__favoriten__'
 
-export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClick, loading, sichtbareKategorieIds, artikelbilderAktiv = true, initialKategorieId = null }: Props) {
+export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClick, loading, sichtbareKategorieIds, artikelbilderAktiv = true, initialKategorieId = null, mengenProArtikel }: Props) {
+  // Kategorie-ID → Farbe, für den Akzentstreifen je Artikel (auch im „Alle"-Tab).
+  const farbeProKategorie = useMemo(
+    () => new Map(kategorien.map(k => [k.id, k.farbe] as const)),
+    [kategorien],
+  )
   const [aktivKategorieId, setAktivKategorieId] = useState<string | null>(initialKategorieId)
   const [modArtikel, setModArtikel] = useState<Artikel | null>(null)
 
@@ -144,13 +163,13 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
   // ---------------------------------------------------------------------------
 
   if (loading) {
-    return <p className="text-sm text-gray-500">Wird geladen…</p>
+    return <p className="text-sm text-ink-muted">Wird geladen…</p>
   }
 
   if (artikel.length === 0) {
     return (
-      <div className="rounded-md border border-dashed border-gray-300 p-6 text-center">
-        <p className="text-sm text-gray-500">Noch keine Artikel angelegt.</p>
+      <div className="rounded-md border border-dashed border-line-strong p-6 text-center">
+        <p className="text-sm text-ink-muted">Noch keine Artikel angelegt.</p>
         <a href="/artikel" className="mt-2 inline-block text-sm text-brand-600 hover:underline">
           Zur Artikel-Verwaltung →
         </a>
@@ -219,20 +238,21 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
 
       {/* ---- Artikel-Raster (scrollt vertikal) ---- */}
       {gefilterteArtikel.length === 0 ? (
-        <p className="text-sm text-gray-400 py-4 text-center shrink-0">
+        <p className="text-sm text-ink-subtle py-4 text-center shrink-0">
           Keine Artikel in dieser Kategorie.
         </p>
       ) : (
         <div className="flex-1 min-h-0 overflow-y-auto pr-0.5">
           <div className="grid grid-cols-3 gap-2 pb-1">
             {gefilterteArtikel.map((a) => {
-              const farbe         = aktiveKategorie?.farbe
+              const farbe         = a.kategorieId ? farbeProKategorie.get(a.kategorieId) : undefined
               const gruppen       = artikelGruppen?.get(a.id) ?? []
               const hatMods       = gruppen.length > 0
               // Artikel ist ausverkauft wenn Lagerstand aktiv UND Bestand = 0
               const istAusverkauft = a.lagerstandAktiv && a.lagerstandMenge === 0
               // Zeigt Restbestand wenn Lagerstand aktiv und > 0
               const zeigeBestand  = a.lagerstandAktiv && a.lagerstandMenge !== null && a.lagerstandMenge > 0
+              const mengeImKorb   = mengenProArtikel?.get(a.id) ?? 0
 
               const handleClick = () => {
                 if (istAusverkauft) return
@@ -250,19 +270,30 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
                   disabled={istAusverkauft}
                   onClick={handleClick}
                   className={`
-                    rounded-lg border bg-white transition text-left shadow-sm overflow-hidden
+                    relative appearance-none rounded-lg border bg-panel transition text-left overflow-hidden
                     ${istAusverkauft
-                      ? 'border-gray-200 opacity-50 cursor-not-allowed'
-                      : `active:scale-[0.97] border-gray-200 ${farbe
+                      ? 'border-line opacity-50 cursor-not-allowed'
+                      : `active:scale-[0.97] shadow-sm ${mengeImKorb > 0 ? 'border-brand-500 ring-1 ring-brand-500' : 'border-line'} ${farbe
                           ? FARBE_ARTIKEL_HOVER[farbe]
                           : 'hover:bg-brand-50 hover:border-brand-400'
                         }`
                     }
                   `}
                 >
+                  {/* Farbiger Kategorie-Akzent oben */}
+                  <div className={`h-1.5 w-full ${farbe ? FARBE_AKZENT[farbe] : 'bg-brand-500'}`} />
+
+                  {/* Mengen-Badge, wenn im Warenkorb */}
+                  {mengeImKorb > 0 && (
+                    <span className="absolute top-2.5 right-1.5 z-10 min-w-5 h-5 px-1 flex items-center justify-center
+                                     rounded-full bg-red-600 text-white text-[11px] font-semibold leading-none shadow">
+                      {mengeImKorb}
+                    </span>
+                  )}
+
                   {/* Thumbnail — nur wenn Bild vorhanden UND Bilder aktiviert */}
                   {artikelbilderAktiv && a.bild && (
-                    <div className="w-full h-16 overflow-hidden bg-gray-100">
+                    <div className="w-full h-16 overflow-hidden bg-panel-2">
                       <img
                         src={a.bild}
                         alt=""
@@ -272,28 +303,30 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
                     </div>
                   )}
                   <div className="p-3">
-                    <p className="text-sm font-medium text-gray-900 line-clamp-2 min-h-[2.5rem]">
+                    <p className="text-sm font-medium text-ink line-clamp-2 min-h-[2.5rem]">
                       {a.bezeichnung}
                     </p>
-                    <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                    <div className="mt-1 flex items-center justify-between gap-1.5 flex-wrap">
                       <p className="text-sm font-bold text-brand-600">
                         {formatPreis(a.preisBruttoCent)}
                       </p>
-                      {istAusverkauft && (
-                        <span className="text-[10px] bg-red-100 text-red-600 rounded-full px-1.5 py-0.5 font-medium leading-none">
-                          Ausverkauft
-                        </span>
-                      )}
-                      {zeigeBestand && (
-                        <span className="text-[10px] bg-amber-100 text-amber-700 rounded-full px-1.5 py-0.5 font-medium leading-none">
-                          noch {a.lagerstandMenge}
-                        </span>
-                      )}
-                      {!istAusverkauft && hatMods && (
-                        <span className="text-[10px] bg-brand-100 text-brand-700 rounded-full px-1.5 py-0.5 font-medium leading-none">
-                          Optionen
-                        </span>
-                      )}
+                      <div className="flex items-center gap-1.5">
+                        {istAusverkauft && (
+                          <span className="text-[10px] bg-red-100 text-red-600 rounded-full px-1.5 py-0.5 font-medium leading-none">
+                            Ausverkauft
+                          </span>
+                        )}
+                        {zeigeBestand && (
+                          <span className="text-[10px] bg-amber-100 text-amber-700 rounded-full px-1.5 py-0.5 font-medium leading-none">
+                            noch {a.lagerstandMenge}
+                          </span>
+                        )}
+                        {!istAusverkauft && hatMods && (
+                          <span className="text-[10px] bg-brand-100 text-brand-700 rounded-full px-1.5 py-0.5 font-medium leading-none">
+                            Optionen
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </button>
@@ -353,7 +386,7 @@ function Anzahl({ wert, aktiv }: { wert: number; aktiv: boolean }) {
       className={`
         inline-flex items-center justify-center min-w-[1.25rem] h-5
         rounded-full text-[11px] font-semibold px-1 leading-none
-        ${aktiv ? 'bg-white/25 text-current' : 'bg-black/10 text-current'}
+        ${aktiv ? 'bg-panel/25 text-current' : 'bg-black/10 text-current'}
       `}
     >
       {wert}

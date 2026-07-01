@@ -180,6 +180,15 @@ export function KassePage() {
   const summeCent  = useMemo(() => warenkorbSummeCent(korb), [korb])
   const rabattCent = useMemo(() => rabattBetragCent(summeCent, rabatt), [rabatt, summeCent])
 
+  // artikelId → Gesamtmenge im Warenkorb (für das Mengen-Badge auf den Kacheln)
+  const mengenProArtikel = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const p of korb) {
+      if (p.typ === 'artikel') m.set(p.artikel.id, (m.get(p.artikel.id) ?? 0) + p.menge)
+    }
+    return m
+  }, [korb])
+
   const summeNachRabattCent = summeCent - rabattCent
 
   // Gutschein-Abzug ----------------------------------------------------------
@@ -488,16 +497,16 @@ export function KassePage() {
         </div>
       )}
       {/* Kontext-Leiste: Modus + Tisch + Kellner */}
-      <div className="mb-3 bg-white rounded-lg shadow-sm border border-gray-200 px-3 py-2 flex flex-wrap items-center gap-3">
+      <div className="mb-3 bg-panel rounded-lg shadow-sm border border-line px-3 py-2 flex flex-wrap items-center gap-3">
         {/* Modus-Toggle */}
-        <div className="inline-flex rounded-md border border-gray-300 overflow-hidden shrink-0">
+        <div className="inline-flex rounded-md border border-line-strong overflow-hidden shrink-0">
           <button
             type="button"
             onClick={() => { setModus('verkauf'); reset() }}
             className={`px-3 py-1.5 text-sm font-medium transition ${
               modus === 'verkauf'
                 ? 'bg-brand-600 text-white'
-                : 'bg-white text-gray-600 hover:bg-gray-50'
+                : 'bg-panel text-ink-muted hover:bg-panel-2'
             }`}
           >
             Verkauf
@@ -505,17 +514,17 @@ export function KassePage() {
           <button
             type="button"
             onClick={() => { setModus('angebot'); reset() }}
-            className={`px-3 py-1.5 text-sm font-medium transition border-l border-gray-300 ${
+            className={`px-3 py-1.5 text-sm font-medium transition border-l border-line-strong ${
               modus === 'angebot'
                 ? 'bg-amber-500 text-white'
-                : 'bg-white text-gray-600 hover:bg-gray-50'
+                : 'bg-panel text-ink-muted hover:bg-panel-2'
             }`}
           >
             Angebot
           </button>
         </div>
         <label className="inline-flex items-center gap-2 text-sm">
-          <span className="font-medium text-gray-700">Tisch</span>
+          <span className="font-medium text-ink">Tisch</span>
           <Input
             value={tisch}
             onChange={(e) => setTisch(e.target.value)}
@@ -523,7 +532,7 @@ export function KassePage() {
           />
         </label>
         <label className="inline-flex items-center gap-2 text-sm">
-          <span className="font-medium text-gray-700">Kellner</span>
+          <span className="font-medium text-ink">Kellner</span>
           <Input
             value={kellner}
             onChange={(e) => setKellner(e.target.value)}
@@ -536,10 +545,10 @@ export function KassePage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-4">
         {/* ----- Linke Seite: Artikel-Buttons ----- */}
-        <section className="bg-white rounded-lg shadow-sm border border-gray-200
+        <section className="bg-panel rounded-lg shadow-sm border border-line
                             flex flex-col lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)]">
           <div className="px-4 pt-4 pb-2 shrink-0 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-gray-700">Artikel</h2>
+            <h2 className="text-sm font-semibold text-ink">Artikel</h2>
             <button
               type="button"
               onClick={() => { setFehler(null); setFreiePositionOffen(true) }}
@@ -558,14 +567,15 @@ export function KassePage() {
               sichtbareKategorieIds={posConfigQuery.data?.sichtbareKategorieIds}
               artikelbilderAktiv={posConfigQuery.data?.artikelbilderAktiv ?? true}
               initialKategorieId={initialKategorieId}
+              mengenProArtikel={mengenProArtikel}
             />
           </div>
         </section>
 
         {/* ----- Rechte Seite: Warenkorb + Zahlung ----- */}
-        <section className="bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col h-fit lg:sticky lg:top-20 max-h-[calc(100vh-6rem)]">
-          <div className="px-4 py-3 border-b border-gray-200 space-y-2">
-            <h2 className="text-sm font-semibold text-gray-700">Warenkorb</h2>
+        <section className="bg-panel rounded-lg shadow-sm border border-line flex flex-col h-fit lg:sticky lg:top-20 max-h-[calc(100vh-6rem)]">
+          <div className="px-4 py-3 border-b border-line space-y-2">
+            <h2 className="text-sm font-semibold text-ink">Warenkorb</h2>
             <KundePicker
               value={kunde}
               onChange={(k, input) => {
@@ -580,7 +590,7 @@ export function KassePage() {
           {/* Warenkorb-Positionen */}
           <div className="flex-1 overflow-y-auto px-4 py-3 min-h-[10rem] max-h-[40vh]">
             {korb.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-8">Leer</p>
+              <p className="text-sm text-ink-subtle text-center py-8">Leer</p>
             ) : (
               <ul className="space-y-2">
                 {korb.map((p, idx) => {
@@ -588,7 +598,7 @@ export function KassePage() {
                   return (
                     <li key={idx} className="flex items-center gap-2 text-sm">
                       <div className="flex-1 min-w-0">
-                        <p className={`font-medium text-gray-900 truncate ${p.typ === 'frei' ? 'italic' : ''}`}>
+                        <p className={`font-medium text-ink truncate ${p.typ === 'frei' ? 'italic' : ''}`}>
                           {p.typ === 'frei' ? p.bezeichnung : p.artikel.bezeichnung}
                         </p>
                         {p.typ === 'artikel' && p.modifikatoren.length > 0 && (
@@ -596,10 +606,10 @@ export function KassePage() {
                             {p.modifikatoren.map(m => m.name).join(', ')}
                           </p>
                         )}
-                        <p className="text-xs text-gray-500 flex items-center gap-1.5">
+                        <p className="text-xs text-ink-muted flex items-center gap-1.5">
                           {hatRabatt && p.typ === 'artikel' ? (
                             <>
-                              <span className="line-through text-gray-400">{formatPreis(p.originalPreisCent)}</span>
+                              <span className="line-through text-ink-subtle">{formatPreis(p.originalPreisCent)}</span>
                               <span className="text-green-700 font-medium">{formatPreis(p.preisCent)}</span>
                             </>
                           ) : (
@@ -630,7 +640,7 @@ export function KassePage() {
                           <button
                             type="button"
                             onClick={() => setArtikelRabattIdx(idx)}
-                            className="text-gray-300 hover:text-brand-500 text-xs font-bold px-1"
+                            className="text-ink-subtle hover:text-brand-500 text-xs font-bold px-1"
                             title="Artikel-Rabatt"
                           >
                             %
@@ -642,7 +652,7 @@ export function KassePage() {
                       <button
                         type="button"
                         onClick={() => removeArtikel(idx)}
-                        className="text-gray-300 hover:text-red-500 px-1"
+                        className="text-ink-subtle hover:text-red-500 px-1"
                         aria-label="Entfernen"
                       >
                         ×
@@ -655,8 +665,8 @@ export function KassePage() {
           </div>
 
           {/* Summen + Zahlung / Angebot */}
-          <div className="px-4 py-3 border-t border-gray-200 space-y-3 bg-gray-50">
-            <div className="flex items-center justify-between text-sm text-gray-600">
+          <div className="px-4 py-3 border-t border-line space-y-3 bg-panel-2">
+            <div className="flex items-center justify-between text-sm text-ink-muted">
               <span>Zwischensumme</span>
               <span>{formatPreis(summeCent)}</span>
             </div>
@@ -709,19 +719,19 @@ export function KassePage() {
                   )
                 )}
 
-                <div className="flex items-center justify-between text-base font-bold text-gray-900">
-                  <span>Zu zahlen</span>
-                  <span>{formatPreis(summeNachGutscheinCent)}</span>
+                <div className="flex items-center justify-between rounded-lg bg-panel-2 px-3 py-2.5">
+                  <span className="text-sm font-medium text-ink-muted">Zu zahlen</span>
+                  <span className="text-2xl font-bold text-ink tabular-nums">{formatPreis(summeNachGutscheinCent)}</span>
                 </div>
 
                 {/* Zahlungsart-Toggle: Normal ↔ Kredit */}
                 {kunde && kunde.kreditAktiv && hasBerechtigung('kasse.kredit') && (
-                  <div className="flex rounded-md border border-gray-300 overflow-hidden">
+                  <div className="flex rounded-md border border-line-strong overflow-hidden">
                     <button
                       type="button"
                       onClick={() => setKreditModus(false)}
                       className={`flex-1 px-3 py-1.5 text-xs font-medium transition ${
-                        !kreditModus ? 'bg-brand-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+                        !kreditModus ? 'bg-brand-600 text-white' : 'bg-panel text-ink-muted hover:bg-panel-2'
                       }`}
                     >
                       Bar / Karte
@@ -729,8 +739,8 @@ export function KassePage() {
                     <button
                       type="button"
                       onClick={() => { setKreditModus(true); setBarEuro('') }}
-                      className={`flex-1 px-3 py-1.5 text-xs font-medium border-l border-gray-300 transition ${
-                        kreditModus ? 'bg-orange-500 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+                      className={`flex-1 px-3 py-1.5 text-xs font-medium border-l border-line-strong transition ${
+                        kreditModus ? 'bg-orange-500 text-white' : 'bg-panel text-ink-muted hover:bg-panel-2'
                       }`}
                     >
                       Auf Kredit
@@ -752,7 +762,7 @@ export function KassePage() {
                   <>
                     {/* Bar-Eingabe */}
                     <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-gray-600">Bar (€)</label>
+                      <label className="text-xs font-medium text-ink-muted">Bar (€)</label>
                       <div className="flex gap-1.5">
                         <Input
                           inputMode="decimal"
@@ -764,7 +774,7 @@ export function KassePage() {
                         <button
                           type="button"
                           onClick={() => setBarEuro((summeNachRabattCent / 100).toFixed(2).replace('.', ','))}
-                          className="shrink-0 rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 hover:border-brand-400 transition"
+                          className="shrink-0 rounded-md border border-line-strong bg-panel px-2.5 py-1.5 text-xs font-medium text-ink hover:bg-panel-2 hover:border-brand-400 transition"
                         >
                           Exakt
                         </button>
@@ -779,7 +789,7 @@ export function KassePage() {
                             className={`rounded border px-2 py-1 text-xs font-medium transition ${
                               barCentEingabe === cent
                                 ? 'bg-brand-600 border-brand-600 text-white'
-                                : 'border-gray-300 bg-white text-gray-600 hover:border-brand-400 hover:bg-gray-50'
+                                : 'border-line-strong bg-panel text-ink-muted hover:border-brand-400 hover:bg-panel-2'
                             }`}
                           >
                             € {cent / 100}
@@ -788,7 +798,7 @@ export function KassePage() {
                         <button
                           type="button"
                           onClick={() => { setBarEuro(''); }}
-                          className="rounded border border-gray-200 px-2 py-1 text-xs text-gray-400 hover:text-red-500 hover:border-red-300 transition"
+                          className="rounded border border-line px-2 py-1 text-xs text-ink-subtle hover:text-red-500 hover:border-red-300 transition"
                           title="Bar-Betrag leeren → alles Karte"
                         >
                           Karte
@@ -849,7 +859,7 @@ export function KassePage() {
                     <Button
                       onClick={handleBonErstellen}
                       loading={belegMutation.isPending}
-                      className="flex-1"
+                      className="flex-1 bg-green-600 hover:bg-green-700 focus:ring-green-400"
                       disabled={korb.length === 0}
                     >
                       Bon erstellen
@@ -857,12 +867,12 @@ export function KassePage() {
                   )}
                 </div>
 
-                <div className="pt-2 border-t border-gray-200 text-center">
+                <div className="pt-2 border-t border-line text-center">
                   <button
                     type="button"
                     onClick={() => nullbelegMutation.mutate()}
                     disabled={nullbelegMutation.isPending}
-                    className="text-xs text-gray-500 hover:text-brand-600 disabled:opacity-50"
+                    className="text-xs text-ink-muted hover:text-brand-600 disabled:opacity-50"
                   >
                     {nullbelegMutation.isPending ? 'Wird erstellt…' : 'Nullbeleg erstellen (Tagesschluss ohne Umsatz)'}
                   </button>
@@ -877,7 +887,7 @@ export function KassePage() {
                 </div>
 
                 <div>
-                  <label className="text-xs font-medium text-gray-600 block mb-1">Gültig bis (optional)</label>
+                  <label className="text-xs font-medium text-ink-muted block mb-1">Gültig bis (optional)</label>
                   <Input
                     type="date"
                     value={gueltigBis}
@@ -887,14 +897,14 @@ export function KassePage() {
                 </div>
 
                 <div>
-                  <label className="text-xs font-medium text-gray-600 block mb-1">Notiz / Anmerkung (optional)</label>
+                  <label className="text-xs font-medium text-ink-muted block mb-1">Notiz / Anmerkung (optional)</label>
                   <textarea
                     value={angebotNotiz}
                     onChange={(e) => setAngebotNotiz(e.target.value)}
                     rows={3}
                     maxLength={2000}
                     placeholder="z. B. Preise gültig vorbehaltlich Materialverfügbarkeit …"
-                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none"
+                    className="w-full rounded-md border border-line-strong px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none"
                   />
                 </div>
 
@@ -940,22 +950,22 @@ export function KassePage() {
           <div className="space-y-4">
             <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 space-y-1.5 text-sm">
               <div className="flex justify-between">
-                <span className="text-gray-600">Angebotsnummer</span>
+                <span className="text-ink-muted">Angebotsnummer</span>
                 <span className="font-mono font-medium">A-{String(letzterAngebot.nummer).padStart(4, '0')}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-600">Datum</span>
+                <span className="text-ink-muted">Datum</span>
                 <span>{new Date(letzterAngebot.datum).toLocaleDateString('de-AT')}</span>
               </div>
               {letzterAngebot.gueltigBis && (
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Gültig bis</span>
+                  <span className="text-ink-muted">Gültig bis</span>
                   <span>{letzterAngebot.gueltigBis}</span>
                 </div>
               )}
               {letzterAngebot.kunde && (
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Kunde</span>
+                  <span className="text-ink-muted">Kunde</span>
                   <span>{letzterAngebot.kunde.bezeichnung}</span>
                 </div>
               )}
@@ -965,18 +975,18 @@ export function KassePage() {
               </div>
             </div>
             <div className="space-y-1.5">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Positionen</p>
+              <p className="text-xs font-semibold text-ink-muted uppercase tracking-wide">Positionen</p>
               <ul className="divide-y divide-gray-100 text-sm">
                 {letzterAngebot.positionen.map((p, i) => (
                   <li key={i} className="flex justify-between py-1.5">
-                    <span className="text-gray-800">{p.bezeichnung} × {p.menge}</span>
-                    <span className="font-mono text-gray-700">{formatPreis(p.einzelpreisBreutto * p.menge)}</span>
+                    <span className="text-ink">{p.bezeichnung} × {p.menge}</span>
+                    <span className="font-mono text-ink">{formatPreis(p.einzelpreisBreutto * p.menge)}</span>
                   </li>
                 ))}
               </ul>
             </div>
             {letzterAngebot.notiz && (
-              <p className="text-sm text-gray-600 border-l-2 border-gray-200 pl-3">{letzterAngebot.notiz}</p>
+              <p className="text-sm text-ink-muted border-l-2 border-line pl-3">{letzterAngebot.notiz}</p>
             )}
             <div className="flex flex-col gap-2 pt-2">
               <div className="flex gap-2">
@@ -1034,7 +1044,7 @@ export function KassePage() {
           <div className="space-y-4">
             {bonierungErgebnis.stationen.length > 0 && (
               <div className="space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">KDS-Stationen</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">KDS-Stationen</p>
                 <ul className="space-y-1.5">
                   {bonierungErgebnis.stationen.map((s) => (
                     <li
@@ -1061,7 +1071,7 @@ export function KassePage() {
 
             {bonierungErgebnis.drucker.length > 0 && (
               <div className="space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Bonierdrucker</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Bonierdrucker</p>
                 <ul className="space-y-1.5">
                   {bonierungErgebnis.drucker.map((d) => (
                     <li
@@ -1089,7 +1099,7 @@ export function KassePage() {
             )}
 
             {bonierungErgebnis.stationen.length === 0 && bonierungErgebnis.drucker.length === 0 && (
-              <p className="text-sm text-gray-500 text-center py-2">Keine Stationen oder Drucker konfiguriert.</p>
+              <p className="text-sm text-ink-muted text-center py-2">Keine Stationen oder Drucker konfiguriert.</p>
             )}
           </div>
         )}
@@ -1174,11 +1184,11 @@ export function KassePage() {
                   <p className="text-xs text-teal-700">und wurde bereits gedruckt</p>
                 </div>
               </div>
-              <div className="rounded-md bg-white border border-teal-200 px-4 py-3 text-center">
+              <div className="rounded-md bg-panel border border-teal-200 px-4 py-3 text-center">
                 <p className="font-mono font-bold text-2xl tracking-widest text-brand-700">{restGutschein.code}</p>
                 <p className="text-lg font-bold text-green-700 mt-1">{formatPreis(restGutschein.restCent)}</p>
                 {restGutschein.kunde && (
-                  <p className="text-xs text-gray-500 mt-0.5">Inhaber: {restGutschein.kunde.bezeichnung}</p>
+                  <p className="text-xs text-ink-muted mt-0.5">Inhaber: {restGutschein.kunde.bezeichnung}</p>
                 )}
               </div>
             </div>
@@ -1235,17 +1245,17 @@ function OffeneTischeLeiste() {
 
   return (
     <>
-      <div className="mb-3 bg-white rounded-lg shadow-sm border border-gray-200 px-3 py-2 flex items-center gap-2 min-h-[48px]">
-        <span className="text-xs font-semibold text-gray-500 shrink-0 uppercase tracking-wide">
+      <div className="mb-3 bg-panel rounded-lg shadow-sm border border-line px-3 py-2 flex items-center gap-2 min-h-[48px]">
+        <span className="text-xs font-semibold text-ink-muted shrink-0 uppercase tracking-wide">
           Tische
         </span>
 
         {tabsQuery.isLoading && (
-          <span className="text-xs text-gray-400">Wird geladen…</span>
+          <span className="text-xs text-ink-subtle">Wird geladen…</span>
         )}
 
         {!tabsQuery.isLoading && tabs.length === 0 && (
-          <span className="text-xs text-gray-400">Keine offenen Tische</span>
+          <span className="text-xs text-ink-subtle">Keine offenen Tische</span>
         )}
 
         {tabs.length > 0 && (
@@ -1335,7 +1345,7 @@ function NeuerTischFormular({ kasseId, loading, fehler, onSubmit, onAbbrechen }:
   return (
     <div className="space-y-4">
       <label className="block">
-        <span className="text-sm font-medium text-gray-700">Tischnummer / -bezeichnung</span>
+        <span className="text-sm font-medium text-ink">Tischnummer / -bezeichnung</span>
         <Input
           autoFocus
           value={tischNummer}
@@ -1346,7 +1356,7 @@ function NeuerTischFormular({ kasseId, loading, fehler, onSubmit, onAbbrechen }:
         />
       </label>
       <label className="block">
-        <span className="text-sm font-medium text-gray-700">Kellner</span>
+        <span className="text-sm font-medium text-ink">Kellner</span>
         <Input
           value={kellner}
           onChange={(e) => setKellner(e.target.value)}
@@ -1390,7 +1400,7 @@ function FreiePositionModal({ onSubmit, onClose }: FreiePositionModalProps) {
   return (
     <div className="space-y-4">
       <label className="block">
-        <span className="text-sm font-medium text-gray-700">Bezeichnung</span>
+        <span className="text-sm font-medium text-ink">Bezeichnung</span>
         <Input
           autoFocus
           value={bezeichnung}
@@ -1401,7 +1411,7 @@ function FreiePositionModal({ onSubmit, onClose }: FreiePositionModalProps) {
         />
       </label>
       <label className="block">
-        <span className="text-sm font-medium text-gray-700">Preis brutto (€)</span>
+        <span className="text-sm font-medium text-ink">Preis brutto (€)</span>
         <Input
           inputMode="decimal"
           value={preisEuro}
@@ -1412,7 +1422,7 @@ function FreiePositionModal({ onSubmit, onClose }: FreiePositionModalProps) {
         />
       </label>
       <div>
-        <span className="text-sm font-medium text-gray-700 block mb-1.5">MwSt-Satz</span>
+        <span className="text-sm font-medium text-ink block mb-1.5">MwSt-Satz</span>
         <div className="flex flex-wrap gap-2">
           {(Object.entries(MWST_LABELS) as [MwStSatz, string][]).map(([key, label]) => (
             <button
@@ -1422,7 +1432,7 @@ function FreiePositionModal({ onSubmit, onClose }: FreiePositionModalProps) {
               className={`px-3 py-1.5 rounded-md border text-sm font-medium transition ${
                 mwstSatz === key
                   ? 'bg-brand-600 border-brand-600 text-white'
-                  : 'border-gray-300 text-gray-700 hover:border-brand-400'
+                  : 'border-line-strong text-ink hover:border-brand-400'
               }`}
             >
               {label}
@@ -1549,24 +1559,24 @@ function GutscheinEinloesenModal({ summeNachRabattCent, onApply, onClose }: Guts
 
           {/* Werte */}
           <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-            <span className="text-gray-600">Ausgabewert</span>
+            <span className="text-ink-muted">Ausgabewert</span>
             <span className="font-mono text-right">{formatPreis(gefunden.betragCent)}</span>
-            <span className="text-gray-600">Restwert</span>
-            <span className={`font-mono text-right font-bold ${gefunden.restCent > 0 ? 'text-teal-700' : 'text-gray-400'}`}>
+            <span className="text-ink-muted">Restwert</span>
+            <span className={`font-mono text-right font-bold ${gefunden.restCent > 0 ? 'text-teal-700' : 'text-ink-subtle'}`}>
               {formatPreis(gefunden.restCent)}
             </span>
             {gefunden.gueltigBis && (
               <>
-                <span className="text-gray-600">Gültig bis</span>
-                <span className={`text-right ${isAbgelaufen ? 'text-red-600 font-semibold' : 'text-gray-700'}`}>
+                <span className="text-ink-muted">Gültig bis</span>
+                <span className={`text-right ${isAbgelaufen ? 'text-red-600 font-semibold' : 'text-ink'}`}>
                   {gefunden.gueltigBis}{isAbgelaufen ? ' (abgelaufen)' : ''}
                 </span>
               </>
             )}
             {gefunden.kunde && (
               <>
-                <span className="text-gray-600">Inhaber</span>
-                <span className="text-right text-gray-700">{gefunden.kunde.bezeichnung}</span>
+                <span className="text-ink-muted">Inhaber</span>
+                <span className="text-right text-ink">{gefunden.kunde.bezeichnung}</span>
               </>
             )}
           </div>
@@ -1574,7 +1584,7 @@ function GutscheinEinloesenModal({ summeNachRabattCent, onApply, onClose }: Guts
           {/* Einlösungsbetrag */}
           {einloesbar && (
             <div className="pt-1 border-t border-teal-200 space-y-2">
-              <label className="text-xs font-medium text-gray-700 block">Einlösungsbetrag (€)</label>
+              <label className="text-xs font-medium text-ink block">Einlösungsbetrag (€)</label>
               <div className="flex gap-2">
                 <Input
                   inputMode="decimal"
@@ -1589,7 +1599,7 @@ function GutscheinEinloesenModal({ summeNachRabattCent, onApply, onClose }: Guts
                     const v = gefunden.restCent >= summeNachRabattCent ? summeNachRabattCent : gefunden.restCent
                     setEinloesungEuro((v / 100).toFixed(2).replace('.', ','))
                   }}
-                  className="shrink-0 rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 transition"
+                  className="shrink-0 rounded-md border border-line-strong bg-panel px-2.5 py-1.5 text-xs font-medium text-ink hover:bg-panel-2 transition"
                 >
                   Max
                 </button>
@@ -1651,7 +1661,7 @@ function MengeButton({ onClick, children }: { onClick: () => void; children: str
     <button
       type="button"
       onClick={onClick}
-      className="h-6 w-6 rounded border border-gray-300 bg-white text-sm font-bold text-gray-700 hover:bg-gray-100"
+      className="h-6 w-6 rounded border border-line-strong bg-panel text-sm font-bold text-ink hover:bg-panel-2"
     >
       {children}
     </button>
