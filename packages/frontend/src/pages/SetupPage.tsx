@@ -1,5 +1,5 @@
 import { useMutation } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import type { SetupInput } from '@kassa/shared'
 import { postSetup } from '../lib/api'
 import { setKasseIdentity } from '../lib/kasse'
@@ -32,7 +32,7 @@ export function SetupPage() {
       <div className="mx-auto max-w-2xl">
         <Header />
 
-        <main className="rounded-xl bg-white shadow-sm border border-gray-200 p-6 sm:p-8">
+        <main className="rounded-xl bg-panel shadow-sm border border-line p-6 sm:p-8">
           {isSuccess && mutation.data ? (
             <div className="space-y-6">
               <SetupSuccess data={mutation.data} />
@@ -48,8 +48,8 @@ export function SetupPage() {
           ) : mutation.isPending ? (
             <div className="space-y-6">
               <div>
-                <h2 className="text-lg font-semibold text-gray-900">Kasse wird eingerichtet…</h2>
-                <p className="mt-1 text-sm text-gray-500">
+                <h2 className="text-lg font-semibold text-ink">Kasse wird eingerichtet…</h2>
+                <p className="mt-1 text-sm text-ink-muted">
                   Bitte warten — die Anmeldung bei FinanzOnline kann einige Sekunden dauern.
                 </p>
               </div>
@@ -58,8 +58,8 @@ export function SetupPage() {
           ) : (
             <>
               {mutation.data?.schritte && mutation.data.schritte.length > 0 && (
-                <div className="mb-6 rounded-md border border-gray-200 bg-gray-50 p-4">
-                  <h3 className="text-sm font-semibold text-gray-700 mb-3">
+                <div className="mb-6 rounded-md border border-line bg-panel-2 p-4">
+                  <h3 className="text-sm font-semibold text-ink mb-3">
                     Vorheriger Versuch
                   </h3>
                   <SetupProgress schritte={mutation.data.schritte} />
@@ -92,11 +92,17 @@ function Header() {
           <path strokeLinecap="round" strokeLinejoin="round" d="M3 3h18v4H3zM3 11h18v10H3zM7 15h2M7 18h2"/>
         </svg>
       </div>
-      <h1 className="text-3xl font-bold tracking-tight text-gray-900">
+      <h1 className="text-3xl font-bold tracking-tight text-ink">
         Kasse einrichten
       </h1>
-      <p className="mt-2 text-sm text-gray-600">
+      <p className="mt-2 text-sm text-ink-muted">
         Einmalige Anmeldung bei FinanzOnline gemäß RKSV
+      </p>
+      <p className="mt-3 text-sm text-ink-muted">
+        Kasse bereits eingerichtet?{' '}
+        <Link to="/login" className="font-medium text-brand-600 hover:underline">
+          Zur Anmeldung
+        </Link>
       </p>
     </header>
   )
@@ -104,7 +110,7 @@ function Header() {
 
 function Footer() {
   return (
-    <footer className="mt-8 text-center text-xs text-gray-400">
+    <footer className="mt-8 text-center text-xs text-ink-subtle">
       RKSV-konform · ECDSA P-256 · DEP7-Archivierung
     </footer>
   )

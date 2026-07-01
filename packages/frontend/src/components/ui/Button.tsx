@@ -28,7 +28,7 @@ export function Button({
 
   const variants = {
     primary:   'bg-brand-500 text-white hover:bg-brand-600',
-    secondary: 'bg-white text-gray-800 border border-gray-300 hover:bg-gray-50',
+    secondary: 'bg-panel text-ink border border-line-strong hover:bg-panel-2',
     danger:    'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500',
   }
 

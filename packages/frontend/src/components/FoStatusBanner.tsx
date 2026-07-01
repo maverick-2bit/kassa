@@ -72,11 +72,11 @@ export function FoStatusBanner() {
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <input value={tid} onChange={e => setTid(e.target.value)} placeholder="Teilnehmer-ID (TID)" autoComplete="off"
-                className="rounded border border-amber-300 bg-white px-2 py-1.5 text-sm text-gray-900" />
+                className="rounded border border-amber-300 bg-panel px-2 py-1.5 text-sm text-ink" />
               <input value={benId} onChange={e => setBenId(e.target.value)} placeholder="Benutzerkennung (BenID)" autoComplete="off"
-                className="rounded border border-amber-300 bg-white px-2 py-1.5 text-sm text-gray-900" />
+                className="rounded border border-amber-300 bg-panel px-2 py-1.5 text-sm text-ink" />
               <input value={pin} onChange={e => setPin(e.target.value)} placeholder="PIN" type="password" autoComplete="off"
-                className="rounded border border-amber-300 bg-white px-2 py-1.5 text-sm text-gray-900" />
+                className="rounded border border-amber-300 bg-panel px-2 py-1.5 text-sm text-ink" />
             </div>
             {fehler && <p className="mt-2 text-xs text-red-700">{fehler}</p>}
             <div className="mt-2.5">

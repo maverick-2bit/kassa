@@ -67,11 +67,11 @@ export function ZeiterfassungPage() {
   return (
     <div className="mx-auto max-w-5xl px-4 py-6 space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Zeiterfassung</h1>
+        <h1 className="text-2xl font-bold text-ink">Zeiterfassung</h1>
       </div>
 
       {/* Tab-Leiste */}
-      <div className="flex gap-1 border-b border-gray-200">
+      <div className="flex gap-1 border-b border-line">
         {([
           ['stempeln',  'Stempeln'],
           ['uebersicht','Übersicht'],
@@ -83,7 +83,7 @@ export function ZeiterfassungPage() {
             className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition ${
               tab === key
                 ? 'border-brand-600 text-brand-700'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
+                : 'border-transparent text-ink-muted hover:text-ink'
             }`}
           >
             {label}
@@ -153,14 +153,14 @@ function StempelTab() {
       {/* PIN-Numpad */}
       <div className="flex flex-col items-center gap-4">
         {/* PIN-Anzeige */}
-        <div className="w-full max-w-xs bg-gray-50 border border-gray-200 rounded-xl px-6 py-4 text-center">
-          <p className="text-xs text-gray-400 mb-1">PIN eingeben</p>
+        <div className="w-full max-w-xs bg-panel-2 border border-line rounded-xl px-6 py-4 text-center">
+          <p className="text-xs text-ink-subtle mb-1">PIN eingeben</p>
           <div className="flex justify-center gap-3 mt-1">
             {Array.from({ length: Math.max(pin.length, 4) }, (_, i) => (
               <div
                 key={i}
                 className={`w-4 h-4 rounded-full border-2 transition ${
-                  i < pin.length ? 'bg-brand-600 border-brand-600' : 'border-gray-300'
+                  i < pin.length ? 'bg-brand-600 border-brand-600' : 'border-line-strong'
                 }`}
               />
             ))}
@@ -179,8 +179,8 @@ function StempelTab() {
                 ${t === '✓'
                   ? 'bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50'
                   : t === '⌫'
-                  ? 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  : 'bg-white border border-gray-200 text-gray-800 hover:bg-gray-50 shadow-sm'}
+                  ? 'bg-panel-2 text-ink-muted hover:bg-panel-2'
+                  : 'bg-panel border border-line text-ink hover:bg-panel-2 shadow-sm'}
               `}
             >
               {t}
@@ -202,11 +202,11 @@ function StempelTab() {
 
       {/* Aktuell eingestempelt */}
       <div>
-        <h2 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-3">
+        <h2 className="text-sm font-semibold text-ink-muted uppercase tracking-wide mb-3">
           Aktuell eingestempelt
         </h2>
         {aktuell.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-gray-300 bg-white p-6 text-center text-sm text-gray-400">
+          <div className="rounded-lg border border-dashed border-line-strong bg-panel p-6 text-center text-sm text-ink-subtle">
             Niemand ist derzeit eingestempelt.
           </div>
         ) : (
@@ -214,10 +214,10 @@ function StempelTab() {
             {aktuell.map(az => {
               const seitMin = Math.floor((Date.now() - new Date(az.beginn).getTime()) / 60_000)
               return (
-                <div key={az.id} className="flex items-center justify-between bg-white rounded-lg border border-gray-200 px-4 py-3">
+                <div key={az.id} className="flex items-center justify-between bg-panel rounded-lg border border-line px-4 py-3">
                   <div>
-                    <p className="font-semibold text-gray-900 text-sm">{az.userName}</p>
-                    <p className="text-xs text-gray-400">seit {formatZeit(az.beginn)}</p>
+                    <p className="font-semibold text-ink text-sm">{az.userName}</p>
+                    <p className="text-xs text-ink-subtle">seit {formatZeit(az.beginn)}</p>
                   </div>
                   <span className="text-sm font-mono font-semibold text-green-700 bg-green-50 px-2 py-1 rounded-full">
                     {formatDauer(seitMin)}
@@ -266,30 +266,30 @@ function UebersichtTab() {
         <Button variant="secondary" size="sm" onClick={() => setWochenstart(d => wocheISO(d, -1))}>← Woche</Button>
         <Button variant="secondary" size="sm" onClick={() => setWochenstart(montagDerWoche(heuteISO()))}>Heute</Button>
         <Button variant="secondary" size="sm" onClick={() => setWochenstart(d => wocheISO(d, 1))}>Woche →</Button>
-        <span className="text-sm text-gray-500 ml-2">
+        <span className="text-sm text-ink-muted ml-2">
           {formatDatum(wochenstart)} – {formatDatum(wochenende)}
         </span>
       </div>
 
       {isLoading ? (
-        <p className="text-sm text-gray-400">Wird geladen…</p>
+        <p className="text-sm text-ink-subtle">Wird geladen…</p>
       ) : Object.keys(perPerson).length === 0 ? (
-        <div className="rounded-lg border border-dashed border-gray-300 bg-white p-8 text-center text-sm text-gray-400">
+        <div className="rounded-lg border border-dashed border-line-strong bg-panel p-8 text-center text-sm text-ink-subtle">
           Keine Einträge für diese Woche.
         </div>
       ) : (
         <div className="space-y-4">
           {Object.entries(perPerson).map(([name, { eintraege: azen, nettoMin }]) => (
-            <div key={name} className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200">
-                <span className="font-semibold text-gray-800">{name}</span>
+            <div key={name} className="bg-panel rounded-lg border border-line overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 bg-panel-2 border-b border-line">
+                <span className="font-semibold text-ink">{name}</span>
                 <span className="text-sm font-mono font-bold text-brand-700">
                   Gesamt: {formatDauer(nettoMin)}
                 </span>
               </div>
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-xs text-gray-400 uppercase tracking-wide">
+                  <tr className="text-xs text-ink-subtle uppercase tracking-wide">
                     <th className="px-4 py-2 text-left">Datum</th>
                     <th className="px-4 py-2 text-left">Beginn</th>
                     <th className="px-4 py-2 text-left">Ende</th>
@@ -297,13 +297,13 @@ function UebersichtTab() {
                     <th className="px-4 py-2 text-right">Netto</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-line">
                   {azen.map(az => (
-                    <tr key={az.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-2 text-gray-600">{formatDatum(az.beginn)}</td>
+                    <tr key={az.id} className="hover:bg-panel-2">
+                      <td className="px-4 py-2 text-ink-muted">{formatDatum(az.beginn)}</td>
                       <td className="px-4 py-2 font-mono">{formatZeit(az.beginn)}</td>
                       <td className="px-4 py-2 font-mono">{az.ende ? formatZeit(az.ende) : <span className="text-green-600 font-semibold">aktiv</span>}</td>
-                      <td className="px-4 py-2 text-gray-500">{az.pauseMinuten > 0 ? `${az.pauseMinuten}m` : '—'}</td>
+                      <td className="px-4 py-2 text-ink-muted">{az.pauseMinuten > 0 ? `${az.pauseMinuten}m` : '—'}</td>
                       <td className="px-4 py-2 text-right font-mono font-semibold">{formatDauer(az.nettoMinuten)}</td>
                     </tr>
                   ))}
@@ -345,14 +345,14 @@ function EintraegeTab() {
     <div className="space-y-4">
       <div className="flex items-center gap-3 flex-wrap">
         <div className="flex items-center gap-2 text-sm">
-          <label className="text-gray-600">Von</label>
+          <label className="text-ink-muted">Von</label>
           <input type="date" value={datumVon} onChange={e => setDatumVon(e.target.value)}
-            className="border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+            className="border border-line-strong rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
         </div>
         <div className="flex items-center gap-2 text-sm">
-          <label className="text-gray-600">Bis</label>
+          <label className="text-ink-muted">Bis</label>
           <input type="date" value={datumBis} onChange={e => setDatumBis(e.target.value)}
-            className="border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+            className="border border-line-strong rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
         </div>
         <Button size="sm" onClick={() => { setEditTarget(null); setFormOffen(true) }} className="ml-auto">
           + Manuell anlegen
@@ -360,16 +360,16 @@ function EintraegeTab() {
       </div>
 
       {isLoading ? (
-        <p className="text-sm text-gray-400">Wird geladen…</p>
+        <p className="text-sm text-ink-subtle">Wird geladen…</p>
       ) : eintraege.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-gray-300 bg-white p-8 text-center text-sm text-gray-400">
+        <div className="rounded-lg border border-dashed border-line-strong bg-panel p-8 text-center text-sm text-ink-subtle">
           Keine Einträge im gewählten Zeitraum.
         </div>
       ) : (
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className="bg-panel rounded-lg border border-line overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr className="text-xs text-gray-500 uppercase tracking-wide">
+            <thead className="bg-panel-2 border-b border-line">
+              <tr className="text-xs text-ink-muted uppercase tracking-wide">
                 <th className="px-4 py-2 text-left">Mitarbeiter</th>
                 <th className="px-4 py-2 text-left">Datum</th>
                 <th className="px-4 py-2 text-left">Beginn</th>
@@ -379,11 +379,11 @@ function EintraegeTab() {
                 <th className="px-4 py-2" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-line">
               {eintraege.map(az => (
-                <tr key={az.id} className="hover:bg-gray-50">
+                <tr key={az.id} className="hover:bg-panel-2">
                   <td className="px-4 py-2 font-medium">{az.userName}</td>
-                  <td className="px-4 py-2 text-gray-600">{formatDatum(az.beginn)}</td>
+                  <td className="px-4 py-2 text-ink-muted">{formatDatum(az.beginn)}</td>
                   <td className="px-4 py-2 font-mono">{formatZeit(az.beginn)}</td>
                   <td className="px-4 py-2 font-mono">
                     {az.ende ? formatZeit(az.ende) : <span className="text-green-600 font-semibold text-xs">aktiv</span>}
@@ -391,7 +391,7 @@ function EintraegeTab() {
                   <td className="px-4 py-2 font-mono font-semibold">{formatDauer(az.nettoMinuten)}</td>
                   <td className="px-4 py-2">
                     <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
-                      az.quelle === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'
+                      az.quelle === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-panel-2 text-ink-muted'
                     }`}>
                       {az.quelle === 'admin' ? 'Admin' : 'PIN'}
                     </span>
@@ -399,7 +399,7 @@ function EintraegeTab() {
                   <td className="px-4 py-2">
                     <div className="flex gap-1 justify-end">
                       <button onClick={() => { setEditTarget(az); setFormOffen(true) }}
-                        className="text-xs text-gray-400 hover:text-brand-600 px-2 py-1 rounded hover:bg-brand-50">
+                        className="text-xs text-ink-subtle hover:text-brand-600 px-2 py-1 rounded hover:bg-brand-50">
                         Bearbeiten
                       </button>
                       <button
@@ -498,9 +498,9 @@ function ArbeitszeitForm({
     <form onSubmit={e => { e.preventDefault(); setFehler(null); speichernMut.mutate() }} className="space-y-4">
       {!initial && (
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Mitarbeiter *</label>
+          <label className="block text-xs font-medium text-ink-muted mb-1">Mitarbeiter *</label>
           <select required value={userId} onChange={e => setUserId(e.target.value)}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
+            className="w-full border border-line-strong rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
             <option value="">— auswählen —</option>
             {userListe.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
           </select>
@@ -509,34 +509,34 @@ function ArbeitszeitForm({
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Beginn *</label>
+          <label className="block text-xs font-medium text-ink-muted mb-1">Beginn *</label>
           <input type="datetime-local" required value={beginn} onChange={e => setBeginn(e.target.value)}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+            className="w-full border border-line-strong rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Ende</label>
+          <label className="block text-xs font-medium text-ink-muted mb-1">Ende</label>
           <input type="datetime-local" value={ende} onChange={e => setEnde(e.target.value)}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+            className="w-full border border-line-strong rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
         </div>
       </div>
 
       <div>
-        <label className="block text-xs font-medium text-gray-600 mb-1">Pause (Minuten)</label>
+        <label className="block text-xs font-medium text-ink-muted mb-1">Pause (Minuten)</label>
         <input type="number" min={0} max={480} value={pauseMin} onChange={e => setPauseMin(e.target.value)}
-          className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+          className="w-full border border-line-strong rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
       </div>
 
       <div>
-        <label className="block text-xs font-medium text-gray-600 mb-1">Notiz</label>
+        <label className="block text-xs font-medium text-ink-muted mb-1">Notiz</label>
         <input type="text" value={notiz} onChange={e => setNotiz(e.target.value)}
-          className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+          className="w-full border border-line-strong rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
       </div>
 
       {fehler && (
         <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{fehler}</div>
       )}
 
-      <div className="flex gap-2 justify-end pt-1 border-t border-gray-100">
+      <div className="flex gap-2 justify-end pt-1 border-t border-line">
         <Button variant="secondary" type="button" onClick={onAbbrechen}>Abbrechen</Button>
         <Button type="submit" loading={speichernMut.isPending}>{initial ? 'Speichern' : 'Anlegen'}</Button>
       </div>

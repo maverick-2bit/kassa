@@ -98,6 +98,9 @@ import type {
   MandantStammdaten,
   MandantStammdatenUpdate,
   KasseBezeichnungUpdate,
+  KasseListeItem,
+  WeitereKasseInput,
+  WeitereKasseResponse,
   KassenbuchBuchung,
   KassenbuchBuchungInput,
   KassenbuchResponse,
@@ -964,6 +967,12 @@ export const kasseApi = {
 
   updateBezeichnung: (kasseId: string, input: KasseBezeichnungUpdate): Promise<{ id: string; bezeichnung: string }> =>
     request<{ id: string; bezeichnung: string }>('PATCH', `/api/kassen/${kasseId}/bezeichnung`, input),
+
+  liste: (): Promise<KasseListeItem[]> =>
+    request<KasseListeItem[]>('GET', '/api/kassen'),
+
+  anlegen: (input: WeitereKasseInput): Promise<WeitereKasseResponse> =>
+    request<WeitereKasseResponse>('POST', '/api/kassen', input),
 }
 
 // ---------------------------------------------------------------------------

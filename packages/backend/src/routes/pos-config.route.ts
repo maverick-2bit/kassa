@@ -12,7 +12,7 @@ import { z } from 'zod'
 import { ReihenfolgeUpdateSchema, FavoritenReihenfolgeUpdateSchema } from '@kassa/shared'
 import { and, eq, inArray } from 'drizzle-orm'
 import type { Db } from '../db/client.js'
-import { kassen, kassekategorieSichtbarkeit, artikel, kategorien } from '../db/schema.js'
+import { kassen, kassekategorieSichtbarkeit, kasseBonierdruckerSichtbarkeit, artikel, kategorien } from '../db/schema.js'
 
 export interface PosConfigRouteOptions { db: Db }
 
@@ -21,7 +21,8 @@ const KasseIdParam = z.object({ kasseId: z.string().uuid() })
 const StartseitenEnum = z.enum(['tische', 'kasse', 'kasse_favoriten', 'dashboard'])
 
 const PosConfigBodySchema = z.object({
-  sichtbareKategorieIds: z.array(z.string().uuid()).optional(),
+  sichtbareKategorieIds:     z.array(z.string().uuid()).optional(),
+  sichtbareBonierdruckerIds: z.array(z.string().uuid()).optional(),
   erlaubteZahlungsarten: z.array(z.enum(['bar', 'karte', 'sonstige'])).optional(),
   artikelbilderAktiv:    z.boolean().optional(),
   startseite:            StartseitenEnum.optional(),
@@ -46,8 +47,14 @@ export const posConfigRoute: FastifyPluginAsync<PosConfigRouteOptions> = async (
       .from(kassekategorieSichtbarkeit)
       .where(eq(kassekategorieSichtbarkeit.kasseId, p.data.kasseId))
 
+    const bonierdruckerSicht = await opts.db
+      .select({ bonierdruckerId: kasseBonierdruckerSichtbarkeit.bonierdruckerId })
+      .from(kasseBonierdruckerSichtbarkeit)
+      .where(eq(kasseBonierdruckerSichtbarkeit.kasseId, p.data.kasseId))
+
     return reply.send({
-      sichtbareKategorieIds: sichtbarkeit.map(r => r.kategorieId),
+      sichtbareKategorieIds:     sichtbarkeit.map(r => r.kategorieId),
+      sichtbareBonierdruckerIds: bonierdruckerSicht.map(r => r.bonierdruckerId),
       erlaubteZahlungsarten: kasse.erlaubteZahlungsarten as string[],
       artikelbilderAktiv:    kasse.artikelbilderAktiv,
       startseite:            kasse.startseite,
@@ -92,6 +99,21 @@ export const posConfigRoute: FastifyPluginAsync<PosConfigRouteOptions> = async (
             body.data.sichtbareKategorieIds.map(kategorieId => ({
               kasseId: p.data.kasseId,
               kategorieId,
+            }))
+          )
+        }
+      }
+
+      // Bonierdrucker-Sichtbarkeit komplett ersetzen (leer = alle)
+      if (body.data.sichtbareBonierdruckerIds !== undefined) {
+        await tx.delete(kasseBonierdruckerSichtbarkeit)
+          .where(eq(kasseBonierdruckerSichtbarkeit.kasseId, p.data.kasseId))
+
+        if (body.data.sichtbareBonierdruckerIds.length > 0) {
+          await tx.insert(kasseBonierdruckerSichtbarkeit).values(
+            body.data.sichtbareBonierdruckerIds.map(bonierdruckerId => ({
+              kasseId: p.data.kasseId,
+              bonierdruckerId,
             }))
           )
         }

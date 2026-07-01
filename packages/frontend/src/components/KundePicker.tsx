@@ -86,22 +86,22 @@ export function KundePicker({ value, onChange }: Props) {
             className="text-sm"
           />
           {offen && (
-            <div className="absolute left-0 right-0 top-full mt-1 z-30 rounded-md border border-gray-200 bg-white shadow-lg max-h-48 overflow-y-auto">
+            <div className="absolute left-0 right-0 top-full mt-1 z-30 rounded-md border border-line bg-panel shadow-lg max-h-48 overflow-y-auto">
               {laedt ? (
-                <p className="px-3 py-2 text-xs text-gray-400">Suche…</p>
+                <p className="px-3 py-2 text-xs text-ink-subtle">Suche…</p>
               ) : ergebnisse.length === 0 ? (
-                <p className="px-3 py-2 text-xs text-gray-400">Keine Kunden gefunden</p>
+                <p className="px-3 py-2 text-xs text-ink-subtle">Keine Kunden gefunden</p>
               ) : (
                 ergebnisse.map(k => (
                   <button
                     key={k.id}
                     type="button"
                     onClick={() => { onChange(k); setOffen(false); setSuche('') }}
-                    className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm border-b border-gray-100 last:border-0"
+                    className="w-full text-left px-3 py-2 hover:bg-panel-2 text-sm border-b border-line last:border-0"
                   >
-                    <span className="font-medium text-gray-900">{k.bezeichnung}</span>
-                    {k.email && <span className="ml-2 text-xs text-gray-500">{k.email}</span>}
-                    <span className="ml-2 text-xs text-gray-400">#{k.nummer}</span>
+                    <span className="font-medium text-ink">{k.bezeichnung}</span>
+                    {k.email && <span className="ml-2 text-xs text-ink-muted">{k.email}</span>}
+                    <span className="ml-2 text-xs text-ink-subtle">#{k.nummer}</span>
                   </button>
                 ))
               )}
@@ -198,39 +198,39 @@ function NeuerKundeFormular({ onSubmit, onAbbrechen }: NeuerKundeFormularProps) 
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-3">
         <label className="block col-span-2">
-          <span className="text-xs font-medium text-gray-700">Firma</span>
+          <span className="text-xs font-medium text-ink">Firma</span>
           <Input autoFocus value={firma} onChange={e => setFirma(e.target.value)} placeholder="Muster GmbH" className="mt-0.5" />
         </label>
         <label className="block">
-          <span className="text-xs font-medium text-gray-700">Vorname</span>
+          <span className="text-xs font-medium text-ink">Vorname</span>
           <Input value={vorname} onChange={e => setVorname(e.target.value)} placeholder="Max" className="mt-0.5" />
         </label>
         <label className="block">
-          <span className="text-xs font-medium text-gray-700">Nachname</span>
+          <span className="text-xs font-medium text-ink">Nachname</span>
           <Input value={nachname} onChange={e => setNachname(e.target.value)} placeholder="Mustermann" className="mt-0.5" />
         </label>
         <label className="block">
-          <span className="text-xs font-medium text-gray-700">E-Mail</span>
+          <span className="text-xs font-medium text-ink">E-Mail</span>
           <Input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="max@muster.at" className="mt-0.5" />
         </label>
         <label className="block">
-          <span className="text-xs font-medium text-gray-700">Telefon</span>
+          <span className="text-xs font-medium text-ink">Telefon</span>
           <Input value={telefon} onChange={e => setTelefon(e.target.value)} placeholder="+43 …" className="mt-0.5" />
         </label>
         <label className="block col-span-2">
-          <span className="text-xs font-medium text-gray-700">Straße</span>
+          <span className="text-xs font-medium text-ink">Straße</span>
           <Input value={strasse} onChange={e => setStrasse(e.target.value)} placeholder="Musterstraße 1" className="mt-0.5" />
         </label>
         <label className="block">
-          <span className="text-xs font-medium text-gray-700">PLZ</span>
+          <span className="text-xs font-medium text-ink">PLZ</span>
           <Input value={plz} onChange={e => setPlz(e.target.value)} placeholder="1010" className="mt-0.5" />
         </label>
         <label className="block">
-          <span className="text-xs font-medium text-gray-700">Ort</span>
+          <span className="text-xs font-medium text-ink">Ort</span>
           <Input value={ort} onChange={e => setOrt(e.target.value)} placeholder="Wien" className="mt-0.5" />
         </label>
         <label className="block col-span-2">
-          <span className="text-xs font-medium text-gray-700">UID (USt-ID, optional)</span>
+          <span className="text-xs font-medium text-ink">UID (USt-ID, optional)</span>
           <Input value={uid} onChange={e => setUid(e.target.value)} placeholder="ATU12345678" className="mt-0.5" />
         </label>
       </div>

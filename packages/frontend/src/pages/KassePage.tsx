@@ -978,7 +978,7 @@ export function KassePage() {
             </div>
             <div className="space-y-1.5">
               <p className="text-xs font-semibold text-ink-muted uppercase tracking-wide">Positionen</p>
-              <ul className="divide-y divide-gray-100 text-sm">
+              <ul className="divide-y divide-line text-sm">
                 {letzterAngebot.positionen.map((p, i) => (
                   <li key={i} className="flex justify-between py-1.5">
                     <span className="text-ink">{p.bezeichnung} × {p.menge}</span>

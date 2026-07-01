@@ -24,7 +24,7 @@ const STATUS_FARBE: Record<LagerStatus, string> = {
   kritisch:  'bg-red-100 text-red-800 border-red-200',
   niedrig:   'bg-yellow-100 text-yellow-800 border-yellow-200',
   ok:        'bg-green-100 text-green-800 border-green-200',
-  unbekannt: 'bg-gray-100 text-gray-600 border-gray-200',
+  unbekannt: 'bg-panel-2 text-ink-muted border-line',
 }
 
 const STATUS_LABEL: Record<LagerStatus, string> = {
@@ -101,12 +101,12 @@ function MindestbestandCell({
     <button
       type="button"
       onClick={startEdit}
-      className="min-w-[4rem] px-2 py-0.5 text-sm text-right rounded hover:bg-gray-100 border border-transparent hover:border-gray-300 transition"
+      className="min-w-[4rem] px-2 py-0.5 text-sm text-right rounded hover:bg-panel-2 border border-transparent hover:border-line-strong transition"
       title="Klicken zum Bearbeiten"
     >
       {artikel.mindestbestand !== null && artikel.mindestbestand !== undefined
         ? artikel.mindestbestand
-        : <span className="text-gray-400 italic">–</span>}
+        : <span className="text-ink-subtle italic">–</span>}
     </button>
   )
 }
@@ -176,7 +176,7 @@ export function LagerstandPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6">
-      <h1 className="text-2xl font-bold text-gray-900 mb-4">Lagerstand-Übersicht</h1>
+      <h1 className="text-2xl font-bold text-ink mb-4">Lagerstand-Übersicht</h1>
 
       {/* Warengruppe in Lager aufnehmen */}
       <div className="mb-6 rounded-xl border border-brand-200 bg-brand-50 p-4">
@@ -187,7 +187,7 @@ export function LagerstandPage() {
           <select
             value={gewaehlteKategorie}
             onChange={e => setGewaehlteKategorie(e.target.value)}
-            className="flex-1 min-w-40 rounded-lg border border-brand-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+            className="flex-1 min-w-40 rounded-lg border border-brand-300 bg-panel px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
           >
             <option value="alle">Alle Artikel (ohne Kategorie)</option>
             {(kategorienQuery.data ?? []).map(k => (
@@ -225,7 +225,7 @@ export function LagerstandPage() {
 
       {/* Filter + Suche */}
       <div className="flex gap-3 mb-4">
-        <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+        <div className="flex rounded-lg border border-line overflow-hidden">
           <FilterBtn active={filter === 'alle'}  onClick={() => setFilter('alle')}>Alle</FilterBtn>
           <FilterBtn active={filter === 'alarm'} onClick={() => setFilter('alarm')}>
             Alarm
@@ -241,24 +241,24 @@ export function LagerstandPage() {
           placeholder="Suche…"
           value={suche}
           onChange={e => setSuche(e.target.value)}
-          className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+          className="flex-1 px-3 py-1.5 border border-line rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
         />
       </div>
 
       {/* Tabelle */}
       {isLoading ? (
-        <p className="text-gray-500 text-sm">Lade…</p>
+        <p className="text-ink-muted text-sm">Lade…</p>
       ) : angezeigt.length === 0 ? (
-        <div className="text-center py-16 text-gray-500">
+        <div className="text-center py-16 text-ink-muted">
           {lagerArtikel.length === 0
             ? 'Keine Artikel mit aktivem Lagerstand. Lagerstand-Tracking kann in der Artikelverwaltung aktiviert werden.'
             : 'Kein Artikel entspricht dem Filter.'}
         </div>
       ) : (
-        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+        <div className="bg-panel border border-line rounded-xl overflow-hidden">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-200 bg-gray-50 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              <tr className="border-b border-line bg-panel-2 text-xs font-semibold text-ink-muted uppercase tracking-wider">
                 <th className="px-4 py-3 text-left">Artikel</th>
                 <th className="px-4 py-3 text-right">Lagerstand</th>
                 <th className="px-4 py-3 text-right">Mindestbestand</th>
@@ -271,14 +271,14 @@ export function LagerstandPage() {
                 return (
                   <tr
                     key={a.id}
-                    className={`border-b border-gray-100 last:border-0 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}`}
+                    className={`border-b border-line last:border-0 ${idx % 2 === 0 ? 'bg-panel' : 'bg-panel-2/40'}`}
                   >
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <span className={`inline-block w-2.5 h-2.5 rounded-full flex-shrink-0 ${STATUS_DOT[st]}`} />
-                        <span className="font-medium text-gray-900">{a.bezeichnung}</span>
+                        <span className="font-medium text-ink">{a.bezeichnung}</span>
                         {a.artikelnummer && (
-                          <span className="text-xs text-gray-400">#{a.artikelnummer}</span>
+                          <span className="text-xs text-ink-subtle">#{a.artikelnummer}</span>
                         )}
                       </div>
                     </td>
@@ -286,7 +286,7 @@ export function LagerstandPage() {
                       <span className={
                         st === 'kritisch' ? 'text-red-600' :
                         st === 'niedrig'  ? 'text-yellow-600' :
-                        'text-gray-900'
+                        'text-ink'
                       }>
                         {a.lagerstandMenge !== null && a.lagerstandMenge !== undefined
                           ? a.lagerstandMenge
@@ -312,7 +312,7 @@ export function LagerstandPage() {
         </div>
       )}
 
-      <p className="mt-4 text-xs text-gray-400">
+      <p className="mt-4 text-xs text-ink-subtle">
         Tipp: Klicke auf den Mindestbestand-Wert, um ihn direkt zu bearbeiten. Leerlassen = kein Alarm.
       </p>
     </div>
@@ -325,13 +325,13 @@ export function LagerstandPage() {
 
 function StatKachel({ label, wert, farbe }: { label: string; wert: number; farbe: 'gray' | 'green' | 'yellow' | 'red' }) {
   const farbKlasse = {
-    gray:   'border-gray-200 bg-gray-50',
+    gray:   'border-line bg-panel-2',
     green:  'border-green-200 bg-green-50',
     yellow: 'border-yellow-200 bg-yellow-50',
     red:    'border-red-200 bg-red-50',
   }[farbe]
   const textKlasse = {
-    gray:   'text-gray-700',
+    gray:   'text-ink',
     green:  'text-green-700',
     yellow: 'text-yellow-700',
     red:    'text-red-700',
@@ -340,7 +340,7 @@ function StatKachel({ label, wert, farbe }: { label: string; wert: number; farbe
   return (
     <div className={`rounded-xl border p-4 ${farbKlasse}`}>
       <p className={`text-2xl font-bold ${textKlasse}`}>{wert}</p>
-      <p className="text-xs text-gray-500 mt-0.5">{label}</p>
+      <p className="text-xs text-ink-muted mt-0.5">{label}</p>
     </div>
   )
 }
@@ -361,7 +361,7 @@ function FilterBtn({
       className={`flex items-center gap-1 px-4 py-1.5 text-sm font-medium transition ${
         active
           ? 'bg-brand-600 text-white'
-          : 'bg-white text-gray-600 hover:bg-gray-50'
+          : 'bg-panel text-ink-muted hover:bg-panel-2'
       }`}
     >
       {children}

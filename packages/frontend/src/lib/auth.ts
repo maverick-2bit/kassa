@@ -85,6 +85,18 @@ export function updateKasseBezeichnung(kasseId: string, bezeichnung: string): vo
   }))
 }
 
+/** Hängt eine neu angelegte Kasse an die Kassenliste im LocalStorage (ohne Re-Login). */
+export function addKasse(kasse: AuthState['kassen'][number]): void {
+  const auth = getAuth()
+  if (!auth) return
+  if (auth.kassen.some(k => k.id === kasse.id)) return
+  localStorage.setItem(KEY_AUTH, JSON.stringify({
+    user:    auth.user,
+    mandant: auth.mandant,
+    kassen:  [...auth.kassen, kasse],
+  }))
+}
+
 /** Triggert beim 401 — z. B. um zur Login-Seite zu redirecten */
 export type UnauthorizedHandler = () => void
 let onUnauthorized: UnauthorizedHandler | null = null

@@ -76,8 +76,8 @@ export function DashboardPage() {
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 sm:py-8 space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-        <p className="mt-1 text-sm text-gray-500">
+        <h1 className="text-2xl font-bold text-ink">Dashboard</h1>
+        <p className="mt-1 text-sm text-ink-muted">
           Tagesübersicht — {formatDatumAnzeige(datum)}
         </p>
       </div>
@@ -107,7 +107,7 @@ export function DashboardPage() {
       {/* Pro-Kasse-Karten */}
       {kassen.length > 1 && (
         <div>
-          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+          <h2 className="text-sm font-semibold text-ink-muted uppercase tracking-wide mb-3">
             Kassen im Überblick
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -185,7 +185,7 @@ function QuickLink({ to, label, color }: {
     amber:   'bg-amber-50   border-amber-200   text-amber-700   hover:bg-amber-100',
     purple:  'bg-purple-50  border-purple-200  text-purple-700  hover:bg-purple-100',
     blue:    'bg-blue-50    border-blue-200    text-blue-700    hover:bg-blue-100',
-    gray:    'bg-gray-50    border-gray-200    text-gray-600    hover:bg-gray-100',
+    gray:    'bg-panel-2    border-line    text-ink-muted    hover:bg-panel-2',
   }
   return (
     <Link
@@ -232,21 +232,21 @@ function OffeneTischeWidget({ kassen }: { kassen: KasseInfo[] }) {
   const offenCent  = allTabs.reduce((s, t) => s + t.summeGesamtCent, 0)
 
   return (
-    <div className="rounded-lg border bg-white shadow-sm p-4 space-y-1">
+    <div className="rounded-lg border bg-panel shadow-sm p-4 space-y-1">
       <div className="flex items-center justify-between">
-        <p className="text-xs text-gray-500">Offene Tische</p>
+        <p className="text-xs text-ink-muted">Offene Tische</p>
         <Link to="/tische" className="text-xs text-brand-600 hover:underline">Zur Tischansicht →</Link>
       </div>
       {isLoading ? (
-        <p className="text-sm text-gray-400">Wird geladen…</p>
+        <p className="text-sm text-ink-subtle">Wird geladen…</p>
       ) : (
         <>
-          <p className="text-3xl font-bold text-gray-900">{anzahl}</p>
+          <p className="text-3xl font-bold text-ink">{anzahl}</p>
           {offenCent > 0 && (
-            <p className="text-sm text-gray-500">Offen: {formatPreis(offenCent)}</p>
+            <p className="text-sm text-ink-muted">Offen: {formatPreis(offenCent)}</p>
           )}
           {anzahl === 0 && (
-            <p className="text-xs text-gray-400">Keine offenen Tabs</p>
+            <p className="text-xs text-ink-subtle">Keine offenen Tabs</p>
           )}
         </>
       )}
@@ -263,22 +263,22 @@ function OffenePostenWidget() {
   })
 
   return (
-    <div className="rounded-lg border bg-white shadow-sm p-4 space-y-1">
+    <div className="rounded-lg border bg-panel shadow-sm p-4 space-y-1">
       <div className="flex items-center justify-between">
-        <p className="text-xs text-gray-500">Offene Posten</p>
+        <p className="text-xs text-ink-muted">Offene Posten</p>
         <Link to="/offene-posten" className="text-xs text-brand-600 hover:underline">Übersicht →</Link>
       </div>
       {isLoading ? (
-        <p className="text-sm text-gray-400">Wird geladen…</p>
+        <p className="text-sm text-ink-subtle">Wird geladen…</p>
       ) : data && data.anzahl > 0 ? (
         <>
-          <p className="text-3xl font-bold text-gray-900">{data.anzahl}</p>
-          <p className="text-sm text-gray-500">Ausstehend: {formatPreis(data.gesamtRestCent)}</p>
+          <p className="text-3xl font-bold text-ink">{data.anzahl}</p>
+          <p className="text-sm text-ink-muted">Ausstehend: {formatPreis(data.gesamtRestCent)}</p>
         </>
       ) : (
         <>
           <p className="text-3xl font-bold text-green-600">0</p>
-          <p className="text-xs text-gray-400">Alle Posten beglichen</p>
+          <p className="text-xs text-ink-subtle">Alle Posten beglichen</p>
         </>
       )}
     </div>
@@ -301,24 +301,24 @@ function KdsBonsWidget() {
   }
 
   return (
-    <div className="rounded-lg border bg-white shadow-sm p-4 space-y-1">
+    <div className="rounded-lg border bg-panel shadow-sm p-4 space-y-1">
       <div className="flex items-center justify-between">
-        <p className="text-xs text-gray-500">KDS — Offene Bons</p>
-        <span className="text-xs text-gray-400">alle Stationen</span>
+        <p className="text-xs text-ink-muted">KDS — Offene Bons</p>
+        <span className="text-xs text-ink-subtle">alle Stationen</span>
       </div>
       {isLoading ? (
-        <p className="text-sm text-gray-400">Wird geladen…</p>
+        <p className="text-sm text-ink-subtle">Wird geladen…</p>
       ) : !data || data.total === 0 ? (
         <>
           <p className="text-3xl font-bold text-green-600">0</p>
-          <p className="text-xs text-gray-400">Keine offenen Bons</p>
+          <p className="text-xs text-ink-subtle">Keine offenen Bons</p>
         </>
       ) : (
         <>
           <p className="text-3xl font-bold text-amber-600">{data.total}</p>
           <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
             {Object.entries(data.perStation).map(([station, count]) => (
-              <span key={station} className="text-xs text-gray-500">
+              <span key={station} className="text-xs text-ink-muted">
                 {STATION_LABELS[station] ?? station}: <span className="font-semibold">{count}</span>
               </span>
             ))}
@@ -516,16 +516,16 @@ function KasseKarte({ kasseId, bezeichnung, datum }: {
   const g = data?.gesamt
 
   return (
-    <div className={`rounded-lg border bg-white shadow-sm p-4 space-y-3 ${
-      isError ? 'border-red-200' : 'border-gray-200'
+    <div className={`rounded-lg border bg-panel shadow-sm p-4 space-y-3 ${
+      isError ? 'border-red-200' : 'border-line'
     }`}>
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-900 truncate">{bezeichnung}</h3>
+        <h3 className="text-sm font-semibold text-ink truncate">{bezeichnung}</h3>
         <span className={`text-xs px-2 py-0.5 rounded-full ${
-          isLoading ? 'bg-gray-100 text-gray-400' :
+          isLoading ? 'bg-panel-2 text-ink-subtle' :
           isError   ? 'bg-red-100 text-red-600' :
           g && g.umsatzCent > 0 ? 'bg-green-100 text-green-700' :
-          'bg-gray-100 text-gray-500'
+          'bg-panel-2 text-ink-muted'
         }`}>
           {isLoading ? '…' : isError ? 'Fehler' : g && g.umsatzCent > 0 ? 'Aktiv' : 'Kein Umsatz'}
         </span>
@@ -534,15 +534,15 @@ function KasseKarte({ kasseId, bezeichnung, datum }: {
       {g && (
         <>
           <div>
-            <p className="text-2xl font-bold font-mono text-gray-900">{formatPreis(g.umsatzCent)}</p>
-            <p className="text-xs text-gray-500 mt-0.5">
+            <p className="text-2xl font-bold font-mono text-ink">{formatPreis(g.umsatzCent)}</p>
+            <p className="text-xs text-ink-muted mt-0.5">
               {g.anzahlBelege} Belege
               {g.anzahlStornos > 0 && <span className="text-red-500"> · {g.anzahlStornos} Stornos</span>}
             </p>
           </div>
 
           {g.umsatzCent > 0 && (
-            <div className="flex gap-3 text-xs text-gray-600">
+            <div className="flex gap-3 text-xs text-ink-muted">
               {g.barCent > 0 && (
                 <span className="flex items-center gap-1">
                   <span className="inline-block w-2 h-2 rounded-full bg-green-400" />
@@ -567,7 +567,7 @@ function KasseKarte({ kasseId, bezeichnung, datum }: {
       )}
 
       {isLoading && (
-        <div className="text-sm text-gray-400">Wird geladen…</div>
+        <div className="text-sm text-ink-subtle">Wird geladen…</div>
       )}
     </div>
   )
@@ -599,9 +599,9 @@ function StundenVerlauf({ datum }: { datum: string }) {
   )
 
   return (
-    <div className="rounded-lg bg-white shadow-sm border border-gray-200 overflow-hidden">
-      <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
-        <h2 className="text-sm font-semibold text-gray-700">Umsatz nach Tageszeit (heute)</h2>
+    <div className="rounded-lg bg-panel shadow-sm border border-line overflow-hidden">
+      <div className="px-4 py-3 bg-panel-2 border-b border-line">
+        <h2 className="text-sm font-semibold text-ink">Umsatz nach Tageszeit (heute)</h2>
       </div>
       <div className="px-4 py-4 flex items-end gap-1" style={{ height: '120px' }}>
         {angezeigt.map(z => {
@@ -609,7 +609,7 @@ function StundenVerlauf({ datum }: { datum: string }) {
           return (
             <div key={z.stunde} className="flex flex-col items-center flex-1 min-w-0 group relative">
               <div
-                className={`w-full rounded-t transition-all ${z.umsatzCent > 0 ? 'bg-brand-400 hover:bg-brand-500' : 'bg-gray-100'}`}
+                className={`w-full rounded-t transition-all ${z.umsatzCent > 0 ? 'bg-brand-400 hover:bg-brand-500' : 'bg-panel-2'}`}
                 style={{ height: `${hoehe}px` }}
               />
               {/* Tooltip */}
@@ -618,7 +618,7 @@ function StundenVerlauf({ datum }: { datum: string }) {
                   {z.stunde}:00 — {formatPreis(z.umsatzCent)} ({z.anzahlBelege} Bel.)
                 </div>
               )}
-              <span className="text-xs text-gray-400 mt-1">{z.stunde}</span>
+              <span className="text-xs text-ink-subtle mt-1">{z.stunde}</span>
             </div>
           )
         })}
@@ -641,18 +641,18 @@ function TopArtikelWidget({ datum }: { datum: string }) {
   const maxUmsatz = Math.max(...(data?.zeilen ?? []).map(z => z.umsatzCent), 1)
 
   return (
-    <div className="rounded-lg bg-white shadow-sm border border-gray-200 overflow-hidden">
-      <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-gray-700">Top-Artikel heute</h2>
+    <div className="rounded-lg bg-panel shadow-sm border border-line overflow-hidden">
+      <div className="px-4 py-3 bg-panel-2 border-b border-line flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-ink">Top-Artikel heute</h2>
         <Link to="/berichte" className="text-xs text-brand-600 hover:underline">Alle Artikel →</Link>
       </div>
 
       {isLoading && (
-        <div className="px-4 py-6 text-sm text-gray-400">Wird geladen…</div>
+        <div className="px-4 py-6 text-sm text-ink-subtle">Wird geladen…</div>
       )}
 
       {!isLoading && (!data || data.zeilen.length === 0) && (
-        <div className="px-4 py-6 text-sm text-gray-400">Noch keine Artikel verkauft.</div>
+        <div className="px-4 py-6 text-sm text-ink-subtle">Noch keine Artikel verkauft.</div>
       )}
 
       {data && data.zeilen.length > 0 && (
@@ -661,20 +661,20 @@ function TopArtikelWidget({ datum }: { datum: string }) {
             const balken = Math.max(8, Math.round((z.umsatzCent / maxUmsatz) * 100))
             return (
               <div key={z.bezeichnung} className="px-4 py-2.5 flex items-center gap-3">
-                <span className="text-xs font-mono text-gray-400 w-4 shrink-0">{i + 1}</span>
+                <span className="text-xs font-mono text-ink-subtle w-4 shrink-0">{i + 1}</span>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2 mb-1">
-                    <span className="text-sm font-medium text-gray-900 truncate">{z.bezeichnung}</span>
-                    <span className="text-xs text-gray-500 shrink-0">{z.mengeSumme}×</span>
+                    <span className="text-sm font-medium text-ink truncate">{z.bezeichnung}</span>
+                    <span className="text-xs text-ink-muted shrink-0">{z.mengeSumme}×</span>
                   </div>
-                  <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div className="h-1.5 bg-panel-2 rounded-full overflow-hidden">
                     <div
                       className="h-full bg-brand-400 rounded-full transition-all"
                       style={{ width: `${balken}%` }}
                     />
                   </div>
                 </div>
-                <span className="text-sm font-mono font-semibold text-gray-900 shrink-0 w-20 text-right">
+                <span className="text-sm font-mono font-semibold text-ink shrink-0 w-20 text-right">
                   {formatPreis(z.umsatzCent)}
                 </span>
               </div>
@@ -738,22 +738,22 @@ function SiebentageVerlauf({ datum }: { datum: string }) {
   const durchschnitt = tageMitUmsatz > 0 ? Math.round(heute7Sum / tageMitUmsatz) : 0
 
   return (
-    <div className="rounded-lg bg-white shadow-sm border border-gray-200 overflow-hidden">
-      <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-gray-700">Letzten 7 Tage</h2>
+    <div className="rounded-lg bg-panel shadow-sm border border-line overflow-hidden">
+      <div className="px-4 py-3 bg-panel-2 border-b border-line flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-ink">Letzten 7 Tage</h2>
         {!isLoading && durchschnitt > 0 && (
-          <span className="text-xs text-gray-500">
+          <span className="text-xs text-ink-muted">
             Ø {formatPreis(durchschnitt)}/Tag
           </span>
         )}
       </div>
 
       {isLoading && (
-        <div className="px-4 py-6 text-sm text-gray-400">Wird geladen…</div>
+        <div className="px-4 py-6 text-sm text-ink-subtle">Wird geladen…</div>
       )}
 
       {!isLoading && zeilen.length === 0 && (
-        <div className="px-4 py-6 text-sm text-gray-400">Keine Daten vorhanden.</div>
+        <div className="px-4 py-6 text-sm text-ink-subtle">Keine Daten vorhanden.</div>
       )}
 
       {!isLoading && zeilen.length > 0 && (
@@ -826,13 +826,13 @@ function Kachel({ label, wert, sub, trend, hervor }: {
   hervor?: boolean
 }) {
   return (
-    <div className={`rounded-lg border p-4 shadow-sm ${hervor ? 'bg-brand-50 border-brand-200' : 'bg-white border-gray-200'}`}>
-      <p className="text-xs text-gray-500">{label}</p>
-      <p className={`font-mono font-semibold text-xl mt-1 ${hervor ? 'text-brand-700' : 'text-gray-900'}`}>
+    <div className={`rounded-lg border p-4 shadow-sm ${hervor ? 'bg-brand-50 border-brand-200' : 'bg-panel border-line'}`}>
+      <p className="text-xs text-ink-muted">{label}</p>
+      <p className={`font-mono font-semibold text-xl mt-1 ${hervor ? 'text-brand-700' : 'text-ink'}`}>
         {wert}
       </p>
       <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-        {sub && <p className="text-xs text-gray-400">{sub}</p>}
+        {sub && <p className="text-xs text-ink-subtle">{sub}</p>}
         {trend && (
           <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-full ${
             trend.positiv

@@ -150,10 +150,10 @@ export function ModifikatorenPage() {
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-white shrink-0">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-line bg-panel shrink-0">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Artikel-Optionen</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
+          <h1 className="text-xl font-bold text-ink">Artikel-Optionen</h1>
+          <p className="text-sm text-ink-muted mt-0.5">
             Varianten, Beilagen und Extras — z. B. Größe, Sauce, Garstufe
           </p>
         </div>
@@ -172,14 +172,14 @@ export function ModifikatorenPage() {
       )}
 
       {gruppenQuery.isLoading ? (
-        <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">Wird geladen…</div>
+        <div className="flex-1 flex items-center justify-center text-ink-subtle text-sm">Wird geladen…</div>
       ) : gruppen.length === 0 ? (
         <LeereZustand onNeu={() => setGruppeModalOpen(true)} />
       ) : (
         <div className="flex-1 flex overflow-hidden">
           {/* Linke Spalte: Gruppen-Liste */}
-          <div className="w-64 shrink-0 border-r border-gray-200 bg-gray-50 overflow-y-auto flex flex-col">
-            <div className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+          <div className="w-64 shrink-0 border-r border-line bg-panel-2 overflow-y-auto flex flex-col">
+            <div className="px-3 py-2 text-xs font-semibold text-ink-muted uppercase tracking-wide">
               Gruppen
             </div>
             {gruppen.map(gruppe => {
@@ -192,8 +192,8 @@ export function ModifikatorenPage() {
                   onClick={() => setGewählteGruppeId(gruppe.id)}
                   className={`w-full text-left px-3 py-2.5 flex items-start gap-2 border-l-2 transition-colors ${
                     aktiv
-                      ? 'border-brand-500 bg-white text-brand-700'
-                      : 'border-transparent hover:bg-white hover:border-gray-300 text-gray-700'
+                      ? 'border-brand-500 bg-panel text-brand-700'
+                      : 'border-transparent hover:bg-panel hover:border-line-strong text-ink'
                   } ${!gruppe.aktiv ? 'opacity-50' : ''}`}
                 >
                   <div className="flex-1 min-w-0">
@@ -202,22 +202,22 @@ export function ModifikatorenPage() {
                       <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
                         gruppe.typ === 'pflicht'
                           ? 'bg-red-100 text-red-700'
-                          : 'bg-gray-200 text-gray-600'
+                          : 'bg-panel-2 text-ink-muted'
                       }`}>
                         {gruppe.typ === 'pflicht' ? 'Pflicht' : 'Optional'}
                       </span>
-                      <span className="text-[10px] text-gray-400">
+                      <span className="text-[10px] text-ink-subtle">
                         {anzahlMods} Option{anzahlMods !== 1 ? 'en' : ''}
                       </span>
                     </div>
                     {anzahlArtikel > 0 && (
-                      <div className="text-[10px] text-gray-400 mt-0.5">
+                      <div className="text-[10px] text-ink-subtle mt-0.5">
                         {anzahlArtikel} Artikel zugewiesen
                       </div>
                     )}
                   </div>
                   {!gruppe.aktiv && (
-                    <span className="text-[10px] text-gray-400 shrink-0 mt-0.5">inaktiv</span>
+                    <span className="text-[10px] text-ink-subtle shrink-0 mt-0.5">inaktiv</span>
                   )}
                 </button>
               )
@@ -227,7 +227,7 @@ export function ModifikatorenPage() {
           {/* Rechte Spalte: Detail der gewählten Gruppe */}
           <div className="flex-1 overflow-y-auto p-6">
             {!gewählteGruppe ? (
-              <p className="text-gray-400 text-sm">Keine Gruppe gewählt.</p>
+              <p className="text-ink-subtle text-sm">Keine Gruppe gewählt.</p>
             ) : (
               <GruppeDetail
                 gruppe={gewählteGruppe}
@@ -351,18 +351,18 @@ function GruppeDetail({
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-lg font-bold text-gray-900">{gruppe.name}</h2>
+            <h2 className="text-lg font-bold text-ink">{gruppe.name}</h2>
             <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-              gruppe.typ === 'pflicht' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'
+              gruppe.typ === 'pflicht' ? 'bg-red-100 text-red-700' : 'bg-panel-2 text-ink-muted'
             }`}>
               {gruppe.typ === 'pflicht' ? 'Pflicht' : 'Optional'}
             </span>
             {!gruppe.aktiv && (
-              <span className="text-xs px-2 py-0.5 rounded-full bg-gray-200 text-gray-500">Inaktiv</span>
+              <span className="text-xs px-2 py-0.5 rounded-full bg-panel-2 text-ink-muted">Inaktiv</span>
             )}
           </div>
           {gruppe.maxAuswahl && (
-            <p className="text-sm text-gray-500 mt-1">Maximal {gruppe.maxAuswahl} Auswahl</p>
+            <p className="text-sm text-ink-muted mt-1">Maximal {gruppe.maxAuswahl} Auswahl</p>
           )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -385,16 +385,16 @@ function GruppeDetail({
       {/* Optionen */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-gray-700">Optionen</h3>
+          <h3 className="text-sm font-semibold text-ink">Optionen</h3>
           <Button onClick={onNeueMod}>+ Option hinzufügen</Button>
         </div>
 
         {gruppe.modifikatoren.length === 0 ? (
-          <div className="rounded-xl border-2 border-dashed border-gray-200 py-8 text-center">
-            <p className="text-sm text-gray-400">Noch keine Optionen. Füge die erste Option hinzu.</p>
+          <div className="rounded-xl border-2 border-dashed border-line py-8 text-center">
+            <p className="text-sm text-ink-subtle">Noch keine Optionen. Füge die erste Option hinzu.</p>
           </div>
         ) : (
-          <div className="rounded-xl border border-gray-200 overflow-hidden divide-y divide-gray-100">
+          <div className="rounded-xl border border-line overflow-hidden divide-y divide-line">
             {gruppe.modifikatoren.map((mod, idx) => (
               <ModifikatorZeile
                 key={mod.id}
@@ -413,16 +413,16 @@ function GruppeDetail({
       {/* Artikel-Zuweisung */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-gray-700">
+          <h3 className="text-sm font-semibold text-ink">
             Zugewiesene Artikel
-            <span className="ml-2 text-gray-400 font-normal">({zugewieseneArtikel.length})</span>
+            <span className="ml-2 text-ink-subtle font-normal">({zugewieseneArtikel.length})</span>
           </h3>
           <Button variant="secondary" onClick={onZuweisungOeffnen}>Zuweisung bearbeiten</Button>
         </div>
 
         {zugewieseneArtikel.length === 0 ? (
-          <div className="rounded-xl border-2 border-dashed border-gray-200 py-6 text-center">
-            <p className="text-sm text-gray-400">
+          <div className="rounded-xl border-2 border-dashed border-line py-6 text-center">
+            <p className="text-sm text-ink-subtle">
               Noch keinem Artikel zugewiesen.
             </p>
             <button
@@ -437,7 +437,7 @@ function GruppeDetail({
             {zugewieseneArtikel.map(a => (
               <span
                 key={a.id}
-                className="inline-flex items-center rounded-lg bg-gray-100 px-3 py-1.5 text-sm text-gray-700"
+                className="inline-flex items-center rounded-lg bg-panel-2 px-3 py-1.5 text-sm text-ink"
               >
                 {a.bezeichnung}
               </span>
@@ -468,12 +468,12 @@ function ModifikatorZeile({
   const hatLagerstand   = mod.lagerstandMenge !== null
 
   return (
-    <div className={`flex items-center gap-3 px-4 py-3 bg-white hover:bg-gray-50 transition-colors ${!mod.aktiv ? 'opacity-50' : ''}`}>
-      <span className="text-xs text-gray-300 w-4 text-right shrink-0">{index + 1}</span>
+    <div className={`flex items-center gap-3 px-4 py-3 bg-panel hover:bg-panel-2 transition-colors ${!mod.aktiv ? 'opacity-50' : ''}`}>
+      <span className="text-xs text-ink-subtle w-4 text-right shrink-0">{index + 1}</span>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-gray-900">{mod.name}</span>
-          {!mod.aktiv && <span className="text-[10px] text-gray-400">(inaktiv)</span>}
+          <span className="text-sm font-medium text-ink">{mod.name}</span>
+          {!mod.aktiv && <span className="text-[10px] text-ink-subtle">(inaktiv)</span>}
           {istAusverkauft && (
             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-600 font-medium">Ausverkauft</span>
           )}
@@ -481,14 +481,14 @@ function ModifikatorZeile({
         <div className="flex items-center gap-3 mt-0.5">
           <span className={`text-xs font-mono ${
             mod.aufschlagCent > 0 ? 'text-orange-600' :
-            mod.aufschlagCent < 0 ? 'text-green-600' : 'text-gray-400'
+            mod.aufschlagCent < 0 ? 'text-green-600' : 'text-ink-subtle'
           }`}>
             {aufschlagLabel(mod.aufschlagCent)}
           </span>
           {hatLagerstand && (
             <button
               onClick={onBestandSetzen}
-              className="text-xs text-gray-400 hover:text-gray-700 transition-colors"
+              className="text-xs text-ink-subtle hover:text-ink transition-colors"
             >
               Bestand: {mod.lagerstandMenge === 0 ? '0 (ausverkauft)' : mod.lagerstandMenge}
             </button>
@@ -496,7 +496,7 @@ function ModifikatorZeile({
           {!hatLagerstand && (
             <button
               onClick={onBestandSetzen}
-              className="text-xs text-gray-300 hover:text-gray-500 transition-colors"
+              className="text-xs text-ink-subtle hover:text-ink-muted transition-colors"
             >
               + Lagerstand
             </button>
@@ -506,21 +506,21 @@ function ModifikatorZeile({
       <div className="flex items-center gap-1 shrink-0">
         <button
           onClick={onBearbeiten}
-          className="p-1.5 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors text-xs"
+          className="p-1.5 rounded text-ink-subtle hover:text-ink hover:bg-panel-2 transition-colors text-xs"
           title="Bearbeiten"
         >
           ✏️
         </button>
         <button
           onClick={onDeaktivieren}
-          className="p-1.5 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors text-xs"
+          className="p-1.5 rounded text-ink-subtle hover:text-ink hover:bg-panel-2 transition-colors text-xs"
           title={mod.aktiv ? 'Deaktivieren' : 'Aktivieren'}
         >
           {mod.aktiv ? '👁️' : '🚫'}
         </button>
         <button
           onClick={onLoeschen}
-          className="p-1.5 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors text-xs"
+          className="p-1.5 rounded text-ink-subtle hover:text-red-500 hover:bg-red-50 transition-colors text-xs"
           title="Löschen"
         >
           🗑️
@@ -573,7 +573,7 @@ function GruppeFormModal({
     >
       <div className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+          <label className="block text-sm font-medium text-ink mb-1">Name</label>
           <Input
             value={name}
             onChange={e => setName(e.target.value)}
@@ -583,7 +583,7 @@ function GruppeFormModal({
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Typ</label>
+          <label className="block text-sm font-medium text-ink mb-1">Typ</label>
           <div className="grid grid-cols-2 gap-2">
             {(['optional', 'pflicht'] as const).map(t => (
               <button
@@ -594,7 +594,7 @@ function GruppeFormModal({
                     ? t === 'pflicht'
                       ? 'border-red-500 bg-red-50 text-red-700'
                       : 'border-brand-500 bg-brand-50 text-brand-700'
-                    : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                    : 'border-line text-ink-muted hover:border-line-strong'
                 }`}
               >
                 {t === 'pflicht' ? '✱ Pflicht' : '○ Optional'}
@@ -607,8 +607,8 @@ function GruppeFormModal({
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Max. Auswahl <span className="text-gray-400 font-normal">(leer = unbegrenzt)</span>
+          <label className="block text-sm font-medium text-ink mb-1">
+            Max. Auswahl <span className="text-ink-subtle font-normal">(leer = unbegrenzt)</span>
           </label>
           <Input
             type="number"
@@ -675,7 +675,7 @@ function ModifikatorFormModal({
     >
       <div className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Bezeichnung</label>
+          <label className="block text-sm font-medium text-ink mb-1">Bezeichnung</label>
           <Input
             value={name}
             onChange={e => setName(e.target.value)}
@@ -685,8 +685,8 @@ function ModifikatorFormModal({
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Preisaufschlag <span className="text-gray-400 font-normal">(0 = kostenlos, negativ = Rabatt)</span>
+          <label className="block text-sm font-medium text-ink mb-1">
+            Preisaufschlag <span className="text-ink-subtle font-normal">(0 = kostenlos, negativ = Rabatt)</span>
           </label>
           <div className="relative">
             <Input
@@ -695,10 +695,10 @@ function ModifikatorFormModal({
               value={aufschlagStr}
               onChange={e => setAufschlagStr(e.target.value)}
             />
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none">€</span>
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-subtle text-sm pointer-events-none">€</span>
           </div>
           {aufschlagStr && parseFloat(aufschlagStr.replace(',', '.')) !== 0 && (
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-ink-muted mt-1">
               → {parseFloat(aufschlagStr.replace(',', '.')) > 0 ? '+' : ''}
               {aufschlagLabel(Math.round(parseFloat(aufschlagStr.replace(',', '.') || '0') * 100))}
             </p>
@@ -706,8 +706,8 @@ function ModifikatorFormModal({
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Lagerstand <span className="text-gray-400 font-normal">(leer = kein Countdown)</span>
+          <label className="block text-sm font-medium text-ink mb-1">
+            Lagerstand <span className="text-ink-subtle font-normal">(leer = kein Countdown)</span>
           </label>
           <Input
             type="number"
@@ -716,7 +716,7 @@ function ModifikatorFormModal({
             onChange={e => setLagerstandStr(e.target.value)}
             placeholder="z. B. 20"
           />
-          <p className="text-xs text-gray-400 mt-1">
+          <p className="text-xs text-ink-subtle mt-1">
             Bei 0 wird die Option als „Ausverkauft" angezeigt und kann nicht gewählt werden.
           </p>
         </div>
@@ -757,7 +757,7 @@ function LagerstandModal({
           placeholder="Menge eingeben…"
           autoFocus
         />
-        <p className="text-xs text-gray-400">Leer lassen um den Lagerstand-Countdown zu deaktivieren.</p>
+        <p className="text-xs text-ink-subtle">Leer lassen um den Lagerstand-Countdown zu deaktivieren.</p>
         <div className="flex gap-2">
           <Button variant="secondary" onClick={onClose} className="flex-1">Abbrechen</Button>
           <Button
@@ -841,7 +841,7 @@ function ArtikelZuweisungModal({
       size="lg"
     >
       <div className="space-y-4">
-        <p className="text-sm text-gray-600">
+        <p className="text-sm text-ink-muted">
           Wähle die Artikel, bei denen diese Optionsgruppe angeboten werden soll.
         </p>
 
@@ -851,16 +851,16 @@ function ArtikelZuweisungModal({
           placeholder="Artikel suchen…"
         />
 
-        <div className="max-h-80 overflow-y-auto rounded-lg border border-gray-200 divide-y divide-gray-100">
+        <div className="max-h-80 overflow-y-auto rounded-lg border border-line divide-y divide-line">
           {aktiveArtikel.length === 0 ? (
-            <p className="text-sm text-gray-400 p-4 text-center">Keine Artikel gefunden.</p>
+            <p className="text-sm text-ink-subtle p-4 text-center">Keine Artikel gefunden.</p>
           ) : (
             aktiveArtikel.map(a => {
               const ist = auswahl.has(a.id)
               return (
                 <label
                   key={a.id}
-                  className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-gray-50"
+                  className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-panel-2"
                 >
                   <input
                     type="checkbox"
@@ -872,10 +872,10 @@ function ArtikelZuweisungModal({
                         return next
                       })
                     }}
-                    className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                    className="rounded border-line-strong text-brand-600 focus:ring-brand-500"
                   />
-                  <span className="text-sm text-gray-800">{a.bezeichnung}</span>
-                  <span className="ml-auto text-xs text-gray-400 font-mono">
+                  <span className="text-sm text-ink">{a.bezeichnung}</span>
+                  <span className="ml-auto text-xs text-ink-subtle font-mono">
                     {formatPreis(a.preisBruttoCent)}
                   </span>
                 </label>
@@ -885,7 +885,7 @@ function ArtikelZuweisungModal({
         </div>
 
         <div className="flex items-center justify-between pt-1">
-          <span className="text-sm text-gray-500">{auswahl.size} Artikel gewählt</span>
+          <span className="text-sm text-ink-muted">{auswahl.size} Artikel gewählt</span>
           <div className="flex gap-2">
             <Button variant="secondary" onClick={onClose}>Abbrechen</Button>
             <Button onClick={() => speichernMutation.mutate()} loading={speichernMutation.isPending}>
@@ -905,12 +905,12 @@ function ArtikelZuweisungModal({
 function LeereZustand({ onNeu }: { onNeu: () => void }) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center p-8">
-      <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center text-3xl">
+      <div className="w-16 h-16 rounded-2xl bg-panel-2 flex items-center justify-center text-3xl">
         ⚙️
       </div>
       <div>
-        <h2 className="text-base font-semibold text-gray-800">Noch keine Optionen-Gruppen</h2>
-        <p className="text-sm text-gray-500 mt-1 max-w-sm">
+        <h2 className="text-base font-semibold text-ink">Noch keine Optionen-Gruppen</h2>
+        <p className="text-sm text-ink-muted mt-1 max-w-sm">
           Erstelle Gruppen wie „Größe", „Sauce" oder „Extras" und weise sie Artikeln zu.
           Der Gast sieht sie dann beim Hinzufügen zum Bon.
         </p>

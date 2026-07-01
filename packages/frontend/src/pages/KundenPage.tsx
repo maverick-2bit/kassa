@@ -37,8 +37,8 @@ export function KundenPage() {
     <div className="mx-auto max-w-5xl px-4 py-6 sm:py-8 space-y-6">
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Kunden</h1>
-          <p className="mt-1 text-sm text-gray-500">Kundenstammdaten (CRM)</p>
+          <h1 className="text-2xl font-bold text-ink">Kunden</h1>
+          <p className="mt-1 text-sm text-ink-muted">Kundenstammdaten (CRM)</p>
         </div>
         <Button onClick={() => { setFehler(null); setNeuerOffen(true) }}>
           + Neuer Kunde
@@ -60,7 +60,7 @@ export function KundenPage() {
             onChange={e => setNurAktive(e.target.checked)}
             className="rounded"
           />
-          <span className="text-gray-700">Nur aktive</span>
+          <span className="text-ink">Nur aktive</span>
         </label>
       </div>
 
@@ -69,17 +69,17 @@ export function KundenPage() {
       )}
 
       {/* Tabelle */}
-      <div className="rounded-lg bg-white shadow-sm border border-gray-200 overflow-hidden">
+      <div className="rounded-lg bg-panel shadow-sm border border-line overflow-hidden">
         {isLoading ? (
-          <p className="text-sm text-gray-400 text-center py-10">Lade…</p>
+          <p className="text-sm text-ink-subtle text-center py-10">Lade…</p>
         ) : kunden.length === 0 ? (
-          <p className="text-sm text-gray-400 text-center py-10">
+          <p className="text-sm text-ink-subtle text-center py-10">
             {suche ? 'Keine Kunden gefunden.' : 'Noch keine Kunden angelegt.'}
           </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500 border-b border-gray-200">
+              <thead className="bg-panel-2 text-left text-xs uppercase tracking-wide text-ink-muted border-b border-line">
                 <tr>
                   <th className="px-4 py-2 font-semibold">#</th>
                   <th className="px-4 py-2 font-semibold">Name / Firma</th>
@@ -90,13 +90,13 @@ export function KundenPage() {
                   <th className="px-4 py-2" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-line">
                 {kunden.map(k => (
-                  <tr key={k.id} className={`hover:bg-gray-50 ${!k.aktiv ? 'opacity-50' : ''}`}>
-                    <td className="px-4 py-2 font-mono text-gray-400 text-xs">{k.nummer}</td>
+                  <tr key={k.id} className={`hover:bg-panel-2 ${!k.aktiv ? 'opacity-50' : ''}`}>
+                    <td className="px-4 py-2 font-mono text-ink-subtle text-xs">{k.nummer}</td>
                     <td className="px-4 py-2">
                       <div className="flex items-center gap-2">
-                        <p className="font-medium text-gray-900">{k.bezeichnung}</p>
+                        <p className="font-medium text-ink">{k.bezeichnung}</p>
                         {k.kreditAktiv && (
                           <span className="inline-flex items-center rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-semibold text-orange-700 border border-orange-200">
                             Kredit
@@ -104,14 +104,14 @@ export function KundenPage() {
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-2 text-gray-600">{k.email ?? '—'}</td>
-                    <td className="px-4 py-2 text-gray-600">{k.telefon ?? '—'}</td>
-                    <td className="px-4 py-2 text-gray-600">
+                    <td className="px-4 py-2 text-ink-muted">{k.email ?? '—'}</td>
+                    <td className="px-4 py-2 text-ink-muted">{k.telefon ?? '—'}</td>
+                    <td className="px-4 py-2 text-ink-muted">
                       {[k.plz, k.ort].filter(Boolean).join(' ') || '—'}
                     </td>
                     <td className="px-4 py-2">
                       <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                        k.aktiv ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                        k.aktiv ? 'bg-green-100 text-green-700' : 'bg-panel-2 text-ink-muted'
                       }`}>
                         {k.aktiv ? 'Aktiv' : 'Inaktiv'}
                       </span>
@@ -231,20 +231,20 @@ function KundenProfilModal({ kunde, onKundeChange, onClose }: KundenProfilModalP
               {belege.length > 0 ? formatPreis(gesamtUmsatz) : '—'}
             </p>
           </div>
-          <div className="rounded-lg bg-gray-50 border border-gray-200 px-3 py-2.5">
-            <p className="text-xs text-gray-500">Belege</p>
-            <p className="text-lg font-bold text-gray-900 mt-0.5">{belege.length}</p>
+          <div className="rounded-lg bg-panel-2 border border-line px-3 py-2.5">
+            <p className="text-xs text-ink-muted">Belege</p>
+            <p className="text-lg font-bold text-ink mt-0.5">{belege.length}</p>
           </div>
-          <div className="rounded-lg bg-gray-50 border border-gray-200 px-3 py-2.5">
-            <p className="text-xs text-gray-500">Letzter Kauf</p>
-            <p className="text-sm font-semibold text-gray-900 mt-0.5">
+          <div className="rounded-lg bg-panel-2 border border-line px-3 py-2.5">
+            <p className="text-xs text-ink-muted">Letzter Kauf</p>
+            <p className="text-sm font-semibold text-ink mt-0.5">
               {letzterKauf ? formatDatum(letzterKauf) : '—'}
             </p>
           </div>
         </div>
 
         {/* Tab-Leiste */}
-        <div className="flex border-b border-gray-200 -mx-1">
+        <div className="flex border-b border-line -mx-1">
           {TABS.map(tab => (
             <button
               key={tab.id}
@@ -253,7 +253,7 @@ function KundenProfilModal({ kunde, onKundeChange, onClose }: KundenProfilModalP
               className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
                 aktiveTab === tab.id
                   ? 'border-brand-600 text-brand-700'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  : 'border-transparent text-ink-muted hover:text-ink hover:border-line-strong'
               }`}
             >
               {tab.label}
@@ -352,7 +352,7 @@ function StammdatenTab({ kunde, aktualisiereMutation, deactivateMutation, reacti
       )}
 
       {/* Aktionen */}
-      <div className="flex gap-2 pt-2 border-t border-gray-100">
+      <div className="flex gap-2 pt-2 border-t border-line">
         <Button onClick={() => setBearbeitenModus(true)} className="flex-1">
           Bearbeiten
         </Button>
@@ -389,8 +389,8 @@ function InfoZeile({ label, wert, wide = false, mono = false, highlight = false 
 }) {
   return (
     <div className={wide ? 'col-span-2' : ''}>
-      <p className="text-xs font-medium text-gray-500">{label}</p>
-      <p className={`mt-0.5 ${mono ? 'font-mono text-xs' : ''} ${highlight ? 'font-semibold text-orange-700' : 'text-gray-900'}`}>
+      <p className="text-xs font-medium text-ink-muted">{label}</p>
+      <p className={`mt-0.5 ${mono ? 'font-mono text-xs' : ''} ${highlight ? 'font-semibold text-orange-700' : 'text-ink'}`}>
         {wert}
       </p>
     </div>
@@ -408,7 +408,7 @@ function VerlaufTab({ belege }: { belege: KundeBelegVorschau[] }) {
 
   if (belege.length === 0) {
     return (
-      <p className="text-sm text-gray-400 text-center py-8">
+      <p className="text-sm text-ink-subtle text-center py-8">
         Noch keine Rechnungen vorhanden.
       </p>
     )
@@ -418,9 +418,9 @@ function VerlaufTab({ belege }: { belege: KundeBelegVorschau[] }) {
     <div className="space-y-4">
       {/* Kennzahlen */}
       <div className="grid grid-cols-2 gap-3">
-        <div className="rounded-lg bg-gray-50 border border-gray-200 px-4 py-3">
-          <p className="text-xs text-gray-500">Belege gesamt</p>
-          <p className="text-xl font-bold text-gray-900 mt-0.5">{belege.length}</p>
+        <div className="rounded-lg bg-panel-2 border border-line px-4 py-3">
+          <p className="text-xs text-ink-muted">Belege gesamt</p>
+          <p className="text-xl font-bold text-ink mt-0.5">{belege.length}</p>
         </div>
         <div className="rounded-lg bg-brand-50 border border-brand-200 px-4 py-3">
           <p className="text-xs text-brand-600">Gesamtumsatz</p>
@@ -429,10 +429,10 @@ function VerlaufTab({ belege }: { belege: KundeBelegVorschau[] }) {
       </div>
 
       {/* Tabelle */}
-      <div className="rounded-lg border border-gray-200 overflow-hidden">
+      <div className="rounded-lg border border-line overflow-hidden">
         <div className="overflow-x-auto max-h-80 overflow-y-auto">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500 border-b border-gray-200 sticky top-0">
+            <thead className="bg-panel-2 text-left text-xs uppercase tracking-wide text-ink-muted border-b border-line sticky top-0">
               <tr>
                 <th className="px-3 py-2 font-semibold">Nr.</th>
                 <th className="px-3 py-2 font-semibold">Datum</th>
@@ -441,24 +441,24 @@ function VerlaufTab({ belege }: { belege: KundeBelegVorschau[] }) {
                 <th className="px-3 py-2 font-semibold text-right">Zahlung</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-line">
               {belege.map(b => (
-                <tr key={b.id} className="hover:bg-gray-50">
-                  <td className="px-3 py-2 font-mono text-gray-400 text-xs">#{b.belegNummer}</td>
-                  <td className="px-3 py-2 text-gray-600">{formatDatum(b.belegDatum)}</td>
+                <tr key={b.id} className="hover:bg-panel-2">
+                  <td className="px-3 py-2 font-mono text-ink-subtle text-xs">#{b.belegNummer}</td>
+                  <td className="px-3 py-2 text-ink-muted">{formatDatum(b.belegDatum)}</td>
                   <td className="px-3 py-2">
                     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
                       b.belegTyp === 'Barzahlungsbeleg'
                         ? 'bg-green-100 text-green-700'
-                        : 'bg-gray-100 text-gray-500'
+                        : 'bg-panel-2 text-ink-muted'
                     }`}>
                       {b.belegTyp}
                     </span>
                   </td>
-                  <td className="px-3 py-2 text-right font-mono font-medium text-gray-900">
+                  <td className="px-3 py-2 text-right font-mono font-medium text-ink">
                     {formatPreis(b.gesamtbetragCent)}
                   </td>
-                  <td className="px-3 py-2 text-right text-xs text-gray-500">
+                  <td className="px-3 py-2 text-right text-xs text-ink-muted">
                     {b.summeBarCent > 0 && b.summeKarteCent > 0
                       ? `Bar ${formatPreis(b.summeBarCent)} / Karte ${formatPreis(b.summeKarteCent)}`
                       : b.summeKarteCent > 0 ? 'Karte' : 'Bar'}
@@ -485,7 +485,7 @@ const STATUS_FILTER_LS: Array<{ label: string; value: LiferscheinStatus | 'alle'
 
 const LS_STATUS_FARBE: Record<LiferscheinStatus, string> = {
   offen:         'bg-blue-100 text-blue-800 border-blue-200',
-  abgeschlossen: 'bg-gray-100 text-gray-600 border-gray-200',
+  abgeschlossen: 'bg-panel-2 text-ink-muted border-line',
 }
 
 function LiferscheineTab({ kunde }: { kunde: Kunde }) {
@@ -551,7 +551,7 @@ function LiferscheineTab({ kunde }: { kunde: Kunde }) {
               className={`px-3 py-1.5 rounded-full text-sm font-medium border transition ${
                 statusFilter === f.value
                   ? 'bg-brand-600 border-brand-600 text-white'
-                  : 'bg-white border-gray-300 text-gray-600 hover:border-brand-400'
+                  : 'bg-panel border-line-strong text-ink-muted hover:border-brand-400'
               }`}
             >
               {f.label}
@@ -566,15 +566,15 @@ function LiferscheineTab({ kunde }: { kunde: Kunde }) {
       </div>
 
       {/* Liste */}
-      <div className="border border-gray-200 rounded-lg overflow-hidden">
+      <div className="border border-line rounded-lg overflow-hidden">
         {isLoading ? (
-          <p className="text-sm text-gray-400 text-center py-10">Lade…</p>
+          <p className="text-sm text-ink-subtle text-center py-10">Lade…</p>
         ) : lieferscheine.length === 0 ? (
-          <p className="text-sm text-gray-400 text-center py-10">Keine Lieferscheine vorhanden.</p>
+          <p className="text-sm text-ink-subtle text-center py-10">Keine Lieferscheine vorhanden.</p>
         ) : (
           <div className="overflow-y-auto max-h-[45vh]">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 sticky top-0 border-b border-gray-200">
+              <thead className="bg-panel-2 sticky top-0 border-b border-line">
                 <tr>
                   <th className="px-3 py-2 w-8">
                     {offeneLs.length > 0 && (
@@ -587,21 +587,21 @@ function LiferscheineTab({ kunde }: { kunde: Kunde }) {
                       />
                     )}
                   </th>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Nr.</th>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Datum</th>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Angebot</th>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
-                  <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Betrag</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-ink-muted uppercase tracking-wide">Nr.</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-ink-muted uppercase tracking-wide">Datum</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-ink-muted uppercase tracking-wide">Angebot</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-ink-muted uppercase tracking-wide">Status</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-ink-muted uppercase tracking-wide">Betrag</th>
                   <th className="px-3 py-2 w-16" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-line">
                 {lieferscheine.map(ls => {
                   const summe     = ls.positionen.reduce((s, p) => s + Math.round(p.einzelpreisBreutto * p.menge), 0)
                   const isOffen   = ls.status === 'offen'
                   const isChecked = ausgewaehlt.has(ls.id)
                   return (
-                    <tr key={ls.id} className={`hover:bg-gray-50 transition ${isChecked ? 'bg-blue-50' : ''}`}>
+                    <tr key={ls.id} className={`hover:bg-panel-2 transition ${isChecked ? 'bg-blue-50' : ''}`}>
                       <td className="px-3 py-2.5 text-center">
                         {isOffen ? (
                           <input
@@ -611,16 +611,16 @@ function LiferscheineTab({ kunde }: { kunde: Kunde }) {
                             className="rounded"
                           />
                         ) : (
-                          <span className="text-gray-300 text-xs">—</span>
+                          <span className="text-ink-subtle text-xs">—</span>
                         )}
                       </td>
-                      <td className="px-3 py-2.5 font-mono font-medium text-gray-800">
+                      <td className="px-3 py-2.5 font-mono font-medium text-ink">
                         L-{String(ls.nummer).padStart(4, '0')}
                       </td>
-                      <td className="px-3 py-2.5 text-gray-600">
+                      <td className="px-3 py-2.5 text-ink-muted">
                         {new Date(ls.datum).toLocaleDateString('de-AT')}
                       </td>
-                      <td className="px-3 py-2.5 text-gray-500 font-mono text-xs">
+                      <td className="px-3 py-2.5 text-ink-muted font-mono text-xs">
                         A-{String(ls.angebotNummer).padStart(4, '0')}
                       </td>
                       <td className="px-3 py-2.5">
@@ -628,7 +628,7 @@ function LiferscheineTab({ kunde }: { kunde: Kunde }) {
                           {LIEFERSCHEIN_STATUS_LABELS[ls.status as LiferscheinStatus]}
                         </span>
                       </td>
-                      <td className="px-3 py-2.5 text-right font-mono font-semibold text-gray-800">
+                      <td className="px-3 py-2.5 text-right font-mono font-semibold text-ink">
                         {formatPreis(summe)}
                       </td>
                       <td className="px-3 py-2.5 text-right">
@@ -655,7 +655,7 @@ function LiferscheineTab({ kunde }: { kunde: Kunde }) {
         <div className="rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">{srFehler}</div>
       )}
 
-      <div className="pt-1 border-t border-gray-200">
+      <div className="pt-1 border-t border-line">
         <Button
           onClick={() => sammelrechnungMutation.mutate()}
           loading={sammelrechnungMutation.isPending}
@@ -720,14 +720,14 @@ function OffenePostenTab({ kunde }: { kunde: Kunde }) {
 
       {/* Tabelle */}
       {isLoading ? (
-        <p className="text-sm text-gray-400">Lade…</p>
+        <p className="text-sm text-ink-subtle">Lade…</p>
       ) : posten.length === 0 ? (
-        <p className="text-sm text-gray-400 text-center py-6">Keine Offenen Posten vorhanden.</p>
+        <p className="text-sm text-ink-subtle text-center py-6">Keine Offenen Posten vorhanden.</p>
       ) : (
-        <div className="border border-gray-200 rounded-lg overflow-hidden">
+        <div className="border border-line rounded-lg overflow-hidden">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              <tr className="bg-panel-2 border-b border-line text-xs font-semibold text-ink-muted uppercase tracking-wider">
                 <th className="px-3 py-2 text-left">Nr.</th>
                 <th className="px-3 py-2 text-left">Datum</th>
                 <th className="px-3 py-2 text-right">Beleg</th>
@@ -740,21 +740,21 @@ function OffenePostenTab({ kunde }: { kunde: Kunde }) {
             </thead>
             <tbody>
               {posten.map((op, idx) => (
-                <tr key={op.id} className={`border-b border-gray-100 last:border-0 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}`}>
-                  <td className="px-3 py-2.5 font-mono text-gray-500 text-xs">
+                <tr key={op.id} className={`border-b border-line last:border-0 ${idx % 2 === 0 ? 'bg-panel' : 'bg-panel-2/40'}`}>
+                  <td className="px-3 py-2.5 font-mono text-ink-muted text-xs">
                     OP-{String(op.nummer).padStart(4, '0')}
                   </td>
-                  <td className="px-3 py-2.5 text-gray-600">
+                  <td className="px-3 py-2.5 text-ink-muted">
                     {new Date(op.datum).toLocaleDateString('de-AT')}
                   </td>
-                  <td className="px-3 py-2.5 text-right font-mono text-gray-500 text-xs">
+                  <td className="px-3 py-2.5 text-right font-mono text-ink-muted text-xs">
                     {op.belegNummer ? `#${op.belegNummer}` : '–'}
                   </td>
                   <td className="px-3 py-2.5 text-right font-mono">{formatPreis(op.betragCent)}</td>
                   <td className="px-3 py-2.5 text-right font-mono text-green-700">
                     {op.bezahltCent > 0 ? formatPreis(op.bezahltCent) : '–'}
                   </td>
-                  <td className={`px-3 py-2.5 text-right font-mono font-semibold ${op.restCent > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                  <td className={`px-3 py-2.5 text-right font-mono font-semibold ${op.restCent > 0 ? 'text-red-600' : 'text-ink-subtle'}`}>
                     {op.restCent > 0 ? formatPreis(op.restCent) : '–'}
                   </td>
                   <td className="px-3 py-2.5 text-center">
@@ -792,25 +792,25 @@ function OffenePostenTab({ kunde }: { kunde: Kunde }) {
           title={`Zahlung – OP-${String(zahlungModal.nummer).padStart(4, '0')}`}
         >
           <div className="space-y-4">
-            <div className="rounded-lg bg-gray-50 border border-gray-200 p-4 space-y-1.5 text-sm">
+            <div className="rounded-lg bg-panel-2 border border-line p-4 space-y-1.5 text-sm">
               <div className="flex justify-between">
-                <span className="text-gray-500">Ursprungsbetrag</span>
+                <span className="text-ink-muted">Ursprungsbetrag</span>
                 <span className="font-mono">{formatPreis(zahlungModal.betragCent)}</span>
               </div>
               {zahlungModal.bezahltCent > 0 && (
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Bereits bezahlt</span>
+                  <span className="text-ink-muted">Bereits bezahlt</span>
                   <span className="font-mono text-green-700">{formatPreis(zahlungModal.bezahltCent)}</span>
                 </div>
               )}
-              <div className="flex justify-between border-t border-gray-200 pt-1.5 font-semibold">
+              <div className="flex justify-between border-t border-line pt-1.5 font-semibold">
                 <span>Restbetrag</span>
                 <span className="font-mono text-red-700">{formatPreis(zahlungModal.restCent)}</span>
               </div>
             </div>
 
             <label className="block">
-              <span className="text-sm font-medium text-gray-700">Zahlung (€)</span>
+              <span className="text-sm font-medium text-ink">Zahlung (€)</span>
               <Input
                 autoFocus
                 inputMode="decimal"
@@ -830,7 +830,7 @@ function OffenePostenTab({ kunde }: { kunde: Kunde }) {
               <button
                 type="button"
                 onClick={() => setZahlungEuro((zahlungModal.restCent / 100).toFixed(2).replace('.', ','))}
-                className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition"
+                className="rounded-md border border-line-strong px-3 py-1.5 text-xs font-medium text-ink-muted hover:bg-panel-2 transition"
               >
                 Vollständig ({formatPreis(zahlungModal.restCent)})
               </button>
@@ -923,49 +923,49 @@ function KundeFormular({ initial, onSubmit, onAbbrechen, loading, fehler }: Kund
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-3">
         <label className="block col-span-2">
-          <span className="text-xs font-medium text-gray-700">Firma</span>
+          <span className="text-xs font-medium text-ink">Firma</span>
           <Input autoFocus value={firma} onChange={e => setFirma(e.target.value)} placeholder="Muster GmbH" className="mt-0.5" />
         </label>
         <label className="block">
-          <span className="text-xs font-medium text-gray-700">Vorname</span>
+          <span className="text-xs font-medium text-ink">Vorname</span>
           <Input value={vorname} onChange={e => setVorname(e.target.value)} className="mt-0.5" />
         </label>
         <label className="block">
-          <span className="text-xs font-medium text-gray-700">Nachname</span>
+          <span className="text-xs font-medium text-ink">Nachname</span>
           <Input value={nachname} onChange={e => setNachname(e.target.value)} className="mt-0.5" />
         </label>
         <label className="block">
-          <span className="text-xs font-medium text-gray-700">E-Mail</span>
+          <span className="text-xs font-medium text-ink">E-Mail</span>
           <Input type="email" value={email} onChange={e => setEmail(e.target.value)} className="mt-0.5" />
         </label>
         <label className="block">
-          <span className="text-xs font-medium text-gray-700">Telefon</span>
+          <span className="text-xs font-medium text-ink">Telefon</span>
           <Input value={telefon} onChange={e => setTelefon(e.target.value)} className="mt-0.5" />
         </label>
         <label className="block col-span-2">
-          <span className="text-xs font-medium text-gray-700">Straße</span>
+          <span className="text-xs font-medium text-ink">Straße</span>
           <Input value={strasse} onChange={e => setStrasse(e.target.value)} className="mt-0.5" />
         </label>
         <label className="block">
-          <span className="text-xs font-medium text-gray-700">PLZ</span>
+          <span className="text-xs font-medium text-ink">PLZ</span>
           <Input value={plz} onChange={e => setPlz(e.target.value)} className="mt-0.5" />
         </label>
         <label className="block">
-          <span className="text-xs font-medium text-gray-700">Ort</span>
+          <span className="text-xs font-medium text-ink">Ort</span>
           <Input value={ort} onChange={e => setOrt(e.target.value)} className="mt-0.5" />
         </label>
         <label className="block">
-          <span className="text-xs font-medium text-gray-700">Land (ISO 2)</span>
+          <span className="text-xs font-medium text-ink">Land (ISO 2)</span>
           <Input value={land} onChange={e => setLand(e.target.value.toUpperCase().slice(0, 2))} maxLength={2} className="mt-0.5" />
         </label>
         <label className="block">
-          <span className="text-xs font-medium text-gray-700">UID (USt-ID)</span>
+          <span className="text-xs font-medium text-ink">UID (USt-ID)</span>
           <Input value={uid} onChange={e => setUid(e.target.value)} placeholder="ATU12345678" className="mt-0.5" />
         </label>
       </div>
 
       {/* Kredit-Freigabe */}
-      <div className={`flex items-start gap-3 rounded-lg border p-3 ${kreditAktiv ? 'border-orange-200 bg-orange-50' : 'border-gray-200 bg-gray-50'}`}>
+      <div className={`flex items-start gap-3 rounded-lg border p-3 ${kreditAktiv ? 'border-orange-200 bg-orange-50' : 'border-line bg-panel-2'}`}>
         <input
           type="checkbox"
           id="kreditAktiv"
@@ -974,10 +974,10 @@ function KundeFormular({ initial, onSubmit, onAbbrechen, loading, fehler }: Kund
           className="mt-0.5 rounded"
         />
         <label htmlFor="kreditAktiv" className="cursor-pointer select-none">
-          <span className={`text-sm font-semibold ${kreditAktiv ? 'text-orange-800' : 'text-gray-700'}`}>
+          <span className={`text-sm font-semibold ${kreditAktiv ? 'text-orange-800' : 'text-ink'}`}>
             Kreditkauf erlaubt
           </span>
-          <p className="text-xs text-gray-500 mt-0.5">
+          <p className="text-xs text-ink-muted mt-0.5">
             Erlaubt das Buchen auf Kredit (Offene Posten) an der Kasse — nur für Benutzer mit Berechtigung „Kreditverkauf".
           </p>
         </label>
@@ -985,16 +985,16 @@ function KundeFormular({ initial, onSubmit, onAbbrechen, loading, fehler }: Kund
 
       {/* Notizen */}
       <label className="block">
-        <span className="text-xs font-medium text-gray-700">Notizen (intern)</span>
+        <span className="text-xs font-medium text-ink">Notizen (intern)</span>
         <textarea
           value={notizen ?? ''}
           onChange={e => setNotizen(e.target.value)}
           maxLength={2000}
           rows={3}
           placeholder="Interne Anmerkungen zum Kunden…"
-          className="mt-0.5 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 resize-y"
+          className="mt-0.5 w-full rounded-md border border-line-strong px-3 py-2 text-sm text-ink placeholder-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 resize-y"
         />
-        <p className="mt-0.5 text-right text-xs text-gray-400">{(notizen ?? '').length}/2000</p>
+        <p className="mt-0.5 text-right text-xs text-ink-subtle">{(notizen ?? '').length}/2000</p>
       </label>
 
       {anzeigeFehler && (

@@ -85,9 +85,9 @@ export function TischplanAnsicht({ bereiche, tabs }: Props) {
 
   if (bereiche.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-gray-300 p-12 text-center">
-        <p className="text-gray-500">Noch kein Tischplan angelegt.</p>
-        <p className="mt-1 text-sm text-gray-400">
+      <div className="rounded-lg border border-dashed border-line-strong p-12 text-center">
+        <p className="text-ink-muted">Noch kein Tischplan angelegt.</p>
+        <p className="mt-1 text-sm text-ink-subtle">
           Unter Einstellungen → Tischplan einen Bereich und Tische hinzufügen.
         </p>
       </div>
@@ -107,7 +107,7 @@ export function TischplanAnsicht({ bereiche, tabs }: Props) {
               className={`shrink-0 px-4 py-2 rounded-full text-sm font-medium transition ${
                 i === aktiverBereichIdx
                   ? 'bg-brand-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  : 'bg-panel-2 text-ink hover:bg-panel-2'
               }`}
             >
               {b.name}
@@ -118,10 +118,10 @@ export function TischplanAnsicht({ bereiche, tabs }: Props) {
 
       {/* Planfläche */}
       {aktiveBereich && (
-        <div className="relative w-full aspect-[4/3] bg-gray-50 rounded-xl border-2 border-gray-200 overflow-hidden">
+        <div className="relative w-full aspect-[4/3] bg-panel-2 rounded-xl border-2 border-line overflow-hidden">
           {aktiveBereich.elemente.length === 0 && (
             <div className="absolute inset-0 flex items-center justify-center">
-              <p className="text-sm text-gray-400">Keine Tische in diesem Bereich.</p>
+              <p className="text-sm text-ink-subtle">Keine Tische in diesem Bereich.</p>
             </div>
           )}
           {aktiveBereich.elemente.map((el) => {
@@ -151,7 +151,7 @@ export function TischplanAnsicht({ bereiche, tabs }: Props) {
       >
         {gruppenAuswahl && (
           <div className="space-y-3">
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-ink-muted">
               {gruppenAuswahl.tabs.length} Gruppen an diesem Tisch — bitte auswählen:
             </p>
             <ul className="space-y-2">
@@ -200,7 +200,7 @@ export function TischplanAnsicht({ bereiche, tabs }: Props) {
       >
         <div className="space-y-4">
           <label className="block">
-            <span className="text-sm font-medium text-gray-700">Kellner / Bezeichnung</span>
+            <span className="text-sm font-medium text-ink">Kellner / Bezeichnung</span>
             <Input
               autoFocus
               value={kellner}
@@ -266,7 +266,7 @@ function TischSymbol({ bezeichnung, form, x, y, breite, hoehe, tabs, onClick }: 
     : 0
 
   const { bg, border, text } = count === 0
-    ? { bg: 'bg-white',      border: 'border-gray-300',  text: 'text-gray-500'  }
+    ? { bg: 'bg-panel',      border: 'border-line-strong',  text: 'text-ink-muted'  }
     : aeltestMin < 30
     ? { bg: 'bg-green-100',  border: 'border-green-400', text: 'text-green-900' }
     : aeltestMin < 60

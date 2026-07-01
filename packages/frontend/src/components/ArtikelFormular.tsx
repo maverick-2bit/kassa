@@ -177,13 +177,13 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
 
       {/* Artikelbild */}
       <div>
-        <span className="text-sm font-medium text-gray-700 block mb-1">Artikelbild (optional)</span>
+        <span className="text-sm font-medium text-ink block mb-1">Artikelbild (optional)</span>
         {bild ? (
           <div className="flex items-center gap-3">
             <img
               src={bild}
               alt="Artikelbild"
-              className="h-20 w-20 rounded-lg object-cover border border-gray-200 shadow-sm"
+              className="h-20 w-20 rounded-lg object-cover border border-line shadow-sm"
             />
             <div className="space-y-1.5">
               <button
@@ -206,13 +206,13 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="flex items-center justify-center w-full h-20 rounded-lg border-2 border-dashed border-gray-300 hover:border-brand-400 hover:bg-brand-50 transition cursor-pointer"
+            className="flex items-center justify-center w-full h-20 rounded-lg border-2 border-dashed border-line-strong hover:border-brand-400 hover:bg-brand-50 transition cursor-pointer"
           >
             <div className="text-center">
-              <svg className="mx-auto h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <svg className="mx-auto h-6 w-6 text-ink-subtle" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3 21h18M3 3h18M3 9l4.5 4.5" />
               </svg>
-              <p className="text-xs text-gray-500 mt-1">Foto hochladen (PNG / JPG)</p>
+              <p className="text-xs text-ink-muted mt-1">Foto hochladen (PNG / JPG)</p>
             </div>
           </button>
         )}
@@ -288,27 +288,27 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
                 Anlegen
               </Button>
               <button type="button" onClick={() => { setNeueKatOffen(false); setNeuerKatName(''); setKatFehler(null) }}
-                className="text-xs text-gray-400 hover:text-gray-600">Abbrechen</button>
+                className="text-xs text-ink-subtle hover:text-ink-muted">Abbrechen</button>
             </div>
           )
         )}
         {katFehler && <p className="mt-1 text-xs text-red-600">{katFehler}</p>}
         {(!kategorien || kategorien.filter(k => k.aktiv).length === 0) && !neueKatOffen && (
-          <p className="mt-1 text-xs text-gray-400">Noch keine Warengruppe vorhanden — oben eine anlegen.</p>
+          <p className="mt-1 text-xs text-ink-subtle">Noch keine Warengruppe vorhanden — oben eine anlegen.</p>
         )}
       </Field>
 
       {/* Favorit + Bonierdrucker */}
-      <div className="rounded-lg border border-gray-200 p-3 space-y-3">
+      <div className="rounded-lg border border-line p-3 space-y-3">
         <label className="flex items-center gap-3 cursor-pointer">
           <input
             type="checkbox"
-            className="h-4 w-4 rounded border-gray-300 text-amber-500 focus:ring-amber-400"
+            className="h-4 w-4 rounded border-line-strong text-amber-500 focus:ring-amber-400"
             {...register('istFavorit')}
           />
           <div>
-            <p className="text-sm font-medium text-gray-800">⭐ Favorit</p>
-            <p className="text-xs text-gray-400">Erscheint im Favoriten-Tab der Kasse</p>
+            <p className="text-sm font-medium text-ink">⭐ Favorit</p>
+            <p className="text-xs text-ink-subtle">Erscheint im Favoriten-Tab der Kasse</p>
           </div>
         </label>
 
@@ -338,16 +338,16 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
       </div>
 
       {/* Lager führen */}
-      <div className={`rounded-lg border p-3 space-y-3 transition ${lagerstandAktiv ? 'border-brand-300 bg-brand-50' : 'border-gray-200'}`}>
+      <div className={`rounded-lg border p-3 space-y-3 transition ${lagerstandAktiv ? 'border-brand-300 bg-brand-50' : 'border-line'}`}>
         <label className="flex items-center gap-3 cursor-pointer">
           <input
             type="checkbox"
-            className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+            className="h-4 w-4 rounded border-line-strong text-brand-600 focus:ring-brand-500"
             {...register('lagerstandAktiv')}
           />
           <div>
-            <p className="text-sm font-semibold text-gray-800">Lager führen</p>
-            <p className="text-xs text-gray-500">
+            <p className="text-sm font-semibold text-ink">Lager führen</p>
+            <p className="text-xs text-ink-muted">
               Bestand wird bei jeder Buchung abgezogen. Artikel sperrt bei Bestand = 0.
             </p>
           </div>
@@ -388,7 +388,7 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
         </div>
       )}
 
-      <div className="flex justify-end gap-2 pt-2 border-t border-gray-200">
+      <div className="flex justify-end gap-2 pt-2 border-t border-line">
         <Button variant="secondary" type="button" onClick={onCancel}>Abbrechen</Button>
         <Button type="submit" loading={loading}>
           {initial ? 'Speichern' : 'Anlegen'}

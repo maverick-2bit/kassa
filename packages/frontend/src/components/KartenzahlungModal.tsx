@@ -143,13 +143,13 @@ export function KartenzahlungModal({ open, kasseId, betragCent, onErfolg, onAbbr
       {/* ---- Schritt 1: Trinkgeld ---- */}
       {schritt === 'trinkgeld' && (
         <div className="space-y-5">
-          <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-center">
-            <p className="text-xs uppercase tracking-wide text-gray-500">Rechnungsbetrag</p>
-            <p className="mt-1 text-3xl font-bold text-gray-900">{formatPreis(betragCent)}</p>
+          <div className="rounded-lg border border-line bg-panel-2 p-4 text-center">
+            <p className="text-xs uppercase tracking-wide text-ink-muted">Rechnungsbetrag</p>
+            <p className="mt-1 text-3xl font-bold text-ink">{formatPreis(betragCent)}</p>
           </div>
 
           <div>
-            <p className="text-sm font-medium text-gray-700 mb-2">Trinkgeld</p>
+            <p className="text-sm font-medium text-ink mb-2">Trinkgeld</p>
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
@@ -157,7 +157,7 @@ export function KartenzahlungModal({ open, kasseId, betragCent, onErfolg, onAbbr
                 className={`px-3 py-2 rounded-lg text-sm font-semibold border transition ${
                   trinkgeld === 0 && !customAktiv
                     ? 'bg-gray-800 text-white border-gray-800'
-                    : 'bg-white text-gray-700 border-gray-300 hover:border-gray-500'
+                    : 'bg-panel text-ink border-line-strong hover:border-gray-500'
                 }`}
               >
                 Kein
@@ -170,7 +170,7 @@ export function KartenzahlungModal({ open, kasseId, betragCent, onErfolg, onAbbr
                   className={`px-3 py-2 rounded-lg text-sm font-semibold border transition ${
                     trinkgeld === c && !customAktiv
                       ? 'bg-brand-600 text-white border-brand-600'
-                      : 'bg-white text-gray-700 border-gray-300 hover:border-brand-400'
+                      : 'bg-panel text-ink border-line-strong hover:border-brand-400'
                   }`}
                 >
                   +{formatPreis(c)}
@@ -182,7 +182,7 @@ export function KartenzahlungModal({ open, kasseId, betragCent, onErfolg, onAbbr
                 className={`px-3 py-2 rounded-lg text-sm font-semibold border transition ${
                   customAktiv
                     ? 'bg-brand-600 text-white border-brand-600'
-                    : 'bg-white text-gray-700 border-gray-300 hover:border-brand-400'
+                    : 'bg-panel text-ink border-line-strong hover:border-brand-400'
                 }`}
               >
                 Betrag…
@@ -197,16 +197,16 @@ export function KartenzahlungModal({ open, kasseId, betragCent, onErfolg, onAbbr
                   placeholder="0,00"
                   value={customInput}
                   onChange={e => setCustomInput(e.target.value)}
-                  className="w-32 border border-gray-300 rounded-lg px-3 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  className="w-32 border border-line-strong rounded-lg px-3 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-brand-500"
                 />
-                <span className="text-sm text-gray-500">€</span>
+                <span className="text-sm text-ink-muted">€</span>
               </div>
             )}
           </div>
 
           {(trinkgeld > 0 || (customAktiv && customInput)) && (
             <div className="rounded-lg bg-brand-50 border border-brand-200 p-3 text-sm">
-              <div className="flex justify-between text-gray-600">
+              <div className="flex justify-between text-ink-muted">
                 <span>Rechnung</span><span>{formatPreis(betragCent)}</span>
               </div>
               <div className="flex justify-between text-brand-700 font-medium">
@@ -217,7 +217,7 @@ export function KartenzahlungModal({ open, kasseId, betragCent, onErfolg, onAbbr
                     : formatPreis(trinkgeld)}
                 </span>
               </div>
-              <div className="flex justify-between font-bold text-gray-900 border-t border-brand-200 mt-1 pt-1">
+              <div className="flex justify-between font-bold text-ink border-t border-brand-200 mt-1 pt-1">
                 <span>Gesamt</span>
                 <span>
                   {customAktiv
@@ -242,11 +242,11 @@ export function KartenzahlungModal({ open, kasseId, betragCent, onErfolg, onAbbr
       {/* ---- Schritt 2: ZVT-Transaktion ---- */}
       {schritt === 'zahlung' && (
         <div className="space-y-4">
-          <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-center">
-            <p className="text-xs uppercase tracking-wide text-gray-500">Zu zahlen</p>
-            <p className="mt-1 text-3xl font-bold text-gray-900">{formatPreis(betragCent + trinkgeld)}</p>
+          <div className="rounded-lg border border-line bg-panel-2 p-4 text-center">
+            <p className="text-xs uppercase tracking-wide text-ink-muted">Zu zahlen</p>
+            <p className="mt-1 text-3xl font-bold text-ink">{formatPreis(betragCent + trinkgeld)}</p>
             {trinkgeld > 0 && (
-              <p className="text-xs text-gray-500 mt-0.5">
+              <p className="text-xs text-ink-muted mt-0.5">
                 inkl. {formatPreis(trinkgeld)} Trinkgeld
               </p>
             )}

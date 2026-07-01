@@ -148,7 +148,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     await api.register(gutscheinRoute,          { db: deps.db })
     await api.register(lieferbestellungRoute,   { db: deps.db })
     await api.register(mandantRoute,            { db: deps.db })
-    await api.register(kasseRoute,              { db: deps.db })
+    await api.register(kasseRoute,              { db: deps.db, setupDeps: deps.setupDeps })
     await api.register(auditRoute,              { db: deps.db })
     await api.register(kassenbuchRoute,         { db: deps.db })
     await api.register(depSicherungRoute,       { db: deps.db, backupDir: deps.backupDir })

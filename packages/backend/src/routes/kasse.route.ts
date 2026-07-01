@@ -3,17 +3,89 @@
  */
 
 import type { FastifyPluginAsync } from 'fastify'
-import { and, desc, eq, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, sql } from 'drizzle-orm'
 import type { Db } from '../db/client.js'
 import { belege, kassen } from '../db/schema.js'
-import { KasseBezeichnungUpdateSchema } from '@kassa/shared'
+import { KasseBezeichnungUpdateSchema, WeitereKasseInputSchema, type KasseListeItem, type WeitereKasseResponse } from '@kassa/shared'
+import { legeWeitereKasseAn } from '../services/kasse.service.js'
+import type { SetupServiceDeps } from '../services/setup.service.js'
 
-export interface KasseRouteOptions { db: Db }
+export interface KasseRouteOptions { db: Db; setupDeps: SetupServiceDeps }
 
 const MS_PRO_TAG = 1000 * 60 * 60 * 24
 
 export const kasseRoute: FastifyPluginAsync<KasseRouteOptions> = async (fastify, opts) => {
   const auth = { onRequest: [fastify.authenticate] }
+
+  /** Nur Admins oder Benutzer mit „einstellungen"-Berechtigung dürfen Kassen verwalten. */
+  const darfVerwalten = (u: { rolle: string; berechtigungen: string[] }) =>
+    u.rolle === 'admin' || u.berechtigungen.includes('einstellungen')
+
+  /**
+   * GET /kassen
+   * Alle Kassen des Mandanten — für Verwaltung und Kassen-Umschalter.
+   */
+  fastify.get('/kassen', auth, async (request, reply) => {
+    const rows = await opts.db
+      .select({
+        id:               kassen.id,
+        kassenId:         kassen.kassenId,
+        bezeichnung:      kassen.bezeichnung,
+        status:           kassen.status,
+        umgebung:         kassen.umgebung,
+        seeGueltigBis:    kassen.seeGueltigBis,
+        beiFoRegistriert: kassen.bei_fo_registriert,
+      })
+      .from(kassen)
+      .where(eq(kassen.mandantId, request.user.mandantId))
+      .orderBy(asc(kassen.createdAt))
+
+    const liste: KasseListeItem[] = rows.map(r => ({
+      id:               r.id,
+      kassenId:         r.kassenId,
+      bezeichnung:      r.bezeichnung,
+      status:           r.status,
+      umgebung:         r.umgebung,
+      seeGueltigBis:    r.seeGueltigBis.toISOString(),
+      beiFoRegistriert: r.beiFoRegistriert,
+    }))
+    return reply.send(liste)
+  })
+
+  /**
+   * POST /kassen
+   * Weitere Registrierkasse für den Mandanten anlegen (eigene SEE + Startbeleg).
+   */
+  fastify.post('/kassen', auth, async (request, reply) => {
+    if (!darfVerwalten(request.user)) {
+      return reply.status(403).send({ fehler: 'Keine Berechtigung' })
+    }
+
+    const parsed = WeitereKasseInputSchema.safeParse(request.body)
+    if (!parsed.success) {
+      const meldung = parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ')
+      const response: WeitereKasseResponse = {
+        erfolgreich: false,
+        schritte: [{ schritt: 'eingabe-validierung', status: 'fehler', meldung, zeitstempel: new Date().toISOString() }],
+        fehler: meldung,
+      }
+      return reply.status(400).send(response)
+    }
+
+    try {
+      const result = await legeWeitereKasseAn(request.user.mandantId, parsed.data, opts.setupDeps)
+      return reply.status(result.erfolgreich ? 201 : 400).send(result)
+    } catch (err) {
+      fastify.log.error({ err }, 'Kasse anlegen unerwartet fehlgeschlagen')
+      const meldung = err instanceof Error ? err.message : String(err)
+      const response: WeitereKasseResponse = {
+        erfolgreich: false,
+        schritte: [{ schritt: 'eingabe-validierung', status: 'fehler', meldung, zeitstempel: new Date().toISOString() }],
+        fehler: meldung,
+      }
+      return reply.status(500).send(response)
+    }
+  })
 
   /**
    * GET /kassen/:id/status

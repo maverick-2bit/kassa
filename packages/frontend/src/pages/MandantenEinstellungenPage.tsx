@@ -41,15 +41,15 @@ export function MandantenEinstellungenPage() {
   return (
     <div className="mx-auto max-w-3xl px-4 py-6 sm:py-8 space-y-6">
       <header>
-        <h1 className="text-2xl font-bold text-gray-900">Module</h1>
-        <p className="mt-1 text-sm text-gray-500">
+        <h1 className="text-2xl font-bold text-ink">Module</h1>
+        <p className="mt-1 text-sm text-ink-muted">
           Funktionsbereiche für diesen Mandanten aktivieren oder deaktivieren.
           Änderungen werden sofort wirksam — eine neue Anmeldung ist nicht erforderlich.
         </p>
       </header>
 
       {moduleQuery.isLoading ? (
-        <div className="rounded-lg border border-gray-200 bg-white p-8 text-center text-sm text-gray-400">
+        <div className="rounded-lg border border-line bg-panel p-8 text-center text-sm text-ink-subtle">
           Wird geladen…
         </div>
       ) : moduleQuery.isError ? (
@@ -103,14 +103,14 @@ function ModulKarte({
 
   return (
     <div
-      className={`rounded-lg border bg-white p-5 flex items-start gap-4 transition-shadow ${
-        aktiv ? 'border-brand-200 shadow-sm' : 'border-gray-200'
+      className={`rounded-lg border bg-panel p-5 flex items-start gap-4 transition-shadow ${
+        aktiv ? 'border-brand-200 shadow-sm' : 'border-line'
       }`}
     >
       {/* Icon */}
       <div
         className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-xl ${
-          aktiv ? 'bg-brand-50' : 'bg-gray-100'
+          aktiv ? 'bg-brand-50' : 'bg-panel-2'
         }`}
       >
         {icon}
@@ -118,10 +118,10 @@ function ModulKarte({
 
       {/* Text */}
       <div className="flex-1 min-w-0">
-        <p className={`font-semibold text-sm ${aktiv ? 'text-gray-900' : 'text-gray-500'}`}>
+        <p className={`font-semibold text-sm ${aktiv ? 'text-ink' : 'text-ink-muted'}`}>
           {MANDANT_MODUL_LABELS[modul]}
         </p>
-        <p className="mt-0.5 text-xs text-gray-500 leading-relaxed">
+        <p className="mt-0.5 text-xs text-ink-muted leading-relaxed">
           {MANDANT_MODUL_BESCHREIBUNGEN[modul]}
         </p>
       </div>
@@ -143,7 +143,7 @@ function ModulKarte({
         title={aktiv ? 'Deaktivieren' : 'Aktivieren'}
       >
         <span
-          className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
+          className={`inline-block h-4 w-4 rounded-full bg-panel shadow transition-transform ${
             aktiv ? 'translate-x-6' : 'translate-x-1'
           }`}
         />

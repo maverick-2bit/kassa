@@ -4,7 +4,6 @@ import { Layout } from './components/Layout'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import type { Berechtigung, MandantModul } from '@kassa/shared'
 import { getAuth, hasBerechtigung, hasModul, setOnUnauthorized } from './lib/auth'
-import { getKasseIdentity } from './lib/kasse'
 
 // ---------------------------------------------------------------------------
 // Seiten werden per React.lazy code-gesplittet — jede Seite landet in einem
@@ -133,9 +132,10 @@ function AppRoutes() {
 }
 
 function getInitialRoute(): string {
-  // Niemand eingeloggt? → Login (falls Kasse bereits eingerichtet) oder Setup
+  // Niemand eingeloggt? → immer zur Anmeldung. Die Login-Seite bietet den
+  // Weg zur Ersteinrichtung („Kasse einrichten") für neue Betriebe an.
   if (!getAuth()) {
-    return getKasseIdentity() ? '/login' : '/setup'
+    return '/login'
   }
   // Erste erreichbare Seite je nach Berechtigung + aktivem Modul
   if (hasBerechtigung('tische') && hasModul('gastro'))    return '/tische'

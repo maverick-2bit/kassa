@@ -35,7 +35,7 @@ const STATUS_FARBE: Record<string, string> = {
   geplant:    'bg-blue-100 text-blue-800 border-blue-200',
   bestaetigt: 'bg-emerald-100 text-emerald-800 border-emerald-200',
   krank:      'bg-red-100 text-red-800 border-red-200',
-  abwesend:   'bg-gray-100 text-gray-700 border-gray-200',
+  abwesend:   'bg-panel-2 text-ink border-line',
 }
 
 const WOCHENTAGE = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
@@ -95,13 +95,13 @@ export function DienstplanPage() {
     <div className="max-w-7xl mx-auto px-4 py-6 space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-2xl font-bold text-gray-900">Dienstplan</h1>
+        <h1 className="text-2xl font-bold text-ink">Dienstplan</h1>
         <div className="flex items-center gap-3">
           {kassen.length > 1 && (
             <select
               value={kasseId}
               onChange={e => setKasseId(e.target.value)}
-              className="text-sm rounded-md border border-gray-300 px-3 py-1.5"
+              className="text-sm rounded-md border border-line-strong px-3 py-1.5"
             >
               {kassen.map(k => <option key={k.id} value={k.id}>{k.kassenId}</option>)}
             </select>
@@ -120,20 +120,20 @@ export function DienstplanPage() {
 
       {/* Wochen-Navigation */}
       <div className="flex items-center gap-3">
-        <button onClick={geheZurueck} className="p-2 rounded-md hover:bg-gray-100 border border-gray-200">
+        <button onClick={geheZurueck} className="p-2 rounded-md hover:bg-panel-2 border border-line">
           <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
           </svg>
         </button>
-        <span className="text-sm font-medium text-gray-700 min-w-[220px] text-center">
+        <span className="text-sm font-medium text-ink min-w-[220px] text-center">
           KW {getKW(wocheBeginn)} — {wocheLabel}
         </span>
-        <button onClick={geheVorwaerts} className="p-2 rounded-md hover:bg-gray-100 border border-gray-200">
+        <button onClick={geheVorwaerts} className="p-2 rounded-md hover:bg-panel-2 border border-line">
           <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
           </svg>
         </button>
-        <button onClick={geheHeute} className="text-xs px-3 py-1.5 rounded-md border border-gray-200 hover:bg-gray-100 text-gray-600">
+        <button onClick={geheHeute} className="text-xs px-3 py-1.5 rounded-md border border-line hover:bg-panel-2 text-ink-muted">
           Heute
         </button>
       </div>
@@ -147,10 +147,10 @@ export function DienstplanPage() {
           const d = addTage(wocheBeginn, i)
 
           return (
-            <div key={datum} className={`rounded-xl border p-2 min-h-[150px] ${istHeute ? 'border-brand-400 bg-brand-50/30' : 'border-gray-200 bg-white'}`}>
+            <div key={datum} className={`rounded-xl border p-2 min-h-[150px] ${istHeute ? 'border-brand-400 bg-brand-50/30' : 'border-line bg-panel'}`}>
               <div className="text-center mb-2">
-                <p className="text-xs font-semibold text-gray-500">{WOCHENTAGE[i]}</p>
-                <p className={`text-lg font-bold ${istHeute ? 'text-brand-600' : 'text-gray-900'}`}>
+                <p className="text-xs font-semibold text-ink-muted">{WOCHENTAGE[i]}</p>
+                <p className={`text-lg font-bold ${istHeute ? 'text-brand-600' : 'text-ink'}`}>
                   {d.getDate()}
                 </p>
               </div>
@@ -158,7 +158,7 @@ export function DienstplanPage() {
                 {schichtenHeute.map(s => (
                   <div
                     key={s.id}
-                    className={`rounded-md border px-2 py-1 text-xs cursor-pointer hover:opacity-80 ${STATUS_FARBE[s.status] ?? 'bg-gray-100 text-gray-700'}`}
+                    className={`rounded-md border px-2 py-1 text-xs cursor-pointer hover:opacity-80 ${STATUS_FARBE[s.status] ?? 'bg-panel-2 text-ink'}`}
                     onClick={() => { setEditTarget(s); setShowForm(true) }}
                   >
                     <p className="font-semibold truncate">{s.userName}</p>
@@ -167,7 +167,7 @@ export function DienstplanPage() {
                 ))}
                 <button
                   onClick={() => { setEditTarget(null); setDefaultDatum(datum); setShowForm(true) }}
-                  className="w-full text-center text-gray-300 hover:text-brand-500 text-lg leading-none py-0.5"
+                  className="w-full text-center text-ink-subtle hover:text-brand-500 text-lg leading-none py-0.5"
                   title="Schicht hinzufügen"
                 >
                   +
@@ -180,12 +180,12 @@ export function DienstplanPage() {
 
       {/* Wochen-Zusammenfassung */}
       {Object.keys(stundenProPerson).length > 0 && (
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <h2 className="text-sm font-semibold text-gray-700 mb-3">Wochenstunden</h2>
+        <div className="bg-panel border border-line rounded-xl p-4">
+          <h2 className="text-sm font-semibold text-ink mb-3">Wochenstunden</h2>
           <div className="flex flex-wrap gap-3">
             {Object.values(stundenProPerson).map(p => (
-              <div key={p.name} className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2">
-                <span className="text-sm font-medium text-gray-800">{p.name}</span>
+              <div key={p.name} className="flex items-center gap-2 bg-panel-2 rounded-lg px-3 py-2">
+                <span className="text-sm font-medium text-ink">{p.name}</span>
                 <span className="text-sm text-brand-600 font-mono font-semibold">
                   {Math.floor(p.minuten / 60)}h{p.minuten % 60 > 0 ? ` ${p.minuten % 60}m` : ''}
                 </span>
@@ -288,16 +288,16 @@ function SchichtFormModal({ kasseId, initial, defaultDatum, onClose, onSaved, on
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+      <div className="bg-panel rounded-xl shadow-xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto">
         <h2 className="text-lg font-semibold">{initial ? 'Schicht bearbeiten' : 'Neue Schicht'}</h2>
 
         {!initial && (
           <div>
-            <label className="text-sm font-medium text-gray-700">Mitarbeiter</label>
+            <label className="text-sm font-medium text-ink">Mitarbeiter</label>
             <select
               value={userId}
               onChange={e => setUserId(e.target.value)}
-              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              className="mt-1 w-full rounded-md border border-line-strong px-3 py-2 text-sm"
             >
               {users.filter(u => u.aktiv).map(u => (
                 <option key={u.id} value={u.id}>{u.name}</option>
@@ -306,46 +306,46 @@ function SchichtFormModal({ kasseId, initial, defaultDatum, onClose, onSaved, on
           </div>
         )}
         {initial && (
-          <p className="text-sm font-medium text-gray-700">Mitarbeiter: <span className="text-gray-900">{initial.userName}</span></p>
+          <p className="text-sm font-medium text-ink">Mitarbeiter: <span className="text-ink">{initial.userName}</span></p>
         )}
 
         <div>
-          <label className="text-sm font-medium text-gray-700">Datum</label>
+          <label className="text-sm font-medium text-ink">Datum</label>
           <input type="date" value={datum} onChange={e => setDatum(e.target.value)}
-            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+            className="mt-1 w-full rounded-md border border-line-strong px-3 py-2 text-sm" />
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-sm font-medium text-gray-700">Beginn</label>
+            <label className="text-sm font-medium text-ink">Beginn</label>
             <input type="time" value={beginnGeplant} onChange={e => setBeginnGeplant(e.target.value)}
-              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+              className="mt-1 w-full rounded-md border border-line-strong px-3 py-2 text-sm" />
           </div>
           <div>
-            <label className="text-sm font-medium text-gray-700">Ende</label>
+            <label className="text-sm font-medium text-ink">Ende</label>
             <input type="time" value={endeGeplant} onChange={e => setEndeGeplant(e.target.value)}
-              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+              className="mt-1 w-full rounded-md border border-line-strong px-3 py-2 text-sm" />
           </div>
         </div>
 
         <div>
-          <label className="text-sm font-medium text-gray-700">Position (optional)</label>
+          <label className="text-sm font-medium text-ink">Position (optional)</label>
           <input value={position} onChange={e => setPosition(e.target.value)}
-            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+            className="mt-1 w-full rounded-md border border-line-strong px-3 py-2 text-sm"
             placeholder="z.B. Theke, Service, Küche" />
         </div>
 
         <div>
-          <label className="text-sm font-medium text-gray-700">Notiz (optional)</label>
+          <label className="text-sm font-medium text-ink">Notiz (optional)</label>
           <input value={notiz} onChange={e => setNotiz(e.target.value)}
-            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+            className="mt-1 w-full rounded-md border border-line-strong px-3 py-2 text-sm" />
         </div>
 
         {initial && (
           <div>
-            <label className="text-sm font-medium text-gray-700">Status</label>
+            <label className="text-sm font-medium text-ink">Status</label>
             <select value={status} onChange={e => setStatus(e.target.value as DienstplanStatus)}
-              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
+              className="mt-1 w-full rounded-md border border-line-strong px-3 py-2 text-sm">
               {Object.entries(DIENSTPLAN_STATUS_LABELS).map(([k, v]) => (
                 <option key={k} value={k}>{v}</option>
               ))}
@@ -363,7 +363,7 @@ function SchichtFormModal({ kasseId, initial, defaultDatum, onClose, onSaved, on
             </button>
           )}
           <button onClick={onClose}
-            className="flex-1 rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+            className="flex-1 rounded-md border border-line-strong px-4 py-2 text-sm text-ink hover:bg-panel-2">
             Abbrechen
           </button>
           <button onClick={handleSpeichern} disabled={loading}

@@ -140,14 +140,14 @@ export function KassenbuchPage() {
     <div className="mx-auto max-w-4xl px-4 py-6 sm:py-8 space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Kassenbuch</h1>
-          <p className="mt-1 text-sm text-gray-500">Bar-Einlagen und -Entnahmen</p>
+          <h1 className="text-2xl font-bold text-ink">Kassenbuch</h1>
+          <p className="mt-1 text-sm text-ink-muted">Bar-Einlagen und -Entnahmen</p>
         </div>
         <Button onClick={() => setModal(true)}>+ Neue Buchung</Button>
       </div>
 
       {/* Filter */}
-      <div className="rounded-lg bg-white shadow-sm border border-gray-200 p-4">
+      <div className="rounded-lg bg-panel shadow-sm border border-line p-4">
         <div className="flex flex-wrap items-end gap-4">
           <div className="flex gap-1">
             {ZEITRAUM_OPTIONEN.map(opt => (
@@ -158,7 +158,7 @@ export function KassenbuchPage() {
                 className={`px-3 py-1.5 rounded text-sm font-medium transition ${
                   preset === opt.key
                     ? 'bg-brand-600 text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    : 'bg-panel-2 text-ink-muted hover:bg-panel-2'
                 }`}
               >
                 {opt.label}
@@ -167,24 +167,24 @@ export function KassenbuchPage() {
           </div>
           <div className="flex items-center gap-2 ml-auto">
             <div className="flex items-center gap-1">
-              <span className="text-xs text-gray-500">Von</span>
+              <span className="text-xs text-ink-muted">Von</span>
               <input
                 type="date"
                 value={von}
                 max={bis}
                 onChange={e => { setVon(e.target.value); setPreset('heute') }}
-                className="rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+                className="rounded border border-line-strong px-2 py-1.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
               />
             </div>
             <div className="flex items-center gap-1">
-              <span className="text-xs text-gray-500">Bis</span>
+              <span className="text-xs text-ink-muted">Bis</span>
               <input
                 type="date"
                 value={bis}
                 min={von}
                 max={heute()}
                 onChange={e => { setBis(e.target.value); setPreset('heute') }}
-                className="rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+                className="rounded border border-line-strong px-2 py-1.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
               />
             </div>
           </div>
@@ -231,12 +231,12 @@ export function KassenbuchPage() {
       )}
 
       {/* Buchungsliste */}
-      <div className="rounded-lg bg-white shadow-sm border border-gray-200 overflow-hidden">
-        <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-gray-700">
+      <div className="rounded-lg bg-panel shadow-sm border border-line overflow-hidden">
+        <div className="px-4 py-3 bg-panel-2 border-b border-line flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-ink">
             Buchungen
             {data && data.buchungen.length > 0 && (
-              <span className="ml-2 text-gray-400 font-normal">({data.buchungen.length})</span>
+              <span className="ml-2 text-ink-subtle font-normal">({data.buchungen.length})</span>
             )}
           </h2>
           <div className="flex items-center gap-3">
@@ -268,7 +268,7 @@ export function KassenbuchPage() {
         </div>
 
         {query.isLoading && (
-          <div className="p-8 text-center text-sm text-gray-400">Wird geladen…</div>
+          <div className="p-8 text-center text-sm text-ink-subtle">Wird geladen…</div>
         )}
         {query.isError && (
           <div className="p-6 text-sm text-red-600">
@@ -276,14 +276,14 @@ export function KassenbuchPage() {
           </div>
         )}
         {data && data.buchungen.length === 0 && (
-          <div className="p-8 text-center text-sm text-gray-500">
+          <div className="p-8 text-center text-sm text-ink-muted">
             Keine Buchungen im gewählten Zeitraum.
           </div>
         )}
         {data && data.buchungen.length > 0 && (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500 border-b border-gray-200">
+              <thead className="bg-panel-2 text-left text-xs uppercase tracking-wide text-ink-muted border-b border-line">
                 <tr>
                   <th className="px-4 py-2 font-semibold">Datum</th>
                   <th className="px-4 py-2 font-semibold">Uhrzeit</th>
@@ -293,13 +293,13 @@ export function KassenbuchPage() {
                   <th className="px-4 py-2 font-semibold text-right">Betrag</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-line">
                 {data.buchungen.map((b) => (
-                  <tr key={b.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-2.5 text-gray-700 font-mono text-xs">
+                  <tr key={b.id} className="hover:bg-panel-2">
+                    <td className="px-4 py-2.5 text-ink font-mono text-xs">
                       {formatDatum(b.datum)}
                     </td>
-                    <td className="px-4 py-2.5 text-gray-500 font-mono text-xs">
+                    <td className="px-4 py-2.5 text-ink-muted font-mono text-xs">
                       {formatZeit(b.createdAt)}
                     </td>
                     <td className="px-4 py-2.5">
@@ -311,10 +311,10 @@ export function KassenbuchPage() {
                         {KASSENBUCH_TYP_LABELS[b.typ]}
                       </span>
                     </td>
-                    <td className="px-4 py-2.5 text-gray-600">
-                      {b.grund ?? <span className="text-gray-300">—</span>}
+                    <td className="px-4 py-2.5 text-ink-muted">
+                      {b.grund ?? <span className="text-ink-subtle">—</span>}
                     </td>
-                    <td className="px-4 py-2.5 text-gray-500 text-xs">
+                    <td className="px-4 py-2.5 text-ink-muted text-xs">
                       {b.userName ?? '—'}
                     </td>
                     <td className={`px-4 py-2.5 text-right font-mono font-semibold ${
@@ -326,8 +326,8 @@ export function KassenbuchPage() {
                 ))}
               </tbody>
               <tfoot>
-                <tr className="border-t-2 border-gray-300 bg-gray-50">
-                  <td colSpan={5} className="px-4 py-2 text-sm font-semibold text-gray-700">Saldo</td>
+                <tr className="border-t-2 border-line-strong bg-panel-2">
+                  <td colSpan={5} className="px-4 py-2 text-sm font-semibold text-ink">Saldo</td>
                   <td className={`px-4 py-2 text-right font-mono font-bold text-sm ${
                     data.saldoCent >= 0 ? 'text-brand-700' : 'text-orange-700'
                   }`}>
@@ -394,7 +394,7 @@ function BuchungFormular({
     <div className="space-y-4">
       {/* Typ */}
       <div>
-        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Art</label>
+        <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wide mb-2">Art</label>
         <div className="flex gap-2">
           {(['einlage', 'entnahme'] as const).map(t => (
             <button
@@ -406,7 +406,7 @@ function BuchungFormular({
                   ? t === 'einlage'
                     ? 'border-green-500 bg-green-50 text-green-700'
                     : 'border-red-400 bg-red-50 text-red-700'
-                  : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                  : 'border-line text-ink-muted hover:border-line-strong'
               }`}
             >
               {KASSENBUCH_TYP_LABELS[t]}
@@ -417,9 +417,9 @@ function BuchungFormular({
 
       {/* Betrag */}
       <label className="block">
-        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Betrag *</span>
+        <span className="text-xs font-semibold text-ink-muted uppercase tracking-wide">Betrag *</span>
         <div className="flex items-center gap-1.5 mt-1">
-          <span className="text-gray-500">€</span>
+          <span className="text-ink-muted">€</span>
           <Input
             autoFocus
             inputMode="decimal"
@@ -434,20 +434,20 @@ function BuchungFormular({
 
       {/* Datum */}
       <label className="block">
-        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Datum *</span>
+        <span className="text-xs font-semibold text-ink-muted uppercase tracking-wide">Datum *</span>
         <input
           type="date"
           value={datum}
           max={heute()}
           onChange={e => setDatum(e.target.value)}
-          className="mt-1 block rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+          className="mt-1 block rounded-md border border-line-strong px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
         />
       </label>
 
       {/* Grund */}
       <label className="block">
-        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-          Grund <span className="text-gray-400 normal-case font-normal">(optional)</span>
+        <span className="text-xs font-semibold text-ink-muted uppercase tracking-wide">
+          Grund <span className="text-ink-subtle normal-case font-normal">(optional)</span>
         </span>
         <Input
           value={grund}

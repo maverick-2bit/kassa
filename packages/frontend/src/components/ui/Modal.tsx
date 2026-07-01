@@ -33,15 +33,15 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
       aria-modal="true"
     >
       <div
-        className={`w-full ${sizeClass[size]} rounded-xl bg-white shadow-xl border border-gray-200 max-h-[90vh] flex flex-col`}
+        className={`w-full ${sizeClass[size]} rounded-xl bg-panel shadow-xl border border-line max-h-[90vh] flex flex-col`}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-gray-200 px-5 py-3">
-          <h2 className="text-base font-semibold text-gray-900">{title}</h2>
+        <div className="flex items-center justify-between border-b border-line px-5 py-3">
+          <h2 className="text-base font-semibold text-ink">{title}</h2>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+            className="rounded-md p-1 text-ink-subtle hover:text-ink-muted hover:bg-panel-2"
             aria-label="Schließen"
           >
             <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">

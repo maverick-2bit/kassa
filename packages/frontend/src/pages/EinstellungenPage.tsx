@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { QRCodeSVG } from 'qrcode.react'
-import { ALLE_STATIONEN, STATION_LABELS, type Station, type ZvtConfig } from '@kassa/shared'
-import { druckerApi, kdsApi, zvtApi, downloadDepExport, healthApi, monitoringApi, mandantApi, kasseApi, tischplanApi, dbBackupApi, belegApi, type DruckerConfig, type KdsConfig, type DbSicherungRow, type MonitoringStatus } from '../lib/api'
+import { ALLE_STATIONEN, STATION_LABELS, type Station, type ZvtConfig, type WeitereKasseInput, type PosKonfig } from '@kassa/shared'
+import { druckerApi, kdsApi, zvtApi, downloadDepExport, healthApi, monitoringApi, mandantApi, kasseApi, kategorieApi, posConfigApi, tischplanApi, dbBackupApi, belegApi, type DruckerConfig, type KdsConfig, type DbSicherungRow, type MonitoringStatus } from '../lib/api'
 import { formatAusfallDauer } from '../components/SeeStatusBanner'
-import { getKasseIdentity } from '../lib/kasse'
-import { getAuth, hasModul, updateKasseBezeichnung } from '../lib/auth'
+import { getKasseIdentity, setKasseIdentity } from '../lib/kasse'
+import { getAuth, hasModul, updateKasseBezeichnung, addKasse } from '../lib/auth'
 import { Field } from '../components/ui/Field'
 import { Input } from '../components/ui/Input'
 import { Button } from '../components/ui/Button'
@@ -16,9 +16,11 @@ export function EinstellungenPage() {
   return (
     <div className="mx-auto max-w-4xl px-4 py-6 sm:py-8 space-y-6">
       <header>
-        <h1 className="text-2xl font-bold text-gray-900">Einstellungen</h1>
-        <p className="mt-1 text-sm text-gray-500">Drucker, Hardware-Anbindung, Belegtext und Tischplan</p>
+        <h1 className="text-2xl font-bold text-ink">Einstellungen</h1>
+        <p className="mt-1 text-sm text-ink-muted">Drucker, Hardware-Anbindung, Belegtext und Tischplan</p>
       </header>
+      <KassenVerwaltungSektion />
+      <WarengruppenVerteilungSektion />
       <KasseBezeichnungSektion />
       <RechnungslayoutSektion />
       <DruckerSektion />
@@ -31,6 +33,305 @@ export function EinstellungenPage() {
       <DbBackupSektion />
       <SystemInfoSektion />
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Kassen-Verwaltung (Umschalter + weitere Kasse anlegen)
+// ---------------------------------------------------------------------------
+
+function KassenVerwaltungSektion() {
+  const auth        = getAuth()!
+  const identity    = getKasseIdentity()
+  const queryClient = useQueryClient()
+
+  const [formOffen, setFormOffen] = useState(false)
+  const [kassenId, setKassenId]       = useState('')
+  const [bezeichnung, setBezeichnung] = useState('')
+  const [umgebung, setUmgebung]       = useState<'test' | 'produktion'>('test')
+  const [tid, setTid]     = useState('')
+  const [benId, setBenId] = useState('')
+  const [pin, setPin]     = useState('')
+  const [meldung, setMeldung] = useState<{ typ: 'ok' | 'fehler'; text: string } | null>(null)
+
+  // Reichere Kassenliste vom Server (Zertifikatsablauf, FON-Status); Fallback: auth.kassen
+  const listeQuery = useQuery({
+    queryKey: ['kassen-liste'],
+    queryFn:  kasseApi.liste,
+  })
+  const kassen = listeQuery.data ?? auth.kassen.map(k => ({
+    id: k.id, kassenId: k.kassenId, bezeichnung: k.bezeichnung,
+    status: 'aktiv', umgebung: k.umgebung, seeGueltigBis: '', beiFoRegistriert: false,
+  }))
+
+  function wechsleZu(kasseId: string) {
+    if (kasseId === identity?.kasseId) return
+    setKasseIdentity({ mandantId: auth.mandant.id, kasseId })
+    // Detail-Sektionen lesen die Kassen-ID nicht-reaktiv beim Render → Neuladen.
+    window.location.reload()
+  }
+
+  const anlegen = useMutation({
+    mutationFn: () => {
+      const fonComplete = tid.trim() && benId.trim() && pin.trim()
+      const input: WeitereKasseInput = {
+        kassenId: kassenId.trim(),
+        umgebung,
+        ...(bezeichnung.trim() && { bezeichnung: bezeichnung.trim() }),
+        ...(fonComplete && { finanzOnline: { teilnehmerId: tid.trim(), benutzerkennung: benId.trim(), pin: pin.trim() } }),
+      }
+      return kasseApi.anlegen(input)
+    },
+    onSuccess: (res) => {
+      if (!res.erfolgreich || !res.kasseId) {
+        setMeldung({ typ: 'fehler', text: res.fehler ?? 'Kasse konnte nicht angelegt werden' })
+        return
+      }
+      addKasse({ id: res.kasseId, kassenId: kassenId.trim(), bezeichnung: bezeichnung.trim() || null, umgebung })
+      queryClient.invalidateQueries({ queryKey: ['kassen-liste'] })
+      setMeldung({ typ: 'ok', text: `Kasse „${kassenId.trim()}" angelegt (Startbeleg #${res.startbelegNummer}).` })
+      setKassenId(''); setBezeichnung(''); setTid(''); setBenId(''); setPin(''); setFormOffen(false)
+    },
+    onError: (err) => setMeldung({ typ: 'fehler', text: err instanceof Error ? err.message : String(err) }),
+  })
+
+  return (
+    <section className="rounded-lg bg-panel shadow-sm border border-line p-6 space-y-5">
+      <div>
+        <h2 className="text-base font-semibold text-ink">Kassen</h2>
+        <p className="text-sm text-ink-muted mt-0.5">
+          Zwischen Kassen wechseln oder weitere anlegen. Alle Einstellungen unterhalb
+          (Bondrucker, KDS, Kartenterminal, Warengruppen) beziehen sich auf die <strong>aktive</strong> Kasse.
+        </p>
+      </div>
+
+      {/* Kassenliste + Umschalter */}
+      <div className="space-y-2">
+        {kassen.map(k => {
+          const aktiv = k.id === identity?.kasseId
+          return (
+            <div
+              key={k.id}
+              className={`flex items-center justify-between gap-3 rounded-md border p-3 ${
+                aktiv ? 'border-brand-500 bg-brand-50' : 'border-line bg-panel-2'
+              }`}
+            >
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-ink truncate">
+                  {k.bezeichnung || k.kassenId}
+                  {aktiv && <span className="ml-2 text-xs font-semibold text-brand-700">● aktiv</span>}
+                </p>
+                <p className="text-xs text-ink-muted">
+                  ID: {k.kassenId} · {k.umgebung === 'produktion' ? 'Produktion' : 'Test'}
+                  {k.beiFoRegistriert ? ' · FinanzOnline registriert' : ' · provisorisch'}
+                </p>
+              </div>
+              {aktiv ? (
+                <span className="text-xs text-ink-subtle shrink-0">aktuelle Kasse</span>
+              ) : (
+                <Button variant="secondary" onClick={() => wechsleZu(k.id)}>Wechseln</Button>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {meldung && (
+        <div className={`rounded-md p-3 text-sm ${
+          meldung.typ === 'ok'
+            ? 'bg-green-50 border border-green-200 text-green-700'
+            : 'bg-red-50 border border-red-200 text-red-700'
+        }`}>{meldung.text}</div>
+      )}
+
+      {/* Weitere Kasse anlegen */}
+      <div className="pt-2 border-t border-line">
+        {!formOffen ? (
+          <Button variant="secondary" onClick={() => { setMeldung(null); setFormOffen(true) }}>
+            + Weitere Kasse anlegen
+          </Button>
+        ) : (
+          <div className="space-y-4">
+            <p className="text-sm font-medium text-ink">Neue Registrierkasse</p>
+            <p className="text-xs text-ink-muted -mt-2">
+              Es wird eine eigene Signatureinheit (SEE-Zertifikat) samt Startbeleg erstellt.
+              Firmenname und UID werden vom Mandanten übernommen.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Field label="Kassen-ID" hint="Eindeutig, z. B. KASSE-002">
+                <Input value={kassenId} onChange={e => { setKassenId(e.target.value); setMeldung(null) }} maxLength={40} placeholder="KASSE-002" />
+              </Field>
+              <Field label="Bezeichnung (optional)" hint="Anzeigename, z. B. Bar Terrasse">
+                <Input value={bezeichnung} onChange={e => setBezeichnung(e.target.value)} maxLength={100} placeholder="Bar Terrasse" />
+              </Field>
+            </div>
+            <Field label="Umgebung">
+              <select
+                className="block w-full rounded-md border border-line-strong px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500/40"
+                value={umgebung}
+                onChange={e => setUmgebung(e.target.value as 'test' | 'produktion')}
+              >
+                <option value="test">Test (FinanzOnline-Testumgebung)</option>
+                <option value="produktion">Produktion (Echtbetrieb)</option>
+              </select>
+            </Field>
+
+            <details className="rounded-md border border-line bg-panel-2 p-3">
+              <summary className="cursor-pointer text-sm font-medium text-ink">FinanzOnline-Registrierung (optional)</summary>
+              <p className="mt-2 text-xs text-ink-muted">
+                Fehlen die Daten, wird die Kasse provisorisch (ohne FON-Registrierung) angelegt —
+                die Registrierung kann später nachgetragen werden. Zugangsdaten werden nicht gespeichert.
+              </p>
+              <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <Field label="Teilnehmer-ID"><Input value={tid} onChange={e => setTid(e.target.value)} autoComplete="off" /></Field>
+                <Field label="Benutzerkennung"><Input value={benId} onChange={e => setBenId(e.target.value)} autoComplete="off" /></Field>
+                <Field label="PIN"><Input type="password" value={pin} onChange={e => setPin(e.target.value)} autoComplete="off" /></Field>
+              </div>
+            </details>
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                onClick={() => { setMeldung(null); anlegen.mutate() }}
+                loading={anlegen.isPending}
+                disabled={!kassenId.trim()}
+              >
+                Kasse anlegen
+              </Button>
+              <Button variant="secondary" onClick={() => { setFormOffen(false); setMeldung(null) }} disabled={anlegen.isPending}>
+                Abbrechen
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Warengruppen-Verteilung (Matrix: Warengruppe × Kasse)
+// ---------------------------------------------------------------------------
+
+function WarengruppenVerteilungSektion() {
+  const qc = useQueryClient()
+  const kassenQuery     = useQuery({ queryKey: ['kassen-liste'], queryFn: kasseApi.liste })
+  const kategorienQuery = useQuery({ queryKey: ['kategorien'],   queryFn: () => kategorieApi.list(false) })
+
+  const kassen     = kassenQuery.data ?? []
+  const kategorien = kategorienQuery.data ?? []
+
+  // POS-Konfig je Kasse (enthält sichtbareKategorieIds)
+  const configQueries = useQueries({
+    queries: kassen.map(k => ({
+      queryKey: ['pos-config', k.id],
+      queryFn:  () => posConfigApi.get(k.id),
+    })),
+  })
+  const configByKasse = new Map<string, string[]>()
+  kassen.forEach((k, i) => {
+    const d = configQueries[i]?.data
+    if (d) configByKasse.set(k.id, d.sichtbareKategorieIds)
+  })
+
+  const speichern = useMutation({
+    mutationFn: ({ kasseId, ids }: { kasseId: string; ids: string[] }) =>
+      posConfigApi.update(kasseId, { sichtbareKategorieIds: ids }),
+    onSuccess: (_r, v) => qc.invalidateQueries({ queryKey: ['pos-config', v.kasseId] }),
+  })
+
+  function setzeAuswahl(kasseId: string, ids: string[]) {
+    qc.setQueryData<PosKonfig>(['pos-config', kasseId], (old) =>
+      old ? { ...old, sichtbareKategorieIds: ids } : old)
+    speichern.mutate({ kasseId, ids })
+  }
+
+  function toggle(kasseId: string, catId: string) {
+    const set = new Set(configByKasse.get(kasseId) ?? [])
+    if (set.has(catId)) set.delete(catId); else set.add(catId)
+    setzeAuswahl(kasseId, [...set])
+  }
+
+  const laden = kassenQuery.isLoading || kategorienQuery.isLoading
+
+  return (
+    <section className="rounded-lg bg-panel shadow-sm border border-line p-6 space-y-4">
+      <div>
+        <h2 className="text-base font-semibold text-ink">Warengruppen-Verteilung</h2>
+        <p className="text-sm text-ink-muted mt-0.5">
+          Lege fest, welche Warengruppen an welcher Kasse erscheinen — z. B. eine Kasse „Getränke",
+          eine Kasse „Speisen". Ist bei einer Kasse <strong>keine</strong> Gruppe angehakt, werden dort
+          (wie bisher) <strong>alle</strong> Warengruppen angezeigt.
+        </p>
+      </div>
+
+      {laden ? (
+        <p className="text-sm text-ink-muted">Wird geladen…</p>
+      ) : kategorien.length === 0 ? (
+        <p className="text-sm text-ink-subtle">Noch keine Warengruppen angelegt.</p>
+      ) : kassen.length === 0 ? (
+        <p className="text-sm text-ink-subtle">Keine Kassen vorhanden.</p>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-line">
+          <table className="w-full text-sm">
+            <thead className="bg-panel-2 text-ink-muted">
+              <tr>
+                <th className="px-3 py-2 text-left font-medium sticky left-0 bg-panel-2 z-10">Warengruppe</th>
+                {kassen.map(k => {
+                  const leer = (configByKasse.get(k.id)?.length ?? 0) === 0
+                  return (
+                    <th key={k.id} className="px-3 py-2 text-center font-medium min-w-[7rem]">
+                      <div className="truncate">{k.bezeichnung || k.kassenId}</div>
+                      <div className={`text-[10px] font-normal mt-0.5 ${leer ? 'text-brand-700' : 'text-ink-subtle'}`}>
+                        {leer ? 'alle sichtbar' : `${configByKasse.get(k.id)?.length} gewählt`}
+                      </div>
+                    </th>
+                  )
+                })}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {kategorien.map(kat => (
+                <tr key={kat.id} className="hover:bg-panel-2/60">
+                  <td className="px-3 py-2 text-ink font-medium sticky left-0 bg-panel z-10">{kat.name}</td>
+                  {kassen.map(k => {
+                    const aktiv = (configByKasse.get(k.id) ?? []).includes(kat.id)
+                    return (
+                      <td key={k.id} className="px-3 py-2 text-center">
+                        <input
+                          type="checkbox"
+                          checked={aktiv}
+                          onChange={() => toggle(k.id, kat.id)}
+                          className="h-4 w-4 rounded border-line-strong text-brand-600 focus:ring-brand-500"
+                        />
+                      </td>
+                    )
+                  })}
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-t border-line">
+                <td className="px-3 py-2 text-xs text-ink-subtle sticky left-0 bg-panel z-10">Zurücksetzen</td>
+                {kassen.map(k => {
+                  const leer = (configByKasse.get(k.id)?.length ?? 0) === 0
+                  return (
+                    <td key={k.id} className="px-3 py-2 text-center">
+                      <button
+                        type="button"
+                        disabled={leer}
+                        onClick={() => setzeAuswahl(k.id, [])}
+                        className="text-[10px] px-1.5 py-0.5 rounded border border-line-strong text-ink-muted hover:bg-panel-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                        title="Auswahl leeren → alle Warengruppen sichtbar"
+                      >alle sichtbar</button>
+                    </td>
+                  )
+                })}
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+    </section>
   )
 }
 
@@ -57,10 +358,10 @@ function KasseBezeichnungSektion() {
   })
 
   return (
-    <section className="rounded-lg bg-white shadow-sm border border-gray-200 p-6 space-y-4">
+    <section className="rounded-lg bg-panel shadow-sm border border-line p-6 space-y-4">
       <div>
-        <h2 className="text-base font-semibold text-gray-900">Kassenbezeichnung</h2>
-        <p className="text-sm text-gray-500 mt-0.5">
+        <h2 className="text-base font-semibold text-ink">Kassenbezeichnung</h2>
+        <p className="text-sm text-ink-muted mt-0.5">
           Anzeigename dieser Kasse (erscheint in PDFs, Berichten und der Navigation).
         </p>
       </div>
@@ -83,7 +384,7 @@ function KasseBezeichnungSektion() {
         }`}>{meldung.text}</div>
       )}
 
-      <div className="pt-2 border-t border-gray-200">
+      <div className="pt-2 border-t border-line">
         <Button
           onClick={() => { setMeldung(null); speichern.mutate() }}
           loading={speichern.isPending}
@@ -110,14 +411,14 @@ function BelegVorschau({
 }) {
   const line = '─'.repeat(28)
   return (
-    <div className="font-mono text-[10px] leading-[1.5] bg-white border border-gray-200 rounded-lg p-4 shadow-inner select-none overflow-hidden">
+    <div className="font-mono text-[10px] leading-[1.5] bg-panel border border-line rounded-lg p-4 shadow-inner select-none overflow-hidden">
       {/* Kopf */}
       <p className="text-center font-bold text-[11px]">{firmenname || 'Firmenname'}</p>
       {kopftext && kopftext.split('\n').map((l, i) => (
-        <p key={i} className="text-center text-gray-600">{l}</p>
+        <p key={i} className="text-center text-ink-muted">{l}</p>
       ))}
-      <p className="text-center text-gray-500">UID: {uid || 'ATU12345678'}</p>
-      <p className="text-gray-300 my-1">{line}</p>
+      <p className="text-center text-ink-muted">UID: {uid || 'ATU12345678'}</p>
+      <p className="text-ink-subtle my-1">{line}</p>
 
       {/* Beispiel-Positionen */}
       <div className="space-y-0.5">
@@ -126,23 +427,23 @@ function BelegVorschau({
         <div className="flex justify-between"><span>1× Apfelstrudel</span><span>€ 4,50</span></div>
       </div>
 
-      <p className="text-gray-300 my-1">{line}</p>
+      <p className="text-ink-subtle my-1">{line}</p>
       <div className="flex justify-between font-bold text-[11px]">
         <span>GESAMT</span><span>€ 13,90</span>
       </div>
-      <div className="flex justify-between text-gray-500 mt-0.5">
+      <div className="flex justify-between text-ink-muted mt-0.5">
         <span>Bar</span><span>€ 20,00</span>
       </div>
-      <div className="flex justify-between text-gray-500">
+      <div className="flex justify-between text-ink-muted">
         <span>Rückgeld</span><span>€ 6,10</span>
       </div>
 
       {/* Steuertabelle */}
       {steuertabelle && (
         <>
-          <p className="text-gray-300 my-1">{line}</p>
-          <p className="text-gray-500">Steuern</p>
-          <div className="grid grid-cols-4 gap-x-2 text-gray-500 mt-0.5">
+          <p className="text-ink-subtle my-1">{line}</p>
+          <p className="text-ink-muted">Steuern</p>
+          <div className="grid grid-cols-4 gap-x-2 text-ink-muted mt-0.5">
             <span>Satz</span><span className="text-right">Netto</span><span className="text-right">Steuer</span><span className="text-right">Brutto</span>
             <span>A 20%</span><span className="text-right">11,58</span><span className="text-right">2,32</span><span className="text-right">13,90</span>
           </div>
@@ -150,24 +451,24 @@ function BelegVorschau({
       )}
 
       {/* Fußzeile */}
-      <p className="text-gray-300 my-1">{line}</p>
+      <p className="text-ink-subtle my-1">{line}</p>
       {fusstext ? fusstext.split('\n').map((l, i) => (
-        <p key={i} className="text-center text-gray-500">{l}</p>
-      )) : <p className="text-center text-gray-300 italic">Fußtext hier</p>}
+        <p key={i} className="text-center text-ink-muted">{l}</p>
+      )) : <p className="text-center text-ink-subtle italic">Fußtext hier</p>}
 
       {/* QR-Platzhalter */}
       {qr && (
         <div className="flex flex-col items-center mt-2 gap-1">
-          <div className="w-12 h-12 bg-gray-100 border border-gray-200 rounded flex items-center justify-center text-gray-300 text-lg">
+          <div className="w-12 h-12 bg-panel-2 border border-line rounded flex items-center justify-center text-ink-subtle text-lg">
             ▦
           </div>
-          <p className="text-gray-400 text-[9px]">Digitaler Beleg</p>
+          <p className="text-ink-subtle text-[9px]">Digitaler Beleg</p>
         </div>
       )}
 
       {/* RKSV-Footer (immer sichtbar) */}
-      <p className="text-gray-300 mt-1">{line}</p>
-      <p className="text-gray-400 text-[9px] text-center">_R1_ AT1 2024-06-11T… €13,90 MdGjKs… =</p>
+      <p className="text-ink-subtle mt-1">{line}</p>
+      <p className="text-ink-subtle text-[9px] text-center">_R1_ AT1 2024-06-11T… €13,90 MdGjKs… =</p>
     </div>
   )
 }
@@ -219,16 +520,16 @@ function RechnungslayoutSektion() {
   )
 
   return (
-    <section className="rounded-lg bg-white shadow-sm border border-gray-200 p-6 space-y-5">
+    <section className="rounded-lg bg-panel shadow-sm border border-line p-6 space-y-5">
       <div>
-        <h2 className="text-base font-semibold text-gray-900">Rechnungslayout</h2>
-        <p className="text-sm text-gray-500 mt-0.5">
+        <h2 className="text-base font-semibold text-ink">Rechnungslayout</h2>
+        <p className="text-sm text-ink-muted mt-0.5">
           Kopf- und Fußtext, Steuertabelle, QR-Code — mit Live-Vorschau.
         </p>
       </div>
 
       {stammdatenQuery.isLoading ? (
-        <p className="text-sm text-gray-500">Wird geladen…</p>
+        <p className="text-sm text-ink-muted">Wird geladen…</p>
       ) : d ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
@@ -238,14 +539,14 @@ function RechnungslayoutSektion() {
             {/* Firmenname / UID (nur Anzeige) */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <p className="text-xs font-medium text-gray-500 mb-1">Firmenname</p>
-                <p className="text-sm font-medium text-gray-800 bg-gray-50 rounded-md px-3 py-2 border border-gray-200 truncate">
+                <p className="text-xs font-medium text-ink-muted mb-1">Firmenname</p>
+                <p className="text-sm font-medium text-ink bg-panel-2 rounded-md px-3 py-2 border border-line truncate">
                   {d.firmenname}
                 </p>
               </div>
               <div>
-                <p className="text-xs font-medium text-gray-500 mb-1">UID-Nummer</p>
-                <p className="text-sm font-mono text-gray-800 bg-gray-50 rounded-md px-3 py-2 border border-gray-200">
+                <p className="text-xs font-medium text-ink-muted mb-1">UID-Nummer</p>
+                <p className="text-sm font-mono text-ink bg-panel-2 rounded-md px-3 py-2 border border-line">
                   {d.uid}
                 </p>
               </div>
@@ -261,11 +562,11 @@ function RechnungslayoutSektion() {
                 rows={2}
                 maxLength={300}
                 placeholder={'Musterstraße 1, 1010 Wien\nTel: +43 1 234567'}
-                className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm
+                className="block w-full rounded-md border border-line-strong px-3 py-2 text-sm
                            placeholder-gray-400 shadow-sm resize-y
                            focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
               />
-              <p className="text-xs text-gray-400 mt-1 text-right">{kopftext.length}/300</p>
+              <p className="text-xs text-ink-subtle mt-1 text-right">{kopftext.length}/300</p>
             </Field>
 
             <Field
@@ -278,19 +579,19 @@ function RechnungslayoutSektion() {
                 rows={3}
                 maxLength={500}
                 placeholder={'Vielen Dank für Ihren Besuch!\nwww.beispiel.at'}
-                className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm
+                className="block w-full rounded-md border border-line-strong px-3 py-2 text-sm
                            placeholder-gray-400 shadow-sm resize-y
                            focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
               />
-              <p className="text-xs text-gray-400 mt-1 text-right">{fusstext.length}/500</p>
+              <p className="text-xs text-ink-subtle mt-1 text-right">{fusstext.length}/500</p>
             </Field>
 
             {/* Schalter */}
             <div className="space-y-3 pt-1">
               <label className="flex items-center justify-between gap-3 cursor-pointer">
                 <div>
-                  <p className="text-sm font-medium text-gray-900">Steuertabelle anzeigen</p>
-                  <p className="text-xs text-gray-500">Aufschlüsselung nach Steuersatz am Bonende</p>
+                  <p className="text-sm font-medium text-ink">Steuertabelle anzeigen</p>
+                  <p className="text-xs text-ink-muted">Aufschlüsselung nach Steuersatz am Bonende</p>
                 </div>
                 <button
                   type="button"
@@ -298,10 +599,10 @@ function RechnungslayoutSektion() {
                   aria-checked={steuertab}
                   onClick={() => { setSteuertab(v => !v); setMeldung(null) }}
                   className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors focus:outline-none ${
-                    steuertab ? 'bg-brand-600' : 'bg-gray-200'
+                    steuertab ? 'bg-brand-600' : 'bg-panel-2'
                   }`}
                 >
-                  <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                  <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-panel shadow transition-transform ${
                     steuertab ? 'translate-x-5' : 'translate-x-0'
                   }`} />
                 </button>
@@ -309,8 +610,8 @@ function RechnungslayoutSektion() {
 
               <label className="flex items-center justify-between gap-3 cursor-pointer">
                 <div>
-                  <p className="text-sm font-medium text-gray-900">QR-Code drucken</p>
-                  <p className="text-xs text-gray-500">Link zum digitalen Beleg als QR am Bonende</p>
+                  <p className="text-sm font-medium text-ink">QR-Code drucken</p>
+                  <p className="text-xs text-ink-muted">Link zum digitalen Beleg als QR am Bonende</p>
                 </div>
                 <button
                   type="button"
@@ -318,10 +619,10 @@ function RechnungslayoutSektion() {
                   aria-checked={zeigQr}
                   onClick={() => { setZeigQr(v => !v); setMeldung(null) }}
                   className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors focus:outline-none ${
-                    zeigQr ? 'bg-brand-600' : 'bg-gray-200'
+                    zeigQr ? 'bg-brand-600' : 'bg-panel-2'
                   }`}
                 >
-                  <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                  <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-panel shadow transition-transform ${
                     zeigQr ? 'translate-x-5' : 'translate-x-0'
                   }`} />
                 </button>
@@ -336,7 +637,7 @@ function RechnungslayoutSektion() {
               }`}>{meldung.text}</div>
             )}
 
-            <div className="pt-2 border-t border-gray-200">
+            <div className="pt-2 border-t border-line">
               <Button
                 onClick={() => { setMeldung(null); speichern.mutate() }}
                 loading={speichern.isPending}
@@ -349,7 +650,7 @@ function RechnungslayoutSektion() {
 
           {/* Rechte Spalte: Live-Vorschau */}
           <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Vorschau</p>
+            <p className="text-xs font-semibold text-ink-muted uppercase tracking-wide mb-2">Vorschau</p>
             <BelegVorschau
               firmenname={d.firmenname}
               uid={d.uid}
@@ -392,31 +693,31 @@ function RksvExportSektion() {
   }
 
   return (
-    <section className="rounded-lg border border-gray-200 bg-white p-5">
-      <h2 className="text-base font-semibold text-gray-900 mb-1">RKSV-Datenexport</h2>
-      <p className="text-sm text-gray-500 mb-4">
+    <section className="rounded-lg border border-line bg-panel p-5">
+      <h2 className="text-base font-semibold text-ink mb-1">RKSV-Datenexport</h2>
+      <p className="text-sm text-ink-muted mb-4">
         DEP7 enthält die maschinenlesbaren Codes (Signaturkette). DEP131 enthält alle
         Belege mit Positionen und Beträgen. Ohne Datumsangabe wird der gesamte Bestand exportiert.
       </p>
 
       <div className="flex flex-wrap gap-3 mb-4">
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Von (Datum)</label>
+          <label className="block text-xs font-medium text-ink-muted mb-1">Von (Datum)</label>
           <input
             type="date"
             value={vonDatum}
             onChange={e => setVonDatum(e.target.value)}
-            className="rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+            className="rounded-md border border-line-strong px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
           />
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Bis (Datum)</label>
+          <label className="block text-xs font-medium text-ink-muted mb-1">Bis (Datum)</label>
           <input
             type="date"
             value={bisDatum}
             onChange={e => setBisDatum(e.target.value)}
             min={vonDatum || undefined}
-            className="rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+            className="rounded-md border border-line-strong px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
           />
         </div>
       </div>
@@ -491,9 +792,9 @@ function SeeAusfallSektion() {
   const dauer = status?.dauerMinuten != null ? formatAusfallDauer(status.dauerMinuten) : null
 
   return (
-    <section className="rounded-lg border border-gray-200 bg-white p-5">
-      <h2 className="text-base font-semibold text-gray-900 mb-1">Signatureinrichtung (SEE)</h2>
-      <p className="text-sm text-gray-500 mb-4">
+    <section className="rounded-lg border border-line bg-panel p-5">
+      <h2 className="text-base font-semibold text-ink mb-1">Signatureinrichtung (SEE)</h2>
+      <p className="text-sm text-ink-muted mb-4">
         Fällt die Signatureinrichtung aus, werden Belege weiter erstellt, aber mit dem RKSV-Marker
         „Sicherheitseinrichtung ausgefallen" statt einer Signatur. Bei Wiederinbetriebnahme wird ein
         signierter Sammelbeleg erstellt.
@@ -513,11 +814,11 @@ function SeeAusfallSektion() {
       </div>
 
       {/* Optionale FinanzOnline-Meldung — nur gesendet, wenn alle drei Felder gefüllt sind */}
-      <details className="mb-4 rounded-md border border-gray-200 bg-gray-50 p-3">
-        <summary className="cursor-pointer text-sm font-medium text-gray-700">
+      <details className="mb-4 rounded-md border border-line bg-panel-2 p-3">
+        <summary className="cursor-pointer text-sm font-medium text-ink">
           FinanzOnline-Meldung (optional)
         </summary>
-        <p className="mt-2 text-xs text-gray-500">
+        <p className="mt-2 text-xs text-ink-muted">
           Nur nötig, um den Ausfall bzw. die Wiederinbetriebnahme direkt an FinanzOnline zu übermitteln
           (Ausfall &gt; 48 h ist meldepflichtig). Die Zugangsdaten werden nicht gespeichert.
         </p>
@@ -534,7 +835,7 @@ function SeeAusfallSektion() {
         </div>
       </details>
 
-      <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-200">
+      <div className="flex flex-wrap gap-2 pt-2 border-t border-line">
         {!ausgefallen ? (
           <Button
             variant="secondary"
@@ -578,9 +879,9 @@ function SeeAusfallSektion() {
 
 function TischplanSektion() {
   return (
-    <section className="rounded-lg border border-gray-200 bg-white p-5">
-      <h2 className="text-base font-semibold text-gray-900 mb-1">Tischplan</h2>
-      <p className="text-sm text-gray-500 mb-4">
+    <section className="rounded-lg border border-line bg-panel p-5">
+      <h2 className="text-base font-semibold text-ink mb-1">Tischplan</h2>
+      <p className="text-sm text-ink-muted mb-4">
         Bereiche anlegen und Tische per Drag &amp; Drop positionieren.
         Der fertige Plan erscheint auf der Tische-Seite als grafische Ansicht.
       </p>
@@ -642,10 +943,10 @@ function GastQrCodeSektion() {
   }
 
   return (
-    <section className="rounded-lg border border-gray-200 bg-white p-5 space-y-5">
+    <section className="rounded-lg border border-line bg-panel p-5 space-y-5">
       <div>
-        <h2 className="text-base font-semibold text-gray-900">Gast-Bestellsystem QR-Codes</h2>
-        <p className="text-sm text-gray-500 mt-0.5">
+        <h2 className="text-base font-semibold text-ink">Gast-Bestellsystem QR-Codes</h2>
+        <p className="text-sm text-ink-muted mt-0.5">
           QR-Codes für Tische generieren — Gäste scannen und bestellen direkt.
         </p>
       </div>
@@ -655,7 +956,7 @@ function GastQrCodeSektion() {
         <div className="space-y-4">
           {/* Basis-URL */}
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+            <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wide mb-1.5">
               Gast-App URL
             </label>
             <input
@@ -663,9 +964,9 @@ function GastQrCodeSektion() {
               value={basisUrl}
               onChange={e => setBasisUrl(e.target.value)}
               placeholder="http://192.168.1.100:8082"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none font-mono"
+              className="w-full rounded-lg border border-line-strong px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none font-mono"
             />
-            <p className="text-xs text-gray-400 mt-1">
+            <p className="text-xs text-ink-subtle mt-1">
               Produktiv: IP des Servers + Port 8082 · Dev: Port 5177
             </p>
           </div>
@@ -673,13 +974,13 @@ function GastQrCodeSektion() {
           {/* Kasse */}
           {kassen.length > 1 && (
             <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+              <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wide mb-1.5">
                 Kasse
               </label>
               <select
                 value={kasseId}
                 onChange={e => { setKasseId(e.target.value); setTisch('') }}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 outline-none"
+                className="w-full rounded-lg border border-line-strong px-3 py-2 text-sm focus:border-brand-500 outline-none"
               >
                 {kassen.map(k => (
                   <option key={k.id} value={k.id}>{k.bezeichnung ?? k.kassenId}</option>
@@ -691,13 +992,13 @@ function GastQrCodeSektion() {
           {/* Tisch aus Tischplan */}
           {alleTische.length > 0 ? (
             <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+              <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wide mb-1.5">
                 Tisch
               </label>
               <select
                 value={tisch}
                 onChange={e => { setTisch(e.target.value); setManuell('') }}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 outline-none"
+                className="w-full rounded-lg border border-line-strong px-3 py-2 text-sm focus:border-brand-500 outline-none"
               >
                 <option value="">— Tisch wählen —</option>
                 {bereiche?.map(b => (
@@ -708,18 +1009,18 @@ function GastQrCodeSektion() {
                   </optgroup>
                 ))}
               </select>
-              <p className="text-xs text-gray-400 mt-1">oder manuell eingeben:</p>
+              <p className="text-xs text-ink-subtle mt-1">oder manuell eingeben:</p>
               <input
                 type="text"
                 value={manuellerTisch}
                 onChange={e => { setManuell(e.target.value); setTisch('') }}
                 placeholder="z. B. Tisch 7"
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 outline-none"
+                className="mt-1 w-full rounded-lg border border-line-strong px-3 py-2 text-sm focus:border-brand-500 outline-none"
               />
             </div>
           ) : (
             <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+              <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wide mb-1.5">
                 Tischbezeichnung
               </label>
               <input
@@ -727,17 +1028,17 @@ function GastQrCodeSektion() {
                 value={manuellerTisch}
                 onChange={e => setManuell(e.target.value)}
                 placeholder="z. B. Tisch 7, Bar, Terrasse"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 outline-none"
+                className="w-full rounded-lg border border-line-strong px-3 py-2 text-sm focus:border-brand-500 outline-none"
               />
             </div>
           )}
         </div>
 
         {/* QR-Code Vorschau */}
-        <div className="flex flex-col items-center justify-center gap-4 bg-gray-50 rounded-xl border border-gray-200 p-6">
+        <div className="flex flex-col items-center justify-center gap-4 bg-panel-2 rounded-xl border border-line p-6">
           {aktiverTisch && gastUrl ? (
             <>
-              <div ref={svgRef} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+              <div ref={svgRef} className="bg-panel p-4 rounded-xl shadow-sm border border-line">
                 <QRCodeSVG
                   value={gastUrl}
                   size={180}
@@ -745,14 +1046,14 @@ function GastQrCodeSektion() {
                   includeMargin={false}
                 />
               </div>
-              <p className="text-sm font-bold text-gray-900 text-center">{aktiverTisch}</p>
-              <p className="text-xs text-gray-400 text-center break-all font-mono leading-relaxed max-w-full">
+              <p className="text-sm font-bold text-ink text-center">{aktiverTisch}</p>
+              <p className="text-xs text-ink-subtle text-center break-all font-mono leading-relaxed max-w-full">
                 {gastUrl}
               </p>
               <div className="flex gap-2 w-full">
                 <button
                   onClick={() => navigator.clipboard.writeText(gastUrl)}
-                  className="flex-1 py-2 rounded-lg border border-gray-300 text-gray-700 text-xs font-medium hover:bg-gray-100 transition"
+                  className="flex-1 py-2 rounded-lg border border-line-strong text-ink text-xs font-medium hover:bg-panel-2 transition"
                 >
                   📋 URL kopieren
                 </button>
@@ -765,7 +1066,7 @@ function GastQrCodeSektion() {
               </div>
             </>
           ) : (
-            <div className="text-center text-gray-400 space-y-2">
+            <div className="text-center text-ink-subtle space-y-2">
               <div className="text-5xl opacity-30">▦</div>
               <p className="text-sm">Tisch wählen um QR-Code zu generieren</p>
             </div>
@@ -775,11 +1076,11 @@ function GastQrCodeSektion() {
 
       {/* Alle Tische auf einmal drucken */}
       {alleTische.length > 0 && basisUrl && kasseId && (
-        <div className="border-t border-gray-100 pt-4">
+        <div className="border-t border-line pt-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-900">Alle Tische drucken</p>
-              <p className="text-xs text-gray-500 mt-0.5">{alleTische.length} Tische — öffnet Druckansicht mit allen QR-Codes</p>
+              <p className="text-sm font-medium text-ink">Alle Tische drucken</p>
+              <p className="text-xs text-ink-muted mt-0.5">{alleTische.length} Tische — öffnet Druckansicht mit allen QR-Codes</p>
             </div>
             <button
               onClick={() => {
@@ -897,16 +1198,16 @@ function DruckerSektion() {
     : '⬜'
 
   return (
-    <section className="rounded-lg bg-white shadow-sm border border-gray-200 p-6 space-y-5">
+    <section className="rounded-lg bg-panel shadow-sm border border-line p-6 space-y-5">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-base font-semibold text-gray-900">Bondrucker (ESC/POS via TCP)</h2>
-          <p className="text-sm text-gray-500 mt-0.5">
+          <h2 className="text-base font-semibold text-ink">Bondrucker (ESC/POS via TCP)</h2>
+          <p className="text-sm text-ink-muted mt-0.5">
             Netzwerkdrucker (Epson TM-T20, Star TSP100, Bixolon SRP, …)
           </p>
         </div>
         {statusDot && (
-          <div className="flex items-center gap-1.5 text-xs text-gray-500 shrink-0">
+          <div className="flex items-center gap-1.5 text-xs text-ink-muted shrink-0">
             <span>{statusDot}</span>
             <span>{status?.online === true ? 'Online' : status?.online === false ? 'Offline' : 'Unbekannt'}</span>
           </div>
@@ -914,13 +1215,13 @@ function DruckerSektion() {
       </div>
 
       {cfgQuery.isLoading ? (
-        <p className="text-sm text-gray-500">Konfiguration wird geladen…</p>
+        <p className="text-sm text-ink-muted">Konfiguration wird geladen…</p>
       ) : (
         <>
-          <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
+          <label className="inline-flex items-center gap-2 text-sm font-medium text-ink">
             <input
               type="checkbox"
-              className="rounded border-gray-300 text-brand-500 focus:ring-brand-500"
+              className="rounded border-line-strong text-brand-500 focus:ring-brand-500"
               checked={form.druckerAktiv}
               onChange={(e) => setForm({ ...form, druckerAktiv: e.target.checked })}
             />
@@ -949,7 +1250,7 @@ function DruckerSektion() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Papierbreite" hint="Zeichen pro Zeile">
               <select
-                className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500/40"
+                className="block w-full rounded-md border border-line-strong px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500/40"
                 value={form.druckerBreite}
                 onChange={(e) => setForm({ ...form, druckerBreite: parseInt(e.target.value, 10) })}
               >
@@ -977,7 +1278,7 @@ function DruckerSektion() {
             }`}>{meldung.text}</div>
           )}
 
-          <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-200">
+          <div className="flex flex-wrap gap-2 pt-2 border-t border-line">
             <Button onClick={() => { setMeldung(null); speichern.mutate() }} loading={speichern.isPending}>Speichern</Button>
             <Button
               variant="secondary"
@@ -990,7 +1291,7 @@ function DruckerSektion() {
             <button
               type="button"
               onClick={() => setLogOffen(v => !v)}
-              className="ml-auto text-xs text-gray-400 hover:text-brand-700 underline underline-offset-2"
+              className="ml-auto text-xs text-ink-subtle hover:text-brand-700 underline underline-offset-2"
             >
               {logOffen ? 'Verlauf ausblenden' : 'Druckverlauf anzeigen'}
             </button>
@@ -998,16 +1299,16 @@ function DruckerSektion() {
 
           {/* Druckhistorie */}
           {logOffen && (
-            <div className="border-t border-gray-100 pt-4">
-              <h3 className="text-sm font-semibold text-gray-700 mb-2">Druckverlauf (letzte 50)</h3>
+            <div className="border-t border-line pt-4">
+              <h3 className="text-sm font-semibold text-ink mb-2">Druckverlauf (letzte 50)</h3>
               {logQuery.isLoading ? (
-                <p className="text-xs text-gray-400">Wird geladen…</p>
+                <p className="text-xs text-ink-subtle">Wird geladen…</p>
               ) : !logQuery.data?.length ? (
-                <p className="text-xs text-gray-400">Noch keine Druckversuche protokolliert.</p>
+                <p className="text-xs text-ink-subtle">Noch keine Druckversuche protokolliert.</p>
               ) : (
-                <div className="overflow-x-auto rounded-lg border border-gray-200">
+                <div className="overflow-x-auto rounded-lg border border-line">
                   <table className="w-full text-xs">
-                    <thead className="bg-gray-50 text-gray-500 uppercase tracking-wide">
+                    <thead className="bg-panel-2 text-ink-muted uppercase tracking-wide">
                       <tr>
                         <th className="px-3 py-2 text-left">Zeit</th>
                         <th className="px-3 py-2 text-left">Typ</th>
@@ -1015,20 +1316,20 @@ function DruckerSektion() {
                         <th className="px-3 py-2 text-left">Fehler</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100">
+                    <tbody className="divide-y divide-line">
                       {logQuery.data.map(e => (
                         <tr key={e.id} className={`${e.erfolg ? '' : 'bg-red-50'}`}>
-                          <td className="px-3 py-1.5 font-mono text-gray-600 whitespace-nowrap">
+                          <td className="px-3 py-1.5 font-mono text-ink-muted whitespace-nowrap">
                             {new Date(e.erstelltAt).toLocaleString('de-AT', { dateStyle: 'short', timeStyle: 'medium' })}
                           </td>
-                          <td className="px-3 py-1.5 capitalize text-gray-700">{e.druckerTyp}</td>
+                          <td className="px-3 py-1.5 capitalize text-ink">{e.druckerTyp}</td>
                           <td className="px-3 py-1.5">
                             {e.erfolg
                               ? <span className="text-green-700 font-medium">✓ OK</span>
                               : <span className="text-red-700 font-medium">✗ Fehler</span>
                             }
                           </td>
-                          <td className="px-3 py-1.5 text-gray-500 max-w-xs truncate">{e.fehlerText ?? '—'}</td>
+                          <td className="px-3 py-1.5 text-ink-muted max-w-xs truncate">{e.fehlerText ?? '—'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1096,23 +1397,23 @@ function KdsSektion() {
   }
 
   return (
-    <section className="rounded-lg bg-white shadow-sm border border-gray-200 p-6 space-y-5">
+    <section className="rounded-lg bg-panel shadow-sm border border-line p-6 space-y-5">
       <div>
-        <h2 className="text-base font-semibold text-gray-900">Küchen-Display-System (KDS)</h2>
-        <p className="text-sm text-gray-500 mt-0.5">
+        <h2 className="text-base font-semibold text-ink">Küchen-Display-System (KDS)</h2>
+        <p className="text-sm text-ink-muted mt-0.5">
           Bonierbons werden an die jeweilige Stations-IP gesendet. Das KDS leitet sie
           an die zugehörigen Küchen-Displays weiter (TCP-Port wie bei den Druckern).
         </p>
       </div>
 
       {cfgQuery.isLoading ? (
-        <p className="text-sm text-gray-500">Konfiguration wird geladen…</p>
+        <p className="text-sm text-ink-muted">Konfiguration wird geladen…</p>
       ) : (
         <>
-          <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
+          <label className="inline-flex items-center gap-2 text-sm font-medium text-ink">
             <input
               type="checkbox"
-              className="rounded border-gray-300 text-brand-500 focus:ring-brand-500"
+              className="rounded border-line-strong text-brand-500 focus:ring-brand-500"
               checked={form.kdsAktiv}
               onChange={(e) => setForm({ ...form, kdsAktiv: e.target.checked })}
             />
@@ -1128,13 +1429,13 @@ function KdsSektion() {
           </Field>
 
           <div className="space-y-2">
-            <p className="text-sm font-medium text-gray-700">Stations-IPs</p>
-            <p className="text-xs text-gray-500">
+            <p className="text-sm font-medium text-ink">Stations-IPs</p>
+            <p className="text-xs text-ink-muted">
               Pro Station eine IP. Leer lassen, wenn die Station nicht verwendet wird.
             </p>
             {ALLE_STATIONEN.map((s) => (
               <div key={s} className="grid grid-cols-[140px_1fr] gap-3 items-center">
-                <label className="text-sm font-medium text-gray-700">{STATION_LABELS[s]}</label>
+                <label className="text-sm font-medium text-ink">{STATION_LABELS[s]}</label>
                 <Input
                   placeholder="192.168.192.210"
                   value={form.kdsStationen[s] ?? ''}
@@ -1152,7 +1453,7 @@ function KdsSektion() {
             }`}>{meldung.text}</div>
           )}
 
-          <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-200">
+          <div className="flex flex-wrap gap-2 pt-2 border-t border-line">
             <Button onClick={() => { setMeldung(null); speichern.mutate() }} loading={speichern.isPending}>
               Speichern
             </Button>
@@ -1207,23 +1508,23 @@ function ZvtSektion() {
   })
 
   return (
-    <section className="rounded-lg bg-white shadow-sm border border-gray-200 p-6 space-y-5">
+    <section className="rounded-lg bg-panel shadow-sm border border-line p-6 space-y-5">
       <div>
-        <h2 className="text-base font-semibold text-gray-900">Kartenterminal (ZVT)</h2>
-        <p className="text-sm text-gray-500 mt-0.5">
+        <h2 className="text-base font-semibold text-ink">Kartenterminal (ZVT)</h2>
+        <p className="text-sm text-ink-muted mt-0.5">
           Hobex, Payroc und andere ZVT-kompatible Terminals via TCP.
-          Für Tests ohne echtes Terminal: IP <code className="text-xs bg-gray-100 px-1 rounded">stub</code>.
+          Für Tests ohne echtes Terminal: IP <code className="text-xs bg-panel-2 px-1 rounded">stub</code>.
         </p>
       </div>
 
       {cfgQuery.isLoading ? (
-        <p className="text-sm text-gray-500">Konfiguration wird geladen…</p>
+        <p className="text-sm text-ink-muted">Konfiguration wird geladen…</p>
       ) : (
         <>
-          <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
+          <label className="inline-flex items-center gap-2 text-sm font-medium text-ink">
             <input
               type="checkbox"
-              className="rounded border-gray-300 text-brand-500 focus:ring-brand-500"
+              className="rounded border-line-strong text-brand-500 focus:ring-brand-500"
               checked={form.zvtAktiv}
               onChange={(e) => setForm({ ...form, zvtAktiv: e.target.checked })}
             />
@@ -1268,7 +1569,7 @@ function ZvtSektion() {
             }`}>{meldung.text}</div>
           )}
 
-          <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-200">
+          <div className="flex flex-wrap gap-2 pt-2 border-t border-line">
             <Button onClick={() => { setMeldung(null); speichern.mutate() }} loading={speichern.isPending}>
               Speichern
             </Button>
@@ -1345,11 +1646,11 @@ function DbBackupSektion() {
   const letzter = liste[0]
 
   return (
-    <section className="rounded-xl border border-gray-200 bg-white p-6 space-y-5">
+    <section className="rounded-xl border border-line bg-panel p-6 space-y-5">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">Datenbank-Backups</h2>
-          <p className="text-sm text-gray-500 mt-0.5">
+          <h2 className="text-lg font-semibold text-ink">Datenbank-Backups</h2>
+          <p className="text-sm text-ink-muted mt-0.5">
             Täglicher PostgreSQL-Dump um 3:00 Uhr · letzten 30 Backups werden aufbewahrt
           </p>
         </div>
@@ -1378,10 +1679,10 @@ function DbBackupSektion() {
             {letzter.erfolgreich ? '✓' : '✗'}
           </span>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-gray-900">
+            <p className="text-sm font-medium text-ink">
               Letztes Backup: {formatZeit(letzter.erstelltAm)}
             </p>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-ink-muted">
               {letzter.dateiname} · {formatGroesse(letzter.dateigroesse)} · {letzter.automatisch ? 'automatisch' : 'manuell'}
             </p>
             {letzter.fehler && <p className="text-xs text-red-600 mt-0.5">{letzter.fehler}</p>}
@@ -1402,9 +1703,9 @@ function DbBackupSektion() {
             <span className="group-open:rotate-90 transition-transform inline-block">›</span>
             Verlauf ({liste.length} Backups)
           </summary>
-          <div className="mt-3 rounded-lg border border-gray-200 overflow-hidden">
+          <div className="mt-3 rounded-lg border border-line overflow-hidden">
             <table className="w-full text-xs">
-              <thead className="bg-gray-50 text-left text-gray-500 border-b border-gray-200">
+              <thead className="bg-panel-2 text-left text-ink-muted border-b border-line">
                 <tr>
                   <th className="px-3 py-2 font-medium">Datum</th>
                   <th className="px-3 py-2 font-medium">Größe</th>
@@ -1413,12 +1714,12 @@ function DbBackupSektion() {
                   <th className="px-3 py-2" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-line">
                 {liste.map(s => (
-                  <tr key={s.id} className="hover:bg-gray-50">
-                    <td className="px-3 py-2 font-mono text-gray-700">{formatZeit(s.erstelltAm)}</td>
-                    <td className="px-3 py-2 text-gray-600">{formatGroesse(s.dateigroesse)}</td>
-                    <td className="px-3 py-2 text-gray-500">{s.automatisch ? 'auto' : 'manuell'}</td>
+                  <tr key={s.id} className="hover:bg-panel-2">
+                    <td className="px-3 py-2 font-mono text-ink">{formatZeit(s.erstelltAm)}</td>
+                    <td className="px-3 py-2 text-ink-muted">{formatGroesse(s.dateigroesse)}</td>
+                    <td className="px-3 py-2 text-ink-muted">{s.automatisch ? 'auto' : 'manuell'}</td>
                     <td className="px-3 py-2">
                       {s.erfolgreich
                         ? <span className="text-green-600 font-medium">OK</span>
@@ -1445,10 +1746,10 @@ function DbBackupSektion() {
       )}
 
       {listeQuery.isLoading && (
-        <p className="text-sm text-gray-400">Wird geladen…</p>
+        <p className="text-sm text-ink-subtle">Wird geladen…</p>
       )}
       {!listeQuery.isLoading && liste.length === 0 && (
-        <p className="text-sm text-gray-400">Noch keine Backups vorhanden. Täglich um 3:00 Uhr wird automatisch eines erstellt.</p>
+        <p className="text-sm text-ink-subtle">Noch keine Backups vorhanden. Täglich um 3:00 Uhr wird automatisch eines erstellt.</p>
       )}
     </section>
   )
@@ -1487,10 +1788,10 @@ function SystemInfoSektion() {
   const m: MonitoringStatus | undefined = monitoring.data
 
   return (
-    <section className="rounded-xl border border-gray-200 bg-white p-6 space-y-5">
+    <section className="rounded-xl border border-line bg-panel p-6 space-y-5">
       {/* Kopfzeile */}
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-gray-900">Systeminfo</h2>
+        <h2 className="text-lg font-semibold text-ink">Systeminfo</h2>
         <div className="flex items-center gap-3">
           {health.data && (
             <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${
@@ -1504,7 +1805,7 @@ function SystemInfoSektion() {
             type="button"
             onClick={() => { void health.refetch(); void monitoring.refetch() }}
             disabled={health.isFetching || monitoring.isFetching}
-            className="text-xs text-brand-600 hover:text-brand-700 disabled:text-gray-400"
+            className="text-xs text-brand-600 hover:text-brand-700 disabled:text-ink-subtle"
           >
             {(health.isFetching || monitoring.isFetching) ? 'Prüfe…' : '↻ Aktualisieren'}
           </button>
@@ -1514,28 +1815,28 @@ function SystemInfoSektion() {
       {/* Basis-Infos */}
       <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 text-sm">
         <div>
-          <dt className="text-gray-500">Frontend</dt>
-          <dd className="mt-0.5 font-mono font-medium text-gray-900">v{__APP_VERSION__}</dd>
+          <dt className="text-ink-muted">Frontend</dt>
+          <dd className="mt-0.5 font-mono font-medium text-ink">v{__APP_VERSION__}</dd>
         </div>
         <div>
-          <dt className="text-gray-500">Backend</dt>
-          <dd className="mt-0.5 font-mono font-medium text-gray-900">
-            {health.isLoading ? <span className="text-gray-400">…</span>
+          <dt className="text-ink-muted">Backend</dt>
+          <dd className="mt-0.5 font-mono font-medium text-ink">
+            {health.isLoading ? <span className="text-ink-subtle">…</span>
               : health.data   ? `v${health.data.version}`
               : <span className="text-red-500">nicht erreichbar</span>}
           </dd>
         </div>
         <div>
-          <dt className="text-gray-500">Datenbank</dt>
+          <dt className="text-ink-muted">Datenbank</dt>
           <dd className="mt-0.5 flex items-center gap-1.5">
-            {health.isLoading ? <span className="text-gray-400 text-sm">…</span> : (
+            {health.isLoading ? <span className="text-ink-subtle text-sm">…</span> : (
               <>
                 <span className={`h-2 w-2 rounded-full ${dbOk ? 'bg-green-500' : 'bg-red-500'}`} />
                 <span className={`font-medium ${dbOk ? 'text-green-700' : 'text-red-600'}`}>
                   {dbOk ? 'verbunden' : 'getrennt'}
                 </span>
                 {m?.db.latenzMs != null && (
-                  <span className="text-gray-400">{m.db.latenzMs} ms</span>
+                  <span className="text-ink-subtle">{m.db.latenzMs} ms</span>
                 )}
               </>
             )}
@@ -1543,41 +1844,41 @@ function SystemInfoSektion() {
         </div>
         {health.data && (
           <div>
-            <dt className="text-gray-500">Laufzeit</dt>
-            <dd className="mt-0.5 font-medium text-gray-900">{formatUptime(health.data.uptimeSek)}</dd>
+            <dt className="text-ink-muted">Laufzeit</dt>
+            <dd className="mt-0.5 font-medium text-ink">{formatUptime(health.data.uptimeSek)}</dd>
           </div>
         )}
         {m && (
           <div>
-            <dt className="text-gray-500">Node.js</dt>
-            <dd className="mt-0.5 font-mono text-gray-900">{m.nodeVersion}</dd>
+            <dt className="text-ink-muted">Node.js</dt>
+            <dd className="mt-0.5 font-mono text-ink">{m.nodeVersion}</dd>
           </div>
         )}
         {m && (
           <div>
-            <dt className="text-gray-500">Plattform</dt>
-            <dd className="mt-0.5 font-mono text-gray-900">{m.platform}</dd>
+            <dt className="text-ink-muted">Plattform</dt>
+            <dd className="mt-0.5 font-mono text-ink">{m.platform}</dd>
           </div>
         )}
       </dl>
 
       {/* Speicher-Widget (nur Admin, nur wenn Daten vorhanden) */}
       {isAdmin && m && (
-        <div className="space-y-3 border-t border-gray-100 pt-4">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Prozess-Speicher</p>
+        <div className="space-y-3 border-t border-line pt-4">
+          <p className="text-xs font-semibold text-ink-muted uppercase tracking-wide">Prozess-Speicher</p>
 
           {/* Heap-Balken */}
           <div className="space-y-1">
-            <div className="flex justify-between text-xs text-gray-600">
+            <div className="flex justify-between text-xs text-ink-muted">
               <span>Heap-Nutzung</span>
               <span className="font-mono">
                 {m.memory.heapUsedMb} / {m.memory.heapTotalMb} MB
-                <span className="text-gray-400 ml-1">
+                <span className="text-ink-subtle ml-1">
                   ({Math.round(m.memory.heapUsedMb / m.memory.heapTotalMb * 100)} %)
                 </span>
               </span>
             </div>
-            <div className="h-2 w-full rounded-full bg-gray-100 overflow-hidden">
+            <div className="h-2 w-full rounded-full bg-panel-2 overflow-hidden">
               <div
                 className={`h-full rounded-full transition-all ${
                   m.memory.heapUsedMb / m.memory.heapTotalMb > 0.85
@@ -1594,16 +1895,16 @@ function SystemInfoSektion() {
           {/* System-Speicher */}
           {m.system.totalMemMb > 0 && (
             <div className="space-y-1">
-              <div className="flex justify-between text-xs text-gray-600">
+              <div className="flex justify-between text-xs text-ink-muted">
                 <span>System-RAM</span>
                 <span className="font-mono">
                   {Math.round(m.system.totalMemMb - m.system.freeMemMb)} / {Math.round(m.system.totalMemMb)} MB
-                  <span className="text-gray-400 ml-1">
+                  <span className="text-ink-subtle ml-1">
                     ({Math.round((m.system.totalMemMb - m.system.freeMemMb) / m.system.totalMemMb * 100)} %)
                   </span>
                 </span>
               </div>
-              <div className="h-2 w-full rounded-full bg-gray-100 overflow-hidden">
+              <div className="h-2 w-full rounded-full bg-panel-2 overflow-hidden">
                 <div
                   className="h-full rounded-full bg-indigo-400 transition-all"
                   style={{ width: `${Math.min(100, (m.system.totalMemMb - m.system.freeMemMb) / m.system.totalMemMb * 100)}%` }}
@@ -1614,21 +1915,21 @@ function SystemInfoSektion() {
 
           {/* RSS + Load */}
           <div className="grid grid-cols-3 gap-3 text-xs">
-            <div className="bg-gray-50 rounded-lg px-3 py-2">
-              <p className="text-gray-500">RSS</p>
-              <p className="font-mono font-semibold text-gray-900 mt-0.5">{m.memory.rssMb} MB</p>
+            <div className="bg-panel-2 rounded-lg px-3 py-2">
+              <p className="text-ink-muted">RSS</p>
+              <p className="font-mono font-semibold text-ink mt-0.5">{m.memory.rssMb} MB</p>
             </div>
-            <div className="bg-gray-50 rounded-lg px-3 py-2">
-              <p className="text-gray-500">CPU (user)</p>
-              <p className="font-mono font-semibold text-gray-900 mt-0.5">{m.cpu.userMs} ms</p>
+            <div className="bg-panel-2 rounded-lg px-3 py-2">
+              <p className="text-ink-muted">CPU (user)</p>
+              <p className="font-mono font-semibold text-ink mt-0.5">{m.cpu.userMs} ms</p>
             </div>
-            <div className="bg-gray-50 rounded-lg px-3 py-2">
-              <p className="text-gray-500">Load Ø1min</p>
-              <p className="font-mono font-semibold text-gray-900 mt-0.5">{m.system.loadAvg1}</p>
+            <div className="bg-panel-2 rounded-lg px-3 py-2">
+              <p className="text-ink-muted">Load Ø1min</p>
+              <p className="font-mono font-semibold text-ink mt-0.5">{m.system.loadAvg1}</p>
             </div>
           </div>
 
-          <p className="text-xs text-gray-400">
+          <p className="text-xs text-ink-subtle">
             Aktualisiert: {new Date(m.timestamp).toLocaleTimeString('de-AT')} · Auto-Refresh alle 10 s
           </p>
         </div>
@@ -1636,7 +1937,7 @@ function SystemInfoSektion() {
 
       {/* Für Nicht-Admins: nur Letzter-Check-Zeit */}
       {!isAdmin && health.data && (
-        <p className="text-xs text-gray-400">
+        <p className="text-xs text-ink-subtle">
           Letzter Check: {new Date(health.data.timestamp).toLocaleTimeString('de-AT')}
         </p>
       )}

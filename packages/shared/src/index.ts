@@ -71,6 +71,9 @@ export {
   SetupResponseSchema,
   EinrichtungsSchrittSchema,
   FinanzOnlineCredentialsSchema,
+  WeitereKasseInputSchema,
+  WeitereKasseResponseSchema,
+  KasseListeItemSchema,
 } from './schemas/setup.js'
 
 export type {
@@ -79,6 +82,9 @@ export type {
   SetupResponse,
   EinrichtungsSchrittDto,
   FinanzOnlineCredentialsInput,
+  WeitereKasseInput,
+  WeitereKasseResponse,
+  KasseListeItem,
 } from './schemas/setup.js'
 
 // Artikel

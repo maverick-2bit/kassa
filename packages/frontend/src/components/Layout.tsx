@@ -1,4 +1,4 @@
-import { Suspense, useState } from 'react'
+import { Suspense, useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useNavigate, useLocation, Link } from 'react-router-dom'
 import { getTheme, toggleTheme, type ThemeMode } from '../lib/theme'
 import { useQueries } from '@tanstack/react-query'
@@ -44,19 +44,94 @@ export function Layout() {
   )
 }
 
+type NavEintrag = { to: string; label: string }
+type NavGruppe  = { label: string; items: NavEintrag[] }
+
+/** Nav-Struktur aufbauen — jeder Eintrag nur, wenn Berechtigung + Modul passen. */
+function baueNavGruppen(): NavGruppe[] {
+  const b = hasBerechtigung
+  const m = hasModul
+  const wenn = (cond: boolean, to: string, label: string): NavEintrag | null =>
+    cond ? { to, label } : null
+  const gruppe = (label: string, items: (NavEintrag | null)[]): NavGruppe =>
+    ({ label, items: items.filter((x): x is NavEintrag => x !== null) })
+
+  return [
+    gruppe('Verkauf', [
+      wenn(b('tische') && m('gastro'),         '/tische',         'Tische'),
+      wenn(b('kasse'),                          '/kasse',          'Kasse'),
+      wenn(b('kasse'),                          '/gutscheine',     'Gutscheine'),
+      wenn(b('kasse') && m('mergeport'),        '/lieferungen',    'Lieferungen'),
+      wenn(b('kasse') && m('reservierungen'),   '/reservierungen', 'Reservierungen'),
+      wenn(b('kasse') && m('angebote'),         '/angebote',       'Angebote'),
+    ]),
+    gruppe('Artikel & Lager', [
+      wenn(b('artikel.verwalten'), '/artikel',      'Artikel'),
+      wenn(b('artikel.verwalten'), '/wareneingang', 'Wareneingang'),
+      wenn(b('artikel.verwalten'), '/lagerstand',   'Lagerstand'),
+      wenn(b('artikel.verwalten'), '/modifikatoren', 'Optionen'),
+      wenn(b('artikel.verwalten'), '/bestellliste', 'Bestellliste'),
+      wenn(b('artikel.verwalten'), '/lieferanten',  'Lieferanten'),
+    ]),
+    gruppe('Kunden', [
+      wenn(b('kunden.verwalten'), '/kunden',        'Kunden'),
+      wenn(b('kunden.verwalten'), '/offene-posten', 'Offene Posten'),
+    ]),
+    gruppe('Auswertung', [
+      wenn(b('belege.lesen'),   '/belege',        'Belege'),
+      wenn(b('belege.lesen'),   '/tagesabschluss', 'Abschluss'),
+      wenn(b('belege.lesen'),   '/kassensturz',   'Kassensturz'),
+      wenn(b('belege.lesen'),   '/berichte',      'Berichte'),
+      wenn(b('einstellungen'),  '/kassenbuch',    'Kassenbuch'),
+    ]),
+    gruppe('Personal', [
+      wenn(b('einstellungen') && m('zeiterfassung'), '/zeiterfassung', 'Zeiterfassung'),
+      wenn(b('einstellungen') && m('zeiterfassung'), '/dienstplan',    'Dienstplan'),
+      wenn(b('user.verwalten'),                       '/benutzer',      'Benutzer'),
+    ]),
+    gruppe('Einstellungen', [
+      wenn(b('einstellungen'),                    '/einstellungen',     'Einstellungen'),
+      wenn(b('einstellungen'),                    '/pos-konfiguration', 'POS-Konfig'),
+      wenn(b('einstellungen'),                    '/kassen-startseite', 'Startseiten'),
+      wenn(b('einstellungen') && m('gastro'),     '/bonierdrucker',     'Bonierdrucker'),
+      wenn(b('einstellungen'),                    '/dep-export',        'DEP-Export'),
+      wenn(b('einstellungen'),                    '/bmd-export',        'BMD-Export'),
+      wenn(b('einstellungen'),                    '/werbefolien',       'Werbefolien'),
+      wenn(b('einstellungen'),                    '/finanzpruefung',    'Finanzprüfung'),
+      wenn(b('einstellungen'),                    '/module',            'Module'),
+    ]),
+  ].filter(g => g.items.length > 0)
+}
+
 function Header() {
   const navigate = useNavigate()
+  const location = useLocation()
   const auth     = getAuth()
+  const [offen, setOffen] = useState<string | null>(null)
+  const navRef = useRef<HTMLElement>(null)
+
+  // Dropdown schließen bei Navigation und bei Klick außerhalb der Nav
+  useEffect(() => { setOffen(null) }, [location.pathname])
+  useEffect(() => {
+    if (!offen) return
+    const handler = (e: MouseEvent) => {
+      if (navRef.current && !navRef.current.contains(e.target as Node)) setOffen(null)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [offen])
 
   const logout = () => {
     clearAuth()
     navigate('/login')
   }
 
+  const gruppen = auth ? baueNavGruppen() : []
+
   return (
-    <header className="bg-header text-white border-b border-black/20 sticky top-0 z-10">
-      <div className="mx-auto max-w-6xl px-4 py-3 flex items-center gap-6">
-        <div className="flex items-center gap-2">
+    <header className="bg-header text-white border-b border-black/20 sticky top-0 z-20">
+      <div className="px-4 py-3 flex items-center gap-4">
+        <div className="flex items-center gap-2 shrink-0 h-8">
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/15 text-white">
             <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path strokeLinecap="round" strokeLinejoin="round" d="M3 3h18v4H3zM3 11h18v10H3zM7 15h2M7 18h2"/>
@@ -64,42 +139,22 @@ function Header() {
           </span>
           <span className="font-semibold text-white">Kassa</span>
         </div>
-        <nav className="flex gap-1 flex-1">
-          {hasBerechtigung('belege.lesen')                                && <NavItem to="/dashboard">Dashboard</NavItem>}
-          {hasBerechtigung('tische')            && hasModul('gastro')    && <NavItem to="/tische">Tische</NavItem>}
-          {hasBerechtigung('kasse')                                       && <NavItem to="/kasse">Kasse</NavItem>}
-          {hasBerechtigung('artikel.verwalten')                           && <NavItem to="/artikel">Artikel</NavItem>}
-          {hasBerechtigung('artikel.verwalten')                           && <NavItem to="/wareneingang">Wareneingang</NavItem>}
-          {hasBerechtigung('artikel.verwalten')                           && <NavItem to="/lagerstand">Lagerstand</NavItem>}
-          {hasBerechtigung('artikel.verwalten')                           && <NavItem to="/modifikatoren">Optionen</NavItem>}
-          {hasBerechtigung('artikel.verwalten')                           && <NavItem to="/bestellliste">Bestellliste</NavItem>}
-          {hasBerechtigung('artikel.verwalten')                           && <NavItem to="/lieferanten">Lieferanten</NavItem>}
-          {hasBerechtigung('kunden.verwalten')                            && <NavItem to="/kunden">Kunden</NavItem>}
-          {hasBerechtigung('kunden.verwalten')                            && <NavItem to="/offene-posten">Offene Posten</NavItem>}
-          {hasBerechtigung('kasse')                                       && <NavItem to="/gutscheine">Gutscheine</NavItem>}
-          {hasBerechtigung('kasse')             && hasModul('mergeport')       && <NavItem to="/lieferungen">Lieferungen</NavItem>}
-          {hasBerechtigung('kasse')             && hasModul('reservierungen')  && <NavItem to="/reservierungen">Reservierungen</NavItem>}
-          {hasBerechtigung('einstellungen')     && hasModul('zeiterfassung')   && <NavItem to="/zeiterfassung">Zeiterfassung</NavItem>}
-          {hasBerechtigung('einstellungen')     && hasModul('zeiterfassung')   && <NavItem to="/dienstplan">Dienstplan</NavItem>}
-          {hasBerechtigung('kasse')             && hasModul('angebote')   && <NavItem to="/angebote">Angebote</NavItem>}
-          {hasBerechtigung('belege.lesen')                                && <NavItem to="/belege">Belege</NavItem>}
-          {hasBerechtigung('belege.lesen')                                && <NavItem to="/tagesabschluss">Abschluss</NavItem>}
-          {hasBerechtigung('belege.lesen')                                && <NavItem to="/kassensturz">Kassensturz</NavItem>}
-          {hasBerechtigung('belege.lesen')                                && <NavItem to="/berichte">Berichte</NavItem>}
-          {hasBerechtigung('einstellungen')                               && <NavItem to="/kassenbuch">Kassenbuch</NavItem>}
-          {hasBerechtigung('einstellungen')                               && <NavItem to="/einstellungen">Einstellungen</NavItem>}
-          {hasBerechtigung('einstellungen')                               && <NavItem to="/pos-konfiguration">POS-Konfig</NavItem>}
-          {hasBerechtigung('einstellungen')                               && <NavItem to="/kassen-startseite">Startseiten</NavItem>}
-          {hasBerechtigung('einstellungen')     && hasModul('gastro')     && <NavItem to="/bonierdrucker">Bonierdrucker</NavItem>}
-          {hasBerechtigung('einstellungen')                               && <NavItem to="/dep-export">DEP-Export</NavItem>}
-          {hasBerechtigung('einstellungen')                               && <NavItem to="/bmd-export">BMD-Export</NavItem>}
-          {hasBerechtigung('einstellungen')                               && <NavItem to="/werbefolien">Werbefolien</NavItem>}
-          {hasBerechtigung('einstellungen')                               && <NavItem to="/finanzpruefung">Finanzprüfung</NavItem>}
-          {hasBerechtigung('einstellungen')                               && <NavItem to="/module">Module</NavItem>}
-          {hasBerechtigung('user.verwalten')                              && <NavItem to="/benutzer">Benutzer</NavItem>}
-        </nav>
         {auth && (
-          <div className="flex items-center gap-3">
+          <nav ref={navRef} className="flex flex-wrap items-center gap-1 flex-1 min-w-0">
+            {hasBerechtigung('belege.lesen') && <NavItem to="/dashboard">Dashboard</NavItem>}
+            {gruppen.map(g => (
+              <NavGruppeMenu
+                key={g.label}
+                gruppe={g}
+                offen={offen === g.label}
+                onToggle={() => setOffen(o => (o === g.label ? null : g.label))}
+              />
+            ))}
+          </nav>
+        )}
+        {!auth && <div className="flex-1" />}
+        {auth && (
+          <div className="flex items-center gap-3 shrink-0 h-8">
             <JahresbelegHeaderChip />
             <ThemeToggle />
             <span className="hidden sm:inline text-[10px] font-mono text-white/50 select-none bg-white/10 px-1.5 py-0.5 rounded">
@@ -178,7 +233,7 @@ function NavItem({ to, children }: { to: string; children: string }) {
     <NavLink
       to={to}
       className={({ isActive }) =>
-        `px-3 py-1.5 text-sm font-medium rounded-md transition ${
+        `px-3 py-1.5 text-sm font-medium rounded-md transition shrink-0 whitespace-nowrap ${
           isActive
             ? 'bg-white/20 text-white'
             : 'text-white/70 hover:text-white hover:bg-white/10'
@@ -187,6 +242,49 @@ function NavItem({ to, children }: { to: string; children: string }) {
     >
       {children}
     </NavLink>
+  )
+}
+
+/** Gruppen-Menü in der Kopfleiste: Button + aufklappbares Dropdown mit den Einträgen. */
+function NavGruppeMenu({ gruppe, offen, onToggle }: { gruppe: NavGruppe; offen: boolean; onToggle: () => void }) {
+  const location = useLocation()
+  const aktiv = gruppe.items.some(
+    i => location.pathname === i.to || location.pathname.startsWith(i.to + '/'),
+  )
+  return (
+    <div className="relative shrink-0">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-haspopup="true"
+        aria-expanded={offen}
+        className={`flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded-md transition whitespace-nowrap ${
+          aktiv || offen ? 'bg-white/20 text-white' : 'text-white/70 hover:text-white hover:bg-white/10'
+        }`}
+      >
+        {gruppe.label}
+        <svg className={`h-3.5 w-3.5 transition-transform ${offen ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+          <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 111.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+        </svg>
+      </button>
+      {offen && (
+        <div className="absolute left-0 top-full mt-1 min-w-[12rem] rounded-lg border border-line bg-panel shadow-lg py-1 z-30">
+          {gruppe.items.map(i => (
+            <NavLink
+              key={i.to}
+              to={i.to}
+              className={({ isActive }) =>
+                `block px-3 py-2 text-sm transition ${
+                  isActive ? 'bg-brand-50 text-brand-700 font-medium' : 'text-ink hover:bg-panel-2'
+                }`
+              }
+            >
+              {i.label}
+            </NavLink>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -199,7 +297,7 @@ function ThemeToggle() {
       onClick={() => setMode(toggleTheme())}
       title={mode === 'dark' ? 'Zu hellem Modus wechseln' : 'Zu dunklem Modus wechseln'}
       aria-label="Farbschema umschalten"
-      className="flex h-7 w-7 items-center justify-center rounded-md text-white/70 hover:text-white hover:bg-white/10 transition"
+      className="flex h-8 w-8 items-center justify-center rounded-md border border-white/25 bg-white/10 text-white hover:bg-white/20 transition"
     >
       {mode === 'dark' ? (
         <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

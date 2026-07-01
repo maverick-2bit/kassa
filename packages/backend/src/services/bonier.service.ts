@@ -11,7 +11,7 @@
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import type { BonierungErgebnis, BonierungInput, Station } from '@kassa/shared'
 import type { Db } from '../db/client.js'
-import { artikel, bonierdrucker, kategorien, kassen } from '../db/schema.js'
+import { artikel, bonierdrucker, kategorien, kassen, kasseBonierdruckerSichtbarkeit } from '../db/schema.js'
 import { baueBonierbon, generiereBonNummer } from './kds/bonierbon.js'
 import { sendeBonierbon, type KdsZiel } from './kds/sender.js'
 import { druckeBonierbonDirekt } from './bonierdrucker.service.js'
@@ -84,14 +84,26 @@ export async function bonierBestellung(
     for (const k of katRows) kategorieMap.set(k.id, { bonierdruckerId: k.bonierdruckerId })
   }
 
-  // 4. Alle aktiven Bonierdrucker laden
-  const alleBonierdrucker = await deps.db
+  // 4. Alle aktiven Bonierdrucker laden — je Kasse ggf. auf die gewählten filtern
+  const alleBonierdruckerRoh = await deps.db
     .select()
     .from(bonierdrucker)
     .where(and(
       eq(bonierdrucker.mandantId, kasse.mandantId),
       eq(bonierdrucker.aktiv, true),
     ))
+  // Bonierdrucker-Sichtbarkeit dieser Kasse. Kein Eintrag = alle sichtbar
+  // (abwärtskompatibel); mit Auswahl nur die gewählten Drucker verwenden.
+  const sichtbareIds = new Set(
+    (await deps.db
+      .select({ id: kasseBonierdruckerSichtbarkeit.bonierdruckerId })
+      .from(kasseBonierdruckerSichtbarkeit)
+      .where(eq(kasseBonierdruckerSichtbarkeit.kasseId, kasse.id))
+    ).map(r => r.id),
+  )
+  const alleBonierdrucker = sichtbareIds.size === 0
+    ? alleBonierdruckerRoh
+    : alleBonierdruckerRoh.filter(d => sichtbareIds.has(d.id))
   const backupDrucker     = alleBonierdrucker.filter(d => d.istBackup)
   const nichtBackupMap    = new Map<string, DruckerRow>(
     alleBonierdrucker.filter(d => !d.istBackup).map(d => [d.id, d]),

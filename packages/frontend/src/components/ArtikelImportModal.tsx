@@ -153,7 +153,7 @@ export function ArtikelImportModal({ open, kategorien, mandantId, onClose }: Pro
       {/* ---- Schritt 1: Datei auswählen ---- */}
       {schritt === 'auswahl' && (
         <div className="space-y-4">
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-ink-muted">
             Lade eine Excel-Datei (.xlsx) mit deinen Artikeldaten hoch.
             Verwende die <strong>Vorlage</strong> aus der Artikel-Verwaltung als Grundlage.
             Neue Warengruppen werden beim Import automatisch angelegt.
@@ -171,19 +171,19 @@ export function ArtikelImportModal({ open, kategorien, mandantId, onClose }: Pro
               py-12 px-6 transition
               ${isDragOver
                 ? 'border-brand-400 bg-brand-50'
-                : 'border-gray-300 hover:border-brand-300 hover:bg-gray-50'
+                : 'border-line-strong hover:border-brand-300 hover:bg-panel-2'
               }
             `}
           >
-            <svg className="h-10 w-10 text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <svg className="h-10 w-10 text-ink-subtle" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
               <path strokeLinecap="round" strokeLinejoin="round"
                 d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m.75 12 3 3m0 0 3-3m-3 3v-6m-1.5-9H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
             </svg>
             <div className="text-center">
-              <p className="text-sm font-medium text-gray-700">
+              <p className="text-sm font-medium text-ink">
                 Datei hier ablegen oder klicken
               </p>
-              <p className="text-xs text-gray-400 mt-0.5">.xlsx — max. 500 Artikel</p>
+              <p className="text-xs text-ink-subtle mt-0.5">.xlsx — max. 500 Artikel</p>
             </div>
           </div>
           <input
@@ -232,9 +232,9 @@ export function ArtikelImportModal({ open, kategorien, mandantId, onClose }: Pro
           )}
 
           {/* Tabelle */}
-          <div className="max-h-96 overflow-y-auto rounded-lg border border-gray-200">
+          <div className="max-h-96 overflow-y-auto rounded-lg border border-line">
             <table className="w-full text-xs">
-              <thead className="bg-gray-50 sticky top-0 text-left text-gray-500 uppercase tracking-wide text-[10px]">
+              <thead className="bg-panel-2 sticky top-0 text-left text-ink-muted uppercase tracking-wide text-[10px]">
                 <tr>
                   <th className="px-3 py-2 font-semibold w-10">Zeile</th>
                   <th className="px-3 py-2 font-semibold">Bezeichnung</th>
@@ -244,7 +244,7 @@ export function ArtikelImportModal({ open, kategorien, mandantId, onClose }: Pro
                   <th className="px-3 py-2 font-semibold">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-line">
                 {zeilen.map((z) => {
                   const aktuelleKat = zeileKategorie[z.zeile] ?? ''
                   const istNeueKat  = aktuelleKat && !katNamenSet.has(aktuelleKat.toLowerCase())
@@ -260,21 +260,21 @@ export function ArtikelImportModal({ open, kategorien, mandantId, onClose }: Pro
                           : ''
                       }
                     >
-                      <td className="px-3 py-2 text-gray-400 tabular-nums">{z.zeile}</td>
-                      <td className="px-3 py-2 font-medium text-gray-800">
-                        {z.daten?.bezeichnung ?? <span className="text-gray-300 italic">—</span>}
+                      <td className="px-3 py-2 text-ink-subtle tabular-nums">{z.zeile}</td>
+                      <td className="px-3 py-2 font-medium text-ink">
+                        {z.daten?.bezeichnung ?? <span className="text-ink-subtle italic">—</span>}
                       </td>
-                      <td className="px-3 py-2 text-right font-mono text-gray-600">
+                      <td className="px-3 py-2 text-right font-mono text-ink-muted">
                         {z.daten ? `€ ${(z.daten.preisBruttoCent / 100).toFixed(2).replace('.', ',')}` : '—'}
                       </td>
-                      <td className="px-3 py-2 text-gray-600">
+                      <td className="px-3 py-2 text-ink-muted">
                         {z.daten?.mwstSatz ?? '—'}
                       </td>
                       <td className="px-3 py-2">
                         <select
                           value={aktuelleKat}
                           onChange={e => setZeileKategorie(prev => ({ ...prev, [z.zeile]: e.target.value }))}
-                          className="text-xs border border-gray-200 rounded px-1.5 py-0.5 bg-white w-full max-w-[140px] focus:outline-none focus:ring-1 focus:ring-brand-400"
+                          className="text-xs border border-line rounded px-1.5 py-0.5 bg-panel w-full max-w-[140px] focus:outline-none focus:ring-1 focus:ring-brand-400"
                           title={istNeueKat ? `Neue Warengruppe: ${aktuelleKat}` : undefined}
                         >
                           <option value="">— keine —</option>
@@ -353,8 +353,8 @@ export function ArtikelImportModal({ open, kategorien, mandantId, onClose }: Pro
               </svg>
             </div>
             <div className="text-center">
-              <p className="text-lg font-semibold text-gray-900">Import abgeschlossen</p>
-              <p className="mt-1 text-sm text-gray-500">
+              <p className="text-lg font-semibold text-ink">Import abgeschlossen</p>
+              <p className="mt-1 text-sm text-ink-muted">
                 <span className="text-green-700 font-medium">{ergebnis.erstellt} Artikel</span> wurden erfolgreich angelegt.
                 {ergebnis.fehlgeschlagen > 0 && (
                   <span className="text-red-600"> {ergebnis.fehlgeschlagen} fehlgeschlagen.</span>

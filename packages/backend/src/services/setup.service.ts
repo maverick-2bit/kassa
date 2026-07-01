@@ -180,7 +180,7 @@ export async function fuehreSetupDurch(
 // Helper: SignedBeleg → DB-INSERT
 // ---------------------------------------------------------------------------
 
-function belegToInsert(mandantId: string, kasseId: string, b: SignedBeleg) {
+export function belegToInsert(mandantId: string, kasseId: string, b: SignedBeleg) {
   return {
     mandantId,
     kasseId,

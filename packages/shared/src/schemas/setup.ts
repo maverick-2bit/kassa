@@ -94,3 +94,54 @@ export const SetupResponseSchema = z.object({
 })
 
 export type SetupResponse = z.infer<typeof SetupResponseSchema>
+
+// ---------------------------------------------------------------------------
+// Weitere Kasse anlegen (für bestehenden Mandanten)
+// ---------------------------------------------------------------------------
+
+/**
+ * Eingabe zum Anlegen einer *weiteren* Registrierkasse für einen bereits
+ * eingerichteten Mandanten. Firmenname/UID kommen vom Mandanten, ein neuer
+ * Admin/Module werden nicht angelegt. Es entsteht eine eigene SEE-Einheit
+ * (Zertifikat + Private Key) samt eigenem Startbeleg.
+ */
+export const WeitereKasseInputSchema = z.object({
+  kassenId:    z.string().trim().min(1, 'Kassen-ID ist erforderlich').max(40),
+  bezeichnung: z.string().trim().max(100).optional(),
+  umgebung:    z.enum(['test', 'produktion']).default('test'),
+  /** Wie beim Setup: alle drei Felder oder keines (dann provisorisch ohne FON). */
+  finanzOnline: z.preprocess((v) => {
+    if (v && typeof v === 'object') {
+      const o = v as Record<string, unknown>
+      const leer =
+        !String(o.teilnehmerId ?? '').trim() &&
+        !String(o.benutzerkennung ?? '').trim() &&
+        !String(o.pin ?? '').trim()
+      if (leer) return undefined
+    }
+    return v
+  }, FinanzOnlineCredentialsSchema.optional()),
+  zertifikatGueltigkeitTage: z.number().int().min(30).max(3650).optional(),
+})
+export type WeitereKasseInput = z.infer<typeof WeitereKasseInputSchema>
+
+export const WeitereKasseResponseSchema = z.object({
+  erfolgreich:      z.boolean(),
+  kasseId:          z.string().uuid().optional(),
+  startbelegNummer: z.number().int().optional(),
+  schritte:         z.array(EinrichtungsSchrittSchema),
+  fehler:           z.string().optional(),
+})
+export type WeitereKasseResponse = z.infer<typeof WeitereKasseResponseSchema>
+
+/** Ein Eintrag der Kassen-Liste (Verwaltung/Umschalter). */
+export const KasseListeItemSchema = z.object({
+  id:               z.string().uuid(),
+  kassenId:         z.string(),
+  bezeichnung:      z.string().nullable(),
+  status:           z.string(),
+  umgebung:         z.string(),
+  seeGueltigBis:    z.string(),
+  beiFoRegistriert: z.boolean(),
+})
+export type KasseListeItem = z.infer<typeof KasseListeItemSchema>

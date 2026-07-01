@@ -49,7 +49,7 @@ export function SelfCheckoutPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-screen bg-panel-2 flex flex-col">
       {/* Header */}
       <div className="bg-brand-600 text-white px-6 py-4">
         <div className="flex items-center gap-3">
@@ -69,7 +69,7 @@ export function SelfCheckoutPage() {
             <svg className="h-8 w-8 animate-spin text-brand-500 mx-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 2v4m0 12v4m8-8h-4M6 12H2" />
             </svg>
-            <p className="mt-3 text-gray-500">Rechnung wird geladen…</p>
+            <p className="mt-3 text-ink-muted">Rechnung wird geladen…</p>
           </div>
         )}
 
@@ -80,8 +80,8 @@ export function SelfCheckoutPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </div>
-            <p className="mt-4 text-gray-700 font-medium">Fehler</p>
-            <p className="text-gray-500 text-sm mt-1">{fehler}</p>
+            <p className="mt-4 text-ink font-medium">Fehler</p>
+            <p className="text-ink-muted text-sm mt-1">{fehler}</p>
             <button onClick={laden} className="mt-4 px-4 py-2 rounded-md bg-brand-600 text-white text-sm">
               Erneut versuchen
             </button>
@@ -90,36 +90,36 @@ export function SelfCheckoutPage() {
 
         {status === 'leer' && (
           <div className="text-center max-w-sm">
-            <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mx-auto">
-              <svg className="h-8 w-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+            <div className="w-16 h-16 rounded-full bg-panel-2 flex items-center justify-center mx-auto">
+              <svg className="h-8 w-8 text-ink-subtle" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 00-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 00-16.536-1.84M7.5 14.25L5.106 5.272M6 20.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm12.75 0a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" />
               </svg>
             </div>
-            <p className="mt-4 text-gray-700 font-medium">Kein offener Tisch</p>
-            <p className="text-gray-500 text-sm mt-1">Für Tisch {tisch} liegt derzeit keine offene Rechnung vor.</p>
+            <p className="mt-4 text-ink font-medium">Kein offener Tisch</p>
+            <p className="text-ink-muted text-sm mt-1">Für Tisch {tisch} liegt derzeit keine offene Rechnung vor.</p>
           </div>
         )}
 
         {status === 'angezeigt' && tab && (
           <div className="w-full max-w-sm space-y-4">
             {/* Positions-Liste */}
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
-                <p className="text-sm font-semibold text-gray-700">Ihre Bestellung — Tisch {tisch}</p>
+            <div className="bg-panel rounded-xl border border-line overflow-hidden">
+              <div className="px-4 py-3 border-b border-line bg-panel-2">
+                <p className="text-sm font-semibold text-ink">Ihre Bestellung — Tisch {tisch}</p>
               </div>
-              <div className="divide-y divide-gray-100">
+              <div className="divide-y divide-line">
                 {tab.positionen.map((pos, i) => (
                   <div key={i} className="flex items-center justify-between px-4 py-3">
                     <div>
-                      <p className="text-sm font-medium text-gray-900">{pos.menge}× {pos.bezeichnung}</p>
-                      <p className="text-xs text-gray-500">{formatPreis(pos.preisCent)} / Stück</p>
+                      <p className="text-sm font-medium text-ink">{pos.menge}× {pos.bezeichnung}</p>
+                      <p className="text-xs text-ink-muted">{formatPreis(pos.preisCent)} / Stück</p>
                     </div>
-                    <p className="text-sm font-semibold text-gray-900 font-mono">{formatPreis(pos.gesamtCent)}</p>
+                    <p className="text-sm font-semibold text-ink font-mono">{formatPreis(pos.gesamtCent)}</p>
                   </div>
                 ))}
               </div>
-              <div className="px-4 py-4 border-t-2 border-gray-200 bg-gray-50 flex items-center justify-between">
-                <span className="text-base font-bold text-gray-900">Gesamt</span>
+              <div className="px-4 py-4 border-t-2 border-line bg-panel-2 flex items-center justify-between">
+                <span className="text-base font-bold text-ink">Gesamt</span>
                 <span className="text-xl font-black text-brand-600 font-mono">{formatPreis(tab.summeCent)}</span>
               </div>
             </div>
@@ -142,7 +142,7 @@ export function SelfCheckoutPage() {
               )}
               Zahlung anfordern
             </button>
-            <p className="text-xs text-gray-400 text-center">
+            <p className="text-xs text-ink-subtle text-center">
               Ein Servicemitarbeiter kommt dann zu Ihnen.
             </p>
           </div>
@@ -155,8 +155,8 @@ export function SelfCheckoutPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
               </svg>
             </div>
-            <p className="text-xl font-bold text-gray-900">Zahlung angefordert!</p>
-            <p className="text-gray-500 text-sm">
+            <p className="text-xl font-bold text-ink">Zahlung angefordert!</p>
+            <p className="text-ink-muted text-sm">
               Ein Servicemitarbeiter kommt gleich zu Ihnen an Tisch <strong>{tisch}</strong>.
             </p>
             {tab && (

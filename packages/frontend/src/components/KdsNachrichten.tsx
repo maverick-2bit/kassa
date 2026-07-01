@@ -96,7 +96,7 @@ function NachrichtKarte({
 
       {/* Nachrichtentext */}
       <div className="px-4 pt-3 pb-2">
-        <p className="text-gray-900 font-medium leading-snug whitespace-pre-wrap break-words">
+        <p className="text-ink font-medium leading-snug whitespace-pre-wrap break-words">
           {nachricht.text}
         </p>
         {gesendet && (
@@ -118,12 +118,12 @@ function NachrichtKarte({
             rows={2}
             maxLength={300}
             placeholder="Antwort eingeben… (Enter senden, Esc abbrechen)"
-            className="w-full rounded-xl border border-amber-300 bg-white px-3 py-2 text-sm focus:outline-none focus:border-amber-500 resize-none placeholder-gray-400"
+            className="w-full rounded-xl border border-amber-300 bg-panel px-3 py-2 text-sm focus:outline-none focus:border-amber-500 resize-none placeholder-gray-400"
           />
           <div className="flex gap-2">
             <button
               onClick={() => setAntwortOffen(false)}
-              className="flex-1 py-2 rounded-xl border border-gray-300 text-gray-600 text-sm font-medium hover:bg-gray-50 transition"
+              className="flex-1 py-2 rounded-xl border border-line-strong text-ink-muted text-sm font-medium hover:bg-panel-2 transition"
             >
               Abbrechen
             </button>
