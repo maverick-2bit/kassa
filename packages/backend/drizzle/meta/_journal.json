@@ -120,6 +120,13 @@
       "when": 1779808566000,
       "tag": "0017_see_ausfall",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1779808567000,
+      "tag": "0018_kasse_bonierdrucker",
+      "breakpoints": true
     }
   ]
 }

@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { QRCodeSVG } from 'qrcode.react'
-import { ALLE_STATIONEN, STATION_LABELS, type Station, type ZvtConfig } from '@kassa/shared'
+import { ALLE_STATIONEN, STATION_LABELS, type Station, type ZvtConfig, type WeitereKasseInput } from '@kassa/shared'
 import { druckerApi, kdsApi, zvtApi, downloadDepExport, healthApi, monitoringApi, mandantApi, kasseApi, tischplanApi, dbBackupApi, belegApi, type DruckerConfig, type KdsConfig, type DbSicherungRow, type MonitoringStatus } from '../lib/api'
 import { formatAusfallDauer } from '../components/SeeStatusBanner'
-import { getKasseIdentity } from '../lib/kasse'
-import { getAuth, hasModul, updateKasseBezeichnung } from '../lib/auth'
+import { getKasseIdentity, setKasseIdentity } from '../lib/kasse'
+import { getAuth, hasModul, updateKasseBezeichnung, addKasse } from '../lib/auth'
 import { Field } from '../components/ui/Field'
 import { Input } from '../components/ui/Input'
 import { Button } from '../components/ui/Button'
@@ -19,6 +19,7 @@ export function EinstellungenPage() {
         <h1 className="text-2xl font-bold text-ink">Einstellungen</h1>
         <p className="mt-1 text-sm text-ink-muted">Drucker, Hardware-Anbindung, Belegtext und Tischplan</p>
       </header>
+      <KassenVerwaltungSektion />
       <KasseBezeichnungSektion />
       <RechnungslayoutSektion />
       <DruckerSektion />
@@ -31,6 +32,178 @@ export function EinstellungenPage() {
       <DbBackupSektion />
       <SystemInfoSektion />
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Kassen-Verwaltung (Umschalter + weitere Kasse anlegen)
+// ---------------------------------------------------------------------------
+
+function KassenVerwaltungSektion() {
+  const auth        = getAuth()!
+  const identity    = getKasseIdentity()
+  const queryClient = useQueryClient()
+
+  const [formOffen, setFormOffen] = useState(false)
+  const [kassenId, setKassenId]       = useState('')
+  const [bezeichnung, setBezeichnung] = useState('')
+  const [umgebung, setUmgebung]       = useState<'test' | 'produktion'>('test')
+  const [tid, setTid]     = useState('')
+  const [benId, setBenId] = useState('')
+  const [pin, setPin]     = useState('')
+  const [meldung, setMeldung] = useState<{ typ: 'ok' | 'fehler'; text: string } | null>(null)
+
+  // Reichere Kassenliste vom Server (Zertifikatsablauf, FON-Status); Fallback: auth.kassen
+  const listeQuery = useQuery({
+    queryKey: ['kassen-liste'],
+    queryFn:  kasseApi.liste,
+  })
+  const kassen = listeQuery.data ?? auth.kassen.map(k => ({
+    id: k.id, kassenId: k.kassenId, bezeichnung: k.bezeichnung,
+    status: 'aktiv', umgebung: k.umgebung, seeGueltigBis: '', beiFoRegistriert: false,
+  }))
+
+  function wechsleZu(kasseId: string) {
+    if (kasseId === identity?.kasseId) return
+    setKasseIdentity({ mandantId: auth.mandant.id, kasseId })
+    // Detail-Sektionen lesen die Kassen-ID nicht-reaktiv beim Render → Neuladen.
+    window.location.reload()
+  }
+
+  const anlegen = useMutation({
+    mutationFn: () => {
+      const fonComplete = tid.trim() && benId.trim() && pin.trim()
+      const input: WeitereKasseInput = {
+        kassenId: kassenId.trim(),
+        umgebung,
+        ...(bezeichnung.trim() && { bezeichnung: bezeichnung.trim() }),
+        ...(fonComplete && { finanzOnline: { teilnehmerId: tid.trim(), benutzerkennung: benId.trim(), pin: pin.trim() } }),
+      }
+      return kasseApi.anlegen(input)
+    },
+    onSuccess: (res) => {
+      if (!res.erfolgreich || !res.kasseId) {
+        setMeldung({ typ: 'fehler', text: res.fehler ?? 'Kasse konnte nicht angelegt werden' })
+        return
+      }
+      addKasse({ id: res.kasseId, kassenId: kassenId.trim(), bezeichnung: bezeichnung.trim() || null, umgebung })
+      queryClient.invalidateQueries({ queryKey: ['kassen-liste'] })
+      setMeldung({ typ: 'ok', text: `Kasse „${kassenId.trim()}" angelegt (Startbeleg #${res.startbelegNummer}).` })
+      setKassenId(''); setBezeichnung(''); setTid(''); setBenId(''); setPin(''); setFormOffen(false)
+    },
+    onError: (err) => setMeldung({ typ: 'fehler', text: err instanceof Error ? err.message : String(err) }),
+  })
+
+  return (
+    <section className="rounded-lg bg-panel shadow-sm border border-line p-6 space-y-5">
+      <div>
+        <h2 className="text-base font-semibold text-ink">Kassen</h2>
+        <p className="text-sm text-ink-muted mt-0.5">
+          Zwischen Kassen wechseln oder weitere anlegen. Alle Einstellungen unterhalb
+          (Bondrucker, KDS, Kartenterminal, Warengruppen) beziehen sich auf die <strong>aktive</strong> Kasse.
+        </p>
+      </div>
+
+      {/* Kassenliste + Umschalter */}
+      <div className="space-y-2">
+        {kassen.map(k => {
+          const aktiv = k.id === identity?.kasseId
+          return (
+            <div
+              key={k.id}
+              className={`flex items-center justify-between gap-3 rounded-md border p-3 ${
+                aktiv ? 'border-brand-500 bg-brand-50' : 'border-line bg-panel-2'
+              }`}
+            >
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-ink truncate">
+                  {k.bezeichnung || k.kassenId}
+                  {aktiv && <span className="ml-2 text-xs font-semibold text-brand-700">● aktiv</span>}
+                </p>
+                <p className="text-xs text-ink-muted">
+                  ID: {k.kassenId} · {k.umgebung === 'produktion' ? 'Produktion' : 'Test'}
+                  {k.beiFoRegistriert ? ' · FinanzOnline registriert' : ' · provisorisch'}
+                </p>
+              </div>
+              {aktiv ? (
+                <span className="text-xs text-ink-subtle shrink-0">aktuelle Kasse</span>
+              ) : (
+                <Button variant="secondary" onClick={() => wechsleZu(k.id)}>Wechseln</Button>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {meldung && (
+        <div className={`rounded-md p-3 text-sm ${
+          meldung.typ === 'ok'
+            ? 'bg-green-50 border border-green-200 text-green-700'
+            : 'bg-red-50 border border-red-200 text-red-700'
+        }`}>{meldung.text}</div>
+      )}
+
+      {/* Weitere Kasse anlegen */}
+      <div className="pt-2 border-t border-line">
+        {!formOffen ? (
+          <Button variant="secondary" onClick={() => { setMeldung(null); setFormOffen(true) }}>
+            + Weitere Kasse anlegen
+          </Button>
+        ) : (
+          <div className="space-y-4">
+            <p className="text-sm font-medium text-ink">Neue Registrierkasse</p>
+            <p className="text-xs text-ink-muted -mt-2">
+              Es wird eine eigene Signatureinheit (SEE-Zertifikat) samt Startbeleg erstellt.
+              Firmenname und UID werden vom Mandanten übernommen.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Field label="Kassen-ID" hint="Eindeutig, z. B. KASSE-002">
+                <Input value={kassenId} onChange={e => { setKassenId(e.target.value); setMeldung(null) }} maxLength={40} placeholder="KASSE-002" />
+              </Field>
+              <Field label="Bezeichnung (optional)" hint="Anzeigename, z. B. Bar Terrasse">
+                <Input value={bezeichnung} onChange={e => setBezeichnung(e.target.value)} maxLength={100} placeholder="Bar Terrasse" />
+              </Field>
+            </div>
+            <Field label="Umgebung">
+              <select
+                className="block w-full rounded-md border border-line-strong px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500/40"
+                value={umgebung}
+                onChange={e => setUmgebung(e.target.value as 'test' | 'produktion')}
+              >
+                <option value="test">Test (FinanzOnline-Testumgebung)</option>
+                <option value="produktion">Produktion (Echtbetrieb)</option>
+              </select>
+            </Field>
+
+            <details className="rounded-md border border-line bg-panel-2 p-3">
+              <summary className="cursor-pointer text-sm font-medium text-ink">FinanzOnline-Registrierung (optional)</summary>
+              <p className="mt-2 text-xs text-ink-muted">
+                Fehlen die Daten, wird die Kasse provisorisch (ohne FON-Registrierung) angelegt —
+                die Registrierung kann später nachgetragen werden. Zugangsdaten werden nicht gespeichert.
+              </p>
+              <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <Field label="Teilnehmer-ID"><Input value={tid} onChange={e => setTid(e.target.value)} autoComplete="off" /></Field>
+                <Field label="Benutzerkennung"><Input value={benId} onChange={e => setBenId(e.target.value)} autoComplete="off" /></Field>
+                <Field label="PIN"><Input type="password" value={pin} onChange={e => setPin(e.target.value)} autoComplete="off" /></Field>
+              </div>
+            </details>
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                onClick={() => { setMeldung(null); anlegen.mutate() }}
+                loading={anlegen.isPending}
+                disabled={!kassenId.trim()}
+              >
+                Kasse anlegen
+              </Button>
+              <Button variant="secondary" onClick={() => { setFormOffen(false); setMeldung(null) }} disabled={anlegen.isPending}>
+                Abbrechen
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
   )
 }
 

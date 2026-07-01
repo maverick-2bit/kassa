@@ -48,6 +48,8 @@ export type Startseite = z.infer<typeof StartseitenEnum>
 export const PosKonfigSchema = z.object({
   /** IDs der Kategorien, die in dieser Kasse im POS sichtbar sind */
   sichtbareKategorieIds: z.array(z.string().uuid()),
+  /** IDs der Bonierdrucker, die für diese Kasse aktiv sind (leer = alle) */
+  sichtbareBonierdruckerIds: z.array(z.string().uuid()),
   /** Erlaubte Zahlungsarten */
   erlaubteZahlungsarten: z.array(z.enum(['bar', 'karte', 'sonstige'])),
   /** Artikelbilder im Kassen-Raster anzeigen (default: true) */
@@ -59,6 +61,7 @@ export type PosKonfig = z.infer<typeof PosKonfigSchema>
 
 export const PosKonfigUpdateSchema = z.object({
   sichtbareKategorieIds: z.array(z.string().uuid()).optional(),
+  sichtbareBonierdruckerIds: z.array(z.string().uuid()).optional(),
   erlaubteZahlungsarten: z.array(z.enum(['bar', 'karte', 'sonstige'])).optional(),
   artikelbilderAktiv:    z.boolean().optional(),
   startseite:            StartseitenEnum.optional(),

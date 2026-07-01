@@ -577,6 +577,19 @@ export const kassekategorieSichtbarkeit = pgTable('kasse_kategorie_sichtbarkeit'
   kasseIdx: index('kks_kasse_idx').on(t.kasseId),
 }))
 
+/**
+ * Bonierdrucker-Sichtbarkeit pro Kasse. Bonierdrucker sind mandantweite Geräte;
+ * dieser Join wählt, welche für eine bestimmte Kasse aktiv sind. Existiert für
+ * eine Kasse KEIN Eintrag, gelten (abwärtskompatibel) alle Bonierdrucker.
+ */
+export const kasseBonierdruckerSichtbarkeit = pgTable('kasse_bonierdrucker_sichtbarkeit', {
+  kasseId:        uuid('kasse_id').notNull().references(() => kassen.id, { onDelete: 'cascade' }),
+  bonierdruckerId: uuid('bonierdrucker_id').notNull().references(() => bonierdrucker.id, { onDelete: 'cascade' }),
+}, (t) => ({
+  pk:       primaryKey({ columns: [t.kasseId, t.bonierdruckerId] }),
+  kasseIdx: index('kbs_kasse_idx').on(t.kasseId),
+}))
+
 // ---------------------------------------------------------------------------
 // Tisch-Tabs — offene Tische mit akkumulierten Positionen
 // ---------------------------------------------------------------------------
