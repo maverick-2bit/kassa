@@ -1032,6 +1032,91 @@ function ArtikelGruppenZuweisungModal({
 
   const aktiveGruppen = alleGruppen.filter(g => g.aktiv)
 
+  // Inline-Editor: Optionen direkt für diesen Artikel anlegen (erzeugt im
+  // Hintergrund eine Optionsgruppe + Optionen und weist sie sofort zu).
+  const [neuOffen, setNeuOffen]       = useState(false)
+  const [gruppenName, setGruppenName] = useState('Optionen')
+  const [pflicht, setPflicht]         = useState(false)
+  const [optionen, setOptionen]       = useState<{ name: string; aufschlag: string }[]>([{ name: '', aufschlag: '' }])
+  const [inlineError, setInlineError] = useState<string | null>(null)
+
+  const inlineAnlegen = useMutation({
+    mutationFn: async () => {
+      if (!gruppenName.trim()) throw new Error('Name der Optionen fehlt')
+      const gueltige = optionen.filter(o => o.name.trim())
+      if (gueltige.length === 0) throw new Error('Mindestens eine Option mit Namen angeben')
+      const gruppe = await modifikatorApi.erstelleGruppe({
+        name:        gruppenName.trim(),
+        typ:         pflicht ? 'pflicht' : 'optional',
+        maxAuswahl:  pflicht ? 1 : null,
+        reihenfolge: 0,
+      })
+      let i = 0
+      for (const o of gueltige) {
+        const cent = Math.round((parseFloat((o.aufschlag || '0').replace(',', '.')) || 0) * 100)
+        await modifikatorApi.erstelleModifikator(gruppe.id, { name: o.name.trim(), aufschlagCent: cent, reihenfolge: i++, lagerstandMenge: null })
+      }
+      await modifikatorApi.setzeGruppenFuerArtikel(artikelId, { gruppenIds: [...gewählteIds, gruppe.id] })
+      return gruppe.id
+    },
+    onSuccess: (id) => {
+      setInlineError(null)
+      setGewählteIds(prev => new Set(prev).add(id))
+      setGruppenName('Optionen'); setPflicht(false); setOptionen([{ name: '', aufschlag: '' }]); setNeuOffen(false)
+      qc.invalidateQueries({ queryKey: ['modifikator-gruppen'] })
+      qc.invalidateQueries({ queryKey: ['artikel-gruppen', artikelId] })
+      qc.invalidateQueries({ queryKey: ['artikel-modifikator-gruppen'] })
+    },
+    onError: (e) => setInlineError(e instanceof Error ? e.message : String(e)),
+  })
+
+  const inlineEditor = (
+    <div className="rounded-lg border border-brand-200 bg-brand-50/40 p-3">
+      {!neuOffen ? (
+        <button type="button" onClick={() => setNeuOffen(true)}
+          className="text-sm font-medium text-brand-700 hover:underline">
+          + Optionen für diesen Artikel anlegen
+        </button>
+      ) : (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <input value={gruppenName} onChange={e => setGruppenName(e.target.value)} placeholder="Bezeichnung (z. B. Beilage)"
+              className="flex-1 rounded-md border border-gray-300 px-2.5 py-1.5 text-sm" />
+            <label className="inline-flex items-center gap-1.5 text-xs text-gray-600 whitespace-nowrap">
+              <input type="checkbox" checked={pflicht} onChange={e => setPflicht(e.target.checked)}
+                className="rounded border-gray-300 text-brand-600" />
+              Pflicht (1 Auswahl)
+            </label>
+          </div>
+          <div className="space-y-1.5">
+            {optionen.map((o, idx) => (
+              <div key={idx} className="flex items-center gap-2">
+                <input value={o.name} placeholder="Option (z. B. Pommes)"
+                  onChange={e => setOptionen(prev => prev.map((x, i) => i === idx ? { ...x, name: e.target.value } : x))}
+                  className="flex-1 rounded-md border border-gray-300 px-2.5 py-1.5 text-sm" />
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-gray-400">+€</span>
+                  <input value={o.aufschlag} inputMode="decimal" placeholder="0,00"
+                    onChange={e => setOptionen(prev => prev.map((x, i) => i === idx ? { ...x, aufschlag: e.target.value.replace(/[^0-9.,]/g, '') } : x))}
+                    className="w-16 rounded-md border border-gray-300 px-2 py-1.5 text-sm text-right" />
+                </div>
+                <button type="button" onClick={() => setOptionen(prev => prev.length > 1 ? prev.filter((_, i) => i !== idx) : prev)}
+                  className="text-gray-300 hover:text-red-500 px-1" aria-label="Option entfernen">×</button>
+              </div>
+            ))}
+            <button type="button" onClick={() => setOptionen(prev => [...prev, { name: '', aufschlag: '' }])}
+              className="text-xs text-brand-600 hover:underline">+ weitere Option</button>
+          </div>
+          {inlineError && <p className="text-xs text-red-600">{inlineError}</p>}
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={() => { setNeuOffen(false); setInlineError(null) }} className="flex-1">Abbrechen</Button>
+            <Button onClick={() => inlineAnlegen.mutate()} loading={inlineAnlegen.isPending} className="flex-1">Anlegen &amp; zuweisen</Button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+
   return (
     <Modal
       open={true}
@@ -1041,14 +1126,18 @@ function ArtikelGruppenZuweisungModal({
     >
       {zuweisungQuery.isLoading ? (
         <p className="text-sm text-gray-500 py-4">Wird geladen…</p>
-      ) : aktiveGruppen.length === 0 ? (
-        <p className="text-sm text-gray-500 py-4">
-          Noch keine Modifikator-Gruppen angelegt. Bitte zuerst im Panel oben Gruppen erstellen.
-        </p>
       ) : (
         <div className="space-y-4">
+          {inlineEditor}
+
+          {aktiveGruppen.length === 0 ? (
+            <p className="text-sm text-gray-500">
+              Noch keine Optionen angelegt — oben direkt welche für diesen Artikel erstellen.
+            </p>
+          ) : (
+          <>
           <p className="text-sm text-gray-600">
-            Wähle die Gruppen, die für diesen Artikel angeboten werden sollen:
+            Oder vorhandene Optionsgruppen für diesen Artikel aktivieren:
           </p>
           <div className="space-y-2">
             {aktiveGruppen.map((gruppe) => {
@@ -1088,16 +1177,20 @@ function ArtikelGruppenZuweisungModal({
               )
             })}
           </div>
+          </>
+          )}
 
           <div className="flex gap-2 pt-1">
-            <Button variant="secondary" onClick={onClose} className="flex-1">Abbrechen</Button>
-            <Button
-              onClick={() => speichernMutation.mutate([...gewählteIds])}
-              loading={speichernMutation.isPending}
-              className="flex-1"
-            >
-              Speichern
-            </Button>
+            <Button variant="secondary" onClick={onClose} className="flex-1">Schließen</Button>
+            {aktiveGruppen.length > 0 && (
+              <Button
+                onClick={() => speichernMutation.mutate([...gewählteIds])}
+                loading={speichernMutation.isPending}
+                className="flex-1"
+              >
+                Zuweisung speichern
+              </Button>
+            )}
           </div>
         </div>
       )}
