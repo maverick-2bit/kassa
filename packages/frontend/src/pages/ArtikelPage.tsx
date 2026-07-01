@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   KATEGORIE_FARBE_LABELS,
@@ -94,6 +94,57 @@ export function ArtikelPage() {
 
   const invalidateArtikel = () =>
     queryClient.invalidateQueries({ queryKey: ['artikel', identity.mandantId] })
+
+  // ---------------------------------------------------------------------------
+  // Sortierung: Artikel nach Warengruppe + Reihenfolge, Verschieben per ↑/↓
+  // ---------------------------------------------------------------------------
+  const katOrder = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const k of katList.data ?? []) m.set(k.id, k.reihenfolge)
+    return m
+  }, [katList.data])
+
+  const artikelSortiert = useMemo(() => {
+    const arr = [...(list.data ?? [])]
+    arr.sort((a, b) => {
+      const ka = a.kategorieId ? (katOrder.get(a.kategorieId) ?? 9999) : 9999
+      const kb = b.kategorieId ? (katOrder.get(b.kategorieId) ?? 9999) : 9999
+      if (ka !== kb) return ka - kb
+      if (a.reihenfolge !== b.reihenfolge) return a.reihenfolge - b.reihenfolge
+      return a.bezeichnung.localeCompare(b.bezeichnung)
+    })
+    return arr
+  }, [list.data, katOrder])
+
+  // Position jedes Artikels innerhalb seiner Warengruppe (für ↑/↓-Grenzen)
+  const katPos = useMemo(() => {
+    const perKat = new Map<string, Artikel[]>()
+    for (const a of artikelSortiert) {
+      const key = a.kategorieId ?? '__none__'
+      const list = perKat.get(key) ?? []
+      list.push(a); perKat.set(key, list)
+    }
+    const m = new Map<string, { idx: number; anzahl: number }>()
+    for (const gruppe of perKat.values()) gruppe.forEach((a, i) => m.set(a.id, { idx: i, anzahl: gruppe.length }))
+    return m
+  }, [artikelSortiert])
+
+  const reihenfolgeMut = useMutation({
+    mutationFn: (eintraege: { id: string; reihenfolge: number }[]) => artikelApi.updateReihenfolge(eintraege),
+    onSuccess: () => invalidateArtikel(),
+  })
+
+  const verschiebeArtikel = (a: Artikel, dir: -1 | 1) => {
+    const kat = artikelSortiert.filter(x => x.kategorieId === a.kategorieId)
+    const idx = kat.findIndex(x => x.id === a.id)
+    const j = idx + dir
+    if (j < 0 || j >= kat.length) return
+    const reordered = [...kat]
+    const tmp = reordered[idx]!
+    reordered[idx] = reordered[j]!
+    reordered[j] = tmp
+    reihenfolgeMut.mutate(reordered.map((x, i) => ({ id: x.id, reihenfolge: i })))
+  }
 
   const invalidateKategorien = () =>
     queryClient.invalidateQueries({ queryKey: ['kategorien'] })
@@ -307,6 +358,7 @@ export function ArtikelPage() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
                 <tr>
+                  <th className="px-2 py-2 font-semibold text-center" title="Reihenfolge innerhalb der Warengruppe">Sort.</th>
                   <th className="px-4 py-2 font-semibold">Bezeichnung</th>
                   <th className="px-4 py-2 font-semibold">Kategorie</th>
                   <th className="px-4 py-2 font-semibold">Nummer</th>
@@ -318,8 +370,24 @@ export function ArtikelPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {list.data?.map((a) => (
+                {artikelSortiert.map((a) => {
+                  const pos = katPos.get(a.id) ?? { idx: 0, anzahl: 1 }
+                  return (
                   <tr key={a.id} className={a.aktiv ? '' : 'opacity-60'}>
+                    <td className="px-2 py-2.5">
+                      <div className="flex items-center justify-center gap-0.5">
+                        <button type="button" aria-label="Nach oben" disabled={pos.idx === 0 || reihenfolgeMut.isPending}
+                          onClick={() => verschiebeArtikel(a, -1)}
+                          className="flex h-6 w-6 items-center justify-center rounded text-gray-500 hover:text-brand-600 hover:bg-gray-100 disabled:opacity-25 disabled:hover:bg-transparent">
+                          <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 5l5 7H5l5-7Z" /></svg>
+                        </button>
+                        <button type="button" aria-label="Nach unten" disabled={pos.idx === pos.anzahl - 1 || reihenfolgeMut.isPending}
+                          onClick={() => verschiebeArtikel(a, 1)}
+                          className="flex h-6 w-6 items-center justify-center rounded text-gray-500 hover:text-brand-600 hover:bg-gray-100 disabled:opacity-25 disabled:hover:bg-transparent">
+                          <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 15l-5-7h10l-5 7Z" /></svg>
+                        </button>
+                      </div>
+                    </td>
                     <td className="px-4 py-2.5 font-medium text-gray-900">{a.bezeichnung}</td>
                     <td className="px-4 py-2.5 text-gray-500 text-xs">
                       {katNameFuerId(a.kategorieId) ?? <span className="text-gray-300">—</span>}
@@ -390,7 +458,8 @@ export function ArtikelPage() {
                       )}
                     </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           )}
