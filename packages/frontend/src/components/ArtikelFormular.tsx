@@ -42,13 +42,34 @@ interface Props {
   onCancel:      () => void
   loading?:      boolean
   fehler?:       string | undefined
+  /** Legt eine neue Warengruppe an und gibt sie zurück (für Inline-Anlegen). */
+  onNeueKategorie?: (name: string) => Promise<Kategorie>
 }
 
 const MWST_OPTIONS: MwStSatz[] = ['normal', 'ermaessigt1', 'ermaessigt2', 'null', 'besonders']
 
-export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker, lieferanten, onSubmit, onCancel, loading, fehler }: Props) {
+export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker, lieferanten, onSubmit, onCancel, loading, fehler, onNeueKategorie }: Props) {
   const [preisFehler, setPreisFehler] = useState<string | null>(null)
   const [bild,        setBild]        = useState<string | null>(initial?.bild ?? null)
+  // Inline-Anlegen einer Warengruppe direkt aus dem Artikel-Formular
+  const [neueKatOffen, setNeueKatOffen] = useState(false)
+  const [neuerKatName, setNeuerKatName] = useState('')
+  const [katAnlegen,   setKatAnlegen]   = useState(false)
+  const [katFehler,    setKatFehler]    = useState<string | null>(null)
+
+  const handleNeueKategorie = async () => {
+    if (!onNeueKategorie || !neuerKatName.trim()) return
+    setKatAnlegen(true); setKatFehler(null)
+    try {
+      const neu = await onNeueKategorie(neuerKatName.trim())
+      setValue('kategorieId', neu.id)
+      setNeueKatOffen(false); setNeuerKatName('')
+    } catch (e) {
+      setKatFehler(e instanceof Error ? e.message : String(e))
+    } finally {
+      setKatAnlegen(false)
+    }
+  }
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // ---------------------------------------------------------------------------
@@ -78,7 +99,7 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
     e.target.value = ''
   }
 
-  const { register, handleSubmit, formState: { errors }, reset, watch } = useForm<FormValues>({
+  const { register, handleSubmit, formState: { errors }, reset, watch, setValue } = useForm<FormValues>({
     defaultValues: {
       bezeichnung:        initial?.bezeichnung      ?? '',
       preisEuro:          initial ? (initial.preisBruttoCent / 100).toFixed(2).replace('.', ',') : '',
@@ -231,10 +252,10 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
         </Select>
       </Field>
 
-      {kategorien && kategorien.length > 0 && (
-        <Field label="Kategorie" hint="Gruppierung in der Kassen-Ansicht">
+      <Field label="Warengruppe" hint="Gruppierung in der Kassen-Ansicht">
+        {kategorien && kategorien.filter(k => k.aktiv).length > 0 && (
           <Select {...register('kategorieId')}>
-            <option value="">— ohne Kategorie —</option>
+            <option value="">— ohne Warengruppe —</option>
             {kategorien
               .filter(k => k.aktiv)
               .sort((a, b) => a.reihenfolge - b.reihenfolge || a.name.localeCompare(b.name))
@@ -242,8 +263,40 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
                 <option key={k.id} value={k.id}>{k.name}</option>
               ))}
           </Select>
-        </Field>
-      )}
+        )}
+
+        {onNeueKategorie && (
+          !neueKatOffen ? (
+            <button
+              type="button"
+              onClick={() => { setNeueKatOffen(true); setKatFehler(null) }}
+              className="mt-2 text-sm font-medium text-brand-600 hover:underline"
+            >
+              + Neue Warengruppe anlegen
+            </button>
+          ) : (
+            <div className="mt-2 flex items-center gap-2">
+              <Input
+                autoFocus
+                value={neuerKatName}
+                onChange={(e) => setNeuerKatName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void handleNeueKategorie() } }}
+                placeholder="Name der Warengruppe (z. B. Getränke)"
+                className="flex-1"
+              />
+              <Button type="button" onClick={() => void handleNeueKategorie()} loading={katAnlegen} disabled={!neuerKatName.trim()}>
+                Anlegen
+              </Button>
+              <button type="button" onClick={() => { setNeueKatOffen(false); setNeuerKatName(''); setKatFehler(null) }}
+                className="text-xs text-gray-400 hover:text-gray-600">Abbrechen</button>
+            </div>
+          )
+        )}
+        {katFehler && <p className="mt-1 text-xs text-red-600">{katFehler}</p>}
+        {(!kategorien || kategorien.filter(k => k.aktiv).length === 0) && !neueKatOffen && (
+          <p className="mt-1 text-xs text-gray-400">Noch keine Warengruppe vorhanden — oben eine anlegen.</p>
+        )}
+      </Field>
 
       {/* Favorit + Bonierdrucker */}
       <div className="rounded-lg border border-gray-200 p-3 space-y-3">

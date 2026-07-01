@@ -8,11 +8,12 @@
  *   4. Zahlungsarten — pro Kasse An/Aus
  */
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import {
   DndContext,
   closestCenter,
   PointerSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -52,9 +53,17 @@ const ZAHLUNGSARTEN = [
 function SortableItem({
   id,
   children,
+  onMoveUp,
+  onMoveDown,
+  istErster,
+  istLetzter,
 }: {
   id: string
-  children: (handle: React.ReactNode) => React.ReactNode
+  children:   (handle: React.ReactNode) => React.ReactNode
+  onMoveUp?:   () => void
+  onMoveDown?: () => void
+  istErster?:  boolean
+  istLetzter?: boolean
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
 
@@ -65,21 +74,41 @@ function SortableItem({
     zIndex:  isDragging ? 10 : undefined,
   }
 
+  // Bedien-Element: eindeutige ↑/↓-Tasten (immer sichtbar, auch Touch) +
+  // Griff-Symbol als Hinweis, dass man die ganze Zeile auch ziehen kann.
+  const pfeilKlasse = 'flex h-5 w-6 items-center justify-center rounded text-gray-500 hover:text-brand-600 hover:bg-gray-100 disabled:opacity-25 disabled:hover:bg-transparent disabled:hover:text-gray-500'
   const handle = (
-    <button
-      {...attributes}
-      {...listeners}
-      className="cursor-grab active:cursor-grabbing p-1.5 text-gray-300 hover:text-gray-500 touch-none"
-      aria-label="Verschieben"
-    >
-      <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-        <path d="M10 3a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3ZM10 8.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3ZM11.5 15.5a1.5 1.5 0 1 0-3 0 1.5 1.5 0 0 0 3 0ZM4.5 3a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3ZM4.5 8.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3ZM6 15.5a1.5 1.5 0 1 0-3 0 1.5 1.5 0 0 0 3 0ZM15.5 3a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3ZM15.5 8.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3ZM17 15.5a1.5 1.5 0 1 0-3 0 1.5 1.5 0 0 0 3 0Z" />
-      </svg>
-    </button>
+    <div className="flex items-center gap-0.5">
+      {(onMoveUp || onMoveDown) && (
+        <div className="flex flex-col">
+          {/* onPointerDown stoppen, damit der Tastendruck keinen Drag startet */}
+          <button type="button" aria-label="Nach oben" disabled={istErster}
+            onPointerDown={e => e.stopPropagation()} onClick={onMoveUp} className={pfeilKlasse}>
+            <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 5l5 7H5l5-7Z" /></svg>
+          </button>
+          <button type="button" aria-label="Nach unten" disabled={istLetzter}
+            onPointerDown={e => e.stopPropagation()} onClick={onMoveDown} className={pfeilKlasse}>
+            <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 15l-5-7h10l-5 7Z" /></svg>
+          </button>
+        </div>
+      )}
+      <span aria-hidden className="text-gray-300 select-none">
+        <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+          <path d="M7 4a1.3 1.3 0 1 1 0 2.6A1.3 1.3 0 0 1 7 4Zm6 0a1.3 1.3 0 1 1 0 2.6A1.3 1.3 0 0 1 13 4ZM7 8.7a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6Zm6 0a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6ZM7 13.4a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6Zm6 0a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6Z" />
+        </svg>
+      </span>
+    </div>
   )
 
+  // Ganze Zeile ist zusätzlich der Drag-Handle (Aktivierungsschwelle an den Sensoren).
   return (
-    <div ref={setNodeRef} style={style}>
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      className="cursor-grab active:cursor-grabbing touch-none"
+    >
       {children(handle)}
     </div>
   )
@@ -115,7 +144,10 @@ function TabWarengruppen({
     if (posQuery.data) setSichtbar(new Set(posQuery.data.sichtbareKategorieIds))
   })
 
-  const sensors = useSensors(useSensor(PointerSensor))
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor,   { activationConstraint: { delay: 200, tolerance: 8 } }),
+  )
 
   const reihenfolge = useMutation({
     mutationFn: (eintraege: { id: string; reihenfolge: number }[]) =>
@@ -169,8 +201,11 @@ function TabWarengruppen({
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={items.map(k => k.id)} strategy={verticalListSortingStrategy}>
           <div className="space-y-2">
-            {items.map(k => (
-              <SortableItem key={k.id} id={k.id}>
+            {items.map((k, i) => (
+              <SortableItem key={k.id} id={k.id}
+                onMoveUp={() => { setItems(prev => arrayMove(prev, i, i - 1)); setDirty(true) }}
+                onMoveDown={() => { setItems(prev => arrayMove(prev, i, i + 1)); setDirty(true) }}
+                istErster={i === 0} istLetzter={i === items.length - 1}>
                 {(handle) => (
                   <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2.5 shadow-sm">
                     {handle}
@@ -212,7 +247,10 @@ function TabWarengruppen({
 function TabArtikel({ kategorien, alleArtikel }: { kategorien: Kategorie[]; alleArtikel: Artikel[] }) {
   const qc = useQueryClient()
   const [gewaehlteKatId, setGewaehlteKatId] = useState(kategorien[0]?.id ?? '')
-  const sensors = useSensors(useSensor(PointerSensor))
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor,   { activationConstraint: { delay: 200, tolerance: 8 } }),
+  )
 
   const artikelDerKat = alleArtikel
     .filter(a => a.kategorieId === gewaehlteKatId)
@@ -289,8 +327,11 @@ function TabArtikel({ kategorien, alleArtikel }: { kategorien: Kategorie[]; alle
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={items.map(a => a.id)} strategy={verticalListSortingStrategy}>
           <div className="space-y-2">
-            {items.map(a => (
-              <SortableItem key={a.id} id={a.id}>
+            {items.map((a, i) => (
+              <SortableItem key={a.id} id={a.id}
+                onMoveUp={() => { setItems(prev => arrayMove(prev, i, i - 1)); setDirty(true) }}
+                onMoveDown={() => { setItems(prev => arrayMove(prev, i, i + 1)); setDirty(true) }}
+                istErster={i === 0} istLetzter={i === items.length - 1}>
                 {(handle) => (
                   <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2.5 shadow-sm">
                     {handle}
@@ -318,7 +359,10 @@ function TabArtikel({ kategorien, alleArtikel }: { kategorien: Kategorie[]; alle
 
 function TabFavoriten({ alleArtikel }: { alleArtikel: Artikel[] }) {
   const qc = useQueryClient()
-  const sensors = useSensors(useSensor(PointerSensor))
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor,   { activationConstraint: { delay: 200, tolerance: 8 } }),
+  )
 
   const [items, setItems] = useState(() =>
     alleArtikel
@@ -326,12 +370,57 @@ function TabFavoriten({ alleArtikel }: { alleArtikel: Artikel[] }) {
       .sort((a, b) => a.favoritenReihenfolge - b.favoritenReihenfolge)
   )
   const [dirty, setDirty] = useState(false)
+  const [suche, setSuche] = useState('')
+
+  // Externe Änderungen (neue/geänderte Artikel, anderswo gesetzte Favoriten)
+  // übernehmen, sobald die Artikelliste neu geladen wurde — dabei die aktuelle
+  // Bildschirm-Reihenfolge ERHALTEN (nur neue hinten anhängen, entfernte raus),
+  // damit ein laufendes/ungespeichertes Umsortieren nicht zurückspringt.
+  useEffect(() => {
+    if (dirty) return
+    const favs = alleArtikel.filter(a => a.istFavorit && a.aktiv)
+    const favById = new Map(favs.map(a => [a.id, a]))
+    setItems(prev => {
+      const behalten = prev.filter(p => favById.has(p.id)).map(p => favById.get(p.id)!)
+      const behaltenIds = new Set(behalten.map(k => k.id))
+      const neue = favs
+        .filter(a => !behaltenIds.has(a.id))
+        .sort((a, b) => a.favoritenReihenfolge - b.favoritenReihenfolge)
+      // Nur ersetzen, wenn sich der Bestand wirklich geändert hat (verhindert Render-Schleifen)
+      if (behalten.length === prev.length && neue.length === 0) return prev
+      return [...behalten, ...neue]
+    })
+  }, [alleArtikel, dirty])
+
+  const preis = (c: number) => `€ ${(c / 100).toFixed(2).replace('.', ',')}`
 
   const reihenfolge = useMutation({
     mutationFn: (eintraege: { id: string; favoritenReihenfolge: number }[]) =>
       artikelApi.updateFavoritenReihenfolge(eintraege),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['artikel'] }); setDirty(false) },
   })
+
+  // Favorit setzen/entfernen (istFavorit-Flag am Artikel)
+  const toggleFavorit = useMutation({
+    mutationFn: (v: { id: string; istFavorit: boolean; favoritenReihenfolge?: number }) =>
+      artikelApi.update(v.id, {
+        istFavorit: v.istFavorit,
+        ...(v.favoritenReihenfolge !== undefined && { favoritenReihenfolge: v.favoritenReihenfolge }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['artikel'] }),
+  })
+
+  const hinzufuegen = (a: Artikel) => {
+    if (items.some(i => i.id === a.id)) return
+    const pos = items.length
+    setItems(prev => [...prev, { ...a, istFavorit: true, favoritenReihenfolge: pos }])
+    toggleFavorit.mutate({ id: a.id, istFavorit: true, favoritenReihenfolge: pos })
+  }
+
+  const entfernen = (id: string) => {
+    setItems(prev => prev.filter(i => i.id !== id))
+    toggleFavorit.mutate({ id, istFavorit: false })
+  }
 
   const handleDragEnd = (e: DragEndEvent) => {
     const { active, over } = e
@@ -344,50 +433,98 @@ function TabFavoriten({ alleArtikel }: { alleArtikel: Artikel[] }) {
     setDirty(true)
   }
 
-  if (items.length === 0) {
-    return (
-      <div className="rounded-lg border-2 border-dashed border-gray-200 p-12 text-center">
-        <p className="text-sm text-gray-400">Noch keine Favoriten markiert.</p>
-        <p className="mt-1 text-xs text-gray-300">
-          Aktiviere das Favoriten-Flag bei Artikeln in der Artikel-Verwaltung.
-        </p>
-      </div>
-    )
-  }
+  // Wählbare Artikel: aktiv und noch nicht Favorit, optional per Suche gefiltert
+  const verfuegbar = alleArtikel
+    .filter(a => a.aktiv && !items.some(i => i.id === a.id))
+    .filter(a => a.bezeichnung.toLowerCase().includes(suche.trim().toLowerCase()))
+    .sort((a, b) => a.bezeichnung.localeCompare(b.bezeichnung))
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">{items.length} Favoriten.</p>
-        {dirty && (
-          <Button
-            onClick={() => reihenfolge.mutate(items.map((a, i) => ({ id: a.id, favoritenReihenfolge: i })))}
-            loading={reihenfolge.isPending}>
-            Reihenfolge speichern
-          </Button>
+    <div className="space-y-6">
+      {/* Picker: Artikel zu Favoriten hinzufügen */}
+      <div className="space-y-2">
+        <h3 className="text-sm font-semibold text-gray-800">Artikel hinzufügen</h3>
+        <input
+          value={suche}
+          onChange={e => setSuche(e.target.value)}
+          placeholder="Artikel suchen…"
+          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+        />
+        {verfuegbar.length === 0 ? (
+          <p className="text-xs text-gray-400 py-2">
+            {suche.trim() ? 'Kein passender Artikel.' : 'Alle aktiven Artikel sind bereits Favoriten.'}
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto pr-1">
+            {verfuegbar.map(a => (
+              <button
+                key={a.id}
+                type="button"
+                onClick={() => hinzufuegen(a)}
+                className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs
+                           text-gray-700 hover:border-brand-400 hover:bg-brand-50 transition"
+              >
+                <span className="text-brand-500 font-bold">+</span>
+                {a.bezeichnung}
+                <span className="text-gray-400 tabular-nums">{preis(a.preisBruttoCent)}</span>
+              </button>
+            ))}
+          </div>
         )}
       </div>
 
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <SortableContext items={items.map(a => a.id)} strategy={verticalListSortingStrategy}>
-          <div className="space-y-2">
-            {items.map(a => (
-              <SortableItem key={a.id} id={a.id}>
-                {(handle) => (
-                  <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2.5 shadow-sm">
-                    {handle}
-                    <span className="text-amber-400">★</span>
-                    <span className="flex-1 text-sm font-medium text-gray-800">{a.bezeichnung}</span>
-                    <span className="text-xs text-gray-400 font-mono tabular-nums">
-                      € {(a.preisBruttoCent / 100).toFixed(2).replace('.', ',')}
-                    </span>
-                  </div>
-                )}
-              </SortableItem>
-            ))}
+      {/* Favoriten: Reihenfolge (Drag & Drop) + Entfernen */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-gray-800">
+            Favoriten <span className="font-normal text-gray-400">({items.length})</span>
+          </h3>
+          {dirty && (
+            <Button
+              onClick={() => reihenfolge.mutate(items.map((a, i) => ({ id: a.id, favoritenReihenfolge: i })))}
+              loading={reihenfolge.isPending}>
+              Reihenfolge speichern
+            </Button>
+          )}
+        </div>
+
+        {items.length === 0 ? (
+          <div className="rounded-lg border-2 border-dashed border-gray-200 p-8 text-center">
+            <p className="text-sm text-gray-400">Noch keine Favoriten.</p>
+            <p className="mt-1 text-xs text-gray-300">Oben Artikel auswählen, dann per Ziehen anordnen.</p>
           </div>
-        </SortableContext>
-      </DndContext>
+        ) : (
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={items.map(a => a.id)} strategy={verticalListSortingStrategy}>
+              <div className="space-y-2">
+                {items.map((a, i) => (
+                  <SortableItem key={a.id} id={a.id}
+                    onMoveUp={() => { setItems(prev => arrayMove(prev, i, i - 1)); setDirty(true) }}
+                    onMoveDown={() => { setItems(prev => arrayMove(prev, i, i + 1)); setDirty(true) }}
+                    istErster={i === 0} istLetzter={i === items.length - 1}>
+                    {(handle) => (
+                      <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2.5 shadow-sm">
+                        {handle}
+                        <span className="text-amber-400">★</span>
+                        <span className="flex-1 text-sm font-medium text-gray-800">{a.bezeichnung}</span>
+                        <span className="text-xs text-gray-400 font-mono tabular-nums">{preis(a.preisBruttoCent)}</span>
+                        <button
+                          type="button"
+                          onClick={() => entfernen(a.id)}
+                          title="Aus Favoriten entfernen"
+                          className="text-gray-300 hover:text-red-500 text-lg leading-none px-1"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    )}
+                  </SortableItem>
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
+        )}
+      </div>
     </div>
   )
 }

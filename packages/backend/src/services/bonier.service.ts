@@ -41,6 +41,9 @@ export async function bonierBestellung(
   input: BonierungInput,
   deps:  BonierServiceDeps,
 ): Promise<BonierungErgebnis> {
+  // Tisch-Label: leer = Direktverkauf an der Schank (ohne Tisch)
+  const tischLabel = input.tisch?.trim() || 'Direkt'
+
   // 1. Kasse laden
   const [kasse] = await deps.db
     .select()
@@ -167,7 +170,7 @@ export async function bonierBestellung(
       bonNummer,
       belegnummer,
       uhrzeit,
-      tisch:   input.tisch,
+      tisch:   tischLabel,
       ...(input.bereich && { bereich: input.bereich }),
       kellner: input.kellner,
       positionen,
@@ -197,7 +200,7 @@ export async function bonierBestellung(
       preisLabel:  '',
     }))
     try {
-      await druckeBonierbonDirekt(drucker.ip, drucker.port, input.tisch, input.kellner, zeilen)
+      await druckeBonierbonDirekt(drucker.ip, drucker.port, tischLabel, input.kellner, zeilen)
       druckerErgebnisse.push({
         druckerId:   drucker.id,
         name:        drucker.name,
@@ -278,7 +281,7 @@ export async function bonierBestellung(
         mandantId:  kasse.mandantId,
         bonNummer,
         station,
-        tisch:      input.tisch,
+        tisch:      tischLabel,
         ...(input.bereich ? { bereich: input.bereich } : {}),
         kellner:    input.kellner,
         positionen: positionen.map(p => ({
@@ -294,7 +297,7 @@ export async function bonierBestellung(
   emitKasseEvent(kasse.mandantId, {
     typ:       'bonierbon',
     bonNummer,
-    tisch:     input.tisch,
+    tisch:     tischLabel,
     kellner:   input.kellner,
     stationen: stationenErgebnisse,
   })

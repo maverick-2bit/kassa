@@ -399,8 +399,8 @@ export function KassePage() {
   const handleBonieren = () => {
     setFehler(null)
     if (korb.length === 0) { setFehler('Der Warenkorb ist leer.'); return }
-    if (!tisch.trim())     { setFehler('Tisch fehlt.'); return }
     if (!kellner.trim())   { setFehler('Kellner fehlt.'); return }
+    // Tisch ist optional: leer = Direktverkauf an der Schank (Bon-Label „Direkt")
 
     const artikelPositionen = korb.filter((p): p is ArtikelKorbPosition => p.typ === 'artikel')
     if (artikelPositionen.length === 0) {
@@ -410,7 +410,7 @@ export function KassePage() {
 
     bonierMutation.mutate({
       kasseId:    identity.kasseId,
-      tisch:      tisch.trim(),
+      ...(tisch.trim() && { tisch: tisch.trim() }),
       kellner:    kellner.trim(),
       positionen: artikelPositionen.map((p) => ({ artikelId: p.artikel.id, menge: p.menge })),
     })
@@ -528,6 +528,8 @@ export function KassePage() {
           <Input
             value={tisch}
             onChange={(e) => setTisch(e.target.value)}
+            placeholder="Schank"
+            title="Leer lassen für Direktverkauf an der Schank"
             className="w-20 text-center"
           />
         </label>
