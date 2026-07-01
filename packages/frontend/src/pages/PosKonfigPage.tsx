@@ -8,7 +8,7 @@
  *   4. Zahlungsarten — pro Kasse An/Aus
  */
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import {
   DndContext,
   closestCenter,
@@ -327,6 +327,18 @@ function TabFavoriten({ alleArtikel }: { alleArtikel: Artikel[] }) {
   )
   const [dirty, setDirty] = useState(false)
   const [suche, setSuche] = useState('')
+
+  // Externe Änderungen (neue/geänderte Artikel, anderswo gesetzte Favoriten)
+  // übernehmen, sobald die Artikelliste neu geladen wurde — außer während einer
+  // noch nicht gespeicherten Umsortierung.
+  useEffect(() => {
+    if (dirty) return
+    setItems(
+      alleArtikel
+        .filter(a => a.istFavorit && a.aktiv)
+        .sort((a, b) => a.favoritenReihenfolge - b.favoritenReihenfolge),
+    )
+  }, [alleArtikel, dirty])
 
   const preis = (c: number) => `€ ${(c / 100).toFixed(2).replace('.', ',')}`
 

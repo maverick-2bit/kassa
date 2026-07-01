@@ -15,7 +15,9 @@ offlineManager.init().catch(console.warn)
 
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { retry: false, refetchOnWindowFocus: false },
+    // refetchOnWindowFocus: neue Einträge (auch aus anderen Fenstern/Tabs)
+    // erscheinen automatisch, sobald man zum Fenster zurückkehrt — ohne Reload.
+    queries: { retry: false, refetchOnWindowFocus: true },
     mutations: { retry: false },
   },
 })
