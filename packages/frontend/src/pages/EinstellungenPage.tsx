@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { QRCodeSVG } from 'qrcode.react'
-import { ALLE_STATIONEN, STATION_LABELS, type Station, type ZvtConfig, type WeitereKasseInput } from '@kassa/shared'
-import { druckerApi, kdsApi, zvtApi, downloadDepExport, healthApi, monitoringApi, mandantApi, kasseApi, tischplanApi, dbBackupApi, belegApi, type DruckerConfig, type KdsConfig, type DbSicherungRow, type MonitoringStatus } from '../lib/api'
+import { ALLE_STATIONEN, STATION_LABELS, type Station, type ZvtConfig, type WeitereKasseInput, type PosKonfig } from '@kassa/shared'
+import { druckerApi, kdsApi, zvtApi, downloadDepExport, healthApi, monitoringApi, mandantApi, kasseApi, kategorieApi, posConfigApi, tischplanApi, dbBackupApi, belegApi, type DruckerConfig, type KdsConfig, type DbSicherungRow, type MonitoringStatus } from '../lib/api'
 import { formatAusfallDauer } from '../components/SeeStatusBanner'
 import { getKasseIdentity, setKasseIdentity } from '../lib/kasse'
 import { getAuth, hasModul, updateKasseBezeichnung, addKasse } from '../lib/auth'
@@ -20,6 +20,7 @@ export function EinstellungenPage() {
         <p className="mt-1 text-sm text-ink-muted">Drucker, Hardware-Anbindung, Belegtext und Tischplan</p>
       </header>
       <KassenVerwaltungSektion />
+      <WarengruppenVerteilungSektion />
       <KasseBezeichnungSektion />
       <RechnungslayoutSektion />
       <DruckerSektion />
@@ -203,6 +204,133 @@ function KassenVerwaltungSektion() {
           </div>
         )}
       </div>
+    </section>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Warengruppen-Verteilung (Matrix: Warengruppe × Kasse)
+// ---------------------------------------------------------------------------
+
+function WarengruppenVerteilungSektion() {
+  const qc = useQueryClient()
+  const kassenQuery     = useQuery({ queryKey: ['kassen-liste'], queryFn: kasseApi.liste })
+  const kategorienQuery = useQuery({ queryKey: ['kategorien'],   queryFn: () => kategorieApi.list(false) })
+
+  const kassen     = kassenQuery.data ?? []
+  const kategorien = kategorienQuery.data ?? []
+
+  // POS-Konfig je Kasse (enthält sichtbareKategorieIds)
+  const configQueries = useQueries({
+    queries: kassen.map(k => ({
+      queryKey: ['pos-config', k.id],
+      queryFn:  () => posConfigApi.get(k.id),
+    })),
+  })
+  const configByKasse = new Map<string, string[]>()
+  kassen.forEach((k, i) => {
+    const d = configQueries[i]?.data
+    if (d) configByKasse.set(k.id, d.sichtbareKategorieIds)
+  })
+
+  const speichern = useMutation({
+    mutationFn: ({ kasseId, ids }: { kasseId: string; ids: string[] }) =>
+      posConfigApi.update(kasseId, { sichtbareKategorieIds: ids }),
+    onSuccess: (_r, v) => qc.invalidateQueries({ queryKey: ['pos-config', v.kasseId] }),
+  })
+
+  function setzeAuswahl(kasseId: string, ids: string[]) {
+    qc.setQueryData<PosKonfig>(['pos-config', kasseId], (old) =>
+      old ? { ...old, sichtbareKategorieIds: ids } : old)
+    speichern.mutate({ kasseId, ids })
+  }
+
+  function toggle(kasseId: string, catId: string) {
+    const set = new Set(configByKasse.get(kasseId) ?? [])
+    if (set.has(catId)) set.delete(catId); else set.add(catId)
+    setzeAuswahl(kasseId, [...set])
+  }
+
+  const laden = kassenQuery.isLoading || kategorienQuery.isLoading
+
+  return (
+    <section className="rounded-lg bg-panel shadow-sm border border-line p-6 space-y-4">
+      <div>
+        <h2 className="text-base font-semibold text-ink">Warengruppen-Verteilung</h2>
+        <p className="text-sm text-ink-muted mt-0.5">
+          Lege fest, welche Warengruppen an welcher Kasse erscheinen — z. B. eine Kasse „Getränke",
+          eine Kasse „Speisen". Ist bei einer Kasse <strong>keine</strong> Gruppe angehakt, werden dort
+          (wie bisher) <strong>alle</strong> Warengruppen angezeigt.
+        </p>
+      </div>
+
+      {laden ? (
+        <p className="text-sm text-ink-muted">Wird geladen…</p>
+      ) : kategorien.length === 0 ? (
+        <p className="text-sm text-ink-subtle">Noch keine Warengruppen angelegt.</p>
+      ) : kassen.length === 0 ? (
+        <p className="text-sm text-ink-subtle">Keine Kassen vorhanden.</p>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-line">
+          <table className="w-full text-sm">
+            <thead className="bg-panel-2 text-ink-muted">
+              <tr>
+                <th className="px-3 py-2 text-left font-medium sticky left-0 bg-panel-2 z-10">Warengruppe</th>
+                {kassen.map(k => {
+                  const leer = (configByKasse.get(k.id)?.length ?? 0) === 0
+                  return (
+                    <th key={k.id} className="px-3 py-2 text-center font-medium min-w-[7rem]">
+                      <div className="truncate">{k.bezeichnung || k.kassenId}</div>
+                      <div className={`text-[10px] font-normal mt-0.5 ${leer ? 'text-brand-700' : 'text-ink-subtle'}`}>
+                        {leer ? 'alle sichtbar' : `${configByKasse.get(k.id)?.length} gewählt`}
+                      </div>
+                    </th>
+                  )
+                })}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {kategorien.map(kat => (
+                <tr key={kat.id} className="hover:bg-panel-2/60">
+                  <td className="px-3 py-2 text-ink font-medium sticky left-0 bg-panel z-10">{kat.name}</td>
+                  {kassen.map(k => {
+                    const aktiv = (configByKasse.get(k.id) ?? []).includes(kat.id)
+                    return (
+                      <td key={k.id} className="px-3 py-2 text-center">
+                        <input
+                          type="checkbox"
+                          checked={aktiv}
+                          onChange={() => toggle(k.id, kat.id)}
+                          className="h-4 w-4 rounded border-line-strong text-brand-600 focus:ring-brand-500"
+                        />
+                      </td>
+                    )
+                  })}
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-t border-line">
+                <td className="px-3 py-2 text-xs text-ink-subtle sticky left-0 bg-panel z-10">Zurücksetzen</td>
+                {kassen.map(k => {
+                  const leer = (configByKasse.get(k.id)?.length ?? 0) === 0
+                  return (
+                    <td key={k.id} className="px-3 py-2 text-center">
+                      <button
+                        type="button"
+                        disabled={leer}
+                        onClick={() => setzeAuswahl(k.id, [])}
+                        className="text-[10px] px-1.5 py-0.5 rounded border border-line-strong text-ink-muted hover:bg-panel-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                        title="Auswahl leeren → alle Warengruppen sichtbar"
+                      >alle sichtbar</button>
+                    </td>
+                  )
+                })}
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
     </section>
   )
 }
