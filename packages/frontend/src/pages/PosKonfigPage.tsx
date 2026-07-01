@@ -13,6 +13,7 @@ import {
   DndContext,
   closestCenter,
   PointerSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -65,22 +66,26 @@ function SortableItem({
     zIndex:  isDragging ? 10 : undefined,
   }
 
-  const handle = (
-    <button
-      {...attributes}
-      {...listeners}
-      className="cursor-grab active:cursor-grabbing p-1.5 text-gray-300 hover:text-gray-500 touch-none"
-      aria-label="Verschieben"
-    >
+  // Griff nur als visueller Hinweis — gezogen wird die GANZE Zeile (siehe wrapper).
+  const grip = (
+    <span aria-hidden className="p-1.5 text-gray-300 select-none">
       <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
         <path d="M10 3a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3ZM10 8.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3ZM11.5 15.5a1.5 1.5 0 1 0-3 0 1.5 1.5 0 0 0 3 0ZM4.5 3a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3ZM4.5 8.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3ZM6 15.5a1.5 1.5 0 1 0-3 0 1.5 1.5 0 0 0 3 0ZM15.5 3a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3ZM15.5 8.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3ZM17 15.5a1.5 1.5 0 1 0-3 0 1.5 1.5 0 0 0 3 0Z" />
       </svg>
-    </button>
+    </span>
   )
 
+  // Die ganze Zeile ist der Drag-Handle (nicht nur das Icon). Dank Aktivierungs-
+  // schwelle an den Sensoren bleiben Klicks (z. B. der Entfernen-Button) erhalten.
   return (
-    <div ref={setNodeRef} style={style}>
-      {children(handle)}
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      className="cursor-grab active:cursor-grabbing touch-none"
+    >
+      {children(grip)}
     </div>
   )
 }
@@ -115,7 +120,10 @@ function TabWarengruppen({
     if (posQuery.data) setSichtbar(new Set(posQuery.data.sichtbareKategorieIds))
   })
 
-  const sensors = useSensors(useSensor(PointerSensor))
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor,   { activationConstraint: { delay: 200, tolerance: 8 } }),
+  )
 
   const reihenfolge = useMutation({
     mutationFn: (eintraege: { id: string; reihenfolge: number }[]) =>
@@ -212,7 +220,10 @@ function TabWarengruppen({
 function TabArtikel({ kategorien, alleArtikel }: { kategorien: Kategorie[]; alleArtikel: Artikel[] }) {
   const qc = useQueryClient()
   const [gewaehlteKatId, setGewaehlteKatId] = useState(kategorien[0]?.id ?? '')
-  const sensors = useSensors(useSensor(PointerSensor))
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor,   { activationConstraint: { delay: 200, tolerance: 8 } }),
+  )
 
   const artikelDerKat = alleArtikel
     .filter(a => a.kategorieId === gewaehlteKatId)
@@ -318,7 +329,10 @@ function TabArtikel({ kategorien, alleArtikel }: { kategorien: Kategorie[]; alle
 
 function TabFavoriten({ alleArtikel }: { alleArtikel: Artikel[] }) {
   const qc = useQueryClient()
-  const sensors = useSensors(useSensor(PointerSensor))
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor,   { activationConstraint: { delay: 200, tolerance: 8 } }),
+  )
 
   const [items, setItems] = useState(() =>
     alleArtikel
