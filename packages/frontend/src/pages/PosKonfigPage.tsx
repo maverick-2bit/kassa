@@ -53,9 +53,17 @@ const ZAHLUNGSARTEN = [
 function SortableItem({
   id,
   children,
+  onMoveUp,
+  onMoveDown,
+  istErster,
+  istLetzter,
 }: {
   id: string
-  children: (handle: React.ReactNode) => React.ReactNode
+  children:   (handle: React.ReactNode) => React.ReactNode
+  onMoveUp?:   () => void
+  onMoveDown?: () => void
+  istErster?:  boolean
+  istLetzter?: boolean
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
 
@@ -66,17 +74,33 @@ function SortableItem({
     zIndex:  isDragging ? 10 : undefined,
   }
 
-  // Griff nur als visueller Hinweis — gezogen wird die GANZE Zeile (siehe wrapper).
-  const grip = (
-    <span aria-hidden className="p-1.5 text-gray-300 select-none">
-      <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-        <path d="M10 3a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3ZM10 8.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3ZM11.5 15.5a1.5 1.5 0 1 0-3 0 1.5 1.5 0 0 0 3 0ZM4.5 3a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3ZM4.5 8.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3ZM6 15.5a1.5 1.5 0 1 0-3 0 1.5 1.5 0 0 0 3 0ZM15.5 3a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3ZM15.5 8.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3ZM17 15.5a1.5 1.5 0 1 0-3 0 1.5 1.5 0 0 0 3 0Z" />
-      </svg>
-    </span>
+  // Bedien-Element: eindeutige ↑/↓-Tasten (immer sichtbar, auch Touch) +
+  // Griff-Symbol als Hinweis, dass man die ganze Zeile auch ziehen kann.
+  const pfeilKlasse = 'flex h-5 w-6 items-center justify-center rounded text-gray-500 hover:text-brand-600 hover:bg-gray-100 disabled:opacity-25 disabled:hover:bg-transparent disabled:hover:text-gray-500'
+  const handle = (
+    <div className="flex items-center gap-0.5">
+      {(onMoveUp || onMoveDown) && (
+        <div className="flex flex-col">
+          {/* onPointerDown stoppen, damit der Tastendruck keinen Drag startet */}
+          <button type="button" aria-label="Nach oben" disabled={istErster}
+            onPointerDown={e => e.stopPropagation()} onClick={onMoveUp} className={pfeilKlasse}>
+            <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 5l5 7H5l5-7Z" /></svg>
+          </button>
+          <button type="button" aria-label="Nach unten" disabled={istLetzter}
+            onPointerDown={e => e.stopPropagation()} onClick={onMoveDown} className={pfeilKlasse}>
+            <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 15l-5-7h10l-5 7Z" /></svg>
+          </button>
+        </div>
+      )}
+      <span aria-hidden className="text-gray-300 select-none">
+        <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+          <path d="M7 4a1.3 1.3 0 1 1 0 2.6A1.3 1.3 0 0 1 7 4Zm6 0a1.3 1.3 0 1 1 0 2.6A1.3 1.3 0 0 1 13 4ZM7 8.7a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6Zm6 0a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6ZM7 13.4a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6Zm6 0a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6Z" />
+        </svg>
+      </span>
+    </div>
   )
 
-  // Die ganze Zeile ist der Drag-Handle (nicht nur das Icon). Dank Aktivierungs-
-  // schwelle an den Sensoren bleiben Klicks (z. B. der Entfernen-Button) erhalten.
+  // Ganze Zeile ist zusätzlich der Drag-Handle (Aktivierungsschwelle an den Sensoren).
   return (
     <div
       ref={setNodeRef}
@@ -85,7 +109,7 @@ function SortableItem({
       {...listeners}
       className="cursor-grab active:cursor-grabbing touch-none"
     >
-      {children(grip)}
+      {children(handle)}
     </div>
   )
 }
@@ -177,8 +201,11 @@ function TabWarengruppen({
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={items.map(k => k.id)} strategy={verticalListSortingStrategy}>
           <div className="space-y-2">
-            {items.map(k => (
-              <SortableItem key={k.id} id={k.id}>
+            {items.map((k, i) => (
+              <SortableItem key={k.id} id={k.id}
+                onMoveUp={() => { setItems(prev => arrayMove(prev, i, i - 1)); setDirty(true) }}
+                onMoveDown={() => { setItems(prev => arrayMove(prev, i, i + 1)); setDirty(true) }}
+                istErster={i === 0} istLetzter={i === items.length - 1}>
                 {(handle) => (
                   <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2.5 shadow-sm">
                     {handle}
@@ -300,8 +327,11 @@ function TabArtikel({ kategorien, alleArtikel }: { kategorien: Kategorie[]; alle
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={items.map(a => a.id)} strategy={verticalListSortingStrategy}>
           <div className="space-y-2">
-            {items.map(a => (
-              <SortableItem key={a.id} id={a.id}>
+            {items.map((a, i) => (
+              <SortableItem key={a.id} id={a.id}
+                onMoveUp={() => { setItems(prev => arrayMove(prev, i, i - 1)); setDirty(true) }}
+                onMoveDown={() => { setItems(prev => arrayMove(prev, i, i + 1)); setDirty(true) }}
+                istErster={i === 0} istLetzter={i === items.length - 1}>
                 {(handle) => (
                   <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2.5 shadow-sm">
                     {handle}
@@ -467,8 +497,11 @@ function TabFavoriten({ alleArtikel }: { alleArtikel: Artikel[] }) {
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext items={items.map(a => a.id)} strategy={verticalListSortingStrategy}>
               <div className="space-y-2">
-                {items.map(a => (
-                  <SortableItem key={a.id} id={a.id}>
+                {items.map((a, i) => (
+                  <SortableItem key={a.id} id={a.id}
+                    onMoveUp={() => { setItems(prev => arrayMove(prev, i, i - 1)); setDirty(true) }}
+                    onMoveDown={() => { setItems(prev => arrayMove(prev, i, i + 1)); setDirty(true) }}
+                    istErster={i === 0} istLetzter={i === items.length - 1}>
                     {(handle) => (
                       <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2.5 shadow-sm">
                         {handle}
