@@ -243,7 +243,7 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
         </p>
       ) : (
         <div className="flex-1 min-h-0 overflow-y-auto pr-0.5">
-          <div className="grid grid-cols-3 gap-2 pb-1">
+          <div className="grid grid-cols-4 gap-1.5 pb-1">
             {gefilterteArtikel.map((a) => {
               const farbe         = a.kategorieId ? farbeProKategorie.get(a.kategorieId) : undefined
               const gruppen       = artikelGruppen?.get(a.id) ?? []
@@ -302,12 +302,12 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
                       />
                     </div>
                   )}
-                  <div className="p-3">
-                    <p className="text-sm font-medium text-ink line-clamp-2 min-h-[2.5rem]">
+                  <div className="p-2">
+                    <p className="text-xs font-medium text-ink line-clamp-2 min-h-[2rem] leading-tight">
                       {a.bezeichnung}
                     </p>
-                    <div className="mt-1 flex items-center justify-between gap-1.5 flex-wrap">
-                      <p className="text-sm font-bold text-brand-600">
+                    <div className="mt-1 flex items-center justify-between gap-1 flex-wrap">
+                      <p className="text-xs font-semibold text-brand-600">
                         {formatPreis(a.preisBruttoCent)}
                       </p>
                       <div className="flex items-center gap-1.5">
