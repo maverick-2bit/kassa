@@ -326,12 +326,37 @@ function TabFavoriten({ alleArtikel }: { alleArtikel: Artikel[] }) {
       .sort((a, b) => a.favoritenReihenfolge - b.favoritenReihenfolge)
   )
   const [dirty, setDirty] = useState(false)
+  const [suche, setSuche] = useState('')
+
+  const preis = (c: number) => `€ ${(c / 100).toFixed(2).replace('.', ',')}`
 
   const reihenfolge = useMutation({
     mutationFn: (eintraege: { id: string; favoritenReihenfolge: number }[]) =>
       artikelApi.updateFavoritenReihenfolge(eintraege),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['artikel'] }); setDirty(false) },
   })
+
+  // Favorit setzen/entfernen (istFavorit-Flag am Artikel)
+  const toggleFavorit = useMutation({
+    mutationFn: (v: { id: string; istFavorit: boolean; favoritenReihenfolge?: number }) =>
+      artikelApi.update(v.id, {
+        istFavorit: v.istFavorit,
+        ...(v.favoritenReihenfolge !== undefined && { favoritenReihenfolge: v.favoritenReihenfolge }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['artikel'] }),
+  })
+
+  const hinzufuegen = (a: Artikel) => {
+    if (items.some(i => i.id === a.id)) return
+    const pos = items.length
+    setItems(prev => [...prev, { ...a, istFavorit: true, favoritenReihenfolge: pos }])
+    toggleFavorit.mutate({ id: a.id, istFavorit: true, favoritenReihenfolge: pos })
+  }
+
+  const entfernen = (id: string) => {
+    setItems(prev => prev.filter(i => i.id !== id))
+    toggleFavorit.mutate({ id, istFavorit: false })
+  }
 
   const handleDragEnd = (e: DragEndEvent) => {
     const { active, over } = e
@@ -344,50 +369,95 @@ function TabFavoriten({ alleArtikel }: { alleArtikel: Artikel[] }) {
     setDirty(true)
   }
 
-  if (items.length === 0) {
-    return (
-      <div className="rounded-lg border-2 border-dashed border-gray-200 p-12 text-center">
-        <p className="text-sm text-gray-400">Noch keine Favoriten markiert.</p>
-        <p className="mt-1 text-xs text-gray-300">
-          Aktiviere das Favoriten-Flag bei Artikeln in der Artikel-Verwaltung.
-        </p>
-      </div>
-    )
-  }
+  // Wählbare Artikel: aktiv und noch nicht Favorit, optional per Suche gefiltert
+  const verfuegbar = alleArtikel
+    .filter(a => a.aktiv && !items.some(i => i.id === a.id))
+    .filter(a => a.bezeichnung.toLowerCase().includes(suche.trim().toLowerCase()))
+    .sort((a, b) => a.bezeichnung.localeCompare(b.bezeichnung))
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">{items.length} Favoriten.</p>
-        {dirty && (
-          <Button
-            onClick={() => reihenfolge.mutate(items.map((a, i) => ({ id: a.id, favoritenReihenfolge: i })))}
-            loading={reihenfolge.isPending}>
-            Reihenfolge speichern
-          </Button>
+    <div className="space-y-6">
+      {/* Picker: Artikel zu Favoriten hinzufügen */}
+      <div className="space-y-2">
+        <h3 className="text-sm font-semibold text-gray-800">Artikel hinzufügen</h3>
+        <input
+          value={suche}
+          onChange={e => setSuche(e.target.value)}
+          placeholder="Artikel suchen…"
+          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+        />
+        {verfuegbar.length === 0 ? (
+          <p className="text-xs text-gray-400 py-2">
+            {suche.trim() ? 'Kein passender Artikel.' : 'Alle aktiven Artikel sind bereits Favoriten.'}
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto pr-1">
+            {verfuegbar.map(a => (
+              <button
+                key={a.id}
+                type="button"
+                onClick={() => hinzufuegen(a)}
+                className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs
+                           text-gray-700 hover:border-brand-400 hover:bg-brand-50 transition"
+              >
+                <span className="text-brand-500 font-bold">+</span>
+                {a.bezeichnung}
+                <span className="text-gray-400 tabular-nums">{preis(a.preisBruttoCent)}</span>
+              </button>
+            ))}
+          </div>
         )}
       </div>
 
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <SortableContext items={items.map(a => a.id)} strategy={verticalListSortingStrategy}>
-          <div className="space-y-2">
-            {items.map(a => (
-              <SortableItem key={a.id} id={a.id}>
-                {(handle) => (
-                  <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2.5 shadow-sm">
-                    {handle}
-                    <span className="text-amber-400">★</span>
-                    <span className="flex-1 text-sm font-medium text-gray-800">{a.bezeichnung}</span>
-                    <span className="text-xs text-gray-400 font-mono tabular-nums">
-                      € {(a.preisBruttoCent / 100).toFixed(2).replace('.', ',')}
-                    </span>
-                  </div>
-                )}
-              </SortableItem>
-            ))}
+      {/* Favoriten: Reihenfolge (Drag & Drop) + Entfernen */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-gray-800">
+            Favoriten <span className="font-normal text-gray-400">({items.length})</span>
+          </h3>
+          {dirty && (
+            <Button
+              onClick={() => reihenfolge.mutate(items.map((a, i) => ({ id: a.id, favoritenReihenfolge: i })))}
+              loading={reihenfolge.isPending}>
+              Reihenfolge speichern
+            </Button>
+          )}
+        </div>
+
+        {items.length === 0 ? (
+          <div className="rounded-lg border-2 border-dashed border-gray-200 p-8 text-center">
+            <p className="text-sm text-gray-400">Noch keine Favoriten.</p>
+            <p className="mt-1 text-xs text-gray-300">Oben Artikel auswählen, dann per Ziehen anordnen.</p>
           </div>
-        </SortableContext>
-      </DndContext>
+        ) : (
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={items.map(a => a.id)} strategy={verticalListSortingStrategy}>
+              <div className="space-y-2">
+                {items.map(a => (
+                  <SortableItem key={a.id} id={a.id}>
+                    {(handle) => (
+                      <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2.5 shadow-sm">
+                        {handle}
+                        <span className="text-amber-400">★</span>
+                        <span className="flex-1 text-sm font-medium text-gray-800">{a.bezeichnung}</span>
+                        <span className="text-xs text-gray-400 font-mono tabular-nums">{preis(a.preisBruttoCent)}</span>
+                        <button
+                          type="button"
+                          onClick={() => entfernen(a.id)}
+                          title="Aus Favoriten entfernen"
+                          className="text-gray-300 hover:text-red-500 text-lg leading-none px-1"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    )}
+                  </SortableItem>
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
+        )}
+      </div>
     </div>
   )
 }
