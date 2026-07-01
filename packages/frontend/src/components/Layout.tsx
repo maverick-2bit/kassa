@@ -1,5 +1,6 @@
-import { Suspense } from 'react'
+import { Suspense, useState } from 'react'
 import { NavLink, Outlet, useNavigate, useLocation, Link } from 'react-router-dom'
+import { getTheme, toggleTheme, type ThemeMode } from '../lib/theme'
 import { useQueries } from '@tanstack/react-query'
 import { clearAuth, getAuth, hasBerechtigung, hasModul } from '../lib/auth'
 import { kasseApi } from '../lib/api'
@@ -23,15 +24,15 @@ export function Layout() {
         <ErrorBoundary resetKey={location.pathname}>
           <Suspense fallback={
             <div className="flex items-center justify-center py-20">
-              <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-300 border-t-gray-700" />
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-line border-t-ink-muted" />
             </div>
           }>
             <Outlet />
           </Suspense>
         </ErrorBoundary>
       </main>
-      <footer className="border-t border-gray-100 py-2 text-center">
-        <span className="text-[11px] text-gray-400 select-none">
+      <footer className="border-t border-line py-2 text-center">
+        <span className="text-[11px] text-ink-subtle select-none">
           Kassa v{__APP_VERSION__}
         </span>
       </footer>
@@ -51,15 +52,15 @@ function Header() {
   }
 
   return (
-    <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
+    <header className="bg-header text-white border-b border-black/20 sticky top-0 z-10">
       <div className="mx-auto max-w-6xl px-4 py-3 flex items-center gap-6">
         <div className="flex items-center gap-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-500 text-white">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/15 text-white">
             <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path strokeLinecap="round" strokeLinejoin="round" d="M3 3h18v4H3zM3 11h18v10H3zM7 15h2M7 18h2"/>
             </svg>
           </span>
-          <span className="font-semibold text-gray-900">Kassa</span>
+          <span className="font-semibold text-white">Kassa</span>
         </div>
         <nav className="flex gap-1 flex-1">
           {hasBerechtigung('belege.lesen')                                && <NavItem to="/dashboard">Dashboard</NavItem>}
@@ -98,17 +99,18 @@ function Header() {
         {auth && (
           <div className="flex items-center gap-3">
             <JahresbelegHeaderChip />
-            <span className="hidden sm:inline text-[10px] font-mono text-gray-400 select-none bg-gray-100 px-1.5 py-0.5 rounded">
+            <ThemeToggle />
+            <span className="hidden sm:inline text-[10px] font-mono text-white/50 select-none bg-white/10 px-1.5 py-0.5 rounded">
               v{__APP_VERSION__}
             </span>
             <div className="text-right text-xs">
-              <p className="font-medium text-gray-900">{auth.user.name}</p>
-              <p className="text-gray-500">{auth.mandant.firmenname}</p>
+              <p className="font-medium text-white">{auth.user.name}</p>
+              <p className="text-white/60">{auth.mandant.firmenname}</p>
             </div>
             <button
               type="button"
               onClick={logout}
-              className="text-xs text-gray-500 hover:text-red-600 px-2 py-1 rounded hover:bg-gray-100"
+              className="text-xs text-white/70 hover:text-white px-2 py-1 rounded hover:bg-white/10"
               title="Abmelden"
             >
               Abmelden
@@ -176,12 +178,37 @@ function NavItem({ to, children }: { to: string; children: string }) {
       className={({ isActive }) =>
         `px-3 py-1.5 text-sm font-medium rounded-md transition ${
           isActive
-            ? 'bg-brand-50 text-brand-700'
-            : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+            ? 'bg-white/20 text-white'
+            : 'text-white/70 hover:text-white hover:bg-white/10'
         }`
       }
     >
       {children}
     </NavLink>
+  )
+}
+
+/** Hell/Dunkel-Umschalter für die Kopfleiste. */
+function ThemeToggle() {
+  const [mode, setMode] = useState<ThemeMode>(() => getTheme())
+  return (
+    <button
+      type="button"
+      onClick={() => setMode(toggleTheme())}
+      title={mode === 'dark' ? 'Zu hellem Modus wechseln' : 'Zu dunklem Modus wechseln'}
+      aria-label="Farbschema umschalten"
+      className="flex h-7 w-7 items-center justify-center rounded-md text-white/70 hover:text-white hover:bg-white/10 transition"
+    >
+      {mode === 'dark' ? (
+        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="12" cy="12" r="4" />
+          <path strokeLinecap="round" d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+        </svg>
+      ) : (
+        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z" />
+        </svg>
+      )}
+    </button>
   )
 }

@@ -1,13 +1,75 @@
 @import "tailwindcss";
 
+/* Dark Mode wird über die Klasse `dark` am <html>-Element gesteuert. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ---------------------------------------------------------------------------
+ * Semantische Farbtokens (Asello-Stil). Die konkreten Werte liegen in :root
+ * bzw. .dark weiter unten und werden hier nur als Tailwind-Farben registriert,
+ * damit Utilities wie bg-surface, text-ink, border-line automatisch mit dem
+ * Modus umschalten.
+ * ------------------------------------------------------------------------- */
 @theme {
+  --color-surface:    var(--surface);      /* Seitenhintergrund */
+  --color-panel:      var(--panel);        /* Karten / Panels */
+  --color-panel-2:    var(--panel-2);      /* dezent erhöht / Hover */
+  --color-ink:        var(--ink);          /* Haupttext */
+  --color-ink-muted:  var(--ink-muted);    /* Sekundärtext */
+  --color-ink-subtle: var(--ink-subtle);   /* Hinweise / Platzhalter */
+  --color-line:       var(--line);         /* Standard-Rahmen */
+  --color-line-strong:var(--line-strong);  /* betonter Rahmen */
+  --color-header:     var(--header);       /* dunkelblaue Kopfleiste */
+
+  /* Marken-/Akzentblau */
   --color-brand-50:  #eff6ff;
   --color-brand-100: #dbeafe;
-  --color-brand-500: #0072bb;
-  --color-brand-600: #005a96;
-  --color-brand-700: #004571;
+  --color-brand-500: var(--brand-500);
+  --color-brand-600: var(--brand-600);
+  --color-brand-700: var(--brand-700);
 
-  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* Kategorie-Akzente (Asello-Palette) — für farbcodierte Artikel/Badges */
+  --color-cat-blue:  #0072bb;
+  --color-cat-green: #60aa30;
+  --color-cat-amber: #f0a30a;
+  --color-cat-red:   #e51400;
+  --color-cat-teal:  #31708f;
+  --color-cat-brown: #8a6d3b;
+
+  --font-sans: "Open Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+/* Helles Thema (Standard) */
+:root {
+  --surface:    #f4f5f7;
+  --panel:      #ffffff;
+  --panel-2:    #eef1f4;
+  --ink:        #1a2027;
+  --ink-muted:  #5f6b76;
+  --ink-subtle: #8a95a1;
+  --line:       #e2e6ea;
+  --line-strong:#cdd3da;
+  --header:     #003455;
+  --brand-500:  #0072bb;
+  --brand-600:  #005a96;
+  --brand-700:  #004571;
+  color-scheme: light;
+}
+
+/* Dunkles Thema */
+.dark {
+  --surface:    #0e141b;
+  --panel:      #18212b;
+  --panel-2:    #202b37;
+  --ink:        #e6edf3;
+  --ink-muted:  #9aa7b3;
+  --ink-subtle: #6b7783;
+  --line:       #263442;
+  --line-strong:#35485a;
+  --header:     #0b1a26;
+  --brand-500:  #2e90d6;
+  --brand-600:  #4aa3e0;
+  --brand-700:  #6cb6e8;
+  color-scheme: dark;
 }
 
 @keyframes slide-in {
@@ -35,7 +97,7 @@ html, body, #root {
 body {
   margin: 0;
   font-family: var(--font-sans);
-  background: var(--color-gray-50);
-  color: var(--color-gray-900);
+  background: var(--surface);
+  color: var(--ink);
   -webkit-font-smoothing: antialiased;
 }
