@@ -188,4 +188,54 @@ test('Rabatt + Modifikator: Aufschlag und 10%-Rabatt fließen korrekt in den sig
   await expect(page.getByText(/Beleg #\d+ erstellt/)).toBeVisible({ timeout: 20_000 })
 })
 
+/**
+ * SEE-Ausfall-Bedienung: über die Einstellungen einen Ausfall melden → Warn-
+ * banner erscheint app-weit → über die Einstellungen wieder in Betrieb nehmen
+ * (signierter Sammelbeleg) → Banner verschwindet, Status „In Betrieb".
+ */
+test('SEE-Ausfall: melden zeigt Warnbanner, Wiederinbetriebnahme räumt ihn', async ({ page, request }) => {
+  const login = await (await request.post('/api/auth/login', {
+    data: { email: ADMIN_EMAIL, passwort: ADMIN_PASSWORT },
+  })).json()
+  const token     = login.token as string
+  const mandantId = login.mandant.id as string
+  const kasseId   = login.kassen[0].id as string
+
+  await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
+    localStorage.setItem('kassa:token', d.token)
+    localStorage.setItem('kassa:auth', d.authJson)
+    localStorage.setItem('kassa:mandantId', d.mandantId)
+    localStorage.setItem('kassa:kasseId', d.kasseId)
+  }, {
+    token,
+    authJson: JSON.stringify({ user: login.user, mandant: login.mandant, kassen: login.kassen }),
+    mandantId,
+    kasseId,
+  })
+
+  // Bestätigungsdialoge (confirm) automatisch annehmen
+  page.on('dialog', (d) => d.accept())
+
+  await page.goto('/einstellungen')
+
+  // SEE-Sektion: Ausgangszustand „In Betrieb"
+  await expect(page.getByRole('heading', { name: 'Signatureinrichtung (SEE)' })).toBeVisible()
+
+  // Die SEE-Einstellungs-Sektion (Banner trägt dieselben Button-Labels → scopen)
+  const seeSektion = page.locator('section', {
+    has: page.getByRole('heading', { name: 'Signatureinrichtung (SEE)' }),
+  })
+
+  // Ausfall melden → Warnbanner erscheint app-weit
+  await seeSektion.getByRole('button', { name: 'SEE-Ausfall melden' }).click()
+  await expect(page.getByTestId('see-banner')).toBeVisible({ timeout: 10_000 })
+
+  // Über die Sektion wieder in Betrieb nehmen → signierter Sammelbeleg
+  await seeSektion.getByRole('button', { name: 'Wieder in Betrieb nehmen' }).click()
+  await expect(page.getByText(/Sammelbeleg #\d+ signiert/)).toBeVisible({ timeout: 15_000 })
+
+  // Banner ist wieder weg
+  await expect(page.getByTestId('see-banner')).toHaveCount(0)
+})
+
 })

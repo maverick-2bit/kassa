@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { QRCodeSVG } from 'qrcode.react'
 import { ALLE_STATIONEN, STATION_LABELS, type Station, type ZvtConfig } from '@kassa/shared'
-import { druckerApi, kdsApi, zvtApi, downloadDepExport, healthApi, monitoringApi, mandantApi, kasseApi, tischplanApi, dbBackupApi, type DruckerConfig, type KdsConfig, type DbSicherungRow, type MonitoringStatus } from '../lib/api'
+import { druckerApi, kdsApi, zvtApi, downloadDepExport, healthApi, monitoringApi, mandantApi, kasseApi, tischplanApi, dbBackupApi, belegApi, type DruckerConfig, type KdsConfig, type DbSicherungRow, type MonitoringStatus } from '../lib/api'
+import { formatAusfallDauer } from '../components/SeeStatusBanner'
 import { getKasseIdentity } from '../lib/kasse'
 import { getAuth, hasModul, updateKasseBezeichnung } from '../lib/auth'
 import { Field } from '../components/ui/Field'
@@ -24,6 +25,7 @@ export function EinstellungenPage() {
       <KdsSektion />
       <ZvtSektion />
       <RksvExportSektion />
+      <SeeAusfallSektion />
       {hasModul('gastro') && <TischplanSektion />}
       <GastQrCodeSektion />
       <DbBackupSektion />
@@ -426,6 +428,102 @@ function RksvExportSektion() {
         <Button onClick={() => exportieren('dep131')} variant="secondary">
           DEP131 exportieren
         </Button>
+      </div>
+
+      {meldung && (
+        <p className={`mt-3 text-sm ${meldung.typ === 'ok' ? 'text-green-700' : 'text-red-600'}`}>
+          {meldung.text}
+        </p>
+      )}
+    </section>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// SEE-Ausfall (Signatureinrichtung)
+// ---------------------------------------------------------------------------
+
+function SeeAusfallSektion() {
+  const identity    = getKasseIdentity()!
+  const queryClient = useQueryClient()
+  const [meldung, setMeldung] = useState<{ typ: 'ok' | 'fehler'; text: string } | null>(null)
+
+  const statusQuery = useQuery({
+    queryKey: ['see-status', identity.kasseId],
+    queryFn:  () => belegApi.seeStatus(identity.kasseId),
+    refetchInterval: 30_000,
+  })
+  const status = statusQuery.data
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['see-status', identity.kasseId] })
+
+  const melden = useMutation({
+    mutationFn: () => belegApi.seeAusfallMelden(identity.kasseId),
+    onSuccess: () => { invalidate(); setMeldung({ typ: 'ok', text: 'SEE-Ausfall gemeldet — neue Belege tragen den Ausfallmarker.' }) },
+    onError: (err) => setMeldung({ typ: 'fehler', text: err instanceof Error ? err.message : String(err) }),
+  })
+
+  const wiederherstellen = useMutation({
+    mutationFn: () => belegApi.seeWiederherstellen(identity.kasseId),
+    onSuccess: (res) => {
+      invalidate()
+      setMeldung({ typ: 'ok', text: `Wieder in Betrieb. Sammelbeleg #${res.sammelbeleg.belegNummer} signiert.` })
+    },
+    onError: (err) => setMeldung({ typ: 'fehler', text: err instanceof Error ? err.message : String(err) }),
+  })
+
+  const ausgefallen = status?.ausgefallen ?? false
+  const dauer = status?.dauerMinuten != null ? formatAusfallDauer(status.dauerMinuten) : null
+
+  return (
+    <section className="rounded-lg border border-gray-200 bg-white p-5">
+      <h2 className="text-base font-semibold text-gray-900 mb-1">Signatureinrichtung (SEE)</h2>
+      <p className="text-sm text-gray-500 mb-4">
+        Fällt die Signatureinrichtung aus, werden Belege weiter erstellt, aber mit dem RKSV-Marker
+        „Sicherheitseinrichtung ausgefallen" statt einer Signatur. Bei Wiederinbetriebnahme wird ein
+        signierter Sammelbeleg erstellt.
+      </p>
+
+      <div className={`rounded-md border p-3 text-sm mb-4 ${
+        ausgefallen ? 'border-red-200 bg-red-50 text-red-700' : 'border-green-200 bg-green-50 text-green-700'
+      }`}>
+        {ausgefallen ? (
+          <>
+            <strong>Ausgefallen</strong>{dauer && <> seit {dauer}</>}. Belege werden nicht signiert.
+            {status?.fonMeldungNoetig && <> Ausfall &gt; 48 h — <strong>FinanzOnline-Meldung erforderlich</strong>.</>}
+          </>
+        ) : (
+          <><strong>In Betrieb</strong> — Belege werden signiert.</>
+        )}
+      </div>
+
+      <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-200">
+        {!ausgefallen ? (
+          <Button
+            variant="secondary"
+            loading={melden.isPending}
+            onClick={() => {
+              setMeldung(null)
+              if (confirm('SEE-Ausfall melden? Neue Belege werden bis zur Wiederinbetriebnahme NICHT signiert.')) {
+                melden.mutate()
+              }
+            }}
+          >
+            SEE-Ausfall melden
+          </Button>
+        ) : (
+          <Button
+            loading={wiederherstellen.isPending}
+            onClick={() => {
+              setMeldung(null)
+              if (confirm('Signatureinrichtung wieder in Betrieb nehmen? Es wird ein signierter Sammelbeleg erstellt.')) {
+                wiederherstellen.mutate()
+              }
+            }}
+          >
+            Wieder in Betrieb nehmen
+          </Button>
+        )}
       </div>
 
       {meldung && (
