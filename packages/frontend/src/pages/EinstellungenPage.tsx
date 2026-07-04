@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { QRCodeSVG } from 'qrcode.react'
 import { ALLE_STATIONEN, STATION_LABELS, type Station, type ZvtConfig, type WeitereKasseInput, type PosKonfig } from '@kassa/shared'
@@ -12,26 +13,88 @@ import { Button } from '../components/ui/Button'
 import { KartenzahlungModal } from '../components/KartenzahlungModal'
 import { TischplanEditor } from '../components/TischplanEditor'
 
+// ---------------------------------------------------------------------------
+// Bereichs-Navigation: gliedert die ~13 Sektionen in 6 Gruppen.
+// Der aktive Bereich steht in der URL (?bereich=…) — so überlebt er den
+// Seiten-Reload beim Kassen-Wechsel und ist direkt verlinkbar.
+// ---------------------------------------------------------------------------
+
+type Bereich = 'kassen' | 'beleg' | 'hardware' | 'rksv' | 'gastro' | 'system'
+
+const BEREICHE: { key: Bereich; label: string; beschreibung: string }[] = [
+  { key: 'kassen',   label: 'Kassen',         beschreibung: 'Kassen verwalten, wechseln, Warengruppen verteilen' },
+  { key: 'beleg',    label: 'Beleg & Layout', beschreibung: 'Kopf-/Fußtext, Steuertabelle, QR — mit Live-Vorschau' },
+  { key: 'hardware', label: 'Hardware',       beschreibung: 'Bondrucker, Küchen-Display, Kartenterminal' },
+  { key: 'rksv',     label: 'RKSV',           beschreibung: 'Datenexport und Signatureinrichtung' },
+  { key: 'gastro',   label: 'Gastro',         beschreibung: 'Tischplan und Gast-Bestellsystem' },
+  { key: 'system',   label: 'System',         beschreibung: 'Datenbank-Sicherung und Systeminfo' },
+]
+
 export function EinstellungenPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const raw = searchParams.get('bereich')
+  const bereich: Bereich = (BEREICHE.some(b => b.key === raw) ? raw : 'kassen') as Bereich
+  const aktiverBereich = BEREICHE.find(b => b.key === bereich)!
+
   return (
     <div className="mx-auto max-w-4xl px-4 py-6 sm:py-8 space-y-6">
       <header>
         <h1 className="text-2xl font-bold text-ink">Einstellungen</h1>
-        <p className="mt-1 text-sm text-ink-muted">Drucker, Hardware-Anbindung, Belegtext und Tischplan</p>
+        <p className="mt-1 text-sm text-ink-muted">{aktiverBereich.beschreibung}</p>
       </header>
-      <KassenVerwaltungSektion />
-      <WarengruppenVerteilungSektion />
-      <KasseBezeichnungSektion />
-      <RechnungslayoutSektion />
-      <DruckerSektion />
-      <KdsSektion />
-      <ZvtSektion />
-      <RksvExportSektion />
-      <SeeAusfallSektion />
-      {hasModul('gastro') && <TischplanSektion />}
-      <GastQrCodeSektion />
-      <DbBackupSektion />
-      <SystemInfoSektion />
+
+      {/* Bereichs-Navigation */}
+      <div className="flex flex-wrap gap-1 rounded-xl bg-panel-2 p-1">
+        {BEREICHE.map(b => (
+          <button
+            key={b.key}
+            onClick={() => setSearchParams({ bereich: b.key }, { replace: true })}
+            className={`flex-1 min-w-[7rem] rounded-lg px-3 py-2 text-sm font-medium transition ${
+              bereich === b.key
+                ? 'bg-panel text-ink shadow-sm'
+                : 'text-ink-muted hover:text-ink'
+            }`}
+          >
+            {b.label}
+          </button>
+        ))}
+      </div>
+
+      {bereich === 'kassen' && (
+        <>
+          <KassenVerwaltungSektion />
+          <WarengruppenVerteilungSektion />
+          <KasseBezeichnungSektion />
+        </>
+      )}
+      {bereich === 'beleg' && (
+        <RechnungslayoutSektion />
+      )}
+      {bereich === 'hardware' && (
+        <>
+          <DruckerSektion />
+          <KdsSektion />
+          <ZvtSektion />
+        </>
+      )}
+      {bereich === 'rksv' && (
+        <>
+          <RksvExportSektion />
+          <SeeAusfallSektion />
+        </>
+      )}
+      {bereich === 'gastro' && (
+        <>
+          {hasModul('gastro') && <TischplanSektion />}
+          <GastQrCodeSektion />
+        </>
+      )}
+      {bereich === 'system' && (
+        <>
+          <DbBackupSektion />
+          <SystemInfoSektion />
+        </>
+      )}
     </div>
   )
 }

@@ -216,7 +216,8 @@ test('SEE-Ausfall: melden zeigt Warnbanner, Wiederinbetriebnahme räumt ihn', as
   // Bestätigungsdialoge (confirm) automatisch annehmen
   page.on('dialog', (d) => d.accept())
 
-  await page.goto('/einstellungen')
+  // SEE-Sektion liegt im RKSV-Bereich der Einstellungen (?bereich=rksv)
+  await page.goto('/einstellungen?bereich=rksv')
 
   // SEE-Sektion: Ausgangszustand „In Betrieb"
   await expect(page.getByRole('heading', { name: 'Signatureinrichtung (SEE)' })).toBeVisible()
