@@ -124,6 +124,21 @@ function KassenVerwaltungSektion() {
     onError: (err) => setMeldung({ typ: 'fehler', text: err instanceof Error ? err.message : String(err) }),
   })
 
+  // DEP-Export pro Kasse (voller Bestand; datumsgefiltert weiterhin in „RKSV-Datenexport")
+  const [depLaeuft, setDepLaeuft] = useState<string | null>(null) // `${kasseId}:${format}`
+  async function depExport(k: { id: string; bezeichnung: string | null; kassenId: string }, format: 'dep7' | 'dep131') {
+    setMeldung(null)
+    setDepLaeuft(`${k.id}:${format}`)
+    try {
+      const { anzahl } = await downloadDepExport({ kasseId: k.id, format })
+      setMeldung({ typ: 'ok', text: `${format.toUpperCase()} von „${k.bezeichnung || k.kassenId}" exportiert (${anzahl} Belege).` })
+    } catch (err) {
+      setMeldung({ typ: 'fehler', text: err instanceof Error ? err.message : 'Export fehlgeschlagen' })
+    } finally {
+      setDepLaeuft(null)
+    }
+  }
+
   return (
     <section className="rounded-lg bg-panel shadow-sm border border-line p-6 space-y-5">
       <div>
@@ -144,12 +159,10 @@ function KassenVerwaltungSektion() {
             <div key={k.id} className="space-y-0">
               <div
                 className={`flex items-center justify-between gap-3 rounded-md border p-3 ${
-                  stillgelegt ? 'border-line bg-panel-2 opacity-60'
-                  : aktiv     ? 'border-brand-500 bg-brand-50'
-                  :             'border-line bg-panel-2'
+                  aktiv && !stillgelegt ? 'border-brand-500 bg-brand-50' : 'border-line bg-panel-2'
                 }`}
               >
-                <div className="min-w-0">
+                <div className={`min-w-0 ${stillgelegt ? 'opacity-60' : ''}`}>
                   <p className="text-sm font-medium text-ink truncate">
                     {k.bezeichnung || k.kassenId}
                     {aktiv && !stillgelegt && <span className="ml-2 text-xs font-semibold text-brand-700">● aktiv</span>}
@@ -165,22 +178,36 @@ function KassenVerwaltungSektion() {
                     {k.beiFoRegistriert ? ' · FinanzOnline registriert' : ' · provisorisch'}
                   </p>
                 </div>
-                {stillgelegt ? (
-                  <span className="text-xs text-ink-subtle shrink-0">Belege/DEP bleiben abrufbar</span>
-                ) : aktiv ? (
-                  <span className="text-xs text-ink-subtle shrink-0">aktuelle Kasse</span>
-                ) : (
-                  <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-2 shrink-0">
+                  {/* DEP-Export pro Kasse — auch (gerade!) für stillgelegte Kassen */}
+                  {(['dep7', 'dep131'] as const).map(format => (
                     <button
+                      key={format}
                       type="button"
-                      onClick={() => { setMeldung(null); setStilllegenId(bestaetigung ? null : k.id) }}
-                      className="text-xs text-red-600 hover:text-red-700 hover:underline"
+                      disabled={depLaeuft !== null}
+                      onClick={() => depExport(k, format)}
+                      title={`${format.toUpperCase()}-Export dieser Kasse herunterladen`}
+                      className="text-[11px] px-2 py-1 rounded-md border border-line-strong text-ink-muted
+                                 hover:bg-panel hover:text-ink transition disabled:opacity-50"
                     >
-                      Außer Betrieb nehmen
+                      {depLaeuft === `${k.id}:${format}` ? '…' : format.toUpperCase()}
                     </button>
-                    <Button variant="secondary" onClick={() => wechsleZu(k.id)}>Wechseln</Button>
-                  </div>
-                )}
+                  ))}
+                  {stillgelegt ? null : aktiv ? (
+                    <span className="text-xs text-ink-subtle">aktuelle Kasse</span>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => { setMeldung(null); setStilllegenId(bestaetigung ? null : k.id) }}
+                        className="text-xs text-red-600 hover:text-red-700 hover:underline"
+                      >
+                        Außer Betrieb nehmen
+                      </button>
+                      <Button variant="secondary" onClick={() => wechsleZu(k.id)}>Wechseln</Button>
+                    </>
+                  )}
+                </div>
               </div>
 
               {/* Inline-Bestätigung der Außerbetriebnahme */}
