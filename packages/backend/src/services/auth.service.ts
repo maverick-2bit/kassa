@@ -42,11 +42,13 @@ async function ladeKassenFuerUser(
   rolle: string,
   mandantId: string,
 ): Promise<{ id: string; kassenId: string; bezeichnung: string | null; umgebung: string }[]> {
+  // Nur aktive Kassen — außer Betrieb genommene erscheinen nicht im Umschalter
+  // (sie bleiben in der Verwaltung via GET /kassen sichtbar).
   if (rolle === 'admin') {
     return db
       .select({ id: kassen.id, kassenId: kassen.kassenId, bezeichnung: kassen.bezeichnung, umgebung: kassen.umgebung })
       .from(kassen)
-      .where(eq(kassen.mandantId, mandantId))
+      .where(and(eq(kassen.mandantId, mandantId), eq(kassen.status, 'aktiv')))
   }
   const zuordnungen = await db
     .select({ kasseId: userKassen.kasseId })
@@ -56,7 +58,7 @@ async function ladeKassenFuerUser(
   return db
     .select({ id: kassen.id, kassenId: kassen.kassenId, bezeichnung: kassen.bezeichnung, umgebung: kassen.umgebung })
     .from(kassen)
-    .where(inArray(kassen.id, zuordnungen.map(z => z.kasseId)))
+    .where(and(inArray(kassen.id, zuordnungen.map(z => z.kasseId)), eq(kassen.status, 'aktiv')))
 }
 
 export async function userZuDto(

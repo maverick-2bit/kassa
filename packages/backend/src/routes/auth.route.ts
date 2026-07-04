@@ -6,7 +6,7 @@
  */
 
 import type { FastifyPluginAsync } from 'fastify'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { LoginInputSchema, PinLoginInputSchema } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import { kassen, mandanten, users } from '../db/schema.js'
@@ -158,10 +158,11 @@ export const authRoute: FastifyPluginAsync<AuthRouteOptions> = async (fastify, o
       .where(eq(mandanten.id, user.mandantId))
       .limit(1)
 
+    // Nur aktive Kassen — wie beim Login (ladeKassenFuerUser)
     const kassenListe = await opts.db
       .select({ id: kassen.id, kassenId: kassen.kassenId, umgebung: kassen.umgebung })
       .from(kassen)
-      .where(eq(kassen.mandantId, user.mandantId))
+      .where(and(eq(kassen.mandantId, user.mandantId), eq(kassen.status, 'aktiv')))
 
     return reply.send({
       user:    await userZuDto(user, opts.db),

@@ -127,6 +127,13 @@
       "when": 1779808567000,
       "tag": "0018_kasse_bonierdrucker",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1779808568000,
+      "tag": "0019_kasse_ausser_betrieb",
+      "breakpoints": true
     }
   ]
 }

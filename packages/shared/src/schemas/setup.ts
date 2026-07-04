@@ -143,5 +143,7 @@ export const KasseListeItemSchema = z.object({
   umgebung:         z.string(),
   seeGueltigBis:    z.string(),
   beiFoRegistriert: z.boolean(),
+  /** ISO-Zeitpunkt der Außerbetriebnahme; null = in Betrieb */
+  ausserBetriebAm:  z.string().nullable(),
 })
 export type KasseListeItem = z.infer<typeof KasseListeItemSchema>
