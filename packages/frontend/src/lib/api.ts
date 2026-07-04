@@ -973,6 +973,16 @@ export const kasseApi = {
 
   anlegen: (input: WeitereKasseInput): Promise<WeitereKasseResponse> =>
     request<WeitereKasseResponse>('POST', '/api/kassen', input),
+
+  /** RKSV-konforme Stilllegung: Schlussbeleg + status='ausser_betrieb', optional FON-Abmeldung. */
+  ausserBetrieb: (kasseId: string, credentials?: FonCredentials): Promise<KasseAusserBetrieb> =>
+    request<KasseAusserBetrieb>('POST', `/api/kassen/${kasseId}/ausser-betrieb`, credentials ? { credentials } : {}),
+}
+
+/** Ergebnis der Außerbetriebnahme (siehe backend nimmKasseAusserBetrieb). */
+export interface KasseAusserBetrieb {
+  schlussbeleg: BelegResponse
+  fonMeldung?:  FonMeldung
 }
 
 // ---------------------------------------------------------------------------

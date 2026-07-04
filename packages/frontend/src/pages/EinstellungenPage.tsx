@@ -5,7 +5,7 @@ import { ALLE_STATIONEN, STATION_LABELS, type Station, type ZvtConfig, type Weit
 import { druckerApi, kdsApi, zvtApi, downloadDepExport, healthApi, monitoringApi, mandantApi, kasseApi, kategorieApi, posConfigApi, tischplanApi, dbBackupApi, belegApi, type DruckerConfig, type KdsConfig, type DbSicherungRow, type MonitoringStatus } from '../lib/api'
 import { formatAusfallDauer } from '../components/SeeStatusBanner'
 import { getKasseIdentity, setKasseIdentity } from '../lib/kasse'
-import { getAuth, hasModul, updateKasseBezeichnung, addKasse } from '../lib/auth'
+import { getAuth, hasModul, updateKasseBezeichnung, addKasse, removeKasse } from '../lib/auth'
 import { Field } from '../components/ui/Field'
 import { Input } from '../components/ui/Input'
 import { Button } from '../components/ui/Button'
@@ -62,7 +62,14 @@ function KassenVerwaltungSektion() {
   const kassen = listeQuery.data ?? auth.kassen.map(k => ({
     id: k.id, kassenId: k.kassenId, bezeichnung: k.bezeichnung,
     status: 'aktiv', umgebung: k.umgebung, seeGueltigBis: '', beiFoRegistriert: false,
+    ausserBetriebAm: null,
   }))
+
+  // Außerbetriebnahme: Kasse mit offener Inline-Bestätigung + optionale FON-Zugangsdaten
+  const [stilllegenId, setStilllegenId] = useState<string | null>(null)
+  const [abTid, setAbTid]     = useState('')
+  const [abBenId, setAbBenId] = useState('')
+  const [abPin, setAbPin]     = useState('')
 
   function wechsleZu(kasseId: string) {
     if (kasseId === identity?.kasseId) return
@@ -95,6 +102,43 @@ function KassenVerwaltungSektion() {
     onError: (err) => setMeldung({ typ: 'fehler', text: err instanceof Error ? err.message : String(err) }),
   })
 
+  const ausserBetrieb = useMutation({
+    mutationFn: (kasseId: string) => {
+      const fonComplete = abTid.trim() && abBenId.trim() && abPin.trim()
+      return kasseApi.ausserBetrieb(
+        kasseId,
+        fonComplete ? { teilnehmerId: abTid.trim(), benutzerkennung: abBenId.trim(), pin: abPin.trim() } : undefined,
+      )
+    },
+    onSuccess: (res, kasseId) => {
+      removeKasse(kasseId)  // aus dem lokalen Umschalter entfernen
+      queryClient.invalidateQueries({ queryKey: ['kassen-liste'] })
+      const fonText = res.fonMeldung
+        ? res.fonMeldung.erfolgreich
+          ? ' FinanzOnline-Abmeldung übermittelt.'
+          : ` FinanzOnline-Abmeldung fehlgeschlagen: ${res.fonMeldung.fehler ?? 'unbekannt'} — bitte manuell nachholen.`
+        : ''
+      setMeldung({ typ: 'ok', text: `Kasse außer Betrieb genommen — Schlussbeleg #${res.schlussbeleg.belegNummer} signiert.${fonText}` })
+      setStilllegenId(null); setAbTid(''); setAbBenId(''); setAbPin('')
+    },
+    onError: (err) => setMeldung({ typ: 'fehler', text: err instanceof Error ? err.message : String(err) }),
+  })
+
+  // DEP-Export pro Kasse (voller Bestand; datumsgefiltert weiterhin in „RKSV-Datenexport")
+  const [depLaeuft, setDepLaeuft] = useState<string | null>(null) // `${kasseId}:${format}`
+  async function depExport(k: { id: string; bezeichnung: string | null; kassenId: string }, format: 'dep7' | 'dep131') {
+    setMeldung(null)
+    setDepLaeuft(`${k.id}:${format}`)
+    try {
+      const { anzahl } = await downloadDepExport({ kasseId: k.id, format })
+      setMeldung({ typ: 'ok', text: `${format.toUpperCase()} von „${k.bezeichnung || k.kassenId}" exportiert (${anzahl} Belege).` })
+    } catch (err) {
+      setMeldung({ typ: 'fehler', text: err instanceof Error ? err.message : 'Export fehlgeschlagen' })
+    } finally {
+      setDepLaeuft(null)
+    }
+  }
+
   return (
     <section className="rounded-lg bg-panel shadow-sm border border-line p-6 space-y-5">
       <div>
@@ -108,28 +152,106 @@ function KassenVerwaltungSektion() {
       {/* Kassenliste + Umschalter */}
       <div className="space-y-2">
         {kassen.map(k => {
-          const aktiv = k.id === identity?.kasseId
+          const aktiv       = k.id === identity?.kasseId
+          const stillgelegt = k.status === 'ausser_betrieb'
+          const bestaetigung = stilllegenId === k.id
           return (
-            <div
-              key={k.id}
-              className={`flex items-center justify-between gap-3 rounded-md border p-3 ${
-                aktiv ? 'border-brand-500 bg-brand-50' : 'border-line bg-panel-2'
-              }`}
-            >
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-ink truncate">
-                  {k.bezeichnung || k.kassenId}
-                  {aktiv && <span className="ml-2 text-xs font-semibold text-brand-700">● aktiv</span>}
-                </p>
-                <p className="text-xs text-ink-muted">
-                  ID: {k.kassenId} · {k.umgebung === 'produktion' ? 'Produktion' : 'Test'}
-                  {k.beiFoRegistriert ? ' · FinanzOnline registriert' : ' · provisorisch'}
-                </p>
+            <div key={k.id} className="space-y-0">
+              <div
+                className={`flex items-center justify-between gap-3 rounded-md border p-3 ${
+                  aktiv && !stillgelegt ? 'border-brand-500 bg-brand-50' : 'border-line bg-panel-2'
+                }`}
+              >
+                <div className={`min-w-0 ${stillgelegt ? 'opacity-60' : ''}`}>
+                  <p className="text-sm font-medium text-ink truncate">
+                    {k.bezeichnung || k.kassenId}
+                    {aktiv && !stillgelegt && <span className="ml-2 text-xs font-semibold text-brand-700">● aktiv</span>}
+                    {stillgelegt && (
+                      <span className="ml-2 text-xs font-semibold text-red-700 bg-red-100 px-1.5 py-0.5 rounded">
+                        außer Betrieb
+                        {k.ausserBetriebAm && <> seit {new Date(k.ausserBetriebAm).toLocaleDateString('de-AT')}</>}
+                      </span>
+                    )}
+                  </p>
+                  <p className="text-xs text-ink-muted">
+                    ID: {k.kassenId} · {k.umgebung === 'produktion' ? 'Produktion' : 'Test'}
+                    {k.beiFoRegistriert ? ' · FinanzOnline registriert' : ' · provisorisch'}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {/* DEP-Export pro Kasse — auch (gerade!) für stillgelegte Kassen */}
+                  {(['dep7', 'dep131'] as const).map(format => (
+                    <button
+                      key={format}
+                      type="button"
+                      disabled={depLaeuft !== null}
+                      onClick={() => depExport(k, format)}
+                      title={`${format.toUpperCase()}-Export dieser Kasse herunterladen`}
+                      className="text-[11px] px-2 py-1 rounded-md border border-line-strong text-ink-muted
+                                 hover:bg-panel hover:text-ink transition disabled:opacity-50"
+                    >
+                      {depLaeuft === `${k.id}:${format}` ? '…' : format.toUpperCase()}
+                    </button>
+                  ))}
+                  {stillgelegt ? null : aktiv ? (
+                    <span className="text-xs text-ink-subtle">aktuelle Kasse</span>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => { setMeldung(null); setStilllegenId(bestaetigung ? null : k.id) }}
+                        className="text-xs text-red-600 hover:text-red-700 hover:underline"
+                      >
+                        Außer Betrieb nehmen
+                      </button>
+                      <Button variant="secondary" onClick={() => wechsleZu(k.id)}>Wechseln</Button>
+                    </>
+                  )}
+                </div>
               </div>
-              {aktiv ? (
-                <span className="text-xs text-ink-subtle shrink-0">aktuelle Kasse</span>
-              ) : (
-                <Button variant="secondary" onClick={() => wechsleZu(k.id)}>Wechseln</Button>
+
+              {/* Inline-Bestätigung der Außerbetriebnahme */}
+              {bestaetigung && !stillgelegt && (
+                <div className="mt-1 rounded-md border border-red-200 bg-red-50 p-4 space-y-3">
+                  <p className="text-sm font-semibold text-red-800">
+                    Kasse „{k.bezeichnung || k.kassenId}" endgültig außer Betrieb nehmen?
+                  </p>
+                  <ul className="text-xs text-red-700 list-disc pl-4 space-y-0.5">
+                    <li>Es wird ein signierter <strong>Schlussbeleg</strong> erstellt — der letzte Beleg dieser Kasse.</li>
+                    <li>Danach sind <strong>keine Belege mehr möglich</strong>. Keine Reaktivierung (RKSV) — bei Bedarf neue Kasse anlegen.</li>
+                    <li>Belege und DEP-Export bleiben erhalten (Aufbewahrungspflicht).</li>
+                  </ul>
+
+                  {k.beiFoRegistriert && (
+                    <details className="rounded-md border border-red-200 bg-panel p-3">
+                      <summary className="cursor-pointer text-xs font-medium text-ink">
+                        FinanzOnline-Abmeldung (optional, empfohlen)
+                      </summary>
+                      <p className="mt-2 text-xs text-ink-muted">
+                        Meldet die Außerbetriebnahme direkt an FinanzOnline. Ohne Zugangsdaten ist
+                        die Abmeldung manuell über FinanzOnline nachzuholen. Daten werden nicht gespeichert.
+                      </p>
+                      <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <Field label="Teilnehmer-ID"><Input value={abTid} onChange={e => setAbTid(e.target.value)} autoComplete="off" /></Field>
+                        <Field label="Benutzerkennung"><Input value={abBenId} onChange={e => setAbBenId(e.target.value)} autoComplete="off" /></Field>
+                        <Field label="PIN"><Input type="password" value={abPin} onChange={e => setAbPin(e.target.value)} autoComplete="off" /></Field>
+                      </div>
+                    </details>
+                  )}
+
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="danger"
+                      loading={ausserBetrieb.isPending}
+                      onClick={() => { setMeldung(null); ausserBetrieb.mutate(k.id) }}
+                    >
+                      Endgültig außer Betrieb nehmen
+                    </Button>
+                    <Button variant="secondary" onClick={() => setStilllegenId(null)} disabled={ausserBetrieb.isPending}>
+                      Abbrechen
+                    </Button>
+                  </div>
+                </div>
               )}
             </div>
           )

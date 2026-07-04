@@ -97,6 +97,17 @@ export function addKasse(kasse: AuthState['kassen'][number]): void {
   }))
 }
 
+/** Entfernt eine (z. B. außer Betrieb genommene) Kasse aus der Liste im LocalStorage. */
+export function removeKasse(kasseId: string): void {
+  const auth = getAuth()
+  if (!auth) return
+  localStorage.setItem(KEY_AUTH, JSON.stringify({
+    user:    auth.user,
+    mandant: auth.mandant,
+    kassen:  auth.kassen.filter(k => k.id !== kasseId),
+  }))
+}
+
 /** Triggert beim 401 — z. B. um zur Login-Seite zu redirecten */
 export type UnauthorizedHandler = () => void
 let onUnauthorized: UnauthorizedHandler | null = null

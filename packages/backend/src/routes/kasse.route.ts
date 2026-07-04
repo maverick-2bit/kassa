@@ -6,11 +6,13 @@ import type { FastifyPluginAsync } from 'fastify'
 import { and, asc, desc, eq, sql } from 'drizzle-orm'
 import type { Db } from '../db/client.js'
 import { belege, kassen } from '../db/schema.js'
-import { KasseBezeichnungUpdateSchema, WeitereKasseInputSchema, type KasseListeItem, type WeitereKasseResponse } from '@kassa/shared'
+import { z } from 'zod'
+import { FinanzOnlineCredentialsSchema, KasseBezeichnungUpdateSchema, WeitereKasseInputSchema, type KasseListeItem, type WeitereKasseResponse } from '@kassa/shared'
 import { legeWeitereKasseAn } from '../services/kasse.service.js'
 import type { SetupServiceDeps } from '../services/setup.service.js'
+import { BelegError, nimmKasseAusserBetrieb, type BelegServiceDeps } from '../services/beleg.service.js'
 
-export interface KasseRouteOptions { db: Db; setupDeps: SetupServiceDeps }
+export interface KasseRouteOptions { db: Db; setupDeps: SetupServiceDeps; belegDeps: BelegServiceDeps }
 
 const MS_PRO_TAG = 1000 * 60 * 60 * 24
 
@@ -35,6 +37,7 @@ export const kasseRoute: FastifyPluginAsync<KasseRouteOptions> = async (fastify,
         umgebung:         kassen.umgebung,
         seeGueltigBis:    kassen.seeGueltigBis,
         beiFoRegistriert: kassen.bei_fo_registriert,
+        ausserBetriebAm:  kassen.ausserBetriebAm,
       })
       .from(kassen)
       .where(eq(kassen.mandantId, request.user.mandantId))
@@ -48,8 +51,44 @@ export const kasseRoute: FastifyPluginAsync<KasseRouteOptions> = async (fastify,
       umgebung:         r.umgebung,
       seeGueltigBis:    r.seeGueltigBis.toISOString(),
       beiFoRegistriert: r.beiFoRegistriert,
+      ausserBetriebAm:  r.ausserBetriebAm ? r.ausserBetriebAm.toISOString() : null,
     }))
     return reply.send(liste)
+  })
+
+  /**
+   * POST /kassen/:id/ausser-betrieb
+   * RKSV-konforme Stilllegung: Schlussbeleg + status='ausser_betrieb',
+   * optional FinanzOnline-Abmeldung (Zugangsdaten pro Aufruf, nie gespeichert).
+   */
+  fastify.post('/kassen/:id/ausser-betrieb', auth, async (request, reply) => {
+    if (!darfVerwalten(request.user)) {
+      return reply.status(403).send({ fehler: 'Keine Berechtigung' })
+    }
+
+    const { id } = request.params as { id: string }
+    const body = z.object({
+      credentials: FinanzOnlineCredentialsSchema.optional(),
+    }).safeParse(request.body ?? {})
+    if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
+
+    // Ownership-Check
+    const [check] = await opts.db
+      .select({ id: kassen.id })
+      .from(kassen)
+      .where(and(eq(kassen.id, id), eq(kassen.mandantId, request.user.mandantId)))
+      .limit(1)
+    if (!check) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
+
+    try {
+      const ergebnis = await nimmKasseAusserBetrieb(id, body.data.credentials, opts.belegDeps)
+      return reply.send(ergebnis)
+    } catch (err) {
+      if (err instanceof BelegError) {
+        return reply.status(err.httpStatus).send({ fehler: err.message })
+      }
+      throw err
+    }
   })
 
   /**

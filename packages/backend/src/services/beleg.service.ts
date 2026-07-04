@@ -97,6 +97,12 @@ interface SigniereInput {
    * Schlägt die Signierung fehl, rollt die Transaktion zurück → Ausfall bleibt.
    */
   wiederherstellung?: boolean
+  /**
+   * Außerbetriebnahme: setzt in derselben Transaktion status='ausser_betrieb'
+   * + ausserBetriebAm — der signierte Beleg (Schlussbeleg) ist damit garantiert
+   * der letzte Beleg der Kasse (kein Zustand „Schlussbeleg da, aber noch aktiv").
+   */
+  ausserBetrieb?: boolean
 }
 
 async function signiereImTx(
@@ -230,6 +236,10 @@ async function signiereImTx(
       kasseUpdate.seeAusgefallenSeit = null            // SEE wieder in Betrieb
     } else if (ausfallNeuErkannt && kasse.seeAusgefallenSeit == null) {
       kasseUpdate.seeAusgefallenSeit = new Date()       // Ausfall erstmals erkannt
+    }
+    if (input.ausserBetrieb) {
+      kasseUpdate.status          = 'ausser_betrieb'   // Schlussbeleg = letzter Beleg
+      kasseUpdate.ausserBetriebAm = new Date()
     }
     await tx.update(kassen).set(kasseUpdate).where(eq(kassen.id, kasse.id))
 
@@ -715,6 +725,94 @@ export async function registriereKasseBeiFinanzOnline(
   }).where(eq(kassen.id, kasseId))
 
   return { registriert: true, registriertAm: jetzt.toISOString() }
+}
+
+// ---------------------------------------------------------------------------
+// Kasse außer Betrieb nehmen (RKSV-konforme Stilllegung)
+// ---------------------------------------------------------------------------
+
+export interface KasseAusserBetriebErgebnis {
+  schlussbeleg: BelegResponse
+  /** Nur gesetzt, wenn FON-Zugangsdaten übergeben wurden und die Kasse registriert war. */
+  fonMeldung?:  FonMeldungErgebnis
+}
+
+/**
+ * Nimmt eine Registrierkasse RKSV-konform außer Betrieb:
+ *  1. Schlussbeleg (Betrag 0) signieren + status='ausser_betrieb' atomar in
+ *     einer Transaktion — der Schlussbeleg ist garantiert der letzte Beleg
+ *     (die bestehende Sperre in signiereImTx blockiert danach alles Weitere).
+ *  2. Optional FinanzOnline-Abmeldung (Zugangsdaten pro Aufruf, nie
+ *     gespeichert; nicht-fatal — der lokale Zustand bleibt auch bei
+ *     FON-Fehler außer Betrieb, die Abmeldung ist dann manuell nachzuholen).
+ *
+ * Endgültig: keine Reaktivierung (RKSV bräuchte einen neuen Startbeleg —
+ * dafür eine neue Kasse anlegen). DEP/Belege bleiben aufbewahrt und exportierbar.
+ */
+export async function nimmKasseAusserBetrieb(
+  kasseId:     string,
+  credentials: FinanzOnlineCredentials | undefined,
+  deps:        BelegServiceDeps,
+): Promise<KasseAusserBetriebErgebnis> {
+  const rows = await deps.db
+    .select({
+      kassenId:    kassen.kassenId,
+      mandantId:   kassen.mandantId,
+      status:      kassen.status,
+      umgebung:    kassen.umgebung,
+      registriert: kassen.bei_fo_registriert,
+    })
+    .from(kassen)
+    .where(eq(kassen.id, kasseId))
+    .limit(1)
+  const k = rows[0]
+  if (!k) throw new BelegError(404, 'Kasse nicht gefunden')
+  if (k.status !== 'aktiv') throw new BelegError(409, 'Kasse ist bereits außer Betrieb')
+
+  // Letzte aktive Kasse des Mandanten darf nicht stillgelegt werden — sonst
+  // bleibt keine bedienbare Kasse übrig (Login-Kassenliste wäre leer).
+  const [aktive] = await deps.db
+    .select({ anzahl: sql<number>`count(*)::int` })
+    .from(kassen)
+    .where(and(eq(kassen.mandantId, k.mandantId), eq(kassen.status, 'aktiv')))
+  if ((aktive?.anzahl ?? 0) <= 1) {
+    throw new BelegError(409, 'Die letzte aktive Kasse kann nicht außer Betrieb genommen werden — es muss mindestens eine aktive Kasse bestehen bleiben')
+  }
+
+  // 1. Schlussbeleg + Statuswechsel atomar
+  const { signed, persisted } = await signiereImTx({
+    kasseId,
+    belegTyp:        'Schlussbeleg',
+    belegDaten:      { positionen: [], zahlung: NULL_ZAHLUNG },
+    validatePayment: false,
+    ausserBetrieb:   true,
+  }, deps)
+
+  const ergebnis: KasseAusserBetriebErgebnis = {
+    schlussbeleg: toDto(persisted, signed.positionen),
+  }
+
+  // 2. Optionale FON-Abmeldung — NACH der Transaktion, nicht-fatal
+  if (credentials && k.registriert) {
+    const client = deps.finanzOnlineClient
+      ?? new FinanzOnlineClient(k.umgebung === 'test' ? 'test' : 'produktion')
+    try {
+      const res = await client.kasseAusserBetriebNehmen(k.kassenId, credentials)
+      ergebnis.fonMeldung = {
+        versucht:    true,
+        erfolgreich: res.erfolgreich,
+        ...(res.fehler && { fehler: res.fehler }),
+      }
+    } catch (err) {
+      ergebnis.fonMeldung = {
+        versucht:    true,
+        erfolgreich: false,
+        fehler:      err instanceof Error ? err.message : String(err),
+      }
+    }
+  }
+
+  return ergebnis
 }
 
 // ---------------------------------------------------------------------------
