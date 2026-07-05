@@ -1,11 +1,22 @@
 /**
  * FinanzOnline RKSV WebService Client
  *
- * Schnittstelle zur Registrierung und Abmeldung von Registrierkassen
- * bei der österreichischen Finanzbehörde (BMF).
+ * ⚠️ ACHTUNG — ENTSPRICHT NICHT DER ECHTEN BMF-SCHNITTSTELLE.
+ * Diese Implementierung wurde nie gegen den realen FinanzOnline-Webservice
+ * validiert und weicht auf JEDER Ebene ab (Endpoint, Namespace, Auth,
+ * Operationsnamen, Payload, Response). Sie funktioniert bisher nur gegen den
+ * eigenen Stub (FO_STUB). Vor Produktivbetrieb ist eine Neuimplementierung
+ * gegen die echte Schnittstelle + Validierung mit einem FinanzOnline-
+ * Webservice-Testbenutzer zwingend. Details + korrekte Struktur:
+ *   packages/rksv/FINANZONLINE-ABGLEICH.md
  *
- * WSDL: https://finanzonline.bmf.gv.at/fon/ws/rksv/RKSVService.wsdl
- * Testumgebung: https://finanzonline-test.bmf.gv.at/fon/ws/rksv/
+ * Echte Schnittstelle (BMF, Session-basiert):
+ *   Session-WS:  https://finanzonline.bmf.gv.at/fonws/ws/session   (login/logout)
+ *   RegKasse-WS: https://finanzonline.bmf.gv.at/fonws/ws/rkdb       (nur „rkdb")
+ *   Ablauf: login(tid,benid,pin) → Session-ID → rkdb(id, Datensätze) → logout.
+ *
+ * Der übrige RKSV-Kern (SEE-Signatur, Umsatzzähler, DEP, Belegkette) ist von
+ * diesem Mangel NICHT betroffen und korrekt.
  *
  * Implementiert als direkte SOAP-Aufrufe via fetch (kein node-soap).
  */
