@@ -168,8 +168,8 @@ export default function App() {
             onClick={() => switchLang(l.code)}
             className={`px-2 py-1 rounded-lg text-xs font-bold transition ${
               lang === l.code
-                ? 'bg-orange-500 text-white'
-                : 'text-gray-500 hover:bg-gray-100'
+                ? 'bg-brand-500 text-white'
+                : 'text-ink-subtle hover:bg-panel-2'
             }`}
           >
             {l.label}
@@ -184,41 +184,41 @@ export default function App() {
   // ---------------------------------------------------------------------------
 
   if (phase === 'laden') return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+    <div className="min-h-screen bg-surface flex items-center justify-center">
       <div className="text-center space-y-3">
-        <div className="w-10 h-10 border-4 border-orange-400 border-t-transparent rounded-full animate-spin mx-auto" />
-        <p className="text-gray-500 text-sm">{t.laden}</p>
+        <div className="w-10 h-10 border-4 border-brand-400 border-t-transparent rounded-full animate-spin mx-auto" />
+        <p className="text-ink-subtle text-sm">{t.laden}</p>
       </div>
     </div>
   )
 
   if (phase === 'fehler') return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+    <div className="min-h-screen bg-surface flex items-center justify-center p-6">
       <div className="text-center space-y-4 max-w-sm">
         <div className="text-5xl">⚠️</div>
-        <h1 className="text-xl font-bold text-gray-800">{t.fehlerTitel}</h1>
-        <p className="text-gray-500 text-sm">{fehler}</p>
-        <p className="text-gray-400 text-xs">{t.fehlerHilfe}</p>
+        <h1 className="text-xl font-bold text-ink">{t.fehlerTitel}</h1>
+        <p className="text-ink-subtle text-sm">{fehler}</p>
+        <p className="text-ink-subtle text-xs">{t.fehlerHilfe}</p>
         <LangSwitch className="justify-center" />
       </div>
     </div>
   )
 
   if (phase === 'danke') return (
-    <div className="min-h-screen bg-orange-50 flex items-center justify-center p-6">
+    <div className="min-h-screen bg-brand-50 flex items-center justify-center p-6">
       <div className="text-center space-y-5 max-w-sm">
         <div className="text-7xl">🎉</div>
-        <h1 className="text-2xl font-black text-gray-900">{t.dankeTitel}</h1>
-        <p className="text-gray-600">{t.dankeText}</p>
+        <h1 className="text-2xl font-black text-ink">{t.dankeTitel}</h1>
+        <p className="text-ink-muted">{t.dankeText}</p>
         {tischNummer && (
-          <div className="bg-orange-100 rounded-2xl px-6 py-3 inline-block">
-            <p className="text-xs text-orange-600 font-medium">{t.deinTisch}</p>
-            <p className="text-2xl font-black text-orange-800">{tischNummer}</p>
+          <div className="bg-brand-100 rounded-2xl px-6 py-3 inline-block">
+            <p className="text-xs text-brand-600 font-medium">{t.deinTisch}</p>
+            <p className="text-2xl font-black text-brand-800">{tischNummer}</p>
           </div>
         )}
         <button
           onClick={() => { setKorb([]); setPhase('karte') }}
-          className="w-full py-3 rounded-2xl border-2 border-orange-300 text-orange-700 font-bold text-sm hover:bg-orange-100 transition"
+          className="w-full py-3 rounded-2xl border-2 border-brand-300 text-brand-700 font-bold text-sm hover:bg-brand-100 transition"
         >
           {t.weitereBestellung}
         </button>
@@ -228,51 +228,51 @@ export default function App() {
   )
 
   if (phase === 'bestaetigung') return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      <div className="bg-white border-b border-gray-200 px-4 py-4 flex items-center justify-between">
+    <div className="min-h-screen bg-surface flex flex-col">
+      <div className="bg-panel border-b border-line px-4 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <button onClick={() => setPhase('karte')} className="text-gray-500 hover:text-gray-700 text-xl">‹</button>
-          <h1 className="font-black text-gray-900 text-lg">{t.bestätigenTitel}</h1>
+          <button onClick={() => setPhase('karte')} className="text-ink-subtle hover:text-ink text-xl">‹</button>
+          <h1 className="font-black text-ink text-lg">{t.bestätigenTitel}</h1>
         </div>
         <LangSwitch />
       </div>
 
       <div className="flex-1 overflow-auto p-4 space-y-3">
         {tischNummer && (
-          <div className="bg-orange-50 rounded-2xl px-4 py-3 flex items-center gap-3">
+          <div className="bg-brand-50 rounded-2xl px-4 py-3 flex items-center gap-3">
             <span className="text-2xl">🪑</span>
             <div>
-              <p className="text-xs text-orange-600 font-medium">{t.tisch}</p>
-              <p className="font-black text-orange-900">{tischNummer}</p>
+              <p className="text-xs text-brand-600 font-medium">{t.tisch}</p>
+              <p className="font-black text-brand-900">{tischNummer}</p>
             </div>
           </div>
         )}
-        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+        <div className="bg-panel rounded-2xl border border-line overflow-hidden">
           {korb.map(k => (
-            <div key={k.artikel.id} className="flex items-center justify-between px-4 py-3 border-b border-gray-100 last:border-0">
+            <div key={k.artikel.id} className="flex items-center justify-between px-4 py-3 border-b border-line last:border-0">
               <div className="flex items-center gap-3">
-                <span className="bg-orange-100 text-orange-700 font-black text-sm w-7 h-7 rounded-full flex items-center justify-center">
+                <span className="bg-brand-100 text-brand-700 font-black text-sm w-7 h-7 rounded-full flex items-center justify-center">
                   {k.menge}
                 </span>
-                <span className="font-medium text-gray-900 text-sm">{k.artikel.bezeichnung}</span>
+                <span className="font-medium text-ink text-sm">{k.artikel.bezeichnung}</span>
               </div>
-              <span className="font-mono text-sm text-gray-700">
+              <span className="font-mono text-sm text-ink-muted">
                 {formatPreis(k.artikel.preisBruttoCent * k.menge)}
               </span>
             </div>
           ))}
         </div>
-        <div className="bg-white rounded-2xl border-2 border-orange-200 px-4 py-3 flex justify-between items-center">
-          <span className="font-black text-gray-900">{t.gesamt}</span>
-          <span className="font-black text-xl text-orange-600 font-mono">{formatPreis(gesamtCent)}</span>
+        <div className="bg-panel rounded-2xl border-2 border-brand-200 px-4 py-3 flex justify-between items-center">
+          <span className="font-black text-ink">{t.gesamt}</span>
+          <span className="font-black text-xl text-brand-600 font-mono">{formatPreis(gesamtCent)}</span>
         </div>
       </div>
 
-      <div className="p-4 bg-white border-t border-gray-200">
+      <div className="p-4 bg-panel border-t border-line">
         <button
           onClick={() => void bestellung()}
           disabled={senden}
-          className="w-full py-4 rounded-2xl font-black text-lg text-white bg-orange-500 hover:bg-orange-600 active:scale-95 transition disabled:opacity-50"
+          className="w-full py-4 rounded-2xl font-black text-lg text-white bg-brand-500 hover:bg-brand-600 active:scale-95 transition disabled:opacity-50"
         >
           {senden ? t.wirdGesendet : t.jetztBestellen}
         </button>
@@ -282,23 +282,23 @@ export default function App() {
 
   // Hauptansicht: Speisekarte
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col max-w-lg mx-auto">
+    <div className="min-h-screen bg-surface flex flex-col max-w-lg mx-auto">
 
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-4 py-4 sticky top-0 z-10">
+      <div className="bg-panel border-b border-line px-4 py-4 sticky top-0 z-10">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="font-black text-gray-900 text-lg">{karte?.kasse.bezeichnung}</h1>
-            {tischNummer && <p className="text-sm text-gray-500">{t.tisch}: <span className="font-semibold">{tischNummer}</span></p>}
+            <h1 className="font-black text-ink text-lg">{karte?.kasse.bezeichnung}</h1>
+            {tischNummer && <p className="text-sm text-ink-subtle">{t.tisch}: <span className="font-semibold">{tischNummer}</span></p>}
           </div>
           <div className="flex items-center gap-2">
             <LangSwitch />
             {gesamtMenge > 0 && (
               <button
                 onClick={() => setPhase('bestaetigung')}
-                className="flex items-center gap-2 bg-orange-500 text-white px-4 py-2 rounded-xl font-bold text-sm active:scale-95 transition"
+                className="flex items-center gap-2 bg-brand-500 text-white px-4 py-2 rounded-xl font-bold text-sm active:scale-95 transition"
               >
-                <span className="bg-white text-orange-600 rounded-full w-5 h-5 flex items-center justify-center text-xs font-black">
+                <span className="bg-panel text-brand-600 rounded-full w-5 h-5 flex items-center justify-center text-xs font-black">
                   {gesamtMenge}
                 </span>
                 {formatPreis(gesamtCent)}
@@ -310,7 +310,7 @@ export default function App() {
 
       {/* Kategorie-Tabs */}
       {(karte?.kategorien.length ?? 0) > 1 && (
-        <div className="bg-white border-b border-gray-200 px-4 overflow-x-auto sticky top-[73px] z-10">
+        <div className="bg-panel border-b border-line px-4 overflow-x-auto sticky top-[73px] z-10">
           <div className="flex gap-1 py-2">
             {karte?.kategorien.map(k => (
               <button
@@ -318,8 +318,8 @@ export default function App() {
                 onClick={() => setAktivKat(k.id)}
                 className={`px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition ${
                   aktivKat === k.id
-                    ? 'bg-orange-500 text-white'
-                    : 'text-gray-600 hover:bg-gray-100'
+                    ? 'bg-brand-500 text-white'
+                    : 'text-ink-muted hover:bg-panel-2'
                 }`}
               >
                 {k.name}
@@ -332,33 +332,33 @@ export default function App() {
       {/* Artikel-Liste */}
       <div className="flex-1 p-4 space-y-3">
         {artikelInKat.length === 0 ? (
-          <div className="text-center py-12 text-gray-400 text-sm">
+          <div className="text-center py-12 text-ink-subtle text-sm">
             {t.keineArtikel}
           </div>
         ) : (
           artikelInKat.map(a => {
             const menge = mengeVon(a.id)
             return (
-              <div key={a.id} className="bg-white rounded-2xl border border-gray-200 px-4 py-3 flex items-center justify-between gap-3">
+              <div key={a.id} className="bg-panel rounded-2xl border border-line px-4 py-3 flex items-center justify-between gap-3">
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-gray-900 text-sm leading-tight">{a.bezeichnung}</p>
-                  <p className="text-orange-600 font-black text-base mt-0.5">{formatPreis(a.preisBruttoCent)}</p>
+                  <p className="font-semibold text-ink text-sm leading-tight">{a.bezeichnung}</p>
+                  <p className="text-brand-600 font-black text-base mt-0.5">{formatPreis(a.preisBruttoCent)}</p>
                 </div>
                 {menge === 0 ? (
                   <button
                     onClick={() => aendereMenge(a, 1)}
-                    className="w-10 h-10 rounded-xl bg-orange-500 text-white font-black text-xl flex items-center justify-center active:scale-90 transition shrink-0"
+                    className="w-10 h-10 rounded-xl bg-brand-500 text-white font-black text-xl flex items-center justify-center active:scale-90 transition shrink-0"
                   >+</button>
                 ) : (
                   <div className="flex items-center gap-2 shrink-0">
                     <button
                       onClick={() => aendereMenge(a, -1)}
-                      className="w-9 h-9 rounded-xl border-2 border-orange-300 text-orange-600 font-black text-xl flex items-center justify-center active:scale-90 transition"
+                      className="w-9 h-9 rounded-xl border-2 border-brand-300 text-brand-600 font-black text-xl flex items-center justify-center active:scale-90 transition"
                     >−</button>
-                    <span className="w-6 text-center font-black text-gray-900">{menge}</span>
+                    <span className="w-6 text-center font-black text-ink">{menge}</span>
                     <button
                       onClick={() => aendereMenge(a, 1)}
-                      className="w-9 h-9 rounded-xl bg-orange-500 text-white font-black text-xl flex items-center justify-center active:scale-90 transition"
+                      className="w-9 h-9 rounded-xl bg-brand-500 text-white font-black text-xl flex items-center justify-center active:scale-90 transition"
                     >+</button>
                   </div>
                 )}
@@ -370,12 +370,12 @@ export default function App() {
 
       {/* Sticky Warenkorb-Button */}
       {gesamtMenge > 0 && (
-        <div className="p-4 bg-white border-t border-gray-200 sticky bottom-0">
+        <div className="p-4 bg-panel border-t border-line sticky bottom-0">
           <button
             onClick={() => setPhase('bestaetigung')}
-            className="w-full py-4 rounded-2xl font-black text-lg text-white bg-orange-500 hover:bg-orange-600 active:scale-95 transition flex items-center justify-between px-6"
+            className="w-full py-4 rounded-2xl font-black text-lg text-white bg-brand-500 hover:bg-brand-600 active:scale-95 transition flex items-center justify-between px-6"
           >
-            <span className="bg-orange-400 rounded-xl px-2 py-0.5 text-sm">
+            <span className="bg-brand-400 rounded-xl px-2 py-0.5 text-sm">
               {(t.artikelAnzahl as (n: number) => string)(gesamtMenge)}
             </span>
             <span>{t.warenkorbAnsehen}</span>

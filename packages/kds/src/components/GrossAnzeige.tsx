@@ -132,7 +132,7 @@ export function GrossAnzeige({ bons, station, farbe, onZurueck }: GrossAnzeigePr
   const istFixiert = (key: string) => konfig.konfig[key]?.fixiert ?? false
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white flex flex-col">
+    <div className="min-h-screen bg-surface text-ink flex flex-col">
 
       {/* Header */}
       <div
@@ -142,7 +142,7 @@ export function GrossAnzeige({ bons, station, farbe, onZurueck }: GrossAnzeigePr
         <div className="flex items-center gap-3">
           <button
             onClick={onZurueck}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-sm font-bold transition"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-panel-2 hover:bg-line text-ink-muted hover:text-ink text-sm font-bold transition"
           >
             ← Zurück
           </button>
@@ -156,7 +156,7 @@ export function GrossAnzeige({ bons, station, farbe, onZurueck }: GrossAnzeigePr
             'flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition',
             bearbeitenModus
               ? 'bg-amber-500 text-black'
-              : 'bg-zinc-700 text-zinc-200 hover:bg-zinc-600',
+              : 'bg-line text-ink hover:bg-line-strong',
           ].join(' ')}
         >
           {bearbeitenModus ? '✓ Fertig' : '✏ Bearbeiten'}
@@ -166,7 +166,7 @@ export function GrossAnzeige({ bons, station, farbe, onZurueck }: GrossAnzeigePr
       {/* Tile-Grid */}
       <div className="flex-1 p-4 overflow-auto">
         {activeTiles.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full gap-3 text-zinc-600">
+          <div className="flex flex-col items-center justify-center h-full gap-3 text-ink-subtle">
             <div className="text-6xl">✓</div>
             <div className="text-xl font-bold">Keine offenen Bestellungen</div>
           </div>
@@ -201,11 +201,11 @@ export function GrossAnzeige({ bons, station, farbe, onZurueck }: GrossAnzeigePr
                   >
                     {menge}
                   </div>
-                  <div className="text-center text-4xl font-bold text-zinc-200 mt-3 px-3 leading-tight max-w-full break-words">
+                  <div className="text-center text-4xl font-bold text-ink mt-3 px-3 leading-tight max-w-full break-words">
                     {key}
                   </div>
                   {fixiert && !bearbeitenModus && (
-                    <div className="absolute top-2 right-2 text-xs text-zinc-600">📌</div>
+                    <div className="absolute top-2 right-2 text-xs text-ink-subtle">📌</div>
                   )}
 
                   {/* Bearbeiten-Overlay */}
@@ -217,7 +217,7 @@ export function GrossAnzeige({ bons, station, farbe, onZurueck }: GrossAnzeigePr
                         <button
                           onClick={() => verschiebeLinks(key)}
                           disabled={idx === 0}
-                          className="w-12 h-12 rounded-xl bg-zinc-700 hover:bg-zinc-600 disabled:opacity-30 disabled:cursor-not-allowed text-white text-xl font-bold flex items-center justify-center transition"
+                          className="w-12 h-12 rounded-xl bg-line hover:bg-line-strong disabled:opacity-30 disabled:cursor-not-allowed text-ink text-xl font-bold flex items-center justify-center transition"
                         >
                           ←
                         </button>
@@ -228,7 +228,7 @@ export function GrossAnzeige({ bons, station, farbe, onZurueck }: GrossAnzeigePr
                             'flex-1 h-12 rounded-xl font-bold text-sm transition flex items-center justify-center gap-1',
                             fixiert
                               ? 'bg-amber-500 text-black'
-                              : 'bg-zinc-700 hover:bg-zinc-600 text-zinc-300',
+                              : 'bg-line hover:bg-line-strong text-ink-muted',
                           ].join(' ')}
                         >
                           {fixiert ? '📌 Fixiert' : '📍 Fixieren'}
@@ -236,7 +236,7 @@ export function GrossAnzeige({ bons, station, farbe, onZurueck }: GrossAnzeigePr
                         <button
                           onClick={() => verschiebeRechts(key)}
                           disabled={letzter}
-                          className="w-12 h-12 rounded-xl bg-zinc-700 hover:bg-zinc-600 disabled:opacity-30 disabled:cursor-not-allowed text-white text-xl font-bold flex items-center justify-center transition"
+                          className="w-12 h-12 rounded-xl bg-line hover:bg-line-strong disabled:opacity-30 disabled:cursor-not-allowed text-ink text-xl font-bold flex items-center justify-center transition"
                         >
                           →
                         </button>
@@ -268,11 +268,11 @@ export function GrossAnzeige({ bons, station, farbe, onZurueck }: GrossAnzeigePr
           onClick={() => setFarbwaehlerFuer(null)}
         >
           <div
-            className="bg-zinc-900 rounded-2xl p-6 shadow-2xl border border-zinc-700"
+            className="bg-panel rounded-2xl p-6 shadow-2xl border border-line"
             onClick={e => e.stopPropagation()}
           >
-            <p className="text-zinc-400 text-sm font-semibold mb-4 text-center">
-              Farbe für <span className="text-white font-bold">{farbwaehlerFuer}</span>
+            <p className="text-ink-muted text-sm font-semibold mb-4 text-center">
+              Farbe für <span className="text-ink font-bold">{farbwaehlerFuer}</span>
             </p>
             <div className="grid grid-cols-5 gap-3">
               {FARB_PALETTE.map(c => {
@@ -295,7 +295,7 @@ export function GrossAnzeige({ bons, station, farbe, onZurueck }: GrossAnzeigePr
             </div>
             <button
               onClick={() => setFarbwaehlerFuer(null)}
-              className="mt-5 w-full py-3 rounded-xl bg-zinc-700 hover:bg-zinc-600 text-zinc-200 font-bold text-sm transition"
+              className="mt-5 w-full py-3 rounded-xl bg-line hover:bg-line-strong text-ink font-bold text-sm transition"
             >
               Abbrechen
             </button>

@@ -245,40 +245,40 @@ export function ArtikelWaehlenPage() {
     const gesamtPreis = einzelPreis * artikelMenge
 
     return (
-      <div className="min-h-screen bg-gray-50 flex flex-col max-w-lg mx-auto">
+      <div className="min-h-screen bg-surface flex flex-col max-w-lg mx-auto">
 
         {/* Header */}
-        <div className="bg-white border-b border-gray-200 px-4 py-4 sticky top-0 z-10">
+        <div className="bg-panel border-b border-line px-4 py-4 sticky top-0 z-10">
           <div className="flex items-center gap-3">
             <button
               onClick={() => { setPhase('artikel'); setFehler(null) }}
-              className="text-gray-400 text-2xl leading-none shrink-0"
+              className="text-ink-subtle text-2xl leading-none shrink-0"
             >‹</button>
             <div className="flex-1 min-w-0">
-              <h1 className="font-black text-gray-900 text-lg leading-tight truncate">
+              <h1 className="font-black text-ink text-lg leading-tight truncate">
                 {aktuellerArtikel.bezeichnung}
               </h1>
-              <p className="text-xs text-gray-500">Optionen &amp; Menge</p>
+              <p className="text-xs text-ink-subtle">Optionen &amp; Menge</p>
             </div>
           </div>
 
           {/* Artikelmenge-Zähler */}
-          <div className="mt-3 flex items-center justify-between bg-gray-50 rounded-2xl px-4 py-3">
+          <div className="mt-3 flex items-center justify-between bg-surface rounded-2xl px-4 py-3">
             <div>
-              <p className="text-xs text-gray-500 font-medium">Anzahl</p>
-              <p className="text-sm font-mono text-gray-700 mt-0.5">
-                {formatPreis(einzelPreis)} × {artikelMenge} = <span className="font-black text-green-700">{formatPreis(gesamtPreis)}</span>
+              <p className="text-xs text-ink-subtle font-medium">Anzahl</p>
+              <p className="text-sm font-mono text-ink-muted mt-0.5">
+                {formatPreis(einzelPreis)} × {artikelMenge} = <span className="font-black text-brand-700">{formatPreis(gesamtPreis)}</span>
               </p>
             </div>
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setArtikelMenge(m => Math.max(1, m - 1))}
-                className="w-10 h-10 rounded-xl border-2 border-green-300 text-green-700 font-black text-xl flex items-center justify-center active:scale-90 transition"
+                className="w-10 h-10 rounded-xl border-2 border-brand-300 text-brand-700 font-black text-xl flex items-center justify-center active:scale-90 transition"
               >−</button>
-              <span className="w-8 text-center font-black text-xl text-gray-900">{artikelMenge}</span>
+              <span className="w-8 text-center font-black text-xl text-ink">{artikelMenge}</span>
               <button
                 onClick={() => setArtikelMenge(m => m + 1)}
-                className="w-10 h-10 rounded-xl bg-green-600 text-white font-black text-xl flex items-center justify-center active:scale-90 transition"
+                className="w-10 h-10 rounded-xl bg-brand-600 text-white font-black text-xl flex items-center justify-center active:scale-90 transition"
               >+</button>
             </div>
           </div>
@@ -293,18 +293,18 @@ export function ArtikelWaehlenPage() {
             return (
               <div key={g.id}>
                 <div className="flex items-center gap-2 mb-3">
-                  <p className="font-black text-gray-900">{g.name}</p>
+                  <p className="font-black text-ink">{g.name}</p>
                   {g.typ === 'pflicht' ? (
                     <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold">
                       Pflicht
                     </span>
                   ) : (
-                    <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">
+                    <span className="text-xs bg-panel-2 text-ink-subtle px-2 py-0.5 rounded-full">
                       Optional
                     </span>
                   )}
                   {g.maxAuswahl !== null && (
-                    <span className="text-xs text-gray-400 ml-auto">
+                    <span className="text-xs text-ink-subtle ml-auto">
                       {gesamtMenge}/{g.maxAuswahl}
                     </span>
                   )}
@@ -318,21 +318,21 @@ export function ArtikelWaehlenPage() {
                     return (
                       <div
                         key={m.id}
-                        className={`bg-white rounded-2xl border-2 px-4 py-3 flex items-center gap-3 transition ${
+                        className={`bg-panel rounded-2xl border-2 px-4 py-3 flex items-center gap-3 transition ${
                           menge > 0
-                            ? 'border-green-500'
+                            ? 'border-brand-500'
                             : gesperrt
-                            ? 'border-gray-100 opacity-40'
-                            : 'border-gray-200'
+                            ? 'border-line opacity-40'
+                            : 'border-line'
                         }`}
                       >
                         {/* Name + Aufschlag */}
                         <div className="flex-1 min-w-0">
-                          <p className={`font-semibold text-sm ${menge > 0 ? 'text-green-900' : 'text-gray-900'}`}>
+                          <p className={`font-semibold text-sm ${menge > 0 ? 'text-brand-900' : 'text-ink'}`}>
                             {m.name}
                           </p>
                           {m.aufschlagCent !== 0 && (
-                            <p className={`text-xs font-mono mt-0.5 ${m.aufschlagCent > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                            <p className={`text-xs font-mono mt-0.5 ${m.aufschlagCent > 0 ? 'text-orange-600' : 'text-brand-600'}`}>
                               {m.aufschlagCent > 0 ? '+' : ''}{formatPreis(m.aufschlagCent)}
                             </p>
                           )}
@@ -343,19 +343,19 @@ export function ArtikelWaehlenPage() {
                           <button
                             onClick={() => aendereModMenge(g.id, m.id, 1, g.maxAuswahl)}
                             disabled={gesperrt}
-                            className="w-9 h-9 rounded-xl bg-green-600 text-white font-black text-xl flex items-center justify-center active:scale-90 transition disabled:opacity-30 shrink-0"
+                            className="w-9 h-9 rounded-xl bg-brand-600 text-white font-black text-xl flex items-center justify-center active:scale-90 transition disabled:opacity-30 shrink-0"
                           >+</button>
                         ) : (
                           <div className="flex items-center gap-2 shrink-0">
                             <button
                               onClick={() => aendereModMenge(g.id, m.id, -1, g.maxAuswahl)}
-                              className="w-8 h-8 rounded-xl border-2 border-green-300 text-green-700 font-black text-lg flex items-center justify-center active:scale-90 transition"
+                              className="w-8 h-8 rounded-xl border-2 border-brand-300 text-brand-700 font-black text-lg flex items-center justify-center active:scale-90 transition"
                             >−</button>
-                            <span className="w-6 text-center font-black text-gray-900 text-sm">{menge}</span>
+                            <span className="w-6 text-center font-black text-ink text-sm">{menge}</span>
                             <button
                               onClick={() => aendereModMenge(g.id, m.id, 1, g.maxAuswahl)}
                               disabled={maxErreicht}
-                              className="w-8 h-8 rounded-xl bg-green-600 text-white font-black text-lg flex items-center justify-center active:scale-90 transition disabled:opacity-30"
+                              className="w-8 h-8 rounded-xl bg-brand-600 text-white font-black text-lg flex items-center justify-center active:scale-90 transition disabled:opacity-30"
                             >+</button>
                           </div>
                         )}
@@ -369,21 +369,21 @@ export function ArtikelWaehlenPage() {
         </div>
 
         {/* Footer: zwei Buttons */}
-        <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto bg-white border-t border-gray-200 p-4 space-y-2">
+        <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto bg-panel border-t border-line p-4 space-y-2">
           {fehler && <p className="text-red-500 text-sm text-center font-medium">{fehler}</p>}
 
           <div className="grid grid-cols-2 gap-2">
             <button
               onClick={nochEinmal}
-              className="py-4 rounded-2xl border-2 border-green-500 text-green-700 font-black text-sm active:scale-95 transition flex flex-col items-center gap-0.5"
+              className="py-4 rounded-2xl border-2 border-brand-500 text-brand-700 font-black text-sm active:scale-95 transition flex flex-col items-center gap-0.5"
             >
               <span>Noch einmal</span>
-              <span className="text-xs font-normal text-green-600 opacity-80">{aktuellerArtikel.bezeichnung}</span>
+              <span className="text-xs font-normal text-brand-600 opacity-80">{aktuellerArtikel.bezeichnung}</span>
             </button>
 
             <button
               onClick={buchenUndWeiter}
-              className="py-4 rounded-2xl bg-green-600 text-white font-black text-sm active:scale-95 transition flex flex-col items-center gap-0.5"
+              className="py-4 rounded-2xl bg-brand-600 text-white font-black text-sm active:scale-95 transition flex flex-col items-center gap-0.5"
             >
               <span>Buchen &amp; weiter</span>
               <span className="text-xs font-normal opacity-80">{formatPreis(gesamtPreis)}</span>
@@ -401,13 +401,13 @@ export function ArtikelWaehlenPage() {
   const isLoading = katQuery.isLoading || artikelQuery.isLoading
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col max-w-lg mx-auto">
+    <div className="min-h-screen bg-surface flex flex-col max-w-lg mx-auto">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-4 py-4 sticky top-0 z-10">
+      <div className="bg-panel border-b border-line px-4 py-4 sticky top-0 z-10">
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate(`/tab/${tabId}`)} className="text-gray-400 text-2xl leading-none">‹</button>
-          <h1 className="font-black text-gray-900 text-lg flex-1">Artikel wählen</h1>
-          <span className="text-xs text-gray-400">{auth.user.name}</span>
+          <button onClick={() => navigate(`/tab/${tabId}`)} className="text-ink-subtle text-2xl leading-none">‹</button>
+          <h1 className="font-black text-ink text-lg flex-1">Artikel wählen</h1>
+          <span className="text-xs text-ink-subtle">{auth.user.name}</span>
         </div>
 
         {kategorien.length > 0 && (
@@ -418,8 +418,8 @@ export function ArtikelWaehlenPage() {
                 onClick={() => setAktivKat(k.id)}
                 className={`px-4 py-1.5 rounded-xl text-sm font-bold whitespace-nowrap transition shrink-0 ${
                   aktivKat === k.id
-                    ? 'bg-green-600 text-white'
-                    : 'text-gray-600 hover:bg-gray-100'
+                    ? 'bg-brand-600 text-white'
+                    : 'text-ink-muted hover:bg-panel-2'
                 }`}
               >
                 {k.name}
@@ -433,12 +433,12 @@ export function ArtikelWaehlenPage() {
       <div className="flex-1 p-4 space-y-2 pb-36">
         {isLoading && (
           <div className="flex justify-center py-12">
-            <div className="w-8 h-8 border-4 border-green-500 border-t-transparent rounded-full animate-spin" />
+            <div className="w-8 h-8 border-4 border-brand-500 border-t-transparent rounded-full animate-spin" />
           </div>
         )}
 
         {!isLoading && artikelInKat.length === 0 && (
-          <div className="text-center py-12 text-gray-400 text-sm">
+          <div className="text-center py-12 text-ink-subtle text-sm">
             Keine Artikel in dieser Kategorie.
           </div>
         )}
@@ -449,11 +449,11 @@ export function ArtikelWaehlenPage() {
           return (
             <div
               key={a.id}
-              className={`bg-white rounded-2xl border border-gray-200 px-4 py-3 flex items-center gap-3 ${ausverkauft ? 'opacity-40' : ''}`}
+              className={`bg-panel rounded-2xl border border-line px-4 py-3 flex items-center gap-3 ${ausverkauft ? 'opacity-40' : ''}`}
             >
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-gray-900 text-sm leading-tight">{a.bezeichnung}</p>
-                <p className="text-green-700 font-black text-base mt-0.5">{formatPreis(a.preisBruttoCent)}</p>
+                <p className="font-semibold text-ink text-sm leading-tight">{a.bezeichnung}</p>
+                <p className="text-brand-700 font-black text-base mt-0.5">{formatPreis(a.preisBruttoCent)}</p>
                 {ausverkauft && <p className="text-xs text-red-500 font-bold">Ausverkauft</p>}
               </div>
 
@@ -462,18 +462,18 @@ export function ArtikelWaehlenPage() {
               ) : menge === 0 ? (
                 <button
                   onClick={() => artikelWaehlen(a)}
-                  className="w-10 h-10 rounded-xl bg-green-600 text-white font-black text-xl flex items-center justify-center active:scale-90 transition shrink-0"
+                  className="w-10 h-10 rounded-xl bg-brand-600 text-white font-black text-xl flex items-center justify-center active:scale-90 transition shrink-0"
                 >+</button>
               ) : (
                 <div className="flex items-center gap-2 shrink-0">
                   <button
                     onClick={() => removeFromKorb(a.id)}
-                    className="w-9 h-9 rounded-xl border-2 border-green-300 text-green-600 font-black text-xl flex items-center justify-center active:scale-90 transition"
+                    className="w-9 h-9 rounded-xl border-2 border-brand-300 text-brand-600 font-black text-xl flex items-center justify-center active:scale-90 transition"
                   >−</button>
-                  <span className="w-6 text-center font-black text-gray-900">{menge}</span>
+                  <span className="w-6 text-center font-black text-ink">{menge}</span>
                   <button
                     onClick={() => artikelWaehlen(a)}
-                    className="w-9 h-9 rounded-xl bg-green-600 text-white font-black text-xl flex items-center justify-center active:scale-90 transition"
+                    className="w-9 h-9 rounded-xl bg-brand-600 text-white font-black text-xl flex items-center justify-center active:scale-90 transition"
                   >+</button>
                 </div>
               )}
@@ -484,14 +484,14 @@ export function ArtikelWaehlenPage() {
 
       {/* Footer */}
       {korbAnzahl > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto bg-white border-t border-gray-200 p-4 space-y-2">
+        <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto bg-panel border-t border-line p-4 space-y-2">
           {fehler && <p className="text-red-500 text-sm text-center">{fehler}</p>}
           <button
             onClick={() => speichernMutation.mutate()}
             disabled={speichernMutation.isPending}
-            className="w-full py-4 rounded-2xl bg-green-600 text-white font-black text-lg active:scale-95 transition disabled:opacity-50 flex items-center justify-between px-6"
+            className="w-full py-4 rounded-2xl bg-brand-600 text-white font-black text-lg active:scale-95 transition disabled:opacity-50 flex items-center justify-between px-6"
           >
-            <span className="bg-green-500 rounded-xl px-2 py-0.5 text-sm">{korbAnzahl} Artikel</span>
+            <span className="bg-brand-500 rounded-xl px-2 py-0.5 text-sm">{korbAnzahl} Artikel</span>
             <span>{speichernMutation.isPending ? 'Wird gespeichert…' : 'Zum Tab hinzufügen'}</span>
             <span className="font-mono">{formatPreis(korbGesamt)}</span>
           </button>

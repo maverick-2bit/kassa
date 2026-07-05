@@ -96,24 +96,24 @@ export function BonKarte({ bon, token, onErledigt }: BonKarteProps) {
   const totalAusgewaehlt = [...ausgewaehlt.values()].reduce((s, n) => s + n, 0)
 
   return (
-    <div className="bg-zinc-900 border border-zinc-700 rounded-2xl overflow-hidden flex flex-col">
+    <div className="bg-panel border border-line rounded-2xl overflow-hidden flex flex-col">
 
       {/* Header */}
-      <div className="bg-zinc-800 px-4 py-3 flex items-start justify-between gap-2">
+      <div className="bg-panel-2 px-4 py-3 flex items-start justify-between gap-2">
         <div>
-          <div className="text-2xl font-black text-white leading-none">
+          <div className="text-2xl font-black text-ink leading-none">
             {bon.bereich ? `${bon.bereich} / T${bon.tisch}` : `Tisch ${bon.tisch}`}
           </div>
-          <div className="text-sm text-zinc-400 mt-1">{bon.kellner}</div>
+          <div className="text-sm text-ink-muted mt-1">{bon.kellner}</div>
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
           <AlterBadge erstelltAt={bon.erstelltAt} />
-          <span className="text-xs text-zinc-500 font-mono">{bon.bonNummer}</span>
+          <span className="text-xs text-ink-subtle font-mono">{bon.bonNummer}</span>
         </div>
       </div>
 
       {/* Positionen */}
-      <div className="flex-1 divide-y divide-zinc-800">
+      <div className="flex-1 divide-y divide-line">
         {positionen.map(pos => {
           const offen    = offeneMenge(pos)
           const gewaehlt = ausgewaehlt.get(pos.id) ?? 0
@@ -125,15 +125,15 @@ export function BonKarte({ bon, token, onErledigt }: BonKarteProps) {
                 key={pos.id}
                 className={[
                   'w-full text-left px-4 py-3 flex items-center gap-3',
-                  pos.erledigt ? 'opacity-40 text-zinc-500' : 'text-white',
+                  pos.erledigt ? 'opacity-40 text-ink-subtle' : 'text-ink',
                 ].join(' ')}
               >
-                <span className={`text-xl font-black w-12 shrink-0 tabular-nums ${pos.erledigt ? 'text-zinc-500' : 'text-amber-400'}`}>
+                <span className={`text-xl font-black w-12 shrink-0 tabular-nums ${pos.erledigt ? 'text-ink-subtle' : 'text-amber-400'}`}>
                   {pos.erledigt ? (
                     `${pos.menge}×`
                   ) : pos.erledigtMenge ? (
                     <span>
-                      <span className="text-zinc-500 line-through text-base">{pos.menge}</span>
+                      <span className="text-ink-subtle line-through text-base">{pos.menge}</span>
                       <span className="text-amber-400">/{offen}×</span>
                     </span>
                   ) : (
@@ -143,7 +143,7 @@ export function BonKarte({ bon, token, onErledigt }: BonKarteProps) {
                 <span className={`flex-1 text-lg font-semibold leading-tight ${pos.erledigt ? 'line-through' : ''}`}>
                   {pos.bezeichnung}
                   {pos.details && (
-                    <span className="block text-sm font-normal text-zinc-400">{pos.details}</span>
+                    <span className="block text-sm font-normal text-ink-muted">{pos.details}</span>
                   )}
                 </span>
                 {pos.erledigtMenge !== undefined && !pos.erledigt && (
@@ -161,7 +161,7 @@ export function BonKarte({ bon, token, onErledigt }: BonKarteProps) {
               key={pos.id}
               className={[
                 'px-4 py-3 flex items-center gap-3',
-                pos.erledigt ? 'opacity-40 text-zinc-500' : 'text-white',
+                pos.erledigt ? 'opacity-40 text-ink-subtle' : 'text-ink',
               ].join(' ')}
             >
               <span className="text-xl font-black w-12 shrink-0 tabular-nums text-amber-400">
@@ -170,7 +170,7 @@ export function BonKarte({ bon, token, onErledigt }: BonKarteProps) {
               <span className="flex-1 text-lg font-semibold leading-tight">
                 {pos.bezeichnung}
                 {pos.details && (
-                  <span className="block text-sm font-normal text-zinc-400">{pos.details}</span>
+                  <span className="block text-sm font-normal text-ink-muted">{pos.details}</span>
                 )}
               </span>
 
@@ -180,24 +180,24 @@ export function BonKarte({ bon, token, onErledigt }: BonKarteProps) {
                   <button
                     onClick={() => setMenge(pos.id, gewaehlt > 0 ? 0 : 1)}
                     className={`w-7 h-7 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
-                      gewaehlt > 0 ? 'bg-blue-500 border-blue-500' : 'border-zinc-500 hover:border-zinc-400'
+                      gewaehlt > 0 ? 'bg-blue-500 border-blue-500' : 'border-line-strong hover:border-line-strong'
                     }`}
                   >
-                    {gewaehlt > 0 && <span className="text-white text-xs">✓</span>}
+                    {gewaehlt > 0 && <span className="text-ink text-xs">✓</span>}
                   </button>
                 ) : (
                   // Stepper bei mehreren
                   <div className="flex items-center gap-1 shrink-0">
                     <button
                       onClick={() => setMenge(pos.id, Math.max(0, gewaehlt - 1))}
-                      className="w-8 h-8 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-white font-bold text-lg flex items-center justify-center transition-colors"
+                      className="w-8 h-8 rounded-lg bg-line hover:bg-line-strong text-ink font-bold text-lg flex items-center justify-center transition-colors"
                     >−</button>
-                    <span className={`w-10 text-center font-black tabular-nums text-lg ${gewaehlt > 0 ? 'text-blue-400' : 'text-zinc-500'}`}>
+                    <span className={`w-10 text-center font-black tabular-nums text-lg ${gewaehlt > 0 ? 'text-blue-400' : 'text-ink-subtle'}`}>
                       {gewaehlt}
                     </span>
                     <button
                       onClick={() => setMenge(pos.id, Math.min(offen, gewaehlt + 1))}
-                      className="w-8 h-8 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-white font-bold text-lg flex items-center justify-center transition-colors"
+                      className="w-8 h-8 rounded-lg bg-line hover:bg-line-strong text-ink font-bold text-lg flex items-center justify-center transition-colors"
                     >+</button>
                   </div>
                 )
@@ -208,12 +208,12 @@ export function BonKarte({ bon, token, onErledigt }: BonKarteProps) {
       </div>
 
       {/* Aktions-Buttons */}
-      <div className="p-3 flex gap-2 bg-zinc-850 border-t border-zinc-700">
+      <div className="p-3 flex gap-2 bg-panel border-t border-line">
         {!teilbonModus ? (
           <>
             <button
               onClick={() => setTeilbonModus(true)}
-              className="flex-1 py-3 rounded-xl bg-zinc-700 text-zinc-200 font-bold text-sm active:bg-zinc-600 transition-colors"
+              className="flex-1 py-3 rounded-xl bg-line text-ink font-bold text-sm active:bg-line-strong transition-colors"
             >
               Teilbon
             </button>
@@ -223,7 +223,7 @@ export function BonKarte({ bon, token, onErledigt }: BonKarteProps) {
               className={[
                 'flex-1 py-3 rounded-xl font-bold text-sm transition-colors',
                 alleErledigt
-                  ? 'bg-emerald-600 text-white active:bg-emerald-500'
+                  ? 'bg-emerald-600 text-ink active:bg-emerald-500'
                   : 'bg-emerald-800 text-emerald-200 active:bg-emerald-700',
                 loading ? 'opacity-50 cursor-not-allowed' : '',
               ].join(' ')}
@@ -235,14 +235,14 @@ export function BonKarte({ bon, token, onErledigt }: BonKarteProps) {
           <>
             <button
               onClick={() => { setTeilbonModus(false); setAusgewaehlt(new Map()) }}
-              className="flex-1 py-3 rounded-xl bg-zinc-700 text-zinc-200 font-bold text-sm active:bg-zinc-600"
+              className="flex-1 py-3 rounded-xl bg-line text-ink font-bold text-sm active:bg-line-strong"
             >
               Abbrechen
             </button>
             <button
               onClick={handleTeilbon}
               disabled={loading || totalAusgewaehlt === 0}
-              className="flex-1 py-3 rounded-xl bg-blue-600 text-white font-bold text-sm active:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="flex-1 py-3 rounded-xl bg-blue-600 text-ink font-bold text-sm active:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               {loading ? '…' : `Senden (${totalAusgewaehlt})`}
             </button>

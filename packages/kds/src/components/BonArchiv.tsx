@@ -96,7 +96,7 @@ export function BonArchiv({ station, token, farbe, onZurueck }: BonArchivProps) 
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white flex flex-col">
+    <div className="min-h-screen bg-surface text-ink flex flex-col">
 
       {/* Header */}
       <div
@@ -106,7 +106,7 @@ export function BonArchiv({ station, token, farbe, onZurueck }: BonArchivProps) 
         <div className="flex items-center gap-3">
           <button
             onClick={onZurueck}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-sm font-bold transition"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-panel-2 hover:bg-line text-ink-muted hover:text-ink text-sm font-bold transition"
           >
             ← Zurück
           </button>
@@ -149,7 +149,7 @@ export function BonArchiv({ station, token, farbe, onZurueck }: BonArchivProps) 
         )}
 
         {!loading && bons.length === 0 && !fehler && (
-          <div className="flex flex-col items-center justify-center h-64 gap-3 text-zinc-600">
+          <div className="flex flex-col items-center justify-center h-64 gap-3 text-ink-subtle">
             <div className="text-5xl">📋</div>
             <div className="text-lg font-bold">Keine Bons im Archiv</div>
           </div>
@@ -162,13 +162,13 @@ export function BonArchiv({ station, token, farbe, onZurueck }: BonArchivProps) 
           return (
             <div
               key={bon.id}
-              className="bg-zinc-900 border border-zinc-700 rounded-2xl overflow-hidden"
+              className="bg-panel border border-line rounded-2xl overflow-hidden"
             >
               {/* Bon-Header */}
-              <div className="bg-zinc-800 px-4 py-3 flex items-start justify-between gap-3">
+              <div className="bg-panel-2 px-4 py-3 flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-lg font-black text-white">
+                    <span className="text-lg font-black text-ink">
                       {bon.bereich ? `${bon.bereich} / Tisch ${bon.tisch}` : `Tisch ${bon.tisch}`}
                     </span>
                     <StatusBadge status={bon.status} />
@@ -179,9 +179,9 @@ export function BonArchiv({ station, token, farbe, onZurueck }: BonArchivProps) 
                       {stationLabel(bon.station)}
                     </span>
                   </div>
-                  <div className="flex items-center gap-3 mt-1 text-sm text-zinc-400">
+                  <div className="flex items-center gap-3 mt-1 text-sm text-ink-muted">
                     <span>{bon.kellner}</span>
-                    <span className="font-mono text-zinc-600">{bon.bonNummer}</span>
+                    <span className="font-mono text-ink-subtle">{bon.bonNummer}</span>
                     <span>{formatZeit(bon.erstelltAt)}</span>
                   </div>
                 </div>
@@ -191,7 +191,7 @@ export function BonArchiv({ station, token, farbe, onZurueck }: BonArchivProps) 
                   <button
                     onClick={() => handleNachdrucken(bon.id)}
                     disabled={ds?.loading}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-700 hover:bg-zinc-600 text-zinc-200 text-sm font-bold transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-line hover:bg-line-strong text-ink text-sm font-bold transition disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {ds?.loading ? '⏳' : '🖨'} Nachdrucken
                   </button>
@@ -206,7 +206,7 @@ export function BonArchiv({ station, token, farbe, onZurueck }: BonArchivProps) 
               </div>
 
               {/* Positionen */}
-              <div className="divide-y divide-zinc-800">
+              <div className="divide-y divide-line">
                 {bon.positionen.map((pos, i) => {
                   const offen = pos.menge - (pos.erledigtMenge ?? 0)
                   return (
@@ -219,10 +219,10 @@ export function BonArchiv({ station, token, farbe, onZurueck }: BonArchivProps) 
                           ? `${offen}/${pos.menge}×`
                           : `${pos.menge}×`}
                       </span>
-                      <span className={`flex-1 text-sm font-medium ${pos.erledigt ? 'line-through text-zinc-500' : 'text-zinc-200'}`}>
+                      <span className={`flex-1 text-sm font-medium ${pos.erledigt ? 'line-through text-ink-subtle' : 'text-ink'}`}>
                         {pos.bezeichnung}
                         {pos.details && (
-                          <span className="block text-xs text-zinc-500 font-normal">{pos.details}</span>
+                          <span className="block text-xs text-ink-subtle font-normal">{pos.details}</span>
                         )}
                       </span>
                       {pos.erledigt && (
@@ -240,14 +240,14 @@ export function BonArchiv({ station, token, farbe, onZurueck }: BonArchivProps) 
         {hatMehr && !loading && (
           <button
             onClick={() => laden(false, offset, stationFilter)}
-            className="w-full py-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-bold transition"
+            className="w-full py-3 rounded-xl bg-panel-2 hover:bg-line text-ink-muted text-sm font-bold transition"
           >
             Weitere laden…
           </button>
         )}
 
         {loading && (
-          <div className="text-center text-zinc-600 py-8 text-sm">
+          <div className="text-center text-ink-subtle py-8 text-sm">
             Wird geladen…
           </div>
         )}

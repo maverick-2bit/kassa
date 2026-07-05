@@ -21,19 +21,19 @@ function SetupScreen({ onSave }: { onSave: (station: KdsStation, token: string) 
   const [token, setToken]     = useState('')
 
   return (
-    <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-6">
-      <div className="bg-zinc-900 rounded-2xl p-8 w-full max-w-md space-y-6">
-        <h1 className="text-2xl font-black text-white">KDS Einrichtung</h1>
+    <div className="min-h-screen bg-surface flex items-center justify-center p-6">
+      <div className="bg-panel rounded-2xl p-8 w-full max-w-md space-y-6">
+        <h1 className="text-2xl font-black text-ink">KDS Einrichtung</h1>
 
         <div className="space-y-2">
-          <label className="text-zinc-400 text-sm font-medium">Station</label>
+          <label className="text-ink-muted text-sm font-medium">Station</label>
           <div className="grid grid-cols-2 gap-2">
             {(Object.keys(STATION_LABELS) as KdsStation[]).map(s => (
               <button
                 key={s}
                 onClick={() => setStation(s)}
                 style={{ borderColor: station === s ? STATION_FARBEN[s] : 'transparent' }}
-                className="py-3 rounded-xl bg-zinc-800 text-white font-bold border-2 transition-all"
+                className="py-3 rounded-xl bg-panel-2 text-ink font-bold border-2 transition-all"
               >
                 {STATION_LABELS[s]}
               </button>
@@ -42,13 +42,13 @@ function SetupScreen({ onSave }: { onSave: (station: KdsStation, token: string) 
         </div>
 
         <div className="space-y-2">
-          <label className="text-zinc-400 text-sm font-medium">JWT-Token</label>
+          <label className="text-ink-muted text-sm font-medium">JWT-Token</label>
           <textarea
             value={token}
             onChange={e => setToken(e.target.value)}
             rows={3}
             placeholder="Bearer Token aus der Kassa-Einstellung einfügen..."
-            className="w-full bg-zinc-800 text-white rounded-xl p-3 text-sm font-mono border border-zinc-700 focus:outline-none focus:border-zinc-500 resize-none"
+            className="w-full bg-panel-2 text-ink rounded-xl p-3 text-sm font-mono border border-line focus:outline-none focus:border-line-strong resize-none"
           />
         </div>
 
@@ -62,7 +62,7 @@ function SetupScreen({ onSave }: { onSave: (station: KdsStation, token: string) 
             window.history.replaceState({}, '', url.toString())
             onSave(station, token.trim())
           }}
-          className="w-full py-4 rounded-xl font-black text-white text-lg"
+          className="w-full py-4 rounded-xl font-black text-ink text-lg"
           style={{ backgroundColor: STATION_FARBEN[station] }}
         >
           {STATION_LABELS[station]} starten
@@ -82,7 +82,7 @@ function UhrDisplay() {
     }, 1000)
     return () => clearInterval(id)
   }, [])
-  return <span className="font-mono tabular-nums text-zinc-400 text-sm">{uhrzeit}</span>
+  return <span className="font-mono tabular-nums text-ink-muted text-sm">{uhrzeit}</span>
 }
 
 interface GesendeteNachricht {
@@ -163,34 +163,34 @@ function ChatPanel({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-zinc-900 rounded-2xl w-full max-w-md flex flex-col shadow-2xl border border-zinc-700" style={{ maxHeight: '85vh' }}>
+      <div className="bg-panel rounded-2xl w-full max-w-md flex flex-col shadow-2xl border border-line" style={{ maxHeight: '85vh' }}>
 
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800 shrink-0">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-line shrink-0">
           <div className="flex items-center gap-3">
             <span className="text-2xl">💬</span>
             <div>
-              <p className="font-black text-white">Nachricht an Kellner</p>
-              <p className="text-xs text-zinc-400">von {STATION_LABELS[station as KdsStation] ?? station}</p>
+              <p className="font-black text-ink">Nachricht an Kellner</p>
+              <p className="text-xs text-ink-muted">von {STATION_LABELS[station as KdsStation] ?? station}</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-zinc-500 hover:text-white transition text-xl font-bold w-8 h-8 flex items-center justify-center rounded-lg hover:bg-zinc-800"
+            className="text-ink-subtle hover:text-ink transition text-xl font-bold w-8 h-8 flex items-center justify-center rounded-lg hover:bg-panel-2"
           >✕</button>
         </div>
 
         {/* Empfänger-Selektor */}
         {kassen.length > 1 && (
-          <div className="px-5 py-3 border-b border-zinc-800 shrink-0">
-            <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-2">Empfänger</p>
+          <div className="px-5 py-3 border-b border-line shrink-0">
+            <p className="text-xs font-semibold text-ink-muted uppercase tracking-wide mb-2">Empfänger</p>
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => setGewaehlteIds([])}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
                   alleGewaehlt
-                    ? 'text-white'
-                    : 'bg-zinc-800 text-zinc-400 hover:text-white'
+                    ? 'text-ink'
+                    : 'bg-panel-2 text-ink-muted hover:text-ink'
                 }`}
                 style={alleGewaehlt ? { backgroundColor: farbe } : {}}
               >
@@ -204,8 +204,8 @@ function ChatPanel({
                     onClick={() => toggleKasse(k.id)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
                       aktiv
-                        ? 'text-white'
-                        : 'bg-zinc-800 text-zinc-400 hover:text-white'
+                        ? 'text-ink'
+                        : 'bg-panel-2 text-ink-muted hover:text-ink'
                     }`}
                     style={aktiv ? { backgroundColor: farbe } : {}}
                   >
@@ -221,10 +221,10 @@ function ChatPanel({
         {verlauf.length > 0 && (
           <div className="flex-1 overflow-auto px-5 py-3 space-y-2 min-h-0">
             {verlauf.map((m, i) => (
-              <div key={i} className={`rounded-xl px-4 py-2.5 text-sm ${m.ok ? 'bg-zinc-800' : 'bg-red-900/40 border border-red-700'}`}>
+              <div key={i} className={`rounded-xl px-4 py-2.5 text-sm ${m.ok ? 'bg-panel-2' : 'bg-red-900/40 border border-red-700'}`}>
                 <div className="flex items-start justify-between gap-2">
-                  <p className="text-zinc-100 leading-snug">{m.text}</p>
-                  <span className="text-zinc-500 text-xs shrink-0 mt-0.5">{m.zeit}</span>
+                  <p className="text-ink leading-snug">{m.text}</p>
+                  <span className="text-ink-subtle text-xs shrink-0 mt-0.5">{m.zeit}</span>
                 </div>
                 {m.ok ? (
                   <p className="text-xs text-green-400 mt-1">✓ Gesendet an: {m.empfaenger}</p>
@@ -246,16 +246,16 @@ function ChatPanel({
             rows={3}
             maxLength={500}
             placeholder="Nachricht eingeben… (Enter zum Senden)"
-            className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 text-sm border border-zinc-700 focus:outline-none focus:border-zinc-500 resize-none placeholder-zinc-600"
+            className="w-full bg-panel-2 text-ink rounded-xl px-4 py-3 text-sm border border-line focus:outline-none focus:border-line-strong resize-none placeholder-ink-subtle"
           />
           <div className="flex items-center justify-between gap-3">
-            <span className="text-xs text-zinc-500 truncate">
+            <span className="text-xs text-ink-subtle truncate">
               → {empfaengerLabel()}
             </span>
             <button
               onClick={absenden}
               disabled={!text.trim() || senden}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm text-white transition disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm text-ink transition disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
               style={{ backgroundColor: farbe }}
             >
               {senden ? '⏳ Senden…' : '📤 Senden'}
@@ -402,7 +402,7 @@ export default function App() {
   const farbe = STATION_FARBEN[station] ?? '#6b7280'
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white flex flex-col">
+    <div className="min-h-screen bg-surface text-ink flex flex-col">
 
       {/* Top-Bar */}
       <div
@@ -417,7 +417,7 @@ export default function App() {
           <span className="font-black text-xl" style={{ color: farbe }}>
             {STATION_LABELS[station]}
           </span>
-          <span className="bg-zinc-800 text-zinc-300 rounded-full px-3 py-0.5 text-sm font-bold">
+          <span className="bg-panel-2 text-ink-muted rounded-full px-3 py-0.5 text-sm font-bold">
             {bons.length} offen
           </span>
         </div>
@@ -425,7 +425,7 @@ export default function App() {
           <button
             onClick={() => setAnsicht('gross')}
             title="Großanzeige öffnen"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-sm font-medium transition"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-panel-2 hover:bg-line text-ink-muted hover:text-ink text-sm font-medium transition"
           >
             <span>⬛</span>
             <span className="hidden sm:inline">Großanzeige</span>
@@ -433,7 +433,7 @@ export default function App() {
           <button
             onClick={() => setAnsicht('archiv')}
             title="Bon-Archiv öffnen"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-sm font-medium transition"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-panel-2 hover:bg-line text-ink-muted hover:text-ink text-sm font-medium transition"
           >
             <span>📋</span>
             <span className="hidden sm:inline">Archiv</span>
@@ -441,7 +441,7 @@ export default function App() {
           <button
             onClick={() => setChatOffen(true)}
             title="Nachricht an Kellner senden"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-sm font-medium transition"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-panel-2 hover:bg-line text-ink-muted hover:text-ink text-sm font-medium transition"
           >
             <span>💬</span>
             <span className="hidden sm:inline">Nachricht</span>
@@ -485,27 +485,27 @@ export default function App() {
       {antworten.length > 0 && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 w-full max-w-sm px-4 pointer-events-none">
           {antworten.map((a, i) => (
-            <div key={i} className="pointer-events-auto bg-zinc-800 border-2 border-zinc-600 rounded-2xl shadow-2xl overflow-hidden">
+            <div key={i} className="pointer-events-auto bg-panel-2 border-2 border-line-strong rounded-2xl shadow-2xl overflow-hidden">
               <div className="flex items-center gap-2 px-4 py-2.5" style={{ backgroundColor: farbe + '33', borderBottom: `2px solid ${farbe}` }}>
                 <span className="text-xl">↩</span>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-black text-white truncate">Antwort von {a.kasseBezeichnung}</p>
-                  <p className="text-xs text-zinc-400">
+                  <p className="text-sm font-black text-ink truncate">Antwort von {a.kasseBezeichnung}</p>
+                  <p className="text-xs text-ink-muted">
                     {new Date(a.zeit).toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' })}
                   </p>
                 </div>
                 <button
                   onClick={() => setAntworten(prev => prev.filter((_, j) => j !== i))}
-                  className="text-zinc-400 hover:text-white font-bold text-lg w-7 h-7 flex items-center justify-center rounded-full hover:bg-zinc-700 transition shrink-0"
+                  className="text-ink-muted hover:text-ink font-bold text-lg w-7 h-7 flex items-center justify-center rounded-full hover:bg-line transition shrink-0"
                 >✕</button>
               </div>
               <div className="px-4 py-3">
-                <p className="text-white font-medium leading-snug whitespace-pre-wrap break-words">{a.text}</p>
+                <p className="text-ink font-medium leading-snug whitespace-pre-wrap break-words">{a.text}</p>
               </div>
               <div className="px-4 pb-3">
                 <button
                   onClick={() => setAntworten(prev => prev.filter((_, j) => j !== i))}
-                  className="w-full py-2 rounded-xl text-sm font-bold text-white transition hover:opacity-80"
+                  className="w-full py-2 rounded-xl text-sm font-bold text-ink transition hover:opacity-80"
                   style={{ backgroundColor: farbe }}
                 >✓ OK</button>
               </div>
@@ -514,7 +514,7 @@ export default function App() {
           {antworten.length > 1 && (
             <button
               onClick={() => setAntworten([])}
-              className="pointer-events-auto self-center px-5 py-2 rounded-xl bg-zinc-700 text-white text-sm font-bold shadow-lg hover:bg-zinc-600 transition"
+              className="pointer-events-auto self-center px-5 py-2 rounded-xl bg-line text-ink text-sm font-bold shadow-lg hover:bg-line-strong transition"
             >
               Alle schließen ({antworten.length})
             </button>
@@ -534,24 +534,24 @@ export default function App() {
 
         {/* Linke Aggregations-Spalte */}
         <div
-          className="w-52 shrink-0 flex flex-col border-r border-zinc-800 overflow-y-auto"
+          className="w-52 shrink-0 flex flex-col border-r border-line overflow-y-auto"
           style={{ background: '#111113' }}
         >
           <div className="px-3 pt-3 pb-2">
-            <p className="text-xs font-black uppercase tracking-widest text-zinc-500">
+            <p className="text-xs font-black uppercase tracking-widest text-ink-subtle">
               Offen gesamt
             </p>
           </div>
           {aggregiertArtikel.length === 0 ? (
             <div className="flex-1 flex items-center justify-center">
-              <span className="text-zinc-700 text-sm">–</span>
+              <span className="text-ink-subtle text-sm">–</span>
             </div>
           ) : (
             <div className="flex-1 px-2 pb-3 space-y-1">
               {aggregiertArtikel.map(([bezeichnung, menge]) => (
                 <div
                   key={bezeichnung}
-                  className="flex items-start gap-2 px-2 py-1.5 rounded-lg hover:bg-zinc-800/60 transition-colors"
+                  className="flex items-start gap-2 px-2 py-1.5 rounded-lg hover:bg-panel-2/60 transition-colors"
                 >
                   <span
                     className="text-base font-black tabular-nums shrink-0 min-w-[2rem] text-right"
@@ -559,7 +559,7 @@ export default function App() {
                   >
                     {menge}×
                   </span>
-                  <span className="text-sm text-zinc-200 font-medium leading-tight break-words">
+                  <span className="text-sm text-ink font-medium leading-tight break-words">
                     {bezeichnung}
                   </span>
                 </div>
@@ -571,7 +571,7 @@ export default function App() {
         {/* Bons-Grid */}
         <div className="flex-1 overflow-auto p-4">
           {bons.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full gap-3 text-zinc-600">
+            <div className="flex flex-col items-center justify-center h-full gap-3 text-ink-subtle">
               <div className="text-6xl">✓</div>
               <div className="text-xl font-bold">Keine offenen Bestellungen</div>
             </div>
