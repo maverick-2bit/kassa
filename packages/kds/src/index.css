@@ -1,10 +1,13 @@
 @import "tailwindcss";
 @import "@fontsource-variable/inter";
 
+/* Dark Mode über die Klasse `dark` am <html>-Element (siehe theme.ts). */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* ---------------------------------------------------------------------------
- * Küchen-Display-System (KDS) — läuft dauerhaft im dunklen Design (Küche,
- * wenig Blendung). Gleiche semantische Tokens + Markenfarbe wie das Haupt-
- * Frontend; die :root-Werte sind fix die Dark-Palette.
+ * Küchen-Display-System (KDS). Gleiche semantische Tokens + Markenfarbe wie das
+ * Haupt-Frontend. Umschaltbar hell/dunkel (Standard hell — Schwarz auf Weiß
+ * liest sich an der Wand für viele besser; Dunkel per Umschalter).
  * ------------------------------------------------------------------------- */
 @theme {
   --color-surface:    var(--surface);
@@ -30,9 +33,31 @@
   --font-sans: "Inter Variable", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
+/* Hell (Standard) */
 :root {
-  /* Dark-Palette (KDS ist immer dunkel). surface etwas tiefer als im
-   * Haupt-Frontend für maximalen Kontrast an der Wand. */
+  --surface:    #f4f5f7;
+  --panel:      #ffffff;
+  --panel-2:    #eef1f4;
+  --ink:        #1a2027;
+  --ink-muted:  #5f6b76;
+  --ink-subtle: #8a95a1;
+  --line:       #e2e6ea;
+  --line-strong:#cdd3da;
+  --brand-50:   #eef3ff;
+  --brand-100:  #dbe4ff;
+  --brand-200:  #c2d3fb;
+  --brand-300:  #9bb5f9;
+  --brand-400:  #5b82f5;
+  --brand-500:  #1d4ed8;
+  --brand-600:  #1a44bb;
+  --brand-700:  #16388f;
+  --brand-800:  #122e73;
+  --brand-900:  #0e2352;
+  color-scheme: light;
+}
+
+/* Dunkel — surface etwas tiefer für maximalen Kontrast an der Wand */
+.dark {
   --surface:    #0b1017;
   --panel:      #18212b;
   --panel-2:    #202b37;

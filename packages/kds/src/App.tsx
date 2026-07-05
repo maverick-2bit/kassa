@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
+import { getTheme, toggleTheme, type ThemeMode } from './theme'
 import type { KdsBon, KdsStation, KdsSseEvent } from './types'
 import { STATION_LABELS, STATION_FARBEN } from './types'
 import { fetchBons, ladeKassen, nachrichtSenden, type KdsKasse } from './api'
@@ -14,6 +15,30 @@ function getConfig() {
     station: (params.get('station') ?? 'kueche') as KdsStation,
     token:   params.get('token') ?? '',
   }
+}
+
+/** Hell/Dunkel-Umschalter für die Kopfleiste (Standard hell). */
+function ThemeToggle() {
+  const [mode, setMode] = useState<ThemeMode>(() => getTheme())
+  return (
+    <button
+      onClick={() => setMode(toggleTheme())}
+      title={mode === 'dark' ? 'Zu hellem Modus wechseln' : 'Zu dunklem Modus wechseln'}
+      aria-label="Farbschema umschalten"
+      className="flex items-center justify-center w-9 h-9 rounded-lg bg-panel-2 hover:bg-line text-ink-muted hover:text-ink transition"
+    >
+      {mode === 'dark' ? (
+        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="12" cy="12" r="4" />
+          <path strokeLinecap="round" d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+        </svg>
+      ) : (
+        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z" />
+        </svg>
+      )}
+    </button>
+  )
 }
 
 function SetupScreen({ onSave }: { onSave: (station: KdsStation, token: string) => void }) {
@@ -227,9 +252,9 @@ function ChatPanel({
                   <span className="text-ink-subtle text-xs shrink-0 mt-0.5">{m.zeit}</span>
                 </div>
                 {m.ok ? (
-                  <p className="text-xs text-green-400 mt-1">✓ Gesendet an: {m.empfaenger}</p>
+                  <p className="text-xs text-green-600 dark:text-green-400 mt-1">✓ Gesendet an: {m.empfaenger}</p>
                 ) : (
-                  <p className="text-xs text-red-400 mt-1">✗ {m.fehler}</p>
+                  <p className="text-xs text-red-600 dark:text-red-400 mt-1">✗ {m.fehler}</p>
                 )}
               </div>
             ))}
@@ -446,6 +471,7 @@ export default function App() {
             <span>💬</span>
             <span className="hidden sm:inline">Nachricht</span>
           </button>
+          <ThemeToggle />
           <UhrDisplay />
         </div>
       </div>
@@ -524,7 +550,7 @@ export default function App() {
 
       {/* Fehler-Banner */}
       {fehler && (
-        <div className="bg-red-900/50 text-red-300 text-sm px-5 py-2 text-center">
+        <div className="bg-red-900/50 text-red-700 dark:text-red-300 text-sm px-5 py-2 text-center">
           Verbindungsfehler: {fehler} – wird automatisch erneut versucht…
         </div>
       )}

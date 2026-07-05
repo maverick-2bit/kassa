@@ -35,11 +35,11 @@ function formatZeit(iso: string): string {
 
 function StatusBadge({ status }: { status: string }) {
   return status === 'erledigt' ? (
-    <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-900 text-emerald-300">
+    <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-900 text-emerald-700 dark:text-emerald-300">
       Erledigt
     </span>
   ) : (
-    <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-900 text-amber-300">
+    <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-900 text-amber-600 dark:text-amber-300">
       Offen
     </span>
   )
@@ -143,7 +143,7 @@ export function BonArchiv({ station, token, farbe, onZurueck }: BonArchivProps) 
       <div className="flex-1 overflow-auto p-4 space-y-3">
 
         {fehler && (
-          <div className="bg-red-900/40 border border-red-700 text-red-300 px-4 py-3 rounded-xl text-sm">
+          <div className="bg-red-900/40 border border-red-700 text-red-700 dark:text-red-300 px-4 py-3 rounded-xl text-sm">
             {fehler}
           </div>
         )}
@@ -196,7 +196,7 @@ export function BonArchiv({ station, token, farbe, onZurueck }: BonArchivProps) 
                     {ds?.loading ? '⏳' : '🖨'} Nachdrucken
                   </button>
                   {ds?.result && (
-                    <span className={`text-xs font-bold ${ds.result.gedruckt > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    <span className={`text-xs font-bold ${ds.result.gedruckt > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
                       {ds.result.gedruckt > 0
                         ? `✓ ${ds.result.gedruckt} Drucker`
                         : '✗ Kein Drucker erreichbar'}
@@ -214,7 +214,7 @@ export function BonArchiv({ station, token, farbe, onZurueck }: BonArchivProps) 
                       key={pos.id ?? i}
                       className={`px-4 py-2.5 flex items-start gap-3 ${pos.erledigt ? 'opacity-40' : ''}`}
                     >
-                      <span className="text-amber-400 font-black w-10 shrink-0 tabular-nums">
+                      <span className="text-amber-600 dark:text-amber-400 font-black w-10 shrink-0 tabular-nums">
                         {pos.erledigtMenge !== undefined && !pos.erledigt
                           ? `${offen}/${pos.menge}×`
                           : `${pos.menge}×`}

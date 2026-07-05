@@ -128,13 +128,13 @@ export function BonKarte({ bon, token, onErledigt }: BonKarteProps) {
                   pos.erledigt ? 'opacity-40 text-ink-subtle' : 'text-ink',
                 ].join(' ')}
               >
-                <span className={`text-xl font-black w-12 shrink-0 tabular-nums ${pos.erledigt ? 'text-ink-subtle' : 'text-amber-400'}`}>
+                <span className={`text-xl font-black w-12 shrink-0 tabular-nums ${pos.erledigt ? 'text-ink-subtle' : 'text-amber-600 dark:text-amber-400'}`}>
                   {pos.erledigt ? (
                     `${pos.menge}×`
                   ) : pos.erledigtMenge ? (
                     <span>
                       <span className="text-ink-subtle line-through text-base">{pos.menge}</span>
-                      <span className="text-amber-400">/{offen}×</span>
+                      <span className="text-amber-600 dark:text-amber-400">/{offen}×</span>
                     </span>
                   ) : (
                     `${pos.menge}×`
@@ -147,7 +147,7 @@ export function BonKarte({ bon, token, onErledigt }: BonKarteProps) {
                   )}
                 </span>
                 {pos.erledigtMenge !== undefined && !pos.erledigt && (
-                  <span className="text-xs text-emerald-500 font-bold shrink-0">
+                  <span className="text-xs text-emerald-600 dark:text-emerald-500 font-bold shrink-0">
                     {pos.erledigtMenge} gesendet
                   </span>
                 )}
@@ -164,7 +164,7 @@ export function BonKarte({ bon, token, onErledigt }: BonKarteProps) {
                 pos.erledigt ? 'opacity-40 text-ink-subtle' : 'text-ink',
               ].join(' ')}
             >
-              <span className="text-xl font-black w-12 shrink-0 tabular-nums text-amber-400">
+              <span className="text-xl font-black w-12 shrink-0 tabular-nums text-amber-600 dark:text-amber-400">
                 {offen}×
               </span>
               <span className="flex-1 text-lg font-semibold leading-tight">
@@ -183,7 +183,7 @@ export function BonKarte({ bon, token, onErledigt }: BonKarteProps) {
                       gewaehlt > 0 ? 'bg-blue-500 border-blue-500' : 'border-line-strong hover:border-line-strong'
                     }`}
                   >
-                    {gewaehlt > 0 && <span className="text-ink text-xs">✓</span>}
+                    {gewaehlt > 0 && <span className="text-white text-xs">✓</span>}
                   </button>
                 ) : (
                   // Stepper bei mehreren
@@ -192,7 +192,7 @@ export function BonKarte({ bon, token, onErledigt }: BonKarteProps) {
                       onClick={() => setMenge(pos.id, Math.max(0, gewaehlt - 1))}
                       className="w-8 h-8 rounded-lg bg-line hover:bg-line-strong text-ink font-bold text-lg flex items-center justify-center transition-colors"
                     >−</button>
-                    <span className={`w-10 text-center font-black tabular-nums text-lg ${gewaehlt > 0 ? 'text-blue-400' : 'text-ink-subtle'}`}>
+                    <span className={`w-10 text-center font-black tabular-nums text-lg ${gewaehlt > 0 ? 'text-blue-600 dark:text-blue-400' : 'text-ink-subtle'}`}>
                       {gewaehlt}
                     </span>
                     <button
@@ -223,7 +223,7 @@ export function BonKarte({ bon, token, onErledigt }: BonKarteProps) {
               className={[
                 'flex-1 py-3 rounded-xl font-bold text-sm transition-colors',
                 alleErledigt
-                  ? 'bg-emerald-600 text-ink active:bg-emerald-500'
+                  ? 'bg-emerald-600 text-white active:bg-emerald-500'
                   : 'bg-emerald-800 text-emerald-200 active:bg-emerald-700',
                 loading ? 'opacity-50 cursor-not-allowed' : '',
               ].join(' ')}
@@ -242,7 +242,7 @@ export function BonKarte({ bon, token, onErledigt }: BonKarteProps) {
             <button
               onClick={handleTeilbon}
               disabled={loading || totalAusgewaehlt === 0}
-              className="flex-1 py-3 rounded-xl bg-blue-600 text-ink font-bold text-sm active:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="flex-1 py-3 rounded-xl bg-blue-600 text-white font-bold text-sm active:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               {loading ? '…' : `Senden (${totalAusgewaehlt})`}
             </button>
