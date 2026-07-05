@@ -672,4 +672,100 @@ test('Storno: Barzahlungsbeleg stornieren erzeugt einen Stornobeleg', async ({ p
   await expect(page.getByText(/Stornobeleg #\d+ erstellt/)).toBeVisible({ timeout: 20_000 })
 })
 
+/**
+ * Kartenzahlung-Journey: einen Kaffee in der Kasse per Karte bezahlen (ohne ZVT
+ * → direkter Beleg, kein Terminal-Modal) und prüfen, dass ein Beleg mit vollem
+ * Kartenumsatz (250) und 0 bar entsteht. Deckt den Karten-Zahlungspfad ab.
+ */
+test('Kartenzahlung: per Karte bezahlen erzeugt einen Beleg mit Kartenumsatz', async ({ page, request }) => {
+  const login = await ensureAuth(request)
+  const token = login.token, mandantId = login.mandant.id, kasseId = login.kassen[0].id
+  const authHeader = { Authorization: `Bearer ${token}` }
+
+  await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
+    localStorage.setItem('kassa:token', d.token)
+    localStorage.setItem('kassa:auth', d.authJson)
+    localStorage.setItem('kassa:mandantId', d.mandantId)
+    localStorage.setItem('kassa:kasseId', d.kasseId)
+  }, {
+    token,
+    authJson: JSON.stringify({ user: login.user, mandant: login.mandant, kassen: login.kassen }),
+    mandantId,
+    kasseId,
+  })
+
+  await page.goto('/kasse')
+  await page.getByRole('button', { name: 'Kaffee' }).first().click()
+  // „Karte": leert den Bar-Betrag → der volle Betrag läuft auf Karte
+  await page.getByRole('button', { name: 'Karte', exact: true }).click()
+  await page.getByRole('button', { name: 'Bon erstellen' }).click()
+  await expect(page.getByText(/Beleg #\d+ erstellt/)).toBeVisible({ timeout: 20_000 })
+
+  // Es existiert ein Beleg mit vollem Kartenumsatz (250) und 0 bar
+  const belege = await (await request.get(`/api/belege?kasseId=${kasseId}`, { headers: authHeader })).json()
+  expect((belege as { summeKarteCent: number; summeBarCent: number }[])
+    .some(b => b.summeKarteCent === 250 && b.summeBarCent === 0)).toBe(true)
+})
+
+/**
+ * RKSV Monats- + Jahresbeleg-Journey: beide Spezialbelege auf der Belegseite
+ * erstellen — werden signiert und in die Belegkette eingereiht.
+ */
+test('RKSV Monats-/Jahresbeleg: erstellen erzeugt signierte Belege', async ({ page, request }) => {
+  const login = await ensureAuth(request)
+  const token = login.token, mandantId = login.mandant.id, kasseId = login.kassen[0].id
+
+  await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
+    localStorage.setItem('kassa:token', d.token)
+    localStorage.setItem('kassa:auth', d.authJson)
+    localStorage.setItem('kassa:mandantId', d.mandantId)
+    localStorage.setItem('kassa:kasseId', d.kasseId)
+  }, {
+    token,
+    authJson: JSON.stringify({ user: login.user, mandant: login.mandant, kassen: login.kassen }),
+    mandantId,
+    kasseId,
+  })
+
+  await page.goto('/belege')
+
+  await page.getByRole('button', { name: 'Monatsbeleg erstellen' }).click()
+  await expect(page.getByText(/Monatsbeleg #\d+ erstellt/)).toBeVisible({ timeout: 20_000 })
+  await page.keyboard.press('Escape')  // Erstell-Dialog schließen
+
+  await page.getByRole('button', { name: 'Jahresbeleg erstellen' }).click()
+  await expect(page.getByText(/Jahresbeleg #\d+ erstellt/)).toBeVisible({ timeout: 20_000 })
+})
+
+/**
+ * Kassenbuch-Journey: eine Bar-Einlage (50,00 €) über das Formular buchen und
+ * prüfen, dass sie in der Buchungsliste erscheint. Deckt die nicht-umsatz-
+ * bezogene Bargeldpflege ab.
+ */
+test('Kassenbuch: Einlage buchen erscheint in der Buchungsliste', async ({ page, request }) => {
+  const login = await ensureAuth(request)
+  const token = login.token, mandantId = login.mandant.id, kasseId = login.kassen[0].id
+
+  await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
+    localStorage.setItem('kassa:token', d.token)
+    localStorage.setItem('kassa:auth', d.authJson)
+    localStorage.setItem('kassa:mandantId', d.mandantId)
+    localStorage.setItem('kassa:kasseId', d.kasseId)
+  }, {
+    token,
+    authJson: JSON.stringify({ user: login.user, mandant: login.mandant, kassen: login.kassen }),
+    mandantId,
+    kasseId,
+  })
+
+  await page.goto('/kassenbuch')
+  await page.getByRole('button', { name: '+ Neue Buchung' }).click()
+  // Einlage ist Standard-Art; Betrag setzen und buchen
+  await page.getByPlaceholder('0,00').fill('50,00')
+  await page.getByRole('button', { name: 'Einlage buchen' }).click()
+
+  // Buchung erscheint (50,00 € Einlage) — Modal ist geschlossen
+  await expect(page.getByText(/50,00/).first()).toBeVisible({ timeout: 10_000 })
+})
+
 })
