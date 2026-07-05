@@ -547,4 +547,55 @@ test('Wareneingang: Zugang buchen erhöht den Lagerbestand', async ({ page, requ
   expect(artNachher?.lagerstandMenge).toBe(17)
 })
 
+/**
+ * Offene-Posten-Journey: Kredit-Kunden + offenen Posten (5,00 €) per API anlegen,
+ * auf der Offene-Posten-Seite die Zahlung erfassen (voller Betrag) und prüfen,
+ * dass der Posten danach beglichen ist (Restbetrag 0).
+ */
+test('Offene Posten: Zahlung erfassen begleicht den Posten', async ({ page, request }) => {
+  const login = await (await request.post('/api/auth/login', {
+    data: { email: ADMIN_EMAIL, passwort: ADMIN_PASSWORT },
+  })).json()
+  const token     = login.token as string
+  const mandantId = login.mandant.id as string
+  const kasseId   = login.kassen[0].id as string
+  const authHeader = { Authorization: `Bearer ${token}` }
+
+  // Kredit-Kunde + offener Posten (5,00 €) anlegen
+  const kunde = await (await request.post('/api/kunden', {
+    headers: authHeader,
+    data: { nachname: 'E2E-Kredit-Kunde', kreditAktiv: true },
+  })).json()
+  const op = await (await request.post('/api/offene-posten', {
+    headers: authHeader,
+    data: { kundeId: kunde.id, betragCent: 500 },
+  })).json()
+  const opId = op.id as string
+
+  await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
+    localStorage.setItem('kassa:token', d.token)
+    localStorage.setItem('kassa:auth', d.authJson)
+    localStorage.setItem('kassa:mandantId', d.mandantId)
+    localStorage.setItem('kassa:kasseId', d.kasseId)
+  }, {
+    token,
+    authJson: JSON.stringify({ user: login.user, mandant: login.mandant, kassen: login.kassen }),
+    mandantId,
+    kasseId,
+  })
+
+  await page.goto('/offene-posten')
+  await expect(page.getByText('E2E-Kredit-Kunde').first()).toBeVisible({ timeout: 10_000 })
+
+  // Zahlung erfassen → Modal (Betrag ist auf den Restbetrag vorbelegt) → bestätigen
+  await page.getByRole('button', { name: 'Zahlung', exact: true }).first().click()
+  await page.getByRole('button', { name: 'Zahlung erfassen' }).click()
+
+  // Posten ist beglichen (Restbetrag 0)
+  await expect.poll(async () => {
+    const alle = await (await request.get('/api/offene-posten', { headers: authHeader })).json()
+    return (alle as { id: string; restCent: number }[]).find(p => p.id === opId)?.restCent
+  }, { timeout: 10_000 }).toBe(0)
+})
+
 })
