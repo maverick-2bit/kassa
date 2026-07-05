@@ -431,6 +431,9 @@ function WarengruppenVerteilungSektion() {
   }
 
   function toggle(kasseId: string, catId: string) {
+    // Nicht togglen, solange die pos-config dieser Kasse nicht geladen ist —
+    // sonst überschreibt der PUT die noch unbekannte Auswahl.
+    if (!configByKasse.has(kasseId)) return
     const set = new Set(configByKasse.get(kasseId) ?? [])
     if (set.has(catId)) set.delete(catId); else set.add(catId)
     setzeAuswahl(kasseId, [...set])
@@ -479,14 +482,18 @@ function WarengruppenVerteilungSektion() {
                 <tr key={kat.id} className="hover:bg-panel-2/60">
                   <td className="px-3 py-2 text-ink font-medium sticky left-0 bg-panel z-10">{kat.name}</td>
                   {kassen.map(k => {
-                    const aktiv = (configByKasse.get(k.id) ?? []).includes(kat.id)
+                    // Erst bedienbar, wenn die pos-config dieser Kasse geladen ist —
+                    // sonst würde ein Toggle die noch ungeladene Auswahl überschreiben.
+                    const geladen = configByKasse.has(k.id)
+                    const aktiv   = (configByKasse.get(k.id) ?? []).includes(kat.id)
                     return (
                       <td key={k.id} className="px-3 py-2 text-center">
                         <input
                           type="checkbox"
                           checked={aktiv}
+                          disabled={!geladen}
                           onChange={() => toggle(k.id, kat.id)}
-                          className="h-4 w-4 rounded border-line-strong text-brand-600 focus:ring-brand-500"
+                          className="h-4 w-4 rounded border-line-strong text-brand-600 focus:ring-brand-500 disabled:opacity-40 disabled:cursor-not-allowed"
                         />
                       </td>
                     )
