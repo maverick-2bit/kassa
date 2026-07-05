@@ -440,4 +440,111 @@ test('Tisch-Split: Rechnung auf 2 Zahler teilen schließt den Tab mit 2 Bons', a
   await expect(page.getByText('E2E-SPLIT')).toHaveCount(0)
 })
 
+/**
+ * Gutschein-Journey: Gutschein (2,50 €) per API anlegen, in der Kasse einen
+ * Kaffee (2,50 €) bonieren, den Gutschein einlösen (deckt die Rechnung voll) und
+ * einen signierten Beleg erstellen. Treibt Gutschein-Suche/-Einlösung + die
+ * Zahlungslogik (Gutschein als „Sonstige") durch den echten Browser.
+ */
+test('Gutschein: einlösen deckt die Rechnung voll, signierter Beleg entsteht', async ({ page, request }) => {
+  const login = await (await request.post('/api/auth/login', {
+    data: { email: ADMIN_EMAIL, passwort: ADMIN_PASSWORT },
+  })).json()
+  const token     = login.token as string
+  const mandantId = login.mandant.id as string
+  const kasseId   = login.kassen[0].id as string
+  const authHeader = { Authorization: `Bearer ${token}` }
+
+  // Gutschein 2,50 € mit festem Code anlegen (Kaffee-Artikel stammt aus dem Kassier-Test)
+  const gs = await request.post('/api/gutscheine', {
+    headers: authHeader,
+    data: { betragCent: 250, code: 'E2EGS01' },
+  })
+  expect(gs.status()).toBe(201)
+
+  await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
+    localStorage.setItem('kassa:token', d.token)
+    localStorage.setItem('kassa:auth', d.authJson)
+    localStorage.setItem('kassa:mandantId', d.mandantId)
+    localStorage.setItem('kassa:kasseId', d.kasseId)
+  }, {
+    token,
+    authJson: JSON.stringify({ user: login.user, mandant: login.mandant, kassen: login.kassen }),
+    mandantId,
+    kasseId,
+  })
+
+  await page.goto('/kasse')
+  await page.getByRole('button', { name: 'Kaffee' }).first().click()
+
+  // Gutschein einlösen
+  await page.getByRole('button', { name: '+ Gutschein einlösen' }).click()
+  await page.getByPlaceholder('Code, EAN oder QR scannen …').fill('E2EGS01')
+  await page.getByRole('button', { name: 'Prüfen' }).click()
+  // Gutschein gefunden (Restwert sichtbar) → einlösen (Vorschlag deckt die 2,50 €)
+  await expect(page.getByText('E2EGS01').first()).toBeVisible({ timeout: 10_000 })
+  await page.getByRole('button', { name: 'Einlösen', exact: true }).click()
+
+  // Zu zahlen ist 0 € (Gutschein deckt voll) → signierter Beleg
+  await page.getByRole('button', { name: 'Bon erstellen' }).click()
+  await expect(page.getByText(/Beleg #\d+ erstellt/)).toBeVisible({ timeout: 20_000 })
+
+  // Gutschein ist danach eingelöst (Restwert 0)
+  const gsNachher = await (await request.get('/api/gutscheine/code/E2EGS01', { headers: authHeader })).json()
+  expect(gsNachher.restCent).toBe(0)
+})
+
+/**
+ * Wareneingang-Journey: einen Lager-Artikel (Startbestand 10) per API anlegen,
+ * auf der Wareneingang-Seite +7 Zugang buchen und prüfen, dass der Bestand
+ * danach 17 ist. Treibt die Lagerstand-Bulk-Pflege durch den echten Browser.
+ */
+test('Wareneingang: Zugang buchen erhöht den Lagerbestand', async ({ page, request }) => {
+  const login = await (await request.post('/api/auth/login', {
+    data: { email: ADMIN_EMAIL, passwort: ADMIN_PASSWORT },
+  })).json()
+  const token     = login.token as string
+  const mandantId = login.mandant.id as string
+  const kasseId   = login.kassen[0].id as string
+  const authHeader = { Authorization: `Bearer ${token}` }
+
+  // Lager-Artikel mit eindeutigem Namen + Startbestand 10 anlegen
+  const art = await (await request.post('/api/artikel', {
+    headers: authHeader,
+    data: {
+      bezeichnung: 'E2E-LAGER-XYZ', preisBruttoCent: 199, mwstSatz: 'normal',
+      lagerstandAktiv: true, lagerstandMenge: 10, mindestbestand: 5,
+    },
+  })).json()
+  const artId = art.id as string
+
+  await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
+    localStorage.setItem('kassa:token', d.token)
+    localStorage.setItem('kassa:auth', d.authJson)
+    localStorage.setItem('kassa:mandantId', d.mandantId)
+    localStorage.setItem('kassa:kasseId', d.kasseId)
+  }, {
+    token,
+    authJson: JSON.stringify({ user: login.user, mandant: login.mandant, kassen: login.kassen }),
+    mandantId,
+    kasseId,
+  })
+
+  await page.goto('/wareneingang')
+
+  // Nach dem eindeutigen Namen filtern → nur diese Zeile bleibt übrig
+  await page.getByPlaceholder('Artikel oder Variante suchen …').fill('E2E-LAGER-XYZ')
+  await expect(page.getByText('E2E-LAGER-XYZ').first()).toBeVisible({ timeout: 10_000 })
+
+  // +7 Zugang in das Mengenfeld der (einzigen) Zeile eintragen und buchen
+  await page.locator('input[type="number"]').first().fill('7')
+  await page.getByRole('button', { name: /Zugang buchen/ }).click()
+  await expect(page.getByText('✓ Gespeichert')).toBeVisible({ timeout: 10_000 })
+
+  // Bestand ist jetzt 10 + 7 = 17
+  const liste = await (await request.get(`/api/artikel?mandantId=${mandantId}&nurAktive=true`, { headers: authHeader })).json()
+  const artNachher = (liste as { id: string; lagerstandMenge: number }[]).find(a => a.id === artId)
+  expect(artNachher?.lagerstandMenge).toBe(17)
+})
+
 })
