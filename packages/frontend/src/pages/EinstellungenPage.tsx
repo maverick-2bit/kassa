@@ -219,7 +219,7 @@ function KassenVerwaltungSektion() {
           const stillgelegt = k.status === 'ausser_betrieb'
           const bestaetigung = stilllegenId === k.id
           return (
-            <div key={k.id} className="space-y-0">
+            <div key={k.id} className="space-y-0" data-testid={`kasse-zeile-${k.kassenId}`}>
               <div
                 className={`flex items-center justify-between gap-3 rounded-md border p-3 ${
                   aktiv && !stillgelegt ? 'border-brand-500 bg-brand-50' : 'border-line bg-panel-2'
