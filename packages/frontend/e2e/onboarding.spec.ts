@@ -1,7 +1,28 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type APIRequestContext } from '@playwright/test'
 
 const ADMIN_EMAIL    = 'e2e-onboarding@test.at'
 const ADMIN_PASSWORT = 'e2e-passwort-12345'
+
+/**
+ * Login-Antwort für die ganze Datei einmal cachen und wiederverwenden.
+ *
+ * `/api/auth/login` ist auf 10 Logins/Minute pro IP rate-limitiert
+ * (Brute-Force-Schutz). Würde jeder Test einzeln einloggen, risse die Suite
+ * bei genügend Journeys dieses Limit (429 → kein mandant). Der Login ist erst
+ * NACH dem Onboarding-Test möglich (der die Kasse anlegt), daher lazy statt
+ * beforeAll. Das JWT gilt 1 h — für einen Suite-Lauf mehr als genug.
+ */
+let sharedLogin: { token: string; user: unknown; mandant: { id: string; firmenname: string }; kassen: { id: string }[] } | null = null
+async function ensureAuth(request: APIRequestContext) {
+  if (!sharedLogin) {
+    const res = await request.post('/api/auth/login', {
+      data: { email: ADMIN_EMAIL, passwort: ADMIN_PASSWORT },
+    })
+    if (!res.ok()) throw new Error(`Login fehlgeschlagen (${res.status()}): ${await res.text()}`)
+    sharedLogin = await res.json()
+  }
+  return sharedLogin!
+}
 
 /**
  * End-to-End-Journey durch den echten Browser gegen eine frische E2E-DB und ein
@@ -61,9 +82,7 @@ test('Onboarding: Setup-Formular richtet Kasse ein und signiert den Startbeleg',
  */
 test('Kassier-Flow: Artikel in den Warenkorb, Barzahlung erzeugt signierten Beleg', async ({ page, request }) => {
   // Login + Seed via API (die Kasse stammt aus dem Onboarding-Test oben)
-  const login = await (await request.post('/api/auth/login', {
-    data: { email: ADMIN_EMAIL, passwort: ADMIN_PASSWORT },
-  })).json()
+  const login = await ensureAuth(request)
   const token     = login.token as string
   const kasseId   = login.kassen[0].id as string
   const mandantId = login.mandant.id as string
@@ -118,9 +137,7 @@ test('Kassier-Flow: Artikel in den Warenkorb, Barzahlung erzeugt signierten Bele
  */
 test('Rabatt + Modifikator: Aufschlag und 10%-Rabatt fließen korrekt in den signierten Beleg', async ({ page, request }) => {
   // Login + Seed via API (Kasse stammt aus dem Onboarding-Test oben)
-  const login = await (await request.post('/api/auth/login', {
-    data: { email: ADMIN_EMAIL, passwort: ADMIN_PASSWORT },
-  })).json()
+  const login = await ensureAuth(request)
   const token      = login.token as string
   const mandantId  = login.mandant.id as string
   const kasseId    = login.kassen[0].id as string
@@ -194,9 +211,7 @@ test('Rabatt + Modifikator: Aufschlag und 10%-Rabatt fließen korrekt in den sig
  * (signierter Sammelbeleg) → Banner verschwindet, Status „In Betrieb".
  */
 test('SEE-Ausfall: melden zeigt Warnbanner, Wiederinbetriebnahme räumt ihn', async ({ page, request }) => {
-  const login = await (await request.post('/api/auth/login', {
-    data: { email: ADMIN_EMAIL, passwort: ADMIN_PASSWORT },
-  })).json()
+  const login = await ensureAuth(request)
   const token     = login.token as string
   const mandantId = login.mandant.id as string
   const kasseId   = login.kassen[0].id as string
@@ -246,9 +261,7 @@ test('SEE-Ausfall: melden zeigt Warnbanner, Wiederinbetriebnahme räumt ihn', as
  * Badge „außer Betrieb", kein Wechseln mehr — DEP-Export bleibt).
  */
 test('Multi-Kassen: anlegen, wechseln, außer Betrieb nehmen', async ({ page, request }) => {
-  const login = await (await request.post('/api/auth/login', {
-    data: { email: ADMIN_EMAIL, passwort: ADMIN_PASSWORT },
-  })).json()
+  const login = await ensureAuth(request)
   const token     = login.token as string
   const mandantId = login.mandant.id as string
   const kasseId   = login.kassen[0].id as string
@@ -318,9 +331,7 @@ test('Multi-Kassen: anlegen, wechseln, außer Betrieb nehmen', async ({ page, re
  * verschwinden. Danach Reset (leer = alle sichtbar) via API.
  */
 test('Warengruppen-Verteilung: Auswahl in der Matrix filtert die Tabs im Kassen-Raster', async ({ page, request }) => {
-  const login = await (await request.post('/api/auth/login', {
-    data: { email: ADMIN_EMAIL, passwort: ADMIN_PASSWORT },
-  })).json()
+  const login = await ensureAuth(request)
   const token      = login.token as string
   const mandantId  = login.mandant.id as string
   const kasseId    = login.kassen[0].id as string
@@ -384,9 +395,7 @@ test('Warengruppen-Verteilung: Auswahl in der Matrix filtert die Tabs im Kassen-
  * den echten Browser inkl. Backend-Split (2 Belege, RKSV-Signierung).
  */
 test('Tisch-Split: Rechnung auf 2 Zahler teilen schließt den Tab mit 2 Bons', async ({ page, request }) => {
-  const login = await (await request.post('/api/auth/login', {
-    data: { email: ADMIN_EMAIL, passwort: ADMIN_PASSWORT },
-  })).json()
+  const login = await ensureAuth(request)
   const token     = login.token as string
   const mandantId = login.mandant.id as string
   const kasseId   = login.kassen[0].id as string
@@ -447,9 +456,7 @@ test('Tisch-Split: Rechnung auf 2 Zahler teilen schließt den Tab mit 2 Bons', a
  * Zahlungslogik (Gutschein als „Sonstige") durch den echten Browser.
  */
 test('Gutschein: einlösen deckt die Rechnung voll, signierter Beleg entsteht', async ({ page, request }) => {
-  const login = await (await request.post('/api/auth/login', {
-    data: { email: ADMIN_EMAIL, passwort: ADMIN_PASSWORT },
-  })).json()
+  const login = await ensureAuth(request)
   const token     = login.token as string
   const mandantId = login.mandant.id as string
   const kasseId   = login.kassen[0].id as string
@@ -500,9 +507,7 @@ test('Gutschein: einlösen deckt die Rechnung voll, signierter Beleg entsteht', 
  * danach 17 ist. Treibt die Lagerstand-Bulk-Pflege durch den echten Browser.
  */
 test('Wareneingang: Zugang buchen erhöht den Lagerbestand', async ({ page, request }) => {
-  const login = await (await request.post('/api/auth/login', {
-    data: { email: ADMIN_EMAIL, passwort: ADMIN_PASSWORT },
-  })).json()
+  const login = await ensureAuth(request)
   const token     = login.token as string
   const mandantId = login.mandant.id as string
   const kasseId   = login.kassen[0].id as string
@@ -553,9 +558,7 @@ test('Wareneingang: Zugang buchen erhöht den Lagerbestand', async ({ page, requ
  * dass der Posten danach beglichen ist (Restbetrag 0).
  */
 test('Offene Posten: Zahlung erfassen begleicht den Posten', async ({ page, request }) => {
-  const login = await (await request.post('/api/auth/login', {
-    data: { email: ADMIN_EMAIL, passwort: ADMIN_PASSWORT },
-  })).json()
+  const login = await ensureAuth(request)
   const token     = login.token as string
   const mandantId = login.mandant.id as string
   const kasseId   = login.kassen[0].id as string
@@ -596,6 +599,77 @@ test('Offene Posten: Zahlung erfassen begleicht den Posten', async ({ page, requ
     const alle = await (await request.get('/api/offene-posten', { headers: authHeader })).json()
     return (alle as { id: string; restCent: number }[]).find(p => p.id === opId)?.restCent
   }, { timeout: 10_000 }).toBe(0)
+})
+
+/**
+ * RKSV-Kontrollbeleg-Journey: auf der Belegseite einen Kontrollbeleg (Nullbeleg)
+ * erstellen — wird signiert, in die Belegkette eingereiht und im Erstell-Dialog
+ * angezeigt. Deckt den RKSV-§8-Kontrollbeleg durch die echte UI ab.
+ */
+test('RKSV-Kontrollbeleg: Nullbeleg erstellen erzeugt einen signierten Beleg', async ({ page, request }) => {
+  const login = await ensureAuth(request)
+  const token     = login.token as string
+  const mandantId = login.mandant.id as string
+  const kasseId   = login.kassen[0].id as string
+
+  await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
+    localStorage.setItem('kassa:token', d.token)
+    localStorage.setItem('kassa:auth', d.authJson)
+    localStorage.setItem('kassa:mandantId', d.mandantId)
+    localStorage.setItem('kassa:kasseId', d.kasseId)
+  }, {
+    token,
+    authJson: JSON.stringify({ user: login.user, mandant: login.mandant, kassen: login.kassen }),
+    mandantId,
+    kasseId,
+  })
+
+  await page.goto('/belege')
+  await page.getByRole('button', { name: 'Kontrollbeleg erstellen' }).click()
+  await expect(page.getByText(/Nullbeleg #\d+ erstellt/)).toBeVisible({ timeout: 20_000 })
+})
+
+/**
+ * Storno-Journey: einen frischen Barzahlungsbeleg per API anlegen, auf der
+ * Belegseite stornieren (Bestätigungsdialog) und prüfen, dass ein signierter
+ * Stornobeleg entsteht. Treibt den RKSV-Stornopfad durch die echte UI.
+ */
+test('Storno: Barzahlungsbeleg stornieren erzeugt einen Stornobeleg', async ({ page, request }) => {
+  const login = await ensureAuth(request)
+  const token     = login.token as string
+  const mandantId = login.mandant.id as string
+  const kasseId   = login.kassen[0].id as string
+  const authHeader = { Authorization: `Bearer ${token}` }
+
+  // Frischen stornierbaren Barzahlungsbeleg anlegen (Kaffee-Artikel stammt aus dem Kassier-Test)
+  const bar = await request.post('/api/belege/barzahlung', {
+    headers: authHeader,
+    data: {
+      kasseId,
+      positionen: [{ bezeichnung: 'Kaffee', preisBruttoCent: 250, mwstSatz: 'ermaessigt1', menge: 1 }],
+      zahlung: { barCent: 250, karteCent: 0, sonstigeCent: 0 },
+    },
+  })
+  expect(bar.status()).toBe(201)
+
+  await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
+    localStorage.setItem('kassa:token', d.token)
+    localStorage.setItem('kassa:auth', d.authJson)
+    localStorage.setItem('kassa:mandantId', d.mandantId)
+    localStorage.setItem('kassa:kasseId', d.kasseId)
+  }, {
+    token,
+    authJson: JSON.stringify({ user: login.user, mandant: login.mandant, kassen: login.kassen }),
+    mandantId,
+    kasseId,
+  })
+
+  await page.goto('/belege')
+  // Ersten stornierbaren Beleg stornieren → Bestätigungsdialog → bestätigen
+  await page.getByRole('button', { name: 'Stornieren' }).first().click()
+  await expect(page.getByText(/stornieren\?/)).toBeVisible({ timeout: 10_000 })
+  await page.getByRole('button', { name: 'Storno bestätigen' }).click()
+  await expect(page.getByText(/Stornobeleg #\d+ erstellt/)).toBeVisible({ timeout: 20_000 })
 })
 
 })
