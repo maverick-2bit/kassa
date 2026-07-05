@@ -22,7 +22,10 @@ export default defineConfig({
   retries: 2,
   reporter: [['list']],
   use: {
-    baseURL: 'http://localhost:5173',
+    // Explizit IPv4: der Preview-Server bindet an 127.0.0.1. Mit "localhost"
+    // löst Windows teils zu ::1 auf → sporadisch ECONNREFUSED/ETIMEDOUT bei
+    // page.goto und request.*. 127.0.0.1 beseitigt diese Flakiness-Klasse.
+    baseURL: 'http://127.0.0.1:5173',
     trace: 'retain-on-failure',
   },
   webServer: [
