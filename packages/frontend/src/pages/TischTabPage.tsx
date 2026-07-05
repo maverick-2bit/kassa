@@ -369,7 +369,7 @@ export function TischTabPage() {
         >
           ← Tische
         </button>
-        <div className="h-4 w-px bg-gray-300" />
+        <div className="h-4 w-px bg-line-strong" />
         <h1 className="text-lg font-semibold text-ink">
           Tisch {tab.tischNummer}
         </h1>

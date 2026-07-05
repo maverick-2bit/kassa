@@ -748,7 +748,7 @@ function RechnungslayoutSektion() {
                 maxLength={300}
                 placeholder={'Musterstraße 1, 1010 Wien\nTel: +43 1 234567'}
                 className="block w-full rounded-md border border-line-strong px-3 py-2 text-sm
-                           placeholder-gray-400 shadow-sm resize-y
+                           placeholder-ink-subtle shadow-sm resize-y
                            focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
               />
               <p className="text-xs text-ink-subtle mt-1 text-right">{kopftext.length}/300</p>
@@ -765,7 +765,7 @@ function RechnungslayoutSektion() {
                 maxLength={500}
                 placeholder={'Vielen Dank für Ihren Besuch!\nwww.beispiel.at'}
                 className="block w-full rounded-md border border-line-strong px-3 py-2 text-sm
-                           placeholder-gray-400 shadow-sm resize-y
+                           placeholder-ink-subtle shadow-sm resize-y
                            focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
               />
               <p className="text-xs text-ink-subtle mt-1 text-right">{fusstext.length}/500</p>
@@ -1294,7 +1294,7 @@ function GastQrCodeSektion() {
                 win?.document.close()
                 win?.print()
               }}
-              className="px-4 py-2 rounded-lg bg-gray-800 text-white text-sm font-medium hover:bg-gray-700 transition"
+              className="px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 transition"
             >
               🖨 Alle drucken
             </button>

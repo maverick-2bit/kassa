@@ -118,7 +118,7 @@ function NachrichtKarte({
             rows={2}
             maxLength={300}
             placeholder="Antwort eingeben… (Enter senden, Esc abbrechen)"
-            className="w-full rounded-xl border border-amber-300 bg-panel px-3 py-2 text-sm focus:outline-none focus:border-amber-500 resize-none placeholder-gray-400"
+            className="w-full rounded-xl border border-amber-300 bg-panel px-3 py-2 text-sm focus:outline-none focus:border-amber-500 resize-none placeholder-ink-subtle"
           />
           <div className="flex gap-2">
             <button
@@ -196,7 +196,7 @@ export function KdsNachrichten() {
       {nachrichten.length > 1 && (
         <button
           onClick={() => setNachrichten([])}
-          className="pointer-events-auto self-center px-5 py-2 rounded-xl bg-gray-800 text-white text-sm font-bold shadow-lg hover:bg-gray-700 transition"
+          className="pointer-events-auto self-center px-5 py-2 rounded-xl bg-ink text-surface text-sm font-bold shadow-lg hover:opacity-90 transition"
         >
           Alle schließen ({nachrichten.length})
         </button>

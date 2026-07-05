@@ -614,7 +614,7 @@ function StundenVerlauf({ datum }: { datum: string }) {
               />
               {/* Tooltip */}
               {z.umsatzCent > 0 && (
-                <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs rounded px-2 py-1 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 bg-ink text-surface text-xs rounded px-2 py-1 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
                   {z.stunde}:00 — {formatPreis(z.umsatzCent)} ({z.anzahlBelege} Bel.)
                 </div>
               )}

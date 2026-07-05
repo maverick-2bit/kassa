@@ -138,7 +138,7 @@ function ModulKarte({
         className={`relative shrink-0 inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 disabled:opacity-60 ${
           aktiv
             ? hovering ? 'bg-brand-600' : 'bg-brand-500'
-            : hovering ? 'bg-gray-400' : 'bg-gray-300'
+            : hovering ? 'bg-line-strong' : 'bg-line'
         }`}
         title={aktiv ? 'Deaktivieren' : 'Aktivieren'}
       >

@@ -992,7 +992,7 @@ function KundeFormular({ initial, onSubmit, onAbbrechen, loading, fehler }: Kund
           maxLength={2000}
           rows={3}
           placeholder="Interne Anmerkungen zum Kunden…"
-          className="mt-0.5 w-full rounded-md border border-line-strong px-3 py-2 text-sm text-ink placeholder-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 resize-y"
+          className="mt-0.5 w-full rounded-md border border-line-strong px-3 py-2 text-sm text-ink placeholder-ink-subtle focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 resize-y"
         />
         <p className="mt-0.5 text-right text-xs text-ink-subtle">{(notizen ?? '').length}/2000</p>
       </label>
