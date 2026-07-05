@@ -232,7 +232,7 @@ function OffeneTischeWidget({ kassen }: { kassen: KasseInfo[] }) {
   const offenCent  = allTabs.reduce((s, t) => s + t.summeGesamtCent, 0)
 
   return (
-    <div className="rounded-lg border bg-panel shadow-sm p-4 space-y-1">
+    <div className="rounded-lg border border-line bg-panel shadow-sm p-4 space-y-1">
       <div className="flex items-center justify-between">
         <p className="text-xs text-ink-muted">Offene Tische</p>
         <Link to="/tische" className="text-xs text-brand-600 hover:underline">Zur Tischansicht →</Link>
@@ -263,7 +263,7 @@ function OffenePostenWidget() {
   })
 
   return (
-    <div className="rounded-lg border bg-panel shadow-sm p-4 space-y-1">
+    <div className="rounded-lg border border-line bg-panel shadow-sm p-4 space-y-1">
       <div className="flex items-center justify-between">
         <p className="text-xs text-ink-muted">Offene Posten</p>
         <Link to="/offene-posten" className="text-xs text-brand-600 hover:underline">Übersicht →</Link>
@@ -301,7 +301,7 @@ function KdsBonsWidget() {
   }
 
   return (
-    <div className="rounded-lg border bg-panel shadow-sm p-4 space-y-1">
+    <div className="rounded-lg border border-line bg-panel shadow-sm p-4 space-y-1">
       <div className="flex items-center justify-between">
         <p className="text-xs text-ink-muted">KDS — Offene Bons</p>
         <span className="text-xs text-ink-subtle">alle Stationen</span>
@@ -609,7 +609,7 @@ function StundenVerlauf({ datum }: { datum: string }) {
           return (
             <div key={z.stunde} className="flex flex-col items-center flex-1 min-w-0 group relative">
               <div
-                className={`w-full rounded-t transition-all ${z.umsatzCent > 0 ? 'bg-brand-400 hover:bg-brand-500' : 'bg-panel-2'}`}
+                className={`w-full rounded-t transition-all ${z.umsatzCent > 0 ? 'bg-brand-500 hover:bg-brand-600' : 'bg-panel-2'}`}
                 style={{ height: `${hoehe}px` }}
               />
               {/* Tooltip */}
@@ -656,7 +656,7 @@ function TopArtikelWidget({ datum }: { datum: string }) {
       )}
 
       {data && data.zeilen.length > 0 && (
-        <div className="divide-y divide-gray-50">
+        <div className="divide-y divide-line">
           {data.zeilen.map((z, i) => {
             const balken = Math.max(8, Math.round((z.umsatzCent / maxUmsatz) * 100))
             return (
@@ -669,7 +669,7 @@ function TopArtikelWidget({ datum }: { datum: string }) {
                   </div>
                   <div className="h-1.5 bg-panel-2 rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-brand-400 rounded-full transition-all"
+                      className="h-full bg-brand-500 rounded-full transition-all"
                       style={{ width: `${balken}%` }}
                     />
                   </div>
@@ -761,8 +761,8 @@ function SiebentageVerlauf({ datum }: { datum: string }) {
           <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: '110px' }}>
             <defs>
               <linearGradient id="trendGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%"   stopColor="#6366f1" stopOpacity="0.18" />
-                <stop offset="100%" stopColor="#6366f1" stopOpacity="0.01" />
+                <stop offset="0%"   style={{ stopColor: 'var(--brand-500)' }} stopOpacity="0.18" />
+                <stop offset="100%" style={{ stopColor: 'var(--brand-500)' }} stopOpacity="0.01" />
               </linearGradient>
             </defs>
 
@@ -772,14 +772,14 @@ function SiebentageVerlauf({ datum }: { datum: string }) {
               const wert = Math.round(maxCent * f)
               return (
                 <g key={f}>
-                  <line x1={PAD_L} y1={y} x2={W - PAD_R} y2={y} stroke="#e5e7eb" strokeWidth="1" />
-                  <text x={PAD_L - 4} y={y + 4} textAnchor="end" fontSize="9" fill="#9ca3af">
+                  <line x1={PAD_L} y1={y} x2={W - PAD_R} y2={y} style={{ stroke: 'var(--line)' }} strokeWidth="1" />
+                  <text x={PAD_L - 4} y={y + 4} textAnchor="end" fontSize="9" style={{ fill: 'var(--ink-subtle)' }}>
                     {wert >= 100 ? `${Math.round(wert / 100)}` : '0'}
                   </text>
                 </g>
               )
             })}
-            <text x={PAD_L - 4} y={PAD_T + (H - PAD_T - PAD_B) / 2 + 3} textAnchor="end" fontSize="8" fill="#d1d5db">€</text>
+            <text x={PAD_L - 4} y={PAD_T + (H - PAD_T - PAD_B) / 2 + 3} textAnchor="end" fontSize="8" style={{ fill: 'var(--ink-subtle)' }}>€</text>
 
             {/* Area */}
             {areaPath && (
@@ -788,7 +788,7 @@ function SiebentageVerlauf({ datum }: { datum: string }) {
 
             {/* Linie */}
             {linePath && (
-              <path d={linePath} fill="none" stroke="#6366f1" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+              <path d={linePath} fill="none" style={{ stroke: 'var(--brand-500)' }} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
             )}
 
             {/* Punkte + Labels */}
@@ -798,8 +798,8 @@ function SiebentageVerlauf({ datum }: { datum: string }) {
               const isHeute = z.periode === datum
               return (
                 <g key={z.periode} className="group">
-                  <circle cx={x} cy={y} r={isHeute ? 5 : 3.5} fill={isHeute ? '#4f46e5' : '#6366f1'} stroke="white" strokeWidth="1.5" />
-                  <text x={x} y={H - 4} textAnchor="middle" fontSize="9" fill={isHeute ? '#4f46e5' : '#9ca3af'} fontWeight={isHeute ? '600' : '400'}>
+                  <circle cx={x} cy={y} r={isHeute ? 5 : 3.5} style={{ fill: isHeute ? 'var(--brand-700)' : 'var(--brand-500)', stroke: 'var(--panel)' }} strokeWidth="1.5" />
+                  <text x={x} y={H - 4} textAnchor="middle" fontSize="9" style={{ fill: isHeute ? 'var(--brand-700)' : 'var(--ink-subtle)' }} fontWeight={isHeute ? '600' : '400'}>
                     {wochentagLabel(z.periode)}
                   </text>
                   {/* Tooltip bei Hover */}
