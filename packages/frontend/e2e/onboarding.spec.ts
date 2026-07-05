@@ -768,4 +768,82 @@ test('Kassenbuch: Einlage buchen erscheint in der Buchungsliste', async ({ page,
   await expect(page.getByText(/50,00/).first()).toBeVisible({ timeout: 10_000 })
 })
 
+/**
+ * Gast-Bestellsystem-Journey: über die öffentliche Gast-API (kein Login, wie beim
+ * QR-Scan am Tisch) eine Bestellung aufgeben und prüfen, dass daraus ein Tisch-Tab
+ * (Kellner „Gast") auf der Tische-Seite entsteht. Deckt die Gast→Kasse-Integration ab.
+ */
+test('Gast-Bestellung: öffentliche Bestellung erzeugt einen Tisch-Tab', async ({ page, request }) => {
+  const login = await ensureAuth(request)
+  const token = login.token, mandantId = login.mandant.id, kasseId = login.kassen[0].id
+  const authHeader = { Authorization: `Bearer ${token}` }
+
+  // Kaffee-Artikel-ID holen (stammt aus dem Kassier-Test)
+  const artikel = await (await request.get(`/api/artikel?mandantId=${mandantId}&nurAktive=true`, { headers: authHeader })).json()
+  const kaffee = (artikel as { id: string; bezeichnung: string }[]).find(a => a.bezeichnung === 'Kaffee')!
+
+  // Öffentliche Gast-Bestellung (ohne Auth — wie der QR-Gast)
+  const best = await request.post('/api/gast/bestellung', {
+    data: { kasseId, tischNummer: 'GAST-TISCH-9', positionen: [{ artikelId: kaffee.id, menge: 2 }] },
+  })
+  expect(best.ok()).toBe(true)
+
+  await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
+    localStorage.setItem('kassa:token', d.token)
+    localStorage.setItem('kassa:auth', d.authJson)
+    localStorage.setItem('kassa:mandantId', d.mandantId)
+    localStorage.setItem('kassa:kasseId', d.kasseId)
+  }, {
+    token,
+    authJson: JSON.stringify({ user: login.user, mandant: login.mandant, kassen: login.kassen }),
+    mandantId,
+    kasseId,
+  })
+
+  // Auf der Tische-Seite erscheint der Gast-Tab
+  await page.goto('/tische')
+  await expect(page.getByText('GAST-TISCH-9')).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByText('Gast').first()).toBeVisible()
+})
+
+/**
+ * Kunde-auf-Beleg-Journey: in der Kasse einen Kunden auswählen (KundePicker) und
+ * einen Kaffee bar verkaufen; der Kunden-Snapshot muss auf dem erzeugten Bon
+ * erscheinen. Deckt Kundenzuordnung + Snapshot-auf-Beleg ab.
+ */
+test('Kunde auf Beleg: gewählter Kunde erscheint auf dem Bon', async ({ page, request }) => {
+  const login = await ensureAuth(request)
+  const token = login.token, mandantId = login.mandant.id, kasseId = login.kassen[0].id
+  const authHeader = { Authorization: `Bearer ${token}` }
+
+  await request.post('/api/kunden', { headers: authHeader, data: { nachname: 'E2E-Beleg-Kunde' } })
+
+  await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
+    localStorage.setItem('kassa:token', d.token)
+    localStorage.setItem('kassa:auth', d.authJson)
+    localStorage.setItem('kassa:mandantId', d.mandantId)
+    localStorage.setItem('kassa:kasseId', d.kasseId)
+  }, {
+    token,
+    authJson: JSON.stringify({ user: login.user, mandant: login.mandant, kassen: login.kassen }),
+    mandantId,
+    kasseId,
+  })
+
+  await page.goto('/kasse')
+  await page.getByRole('button', { name: 'Kaffee' }).first().click()
+
+  // Kunde suchen + aus dem Dropdown wählen
+  await page.getByPlaceholder('Kunde suchen…').fill('E2E-Beleg-Kunde')
+  await page.getByRole('button', { name: /E2E-Beleg-Kunde/ }).click()
+
+  // Bar exakt bezahlen → Bon
+  await page.getByRole('button', { name: 'Exakt' }).click()
+  await page.getByRole('button', { name: 'Bon erstellen' }).click()
+
+  // Der Bon zeigt den Kunden
+  await expect(page.getByText(/Beleg #\d+ erstellt/)).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByText('E2E-Beleg-Kunde').first()).toBeVisible()
+})
+
 })
