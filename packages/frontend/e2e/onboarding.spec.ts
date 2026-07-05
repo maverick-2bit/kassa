@@ -846,4 +846,32 @@ test('Kunde auf Beleg: gewählter Kunde erscheint auf dem Bon', async ({ page, r
   await expect(page.getByText('E2E-Beleg-Kunde').first()).toBeVisible()
 })
 
+/**
+ * Kassensturz-Journey: auf der Kassensturz-Seite die Stückelung eingeben
+ * (1× 500 €) und prüfen, dass der gezählte Betrag live berechnet wird. Deckt
+ * den Bargeld-Zähl-Rechner ab.
+ */
+test('Kassensturz: Stückelung eingeben berechnet den gezählten Betrag', async ({ page, request }) => {
+  const login = await ensureAuth(request)
+  const token = login.token, mandantId = login.mandant.id, kasseId = login.kassen[0].id
+
+  await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
+    localStorage.setItem('kassa:token', d.token)
+    localStorage.setItem('kassa:auth', d.authJson)
+    localStorage.setItem('kassa:mandantId', d.mandantId)
+    localStorage.setItem('kassa:kasseId', d.kasseId)
+  }, {
+    token,
+    authJson: JSON.stringify({ user: login.user, mandant: login.mandant, kassen: login.kassen }),
+    mandantId,
+    kasseId,
+  })
+
+  await page.goto('/kassensturz')
+  // Erste Stückelungs-Zeile ist der 500-€-Schein → 1 Stück eingeben
+  await page.locator('input[type="number"]').first().fill('1')
+  // Der berechnete Betrag (500,00) erscheint (Zeilensumme + Ergebnis)
+  await expect(page.getByText(/500,00/).first()).toBeVisible({ timeout: 10_000 })
+})
+
 })
