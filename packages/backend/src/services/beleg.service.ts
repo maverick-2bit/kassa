@@ -771,6 +771,14 @@ export async function nimmKasseAusserBetrieb(
 
   // Letzte aktive Kasse des Mandanten darf nicht stillgelegt werden — sonst
   // bleibt keine bedienbare Kasse übrig (Login-Kassenliste wäre leer).
+  //
+  // Hinweis: Diese Prüfung ist NICHT streng nebenläufigkeitssicher — zwei exakt
+  // gleichzeitige Stilllegungen der letzten beiden Kassen könnten beide passieren
+  // (→ 0 aktive). Bewusst in Kauf genommen: Der Fall ist extrem selten (bewusste
+  // Bestätigungs-Aktion), rein UX-relevant (keine fiskalische Integrität berührt —
+  // Schlussbelege + Belegkette bleiben je Kasse korrekt) und reversibel (eine neue
+  // Kasse lässt sich jederzeit anlegen, unabhängig von der Aktiv-Zahl). Für strenge
+  // Garantie: Mandanten-Zeile per FOR UPDATE serialisieren.
   const [aktive] = await deps.db
     .select({ anzahl: sql<number>`count(*)::int` })
     .from(kassen)
