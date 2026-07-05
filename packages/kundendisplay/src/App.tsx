@@ -101,25 +101,25 @@ export default function App() {
 
   if (!kasseId) {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-        <p className="text-gray-500 text-lg">Keine kasseId in der URL angegeben.</p>
+      <div className="min-h-screen bg-surface flex items-center justify-center">
+        <p className="text-ink-subtle text-lg">Keine kasseId in der URL angegeben.</p>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white flex flex-col select-none">
+    <div className="min-h-screen bg-surface text-ink flex flex-col select-none">
       {/* Header-Leiste */}
-      <div className="flex items-center justify-between px-8 py-4 border-b border-gray-800">
+      <div className="flex items-center justify-between px-8 py-4 border-b border-line">
         <div className="flex items-center gap-3">
           <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-600">
             <svg className="h-5 w-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path strokeLinecap="round" strokeLinejoin="round" d="M3 3h18v4H3zM3 11h18v10H3zM7 15h2M7 18h2"/>
             </svg>
           </span>
-          <span className="font-semibold text-gray-200 text-lg">Ihre Bestellung</span>
+          <span className="font-semibold text-ink text-lg">Ihre Bestellung</span>
         </div>
-        <span className="text-gray-400 text-xl font-mono tabular-nums"><Uhrzeit /></span>
+        <span className="text-ink-muted text-xl font-mono tabular-nums"><Uhrzeit /></span>
       </div>
 
       {/* Haupt-Bereich */}
@@ -218,14 +218,14 @@ function LeerBildschirm({ mandantId }: { mandantId: string }) {
 
   return (
     <div className="flex-1 flex flex-col items-center justify-center gap-6 p-12">
-      <div className="w-24 h-24 rounded-full bg-gray-800 flex items-center justify-center">
-        <svg className="h-12 w-12 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+      <div className="w-24 h-24 rounded-full bg-panel-2 flex items-center justify-center">
+        <svg className="h-12 w-12 text-ink-subtle" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
           <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 00-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 00-16.536-1.84M7.5 14.25L5.106 5.272M6 20.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm12.75 0a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" />
         </svg>
       </div>
       <div className="text-center space-y-2">
-        <p className="text-2xl font-semibold text-gray-400">Willkommen</p>
-        <p className="text-gray-600">Ihre Bestellungen werden hier angezeigt.</p>
+        <p className="text-2xl font-semibold text-ink-muted">Willkommen</p>
+        <p className="text-ink-subtle">Ihre Bestellungen werden hier angezeigt.</p>
       </div>
     </div>
   )
@@ -243,15 +243,15 @@ function WarenkorbAnsicht({ positionen, summeCent }: { positionen: DisplayPositi
         {positionen.map((pos, i) => (
           <div
             key={i}
-            className="flex items-center justify-between bg-gray-900 rounded-xl px-5 py-4 border border-gray-800"
+            className="flex items-center justify-between bg-panel rounded-xl px-5 py-4 border border-line"
           >
             <div className="flex items-center gap-4">
               <span className="text-2xl font-black text-amber-400 w-10 text-right shrink-0">
                 {pos.menge}×
               </span>
-              <span className="text-xl font-semibold text-white">{pos.bezeichnung}</span>
+              <span className="text-xl font-semibold text-ink">{pos.bezeichnung}</span>
             </div>
-            <span className="text-xl font-mono font-semibold text-gray-300 shrink-0 ml-4">
+            <span className="text-xl font-mono font-semibold text-ink-muted shrink-0 ml-4">
               {formatPreis(pos.preisCent * pos.menge)}
             </span>
           </div>
@@ -259,9 +259,9 @@ function WarenkorbAnsicht({ positionen, summeCent }: { positionen: DisplayPositi
       </div>
 
       {/* Summen-Leiste */}
-      <div className="border-t border-gray-700 pt-4 flex items-center justify-between">
-        <span className="text-2xl font-bold text-gray-200">Gesamt</span>
-        <span className="text-4xl font-black text-white font-mono tabular-nums">
+      <div className="border-t border-line-strong pt-4 flex items-center justify-between">
+        <span className="text-2xl font-bold text-ink">Gesamt</span>
+        <span className="text-4xl font-black text-ink font-mono tabular-nums">
           {formatPreis(summeCent)}
         </span>
       </div>
@@ -283,10 +283,10 @@ function DankeschoenBildschirm({ belegNummer, summeCent }: { belegNummer: number
       </div>
       <div className="text-center space-y-3">
         <p className="text-4xl font-black text-emerald-400">Danke!</p>
-        <p className="text-xl text-gray-300">
+        <p className="text-xl text-ink-muted">
           Beleg <span className="font-mono font-bold">#{belegNummer}</span>
         </p>
-        <p className="text-3xl font-black font-mono text-white tabular-nums">
+        <p className="text-3xl font-black font-mono text-ink tabular-nums">
           {formatPreis(summeCent)}
         </p>
       </div>

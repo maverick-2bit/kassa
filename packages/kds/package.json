@@ -9,6 +9,7 @@
     "preview": "vite preview --port 5175"
   },
   "dependencies": {
+    "@fontsource-variable/inter": "^5.2.8",
     "@kassa/shared": "workspace:*",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

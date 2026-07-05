@@ -6,6 +6,12 @@
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["--filter", "@kassa/frontend", "dev", "--", "--port", "5199"],
       "port": 5199
+    },
+    {
+      "name": "gast",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@kassa/gast", "dev", "--", "--port", "5197"],
+      "port": 5197
     }
   ]
 }

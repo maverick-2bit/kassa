@@ -1,1 +1,92 @@
 @import "tailwindcss";
+@import "@fontsource-variable/inter";
+
+/* ---------------------------------------------------------------------------
+ * Kellner-App (Handy). Gleiche semantische Tokens + Marke wie das Haupt-
+ * Frontend. Dark Mode folgt der Systemeinstellung des Geräts
+ * (prefers-color-scheme) — ohne Umschalter.
+ * ------------------------------------------------------------------------- */
+@theme {
+  --color-surface:    var(--surface);
+  --color-panel:      var(--panel);
+  --color-panel-2:    var(--panel-2);
+  --color-ink:        var(--ink);
+  --color-ink-muted:  var(--ink-muted);
+  --color-ink-subtle: var(--ink-subtle);
+  --color-line:       var(--line);
+  --color-line-strong:var(--line-strong);
+
+  --color-brand-50:  var(--brand-50);
+  --color-brand-100: var(--brand-100);
+  --color-brand-200: var(--brand-200);
+  --color-brand-300: var(--brand-300);
+  --color-brand-400: var(--brand-400);
+  --color-brand-500: var(--brand-500);
+  --color-brand-600: var(--brand-600);
+  --color-brand-700: var(--brand-700);
+  --color-brand-800: var(--brand-800);
+  --color-brand-900: var(--brand-900);
+
+  --font-sans: "Inter Variable", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+/* Hell (Standard) */
+:root {
+  --surface:    #f4f5f7;
+  --panel:      #ffffff;
+  --panel-2:    #eef1f4;
+  --ink:        #1a2027;
+  --ink-muted:  #5f6b76;
+  --ink-subtle: #8a95a1;
+  --line:       #e2e6ea;
+  --line-strong:#cdd3da;
+  --brand-50:   #eef3ff;
+  --brand-100:  #dbe4ff;
+  --brand-200:  #c2d3fb;
+  --brand-300:  #9bb5f9;
+  --brand-400:  #5b82f5;
+  --brand-500:  #1d4ed8;
+  --brand-600:  #1a44bb;
+  --brand-700:  #16388f;
+  --brand-800:  #122e73;
+  --brand-900:  #0e2352;
+  color-scheme: light;
+}
+
+/* Dunkel — folgt der Systemeinstellung des Geräts */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface:    #0e141b;
+    --panel:      #18212b;
+    --panel-2:    #202b37;
+    --ink:        #e6edf3;
+    --ink-muted:  #9aa7b3;
+    --ink-subtle: #6b7783;
+    --line:       #263442;
+    --line-strong:#35485a;
+    --brand-50:   #16223f;
+    --brand-100:  #1b2b50;
+    --brand-200:  #24365f;
+    --brand-300:  #2f4a80;
+    --brand-400:  #3f62ab;
+    --brand-500:  #5b82f5;
+    --brand-600:  #7599f7;
+    --brand-700:  #9bb5f9;
+    --brand-800:  #c2d3fb;
+    --brand-900:  #dde7fd;
+    color-scheme: dark;
+  }
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background: var(--surface);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+}

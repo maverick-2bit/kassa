@@ -163,6 +163,9 @@ importers:
 
   packages/gast:
     dependencies:
+      '@fontsource-variable/inter':
+        specifier: ^5.2.8
+        version: 5.2.8
       react:
         specifier: ^19.0.0
         version: 19.2.6
@@ -194,6 +197,9 @@ importers:
 
   packages/kds:
     dependencies:
+      '@fontsource-variable/inter':
+        specifier: ^5.2.8
+        version: 5.2.8
       '@kassa/shared':
         specifier: workspace:*
         version: link:../shared
@@ -228,6 +234,9 @@ importers:
 
   packages/kellner:
     dependencies:
+      '@fontsource-variable/inter':
+        specifier: ^5.2.8
+        version: 5.2.8
       '@kassa/shared':
         specifier: workspace:*
         version: link:../shared
@@ -268,6 +277,9 @@ importers:
 
   packages/kundendisplay:
     dependencies:
+      '@fontsource-variable/inter':
+        specifier: ^5.2.8
+        version: 5.2.8
       react:
         specifier: ^19.0.0
         version: 19.2.6

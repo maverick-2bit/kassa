@@ -54,17 +54,17 @@ export function TabPage() {
   }
 
   if (tabQuery.isLoading) return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <div className="w-8 h-8 border-4 border-green-500 border-t-transparent rounded-full animate-spin" />
+    <div className="min-h-screen bg-surface flex items-center justify-center">
+      <div className="w-8 h-8 border-4 border-brand-500 border-t-transparent rounded-full animate-spin" />
     </div>
   )
 
   if (!tabQuery.data) return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+    <div className="min-h-screen bg-surface flex items-center justify-center p-6">
       <div className="text-center space-y-3">
         <p className="text-4xl">⚠️</p>
-        <p className="text-gray-600">Tab nicht gefunden.</p>
-        <button onClick={() => navigate('/')} className="text-green-600 font-bold text-sm">
+        <p className="text-ink-muted">Tab nicht gefunden.</p>
+        <button onClick={() => navigate('/')} className="text-brand-600 font-bold text-sm">
           Zurück zur Übersicht
         </button>
       </div>
@@ -105,20 +105,20 @@ export function TabPage() {
   }, [])
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col max-w-lg mx-auto">
+    <div className="min-h-screen bg-surface flex flex-col max-w-lg mx-auto">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-4 py-4 sticky top-0 z-10">
+      <div className="bg-panel border-b border-line px-4 py-4 sticky top-0 z-10">
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/')} className="text-gray-400 hover:text-gray-700 text-2xl leading-none">
+          <button onClick={() => navigate('/')} className="text-ink-subtle hover:text-ink-muted text-2xl leading-none">
             ‹
           </button>
           <div className="flex-1 min-w-0">
-            <h1 className="font-black text-gray-900 text-lg leading-tight truncate">{tab.tischNummer}</h1>
-            <p className="text-xs text-gray-500">{tab.kellner}</p>
+            <h1 className="font-black text-ink text-lg leading-tight truncate">{tab.tischNummer}</h1>
+            <p className="text-xs text-ink-subtle">{tab.kellner}</p>
           </div>
           <button
             onClick={() => navigate(`/tab/${tabId}/artikel`)}
-            className="bg-green-600 text-white px-4 py-2 rounded-xl font-bold text-sm active:scale-95 transition shrink-0"
+            className="bg-brand-600 text-white px-4 py-2 rounded-xl font-bold text-sm active:scale-95 transition shrink-0"
           >
             + Artikel
           </button>
@@ -130,30 +130,30 @@ export function TabPage() {
         {gruppen.length === 0 ? (
           <div className="text-center py-16 space-y-2">
             <p className="text-4xl">🍽</p>
-            <p className="text-gray-500 text-sm">Noch keine Artikel</p>
+            <p className="text-ink-subtle text-sm">Noch keine Artikel</p>
             <button
               onClick={() => navigate(`/tab/${tabId}/artikel`)}
-              className="text-green-600 font-bold text-sm"
+              className="text-brand-600 font-bold text-sm"
             >
               Artikel hinzufügen
             </button>
           </div>
         ) : (
           gruppen.map(g => (
-            <div key={g.key} className="bg-white rounded-2xl border border-gray-200 px-4 py-3 flex items-start gap-3">
-              <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center text-green-700 font-black text-sm shrink-0 mt-0.5">
+            <div key={g.key} className="bg-panel rounded-2xl border border-line px-4 py-3 flex items-start gap-3">
+              <div className="w-8 h-8 rounded-lg bg-brand-100 flex items-center justify-center text-brand-700 font-black text-sm shrink-0 mt-0.5">
                 {g.menge}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-gray-900 text-sm leading-tight">{g.bezeichnung}</p>
+                <p className="font-semibold text-ink text-sm leading-tight">{g.bezeichnung}</p>
                 {(g.modifikatoren?.length ?? 0) > 0 && (
-                  <p className="text-xs text-gray-400 mt-0.5">
+                  <p className="text-xs text-ink-subtle mt-0.5">
                     {g.modifikatoren!.map(m => m.name).join(', ')}
                   </p>
                 )}
               </div>
               <div className="text-right shrink-0">
-                <p className="font-mono text-sm font-semibold text-gray-900">
+                <p className="font-mono text-sm font-semibold text-ink">
                   {formatPreis(g.preisBruttoCent * g.menge)}
                 </p>
                 <button
@@ -170,28 +170,28 @@ export function TabPage() {
 
       {/* Footer: Summe + Bonieren */}
       {gruppen.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto bg-white border-t border-gray-200 p-4 space-y-3">
+        <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto bg-panel border-t border-line p-4 space-y-3">
           <div className="flex justify-between items-center">
-            <span className="font-bold text-gray-700">Gesamt</span>
-            <span className="font-black text-xl font-mono text-gray-900">{formatPreis(tab.summeGesamtCent)}</span>
+            <span className="font-bold text-ink-muted">Gesamt</span>
+            <span className="font-black text-xl font-mono text-ink">{formatPreis(tab.summeGesamtCent)}</span>
           </div>
 
           {bonierFehler && (
             <p className="text-red-500 text-sm text-center">{bonierFehler}</p>
           )}
           {bonierErfolg && (
-            <p className="text-green-600 text-sm text-center font-bold">✓ Bon wurde gesendet</p>
+            <p className="text-brand-600 text-sm text-center font-bold">✓ Bon wurde gesendet</p>
           )}
 
           <button
             onClick={() => { setBonierFehler(null); bonierMutation.mutate() }}
             disabled={bonierMutation.isPending}
-            className="w-full py-4 rounded-2xl bg-green-600 text-white font-black text-lg active:scale-95 transition disabled:opacity-50"
+            className="w-full py-4 rounded-2xl bg-brand-600 text-white font-black text-lg active:scale-95 transition disabled:opacity-50"
           >
             {bonierMutation.isPending ? '⏳ Wird gesendet…' : '🍳 Bonieren'}
           </button>
 
-          <p className="text-center text-xs text-gray-400">
+          <p className="text-center text-xs text-ink-subtle">
             Bezahlung an der Hauptkasse
           </p>
         </div>

@@ -69,24 +69,24 @@ export function LoginPage() {
   // Setup-Schritt: Kasse wählen
   if (mandantId && !kasseGesetzt) {
     return (
-      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6">
+      <div className="min-h-screen bg-surface flex flex-col items-center justify-center p-6">
         <div className="w-full max-w-sm space-y-6">
           <div className="text-center">
-            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-green-600 text-white mb-3 text-2xl">
+            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-brand-600 text-white mb-3 text-2xl">
               🍽
             </div>
-            <h1 className="text-2xl font-black text-gray-900">Kellner-App</h1>
-            <p className="text-gray-500 text-sm mt-1">Kasse auswählen</p>
+            <h1 className="text-2xl font-black text-ink">Kellner-App</h1>
+            <p className="text-ink-subtle text-sm mt-1">Kasse auswählen</p>
           </div>
 
           {kassenQuery.isLoading && (
             <div className="text-center py-8">
-              <div className="w-8 h-8 border-4 border-green-500 border-t-transparent rounded-full animate-spin mx-auto" />
+              <div className="w-8 h-8 border-4 border-brand-500 border-t-transparent rounded-full animate-spin mx-auto" />
             </div>
           )}
 
           {kassenQuery.data && kassenQuery.data.length === 0 && (
-            <p className="text-center text-gray-500 text-sm">Keine Kassen gefunden.</p>
+            <p className="text-center text-ink-subtle text-sm">Keine Kassen gefunden.</p>
           )}
 
           <div className="space-y-2">
@@ -94,7 +94,7 @@ export function LoginPage() {
               <button
                 key={k.id}
                 onClick={() => handleKasseWaehlen(k.id)}
-                className="w-full p-4 rounded-2xl bg-white border-2 border-gray-200 text-left font-semibold text-gray-900 hover:border-green-400 active:scale-98 transition"
+                className="w-full p-4 rounded-2xl bg-panel border-2 border-line text-left font-semibold text-ink hover:border-brand-400 active:scale-98 transition"
               >
                 {k.bezeichnung}
               </button>
@@ -115,14 +115,14 @@ export function LoginPage() {
   const digits = ['1','2','3','4','5','6','7','8','9','','0','⌫']
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6">
+    <div className="min-h-screen bg-surface flex flex-col items-center justify-center p-6">
       <div className="w-full max-w-xs space-y-6">
         <div className="text-center">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-green-600 text-white mb-3 text-2xl">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-brand-600 text-white mb-3 text-2xl">
             🍽
           </div>
-          <h1 className="text-2xl font-black text-gray-900">Kellner-App</h1>
-          <p className="text-gray-500 text-sm mt-1">PIN eingeben</p>
+          <h1 className="text-2xl font-black text-ink">Kellner-App</h1>
+          <p className="text-ink-subtle text-sm mt-1">PIN eingeben</p>
         </div>
 
         {/* PIN-Punkte */}
@@ -131,7 +131,7 @@ export function LoginPage() {
             <div
               key={i}
               className={`w-4 h-4 rounded-full transition-all ${
-                i < pin.length ? 'bg-green-600 scale-110' : 'bg-gray-300'
+                i < pin.length ? 'bg-brand-600 scale-110' : 'bg-panel-2'
               }`}
             />
           ))}
@@ -153,8 +153,8 @@ export function LoginPage() {
                 disabled={mutation.isPending}
                 className={`h-16 rounded-2xl text-xl font-black transition active:scale-90 disabled:opacity-50 ${
                   d === '⌫'
-                    ? 'bg-gray-200 text-gray-600 hover:bg-gray-300'
-                    : 'bg-white border-2 border-gray-200 text-gray-900 hover:border-green-400 hover:bg-green-50'
+                    ? 'bg-panel-2 text-ink-muted hover:bg-panel-2'
+                    : 'bg-panel border-2 border-line text-ink hover:border-brand-400 hover:bg-brand-50'
                 }`}
               >
                 {mutation.isPending && pin.length === 4 ? '…' : d}
