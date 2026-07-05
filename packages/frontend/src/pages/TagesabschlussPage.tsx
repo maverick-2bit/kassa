@@ -151,7 +151,7 @@ export function TagesabschlussPage() {
                     Zahlungsarten
                   </h3>
                   <table className="w-full text-sm">
-                    <tbody className="divide-y divide-gray-50">
+                    <tbody className="divide-y divide-line">
                       {data.barCent !== 0 && (
                         <ZeileZweiSpaltig
                           label="Bar"
@@ -198,7 +198,7 @@ export function TagesabschlussPage() {
                           <th className="text-right pb-1 font-normal">USt</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-gray-50">
+                      <tbody className="divide-y divide-line">
                         {data.mwst.map((z) => (
                           <tr key={z.satzKey}>
                             <td className="py-1.5 text-ink">{z.label}</td>
@@ -351,7 +351,7 @@ function KassenbuchAbschnitt({ kb }: { kb: KassenbuchResponse }) {
             <th className="px-4 py-2 text-right font-semibold">Betrag</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-50">
+        <tbody className="divide-y divide-line">
           {kb.buchungen.map(b => (
             <tr key={b.id} className="hover:bg-panel-2">
               <td className="px-4 py-2">

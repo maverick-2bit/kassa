@@ -1308,7 +1308,7 @@ function UmsatzBalkendiagramm({ data }: { data: BerichtResponse }) {
               >
                 {/* Tooltip */}
                 <div className="absolute bottom-full mb-1 hidden group-hover:flex flex-col items-center z-10 pointer-events-none">
-                  <div className="bg-gray-900 text-white text-xs rounded px-2 py-1 whitespace-nowrap">
+                  <div className="bg-ink text-surface text-xs rounded px-2 py-1 whitespace-nowrap">
                     <span className="font-medium">{z.periode}</span>
                     <br />
                     <span className="font-mono">{formatPreis(z.umsatzCent)}</span>
@@ -1637,7 +1637,7 @@ function VergleichErgebnis({
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-ink-subtle w-20 shrink-0">{vorLabel}</span>
                       <div className="flex-1 h-5 bg-panel-2 rounded-full overflow-hidden">
-                        <div className="h-full rounded-full bg-gray-300"
+                        <div className="h-full rounded-full bg-line-strong"
                           style={{ width: `${Math.round((z.vorCent / maxV) * 100)}%` }} />
                       </div>
                       <span className="text-xs font-mono text-ink-subtle w-24 text-right shrink-0">{formatPreis(z.vorCent)}</span>

@@ -156,8 +156,8 @@ export function KartenzahlungModal({ open, kasseId, betragCent, onErfolg, onAbbr
                 onClick={() => { setTrinkgeld(0); setCustomAktiv(false); setCustomInput('') }}
                 className={`px-3 py-2 rounded-lg text-sm font-semibold border transition ${
                   trinkgeld === 0 && !customAktiv
-                    ? 'bg-gray-800 text-white border-gray-800'
-                    : 'bg-panel text-ink border-line-strong hover:border-gray-500'
+                    ? 'bg-brand-600 text-white border-brand-600'
+                    : 'bg-panel text-ink border-line-strong hover:border-brand-400'
                 }`}
               >
                 Kein

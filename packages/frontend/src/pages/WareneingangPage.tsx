@@ -264,7 +264,7 @@ export function WareneingangPage() {
         value={suche}
         onChange={(e) => setSuche(e.target.value)}
         className="w-full rounded-lg border border-line-strong px-3 py-2.5 text-sm
-                   placeholder-gray-400 shadow-sm focus:border-brand-500 focus:ring-1
+                   placeholder-ink-subtle shadow-sm focus:border-brand-500 focus:ring-1
                    focus:ring-brand-500 outline-none"
       />
 
