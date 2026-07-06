@@ -1404,4 +1404,60 @@ test('Dienstplan: Schicht über das Modal eintragen erscheint im Wochenkalender'
   await expect(page.getByText(mitarbeiter).first()).toBeVisible()
 })
 
+/**
+ * Angebot-über-die-Kasse-Journey: der Erzeugungs-Weg, den die AngebotePage NICHT
+ * bietet — Angebote entstehen über die Schnellkasse im Angebot-Modus. Modul
+ * aktivieren → /kasse → auf „Angebot" umschalten (setzt Modus + leert den Korb,
+ * daher ERST umschalten, DANN Artikel) → Artikel-Kachel in den Korb → „Angebot
+ * erstellen" → Erfolgs-Modal „Angebot A-XXXX erstellt". Ergänzt die bestehende
+ * Angebot-Verwaltungs-Journey (Liste/Status/Lieferschein) um die Anlage.
+ */
+test('Angebot über die Kasse: im Angebot-Modus aus dem Warenkorb erstellen', async ({ page, request }) => {
+  const login = await ensureAuth(request)
+  const token = login.token, mandantId = login.mandant.id, kasseId = login.kassen[0].id
+  const authHeader = { Authorization: `Bearer ${token}` }
+
+  // Modul aktivieren + Artikel mit eindeutigem Namen seeden
+  const module = await (await request.get('/api/mandanten/module', { headers: authHeader })).json()
+  await request.patch('/api/mandanten/module', {
+    headers: authHeader, data: { ...module, modulAngeboteAktiv: true },
+  })
+  const ts  = Date.now()
+  const art = `Beratungsleistung ${ts}`
+  const kat = await (await request.post('/api/kategorien', {
+    headers: authHeader, data: { name: `Dienstleistung ${ts}`, farbe: 'blau', reihenfolge: 0 },
+  })).json()
+  await request.post('/api/artikel', {
+    headers: authHeader,
+    data: { bezeichnung: art, preisBruttoCent: 5000, mwstSatz: 'normal', kategorieId: kat.id },
+  })
+
+  await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
+    localStorage.setItem('kassa:token', d.token)
+    localStorage.setItem('kassa:auth', d.authJson)
+    localStorage.setItem('kassa:mandantId', d.mandantId)
+    localStorage.setItem('kassa:kasseId', d.kasseId)
+  }, {
+    token,
+    authJson: JSON.stringify({
+      user: login.user,
+      mandant: { ...login.mandant, modulAngeboteAktiv: true },
+      kassen: login.kassen,
+    }),
+    mandantId,
+    kasseId,
+  })
+
+  await page.goto('/kasse')
+
+  // Erst auf Angebot-Modus umschalten (leert den Korb), DANN Artikel hinzufügen
+  await page.getByRole('button', { name: 'Angebot', exact: true }).click()
+  await expect(page.getByText('Angebotssumme')).toBeVisible()
+  await page.getByRole('button', { name: art }).first().click()
+
+  // Angebot aus dem Warenkorb erstellen → Erfolgs-Modal
+  await page.getByRole('button', { name: 'Angebot erstellen' }).click()
+  await expect(page.getByText(/Angebot A-\d+ erstellt/)).toBeVisible({ timeout: 15_000 })
+})
+
 })
