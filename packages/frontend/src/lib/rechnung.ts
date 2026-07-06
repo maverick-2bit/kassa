@@ -679,7 +679,11 @@ export function generiereLiferscheinHtml(ls: LiferscheinResponse, mandant: Manda
   const positionenHtml = ls.positionen.map((p, i) => `
     <tr>
       <td class="ls-pos">${i + 1}</td>
-      <td class="ls-bezeichnung">${esc(p.bezeichnung)}</td>
+      <td class="ls-bezeichnung">${esc(p.bezeichnung)}${
+        p.seriennummern && p.seriennummern.length > 0
+          ? `<div style="font-size:9px;color:#555;margin-top:2px">Seriennummern: ${p.seriennummern.map(esc).join(', ')}</div>`
+          : ''
+      }</td>
       <td class="ls-menge">${p.menge % 1 === 0 ? p.menge.toFixed(0) : p.menge}</td>
       <td class="ls-einheit">Stk.</td>
     </tr>`).join('')
