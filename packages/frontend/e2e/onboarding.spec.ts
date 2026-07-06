@@ -1519,4 +1519,51 @@ test('Tisch umbuchen: gebuchten Tisch auf einen anderen Tisch verschieben', asyn
   await expect(page.getByText(art).first()).toBeVisible()
 })
 
+/**
+ * Tisch-Umbuchen aus der Übersicht: das Umbuchen direkt an der Tisch-Kachel in
+ * der /tische-Liste (neuer „⇄"-Button je belegtem Tisch), ohne den Tab zu öffnen.
+ * Tab per API seeden → /tische → „⇄" an der Kachel → neuen Tisch → „Umbuchen" →
+ * Kachel zeigt den neuen Tisch, der alte ist weg. gastro ist default aktiv.
+ */
+test('Tisch umbuchen aus der Übersicht: direkt an der Kachel', async ({ page, request }) => {
+  const login = await ensureAuth(request)
+  const token = login.token, mandantId = login.mandant.id, kasseId = login.kassen[0].id
+  const authHeader = { Authorization: `Bearer ${token}` }
+
+  const ts       = Date.now()
+  const tischAlt = `UEB-ALT-${ts}`
+  const tischNeu = `UEB-NEU-${ts}`
+
+  // Offenen Tisch per API seeden
+  const tabRes = await request.post('/api/tisch-tabs', {
+    headers: authHeader,
+    data: { kasseId, tischNummer: tischAlt, kellner: 'Service' },
+  })
+  expect(tabRes.ok()).toBe(true)
+
+  await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
+    localStorage.setItem('kassa:token', d.token)
+    localStorage.setItem('kassa:auth', d.authJson)
+    localStorage.setItem('kassa:mandantId', d.mandantId)
+    localStorage.setItem('kassa:kasseId', d.kasseId)
+  }, {
+    token,
+    authJson: JSON.stringify({ user: login.user, mandant: login.mandant, kassen: login.kassen }),
+    mandantId,
+    kasseId,
+  })
+
+  // Übersicht (Listen-Ansicht) → „⇄"-Button an der Kachel des gebuchten Tisches
+  await page.goto('/tische')
+  await page.getByRole('button', { name: `Tisch ${tischAlt} umbuchen` }).click()
+
+  // Modal: neuen Tisch eingeben → Umbuchen
+  await page.getByPlaceholder(/Terrasse 2/).fill(tischNeu)
+  await page.getByRole('button', { name: 'Umbuchen', exact: true }).click()
+
+  // Kachel zeigt jetzt den neuen Tisch; der alte ist verschwunden
+  await expect(page.getByRole('button', { name: `Tisch ${tischNeu} umbuchen` })).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByText(tischAlt)).toHaveCount(0)
+})
+
 })

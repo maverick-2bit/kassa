@@ -23,6 +23,7 @@ export function TischePage() {
   const [ansicht, setAnsicht]                 = useState<Ansicht>('liste')
   const [neuerTischOffen, setNeuerTischOffen] = useState(false)
   const [vorbelegterTisch, setVorbelegterTisch] = useState<string>('')
+  const [umbuchenTab, setUmbuchenTab]         = useState<TischTabResponse | null>(null)
   const [fehler, setFehler]                   = useState<string | null>(null)
 
   const tabsQuery = useQuery({
@@ -42,6 +43,17 @@ export function TischePage() {
       qc.invalidateQueries({ queryKey: ['tisch-tabs'] })
       setNeuerTischOffen(false)
       navigate(`/tische/${tab.id}`)
+    },
+    onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
+  })
+
+  const umbuchenMutation = useMutation({
+    mutationFn: ({ id, tischNummer }: { id: string; tischNummer: string }) =>
+      tischTabApi.umbucheTisch(id, tischNummer),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tisch-tabs'] })
+      setUmbuchenTab(null)
+      setFehler(null)
     },
     onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
   })
@@ -118,6 +130,7 @@ export function TischePage() {
                 setNeuerTischOffen(true)
                 setVorbelegterTisch(tischNummer)
               }}
+              onUmbuchen={(tab) => { setFehler(null); setUmbuchenTab(tab) }}
             />
           )}
         </>
@@ -137,6 +150,77 @@ export function TischePage() {
           onAbbrechen={() => { setNeuerTischOffen(false); setVorbelegterTisch('') }}
         />
       </Modal>
+
+      {/* Umbuchen direkt aus der Übersicht */}
+      <Modal
+        open={!!umbuchenTab}
+        onClose={() => { setUmbuchenTab(null); setFehler(null) }}
+        title="Tisch umbuchen"
+      >
+        {umbuchenTab && (
+          <UmbuchenForm
+            aktuellerTisch={umbuchenTab.tischNummer}
+            loading={umbuchenMutation.isPending}
+            fehler={fehler}
+            onSubmit={(tischNummer) => umbuchenMutation.mutate({ id: umbuchenTab.id, tischNummer })}
+            onAbbrechen={() => { setUmbuchenTab(null); setFehler(null) }}
+          />
+        )}
+      </Modal>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Umbuchen-Formular (Übersicht)
+// ---------------------------------------------------------------------------
+
+function UmbuchenForm({
+  aktuellerTisch,
+  loading,
+  fehler,
+  onSubmit,
+  onAbbrechen,
+}: {
+  aktuellerTisch: string
+  loading:        boolean
+  fehler:         string | null
+  onSubmit:       (tischNummer: string) => void
+  onAbbrechen:    () => void
+}) {
+  const [neuerTisch, setNeuerTisch] = useState(aktuellerTisch)
+  const kannUmbuchen = neuerTisch.trim().length > 0 && neuerTisch.trim() !== aktuellerTisch
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-ink-muted">
+        Aktueller Tisch: <strong>{aktuellerTisch}</strong>
+      </p>
+      <label className="block">
+        <span className="text-sm font-medium text-ink">Neuer Tisch</span>
+        <Input
+          autoFocus
+          value={neuerTisch}
+          onChange={(e) => setNeuerTisch(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && kannUmbuchen) onSubmit(neuerTisch.trim()) }}
+          placeholder="z. B. 5, Terrasse 2 …"
+          className="mt-1"
+        />
+      </label>
+      {fehler && (
+        <div className="rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">{fehler}</div>
+      )}
+      <div className="flex gap-2 pt-1">
+        <Button variant="secondary" onClick={onAbbrechen} className="flex-1">Abbrechen</Button>
+        <Button
+          onClick={() => kannUmbuchen && onSubmit(neuerTisch.trim())}
+          loading={loading}
+          disabled={!kannUmbuchen}
+          className="flex-1"
+        >
+          Umbuchen
+        </Button>
+      </div>
     </div>
   )
 }
@@ -193,40 +277,57 @@ function TischKarte({
   tab,
   gruppeNr,
   onClick,
+  onUmbuchen,
 }: {
-  tab:      TischTabResponse
-  gruppeNr: number | undefined
-  onClick:  () => void
+  tab:        TischTabResponse
+  gruppeNr:   number | undefined
+  onClick:    () => void
+  onUmbuchen: () => void
 }) {
   useMinutenticker()
   const min   = minOffen(tab.geoffnetAm)
   const farbe = tischFarbe(min)
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`group relative rounded-xl border-2 p-4 text-left transition hover:shadow-md ${farbe.border} ${farbe.bg}`}
-    >
-      {gruppeNr !== undefined && (
-        <span className={`absolute top-2 right-2 text-[10px] font-bold rounded-full px-1.5 py-0.5 leading-none ${farbe.badgeBg} ${farbe.badgeText}`}>
-          G{gruppeNr}
-        </span>
-      )}
-      <div className="flex items-start justify-between gap-2">
-        <p className={`text-2xl font-bold ${farbe.tischText}`}>{tab.tischNummer}</p>
-        <span className={`shrink-0 text-xs font-semibold px-1.5 py-0.5 rounded-md ${farbe.badgeBg} ${farbe.badgeText}`}>
-          {dauerText(min)}
-        </span>
-      </div>
-      <p className={`mt-0.5 text-xs font-medium truncate ${farbe.kellnerText}`}>{tab.kellner}</p>
-      <p className="mt-2 text-sm font-semibold text-ink">
-        {formatPreis(tab.summeGesamtCent)}
-      </p>
-      <p className="text-xs text-ink-muted">
-        {tab.positionen.reduce((n, p) => n + p.menge, 0)} Pos.
-      </p>
-    </button>
+    <div className="relative">
+      <button
+        type="button"
+        onClick={onClick}
+        className={`group w-full rounded-xl border-2 p-4 text-left transition hover:shadow-md ${farbe.border} ${farbe.bg}`}
+      >
+        {gruppeNr !== undefined && (
+          <span className={`absolute top-2 right-2 text-[10px] font-bold rounded-full px-1.5 py-0.5 leading-none ${farbe.badgeBg} ${farbe.badgeText}`}>
+            G{gruppeNr}
+          </span>
+        )}
+        <div className="flex items-start justify-between gap-2">
+          <p className={`text-2xl font-bold ${farbe.tischText}`}>{tab.tischNummer}</p>
+          <span className={`shrink-0 text-xs font-semibold px-1.5 py-0.5 rounded-md ${farbe.badgeBg} ${farbe.badgeText}`}>
+            {dauerText(min)}
+          </span>
+        </div>
+        <p className={`mt-0.5 text-xs font-medium truncate ${farbe.kellnerText}`}>{tab.kellner}</p>
+        <p className="mt-2 text-sm font-semibold text-ink">
+          {formatPreis(tab.summeGesamtCent)}
+        </p>
+        <p className="text-xs text-ink-muted">
+          {tab.positionen.reduce((n, p) => n + p.menge, 0)} Pos.
+        </p>
+      </button>
+
+      {/* Umbuchen direkt aus der Übersicht (ohne den Tab zu öffnen) */}
+      <button
+        type="button"
+        onClick={onUmbuchen}
+        title="Tisch umbuchen"
+        aria-label={`Tisch ${tab.tischNummer} umbuchen`}
+        className="absolute bottom-2 right-2 inline-flex h-8 w-8 items-center justify-center rounded-lg
+                   border border-line-strong bg-panel/80 text-base text-ink-muted shadow-sm backdrop-blur
+                   hover:border-brand-400 hover:text-brand-600"
+      >
+        ⇄
+      </button>
+    </div>
   )
 }
 
@@ -242,10 +343,12 @@ function TischListeGruppiert({
   tabs,
   onTabClick,
   onNeueGruppe,
+  onUmbuchen,
 }: {
   tabs:         TischTabResponse[]
   onTabClick:   (id: string) => void
   onNeueGruppe: (tischNummer: string) => void
+  onUmbuchen:   (tab: TischTabResponse) => void
 }) {
   // Tabs nach tischNummer gruppieren (Reihenfolge: erste Öffnungszeit)
   const gruppen = new Map<string, TischTabResponse[]>()
@@ -281,6 +384,7 @@ function TischListeGruppiert({
                 tab={tab}
                 gruppeNr={gruppe.length > 1 ? i + 1 : undefined}
                 onClick={() => onTabClick(tab.id)}
+                onUmbuchen={() => onUmbuchen(tab)}
               />
             ))}
             {/* „+ Neue Gruppe" als Ghost-Karte wenn mehrere Gruppen vorhanden */}
