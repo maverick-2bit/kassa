@@ -944,4 +944,44 @@ test('Modifikator-Lagerstand: bonierte Option zieht den Varianten-Bestand ab', a
   }, { timeout: 15_000 }).toBe(4)
 })
 
+/**
+ * Reservierungs-Modul-Journey: das Modul „reservierungen" aktivieren und prüfen,
+ * dass die (zuvor durch den hasModul-Bug dauerhaft gesperrte) Reservierungen-Seite
+ * jetzt erreichbar ist. Verifiziert den Modul-Gating-Fix end-to-end.
+ */
+test('Reservierungs-Modul: nach Aktivierung ist die Reservierungen-Seite erreichbar', async ({ page, request }) => {
+  const login = await ensureAuth(request)
+  const token = login.token, mandantId = login.mandant.id, kasseId = login.kassen[0].id
+  const authHeader = { Authorization: `Bearer ${token}` }
+
+  // Modul „reservierungen" aktivieren (PATCH braucht alle Flags)
+  const module = await (await request.get('/api/mandanten/module', { headers: authHeader })).json()
+  const patch = await request.patch('/api/mandanten/module', {
+    headers: authHeader,
+    data: { ...module, modulReservierungenAktiv: true },
+  })
+  expect(patch.ok()).toBe(true)
+
+  // Auth mit aktiviertem Modul injizieren (hasModul liest aus dem LocalStorage)
+  await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
+    localStorage.setItem('kassa:token', d.token)
+    localStorage.setItem('kassa:auth', d.authJson)
+    localStorage.setItem('kassa:mandantId', d.mandantId)
+    localStorage.setItem('kassa:kasseId', d.kasseId)
+  }, {
+    token,
+    authJson: JSON.stringify({
+      user: login.user,
+      mandant: { ...login.mandant, modulReservierungenAktiv: true },
+      kassen: login.kassen,
+    }),
+    mandantId,
+    kasseId,
+  })
+
+  // Vor dem Fix wäre die Route gesperrt (Redirect); jetzt lädt die Seite
+  await page.goto('/reservierungen')
+  await expect(page.getByRole('heading', { name: 'Reservierungen' })).toBeVisible({ timeout: 10_000 })
+})
+
 })

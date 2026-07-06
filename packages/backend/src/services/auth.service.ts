@@ -109,9 +109,11 @@ async function buildLoginResponse(
       id:                  mandanten.id,
       firmenname:          mandanten.firmenname,
       uid:                 mandanten.uid,
-      modulGastroAktiv:    mandanten.modulGastroAktiv,
-      modulAngeboteAktiv:  mandanten.modulAngeboteAktiv,
-      modulMergeportAktiv: mandanten.modulMergeportAktiv,
+      modulGastroAktiv:         mandanten.modulGastroAktiv,
+      modulAngeboteAktiv:       mandanten.modulAngeboteAktiv,
+      modulMergeportAktiv:      mandanten.modulMergeportAktiv,
+      modulReservierungenAktiv: mandanten.modulReservierungenAktiv,
+      modulZeiterfassungAktiv:  mandanten.modulZeiterfassungAktiv,
     })
     .from(mandanten)
     .where(eq(mandanten.id, user.mandantId))
