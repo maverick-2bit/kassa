@@ -9,6 +9,7 @@ import type {
   TischTabSplittenInput,
   TischTabUmbuchenInput,
   TischTabUmbenennenInput,
+  TischTabZusammenfuehrenInput,
   TischTabResponse,
 } from '@kassa/shared'
 import type { Db } from '../db/client.js'
@@ -173,7 +174,7 @@ function toResponse(row: typeof tischTabs.$inferSelect): TischTabResponse {
     tischNummer:     row.tischNummer,
     kellner:         row.kellner,
     positionen,
-    status:          row.status as 'offen' | 'bezahlt',
+    status:          row.status as 'offen' | 'bezahlt' | 'zusammengefuehrt',
     summeGesamtCent: berechneGesamtCent(positionen),
     geoffnetAm:      row.geoffnetAm.toISOString(),
     createdAt:       row.createdAt.toISOString(),
@@ -432,6 +433,85 @@ export async function umbucheTab(
   }, deps.db)
 
   return toResponse(row)
+}
+
+/**
+ * Führt mehrere offene Tabs (z. B. Gruppen an einem Tisch) in einen Ziel-Tab
+ * zusammen: die Positionen der Quell-Tabs werden an den Ziel-Tab angehängt, die
+ * Quell-Tabs auf Status 'zusammengefuehrt' geschlossen. Alles in EINER Tx mit
+ * FOR-UPDATE-Sperren, damit ein paralleles Bezahlen/Umbuchen nicht dazwischenfunkt.
+ * Vorfiskalisch — es entsteht kein Beleg; nur beim Bezahlen des Ziel-Tabs.
+ */
+export async function verschmelzeTabs(
+  zielId: string,
+  input: TischTabZusammenfuehrenInput,
+  mandantId: string,
+  deps: TischTabServiceDeps,
+): Promise<TischTabResponse> {
+  const quellIds = [...new Set(input.quellTabIds)].filter(qid => qid !== zielId)
+  if (quellIds.length === 0) throw new TischTabError(400, 'Keine Quell-Tabs zum Zusammenführen')
+
+  return deps.db.transaction(async (tx) => {
+    // Ziel-Tab sperren + validieren
+    const [ziel] = await tx
+      .select()
+      .from(tischTabs)
+      .where(and(eq(tischTabs.id, zielId), eq(tischTabs.mandantId, mandantId)))
+      .for('update')
+      .limit(1)
+    if (!ziel) throw new TischTabError(404, 'Ziel-Tisch nicht gefunden')
+    if (ziel.status !== 'offen') throw new TischTabError(409, 'Ziel-Tisch ist nicht mehr offen')
+
+    // Quell-Tabs sperren + validieren (alle offen, gleiche Kasse)
+    const quellen = await tx
+      .select()
+      .from(tischTabs)
+      .where(and(inArray(tischTabs.id, quellIds), eq(tischTabs.mandantId, mandantId)))
+      .for('update')
+    if (quellen.length !== quellIds.length) throw new TischTabError(404, 'Ein zusammenzuführender Tisch wurde nicht gefunden')
+    for (const q of quellen) {
+      if (q.status !== 'offen')      throw new TischTabError(409, `Gruppe „${q.tischNummer}" ist nicht mehr offen`)
+      if (q.kasseId !== ziel.kasseId) throw new TischTabError(400, 'Tische gehören zu verschiedenen Kassen')
+    }
+
+    // Positionen anhängen
+    const zielPos  = (ziel.positionen as TabPosition[]) ?? []
+    const quellPos = quellen.flatMap(q => (q.positionen as TabPosition[]) ?? [])
+    const jetzt    = new Date()
+
+    const [zielRow] = await tx
+      .update(tischTabs)
+      .set({ positionen: [...zielPos, ...quellPos], updatedAt: jetzt })
+      .where(eq(tischTabs.id, zielId))
+      .returning()
+    if (!zielRow) throw new TischTabError(500, 'Zusammenführen fehlgeschlagen')
+
+    // Quell-Tabs schließen + Ereignisse protokollieren
+    for (const q of quellen) {
+      await tx
+        .update(tischTabs)
+        .set({ status: 'zusammengefuehrt', geschlossenAm: jetzt, updatedAt: jetzt })
+        .where(eq(tischTabs.id, q.id))
+      await tx.insert(tabEreignisse).values({
+        tabId:   q.id,
+        mandantId,
+        typ:     'zusammengefuehrt',
+        details: { zielTabId: zielId, zielTisch: ziel.tischNummer, positionen: (q.positionen as TabPosition[])?.length ?? 0 },
+      })
+    }
+    await tx.insert(tabEreignisse).values({
+      tabId:   zielId,
+      mandantId,
+      typ:     'zusammengefuehrt',
+      details: {
+        quellTabIds:      quellen.map(q => q.id),
+        quellTische:      quellen.map(q => q.tischNummer),
+        anzahlPositionen: quellPos.length,
+      },
+    })
+
+    return toResponse(zielRow)
+  })
 }
 
 export async function splitteUndBezahleTab(

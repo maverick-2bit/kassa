@@ -6,6 +6,7 @@ import {
   TischTabUmbuchenInputSchema,
   TischTabUmbenennenInputSchema,
   TischTabSplittenInputSchema,
+  TischTabZusammenfuehrenInputSchema,
 } from '@kassa/shared'
 import {
   listOffeneTabs,
@@ -17,6 +18,7 @@ import {
   umbenneneTab,
   umbucheTab,
   splitteUndBezahleTab,
+  verschmelzeTabs,
   TischTabError,
   type TischTabServiceDeps,
 } from '../services/tisch-tab.service.js'
@@ -103,6 +105,20 @@ export const tischTabRoute: FastifyPluginAsync<TischTabRouteOptions> = async (fa
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     try {
       const tab = await umbucheTab(id, parsed.data, request.user.mandantId, opts.deps)
+      return reply.send(tab)
+    } catch (err) {
+      if (err instanceof TischTabError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      throw err
+    }
+  })
+
+  // Mehrere Gruppen/Tabs in diesen (Ziel-)Tab zusammenführen
+  fastify.post('/tisch-tabs/:id/zusammenfuehren', auth, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const parsed = TischTabZusammenfuehrenInputSchema.safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
+    try {
+      const tab = await verschmelzeTabs(id, parsed.data, request.user.mandantId, opts.deps)
       return reply.send(tab)
     } catch (err) {
       if (err instanceof TischTabError) return reply.status(err.httpStatus).send({ fehler: err.message })
