@@ -1637,4 +1637,79 @@ test('Gruppen zusammenführen: zwei Parteien an einem Tisch verschmelzen', async
   expect(meine[0]!.summeGesamtCent).toBe(3000)
 })
 
+/**
+ * Tischplan-Ansicht: Umbuchen UND Zusammenführen auch aus dem grafischen Tischplan.
+ * Ein Bereich + Tisch-Element werden per API angelegt, zwei Gruppen am Tisch
+ * gebucht. In der Plan-Ansicht öffnet ein Klick auf das Tisch-Element den Aktions-
+ * Dialog: „Gruppen zusammenführen" (bei 2+) und je Gruppe „Öffnen"/„Umbuchen".
+ * Erst mergen (2→1, per API verifiziert), dann die verbleibende Gruppe umbuchen
+ * (per API verifiziert). Tischname ohne „Plan", um Selektor-Kollision mit dem
+ * Ansicht-Umschalter „⊞ Plan" zu vermeiden.
+ */
+test('Tischplan-Ansicht: Gruppen zusammenführen und umbuchen über den Plan', async ({ page, request }) => {
+  const login = await ensureAuth(request)
+  const token = login.token, mandantId = login.mandant.id, kasseId = login.kassen[0].id
+  const authHeader = { Authorization: `Bearer ${token}` }
+
+  const ts    = Date.now()
+  const tisch = `TP-${ts}`
+  const neu   = `TP-NEU-${ts}`
+
+  // Tischplan: Bereich + Tisch-Element anlegen
+  const bereich = await (await request.post('/api/tischplan/bereiche', {
+    headers: authHeader, data: { kasseId, name: `Plan-Bereich ${ts}` },
+  })).json()
+  await request.post('/api/tischplan/elemente', {
+    headers: authHeader,
+    data: { kasseId, bereichId: bereich.id, bezeichnung: tisch, form: 'rechteck', x: 40, y: 40, breite: 16, hoehe: 14 },
+  })
+
+  // Zwei Gruppen am selben Tisch
+  await request.post('/api/tisch-tabs', { headers: authHeader, data: { kasseId, tischNummer: tisch, kellner: 'Partei A' } })
+  await request.post('/api/tisch-tabs', { headers: authHeader, data: { kasseId, tischNummer: tisch, kellner: 'Partei B' } })
+
+  await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
+    localStorage.setItem('kassa:token', d.token)
+    localStorage.setItem('kassa:auth', d.authJson)
+    localStorage.setItem('kassa:mandantId', d.mandantId)
+    localStorage.setItem('kassa:kasseId', d.kasseId)
+  }, {
+    token,
+    authJson: JSON.stringify({ user: login.user, mandant: login.mandant, kassen: login.kassen }),
+    mandantId,
+    kasseId,
+  })
+
+  const offeneAmTisch = async (name: string) => {
+    const tabs = await (await request.get(`/api/tisch-tabs?kasseId=${kasseId}`, { headers: authHeader })).json()
+    return (tabs as { tischNummer: string }[]).filter(t => t.tischNummer === name).length
+  }
+
+  // In die Plan-Ansicht wechseln und das Tisch-Element öffnen
+  await page.goto('/tische')
+  await page.getByRole('button', { name: /Plan/ }).click()
+  await page.getByRole('button', { name: new RegExp(tisch) }).click()
+
+  // Aktions-Dialog: bei 2 Gruppen gibt es „Gruppen zusammenführen"
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByRole('button', { name: 'Gruppen zusammenführen' })).toBeVisible()
+  await dialog.getByRole('button', { name: 'Gruppen zusammenführen' }).click()
+
+  // Merge-Modal: Ziel (Default) → zusammenführen → nur noch eine Gruppe am Tisch
+  await page.getByRole('dialog').getByRole('button', { name: 'Zusammenführen', exact: true }).click()
+  await expect.poll(() => offeneAmTisch(tisch)).toBe(1)
+
+  // Frischer Plan (vermeidet Refetch-Race), Tisch erneut öffnen → „Umbuchen" der verbleibenden Gruppe
+  await page.reload()
+  await page.getByRole('button', { name: /Plan/ }).click()
+  await page.getByRole('button', { name: new RegExp(tisch) }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Umbuchen' }).click()
+  await page.getByPlaceholder(/Terrasse 2/).fill(neu)
+  await page.getByRole('dialog').getByRole('button', { name: 'Umbuchen', exact: true }).click()
+
+  // Der Tab liegt jetzt auf dem neuen Tisch, der alte Tisch ist leer
+  await expect.poll(() => offeneAmTisch(neu)).toBe(1)
+  await expect.poll(() => offeneAmTisch(tisch)).toBe(0)
+})
+
 })

@@ -19,6 +19,7 @@ import { formatPreis } from '../lib/format'
 import { Modal } from './ui/Modal'
 import { Input } from './ui/Input'
 import { Button } from './ui/Button'
+import { UmbuchenForm, ZusammenfuehrenForm } from './tischAktionenForms'
 
 interface Props {
   bereiche: TischplanBereich[]
@@ -31,6 +32,8 @@ export function TischplanAnsicht({ bereiche, tabs }: Props) {
   // Zustand für Dialoge
   const [gruppenAuswahl, setGruppenAuswahl] = useState<{ bezeichnung: string; tabs: TischTabResponse[] } | null>(null)
   const [neueGruppeFuer,  setNeueGruppeFuer]  = useState<string | null>(null)
+  const [umbuchenTab,     setUmbuchenTab]     = useState<TischTabResponse | null>(null)
+  const [zusammenGruppe,  setZusammenGruppe]  = useState<TischTabResponse[] | null>(null)
   const [kellner,         setKellner]         = useState('Service')
   const [fehler,          setFehler]          = useState<string | null>(null)
 
@@ -51,6 +54,28 @@ export function TischplanAnsicht({ bereiche, tabs }: Props) {
     onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
   })
 
+  const umbuchenMutation = useMutation({
+    mutationFn: ({ id, tischNummer }: { id: string; tischNummer: string }) =>
+      tischTabApi.umbucheTisch(id, tischNummer),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tisch-tabs'] })
+      setUmbuchenTab(null)
+      setFehler(null)
+    },
+    onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
+  })
+
+  const zusammenfuehrenMutation = useMutation({
+    mutationFn: ({ zielId, quellTabIds }: { zielId: string; quellTabIds: string[] }) =>
+      tischTabApi.zusammenfuehren(zielId, quellTabIds),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tisch-tabs'] })
+      setZusammenGruppe(null)
+      setFehler(null)
+    },
+    onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
+  })
+
   const handleElementClick = (bezeichnung: string) => {
     const offeneTabs = tabs.filter((t) => t.tischNummer === bezeichnung)
     if (offeneTabs.length === 0) {
@@ -58,11 +83,8 @@ export function TischplanAnsicht({ bereiche, tabs }: Props) {
       setNeueGruppeFuer(bezeichnung)
       setKellner('Service')
       setFehler(null)
-    } else if (offeneTabs.length === 1) {
-      // Eine Gruppe → direkt zum Tab
-      navigate(`/tische/${offeneTabs[0]!.id}`)
     } else {
-      // Mehrere Gruppen → Auswahl-Dialog
+      // Belegt (1+ Gruppen) → Aktions-Dialog (Öffnen / Umbuchen / Zusammenführen)
       setGruppenAuswahl({ bezeichnung, tabs: offeneTabs })
       setFehler(null)
     }
@@ -152,35 +174,52 @@ export function TischplanAnsicht({ bereiche, tabs }: Props) {
         {gruppenAuswahl && (
           <div className="space-y-3">
             <p className="text-sm text-ink-muted">
-              {gruppenAuswahl.tabs.length} Gruppen an diesem Tisch — bitte auswählen:
+              {gruppenAuswahl.tabs.length === 1
+                ? 'Aktion für diesen Tisch wählen:'
+                : `${gruppenAuswahl.tabs.length} Gruppen an diesem Tisch:`}
             </p>
             <ul className="space-y-2">
               {gruppenAuswahl.tabs.map((t, i) => {
                 const min = Math.floor((Date.now() - new Date(t.geoffnetAm).getTime()) / 60_000)
                 const dauer = min < 60 ? `${min} Min.` : `${Math.floor(min / 60)}h ${min % 60}m`
                 return (
-                  <li key={t.id}>
-                    <button
-                      type="button"
-                      onClick={() => { setGruppenAuswahl(null); navigate(`/tische/${t.id}`) }}
-                      className="w-full flex items-center justify-between rounded-lg border border-orange-300 bg-orange-50 hover:bg-orange-100 px-4 py-3 text-left transition"
-                    >
-                      <div>
-                        <p className="font-semibold text-orange-900">
-                          Gruppe {i + 1} · {t.kellner}
-                        </p>
-                        <p className="text-xs text-orange-700">
-                          {t.positionen.reduce((n, p) => n + p.menge, 0)} Pos. · geöffnet {dauer}
-                        </p>
-                      </div>
-                      <p className="font-bold text-orange-800 shrink-0 ml-4">
-                        {formatPreis(t.summeGesamtCent)}
+                  <li
+                    key={t.id}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-orange-300 bg-orange-50 px-3 py-2.5"
+                  >
+                    <div className="min-w-0">
+                      <p className="font-semibold text-orange-900 truncate">
+                        {gruppenAuswahl.tabs.length > 1 ? `Gruppe ${i + 1} · ` : ''}{t.kellner}
                       </p>
-                    </button>
+                      <p className="text-xs text-orange-700">
+                        {t.positionen.reduce((n, p) => n + p.menge, 0)} Pos. · {formatPreis(t.summeGesamtCent)} · {dauer}
+                      </p>
+                    </div>
+                    <div className="flex gap-1.5 shrink-0">
+                      <Button size="sm" onClick={() => { setGruppenAuswahl(null); navigate(`/tische/${t.id}`) }}>
+                        Öffnen
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => { setGruppenAuswahl(null); setFehler(null); setUmbuchenTab(t) }}
+                      >
+                        Umbuchen
+                      </Button>
+                    </div>
                   </li>
                 )
               })}
             </ul>
+            {gruppenAuswahl.tabs.length > 1 && (
+              <Button
+                variant="secondary"
+                className="w-full"
+                onClick={() => { const g = gruppenAuswahl.tabs; setGruppenAuswahl(null); setFehler(null); setZusammenGruppe(g) }}
+              >
+                Gruppen zusammenführen
+              </Button>
+            )}
             <Button
               variant="secondary"
               className="w-full"
@@ -227,6 +266,40 @@ export function TischplanAnsicht({ bereiche, tabs }: Props) {
             </Button>
           </div>
         </div>
+      </Modal>
+
+      {/* Dialog: Tisch umbuchen */}
+      <Modal
+        open={umbuchenTab !== null}
+        onClose={() => { setUmbuchenTab(null); setFehler(null) }}
+        title="Tisch umbuchen"
+      >
+        {umbuchenTab && (
+          <UmbuchenForm
+            aktuellerTisch={umbuchenTab.tischNummer}
+            loading={umbuchenMutation.isPending}
+            fehler={fehler}
+            onSubmit={(tischNummer) => umbuchenMutation.mutate({ id: umbuchenTab.id, tischNummer })}
+            onAbbrechen={() => { setUmbuchenTab(null); setFehler(null) }}
+          />
+        )}
+      </Modal>
+
+      {/* Dialog: Gruppen zusammenführen */}
+      <Modal
+        open={zusammenGruppe !== null}
+        onClose={() => { setZusammenGruppe(null); setFehler(null) }}
+        title="Gruppen zusammenführen"
+      >
+        {zusammenGruppe && (
+          <ZusammenfuehrenForm
+            gruppe={zusammenGruppe}
+            loading={zusammenfuehrenMutation.isPending}
+            fehler={fehler}
+            onSubmit={(zielId, quellTabIds) => zusammenfuehrenMutation.mutate({ zielId, quellTabIds })}
+            onAbbrechen={() => { setZusammenGruppe(null); setFehler(null) }}
+          />
+        )}
       </Modal>
     </div>
   )
