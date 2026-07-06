@@ -581,3 +581,15 @@ export type {
   PreisregelUpdate,
   Preisregel,
 } from './schemas/preisregel.js'
+
+// Seriennummern (striktes Pool-Modell pro Artikel)
+export {
+  SeriennummerStatusSchema,
+  SeriennummerSchema,
+  SeriennummernErfassenInputSchema,
+} from './schemas/seriennummer.js'
+export type {
+  SeriennummerStatus,
+  Seriennummer,
+  SeriennummernErfassenInput,
+} from './schemas/seriennummer.js'

@@ -40,6 +40,7 @@ function toDto(row: typeof artikel.$inferSelect): Artikel {
     lagerstandAktiv:      row.lagerstandAktiv,
     lagerstandMenge:      row.lagerstandMenge,
     mindestbestand:       row.mindestbestand,
+    seriennummernAktiv:   row.seriennummernAktiv,
     istFavorit:           row.istFavorit,
     reihenfolge:          row.reihenfolge,
     favoritenReihenfolge: row.favoritenReihenfolge,
@@ -63,6 +64,7 @@ export async function erstelleArtikel(db: Db, input: ArtikelInput): Promise<Arti
     kategorieId:     input.kategorieId ?? null,
     lagerstandAktiv: input.lagerstandAktiv ?? false,
     lagerstandMenge: input.lagerstandAktiv ? (input.lagerstandMenge ?? null) : null,
+    seriennummernAktiv: input.seriennummernAktiv ?? false,
     istFavorit:      input.istFavorit ?? false,
     bonierdruckerId: input.bonierdruckerId ?? null,
     ...(input.bild != null && { bild: input.bild }),
@@ -103,6 +105,7 @@ export async function aktualisiereArtikel(
   if (update.kategorieId     !== undefined) values.kategorieId     = update.kategorieId
   if (update.aktiv           !== undefined) values.aktiv           = update.aktiv
   if (update.lagerstandAktiv      !== undefined) values.lagerstandAktiv      = update.lagerstandAktiv
+  if (update.seriennummernAktiv   !== undefined) values.seriennummernAktiv   = update.seriennummernAktiv
   if (update.lagerstandMenge      !== undefined) values.lagerstandMenge      = update.lagerstandMenge
   if (update.mindestbestand       !== undefined) values.mindestbestand       = update.mindestbestand
   if (update.istFavorit           !== undefined) values.istFavorit           = update.istFavorit

@@ -19,6 +19,7 @@ import type { LagerstandBulkInput } from '@kassa/shared'
 import { artikelApi, kategorieApi, lagerstandApi, modifikatorApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { Button } from '../components/ui/Button'
+import { SeriennummernModal } from '../components/SeriennummernModal'
 
 // ---------------------------------------------------------------------------
 // Typen
@@ -31,6 +32,7 @@ interface ArtikelZeile {
   bezeichnung:  string
   kategorieName: string | null
   menge:        number | null
+  seriennummernAktiv: boolean
 }
 
 interface VarianteZeile {
@@ -55,6 +57,7 @@ export function WareneingangPage() {
   const [suche,       setSuche]       = useState('')
   const [eingaben,    setEingaben]    = useState<Record<string, string>>({})
   const [gespeichert, setGespeichert] = useState(false)
+  const [serialModal, setSerialModal] = useState<{ id: string; name: string } | null>(null)
   const prevModusRef                  = useRef(modus)
 
   // ---------------------------------------------------------------------------
@@ -84,7 +87,7 @@ export function WareneingangPage() {
 
     // Artikel mit aktivem Lagerstand
     const artRows: ArtikelZeile[] = (artikelQuery.data ?? [])
-      .filter(a => a.lagerstandAktiv)
+      .filter(a => a.lagerstandAktiv || a.seriennummernAktiv)
       .sort((a, b) => {
         const ka = a.kategorieId ? (kategorienMap.get(a.kategorieId) ?? '') : ''
         const kb = b.kategorieId ? (kategorienMap.get(b.kategorieId) ?? '') : ''
@@ -97,6 +100,7 @@ export function WareneingangPage() {
         bezeichnung:   a.bezeichnung,
         kategorieName: a.kategorieId ? (kategorienMap.get(a.kategorieId) ?? null) : null,
         menge:         a.lagerstandMenge,
+        seriennummernAktiv: a.seriennummernAktiv,
       }))
 
     // Modifikator-Varianten mit gesetztem Lagerstand
@@ -296,6 +300,7 @@ export function WareneingangPage() {
             modus={modus}
             eingaben={eingaben}
             onEingabe={setEingabe}
+            onSerial={(id, name) => setSerialModal({ id, name })}
           />
         </section>
       )}
@@ -311,6 +316,7 @@ export function WareneingangPage() {
             modus={modus}
             eingaben={eingaben}
             onEingabe={setEingabe}
+            onSerial={(id, name) => setSerialModal({ id, name })}
           />
         </section>
       )}
@@ -342,6 +348,15 @@ export function WareneingangPage() {
           </div>
         </div>
       )}
+
+      {serialModal && (
+        <SeriennummernModal
+          artikelId={serialModal.id}
+          artikelName={serialModal.name}
+          open={true}
+          onClose={() => setSerialModal(null)}
+        />
+      )}
     </div>
   )
 }
@@ -355,11 +370,13 @@ function Tabelle({
   modus,
   eingaben,
   onEingabe,
+  onSerial,
 }: {
   zeilen:    Zeile[]
   modus:     'wareneingang' | 'inventur'
   eingaben:  Record<string, string>
   onEingabe: (key: string, val: string) => void
+  onSerial:  (id: string, name: string) => void
 }) {
   const spalteLabel = modus === 'wareneingang' ? '+ Zugang' : 'Neuer Bestand'
 
@@ -418,22 +435,28 @@ function Tabelle({
                       )}
                     </td>
                     <td className="px-4 py-2.5 text-right">
-                      <input
-                        type="number"
-                        min="0"
-                        step="1"
-                        value={wert}
-                        placeholder={modus === 'wareneingang' ? '0' : String(z.menge ?? '')}
-                        onChange={(e) => onEingabe(z.key, e.target.value)}
-                        className={`
-                          w-24 rounded-md border text-right px-2 py-1.5 text-sm tabular-nums
-                          focus:outline-none focus:ring-2 focus:ring-brand-500
-                          ${istNeu
-                            ? 'border-brand-400 bg-panel font-semibold text-brand-800'
-                            : 'border-line-strong bg-panel text-ink'
-                          }
-                        `}
-                      />
+                      {z.type === 'artikel' && z.seriennummernAktiv ? (
+                        <Button size="sm" variant="secondary" onClick={() => onSerial(z.id, z.bezeichnung)}>
+                          Seriennummern
+                        </Button>
+                      ) : (
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={wert}
+                          placeholder={modus === 'wareneingang' ? '0' : String(z.menge ?? '')}
+                          onChange={(e) => onEingabe(z.key, e.target.value)}
+                          className={`
+                            w-24 rounded-md border text-right px-2 py-1.5 text-sm tabular-nums
+                            focus:outline-none focus:ring-2 focus:ring-brand-500
+                            ${istNeu
+                              ? 'border-brand-400 bg-panel font-semibold text-brand-800'
+                              : 'border-line-strong bg-panel text-ink'
+                            }
+                          `}
+                        />
+                      )}
                     </td>
                   </tr>
                 )

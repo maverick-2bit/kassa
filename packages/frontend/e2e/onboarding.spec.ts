@@ -1789,4 +1789,59 @@ test('Happy Hour pro Artikel: Regel wirkt nur auf den gewählten Artikel', async
   await expect(page.getByText('9,00').first()).toBeVisible()
 })
 
+/**
+ * Seriennummern (Etappe 1): einen Artikel mit seriennummernAktiv anlegen, im
+ * Wareneingang die Seriennummern erfassen (Pool 'verfügbar') und im Pool
+ * wiederfinden. Der Wareneingang zeigt für solche Artikel einen „Seriennummern"-
+ * Button statt eines Mengen-Feldes.
+ */
+test('Seriennummern: im Wareneingang erfassen landen im Pool', async ({ page, request }) => {
+  const login = await ensureAuth(request)
+  const token = login.token, mandantId = login.mandant.id, kasseId = login.kassen[0].id
+  const authHeader = { Authorization: `Bearer ${token}` }
+
+  const ts  = Date.now()
+  const art = `Serial-Gerät ${ts}`
+  const kat = await (await request.post('/api/kategorien', {
+    headers: authHeader, data: { name: `Serial-Kat ${ts}`, farbe: 'lila', reihenfolge: 0 },
+  })).json()
+  const artikel = await (await request.post('/api/artikel', {
+    headers: authHeader,
+    data: { bezeichnung: art, preisBruttoCent: 9900, mwstSatz: 'normal', kategorieId: kat.id, seriennummernAktiv: true },
+  })).json()
+
+  await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
+    localStorage.setItem('kassa:token', d.token)
+    localStorage.setItem('kassa:auth', d.authJson)
+    localStorage.setItem('kassa:mandantId', d.mandantId)
+    localStorage.setItem('kassa:kasseId', d.kasseId)
+  }, {
+    token,
+    authJson: JSON.stringify({ user: login.user, mandant: login.mandant, kassen: login.kassen }),
+    mandantId,
+    kasseId,
+  })
+
+  // Wareneingang → „Seriennummern"-Button am serialisierten Artikel
+  await page.goto('/wareneingang')
+  const zeile = page.locator('tr', { hasText: art })
+  await expect(zeile).toBeVisible({ timeout: 10_000 })
+  await zeile.getByRole('button', { name: 'Seriennummern' }).click()
+
+  // Modal: zwei Seriennummern erfassen
+  const dialog = page.getByRole('dialog')
+  await dialog.locator('textarea').fill(`SN-${ts}-A\nSN-${ts}-B`)
+  await dialog.getByRole('button', { name: /Erfassen/ }).click()
+
+  // Beide erscheinen im Pool als verfügbar
+  await expect(dialog.getByText(`SN-${ts}-A`)).toBeVisible({ timeout: 10_000 })
+  await expect(dialog.getByText(`SN-${ts}-B`)).toBeVisible()
+
+  // Cross-Check per API: 2 verfügbare Seriennummern
+  await expect.poll(async () => {
+    const sns = await (await request.get(`/api/seriennummern?artikelId=${artikel.id}&status=verfuegbar`, { headers: authHeader })).json()
+    return (sns as unknown[]).length
+  }).toBe(2)
+})
+
 })

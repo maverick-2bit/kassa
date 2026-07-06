@@ -549,6 +549,8 @@ export const artikel = pgTable('artikel', {
   lagerstandMenge:     integer('lagerstand_menge'),
   /** Mindestbestand – Alarm wenn lagerstandMenge ≤ mindestbestand */
   mindestbestand:      integer('mindestbestand'),
+  /** Seriennummern-Verwaltung: Bestand = Anzahl freier Seriennummern im Pool */
+  seriennummernAktiv:  boolean('seriennummern_aktiv').notNull().default(false),
   /** Erscheint im Favoriten-Tab der POS-Ansicht */
   istFavorit:          boolean('ist_favorit').notNull().default(false),
   /** Sortierung innerhalb der Kategorie (global, für alle Kassen gleich) */
@@ -1143,3 +1145,27 @@ export const preisregeln = pgTable('preisregeln', {
 
 export type Preisregel    = typeof preisregeln.$inferSelect
 export type NewPreisregel = typeof preisregeln.$inferInsert
+
+// ---------------------------------------------------------------------------
+// Seriennummern (striktes Pool-Modell pro Artikel)
+// ---------------------------------------------------------------------------
+
+export const seriennummern = pgTable('seriennummern', {
+  id:             uuid('id').primaryKey().defaultRandom(),
+  mandantId:      uuid('mandant_id').notNull().references(() => mandanten.id),
+  artikelId:      uuid('artikel_id').notNull().references(() => artikel.id),
+  seriennummer:   varchar('seriennummer', { length: 100 }).notNull(),
+  /** verfuegbar | verkauft */
+  status:         varchar('status', { length: 20 }).notNull().default('verfuegbar'),
+  belegId:        uuid('beleg_id'),
+  lieferscheinId: uuid('lieferschein_id'),
+  verkauftAm:     timestamp('verkauft_am', { withTimezone: true }),
+  createdAt:      timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  // Eine Seriennummer ist pro Artikel eindeutig
+  artikelSnUnique: uniqueIndex('seriennummern_artikel_sn_unique').on(t.artikelId, t.seriennummer),
+  artikelStatusIdx: index('seriennummern_artikel_status_idx').on(t.artikelId, t.status),
+}))
+
+export type Seriennummer    = typeof seriennummern.$inferSelect
+export type NewSeriennummer = typeof seriennummern.$inferInsert
