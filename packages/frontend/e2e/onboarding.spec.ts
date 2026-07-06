@@ -1069,4 +1069,72 @@ test('Angebot: Liste, Status-Wechsel, Lieferschein und Sammelrechnung durch die 
   await expect(page.locator('tr', { hasText: nr }).getByText('Angenommen')).toBeVisible()
 })
 
+/**
+ * Reservierungs-Journey: eine Reservierung durch das echte Kalender-Modal anlegen
+ * (nicht per API-Seed), im Wochengitter wiederfinden und den Status über das
+ * Detail-Modal weiterschalten. Interne Reservierungen starten als „Bestätigt"
+ * (nur Online-Buchungen sind „Anfrage"/wartend), daher bestätigt→erschienen.
+ * Das Datum bleibt auf dem Formular-Default (heuteISO) — dieselbe Funktion baut
+ * die Wochenspalten, daher liegt die Reservierung garantiert in der ersten
+ * Spalte, unabhängig von der Zeitzone.
+ */
+test('Reservierung: Anlage über das Kalender-Modal, im Wochengitter + Status-Wechsel', async ({ page, request }) => {
+  const login = await ensureAuth(request)
+  const token = login.token, mandantId = login.mandant.id, kasseId = login.kassen[0].id
+  const authHeader = { Authorization: `Bearer ${token}` }
+
+  // Modul „reservierungen" aktivieren (default aus; PATCH braucht alle Flags)
+  const module = await (await request.get('/api/mandanten/module', { headers: authHeader })).json()
+  const patch = await request.patch('/api/mandanten/module', {
+    headers: authHeader,
+    data: { ...module, modulReservierungenAktiv: true },
+  })
+  expect(patch.ok()).toBe(true)
+
+  // Auth mit aktiviertem Modul injizieren
+  await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
+    localStorage.setItem('kassa:token', d.token)
+    localStorage.setItem('kassa:auth', d.authJson)
+    localStorage.setItem('kassa:mandantId', d.mandantId)
+    localStorage.setItem('kassa:kasseId', d.kasseId)
+  }, {
+    token,
+    authJson: JSON.stringify({
+      user: login.user,
+      mandant: { ...login.mandant, modulReservierungenAktiv: true },
+      kassen: login.kassen,
+    }),
+    mandantId,
+    kasseId,
+  })
+
+  await page.goto('/reservierungen')
+  await expect(page.getByRole('heading', { name: 'Reservierungen' })).toBeVisible({ timeout: 10_000 })
+
+  // Anlage über das echte Kalender-Modal (Datum-Default = heute)
+  const name = `Reservierung E2E ${Date.now()}`
+  await page.getByRole('button', { name: '+ Neu', exact: true }).click()
+  const form = page.getByRole('dialog')
+  await expect(form.getByText('Neue Reservierung')).toBeVisible()
+  await form.locator('input[type="time"]').fill('19:45')
+  await form.locator('input[type="number"]').fill('4')
+  await form.getByPlaceholder('Mustermann').fill(name)
+  await form.getByRole('button', { name: 'Anlegen' }).click()
+
+  // Reservierung erscheint als Kachel im Wochengitter (Zeit + Name)
+  const kachel = page.getByRole('button', { name: new RegExp(`19:45 .*${name}`) })
+  await expect(kachel).toBeVisible({ timeout: 10_000 })
+
+  // Detail öffnen: intern angelegte Reservierung startet als „Bestätigt" → auf „Erschienen" schalten
+  await kachel.click()
+  const detail = page.getByRole('dialog')
+  await expect(detail.getByText('Bestätigt', { exact: true })).toBeVisible()
+  await detail.getByRole('button', { name: /→ Erschienen/ }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)  // Modal schließt bei Erfolg
+
+  // Erneut öffnen → Status ist jetzt persistent „Erschienen"
+  await kachel.click()
+  await expect(page.getByRole('dialog').getByText('Erschienen', { exact: true })).toBeVisible()
+})
+
 })
