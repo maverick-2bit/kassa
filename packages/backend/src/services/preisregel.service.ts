@@ -1,11 +1,11 @@
 /**
- * Preisregel-Service (Happy Hour / zeitgesteuerte Preise) — mandant-scoped CRUD.
+ * Preisregel-Service (Happy Hour / zeitgesteuerte Aktionspreise) — mandant-scoped CRUD.
  * Die eigentliche Preisanwendung passiert im Frontend beim Kassieren/Bonieren
  * (happyHourPreisCent aus @kassa/shared); hier werden nur die Regeln verwaltet.
  */
 
 import { eq } from 'drizzle-orm'
-import type { Preisregel, PreisregelInput, PreisregelUpdate } from '@kassa/shared'
+import type { Preisregel, PreisregelInput, PreisregelUpdate, Zeitfenster } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import { preisregeln } from '../db/schema.js'
 
@@ -15,8 +15,10 @@ function toResponse(row: typeof preisregeln.$inferSelect): Preisregel {
     name:          row.name,
     aktiv:         row.aktiv,
     wochentage:    (row.wochentage as number[]) ?? [],
-    vonZeit:       row.vonZeit,
-    bisZeit:       row.bisZeit,
+    datumTage:     (row.datumTage as string[]) ?? [],
+    zeitfenster:   (row.zeitfenster as Zeitfenster[]) ?? [],
+    gueltigVon:    row.gueltigVon,
+    gueltigBis:    row.gueltigBis,
     rabattProzent: row.rabattProzent,
     kategorieIds:  (row.kategorieIds as string[]) ?? [],
     artikelIds:    (row.artikelIds as string[]) ?? [],
@@ -42,8 +44,10 @@ export async function erstellePreisregel(db: Db, mandantId: string, input: Preis
       name:          input.name,
       aktiv:         input.aktiv,
       wochentage:    input.wochentage,
-      vonZeit:       input.vonZeit,
-      bisZeit:       input.bisZeit,
+      datumTage:     input.datumTage,
+      zeitfenster:   input.zeitfenster,
+      gueltigVon:    input.gueltigVon,
+      gueltigBis:    input.gueltigBis,
       rabattProzent: input.rabattProzent,
       kategorieIds:  input.kategorieIds,
       artikelIds:    input.artikelIds,
@@ -62,8 +66,10 @@ export async function aktualisierePreisregel(
   if (input.name          !== undefined) updates.name          = input.name
   if (input.aktiv         !== undefined) updates.aktiv         = input.aktiv
   if (input.wochentage    !== undefined) updates.wochentage    = input.wochentage
-  if (input.vonZeit       !== undefined) updates.vonZeit       = input.vonZeit
-  if (input.bisZeit       !== undefined) updates.bisZeit       = input.bisZeit
+  if (input.datumTage     !== undefined) updates.datumTage     = input.datumTage
+  if (input.zeitfenster   !== undefined) updates.zeitfenster   = input.zeitfenster
+  if (input.gueltigVon    !== undefined) updates.gueltigVon    = input.gueltigVon
+  if (input.gueltigBis    !== undefined) updates.gueltigBis    = input.gueltigBis
   if (input.rabattProzent !== undefined) updates.rabattProzent = input.rabattProzent
   if (input.kategorieIds  !== undefined) updates.kategorieIds  = input.kategorieIds
   if (input.artikelIds    !== undefined) updates.artikelIds    = input.artikelIds

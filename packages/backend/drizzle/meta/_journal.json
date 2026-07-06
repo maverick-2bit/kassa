@@ -148,6 +148,13 @@
       "when": 1779808570000,
       "tag": "0021_preisregel_artikel",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1779808571000,
+      "tag": "0022_preisregel_zeitplan",
+      "breakpoints": true
     }
   ]
 }
