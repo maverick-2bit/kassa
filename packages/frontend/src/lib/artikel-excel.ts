@@ -377,6 +377,7 @@ function parseZeile(
       lagerstandAktiv,
       lagerstandMenge,
       mindestbestand,
+      seriennummernAktiv: false,
     },
   }
 }

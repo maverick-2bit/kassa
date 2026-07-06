@@ -37,6 +37,7 @@ import type {
   ReihenfolgeUpdate,
   FavoritenReihenfolgeUpdate,
   LagerstandBulkInput,
+  Seriennummer,
   TischplanBereich,
   TischplanBereichErstellen,
   TischplanBereichAktualisieren,
@@ -817,6 +818,19 @@ export type { Modifikator, ModifikatorGruppe }
 export const lagerstandApi = {
   bulk: (input: LagerstandBulkInput) =>
     request<void>('POST', '/api/lagerstand/bulk', input),
+}
+
+export const seriennummerApi = {
+  list: (opts: { artikelId?: string; status?: 'verfuegbar' | 'verkauft' } = {}) => {
+    const p = new URLSearchParams()
+    if (opts.artikelId) p.set('artikelId', opts.artikelId)
+    if (opts.status)    p.set('status', opts.status)
+    return request<Seriennummer[]>('GET', `/api/seriennummern?${p.toString()}`)
+  },
+  erfassen: (artikelId: string, seriennummern: string[]) =>
+    request<Seriennummer[]>('POST', '/api/seriennummern', { artikelId, seriennummern }),
+  remove: (id: string) =>
+    request<void>('DELETE', `/api/seriennummern/${id}`),
 }
 
 // ---------------------------------------------------------------------------

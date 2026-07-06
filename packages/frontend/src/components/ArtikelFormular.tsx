@@ -30,6 +30,7 @@ type FormValues = {
   lagerstandAktiv:      boolean
   lagerstandMengeStr:   string
   mindestbestandStr:    string
+  seriennummernAktiv:   boolean
 }
 
 interface Props {
@@ -112,10 +113,12 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
       lagerstandAktiv:    initial?.lagerstandAktiv  ?? false,
       lagerstandMengeStr: initial?.lagerstandMenge   != null ? String(initial.lagerstandMenge)   : '',
       mindestbestandStr:  initial?.mindestbestand    != null ? String(initial.mindestbestand)    : '',
+      seriennummernAktiv: initial?.seriennummernAktiv ?? false,
     },
   })
 
-  const lagerstandAktiv = watch('lagerstandAktiv')
+  const lagerstandAktiv    = watch('lagerstandAktiv')
+  const seriennummernAktiv = watch('seriennummernAktiv')
 
   useEffect(() => {
     reset({
@@ -130,6 +133,7 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
       lagerstandAktiv:    initial?.lagerstandAktiv  ?? false,
       lagerstandMengeStr: initial?.lagerstandMenge   != null ? String(initial.lagerstandMenge)   : '',
       mindestbestandStr:  initial?.mindestbestand    != null ? String(initial.mindestbestand)    : '',
+      seriennummernAktiv: initial?.seriennummernAktiv ?? false,
     })
     setBild(initial?.bild ?? null)
   }, [initial, reset])
@@ -160,6 +164,7 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
       lagerstandAktiv: values.lagerstandAktiv,
       lagerstandMenge: lsMenge,
       mindestbestand:  mindest,
+      seriennummernAktiv: values.seriennummernAktiv,
       bild,
     })
   })
@@ -380,6 +385,28 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
             </Field>
           </div>
         )}
+      </div>
+
+      {/* Seriennummern verwalten */}
+      <div className={`rounded-lg border p-3 transition ${seriennummernAktiv ? 'border-brand-300 bg-brand-50' : 'border-line'}`}>
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            className="h-4 w-4 rounded border-line-strong text-brand-600 focus:ring-brand-500"
+            {...register('seriennummernAktiv')}
+          />
+          <div>
+            <p className="text-sm font-semibold text-ink">Seriennummern verwalten</p>
+            <p className="text-xs text-ink-muted">
+              Seriennummern im Wareneingang erfassen; beim Verkauf werden konkrete Nummern zugewiesen und auf Lieferschein/Rechnung gedruckt.
+            </p>
+          </div>
+          {seriennummernAktiv && (
+            <span className="ml-auto shrink-0 inline-flex items-center rounded-full bg-brand-100 px-2 py-0.5 text-xs font-semibold text-brand-700">
+              Aktiv
+            </span>
+          )}
+        </label>
       </div>
 
       {fehler && (
