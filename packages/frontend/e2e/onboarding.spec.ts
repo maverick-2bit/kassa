@@ -984,4 +984,89 @@ test('Reservierungs-Modul: nach Aktivierung ist die Reservierungen-Seite erreich
   await expect(page.getByRole('heading', { name: 'Reservierungen' })).toBeVisible({ timeout: 10_000 })
 })
 
+/**
+ * Angebot-Journey: Modul „angebote" aktivieren, ein Angebot per API seeden und
+ * die komplexe Verwaltungs-UI durch den echten Browser prüfen — Liste, Detail,
+ * Status-Wechsel (offen→angenommen), Lieferschein-Erzeugung und Sammelrechnung
+ * (schließt die Lieferscheine ab). Deckt den letzten großen ungetesteten
+ * Feature-Pfad ab. Druck-Popups (window.open) laufen im Hintergrund ins Leere
+ * — die Query-Invalidierung passiert davor, daher irrelevant fürs Ergebnis.
+ */
+test('Angebot: Liste, Status-Wechsel, Lieferschein und Sammelrechnung durch die UI', async ({ page, request }) => {
+  const login = await ensureAuth(request)
+  const token = login.token, mandantId = login.mandant.id, kasseId = login.kassen[0].id
+  const authHeader = { Authorization: `Bearer ${token}` }
+
+  // Modul „angebote" aktivieren (default aus; PATCH braucht alle Flags)
+  const module = await (await request.get('/api/mandanten/module', { headers: authHeader })).json()
+  const patch = await request.patch('/api/mandanten/module', {
+    headers: authHeader,
+    data: { ...module, modulAngeboteAktiv: true },
+  })
+  expect(patch.ok()).toBe(true)
+
+  // Angebot seeden: 2 × 50,00 = 100,00 € (Bezeichnung eindeutig pro Lauf)
+  const bezeichnung = `Catering-Paket ${Date.now()}`
+  const createRes = await request.post('/api/angebote', {
+    headers: authHeader,
+    data: {
+      kasseId,
+      positionen: [{ bezeichnung, menge: 2, einzelpreisBreutto: 5000, mwstSatz: 'normal' }],
+      notiz: 'E2E-Angebot',
+    },
+  })
+  expect(createRes.ok()).toBe(true)
+  const angebot = await createRes.json()
+  const nr = `A-${String(angebot.nummer).padStart(4, '0')}`
+
+  // Auth mit aktiviertem Modul injizieren (hasModul liest aus dem LocalStorage)
+  await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
+    localStorage.setItem('kassa:token', d.token)
+    localStorage.setItem('kassa:auth', d.authJson)
+    localStorage.setItem('kassa:mandantId', d.mandantId)
+    localStorage.setItem('kassa:kasseId', d.kasseId)
+  }, {
+    token,
+    authJson: JSON.stringify({
+      user: login.user,
+      mandant: { ...login.mandant, modulAngeboteAktiv: true },
+      kassen: login.kassen,
+    }),
+    mandantId,
+    kasseId,
+  })
+
+  // Liste: Angebot erscheint (verifiziert zugleich das Modul-Gating für angebote)
+  await page.goto('/angebote')
+  await expect(page.getByRole('heading', { name: 'Angebote' })).toBeVisible({ timeout: 10_000 })
+  const zeile = page.locator('tr', { hasText: nr })
+  await expect(zeile).toBeVisible()
+  await expect(zeile).toContainText('100,00')
+
+  // Detail öffnen
+  await zeile.click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByText(bezeichnung)).toBeVisible()
+  await expect(dialog.getByText('Angebotssumme')).toBeVisible()
+
+  // Status offen → angenommen (Status ist offen → nur der Auswahl-Button trägt „Angenommen")
+  await dialog.getByRole('button', { name: 'Angenommen', exact: true }).click()
+  await dialog.getByRole('button', { name: /Status auf/ }).click()
+  // Bestätigungsbutton verschwindet, sobald neuerStatus == angebot.status → Status übernommen
+  await expect(dialog.getByRole('button', { name: /Status auf/ })).toHaveCount(0)
+
+  // Lieferschein erzeugen → Zeile L-XXXX erscheint in der Lieferschein-Tabelle
+  await dialog.getByRole('button', { name: '+ Neuer Lieferschein' }).click()
+  await expect(dialog.getByText(/L-\d{4}/)).toBeVisible()
+
+  // Sammelrechnung aus dem offenen Lieferschein → LS wird abgeschlossen, Button verschwindet
+  await dialog.getByRole('button', { name: /Sammelrechnung aus/ }).click()
+  await expect(dialog.getByText('Abgeschlossen')).toBeVisible()
+  await expect(dialog.getByRole('button', { name: /Sammelrechnung aus/ })).toHaveCount(0)
+
+  // Modal schließen (Escape) → Liste spiegelt den neuen Status
+  await page.keyboard.press('Escape')
+  await expect(page.locator('tr', { hasText: nr }).getByText('Angenommen')).toBeVisible()
+})
+
 })
