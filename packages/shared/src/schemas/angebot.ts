@@ -11,6 +11,10 @@ export const AngebotPositionSchema = z.object({
   menge:              z.number().positive(),
   einzelpreisBreutto: z.number().int(),
   mwstSatz:           MwStSatzSchema,
+  /** Referenz auf den Artikel (für Seriennummern-Zuordnung; fehlt bei freien Positionen) */
+  artikelId:          z.string().uuid().optional(),
+  /** Zugewiesene Seriennummern (auf Lieferschein/Rechnung; für den Aufdruck) */
+  seriennummern:      z.array(z.string()).optional(),
 })
 export type AngebotPosition = z.infer<typeof AngebotPositionSchema>
 

@@ -390,6 +390,7 @@ export function KassePage() {
         menge:              p.menge,
         einzelpreisBreutto: p.preisCent,
         mwstSatz:           p.typ === 'frei' ? p.mwstSatz : p.artikel.mwstSatz,
+        ...(p.typ === 'artikel' ? { artikelId: p.artikel.id } : {}),
       })),
       ...(gueltigBis  ? { gueltigBis }              : {}),
       ...(angebotNotiz.trim() ? { notiz: angebotNotiz.trim() } : {}),

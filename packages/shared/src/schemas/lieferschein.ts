@@ -18,9 +18,18 @@ export const LIEFERSCHEIN_STATUS_LABELS: Record<LiferscheinStatus, string> = {
 // Input / Update
 // ---------------------------------------------------------------------------
 
+/** Zuweisung von Seriennummern zu einer Position (Index in angebot.positionen). */
+export const SerialZuweisungSchema = z.object({
+  positionIndex: z.number().int().nonnegative(),
+  seriennummern: z.array(z.string().trim().min(1)).min(1),
+})
+export type SerialZuweisung = z.infer<typeof SerialZuweisungSchema>
+
 export const LiferscheinInputSchema = z.object({
   angebotId: z.string().uuid(),
   notiz:     z.string().trim().max(2000).optional(),
+  /** Pro serialisierter Position die gewählten Seriennummern aus dem Pool */
+  serialZuweisungen: z.array(SerialZuweisungSchema).optional(),
 })
 export type LiferscheinInput = z.infer<typeof LiferscheinInputSchema>
 

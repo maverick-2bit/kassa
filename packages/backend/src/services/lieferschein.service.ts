@@ -1,5 +1,6 @@
 import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import type {
+  AngebotPosition,
   LiferscheinInput,
   LiferscheinResponse,
   LiferscheinStatus,
@@ -13,6 +14,7 @@ import {
   angebote,
   lieferscheine,
   sammelrechnungen,
+  seriennummern,
 } from '../db/schema.js'
 
 export class LiferscheinError extends Error {
@@ -140,38 +142,78 @@ export async function erstelleLiferschein(
   mandantId: string,
   input:     LiferscheinInput,
 ): Promise<LiferscheinResponse> {
-  // Angebot laden + validieren
-  const [angebot] = await db
-    .select()
-    .from(angebote)
-    .where(and(eq(angebote.id, input.angebotId), eq(angebote.mandantId, mandantId)))
-    .limit(1)
-  if (!angebot) throw new LiferscheinError(404, 'Angebot nicht gefunden')
+  return db.transaction(async (tx) => {
+    // Angebot laden + validieren
+    const [angebot] = await tx
+      .select()
+      .from(angebote)
+      .where(and(eq(angebote.id, input.angebotId), eq(angebote.mandantId, mandantId)))
+      .limit(1)
+    if (!angebot) throw new LiferscheinError(404, 'Angebot nicht gefunden')
 
-  // Nächste Lieferscheinnummer
-  const numRows = await db
-    .select({ n: sql<number>`COALESCE(MAX(${lieferscheine.nummer}), 0) + 1` })
-    .from(lieferscheine)
-    .where(eq(lieferscheine.mandantId, mandantId))
-  const nummer = numRows[0]?.n ?? 1
+    // Positionen kopieren; Seriennummern-Zuweisungen validieren und auf die Positionen setzen
+    const positionen = (angebot.positionen as AngebotPosition[]).map(p => ({ ...p }))
+    for (const z of input.serialZuweisungen ?? []) {
+      const pos = positionen[z.positionIndex]
+      if (!pos)           throw new LiferscheinError(400, 'Ungültiger Positions-Index')
+      if (!pos.artikelId) throw new LiferscheinError(400, `Position „${pos.bezeichnung}" hat keinen Artikel-Bezug für Seriennummern`)
+      if (z.seriennummern.length !== Math.round(pos.menge)) {
+        throw new LiferscheinError(400, `Für „${pos.bezeichnung}" müssen genau ${Math.round(pos.menge)} Seriennummern gewählt werden`)
+      }
+      // Verfügbarkeit im Pool prüfen (dieser Artikel, Status verfügbar)
+      const frei = await tx
+        .select({ sn: seriennummern.seriennummer })
+        .from(seriennummern)
+        .where(and(
+          eq(seriennummern.mandantId, mandantId),
+          eq(seriennummern.artikelId, pos.artikelId),
+          inArray(seriennummern.seriennummer, z.seriennummern),
+          eq(seriennummern.status, 'verfuegbar'),
+        ))
+      if (frei.length !== new Set(z.seriennummern).size) {
+        throw new LiferscheinError(409, `Eine gewählte Seriennummer für „${pos.bezeichnung}" ist nicht mehr verfügbar`)
+      }
+      pos.seriennummern = z.seriennummern
+    }
 
-  const [row] = await db
-    .insert(lieferscheine)
-    .values({
-      mandantId,
-      kasseId:    angebot.kasseId,
-      angebotId:  angebot.id,
-      nummer,
-      positionen: angebot.positionen,
-      ...(input.notiz       ? { notiz:         input.notiz }          : {}),
-      ...(angebot.kundeId   ? { kundeId:       angebot.kundeId }       : {}),
-      ...(angebot.kundeSnapshot ? { kundeSnapshot: angebot.kundeSnapshot } : {}),
-    })
-    .returning()
+    // Nächste Lieferscheinnummer
+    const numRows = await tx
+      .select({ n: sql<number>`COALESCE(MAX(${lieferscheine.nummer}), 0) + 1` })
+      .from(lieferscheine)
+      .where(eq(lieferscheine.mandantId, mandantId))
+    const nummer = numRows[0]?.n ?? 1
 
-  if (!row) throw new LiferscheinError(500, 'Lieferschein konnte nicht erstellt werden')
+    const [row] = await tx
+      .insert(lieferscheine)
+      .values({
+        mandantId,
+        kasseId:    angebot.kasseId,
+        angebotId:  angebot.id,
+        nummer,
+        positionen,
+        ...(input.notiz       ? { notiz:         input.notiz }          : {}),
+        ...(angebot.kundeId   ? { kundeId:       angebot.kundeId }       : {}),
+        ...(angebot.kundeSnapshot ? { kundeSnapshot: angebot.kundeSnapshot } : {}),
+      })
+      .returning()
+    if (!row) throw new LiferscheinError(500, 'Lieferschein konnte nicht erstellt werden')
 
-  return toDto({ ...row, angebotNummer: angebot.nummer })
+    // Gewählte Seriennummern als verkauft markieren + mit dem Lieferschein verknüpfen
+    for (const z of input.serialZuweisungen ?? []) {
+      const pos = positionen[z.positionIndex]!
+      await tx
+        .update(seriennummern)
+        .set({ status: 'verkauft', verkauftAm: new Date(), lieferscheinId: row.id })
+        .where(and(
+          eq(seriennummern.mandantId, mandantId),
+          eq(seriennummern.artikelId, pos.artikelId!),
+          inArray(seriennummern.seriennummer, z.seriennummern),
+          eq(seriennummern.status, 'verfuegbar'),
+        ))
+    }
+
+    return toDto({ ...row, angebotNummer: angebot.nummer })
+  })
 }
 
 export async function aktualisiereLiferschein(

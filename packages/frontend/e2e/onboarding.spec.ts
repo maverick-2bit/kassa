@@ -1844,4 +1844,77 @@ test('Seriennummern: im Wareneingang erfassen landen im Pool', async ({ page, re
   }).toBe(2)
 })
 
+/**
+ * Seriennummern (Etappe 2): beim Erstellen eines Lieferscheins aus einem Angebot
+ * werden für die serialisierte Position konkrete Seriennummern aus dem Pool
+ * gewählt. Ergebnis: die Serials sind 'verkauft' + am Lieferschein hinterlegt
+ * (für den Aufdruck) und mit der Lieferschein-ID verknüpft.
+ */
+test('Seriennummern: Lieferschein weist Serials zu und markiert sie als verkauft', async ({ page, request }) => {
+  const login = await ensureAuth(request)
+  const token = login.token, mandantId = login.mandant.id, kasseId = login.kassen[0].id
+  const authHeader = { Authorization: `Bearer ${token}` }
+
+  // Modul angebote aktivieren
+  const module = await (await request.get('/api/mandanten/module', { headers: authHeader })).json()
+  await request.patch('/api/mandanten/module', { headers: authHeader, data: { ...module, modulAngeboteAktiv: true } })
+
+  const ts  = Date.now()
+  const art = `LS-Gerät ${ts}`
+  const sn1 = `LS-${ts}-1`, sn2 = `LS-${ts}-2`
+
+  // Serialisierten Artikel + 2 Seriennummern im Pool
+  const kat = await (await request.post('/api/kategorien', {
+    headers: authHeader, data: { name: `LS-Kat ${ts}`, farbe: 'lila', reihenfolge: 0 },
+  })).json()
+  const artikel = await (await request.post('/api/artikel', {
+    headers: authHeader,
+    data: { bezeichnung: art, preisBruttoCent: 9900, mwstSatz: 'normal', kategorieId: kat.id, seriennummernAktiv: true },
+  })).json()
+  await request.post('/api/seriennummern', { headers: authHeader, data: { artikelId: artikel.id, seriennummern: [sn1, sn2] } })
+
+  // Angebot mit dieser Position (menge 2, mit artikelId für die Serial-Zuordnung)
+  const angebot = await (await request.post('/api/angebote', {
+    headers: authHeader,
+    data: { kasseId, positionen: [{ bezeichnung: art, menge: 2, einzelpreisBreutto: 9900, mwstSatz: 'normal', artikelId: artikel.id }] },
+  })).json()
+  const nr = `A-${String(angebot.nummer).padStart(4, '0')}`
+
+  await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
+    localStorage.setItem('kassa:token', d.token)
+    localStorage.setItem('kassa:auth', d.authJson)
+    localStorage.setItem('kassa:mandantId', d.mandantId)
+    localStorage.setItem('kassa:kasseId', d.kasseId)
+  }, {
+    token,
+    authJson: JSON.stringify({ user: login.user, mandant: { ...login.mandant, modulAngeboteAktiv: true }, kassen: login.kassen }),
+    mandantId,
+    kasseId,
+  })
+
+  // Angebot öffnen (Artikel-Query im Detail-Modal abwarten → serialisierte Position erkannt)
+  await page.goto('/angebote')
+  await Promise.all([
+    page.waitForResponse(r => r.url().includes('/api/artikel') && r.request().method() === 'GET'),
+    page.locator('tr', { hasText: nr }).click(),
+  ])
+  // „+ Neuer Lieferschein" → Serial-Auswahl-Modal
+  await page.getByRole('button', { name: '+ Neuer Lieferschein' }).click()
+  await expect(page.getByText('Seriennummern für den Lieferschein wählen')).toBeVisible({ timeout: 10_000 })
+
+  // Beide Seriennummern wählen → Lieferschein erstellen
+  await page.getByRole('button', { name: sn1 }).click()
+  await page.getByRole('button', { name: sn2 }).click()
+  await page.getByRole('button', { name: 'Lieferschein erstellen' }).click()
+
+  // Beide Serials sind jetzt verkauft und am Lieferschein hinterlegt
+  await expect.poll(async () => {
+    const sns = await (await request.get(`/api/seriennummern?artikelId=${artikel.id}&status=verkauft`, { headers: authHeader })).json()
+    return (sns as unknown[]).length
+  }).toBe(2)
+  const ls = await (await request.get(`/api/lieferscheine?angebotId=${angebot.id}`, { headers: authHeader })).json()
+  const serials = (ls as { positionen: { seriennummern?: string[] }[] }[])[0]!.positionen[0]!.seriennummern ?? []
+  expect([...serials].sort()).toEqual([sn1, sn2].sort())
+})
+
 })

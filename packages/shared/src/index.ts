@@ -366,6 +366,7 @@ export {
   LiferscheinInputSchema,
   LiferscheinUpdateSchema,
   LiferscheinResponseSchema,
+  SerialZuweisungSchema,
   SammelrechnungInputSchema,
   SammelrechnungResponseSchema,
 } from './schemas/lieferschein.js'
@@ -374,6 +375,7 @@ export type {
   LiferscheinInput,
   LiferscheinUpdate,
   LiferscheinResponse,
+  SerialZuweisung,
   SammelrechnungInput,
   SammelrechnungResponse,
 } from './schemas/lieferschein.js'

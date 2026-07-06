@@ -2,11 +2,13 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { AngebotResponse, AngebotStatus, AngebotUpdate, LiferscheinResponse, LiferscheinStatus } from '@kassa/shared'
 import { ANGEBOT_STATUS_LABELS, LIEFERSCHEIN_STATUS_LABELS } from '@kassa/shared'
-import { angebotApi, lieferscheinApi } from '../lib/api'
+import { angebotApi, artikelApi, lieferscheinApi } from '../lib/api'
 import { getAuth } from '../lib/auth'
+import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
 import { Button } from '../components/ui/Button'
 import { Modal } from '../components/ui/Modal'
+import { LieferscheinSerialModal, type SerialPos } from '../components/LieferscheinSerialModal'
 import { druckeAngebot, druckeLiferschein, druckeSammelrechnung } from '../lib/rechnung'
 import { sammelrechnungApi } from '../lib/api'
 
@@ -61,10 +63,27 @@ function AngebotDetailModal({ angebot, onClose, onUpdate, updating }: AngebotDet
     druckeAngebot(angebot, { firmenname: auth.mandant.firmenname, uid: auth.mandant.uid })
   }
 
+  const identity = getKasseIdentity()!
+  const [serialModalOffen, setSerialModalOffen] = useState(false)
+
+  const artikelQuery = useQuery({
+    queryKey: ['artikel', identity.mandantId, true],
+    queryFn:  () => artikelApi.list(identity.mandantId, true),
+  })
+  // Positionen dieses Angebots, deren Artikel Seriennummern führt
+  const serialArtikelIds = new Set((artikelQuery.data ?? []).filter(a => a.seriennummernAktiv).map(a => a.id))
+  const serialPositionen: SerialPos[] = angebot.positionen
+    .map((p, i) => ({ p, i }))
+    .filter(({ p }) => !!p.artikelId && serialArtikelIds.has(p.artikelId))
+    .map(({ p, i }) => ({ positionIndex: i, bezeichnung: p.bezeichnung, menge: p.menge, artikelId: p.artikelId! }))
+
   const lieferscheinMutation = useMutation({
-    mutationFn: () => lieferscheinApi.create({ angebotId: angebot.id }),
+    mutationFn: (serialZuweisungen?: { positionIndex: number; seriennummern: string[] }[]) =>
+      lieferscheinApi.create({ angebotId: angebot.id, ...(serialZuweisungen ? { serialZuweisungen } : {}) }),
     onSuccess: (ls) => {
       qc.invalidateQueries({ queryKey: ['lieferscheine', 'angebot', angebot.id] })
+      qc.invalidateQueries({ queryKey: ['seriennummern'] })
+      setSerialModalOffen(false)
       if (!auth) return
       druckeLiferschein(ls, { firmenname: auth.mandant.firmenname, uid: auth.mandant.uid })
     },
@@ -192,7 +211,7 @@ function AngebotDetailModal({ angebot, onClose, onUpdate, updating }: AngebotDet
           </p>
           <Button
             variant="secondary"
-            onClick={() => lieferscheinMutation.mutate()}
+            onClick={() => serialPositionen.length > 0 ? setSerialModalOffen(true) : lieferscheinMutation.mutate(undefined)}
             loading={lieferscheinMutation.isPending}
             className="text-xs px-2 py-1 h-auto"
           >
@@ -264,6 +283,14 @@ function AngebotDetailModal({ angebot, onClose, onUpdate, updating }: AngebotDet
           Schließen
         </Button>
       </div>
+
+      <LieferscheinSerialModal
+        positionen={serialPositionen}
+        open={serialModalOffen}
+        loading={lieferscheinMutation.isPending}
+        onConfirm={(zuweisungen) => lieferscheinMutation.mutate(zuweisungen)}
+        onClose={() => setSerialModalOffen(false)}
+      />
     </div>
   )
 }
