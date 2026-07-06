@@ -19,6 +19,7 @@ function toResponse(row: typeof preisregeln.$inferSelect): Preisregel {
     bisZeit:       row.bisZeit,
     rabattProzent: row.rabattProzent,
     kategorieIds:  (row.kategorieIds as string[]) ?? [],
+    artikelIds:    (row.artikelIds as string[]) ?? [],
     createdAt:     row.createdAt.toISOString(),
     updatedAt:     row.updatedAt.toISOString(),
   }
@@ -45,6 +46,7 @@ export async function erstellePreisregel(db: Db, mandantId: string, input: Preis
       bisZeit:       input.bisZeit,
       rabattProzent: input.rabattProzent,
       kategorieIds:  input.kategorieIds,
+      artikelIds:    input.artikelIds,
     })
     .returning()
   if (!row) throw new Error('Preisregel konnte nicht angelegt werden')
@@ -64,6 +66,7 @@ export async function aktualisierePreisregel(
   if (input.bisZeit       !== undefined) updates.bisZeit       = input.bisZeit
   if (input.rabattProzent !== undefined) updates.rabattProzent = input.rabattProzent
   if (input.kategorieIds  !== undefined) updates.kategorieIds  = input.kategorieIds
+  if (input.artikelIds    !== undefined) updates.artikelIds    = input.artikelIds
 
   const [row] = await db.update(preisregeln).set(updates).where(eq(preisregeln.id, id)).returning()
   return row ? toResponse(row) : null

@@ -1713,36 +1713,41 @@ test('Tischplan-Ansicht: Gruppen zusammenführen und umbuchen über den Plan', a
 })
 
 /**
- * Happy Hour / Zeitpreise: eine Preisregel (−20 % auf eine Warengruppe, alle
- * Wochentage 00:00–23:59, damit sie zur Testlaufzeit immer greift) wird per API
- * angelegt, in der Verwaltung (/preisregeln) gelistet, und an der Kasse beim
- * Hinzufügen des Artikels automatisch angewandt (Badge „Happy Hour −20%").
- * Vor dem Klick wird der GET /api/preisregeln abgewartet, damit die Regel geladen ist.
+ * Happy Hour / Zeitpreise — pro Einzel-Artikel: zwei Artikel derselben Warengruppe
+ * (Cola + Fanta, je 5,00 €), aber die −20%-Regel gilt NUR für Cola (artikelIds,
+ * kategorieIds leer). Alle Wochentage 00:00–23:59, damit sie zur Testlaufzeit immer
+ * greift. An der Kasse bekommt nur Cola den Rabatt (Badge + 4,00), Fanta bleibt bei
+ * 5,00 → Warenkorb-Summe 9,00 (nicht 8,00) und genau EIN Happy-Hour-Badge.
  */
-test('Happy Hour: Zeitpreis-Regel senkt den Preis an der Kasse', async ({ page, request }) => {
+test('Happy Hour pro Artikel: Regel wirkt nur auf den gewählten Artikel', async ({ page, request }) => {
   const login = await ensureAuth(request)
   const token = login.token, mandantId = login.mandant.id, kasseId = login.kassen[0].id
   const authHeader = { Authorization: `Bearer ${token}` }
 
-  const ts   = Date.now()
-  const art  = `HH-Cola ${ts}`
-  const name = `Happy Hour ${ts}`
+  const ts    = Date.now()
+  const cola  = `HH-Cola ${ts}`
+  const fanta = `HH-Fanta ${ts}`
+  const name  = `Happy Hour ${ts}`
 
-  // Warengruppe + Artikel (5,00 €) seeden
+  // Eine Warengruppe, zwei Artikel (je 5,00 €)
   const kat = await (await request.post('/api/kategorien', {
     headers: authHeader, data: { name: `HH-Getränke ${ts}`, farbe: 'blau', reihenfolge: 0 },
   })).json()
+  const colaArt = await (await request.post('/api/artikel', {
+    headers: authHeader,
+    data: { bezeichnung: cola, preisBruttoCent: 500, mwstSatz: 'normal', kategorieId: kat.id },
+  })).json()
   await request.post('/api/artikel', {
     headers: authHeader,
-    data: { bezeichnung: art, preisBruttoCent: 500, mwstSatz: 'normal', kategorieId: kat.id },
+    data: { bezeichnung: fanta, preisBruttoCent: 500, mwstSatz: 'normal', kategorieId: kat.id },
   })
 
-  // Preisregel: −20 % auf diese Warengruppe, immer aktiv (alle Tage, ganztägig)
+  // Preisregel: −20 % NUR auf Cola (Einzel-Artikel), Warengruppe leer, immer aktiv
   const regelRes = await request.post('/api/preisregeln', {
     headers: authHeader,
     data: {
       name, aktiv: true, wochentage: [1, 2, 3, 4, 5, 6, 7],
-      vonZeit: '00:00', bisZeit: '23:59', rabattProzent: 20, kategorieIds: [kat.id],
+      vonZeit: '00:00', bisZeit: '23:59', rabattProzent: 20, kategorieIds: [], artikelIds: [colaArt.id],
     },
   })
   expect(regelRes.ok()).toBe(true)
@@ -1759,20 +1764,25 @@ test('Happy Hour: Zeitpreis-Regel senkt den Preis an der Kasse', async ({ page, 
     kasseId,
   })
 
-  // Verwaltungsseite listet die Regel
+  // Verwaltungsseite: Regel + der gewählte Artikel im Geltungsbereich
   await page.goto('/preisregeln')
   await expect(page.getByRole('heading', { name: 'Happy Hour / Zeitpreise' })).toBeVisible({ timeout: 10_000 })
   await expect(page.getByText(name)).toBeVisible()
+  await expect(page.getByText(cola)).toBeVisible()
 
-  // Kasse: Regeln laden lassen, dann Artikel hinzufügen → Happy-Hour-Preis + Badge
+  // Kasse: Regeln laden lassen, dann beide Artikel hinzufügen
   await Promise.all([
     page.waitForResponse(r => r.url().includes('/api/preisregeln') && r.request().method() === 'GET'),
     page.goto('/kasse'),
   ])
-  await page.getByRole('button', { name: art }).first().click()
+  await page.getByRole('button', { name: cola }).first().click()
   await expect(page.getByText(/Happy Hour.*20%/)).toBeVisible()
-  // Der rabattierte Einzelpreis (4,00) erscheint im Warenkorb
   await expect(page.getByText('4,00').first()).toBeVisible()
+
+  await page.getByRole('button', { name: fanta }).first().click()
+  // Nur Cola hat einen Rabatt → genau ein Badge, Summe 9,00 (4 + 5), nicht 8,00
+  await expect(page.getByText(/Happy Hour.*20%/)).toHaveCount(1)
+  await expect(page.getByText('9,00').first()).toBeVisible()
 })
 
 })
