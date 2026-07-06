@@ -874,4 +874,74 @@ test('Kassensturz: Stückelung eingeben berechnet den gezählten Betrag', async 
   await expect(page.getByText(/500,00/).first()).toBeVisible({ timeout: 10_000 })
 })
 
+/**
+ * Modifikator-Lagerstand-via-Bonieren-Journey: eine lagergeführte Option (Bestand
+ * 5) auf einem Tisch-Tab bonieren/speichern und prüfen, dass der Varianten-Bestand
+ * auf 4 sinkt. Deckt die Lagerführung auf Modifikator-Ebene über den KORREKTEN
+ * Pfad ab (Barzahlung zieht Modifikator-Bestand bewusst nicht ab — nur der
+ * Tisch-Tab/Bonier-Pfad).
+ */
+test('Modifikator-Lagerstand: bonierte Option zieht den Varianten-Bestand ab', async ({ page, request }) => {
+  const login = await ensureAuth(request)
+  const token = login.token, mandantId = login.mandant.id, kasseId = login.kassen[0].id
+  const authHeader = { Authorization: `Bearer ${token}` }
+
+  const uid = `${Date.now()}`
+  const artName = `BonArt-${uid}`
+  const optName = `BonOpt-${uid}`
+
+  const art = await (await request.post('/api/artikel', {
+    headers: authHeader,
+    data: { bezeichnung: artName, preisBruttoCent: 300, mwstSatz: 'normal' },
+  })).json()
+  const gruppe = await (await request.post('/api/modifikator-gruppen', {
+    headers: authHeader,
+    data: { name: `BonVar-${uid}`, typ: 'pflicht', maxAuswahl: 1, reihenfolge: 0 },
+  })).json()
+  await request.post(`/api/modifikator-gruppen/${gruppe.id}/modifikatoren`, {
+    headers: authHeader,
+    data: { name: optName, aufschlagCent: 0, reihenfolge: 0, lagerstandMenge: 5 },
+  })
+  await request.put(`/api/artikel/${art.id}/modifikator-gruppen`, {
+    headers: authHeader,
+    data: { gruppenIds: [gruppe.id] },
+  })
+
+  await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
+    localStorage.setItem('kassa:token', d.token)
+    localStorage.setItem('kassa:auth', d.authJson)
+    localStorage.setItem('kassa:mandantId', d.mandantId)
+    localStorage.setItem('kassa:kasseId', d.kasseId)
+  }, {
+    token,
+    authJson: JSON.stringify({ user: login.user, mandant: login.mandant, kassen: login.kassen }),
+    mandantId,
+    kasseId,
+  })
+
+  // Tisch öffnen
+  await page.goto('/tische')
+  await page.getByRole('button', { name: '+ Neuer Tisch' }).click()
+  await page.getByPlaceholder('z. B. 1, Terrasse 3, Bar …').fill(`MOD-${uid}`)
+  await page.getByRole('button', { name: 'Tisch öffnen' }).click()
+  await expect(page.getByText('Laufende Bestellung')).toBeVisible({ timeout: 10_000 })
+
+  // Artikel mit Pflicht-Option auf den Tab: Option wählen → hinzufügen
+  await page.getByRole('button', { name: new RegExp(artName) }).first().click()
+  await page.getByRole('button', { name: new RegExp(optName) }).click()
+  await page.getByRole('button', { name: /Hinzufügen/ }).click()
+
+  // Positionen speichern → Tisch-Tab-Service zieht den Modifikator-Bestand ab
+  await page.getByRole('button', { name: 'Nur speichern' }).click()
+
+  // Varianten-Bestand ist von 5 auf 4 gesunken
+  await expect.poll(async () => {
+    try {
+      const gruppen = await (await request.get('/api/modifikator-gruppen', { headers: authHeader })).json()
+      const g = (gruppen as { id: string; modifikatoren: { name: string; lagerstandMenge: number | null }[] }[]).find(x => x.id === gruppe.id)
+      return g?.modifikatoren.find(m => m.name === optName)?.lagerstandMenge
+    } catch { return undefined }
+  }, { timeout: 15_000 }).toBe(4)
+})
+
 })
