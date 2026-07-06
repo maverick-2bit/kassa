@@ -11,9 +11,11 @@ import { updateMandantModule } from '../lib/auth'
 
 // Reihenfolge + Icons der Module
 const MODULE_LISTE: { modul: MandantModul; icon: string }[] = [
-  { modul: 'gastro',    icon: '🍽️' },
-  { modul: 'angebote',  icon: '📄' },
-  { modul: 'mergeport', icon: '🛵' },
+  { modul: 'gastro',         icon: '🍽️' },
+  { modul: 'reservierungen', icon: '📅' },
+  { modul: 'angebote',       icon: '📄' },
+  { modul: 'mergeport',      icon: '🛵' },
+  { modul: 'zeiterfassung',  icon: '🕒' },
 ]
 
 export function MandantenEinstellungenPage() {
@@ -103,6 +105,7 @@ function ModulKarte({
 
   return (
     <div
+      data-testid={`modul-karte-${modul}`}
       className={`rounded-lg border bg-panel p-5 flex items-start gap-4 transition-shadow ${
         aktiv ? 'border-brand-200 shadow-sm' : 'border-line'
       }`}
@@ -157,9 +160,11 @@ function ModulKarte({
 // ---------------------------------------------------------------------------
 
 function modulKey(modul: MandantModul): keyof MandantModule {
-  if (modul === 'gastro')    return 'modulGastroAktiv'
-  if (modul === 'angebote')  return 'modulAngeboteAktiv'
-  return 'modulMergeportAktiv'
+  if (modul === 'gastro')         return 'modulGastroAktiv'
+  if (modul === 'angebote')       return 'modulAngeboteAktiv'
+  if (modul === 'mergeport')      return 'modulMergeportAktiv'
+  if (modul === 'reservierungen') return 'modulReservierungenAktiv'
+  return 'modulZeiterfassungAktiv'
 }
 
 function getModulWert(data: MandantModule, modul: MandantModul): boolean {

@@ -1215,4 +1215,70 @@ test('Zeiterfassung: über das PIN-Numpad ein- und ausstempeln + Übersicht', as
   await expect(page.getByText(name)).toBeVisible()
 })
 
+/**
+ * Modul-Verwaltung: die Module-Seite (/module) zeigt jetzt alle fünf Module —
+ * inkl. Tischreservierungen und Personalzeiterfassung, die zuvor gar nicht
+ * umschaltbar waren (MODULE_LISTE hatte nur 3, modulKey mappte den Rest falsch
+ * auf mergeport). Die Journey belegt: (a) alle fünf Karten sind da, (b) das
+ * Umschalten von Reservierungen bzw. Zeiterfassung wirkt jeweils NUR auf die
+ * eigene Karte und lässt die mergeport-Karte unberührt — das fängt den
+ * modulKey-Fehlmapping-Bug ab (mit Bug hätte ein Reservierungs-Klick mergeport
+ * umgeschaltet) und beweist zugleich die Unabhängigkeit beider Module. Einseitig
+ * (keine Navigationen) → race-frei gegenüber refetchOnWindowFocus. Die Route-
+ * Erreichbarkeit je Modul deckt bereits die Reservierungs-Modul-/Zeiterfassungs-
+ * Journey ab; hier geht es um das Umschalt-UI.
+ */
+test('Module: Tischreservierung und Zeiterfassung sind unabhängig zuschaltbar', async ({ page, request }) => {
+  const login = await ensureAuth(request)
+  const authHeader = { Authorization: `Bearer ${login.token}` }
+
+  // Beide Module deterministisch aktivieren (unabhängig von vorherigen Journeys)
+  const module = await (await request.get('/api/mandanten/module', { headers: authHeader })).json()
+  await request.patch('/api/mandanten/module', {
+    headers: authHeader,
+    data: { ...module, modulReservierungenAktiv: true, modulZeiterfassungAktiv: true },
+  })
+
+  await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
+    localStorage.setItem('kassa:token', d.token)
+    localStorage.setItem('kassa:auth', d.authJson)
+    localStorage.setItem('kassa:mandantId', d.mandantId)
+    localStorage.setItem('kassa:kasseId', d.kasseId)
+  }, {
+    token:     login.token,
+    authJson:  JSON.stringify({ user: login.user, mandant: login.mandant, kassen: login.kassen }),
+    mandantId: login.mandant.id,
+    kasseId:   login.kassen[0].id,
+  })
+
+  await page.goto('/module')
+  await expect(page.getByRole('heading', { name: 'Module' })).toBeVisible({ timeout: 10_000 })
+
+  // Alle fünf Modul-Karten sind vorhanden (Reservierungen + Zeiterfassung fehlten vorher)
+  for (const label of [
+    'Gastro & Tischverwaltung', 'Tischreservierungen', 'Angebote & Lieferscheine',
+    'Lieferservice-Integration', 'Personalzeiterfassung',
+  ]) {
+    await expect(page.getByText(label, { exact: true })).toBeVisible()
+  }
+
+  const sw = (modul: string) => page.getByTestId(`modul-karte-${modul}`).getByRole('switch')
+
+  // Beide zeigen „an" (Zustand aus GET /module = DB); mergeport-Ausgangswert merken
+  await expect(sw('reservierungen')).toHaveAttribute('aria-checked', 'true')
+  await expect(sw('zeiterfassung')).toHaveAttribute('aria-checked', 'true')
+  const mergeportVorher = await sw('mergeport').getAttribute('aria-checked')
+
+  // Reservierungen ausschalten wirkt NUR auf die Reservierungen-Karte (mergeport unberührt)
+  await sw('reservierungen').click()
+  await expect(sw('reservierungen')).toHaveAttribute('aria-checked', 'false')
+  await expect(sw('mergeport')).toHaveAttribute('aria-checked', mergeportVorher!)
+
+  // Zeiterfassung ausschalten wirkt NUR auf die Zeiterfassung-Karte; Reservierungen bleibt aus (Unabhängigkeit)
+  await sw('zeiterfassung').click()
+  await expect(sw('zeiterfassung')).toHaveAttribute('aria-checked', 'false')
+  await expect(sw('reservierungen')).toHaveAttribute('aria-checked', 'false')
+  await expect(sw('mergeport')).toHaveAttribute('aria-checked', mergeportVorher!)
+})
+
 })
