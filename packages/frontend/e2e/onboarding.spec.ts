@@ -1344,4 +1344,64 @@ test('Online-Reservierung: öffentliche Buchung landet intern als Anfrage', asyn
   await expect(detail.getByText('Online-Buchung')).toBeVisible()
 })
 
+/**
+ * Dienstplan-Journey: eine Schicht über das echte Schicht-Modal eintragen und im
+ * Wochenkalender wiederfinden. Der Dienstplan hängt am selben Modul wie die
+ * Zeiterfassung (m="zeiterfassung"). Ein eigener Mitarbeiter mit eindeutigem
+ * Namen wird angelegt, damit die Assertion nicht mit dem angemeldeten Admin
+ * („E2E Admin" im Header) kollidiert. Datum bleibt Default (heute) → liegt in
+ * der angezeigten Woche. Das Modal ist kein role=dialog (eigenes Overlay) →
+ * über Überschrift „Neue Schicht" und die Felder angesprochen.
+ */
+test('Dienstplan: Schicht über das Modal eintragen erscheint im Wochenkalender', async ({ page, request }) => {
+  const login = await ensureAuth(request)
+  const token = login.token, mandantId = login.mandant.id, kasseId = login.kassen[0].id
+  const authHeader = { Authorization: `Bearer ${token}` }
+
+  // Zeiterfassungs-Modul aktivieren (gated /dienstplan) + Mitarbeiter mit eindeutigem Namen anlegen
+  const module = await (await request.get('/api/mandanten/module', { headers: authHeader })).json()
+  await request.patch('/api/mandanten/module', {
+    headers: authHeader, data: { ...module, modulZeiterfassungAktiv: true },
+  })
+  const ts = Date.now()
+  const mitarbeiter = `Dienst Planer ${ts}`
+  const userRes = await request.post('/api/users', {
+    headers: authHeader,
+    data: {
+      name: mitarbeiter, email: `dienst-${ts}@e2e.at`, passwort: 'e2e-passwort-123',
+      rolle: 'kellner', berechtigungen: [], kassenIds: [kasseId],
+    },
+  })
+  expect(userRes.ok()).toBe(true)
+
+  await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
+    localStorage.setItem('kassa:token', d.token)
+    localStorage.setItem('kassa:auth', d.authJson)
+    localStorage.setItem('kassa:mandantId', d.mandantId)
+    localStorage.setItem('kassa:kasseId', d.kasseId)
+  }, {
+    token,
+    authJson: JSON.stringify({
+      user: login.user,
+      mandant: { ...login.mandant, modulZeiterfassungAktiv: true },
+      kassen: login.kassen,
+    }),
+    mandantId,
+    kasseId,
+  })
+
+  await page.goto('/dienstplan')
+  await expect(page.getByRole('heading', { name: 'Dienstplan' })).toBeVisible({ timeout: 10_000 })
+
+  // Schicht über das Modal eintragen (Datum-Default heute, Beginn/Ende 09:00–17:00)
+  await page.getByRole('button', { name: 'Schicht eintragen' }).click()
+  await expect(page.getByText('Neue Schicht')).toBeVisible()
+  await page.getByRole('combobox').selectOption({ label: mitarbeiter })
+  await page.getByRole('button', { name: /Speichern/ }).click()
+
+  // Schicht-Karte erscheint im Wochenkalender (Mitarbeiter + geplante Zeit)
+  await expect(page.getByText(/09:00.*17:00/)).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByText(mitarbeiter).first()).toBeVisible()
+})
+
 })
