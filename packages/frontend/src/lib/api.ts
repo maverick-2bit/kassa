@@ -71,6 +71,9 @@ import type {
   ModifikatorGruppeAktualisieren,
   ModifikatorErstellen,
   ModifikatorAktualisieren,
+  Preisregel,
+  PreisregelInput,
+  PreisregelUpdate,
   MonatsbelegInput,
   NullbelegInput,
   PinLoginInput,
@@ -396,6 +399,17 @@ export const artikelApi = {
 // ---------------------------------------------------------------------------
 // Kategorien
 // ---------------------------------------------------------------------------
+
+export const preisregelApi = {
+  list:   () =>
+    request<Preisregel[]>('GET', '/api/preisregeln'),
+  create: (input: PreisregelInput) =>
+    request<Preisregel>('POST', '/api/preisregeln', input),
+  update: (id: string, input: PreisregelUpdate) =>
+    request<Preisregel>('PATCH', `/api/preisregeln/${id}`, input),
+  remove: (id: string) =>
+    request<void>('DELETE', `/api/preisregeln/${id}`),
+}
 
 export const kategorieApi = {
   list:       (nurAktive = false) =>

@@ -47,6 +47,7 @@ const PruefungsansichtPage      = lazyPage(() => import('./pages/Pruefungsansich
 const LieferantenPage           = lazyPage(() => import('./pages/LieferantenPage'), 'LieferantenPage')
 const BestelllistePage          = lazyPage(() => import('./pages/BestelllistePage'), 'BestelllistePage')
 const ModifikatorenPage         = lazyPage(() => import('./pages/ModifikatorenPage'), 'ModifikatorenPage')
+const PreisregelnPage           = lazyPage(() => import('./pages/PreisregelnPage'), 'PreisregelnPage')
 const ReservierungenPage        = lazyPage(() => import('./pages/ReservierungenPage'), 'ReservierungenPage')
 const OnlineBuchungPage         = lazyPage(() => import('./pages/OnlineBuchungPage'), 'OnlineBuchungPage')
 const ZeiterfassungPage         = lazyPage(() => import('./pages/ZeiterfassungPage'), 'ZeiterfassungPage')
@@ -98,6 +99,7 @@ function AppRoutes() {
           <Route path="/wareneingang"   element={<Require b="artikel.verwalten"            ><WareneingangPage /></Require>} />
           <Route path="/lagerstand"     element={<Require b="artikel.verwalten"            ><LagerstandPage /></Require>} />
           <Route path="/modifikatoren"    element={<Require b="artikel.verwalten"            ><ModifikatorenPage /></Require>} />
+          <Route path="/preisregeln"      element={<Require b="artikel.verwalten"            ><PreisregelnPage /></Require>} />
           <Route path="/pos-konfiguration" element={<Require b="einstellungen"             ><PosKonfigPage /></Require>} />
           <Route path="/bonierdrucker"     element={<Require b="einstellungen"  m="gastro" ><BonierdruckerPage /></Require>} />
           <Route path="/belege"         element={<Require b="belege.lesen"                 ><BelegePage /></Require>} />

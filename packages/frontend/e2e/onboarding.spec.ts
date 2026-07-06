@@ -1712,4 +1712,67 @@ test('Tischplan-Ansicht: Gruppen zusammenführen und umbuchen über den Plan', a
   await expect.poll(() => offeneAmTisch(tisch)).toBe(0)
 })
 
+/**
+ * Happy Hour / Zeitpreise: eine Preisregel (−20 % auf eine Warengruppe, alle
+ * Wochentage 00:00–23:59, damit sie zur Testlaufzeit immer greift) wird per API
+ * angelegt, in der Verwaltung (/preisregeln) gelistet, und an der Kasse beim
+ * Hinzufügen des Artikels automatisch angewandt (Badge „Happy Hour −20%").
+ * Vor dem Klick wird der GET /api/preisregeln abgewartet, damit die Regel geladen ist.
+ */
+test('Happy Hour: Zeitpreis-Regel senkt den Preis an der Kasse', async ({ page, request }) => {
+  const login = await ensureAuth(request)
+  const token = login.token, mandantId = login.mandant.id, kasseId = login.kassen[0].id
+  const authHeader = { Authorization: `Bearer ${token}` }
+
+  const ts   = Date.now()
+  const art  = `HH-Cola ${ts}`
+  const name = `Happy Hour ${ts}`
+
+  // Warengruppe + Artikel (5,00 €) seeden
+  const kat = await (await request.post('/api/kategorien', {
+    headers: authHeader, data: { name: `HH-Getränke ${ts}`, farbe: 'blau', reihenfolge: 0 },
+  })).json()
+  await request.post('/api/artikel', {
+    headers: authHeader,
+    data: { bezeichnung: art, preisBruttoCent: 500, mwstSatz: 'normal', kategorieId: kat.id },
+  })
+
+  // Preisregel: −20 % auf diese Warengruppe, immer aktiv (alle Tage, ganztägig)
+  const regelRes = await request.post('/api/preisregeln', {
+    headers: authHeader,
+    data: {
+      name, aktiv: true, wochentage: [1, 2, 3, 4, 5, 6, 7],
+      vonZeit: '00:00', bisZeit: '23:59', rabattProzent: 20, kategorieIds: [kat.id],
+    },
+  })
+  expect(regelRes.ok()).toBe(true)
+
+  await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
+    localStorage.setItem('kassa:token', d.token)
+    localStorage.setItem('kassa:auth', d.authJson)
+    localStorage.setItem('kassa:mandantId', d.mandantId)
+    localStorage.setItem('kassa:kasseId', d.kasseId)
+  }, {
+    token,
+    authJson: JSON.stringify({ user: login.user, mandant: login.mandant, kassen: login.kassen }),
+    mandantId,
+    kasseId,
+  })
+
+  // Verwaltungsseite listet die Regel
+  await page.goto('/preisregeln')
+  await expect(page.getByRole('heading', { name: 'Happy Hour / Zeitpreise' })).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByText(name)).toBeVisible()
+
+  // Kasse: Regeln laden lassen, dann Artikel hinzufügen → Happy-Hour-Preis + Badge
+  await Promise.all([
+    page.waitForResponse(r => r.url().includes('/api/preisregeln') && r.request().method() === 'GET'),
+    page.goto('/kasse'),
+  ])
+  await page.getByRole('button', { name: art }).first().click()
+  await expect(page.getByText(/Happy Hour.*20%/)).toBeVisible()
+  // Der rabattierte Einzelpreis (4,00) erscheint im Warenkorb
+  await expect(page.getByText('4,00').first()).toBeVisible()
+})
+
 })

@@ -1111,3 +1111,28 @@ export const dienstplanSchichten = pgTable('dienstplan_schichten', {
 
 export type DienstplanSchicht    = typeof dienstplanSchichten.$inferSelect
 export type NewDienstplanSchicht = typeof dienstplanSchichten.$inferInsert
+
+// ---------------------------------------------------------------------------
+// Preisregeln (Happy Hour / zeitgesteuerte Preise)
+// ---------------------------------------------------------------------------
+
+export const preisregeln = pgTable('preisregeln', {
+  id:            uuid('id').primaryKey().defaultRandom(),
+  mandantId:     uuid('mandant_id').notNull().references(() => mandanten.id),
+  name:          varchar('name', { length: 80 }).notNull(),
+  aktiv:         boolean('aktiv').notNull().default(true),
+  /** ISO-Wochentage 1=Mo..7=So als JSON-Array */
+  wochentage:    jsonb('wochentage').notNull(),
+  vonZeit:       varchar('von_zeit', { length: 5 }).notNull(),  // HH:MM
+  bisZeit:       varchar('bis_zeit', { length: 5 }).notNull(),  // HH:MM
+  rabattProzent: integer('rabatt_prozent').notNull(),
+  /** Betroffene Kategorie-IDs als JSON-Array (leer = alle Artikel) */
+  kategorieIds:  jsonb('kategorie_ids').notNull().default([]),
+  createdAt:     timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:     timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  mandantIdx: index('preisregeln_mandant_idx').on(t.mandantId),
+}))
+
+export type Preisregel    = typeof preisregeln.$inferSelect
+export type NewPreisregel = typeof preisregeln.$inferInsert

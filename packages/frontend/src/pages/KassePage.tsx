@@ -19,8 +19,8 @@ import type {
   TischTabErstellenInput,
   TischTabResponse,
 } from '@kassa/shared'
-import { GUTSCHEIN_STATUS_LABELS, MWST_LABELS, STATION_LABELS } from '@kassa/shared'
-import { angebotApi, artikelApi, belegApi, bonierApi, gutscheinApi, kategorieApi, lieferscheinApi, modifikatorApi, offenerPostenApi, posConfigApi, tischTabApi, zvtApi, displayApi } from '../lib/api'
+import { GUTSCHEIN_STATUS_LABELS, MWST_LABELS, STATION_LABELS, happyHourPreisCent, aktiverRabattProzent } from '@kassa/shared'
+import { angebotApi, artikelApi, belegApi, bonierApi, gutscheinApi, kategorieApi, lieferscheinApi, modifikatorApi, offenerPostenApi, posConfigApi, preisregelApi, tischTabApi, zvtApi, displayApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { getAuth, hasBerechtigung } from '../lib/auth'
 import { formatPreis } from '../lib/format'
@@ -53,8 +53,10 @@ interface ArtikelKorbPosition {
   modifikatoren:     ModifikatorAuswahl[]
   /** Effektiver Einzelpreis (nach eventuellem Artikel-Rabatt) */
   preisCent:         number
-  /** Originalpreis vor Artikel-Rabatt (für Durchstreichung) */
+  /** Originalpreis vor Artikel-Rabatt (für Durchstreichung); enthält bereits den Happy-Hour-Preis */
   originalPreisCent: number
+  /** Angewandter Happy-Hour-Rabatt in % (0 = keiner) — nur für die Anzeige */
+  happyHourProzent:  number
 }
 
 interface FreieKorbPosition {
@@ -144,6 +146,11 @@ export function KassePage() {
     queryFn:  () => kategorieApi.list(true),
   })
 
+  const preisregelnQuery = useQuery({
+    queryKey: ['preisregeln'],
+    queryFn:  preisregelApi.list,
+  })
+
   const modGruppenQuery = useQuery({
     queryKey: ['modifikator-gruppen'],
     queryFn:  () => modifikatorApi.listeGruppen(),
@@ -207,7 +214,11 @@ export function KassePage() {
 
   const addArtikel = (a: Artikel, modifikatoren: ModifikatorAuswahl[]) => {
     setFehler(null)
-    const preisCent  = positionsPreisCent(a.preisBruttoCent, modifikatoren)
+    // Happy Hour: den Artikel-Basispreis ggf. rabattieren, Modifikatoren zum vollen Preis dazu
+    const regeln    = preisregelnQuery.data ?? []
+    const hhProzent = aktiverRabattProzent(regeln, a.kategorieId, new Date())
+    const basisCent = happyHourPreisCent(a.preisBruttoCent, regeln, a.kategorieId, new Date())
+    const preisCent = positionsPreisCent(basisCent, modifikatoren)
     setKorb((prev) => {
       if (modifikatoren.length === 0) {
         const existing = prev.find(
@@ -221,7 +232,7 @@ export function KassePage() {
           )
         }
       }
-      return [...prev, { typ: 'artikel', artikel: a, menge: 1, modifikatoren, preisCent, originalPreisCent: preisCent }]
+      return [...prev, { typ: 'artikel', artikel: a, menge: 1, modifikatoren, preisCent, originalPreisCent: preisCent, happyHourProzent: hhProzent }]
     })
   }
 
@@ -603,6 +614,11 @@ export function KassePage() {
                         <p className={`font-medium text-ink truncate ${p.typ === 'frei' ? 'italic' : ''}`}>
                           {p.typ === 'frei' ? p.bezeichnung : p.artikel.bezeichnung}
                         </p>
+                        {p.typ === 'artikel' && p.happyHourProzent > 0 && (
+                          <span className="inline-block text-[10px] font-bold text-amber-700 bg-amber-100 rounded px-1 py-0.5 mt-0.5">
+                            Happy Hour −{p.happyHourProzent}%
+                          </span>
+                        )}
                         {p.typ === 'artikel' && p.modifikatoren.length > 0 && (
                           <p className="text-xs text-brand-600 truncate">
                             {p.modifikatoren.map(m => m.name).join(', ')}

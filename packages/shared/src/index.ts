@@ -558,3 +558,22 @@ export type {
   LieferbestellungResponse,
   LieferbestellungUpdate,
 } from './schemas/lieferbestellung.js'
+
+// Preisregeln (Happy Hour / zeitgesteuerte Preise)
+export {
+  WochentagSchema,
+  WOCHENTAG_LABELS,
+  PreisregelInputSchema,
+  PreisregelUpdateSchema,
+  PreisregelSchema,
+  imZeitfenster,
+  isoWochentag,
+  regelGiltJetzt,
+  aktiverRabattProzent,
+  happyHourPreisCent,
+} from './schemas/preisregel.js'
+export type {
+  PreisregelInput,
+  PreisregelUpdate,
+  Preisregel,
+} from './schemas/preisregel.js'

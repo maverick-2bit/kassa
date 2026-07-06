@@ -14,8 +14,8 @@ import type {
   TischTabSplittenInput,
   TischTabResponse,
 } from '@kassa/shared'
-import { STATION_LABELS } from '@kassa/shared'
-import { artikelApi, belegApi, bonierApi, kategorieApi, modifikatorApi, posConfigApi, tischTabApi, zvtApi } from '../lib/api'
+import { STATION_LABELS, happyHourPreisCent, aktiverRabattProzent } from '@kassa/shared'
+import { artikelApi, belegApi, bonierApi, kategorieApi, modifikatorApi, posConfigApi, preisregelApi, tischTabApi, zvtApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
 import { warenkorbSummeCent, positionsPreisCent, rabattBetragCent } from '../lib/warenkorb'
@@ -40,10 +40,12 @@ import { ArtikelGrid } from '../components/ArtikelGrid'
 // ---------------------------------------------------------------------------
 
 interface KorbPosition {
-  artikel:       Artikel
-  menge:         number
-  modifikatoren: ModifikatorAuswahl[]
-  preisCent:     number
+  artikel:          Artikel
+  menge:            number
+  modifikatoren:    ModifikatorAuswahl[]
+  preisCent:        number
+  /** Angewandter Happy-Hour-Rabatt in % (0 = keiner) — nur für die Anzeige */
+  happyHourProzent: number
 }
 
 // ---------------------------------------------------------------------------
@@ -96,6 +98,11 @@ export function TischTabPage() {
   const kategorienQuery = useQuery({
     queryKey: ['kategorien'],
     queryFn:  () => kategorieApi.list(true),
+  })
+
+  const preisregelnQuery = useQuery({
+    queryKey: ['preisregeln'],
+    queryFn:  preisregelApi.list,
   })
 
   const modGruppenQuery = useQuery({
@@ -181,7 +188,11 @@ export function TischTabPage() {
 
   const addArtikel = (a: Artikel, modifikatoren: ModifikatorAuswahl[]) => {
     setFehler(null)
-    const preisCent = positionsPreisCent(a.preisBruttoCent, modifikatoren)
+    // Happy Hour: Artikel-Basispreis ggf. rabattieren, Modifikatoren zum vollen Preis dazu
+    const regeln    = preisregelnQuery.data ?? []
+    const hhProzent = aktiverRabattProzent(regeln, a.kategorieId, new Date())
+    const basisCent = happyHourPreisCent(a.preisBruttoCent, regeln, a.kategorieId, new Date())
+    const preisCent = positionsPreisCent(basisCent, modifikatoren)
     setKorb(prev => {
       // Ohne Modifikatoren: bestehende Zeile erhöhen
       if (modifikatoren.length === 0) {
@@ -190,7 +201,7 @@ export function TischTabPage() {
           p.artikel.id === a.id && p.modifikatoren.length === 0 ? { ...p, menge: p.menge + 1 } : p,
         )
       }
-      return [...prev, { artikel: a, menge: 1, modifikatoren, preisCent }]
+      return [...prev, { artikel: a, menge: 1, modifikatoren, preisCent, happyHourProzent: hhProzent }]
     })
   }
 
@@ -455,6 +466,11 @@ export function TischTabPage() {
                     <li key={idx} className="flex items-center gap-2 text-sm">
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-ink truncate">{p.artikel.bezeichnung}</p>
+                        {p.happyHourProzent > 0 && (
+                          <span className="inline-block text-[10px] font-bold text-amber-700 bg-amber-100 rounded px-1 py-0.5">
+                            Happy Hour −{p.happyHourProzent}%
+                          </span>
+                        )}
                         {p.modifikatoren.length > 0 && (
                           <p className="text-xs text-brand-600 truncate">
                             {p.modifikatoren.map(m => m.name).join(', ')}
