@@ -1281,4 +1281,67 @@ test('Module: Tischreservierung und Zeiterfassung sind unabhängig zuschaltbar',
   await expect(sw('mergeport')).toHaveAttribute('aria-checked', mergeportVorher!)
 })
 
+/**
+ * Online-Reservierungs-Journey: die öffentliche Buchungsseite (/buchung?kasseId=…,
+ * kein Login) durchspielen und intern als Anfrage wiederfinden. Ergänzt die interne
+ * Reservierung (die als „Bestätigt" startet) um den Gast-Weg: Online-Buchungen
+ * landen als quelle='online' / status='wartend' („Anfrage"). Voraussetzung
+ * (buchung.route → erstelleOnlineReservierung): Kasse `onlineBuchungAktiv` UND
+ * Mandant `modulReservierungenAktiv` — beide per API vorbereiten.
+ */
+test('Online-Reservierung: öffentliche Buchung landet intern als Anfrage', async ({ page, request }) => {
+  const login = await ensureAuth(request)
+  const token = login.token, mandantId = login.mandant.id, kasseId = login.kassen[0].id
+  const authHeader = { Authorization: `Bearer ${token}` }
+
+  // Modul + Online-Buchung an der Kasse aktivieren
+  const module = await (await request.get('/api/mandanten/module', { headers: authHeader })).json()
+  await request.patch('/api/mandanten/module', {
+    headers: authHeader, data: { ...module, modulReservierungenAktiv: true },
+  })
+  const bok = await request.patch(`/api/kassen/${kasseId}/online-buchung`, {
+    headers: authHeader, data: { aktiv: true },
+  })
+  expect(bok.ok()).toBe(true)
+
+  // Auth mit aktivem Modul injizieren (für den internen Cross-Check; die öffentliche Seite ignoriert es)
+  await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
+    localStorage.setItem('kassa:token', d.token)
+    localStorage.setItem('kassa:auth', d.authJson)
+    localStorage.setItem('kassa:mandantId', d.mandantId)
+    localStorage.setItem('kassa:kasseId', d.kasseId)
+  }, {
+    token,
+    authJson: JSON.stringify({
+      user: login.user,
+      mandant: { ...login.mandant, modulReservierungenAktiv: true },
+      kassen: login.kassen,
+    }),
+    mandantId,
+    kasseId,
+  })
+
+  // Öffentliche Buchungsseite (ohne Login) ausfüllen und absenden
+  const name = `Online Gast ${Date.now()}`
+  await page.goto(`/buchung?kasseId=${kasseId}`)
+  await expect(page.getByText('Online-Tischreservierung')).toBeVisible({ timeout: 10_000 })
+  await page.locator('input[type="time"]').fill('18:30')
+  await page.locator('select').selectOption('3')
+  await page.getByPlaceholder('Vor- und Nachname').fill(name)
+  await page.getByRole('button', { name: /Reservierungsanfrage senden/ }).click()
+
+  // Öffentliche Bestätigung
+  await expect(page.getByText('Anfrage erhalten!')).toBeVisible()
+  await expect(page.getByText(name)).toBeVisible()
+
+  // Intern: erscheint im Wochengitter; Detail zeigt Status „Anfrage" + Online-Buchung
+  await page.goto('/reservierungen')
+  const kachel = page.getByRole('button', { name: new RegExp(`18:30 .*${name}`) })
+  await expect(kachel).toBeVisible({ timeout: 10_000 })
+  await kachel.click()
+  const detail = page.getByRole('dialog')
+  await expect(detail.getByText('Anfrage')).toBeVisible()
+  await expect(detail.getByText('Online-Buchung')).toBeVisible()
+})
+
 })
