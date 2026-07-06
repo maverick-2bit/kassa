@@ -1742,12 +1742,16 @@ test('Happy Hour pro Artikel: Regel wirkt nur auf den gewählten Artikel', async
     data: { bezeichnung: fanta, preisBruttoCent: 500, mwstSatz: 'normal', kategorieId: kat.id },
   })
 
-  // Preisregel: −20 % NUR auf Cola (Einzel-Artikel), Warengruppe leer, immer aktiv
+  // Preisregel: −20 % NUR auf Cola (Einzel-Artikel), Warengruppe leer, immer aktiv.
+  // Zwei Zeitfenster decken zusammen (fast) den ganzen Tag ab → zur Testlaufzeit
+  // stets aktiv; prüft zugleich die Mehr-Zeitfenster-Logik end-to-end.
   const regelRes = await request.post('/api/preisregeln', {
     headers: authHeader,
     data: {
-      name, aktiv: true, wochentage: [1, 2, 3, 4, 5, 6, 7],
-      vonZeit: '00:00', bisZeit: '23:59', rabattProzent: 20, kategorieIds: [], artikelIds: [colaArt.id],
+      name, aktiv: true, wochentage: [1, 2, 3, 4, 5, 6, 7], datumTage: [],
+      zeitfenster: [{ von: '00:00', bis: '12:00' }, { von: '12:00', bis: '00:00' }],
+      gueltigVon: null, gueltigBis: null,
+      rabattProzent: 20, kategorieIds: [], artikelIds: [colaArt.id],
     },
   })
   expect(regelRes.ok()).toBe(true)

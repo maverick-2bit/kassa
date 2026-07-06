@@ -74,7 +74,15 @@ export function PreisregelnPage() {
                     {!r.aktiv && <span className="text-xs text-ink-subtle">inaktiv</span>}
                   </div>
                   <p className="mt-1 text-xs text-ink-muted">
-                    {r.wochentage.map(w => WOCHENTAG_LABELS[w]).join(', ')} · {r.vonZeit}–{r.bisZeit} Uhr
+                    {[
+                      r.wochentage.map(w => WOCHENTAG_LABELS[w]).join(', '),
+                      ...r.datumTage,
+                    ].filter(Boolean).join(', ')}
+                    {' · '}
+                    {r.zeitfenster.map(zf => `${zf.von}–${zf.bis}`).join(', ')} Uhr
+                    {(r.gueltigVon || r.gueltigBis) && (
+                      <> · {r.gueltigVon ?? '…'} bis {r.gueltigBis ?? '…'}</>
+                    )}
                   </p>
                   <p className="mt-0.5 text-xs text-ink-muted">
                     {r.kategorieIds.length === 0 && r.artikelIds.length === 0
@@ -138,16 +146,21 @@ function PreisregelForm({
   const [name,         setName]         = useState(initial?.name ?? '')
   const [aktiv,        setAktiv]        = useState(initial?.aktiv ?? true)
   const [wochentage,   setWochentage]   = useState<number[]>(initial?.wochentage ?? [1, 2, 3, 4, 5])
-  const [vonZeit,      setVonZeit]      = useState(initial?.vonZeit ?? '17:00')
-  const [bisZeit,      setBisZeit]      = useState(initial?.bisZeit ?? '19:00')
+  const [datumTage,    setDatumTage]    = useState<string[]>(initial?.datumTage ?? [])
+  const [neuesDatum,   setNeuesDatum]   = useState('')
+  const [zeitfenster,  setZeitfenster]  = useState<{ von: string; bis: string }[]>(initial?.zeitfenster ?? [{ von: '17:00', bis: '19:00' }])
+  const [gueltigVon,   setGueltigVon]   = useState(initial?.gueltigVon ?? '')
+  const [gueltigBis,   setGueltigBis]   = useState(initial?.gueltigBis ?? '')
   const [rabatt,       setRabatt]       = useState(String(initial?.rabattProzent ?? 20))
   const [kategorieIds, setKategorieIds] = useState<string[]>(initial?.kategorieIds ?? [])
   const [artikelIds,   setArtikelIds]   = useState<string[]>(initial?.artikelIds ?? [])
   const [artikelSuche, setArtikelSuche] = useState('')
   const [fehler,       setFehler]       = useState<string | null>(null)
 
-  const rabattZahl = parseInt(rabatt) || 0
-  const kannSpeichern = name.trim().length > 0 && wochentage.length > 0 && rabattZahl >= 1 && rabattZahl <= 100
+  const rabattZahl    = parseInt(rabatt) || 0
+  const zeitfensterOk = zeitfenster.length > 0 && zeitfenster.every(zf => zf.von && zf.bis)
+  const tageOk        = wochentage.length > 0 || datumTage.length > 0
+  const kannSpeichern = name.trim().length > 0 && tageOk && zeitfensterOk && rabattZahl >= 1 && rabattZahl <= 100
 
   const speichern = useMutation({
     mutationFn: () => {
@@ -155,8 +168,10 @@ function PreisregelForm({
         name:          name.trim(),
         aktiv,
         wochentage:    [...wochentage].sort((a, b) => a - b),
-        vonZeit,
-        bisZeit,
+        datumTage:     [...datumTage].sort(),
+        zeitfenster,
+        gueltigVon:    gueltigVon || null,
+        gueltigBis:    gueltigBis || null,
         rabattProzent: rabattZahl,
         kategorieIds,
         artikelIds,
@@ -170,6 +185,11 @@ function PreisregelForm({
   const toggleTag = (t: number) => setWochentage(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])
   const toggleKat = (id: string) => setKategorieIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
   const toggleArt = (id: string) => setArtikelIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  const addDatum    = () => { const d = neuesDatum.trim(); if (d && !datumTage.includes(d)) setDatumTage(prev => [...prev, d]); setNeuesDatum('') }
+  const removeDatum = (d: string) => setDatumTage(prev => prev.filter(x => x !== d))
+  const addFenster    = () => setZeitfenster(prev => [...prev, { von: '12:00', bis: '14:00' }])
+  const updateFenster = (i: number, feld: 'von' | 'bis', wert: string) => setZeitfenster(prev => prev.map((zf, idx) => idx === i ? { ...zf, [feld]: wert } : zf))
+  const removeFenster = (i: number) => setZeitfenster(prev => prev.filter((_, idx) => idx !== i))
 
   const gefilterteArtikel = artikelSuche.trim()
     ? artikel.filter(a => a.bezeichnung.toLowerCase().includes(artikelSuche.trim().toLowerCase()))
@@ -186,7 +206,7 @@ function PreisregelForm({
       </div>
 
       <div>
-        <label className="block text-xs font-medium text-ink-muted mb-1">Wochentage *</label>
+        <label className="block text-xs font-medium text-ink-muted mb-1">Wochentage (wöchentlich wiederkehrend)</label>
         <div className="flex flex-wrap gap-1.5">
           {WOCHENTAGE.map(t => (
             <button
@@ -203,14 +223,57 @@ function PreisregelForm({
         </div>
       </div>
 
+      <div>
+        <label className="block text-xs font-medium text-ink-muted mb-1">Konkrete Datumstage (optional)</label>
+        <div className="flex items-center gap-2">
+          <Input type="date" value={neuesDatum} onChange={(e) => setNeuesDatum(e.target.value)} className="flex-1" />
+          <Button type="button" variant="secondary" size="sm" disabled={!neuesDatum} onClick={addDatum}>+ Tag</Button>
+        </div>
+        {datumTage.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mt-1.5">
+            {datumTage.map(d => (
+              <button
+                key={d}
+                type="button"
+                onClick={() => removeDatum(d)}
+                className="px-2 py-0.5 rounded-md border border-brand-600 bg-brand-50 text-xs text-brand-800"
+                title="Entfernen"
+              >
+                {d} ✕
+              </button>
+            ))}
+          </div>
+        )}
+        <p className="mt-1 text-[11px] text-ink-subtle">Mindestens ein Wochentag oder ein Datumstag.</p>
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <label className="block text-xs font-medium text-ink-muted">Zeitfenster *</label>
+          <Button type="button" variant="secondary" size="sm" onClick={addFenster}>+ Fenster</Button>
+        </div>
+        <div className="space-y-2">
+          {zeitfenster.map((zf, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <Input type="time" value={zf.von} onChange={(e) => updateFenster(i, 'von', e.target.value)} className="flex-1" />
+              <span className="text-ink-muted">–</span>
+              <Input type="time" value={zf.bis} onChange={(e) => updateFenster(i, 'bis', e.target.value)} className="flex-1" />
+              {zeitfenster.length > 1 && (
+                <button type="button" onClick={() => removeFenster(i)} className="text-ink-subtle hover:text-red-500 px-1" title="Fenster entfernen">✕</button>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
       <div className="grid grid-cols-3 gap-3">
         <div>
-          <label className="block text-xs font-medium text-ink-muted mb-1">Von *</label>
-          <Input type="time" value={vonZeit} onChange={(e) => setVonZeit(e.target.value)} />
+          <label className="block text-xs font-medium text-ink-muted mb-1">Aktion ab (optional)</label>
+          <Input type="date" value={gueltigVon} onChange={(e) => setGueltigVon(e.target.value)} />
         </div>
         <div>
-          <label className="block text-xs font-medium text-ink-muted mb-1">Bis *</label>
-          <Input type="time" value={bisZeit} onChange={(e) => setBisZeit(e.target.value)} />
+          <label className="block text-xs font-medium text-ink-muted mb-1">Aktion bis (optional)</label>
+          <Input type="date" value={gueltigBis} onChange={(e) => setGueltigBis(e.target.value)} />
         </div>
         <div>
           <label className="block text-xs font-medium text-ink-muted mb-1">Rabatt (%) *</label>

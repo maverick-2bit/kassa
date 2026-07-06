@@ -563,16 +563,20 @@ export type {
 export {
   WochentagSchema,
   WOCHENTAG_LABELS,
+  ZeitfensterSchema,
   PreisregelInputSchema,
   PreisregelUpdateSchema,
   PreisregelSchema,
   imZeitfenster,
+  imAnyZeitfenster,
   isoWochentag,
+  datumISO,
   regelGiltJetzt,
   aktiverRabattProzent,
   happyHourPreisCent,
 } from './schemas/preisregel.js'
 export type {
+  Zeitfenster,
   PreisregelInput,
   PreisregelUpdate,
   Preisregel,

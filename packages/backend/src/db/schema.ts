@@ -1121,10 +1121,15 @@ export const preisregeln = pgTable('preisregeln', {
   mandantId:     uuid('mandant_id').notNull().references(() => mandanten.id),
   name:          varchar('name', { length: 80 }).notNull(),
   aktiv:         boolean('aktiv').notNull().default(true),
-  /** ISO-Wochentage 1=Mo..7=So als JSON-Array */
+  /** ISO-Wochentage 1=Mo..7=So als JSON-Array (leer erlaubt, wenn datum_tage gesetzt) */
   wochentage:    jsonb('wochentage').notNull(),
-  vonZeit:       varchar('von_zeit', { length: 5 }).notNull(),  // HH:MM
-  bisZeit:       varchar('bis_zeit', { length: 5 }).notNull(),  // HH:MM
+  /** Konkrete Kalendertage YYYY-MM-DD als JSON-Array */
+  datumTage:     jsonb('datum_tage').notNull().default([]),
+  /** Zeitfenster [{von,bis}] als JSON-Array (HH:MM) */
+  zeitfenster:   jsonb('zeitfenster').notNull().default([]),
+  /** Aktionszeitraum (optional, YYYY-MM-DD) */
+  gueltigVon:    varchar('gueltig_von', { length: 10 }),
+  gueltigBis:    varchar('gueltig_bis', { length: 10 }),
   rabattProzent: integer('rabatt_prozent').notNull(),
   /** Betroffene Kategorie-IDs als JSON-Array */
   kategorieIds:  jsonb('kategorie_ids').notNull().default([]),
