@@ -1460,4 +1460,63 @@ test('Angebot über die Kasse: im Angebot-Modus aus dem Warenkorb erstellen', as
   await expect(page.getByText(/Angebot A-\d+ erstellt/)).toBeVisible({ timeout: 15_000 })
 })
 
+/**
+ * Tisch-Umbuchen-Journey: einen gebuchten (offenen) Tisch mit laufender Bestellung
+ * auf einen anderen Tisch umbuchen. Das Feature existiert bereits vollständig
+ * (Backend umbucheTab + PATCH /tisch-tabs/:id/tisch, Button „⇄ Tisch wechseln" im
+ * Tab → UmbuchenModal); diese Journey verifiziert es end-to-end: Tisch öffnen →
+ * Artikel speichern → „Tisch wechseln" → neuen Tisch eingeben → „Umbuchen" → die
+ * Detailseite zeigt danach den neuen Tisch, die Bestellung bleibt erhalten.
+ * gastro ist default aktiv → kein Modul-Setup nötig.
+ */
+test('Tisch umbuchen: gebuchten Tisch auf einen anderen Tisch verschieben', async ({ page, request }) => {
+  const login = await ensureAuth(request)
+  const token = login.token, mandantId = login.mandant.id, kasseId = login.kassen[0].id
+  const authHeader = { Authorization: `Bearer ${token}` }
+
+  // Artikel mit eindeutigem Namen seeden (für eine laufende Bestellung auf dem Tisch)
+  const ts  = Date.now()
+  const art = `Umbuch-Artikel ${ts}`
+  const kat = await (await request.post('/api/kategorien', {
+    headers: authHeader, data: { name: `Umbuch-Kat ${ts}`, farbe: 'gruen', reihenfolge: 0 },
+  })).json()
+  await request.post('/api/artikel', {
+    headers: authHeader,
+    data: { bezeichnung: art, preisBruttoCent: 300, mwstSatz: 'ermaessigt1', kategorieId: kat.id },
+  })
+
+  await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
+    localStorage.setItem('kassa:token', d.token)
+    localStorage.setItem('kassa:auth', d.authJson)
+    localStorage.setItem('kassa:mandantId', d.mandantId)
+    localStorage.setItem('kassa:kasseId', d.kasseId)
+  }, {
+    token,
+    authJson: JSON.stringify({ user: login.user, mandant: login.mandant, kassen: login.kassen }),
+    mandantId,
+    kasseId,
+  })
+
+  const tischAlt = `UMB-ALT-${ts}`
+  const tischNeu = `UMB-NEU-${ts}`
+
+  // Tisch öffnen (gebuchter Tisch) und eine Bestellung speichern
+  await page.goto('/tische')
+  await page.getByRole('button', { name: '+ Neuer Tisch' }).click()
+  await page.getByPlaceholder(/Terrasse 3, Bar/).fill(tischAlt)
+  await page.getByRole('button', { name: 'Tisch öffnen' }).click()
+  await expect(page.getByRole('heading', { name: `Tisch ${tischAlt}` })).toBeVisible({ timeout: 10_000 })
+  await page.getByRole('button', { name: art }).first().click()
+  await page.getByRole('button', { name: 'Nur speichern' }).click()
+
+  // Umbuchen: „Tisch wechseln" → neuen Tisch eingeben → „Umbuchen"
+  await page.getByRole('button', { name: /Tisch wechseln/ }).click()
+  await page.getByPlaceholder(/Terrasse 2/).fill(tischNeu)
+  await page.getByRole('button', { name: 'Umbuchen', exact: true }).click()
+
+  // Detailseite zeigt jetzt den neuen Tisch; die Bestellung ist erhalten
+  await expect(page.getByRole('heading', { name: `Tisch ${tischNeu}` })).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByText(art).first()).toBeVisible()
+})
+
 })
