@@ -194,4 +194,38 @@ describe('Tisch-Tab + Splitrechnung (Integration, echtes PostgreSQL)', () => {
     })
     expect(res.statusCode).toBe(400)
   })
+
+  it('Zusammenführen: Positionen wandern in den Ziel-Tab, Quelle wird geschlossen', async () => {
+    const zielId  = await oeffneTab('Tisch 5')
+    const quellId = await oeffneTab('Tisch 5')  // zweite Gruppe am selben Tisch
+    await setzePositionen(zielId,  [pos(bierId, 'Bier', 500, 1)])            // 500
+    await setzePositionen(quellId, [pos(schnitzelId, 'Schnitzel', 1490, 2)]) // 2980
+
+    const res = await srv.fastify.inject({
+      method: 'POST', url: `/api/tisch-tabs/${zielId}/zusammenfuehren`, headers: auth(),
+      payload: { quellTabIds: [quellId] },
+    })
+    expect(res.statusCode).toBe(200)
+    const ziel = res.json() as TabResponse & { summeGesamtCent: number }
+    expect(ziel.positionen).toHaveLength(2)   // 1 Zeile aus Ziel + 1 aus Quelle
+    expect(ziel.summeGesamtCent).toBe(3480)   // 500 + 2980
+
+    // Quelle nicht mehr offen, Ziel schon; Quelle-Status = 'zusammengefuehrt'
+    const liste = await srv.fastify.inject({ method: 'GET', url: `/api/tisch-tabs?kasseId=${kasseId}`, headers: auth() })
+    const offene = liste.json() as TabResponse[]
+    expect(offene.some(t => t.id === quellId)).toBe(false)
+    expect(offene.some(t => t.id === zielId)).toBe(true)
+
+    const quelle = await srv.fastify.inject({ method: 'GET', url: `/api/tisch-tabs/${quellId}`, headers: auth() })
+    expect((quelle.json() as TabResponse).status).toBe('zusammengefuehrt')
+  })
+
+  it('Zusammenführen mit unbekanntem Quell-Tab → 404', async () => {
+    const zielId = await oeffneTab('Tisch 6')
+    const res = await srv.fastify.inject({
+      method: 'POST', url: `/api/tisch-tabs/${zielId}/zusammenfuehren`, headers: auth(),
+      payload: { quellTabIds: ['00000000-0000-0000-0000-000000000000'] },
+    })
+    expect(res.statusCode).toBe(404)
+  })
 })

@@ -24,6 +24,7 @@ export function TischePage() {
   const [neuerTischOffen, setNeuerTischOffen] = useState(false)
   const [vorbelegterTisch, setVorbelegterTisch] = useState<string>('')
   const [umbuchenTab, setUmbuchenTab]         = useState<TischTabResponse | null>(null)
+  const [zusammenGruppe, setZusammenGruppe]   = useState<TischTabResponse[] | null>(null)
   const [fehler, setFehler]                   = useState<string | null>(null)
 
   const tabsQuery = useQuery({
@@ -53,6 +54,17 @@ export function TischePage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tisch-tabs'] })
       setUmbuchenTab(null)
+      setFehler(null)
+    },
+    onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
+  })
+
+  const zusammenfuehrenMutation = useMutation({
+    mutationFn: ({ zielId, quellTabIds }: { zielId: string; quellTabIds: string[] }) =>
+      tischTabApi.zusammenfuehren(zielId, quellTabIds),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tisch-tabs'] })
+      setZusammenGruppe(null)
       setFehler(null)
     },
     onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
@@ -131,6 +143,7 @@ export function TischePage() {
                 setVorbelegterTisch(tischNummer)
               }}
               onUmbuchen={(tab) => { setFehler(null); setUmbuchenTab(tab) }}
+              onZusammenfuehren={(gruppe) => { setFehler(null); setZusammenGruppe(gruppe) }}
             />
           )}
         </>
@@ -164,6 +177,23 @@ export function TischePage() {
             fehler={fehler}
             onSubmit={(tischNummer) => umbuchenMutation.mutate({ id: umbuchenTab.id, tischNummer })}
             onAbbrechen={() => { setUmbuchenTab(null); setFehler(null) }}
+          />
+        )}
+      </Modal>
+
+      {/* Gruppen an einem Tisch zusammenführen */}
+      <Modal
+        open={!!zusammenGruppe}
+        onClose={() => { setZusammenGruppe(null); setFehler(null) }}
+        title="Gruppen zusammenführen"
+      >
+        {zusammenGruppe && (
+          <ZusammenfuehrenForm
+            gruppe={zusammenGruppe}
+            loading={zusammenfuehrenMutation.isPending}
+            fehler={fehler}
+            onSubmit={(zielId, quellTabIds) => zusammenfuehrenMutation.mutate({ zielId, quellTabIds })}
+            onAbbrechen={() => { setZusammenGruppe(null); setFehler(null) }}
           />
         )}
       </Modal>
@@ -219,6 +249,76 @@ function UmbuchenForm({
           className="flex-1"
         >
           Umbuchen
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Zusammenführen-Formular (Gruppen an einem Tisch)
+// ---------------------------------------------------------------------------
+
+function ZusammenfuehrenForm({
+  gruppe,
+  loading,
+  fehler,
+  onSubmit,
+  onAbbrechen,
+}: {
+  gruppe:      TischTabResponse[]
+  loading:     boolean
+  fehler:      string | null
+  onSubmit:    (zielId: string, quellTabIds: string[]) => void
+  onAbbrechen: () => void
+}) {
+  const [zielId, setZielId] = useState(gruppe[0]?.id ?? '')
+  const quellTabIds = gruppe.filter(t => t.id !== zielId).map(t => t.id)
+  const kann = zielId.length > 0 && quellTabIds.length > 0
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-ink-muted">
+        Alle Gruppen an Tisch <strong>{gruppe[0]?.tischNummer}</strong> in eine zusammenführen.
+        Wähle die Gruppe, die bestehen bleibt — die übrigen werden hineingebucht.
+      </p>
+      <div className="space-y-2">
+        {gruppe.map((t, i) => (
+          <label
+            key={t.id}
+            className={`flex items-center gap-3 rounded-lg border p-3 cursor-pointer transition ${
+              zielId === t.id ? 'border-brand-400 bg-brand-50' : 'border-line hover:border-line-strong'
+            }`}
+          >
+            <input
+              type="radio"
+              name="ziel-gruppe"
+              checked={zielId === t.id}
+              onChange={() => setZielId(t.id)}
+              className="accent-brand-600"
+            />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-ink">Gruppe {i + 1} · {t.kellner}</p>
+              <p className="text-xs text-ink-muted">
+                {t.positionen.reduce((n, p) => n + p.menge, 0)} Pos. · {formatPreis(t.summeGesamtCent)}
+              </p>
+            </div>
+            {zielId === t.id && <span className="shrink-0 text-xs font-medium text-brand-700">bleibt</span>}
+          </label>
+        ))}
+      </div>
+      {fehler && (
+        <div className="rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">{fehler}</div>
+      )}
+      <div className="flex gap-2 pt-1">
+        <Button variant="secondary" onClick={onAbbrechen} className="flex-1">Abbrechen</Button>
+        <Button
+          onClick={() => kann && onSubmit(zielId, quellTabIds)}
+          loading={loading}
+          disabled={!kann}
+          className="flex-1"
+        >
+          Zusammenführen
         </Button>
       </div>
     </div>
@@ -344,11 +444,13 @@ function TischListeGruppiert({
   onTabClick,
   onNeueGruppe,
   onUmbuchen,
+  onZusammenfuehren,
 }: {
-  tabs:         TischTabResponse[]
-  onTabClick:   (id: string) => void
-  onNeueGruppe: (tischNummer: string) => void
-  onUmbuchen:   (tab: TischTabResponse) => void
+  tabs:              TischTabResponse[]
+  onTabClick:        (id: string) => void
+  onNeueGruppe:      (tischNummer: string) => void
+  onUmbuchen:        (tab: TischTabResponse) => void
+  onZusammenfuehren: (gruppe: TischTabResponse[]) => void
 }) {
   // Tabs nach tischNummer gruppieren (Reihenfolge: erste Öffnungszeit)
   const gruppen = new Map<string, TischTabResponse[]>()
@@ -368,6 +470,13 @@ function TischListeGruppiert({
               <span className="text-sm font-semibold text-ink">Tisch {tischNummer}</span>
               <span className="text-xs text-ink-subtle">{gruppe.length} Gruppen</span>
               <span className="flex-1 h-px bg-panel-2" />
+              <button
+                type="button"
+                onClick={() => onZusammenfuehren(gruppe)}
+                className="text-xs text-brand-600 hover:underline font-medium"
+              >
+                Zusammenführen
+              </button>
               <button
                 type="button"
                 onClick={() => onNeueGruppe(tischNummer)}

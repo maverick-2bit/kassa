@@ -43,6 +43,12 @@ export const TischTabUmbenennenInputSchema = z.object({
 })
 export type TischTabUmbenennenInput = z.infer<typeof TischTabUmbenennenInputSchema>
 
+// Mehrere offene Tabs (Gruppen) in einen Ziel-Tab zusammenführen.
+export const TischTabZusammenfuehrenInputSchema = z.object({
+  quellTabIds: z.array(z.string().uuid()).min(1).max(20),
+})
+export type TischTabZusammenfuehrenInput = z.infer<typeof TischTabZusammenfuehrenInputSchema>
+
 export const TischTabSplitZahlungSchema = z.object({
   positionen: z.array(TabPositionSchema).min(1),
   zahlung: z.object({
@@ -89,6 +95,7 @@ export const TabEreignisSchema = z.object({
     'kellner_umbenannt',
     'bezahlt',
     'gesplittet',
+    'zusammengefuehrt',
   ]),
   details:   z.record(z.unknown()),
   createdAt: z.string(),
@@ -105,7 +112,7 @@ export const TischTabResponseSchema = z.object({
   tischNummer:     z.string(),
   kellner:         z.string(),
   positionen:      z.array(TabPositionSchema),
-  status:          z.enum(['offen', 'bezahlt']),
+  status:          z.enum(['offen', 'bezahlt', 'zusammengefuehrt']),
   summeGesamtCent: z.number().int(),
   geoffnetAm:      z.string(),
   createdAt:       z.string(),

@@ -718,6 +718,8 @@ export const tischTabApi = {
     request<TischTabResponse>('PATCH', `/api/tisch-tabs/${id}/kellner`, { kellner }),
   umbucheTisch: (id: string, tischNummer: string) =>
     request<TischTabResponse>('PATCH', `/api/tisch-tabs/${id}/tisch`, { tischNummer }),
+  zusammenfuehren: (zielId: string, quellTabIds: string[]) =>
+    request<TischTabResponse>('POST', `/api/tisch-tabs/${zielId}/zusammenfuehren`, { quellTabIds }),
   splitteUndBezahle: (id: string, input: TischTabSplittenInput) =>
     request<{ tab: TischTabResponse; belegIds: string[] }>('POST', `/api/tisch-tabs/${id}/splitten`, input),
   getVerlauf: (id: string) =>

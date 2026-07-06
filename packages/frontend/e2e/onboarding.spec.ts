@@ -1566,4 +1566,75 @@ test('Tisch umbuchen aus der Übersicht: direkt an der Kachel', async ({ page, r
   await expect(page.getByText(tischAlt)).toHaveCount(0)
 })
 
+/**
+ * Gruppen-Zusammenführen: zwei getrennte Parteien/Gruppen an EINEM Tisch werden
+ * zu einer zusammengeführt. Getrennte Gruppen (Tabs mit gleicher Tischnummer)
+ * gab es schon; das Zusammenführen ist neu (POST /tisch-tabs/:id/zusammenfuehren,
+ * verschmelzeTabs). Journey: zwei Tabs am selben Tisch mit je einer Bestellung
+ * per API seeden → /tische → „Zusammenführen" → Ziel-Gruppe wählen → mergen →
+ * es bleibt eine Gruppe mit der Summe beider (per API verifiziert).
+ */
+test('Gruppen zusammenführen: zwei Parteien an einem Tisch verschmelzen', async ({ page, request }) => {
+  const login = await ensureAuth(request)
+  const token = login.token, mandantId = login.mandant.id, kasseId = login.kassen[0].id
+  const authHeader = { Authorization: `Bearer ${token}` }
+
+  const ts    = Date.now()
+  const tisch = `MERGE-${ts}`
+
+  // Artikel (10,00 €) seeden
+  const kat = await (await request.post('/api/kategorien', {
+    headers: authHeader, data: { name: `Merge-Kat ${ts}`, farbe: 'rot', reihenfolge: 0 },
+  })).json()
+  const art = await (await request.post('/api/artikel', {
+    headers: authHeader,
+    data: { bezeichnung: `Merge-Artikel ${ts}`, preisBruttoCent: 1000, mwstSatz: 'normal', kategorieId: kat.id },
+  })).json()
+  const pos = (menge: number) => ([{ artikelId: art.id, bezeichnung: art.bezeichnung, preisBruttoCent: 1000, menge }])
+
+  // Zwei Gruppen am selben Tisch: Partei A (1×) und Partei B (2×)
+  const tabA = await (await request.post('/api/tisch-tabs', {
+    headers: authHeader, data: { kasseId, tischNummer: tisch, kellner: 'Partei A' },
+  })).json()
+  await request.put(`/api/tisch-tabs/${tabA.id}/positionen`, { headers: authHeader, data: { positionen: pos(1) } })
+  const tabB = await (await request.post('/api/tisch-tabs', {
+    headers: authHeader, data: { kasseId, tischNummer: tisch, kellner: 'Partei B' },
+  })).json()
+  await request.put(`/api/tisch-tabs/${tabB.id}/positionen`, { headers: authHeader, data: { positionen: pos(2) } })
+
+  await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
+    localStorage.setItem('kassa:token', d.token)
+    localStorage.setItem('kassa:auth', d.authJson)
+    localStorage.setItem('kassa:mandantId', d.mandantId)
+    localStorage.setItem('kassa:kasseId', d.kasseId)
+  }, {
+    token,
+    authJson: JSON.stringify({ user: login.user, mandant: login.mandant, kassen: login.kassen }),
+    mandantId,
+    kasseId,
+  })
+
+  // Übersicht: der Tisch zeigt zwei Gruppen → „Zusammenführen"
+  await page.goto('/tische')
+  await expect(page.getByText(`Tisch ${tisch}`)).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByText('2 Gruppen')).toBeVisible()
+  await page.getByRole('button', { name: 'Zusammenführen' }).first().click()
+
+  // Modal: beide Parteien werden angeboten → Ziel (Default = erste) → zusammenführen
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByText('Partei A')).toBeVisible()
+  await expect(dialog.getByText('Partei B')).toBeVisible()
+  await dialog.getByRole('button', { name: 'Zusammenführen' }).click()
+
+  // Es bleibt genau eine offene Gruppe am Tisch, mit der Summe beider (30,00 €)
+  await expect(page.getByText('2 Gruppen')).toHaveCount(0, { timeout: 10_000 })
+  await expect.poll(async () => {
+    const tabs = await (await request.get(`/api/tisch-tabs?kasseId=${kasseId}`, { headers: authHeader })).json()
+    return (tabs as { tischNummer: string }[]).filter(t => t.tischNummer === tisch).length
+  }).toBe(1)
+  const tabs = await (await request.get(`/api/tisch-tabs?kasseId=${kasseId}`, { headers: authHeader })).json()
+  const meine = (tabs as { tischNummer: string; summeGesamtCent: number }[]).filter(t => t.tischNummer === tisch)
+  expect(meine[0]!.summeGesamtCent).toBe(3000)
+})
+
 })
