@@ -38,6 +38,7 @@ import { Modal } from '../components/ui/Modal'
 import { Input } from '../components/ui/Input'
 import { BonAnzeige } from '../components/BonAnzeige'
 import { KartenzahlungModal } from '../components/KartenzahlungModal'
+import { SerialAuswahlModal, type SerialPos } from '../components/SerialAuswahlModal'
 import { RabattModal } from '../components/RabattModal'
 import { ArtikelGrid } from '../components/ArtikelGrid'
 import { KundePicker } from '../components/KundePicker'
@@ -119,6 +120,9 @@ export function KassePage() {
   const [fehler, setFehler] = useState<string | null>(null)
   const [zvtOffen, setZvtOffen] = useState(false)
   const [zvtBetrag, setZvtBetrag] = useState(0)
+  // Seriennummern-Auswahl (serialisierte Artikel) — Ref hält die Zuweisung über den ZVT-Flow hinweg
+  const [serialModalOffen, setSerialModalOffen] = useState(false)
+  const serialsRef = useRef<Map<number, string[]> | null>(null)
   const [kreditModus,          setKreditModus]          = useState(false)
   const [gutschein,            setGutschein]            = useState<{ id: string; code: string; maxCent: number; einloesungCent: number; erstelleRestgutschein: boolean } | null>(null)
   const [gutscheinModalOffen,  setGutscheinModalOffen]  = useState(false)
@@ -126,6 +130,8 @@ export function KassePage() {
   // Ref for gutschein — safe to read inside mutation callbacks (before reset() clears state)
   const gutscheinRef = useRef(gutschein)
   useEffect(() => { gutscheinRef.current = gutschein }, [gutschein])
+  // Warenkorb geändert → bereits gewählte Seriennummern verwerfen (Indizes könnten veraltet sein)
+  useEffect(() => { serialsRef.current = null }, [korb])
   // Angebot-spezifisch
   const [gueltigBis, setGueltigBis] = useState<string>('')
   const [angebotNotiz, setAngebotNotiz] = useState<string>('')
@@ -186,6 +192,15 @@ export function KassePage() {
 
   const summeCent  = useMemo(() => warenkorbSummeCent(korb), [korb])
   const rabattCent = useMemo(() => rabattBetragCent(summeCent, rabatt), [rabatt, summeCent])
+
+  // Serialisierte Positionen im Warenkorb (Index → Artikel), für die vor dem Bon Seriennummern zu wählen sind
+  const serialPositionen = useMemo<SerialPos[]>(
+    () => korb.flatMap((p, idx) =>
+      p.typ === 'artikel' && p.artikel.seriennummernAktiv
+        ? [{ positionIndex: idx, bezeichnung: p.artikel.bezeichnung, menge: p.menge, artikelId: p.artikel.id }]
+        : []),
+    [korb],
+  )
 
   // artikelId → Gesamtmenge im Warenkorb (für das Mengen-Badge auf den Kacheln)
   const mengenProArtikel = useMemo(() => {
@@ -429,7 +444,8 @@ export function KassePage() {
   }
 
   const erstelleBeleg = (barCent: number, karteCent: number, trinkgeldCent = 0) => {
-    const positionen: BarzahlungsbelegInput['positionen'] = korb.map((p) => {
+    const serials = serialsRef.current
+    const positionen: BarzahlungsbelegInput['positionen'] = korb.map((p, idx) => {
       if (p.typ === 'frei') {
         return {
           bezeichnung:     p.bezeichnung,
@@ -438,6 +454,7 @@ export function KassePage() {
           menge:           p.menge,
         }
       }
+      const gewaehlteSerials = serials?.get(idx)
       return {
         artikelId:              p.artikel.id,
         menge:                  p.menge,
@@ -445,8 +462,10 @@ export function KassePage() {
         ...(p.modifikatoren.length > 0
           ? { bezeichnungZusatz: p.modifikatoren.map(m => m.name).join(', ') }
           : {}),
+        ...(gewaehlteSerials && gewaehlteSerials.length > 0 ? { seriennummern: gewaehlteSerials } : {}),
       }
     })
+    serialsRef.current = null
     if (trinkgeldCent > 0) {
       positionen.push({ bezeichnung: 'Trinkgeld', preisBruttoCent: trinkgeldCent, mwstSatz: 'null', menge: 1 })
     }
@@ -469,6 +488,11 @@ export function KassePage() {
     setFehler(null)
     if (korb.length === 0) {
       setFehler('Der Warenkorb ist leer.')
+      return
+    }
+    // Serialisierte Artikel: zuerst Seriennummern wählen (sofern noch nicht geschehen)
+    if (serialPositionen.length > 0 && serialsRef.current === null) {
+      setSerialModalOffen(true)
       return
     }
     if (karteCentBeleg > 0 && zvtCfg.data?.zvtAktiv) {
@@ -1123,6 +1147,23 @@ export function KassePage() {
           </div>
         )}
       </Modal>
+
+      {/* Seriennummern wählen (serialisierte Artikel) — vor Zahlung/Beleg */}
+      <SerialAuswahlModal
+        positionen={serialPositionen}
+        open={serialModalOffen}
+        loading={false}
+        onConfirm={(zuweisungen) => {
+          const m = new Map<number, string[]>()
+          for (const z of zuweisungen) m.set(z.positionIndex, z.seriennummern)
+          serialsRef.current = m
+          setSerialModalOffen(false)
+          handleBonErstellen()  // erneut — jetzt mit gesetzten Serials weiter zu ZVT/Beleg
+        }}
+        onClose={() => setSerialModalOffen(false)}
+        title="Seriennummern für die Rechnung wählen"
+        confirmLabel="Übernehmen & kassieren"
+      />
 
       {/* Kartenzahlung (ZVT) — vor Beleg-Erstellung */}
       <KartenzahlungModal

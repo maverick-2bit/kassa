@@ -293,7 +293,11 @@ export function generiereRechnungHtml(beleg: BelegResponse, mandant: MandantInfo
 
   const positionenHtml = beleg.positionen.map(p => `
     <tr>
-      <td class="pos-bezeichnung">${esc(p.bezeichnung)}</td>
+      <td class="pos-bezeichnung">${esc(p.bezeichnung)}${
+        p.seriennummern && p.seriennummern.length > 0
+          ? `<div style="font-size:9px;color:#555;margin-top:2px">Seriennummern: ${p.seriennummern.map(esc).join(', ')}</div>`
+          : ''
+      }</td>
       <td class="pos-menge">${p.menge}</td>
       <td class="pos-einzelpreis">€ ${centZuEuro(p.einzelpreisBreutto)}</td>
       <td class="pos-mwst">${MWST_SAETZE[p.mwstSatz] ?? 0} %</td>

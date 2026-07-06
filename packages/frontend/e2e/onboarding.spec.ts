@@ -1917,4 +1917,66 @@ test('Seriennummern: Lieferschein weist Serials zu und markiert sie als verkauft
   expect([...serials].sort()).toEqual([sn1, sn2].sort())
 })
 
+/**
+ * Seriennummern-an-der-Kasse-Journey: einen serialisierten Artikel in den
+ * Warenkorb, beim „Bon erstellen" zwingt die Kasse zur Seriennummern-Wahl aus
+ * dem Pool. Beweist end-to-end: (a) das Modal erscheint, (b) der signierte Beleg
+ * entsteht, (c) die gewählte Seriennummer steht auf der Beleg-Position (Aufdruck
+ * auf der Rechnung) und ist im Pool als „verkauft" mit belegId markiert.
+ */
+test('Seriennummern: an der Kasse verkaufen druckt sie auf den Beleg und markiert den Pool', async ({ page, request }) => {
+  const login = await ensureAuth(request)
+  const token = login.token as string, kasseId = login.kassen[0].id as string, mandantId = login.mandant.id as string
+  const authHeader = { Authorization: `Bearer ${token}` }
+
+  const ts  = Date.now()
+  const art = `Kassa-Gerät ${ts}`
+  const sn  = `KS-${ts}-1`
+
+  const kat = await (await request.post('/api/kategorien', {
+    headers: authHeader, data: { name: `KS-Kat ${ts}`, farbe: 'gruen', reihenfolge: 0 },
+  })).json()
+  const artikel = await (await request.post('/api/artikel', {
+    headers: authHeader,
+    data: { bezeichnung: art, preisBruttoCent: 12300, mwstSatz: 'normal', kategorieId: kat.id, seriennummernAktiv: true },
+  })).json()
+  await request.post('/api/seriennummern', { headers: authHeader, data: { artikelId: artikel.id, seriennummern: [sn] } })
+
+  await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
+    localStorage.setItem('kassa:token', d.token)
+    localStorage.setItem('kassa:auth', d.authJson)
+    localStorage.setItem('kassa:mandantId', d.mandantId)
+    localStorage.setItem('kassa:kasseId', d.kasseId)
+  }, { token, authJson: JSON.stringify({ user: login.user, mandant: login.mandant, kassen: login.kassen }), mandantId, kasseId })
+
+  await page.goto('/kasse')
+
+  // Serialisierten Artikel in den Warenkorb + Voll-Barzahlung
+  await page.getByRole('button', { name: art }).first().click()
+  await page.getByRole('button', { name: 'Exakt' }).click()
+
+  // „Bon erstellen" öffnet die Seriennummern-Wahl (statt direkt zu kassieren)
+  await page.getByRole('button', { name: 'Bon erstellen' }).click()
+  await expect(page.getByText('Seriennummern für die Rechnung wählen')).toBeVisible({ timeout: 10_000 })
+
+  // Seriennummer wählen → übernehmen & kassieren
+  await page.getByRole('button', { name: sn }).click()
+  await page.getByRole('button', { name: 'Übernehmen & kassieren' }).click()
+
+  // Signierter Beleg entsteht
+  await expect(page.getByText(/Beleg #\d+ erstellt/)).toBeVisible({ timeout: 20_000 })
+
+  // Pool: Seriennummer verkauft + belegId gesetzt
+  await expect.poll(async () => {
+    const sns = await (await request.get(`/api/seriennummern?artikelId=${artikel.id}&status=verkauft`, { headers: authHeader })).json()
+    return (sns as { belegId: string | null }[]).map(s => s.belegId).filter(Boolean).length
+  }).toBe(1)
+
+  // Aufdruck: die Seriennummer steht auf der Beleg-Position
+  const belege = await (await request.get(`/api/belege?kasseId=${kasseId}&limit=500`, { headers: authHeader })).json()
+  const treffer = (belege as { positionen: { seriennummern?: string[] }[] }[])
+    .find(b => b.positionen.some(p => (p.seriennummern ?? []).includes(sn)))
+  expect(treffer).toBeDefined()
+})
+
 })

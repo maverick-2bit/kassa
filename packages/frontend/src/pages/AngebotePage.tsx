@@ -8,7 +8,7 @@ import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
 import { Button } from '../components/ui/Button'
 import { Modal } from '../components/ui/Modal'
-import { LieferscheinSerialModal, type SerialPos } from '../components/LieferscheinSerialModal'
+import { SerialAuswahlModal, type SerialPos } from '../components/SerialAuswahlModal'
 import { druckeAngebot, druckeLiferschein, druckeSammelrechnung } from '../lib/rechnung'
 import { sammelrechnungApi } from '../lib/api'
 
@@ -284,12 +284,14 @@ function AngebotDetailModal({ angebot, onClose, onUpdate, updating }: AngebotDet
         </Button>
       </div>
 
-      <LieferscheinSerialModal
+      <SerialAuswahlModal
         positionen={serialPositionen}
         open={serialModalOffen}
         loading={lieferscheinMutation.isPending}
         onConfirm={(zuweisungen) => lieferscheinMutation.mutate(zuweisungen)}
         onClose={() => setSerialModalOffen(false)}
+        title="Seriennummern für den Lieferschein wählen"
+        confirmLabel="Lieferschein erstellen"
       />
     </div>
   )
