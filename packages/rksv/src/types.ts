@@ -58,6 +58,8 @@ export interface BelegPosition {
   /** Bruttopreis in Cent (inklusive MwSt) */
   einzelpreisBreutto: number
   mwstSatz: MwStSatz
+  /** Zugewiesene Seriennummern (für den Aufdruck auf der Rechnung/dem Bon) */
+  seriennummern?: string[]
 }
 
 /** Summen pro Steuersatz in Cent (brutto) */

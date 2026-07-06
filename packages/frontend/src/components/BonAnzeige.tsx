@@ -89,7 +89,14 @@ export function BonAnzeige({ beleg, codeAufgeklappt = false }: Props) {
         <tbody className="divide-y divide-line">
           {beleg.positionen.map((p, i) => (
             <tr key={i}>
-              <td className="py-1.5 text-ink">{p.bezeichnung}</td>
+              <td className="py-1.5 text-ink">
+                {p.bezeichnung}
+                {p.seriennummern && p.seriennummern.length > 0 && (
+                  <span className="block text-[10px] text-ink-muted font-mono">
+                    S/N: {p.seriennummern.join(', ')}
+                  </span>
+                )}
+              </td>
               <td className="py-1.5 text-right font-mono">{p.menge}</td>
               <td className="py-1.5 text-right font-mono">{formatPreis(p.einzelpreisBreutto)}</td>
               <td className="py-1.5 text-right font-mono font-medium">

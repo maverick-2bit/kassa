@@ -40,7 +40,7 @@ import type {
 } from '@kassa/shared'
 import { ArtikelPositionSchema } from '@kassa/shared'
 import type { Db } from '../db/client.js'
-import { artikel, belege, kassen, kategorien, mandanten, modifikatoren } from '../db/schema.js'
+import { artikel, belege, kassen, kategorien, mandanten, modifikatoren, seriennummern } from '../db/schema.js'
 import { erstelleKunde, ladeKundeSnapshot } from './kunde.service.js'
 import { decryptPrivateKey } from '../crypto/master-key.js'
 
@@ -103,6 +103,8 @@ interface SigniereInput {
    * der letzte Beleg der Kasse (kein Zustand „Schlussbeleg da, aber noch aktiv").
    */
   ausserBetrieb?: boolean
+  /** Läuft NACH dem Beleg-Insert in derselben Tx (z. B. Seriennummern als verkauft markieren). */
+  nachPersist?: (tx: Tx, belegId: string) => Promise<void>
 }
 
 async function signiereImTx(
@@ -243,6 +245,8 @@ async function signiereImTx(
     }
     await tx.update(kassen).set(kasseUpdate).where(eq(kassen.id, kasse.id))
 
+    if (input.nachPersist) await input.nachPersist(tx, persisted.id)
+
     return { signed, persisted }
   })
 }
@@ -282,6 +286,10 @@ export async function erstelleBarzahlungsbeleg(
       }
     }
   }
+
+  // Serialisierte Positionen: Zuweisungen werden in belegDaten validiert und hier gesammelt,
+  // nach dem Beleg-Insert (nachPersist) als verkauft markiert.
+  const serialMarks: { artikelId: string; serials: string[] }[] = []
 
   const { signed, persisted } = await signiereImTx({
     kasseId:         input.kasseId,
@@ -351,6 +359,31 @@ export async function erstelleBarzahlungsbeleg(
           }
         })
 
+      // Seriennummern-Zuweisungen (serialisierte Artikel): validieren + auf Position setzen
+      for (let i = 0; i < input.positionen.length; i++) {
+        const p = input.positionen[i]
+        if (!p || !('artikelId' in p) || !p.seriennummern || p.seriennummern.length === 0) continue
+        const a = artikelById.get(p.artikelId)
+        if (!a?.seriennummernAktiv) throw new BelegError(400, `Artikel „${a?.bezeichnung ?? ''}" führt keine Seriennummern`)
+        if (p.seriennummern.length !== Math.round(p.menge)) {
+          throw new BelegError(400, `Für „${a.bezeichnung}" müssen genau ${Math.round(p.menge)} Seriennummern gewählt werden`)
+        }
+        const frei = await tx
+          .select({ sn: seriennummern.seriennummer })
+          .from(seriennummern)
+          .where(and(
+            eq(seriennummern.artikelId, p.artikelId),
+            inArray(seriennummern.seriennummer, p.seriennummern),
+            eq(seriennummern.status, 'verfuegbar'),
+          ))
+        if (frei.length !== new Set(p.seriennummern).size) {
+          throw new BelegError(409, `Eine gewählte Seriennummer für „${a.bezeichnung}" ist nicht mehr verfügbar`)
+        }
+        const zielPos = positionen[i]
+        if (zielPos) zielPos.seriennummern = p.seriennummern
+        serialMarks.push({ artikelId: p.artikelId, serials: p.seriennummern })
+      }
+
       // Rabatt-Positionen einfügen (nach Artikel-Lookup, vor Lagerstand-Update)
       if (input.rabatt) {
         const rabattLabel = input.rabatt.bezeichnung
@@ -404,6 +437,18 @@ export async function erstelleBarzahlungsbeleg(
       // (Modifikator-Lagerstand: nie automatisch, bleibt manuell per Wareneingang/Inventur)
 
       return { positionen, zahlung: input.zahlung }
+    },
+    nachPersist: async (tx, belegId) => {
+      // Verkaufte Seriennummern aus dem Pool nehmen und dem Beleg zuordnen
+      for (const mark of serialMarks) {
+        await tx
+          .update(seriennummern)
+          .set({ status: 'verkauft', belegId, verkauftAm: new Date() })
+          .where(and(
+            eq(seriennummern.artikelId, mark.artikelId),
+            inArray(seriennummern.seriennummer, mark.serials),
+          ))
+      }
     },
   }, deps)
 

@@ -11,6 +11,8 @@ export const BelegPositionSchema = z.object({
   menge:              z.number().positive(),
   einzelpreisBreutto: z.number().int(),
   mwstSatz:           MwStSatzSchema,
+  /** Zugewiesene Seriennummern (für den Aufdruck auf der Rechnung) */
+  seriennummern:      z.array(z.string()).optional(),
 })
 export type BelegPositionDto = z.infer<typeof BelegPositionSchema>
 
@@ -41,6 +43,8 @@ export const ArtikelPositionSchema = z.object({
   einzelpreisBreuttoCent: z.number().int().nonnegative().optional(),
   /** Bezeichnungs-Zusatz, z. B. "(groß, Ketchup)" */
   bezeichnungZusatz:      z.string().max(200).optional(),
+  /** Gewählte Seriennummern aus dem Pool (bei serialisierten Artikeln) */
+  seriennummern:          z.array(z.string()).optional(),
 })
 export type ArtikelPosition = z.infer<typeof ArtikelPositionSchema>
 

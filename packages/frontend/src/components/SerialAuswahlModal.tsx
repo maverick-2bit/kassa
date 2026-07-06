@@ -1,6 +1,7 @@
 /**
- * LieferscheinSerialModal — beim Lieferschein-Erstellen für jede serialisierte
- * Position genau `menge` Seriennummern aus dem freien Pool des Artikels wählen.
+ * SerialAuswahlModal — für jede serialisierte Position genau `menge` Seriennummern
+ * aus dem freien Pool des Artikels wählen. Wird beim Lieferschein-Erstellen und
+ * beim Kassieren (Rechnung/Bon) verwendet.
  */
 
 import { useState } from 'react'
@@ -16,18 +17,22 @@ export interface SerialPos {
   artikelId:     string
 }
 
-export function LieferscheinSerialModal({
+export function SerialAuswahlModal({
   positionen,
   open,
   loading,
   onConfirm,
   onClose,
+  title = 'Seriennummern wählen',
+  confirmLabel = 'Übernehmen',
 }: {
-  positionen: SerialPos[]
-  open:       boolean
-  loading:    boolean
-  onConfirm:  (zuweisungen: { positionIndex: number; seriennummern: string[] }[]) => void
-  onClose:    () => void
+  positionen:    SerialPos[]
+  open:          boolean
+  loading:       boolean
+  onConfirm:     (zuweisungen: { positionIndex: number; seriennummern: string[] }[]) => void
+  onClose:       () => void
+  title?:        string
+  confirmLabel?: string
 }) {
   const [auswahl, setAuswahl] = useState<Record<number, string[]>>({})
 
@@ -40,7 +45,7 @@ export function LieferscheinSerialModal({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Seriennummern für den Lieferschein wählen" size="lg">
+    <Modal open={open} onClose={onClose} title={title} size="lg">
       <div className="space-y-4">
         {positionen.map(p => (
           <PositionPicker
@@ -53,7 +58,7 @@ export function LieferscheinSerialModal({
         <div className="flex gap-2 justify-end pt-1 border-t border-line">
           <Button variant="secondary" onClick={onClose}>Abbrechen</Button>
           <Button onClick={handleConfirm} disabled={!alleVollstaendig} loading={loading}>
-            Lieferschein erstellen
+            {confirmLabel}
           </Button>
         </div>
       </div>
