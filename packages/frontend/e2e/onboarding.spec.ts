@@ -1137,4 +1137,82 @@ test('Reservierung: Anlage über das Kalender-Modal, im Wochengitter + Status-We
   await expect(page.getByRole('dialog').getByText('Erschienen', { exact: true })).toBeVisible()
 })
 
+/**
+ * Zeiterfassungs-Journey: Modul aktivieren, einen Mitarbeiter mit PIN anlegen und
+ * über das echte PIN-Numpad ein- und wieder ausstempeln (die operative Signature-
+ * Funktion), danach in der Übersicht wiederfinden. PIN & Name sind pro Lauf
+ * eindeutig (aus Date.now()), damit Retries auf der geteilten DB nicht am PIN
+ * eines Vorlaufs hängenbleiben. Der Stempel-Endpoint ist modul-gated
+ * (zeiterfassung.service.ts:58) → Modul muss vorher aktiv sein.
+ */
+test('Zeiterfassung: über das PIN-Numpad ein- und ausstempeln + Übersicht', async ({ page, request }) => {
+  const login = await ensureAuth(request)
+  const token = login.token, mandantId = login.mandant.id, kasseId = login.kassen[0].id
+  const authHeader = { Authorization: `Bearer ${token}` }
+
+  // Modul „zeiterfassung" aktivieren (default aus; PATCH braucht alle Flags)
+  const module = await (await request.get('/api/mandanten/module', { headers: authHeader })).json()
+  const patch = await request.patch('/api/mandanten/module', {
+    headers: authHeader,
+    data: { ...module, modulZeiterfassungAktiv: true },
+  })
+  expect(patch.ok()).toBe(true)
+
+  // Mitarbeiter mit PIN anlegen (PIN/Name pro Lauf eindeutig)
+  const ts   = Date.now()
+  const pin  = String(ts).slice(-4)
+  const name = `Stempel Tester ${ts}`
+  const userRes = await request.post('/api/users', {
+    headers: authHeader,
+    data: {
+      name,
+      email:          `stempel-${ts}@e2e.at`,
+      passwort:       'e2e-passwort-123',
+      rolle:          'kellner',
+      berechtigungen: [],
+      kassenIds:      [kasseId],
+      pin,
+    },
+  })
+  expect(userRes.ok()).toBe(true)
+
+  // Auth mit aktiviertem Modul injizieren
+  await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
+    localStorage.setItem('kassa:token', d.token)
+    localStorage.setItem('kassa:auth', d.authJson)
+    localStorage.setItem('kassa:mandantId', d.mandantId)
+    localStorage.setItem('kassa:kasseId', d.kasseId)
+  }, {
+    token,
+    authJson: JSON.stringify({
+      user: login.user,
+      mandant: { ...login.mandant, modulZeiterfassungAktiv: true },
+      kassen: login.kassen,
+    }),
+    mandantId,
+    kasseId,
+  })
+
+  await page.goto('/zeiterfassung')
+  await expect(page.getByRole('heading', { name: 'Zeiterfassung' })).toBeVisible({ timeout: 10_000 })
+
+  // PIN über das Numpad eintippen und bestätigen
+  const stempeln = async () => {
+    for (const ziffer of pin) await page.getByRole('button', { name: ziffer, exact: true }).click()
+    await page.getByRole('button', { name: '✓', exact: true }).click()
+  }
+
+  // Einstempeln → Erfolgsmeldung
+  await stempeln()
+  await expect(page.getByText(/— Eingestempelt/)).toBeVisible()
+
+  // Ausstempeln → Erfolgsmeldung
+  await stempeln()
+  await expect(page.getByText(/— Ausgestempelt/)).toBeVisible()
+
+  // Übersicht: der Mitarbeiter mit erfasster Zeit erscheint
+  await page.getByRole('button', { name: 'Übersicht' }).click()
+  await expect(page.getByText(name)).toBeVisible()
+})
+
 })
