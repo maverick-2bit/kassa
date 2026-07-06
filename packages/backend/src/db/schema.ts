@@ -1126,8 +1126,10 @@ export const preisregeln = pgTable('preisregeln', {
   vonZeit:       varchar('von_zeit', { length: 5 }).notNull(),  // HH:MM
   bisZeit:       varchar('bis_zeit', { length: 5 }).notNull(),  // HH:MM
   rabattProzent: integer('rabatt_prozent').notNull(),
-  /** Betroffene Kategorie-IDs als JSON-Array (leer = alle Artikel) */
+  /** Betroffene Kategorie-IDs als JSON-Array */
   kategorieIds:  jsonb('kategorie_ids').notNull().default([]),
+  /** Betroffene Einzel-Artikel-IDs als JSON-Array (kategorie_ids UND artikel_ids leer = alle Artikel) */
+  artikelIds:    jsonb('artikel_ids').notNull().default([]),
   createdAt:     timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt:     timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({

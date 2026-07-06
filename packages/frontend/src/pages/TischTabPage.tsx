@@ -190,8 +190,8 @@ export function TischTabPage() {
     setFehler(null)
     // Happy Hour: Artikel-Basispreis ggf. rabattieren, Modifikatoren zum vollen Preis dazu
     const regeln    = preisregelnQuery.data ?? []
-    const hhProzent = aktiverRabattProzent(regeln, a.kategorieId, new Date())
-    const basisCent = happyHourPreisCent(a.preisBruttoCent, regeln, a.kategorieId, new Date())
+    const hhProzent = aktiverRabattProzent(regeln, a.id, a.kategorieId, new Date())
+    const basisCent = happyHourPreisCent(a.preisBruttoCent, regeln, a.id, a.kategorieId, new Date())
     const preisCent = positionsPreisCent(basisCent, modifikatoren)
     setKorb(prev => {
       // Ohne Modifikatoren: bestehende Zeile erhöhen

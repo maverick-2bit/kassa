@@ -7,9 +7,10 @@
 
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { Preisregel, PreisregelInput, Kategorie } from '@kassa/shared'
+import type { Preisregel, PreisregelInput, Kategorie, Artikel } from '@kassa/shared'
 import { WOCHENTAG_LABELS } from '@kassa/shared'
-import { preisregelApi, kategorieApi } from '../lib/api'
+import { preisregelApi, kategorieApi, artikelApi } from '../lib/api'
+import { getKasseIdentity } from '../lib/kasse'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
@@ -21,8 +22,13 @@ export function PreisregelnPage() {
   const [formOffen, setFormOffen]   = useState(false)
   const [editTarget, setEditTarget] = useState<Preisregel | null>(null)
 
+  const identity    = getKasseIdentity()!
   const regelnQuery = useQuery({ queryKey: ['preisregeln'], queryFn: preisregelApi.list })
   const katQuery    = useQuery({ queryKey: ['kategorien'],  queryFn: () => kategorieApi.list(true) })
+  const artQuery    = useQuery({
+    queryKey: ['artikel', identity.mandantId, true],
+    queryFn:  () => artikelApi.list(identity.mandantId, true),
+  })
 
   const loeschen = useMutation({
     mutationFn: (id: string) => preisregelApi.remove(id),
@@ -31,7 +37,9 @@ export function PreisregelnPage() {
 
   const regeln     = regelnQuery.data ?? []
   const kategorien = katQuery.data ?? []
+  const artikel    = artQuery.data ?? []
   const katName = (id: string) => kategorien.find(k => k.id === id)?.name ?? '—'
+  const artName = (id: string) => artikel.find(a => a.id === id)?.bezeichnung ?? '—'
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-6 space-y-5">
@@ -69,7 +77,9 @@ export function PreisregelnPage() {
                     {r.wochentage.map(w => WOCHENTAG_LABELS[w]).join(', ')} · {r.vonZeit}–{r.bisZeit} Uhr
                   </p>
                   <p className="mt-0.5 text-xs text-ink-muted">
-                    {r.kategorieIds.length === 0 ? 'Alle Artikel' : r.kategorieIds.map(katName).join(', ')}
+                    {r.kategorieIds.length === 0 && r.artikelIds.length === 0
+                      ? 'Alle Artikel'
+                      : [...r.kategorieIds.map(katName), ...r.artikelIds.map(artName)].join(', ')}
                   </p>
                 </div>
                 <div className="flex gap-1.5 shrink-0">
@@ -99,6 +109,7 @@ export function PreisregelnPage() {
         <PreisregelForm
           {...(editTarget ? { initial: editTarget } : {})}
           kategorien={kategorien}
+          artikel={artikel}
           onGespeichert={() => { setFormOffen(false); setEditTarget(null); qc.invalidateQueries({ queryKey: ['preisregeln'] }) }}
           onAbbrechen={() => { setFormOffen(false); setEditTarget(null) }}
         />
@@ -114,11 +125,13 @@ export function PreisregelnPage() {
 function PreisregelForm({
   initial,
   kategorien,
+  artikel,
   onGespeichert,
   onAbbrechen,
 }: {
   initial?:      Preisregel
   kategorien:    Kategorie[]
+  artikel:       Artikel[]
   onGespeichert: () => void
   onAbbrechen:   () => void
 }) {
@@ -129,6 +142,8 @@ function PreisregelForm({
   const [bisZeit,      setBisZeit]      = useState(initial?.bisZeit ?? '19:00')
   const [rabatt,       setRabatt]       = useState(String(initial?.rabattProzent ?? 20))
   const [kategorieIds, setKategorieIds] = useState<string[]>(initial?.kategorieIds ?? [])
+  const [artikelIds,   setArtikelIds]   = useState<string[]>(initial?.artikelIds ?? [])
+  const [artikelSuche, setArtikelSuche] = useState('')
   const [fehler,       setFehler]       = useState<string | null>(null)
 
   const rabattZahl = parseInt(rabatt) || 0
@@ -144,6 +159,7 @@ function PreisregelForm({
         bisZeit,
         rabattProzent: rabattZahl,
         kategorieIds,
+        artikelIds,
       }
       return initial ? preisregelApi.update(initial.id, input) : preisregelApi.create(input)
     },
@@ -153,6 +169,11 @@ function PreisregelForm({
 
   const toggleTag = (t: number) => setWochentage(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])
   const toggleKat = (id: string) => setKategorieIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  const toggleArt = (id: string) => setArtikelIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+
+  const gefilterteArtikel = artikelSuche.trim()
+    ? artikel.filter(a => a.bezeichnung.toLowerCase().includes(artikelSuche.trim().toLowerCase()))
+    : artikel
 
   return (
     <form
@@ -198,11 +219,11 @@ function PreisregelForm({
       </div>
 
       <div>
-        <label className="block text-xs font-medium text-ink-muted mb-1">Warengruppen (leer = alle Artikel)</label>
+        <label className="block text-xs font-medium text-ink-muted mb-1">Warengruppen</label>
         {kategorien.length === 0 ? (
-          <p className="text-xs text-ink-subtle">Keine Warengruppen vorhanden — die Regel gilt für alle Artikel.</p>
+          <p className="text-xs text-ink-subtle">Keine Warengruppen vorhanden.</p>
         ) : (
-          <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
+          <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
             {kategorien.map(k => (
               <button
                 key={k.id}
@@ -218,6 +239,41 @@ function PreisregelForm({
           </div>
         )}
       </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <label className="block text-xs font-medium text-ink-muted">Einzel-Artikel</label>
+          {artikelIds.length > 0 && <span className="text-xs text-brand-700">{artikelIds.length} gewählt</span>}
+        </div>
+        <Input
+          value={artikelSuche}
+          onChange={(e) => setArtikelSuche(e.target.value)}
+          placeholder="Artikel suchen …"
+          className="mb-1.5"
+        />
+        {gefilterteArtikel.length === 0 ? (
+          <p className="text-xs text-ink-subtle">Kein Artikel gefunden.</p>
+        ) : (
+          <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto">
+            {gefilterteArtikel.slice(0, 60).map(a => (
+              <button
+                key={a.id}
+                type="button"
+                onClick={() => toggleArt(a.id)}
+                className={`px-2.5 py-1 rounded-md border text-xs font-medium transition ${
+                  artikelIds.includes(a.id) ? 'bg-brand-600 border-brand-600 text-white' : 'border-line-strong text-ink hover:border-brand-400'
+                }`}
+              >
+                {a.bezeichnung}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <p className="text-xs text-ink-subtle">
+        Warengruppen und Einzel-Artikel leer = die Regel gilt für <strong>alle Artikel</strong>.
+      </p>
 
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" checked={aktiv} onChange={(e) => setAktiv(e.target.checked)} className="accent-brand-600" />

@@ -23,8 +23,11 @@ export const PreisregelInputSchema = z.object({
   vonZeit:       ZeitSchema,
   bisZeit:       ZeitSchema,
   rabattProzent: z.number().int().min(1).max(100),
-  /** Betroffene Warengruppen — leer = alle Artikel */
+  /** Betroffene Warengruppen (leer = keine Einschränkung über Warengruppen) */
   kategorieIds:  z.array(z.string().uuid()).max(200).default([]),
+  /** Betroffene Einzel-Artikel (leer = keine Einschränkung über Artikel).
+   *  kategorieIds UND artikelIds leer = gilt für ALLE Artikel. */
+  artikelIds:    z.array(z.string().uuid()).max(500).default([]),
 })
 export type PreisregelInput = z.infer<typeof PreisregelInputSchema>
 
@@ -40,6 +43,7 @@ export const PreisregelSchema = z.object({
   bisZeit:       z.string(),
   rabattProzent: z.number().int(),
   kategorieIds:  z.array(z.string().uuid()),
+  artikelIds:    z.array(z.string().uuid()),
   createdAt:     z.string(),
   updatedAt:     z.string(),
 })
@@ -68,29 +72,42 @@ export function isoWochentag(jetzt: Date): number {
   return jetzt.getDay() === 0 ? 7 : jetzt.getDay()
 }
 
-/** Gilt die Regel für die Kategorie zum Zeitpunkt `jetzt`? */
-export function regelGiltJetzt(regel: Preisregel, kategorieId: string | null, jetzt: Date): boolean {
+/**
+ * Gilt die Regel für einen Artikel (mit seiner Kategorie) zum Zeitpunkt `jetzt`?
+ * Geltungsbereich: Ist weder eine Warengruppe noch ein Artikel gewählt, gilt die
+ * Regel für ALLE Artikel. Sonst muss der Artikel ODER seine Warengruppe passen.
+ */
+export function regelGiltJetzt(
+  regel: Preisregel,
+  artikelId: string,
+  kategorieId: string | null,
+  jetzt: Date,
+): boolean {
   if (!regel.aktiv) return false
   if (!regel.wochentage.includes(isoWochentag(jetzt))) return false
   if (!imZeitfenster(regel.vonZeit, regel.bisZeit, jetzt)) return false
-  if (regel.kategorieIds.length > 0) {
-    if (!kategorieId || !regel.kategorieIds.includes(kategorieId)) return false
+  const hatScope = regel.kategorieIds.length > 0 || regel.artikelIds.length > 0
+  if (hatScope) {
+    const artikelMatch   = regel.artikelIds.includes(artikelId)
+    const kategorieMatch = kategorieId !== null && regel.kategorieIds.includes(kategorieId)
+    if (!artikelMatch && !kategorieMatch) return false
   }
   return true
 }
 
 /**
- * Höchster gerade gültiger Rabatt-Prozentsatz für eine Kategorie (0 = keiner).
+ * Höchster gerade gültiger Rabatt-Prozentsatz für einen Artikel (0 = keiner).
  * Bei mehreren passenden Regeln gewinnt der größte Rabatt.
  */
 export function aktiverRabattProzent(
   regeln: Preisregel[],
+  artikelId: string,
   kategorieId: string | null,
   jetzt: Date = new Date(),
 ): number {
   let max = 0
   for (const r of regeln) {
-    if (regelGiltJetzt(r, kategorieId, jetzt) && r.rabattProzent > max) max = r.rabattProzent
+    if (regelGiltJetzt(r, artikelId, kategorieId, jetzt) && r.rabattProzent > max) max = r.rabattProzent
   }
   return max
 }
@@ -99,10 +116,11 @@ export function aktiverRabattProzent(
 export function happyHourPreisCent(
   basisPreisCent: number,
   regeln: Preisregel[],
+  artikelId: string,
   kategorieId: string | null,
   jetzt: Date = new Date(),
 ): number {
-  const prozent = aktiverRabattProzent(regeln, kategorieId, jetzt)
+  const prozent = aktiverRabattProzent(regeln, artikelId, kategorieId, jetzt)
   if (prozent === 0) return basisPreisCent
   return Math.round(basisPreisCent * (100 - prozent) / 100)
 }
