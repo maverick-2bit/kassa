@@ -55,15 +55,17 @@ export function hasBerechtigung(berechtigung: Berechtigung): boolean {
 export function hasModul(modul: MandantModul): boolean {
   const auth = getAuth()
   if (!auth) return false
-  if (modul === 'gastro')    return auth.mandant.modulGastroAktiv
-  if (modul === 'angebote')  return auth.mandant.modulAngeboteAktiv
-  if (modul === 'mergeport') return auth.mandant.modulMergeportAktiv
+  if (modul === 'gastro')         return auth.mandant.modulGastroAktiv
+  if (modul === 'angebote')       return auth.mandant.modulAngeboteAktiv
+  if (modul === 'mergeport')      return auth.mandant.modulMergeportAktiv
+  if (modul === 'reservierungen') return auth.mandant.modulReservierungenAktiv
+  if (modul === 'zeiterfassung')  return auth.mandant.modulZeiterfassungAktiv
   return false
 }
 
 /** Aktualisiert die Modul-Flags im LocalStorage ohne Re-Login. */
 export function updateMandantModule(
-  updates: Partial<{ modulGastroAktiv: boolean; modulAngeboteAktiv: boolean; modulMergeportAktiv: boolean }>,
+  updates: Partial<{ modulGastroAktiv: boolean; modulAngeboteAktiv: boolean; modulMergeportAktiv: boolean; modulReservierungenAktiv: boolean; modulZeiterfassungAktiv: boolean }>,
 ): void {
   const auth = getAuth()
   if (!auth) return

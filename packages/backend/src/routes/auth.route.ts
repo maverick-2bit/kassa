@@ -153,7 +153,16 @@ export const authRoute: FastifyPluginAsync<AuthRouteOptions> = async (fastify, o
     if (!user) return reply.status(404).send({ fehler: 'Benutzer nicht gefunden' })
 
     const [mandant] = await opts.db
-      .select({ id: mandanten.id, firmenname: mandanten.firmenname, uid: mandanten.uid })
+      .select({
+        id:                       mandanten.id,
+        firmenname:               mandanten.firmenname,
+        uid:                      mandanten.uid,
+        modulGastroAktiv:         mandanten.modulGastroAktiv,
+        modulAngeboteAktiv:       mandanten.modulAngeboteAktiv,
+        modulMergeportAktiv:      mandanten.modulMergeportAktiv,
+        modulReservierungenAktiv: mandanten.modulReservierungenAktiv,
+        modulZeiterfassungAktiv:  mandanten.modulZeiterfassungAktiv,
+      })
       .from(mandanten)
       .where(eq(mandanten.id, user.mandantId))
       .limit(1)
