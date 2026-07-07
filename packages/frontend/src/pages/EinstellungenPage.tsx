@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { QRCodeSVG } from 'qrcode.react'
-import { ALLE_STATIONEN, STATION_LABELS, type Station, type ZvtConfig, type WeitereKasseInput, type PosKonfig, type Artikel, type Kategorie } from '@kassa/shared'
-import { druckerApi, kdsApi, zvtApi, downloadDepExport, healthApi, monitoringApi, mandantApi, kasseApi, kategorieApi, artikelApi, posConfigApi, tischplanApi, dbBackupApi, belegApi, type DruckerConfig, type KdsConfig, type DbSicherungRow, type MonitoringStatus } from '../lib/api'
+import { ALLE_STATIONEN, STATION_LABELS, type Station, type ZvtConfig, type WeitereKasseInput, type PosKonfig, type Artikel, type Kategorie, type SeeTyp } from '@kassa/shared'
+import { druckerApi, kdsApi, seeApi, zvtApi, downloadDepExport, healthApi, monitoringApi, mandantApi, kasseApi, kategorieApi, artikelApi, posConfigApi, tischplanApi, dbBackupApi, belegApi, type DruckerConfig, type KdsConfig, type DbSicherungRow, type MonitoringStatus } from '../lib/api'
 import { formatAusfallDauer } from '../components/SeeStatusBanner'
 import { getKasseIdentity, setKasseIdentity } from '../lib/kasse'
 import { getAuth, hasModul, updateKasseBezeichnung, addKasse, removeKasse } from '../lib/auth'
@@ -82,6 +82,7 @@ export function EinstellungenPage() {
       )}
       {bereich === 'rksv' && (
         <>
+          <SeeEinheitSektion />
           <RksvExportSektion />
           <SeeAusfallSektion />
         </>
@@ -2439,6 +2440,137 @@ function TerminalUrlsSektion() {
           )
         })}
       </div>
+    </section>
+  )
+}
+
+
+// ---------------------------------------------------------------------------
+// RKSV: Signaturerstellungseinheit (Software / A-Trust a.sign RK HSM)
+// ---------------------------------------------------------------------------
+
+function SeeEinheitSektion() {
+  const identity    = getKasseIdentity()!
+  const queryClient = useQueryClient()
+
+  const konfig = useQuery({
+    queryKey: ['see-konfig', identity.kasseId],
+    queryFn:  () => seeApi.get(identity.kasseId),
+  })
+
+  const [typ, setTyp]             = useState<SeeTyp>('software')
+  const [basisUrl, setBasisUrl]   = useState('https://hs-abnahme.a-trust.at/RegistrierkasseMobile/v2')
+  const [benutzer, setBenutzer]   = useState('')
+  const [passwort, setPasswort]   = useState('')
+  const [meldung, setMeldung]     = useState<{ typ: 'ok' | 'fehler'; text: string } | null>(null)
+
+  useEffect(() => {
+    if (!konfig.data) return
+    setTyp(konfig.data.seeTyp)
+    if (konfig.data.atrustBasisUrl) setBasisUrl(konfig.data.atrustBasisUrl)
+    if (konfig.data.atrustBenutzer) setBenutzer(konfig.data.atrustBenutzer)
+  }, [konfig.data])
+
+  const eingabe = () => ({
+    seeTyp: typ,
+    ...(typ === 'atrust_hsm' ? {
+      atrustBasisUrl: basisUrl.trim(),
+      atrustBenutzer: benutzer.trim(),
+      ...(passwort ? { atrustPasswort: passwort } : {}),
+    } : {}),
+  })
+
+  const testen = useMutation({
+    mutationFn: () => seeApi.test(identity.kasseId, eingabe()),
+    onSuccess: (r) => setMeldung(r.erfolgreich
+      ? { typ: 'ok',     text: `Verbindung OK — ZDA ${r.zdaId}, Zertifikat ${r.zertifikatSn}` }
+      : { typ: 'fehler', text: r.fehler ?? 'Verbindung fehlgeschlagen' }),
+    onError: (e) => setMeldung({ typ: 'fehler', text: e instanceof Error ? e.message : 'Fehler' }),
+  })
+
+  const speichern = useMutation({
+    mutationFn: () => seeApi.update(identity.kasseId, eingabe()),
+    onSuccess: (r) => {
+      setMeldung(r.erfolgreich
+        ? { typ: 'ok',     text: `Gespeichert — die Kasse signiert jetzt mit ${typ === 'software' ? 'dem Software-Schlüssel (AT0)' : `A-Trust (${r.zdaId})`}` }
+        : { typ: 'fehler', text: r.fehler ?? 'Speichern fehlgeschlagen' })
+      setPasswort('')
+      void queryClient.invalidateQueries({ queryKey: ['see-konfig', identity.kasseId] })
+    },
+    onError: (e) => setMeldung({ typ: 'fehler', text: e instanceof Error ? e.message : 'Fehler' }),
+  })
+
+  return (
+    <section className="rounded-xl border border-line bg-panel p-6 space-y-5">
+      <div>
+        <h2 className="text-lg font-semibold text-ink">Signaturerstellungseinheit (SEE)</h2>
+        <p className="mt-1 text-sm text-ink-muted">
+          Womit diese Kasse RKSV-Belege signiert. Für den Echtbetrieb ist eine
+          Einheit eines Vertrauensdiensteanbieters (z.&nbsp;B. A-Trust) vorgeschrieben —
+          die Software-SEE ist nur für Entwicklung und Test.
+        </p>
+      </div>
+
+      {konfig.data && (
+        <p className="text-xs text-ink-muted">
+          Aktuell: <span className="font-medium text-ink">{konfig.data.seeTyp === 'software' ? 'Software' : 'A-Trust HSM'}</span>
+          {' · '}ZDA {konfig.data.seeZdaId}
+          {' · '}Zertifikat {konfig.data.zertifikatSn.slice(0, 16)}…
+          {' · '}gültig bis {new Date(konfig.data.zertifikatGueltigBis).toLocaleDateString('de-AT')}
+        </p>
+      )}
+
+      <div className="flex gap-2">
+        {(['software', 'atrust_hsm'] as SeeTyp[]).map(t => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => { setTyp(t); setMeldung(null) }}
+            className={`rounded-lg border px-4 py-2 text-sm font-medium transition ${
+              typ === t ? 'border-brand-500 bg-brand-50 text-brand-800' : 'border-line text-ink-muted hover:text-ink'
+            }`}
+          >
+            {t === 'software' ? 'Software (Dev)' : 'A-Trust a.sign RK HSM'}
+          </button>
+        ))}
+      </div>
+
+      {typ === 'atrust_hsm' && (
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Field label="Basis-URL">
+            <Input value={basisUrl} onChange={e => setBasisUrl(e.target.value)} placeholder="https://hs-abnahme.a-trust.at/RegistrierkasseMobile/v2" />
+          </Field>
+          <Field label="Benutzer">
+            <Input value={benutzer} onChange={e => setBenutzer(e.target.value)} placeholder="u123456789" />
+          </Field>
+          <Field label={konfig.data?.atrustPasswortGesetzt ? 'Passwort (leer = unverändert)' : 'Passwort'}>
+            <Input type="password" value={passwort} onChange={e => setPasswort(e.target.value)} />
+          </Field>
+        </div>
+      )}
+
+      <div className="flex items-center gap-2">
+        {typ === 'atrust_hsm' && (
+          <Button variant="secondary" onClick={() => testen.mutate()} loading={testen.isPending}>
+            Verbindung testen
+          </Button>
+        )}
+        <Button onClick={() => speichern.mutate()} loading={speichern.isPending}>
+          Speichern
+        </Button>
+      </div>
+
+      {typ === 'atrust_hsm' && (
+        <p className="text-xs text-amber-700">
+          ⚠️ Beim Wechsel übernimmt die Kasse das A-Trust-Zertifikat — ältere Belege
+          verifizieren nur noch gegen das frühere Zertifikat. Im Echtbetrieb die SEE
+          nur bei einer neu angelegten Kasse wählen.
+        </p>
+      )}
+
+      {meldung && (
+        <p className={`text-sm ${meldung.typ === 'ok' ? 'text-green-700' : 'text-red-600'}`}>{meldung.text}</p>
+      )}
     </section>
   )
 }

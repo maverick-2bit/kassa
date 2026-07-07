@@ -276,7 +276,7 @@ export async function kasseAutomatischEinrichten(
 
   let startbeleg: SignedBeleg
   try {
-    const result = erstelleStartbeleg(input.kassenId, see)
+    const result = await erstelleStartbeleg(input.kassenId, see)
     startbeleg   = result.beleg
     log('startbeleg-erstellung', 'erfolgreich',
       `Startbeleg #${startbeleg.belegNummer} signiert`)

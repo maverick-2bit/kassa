@@ -11,6 +11,7 @@
 import { and, asc, desc, eq, gte, inArray, lt, sql } from 'drizzle-orm'
 import { Buffer } from 'node:buffer'
 import {
+  ATrustHsmEinheit,
   Umsatzzaehler,
   signiereBeleg,
   gesamtBetragCent,
@@ -164,8 +165,18 @@ async function signiereImTx(
       zertifikatDER: Buffer.from(kasse.seeZertifikatDer, 'base64'),
       privateKeyDER,
       aesSchluessel,
-      zdaId:         'AT0', // Software-SEE (Dev) — echte ZDA-Kennung kommt mit der A-Trust-Anbindung
+      zdaId:         kasse.seeZdaId,
     }
+
+    // Externe Signatureinheit (A-Trust HSM) — scheitert sie (Timeout/HTTP),
+    // greift unten automatisch der bestehende SEE-Ausfallmodus.
+    const einheit = kasse.seeTyp === 'atrust_hsm' && kasse.atrustBasisUrl && kasse.atrustBenutzer && kasse.atrustPasswortEnc
+      ? new ATrustHsmEinheit({
+          basisUrl: kasse.atrustBasisUrl,
+          benutzer: kasse.atrustBenutzer,
+          passwort: decryptPrivateKey(kasse.atrustPasswortEnc, deps.masterPassphrase).toString('utf8'),
+        })
+      : undefined
 
     // Signierungs-Kontext aus letztem DB-Zustand
     const umsatzzaehler = new Umsatzzaehler(kasse.umsatzzaehlerCent)
@@ -173,6 +184,7 @@ async function signiereImTx(
       see,
       umsatzzaehler,
       ...(kasse.letzterBelegCode && { letzterBelegCode: kasse.letzterBelegCode }),
+      ...(einheit && { einheit }),
     }
 
     // Signieren
@@ -194,14 +206,14 @@ async function signiereImTx(
     let ausfallNeuErkannt = false
 
     if (ausfallAktiv) {
-      signed = signiereBeleg(raw, kontext, { ausfallModus: true })
+      signed = await signiereBeleg(raw, kontext, { ausfallModus: true })
     } else {
       try {
-        signed = signiereBeleg(raw, kontext)
+        signed = await signiereBeleg(raw, kontext)
       } catch (signErr) {
         if (input.wiederherstellung) throw signErr
         umsatzzaehler.setze(kasse.umsatzzaehlerCent)
-        signed = signiereBeleg(raw, kontext, { ausfallModus: true })
+        signed = await signiereBeleg(raw, kontext, { ausfallModus: true })
         ausfallNeuErkannt = true
       }
     }

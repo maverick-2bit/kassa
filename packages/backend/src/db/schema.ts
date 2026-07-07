@@ -99,6 +99,15 @@ export const kassen = pgTable('kassen', {
   /** AES-256-GCM-verschlüsselter Umsatzzähler-Schlüssel (32 Byte; wird bei FON gemeldet) */
   aesSchluesselEnc:      text('aes_schluessel_enc'),
 
+  // Signaturerstellungseinheit: 'software' (Dev, ZDA AT0) | 'atrust_hsm' (a.sign RK HSM)
+  seeTyp:                varchar('see_typ', { length: 20 }).notNull().default('software'),
+  /** ZDA-Kennzeichen im QR-Prefix (_R1-<ZDA>_): AT0 Software, AT1 A-Trust, … */
+  seeZdaId:              varchar('see_zda_id', { length: 10 }).notNull().default('AT0'),
+  atrustBasisUrl:        text('atrust_basis_url'),
+  atrustBenutzer:        text('atrust_benutzer'),
+  /** AES-256-GCM-verschlüsseltes A-Trust-Passwort (Muster master-key.ts) */
+  atrustPasswortEnc:     text('atrust_passwort_enc'),
+
   /** Gesetzt, solange die SEE ausgefallen ist (Belege tragen den Ausfallmarker, statt signiert zu sein). NULL = SEE in Betrieb. */
   seeAusgefallenSeit:    timestamp('see_ausgefallen_seit', { withTimezone: true }),
 

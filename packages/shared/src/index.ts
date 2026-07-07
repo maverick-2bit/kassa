@@ -358,6 +358,21 @@ export type {
   SteuerZeile,
 } from './rechnung-html.js'
 
+// Signaturerstellungseinheit (SEE)
+export {
+  SeeTypSchema,
+  SEE_TYP_LABELS,
+  SeeConfigSchema,
+  SeeConfigUpdateSchema,
+  SeeTestErgebnisSchema,
+} from './schemas/see.js'
+export type {
+  SeeTyp,
+  SeeConfig,
+  SeeConfigUpdate,
+  SeeTestErgebnis,
+} from './schemas/see.js'
+
 // SB-Terminal (Kiosk + Abholmonitor)
 export {
   SbBestellungStatusSchema,

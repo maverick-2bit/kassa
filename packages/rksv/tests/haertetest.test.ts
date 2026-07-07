@@ -45,8 +45,8 @@ beforeAll(async () => {
 // ---------------------------------------------------------------------------
 
 describe('Verkettung unter Last', () => {
-  it('100 Belege in schneller Folge – Kette vollständig valide', () => {
-    const { beleg: start, kontext } = erstelleStartbeleg(KASSE, see)
+  it('100 Belege in schneller Folge – Kette vollständig valide', async () => {
+    const { beleg: start, kontext } = await erstelleStartbeleg(KASSE, see)
     const belege: SignedBeleg[] = [start]
 
     const t0 = Date.now()
@@ -61,7 +61,7 @@ describe('Verkettung unter Last', () => {
           { bezeichnung: `Artikel-${i}`, menge: 1, einzelpreisBreutto: i * 10, mwstSatz: 'normal' },
         ],
       }
-      const beleg = signiereBeleg(raw, kontext)
+      const beleg = await signiereBeleg(raw, kontext)
       kontext.letzterBelegCode = beleg.maschinenlesbareCode
       belege.push(beleg)
     }
@@ -73,8 +73,8 @@ describe('Verkettung unter Last', () => {
     expect(pruefeKette(KASSE, belege)).toBe(true)
   })
 
-  it('Kettenintegrität: jeder Beleg referenziert den korrekten Vorgänger', () => {
-    const { beleg: start, kontext } = erstelleStartbeleg(KASSE, see)
+  it('Kettenintegrität: jeder Beleg referenziert den korrekten Vorgänger', async () => {
+    const { beleg: start, kontext } = await erstelleStartbeleg(KASSE, see)
     const belege: SignedBeleg[] = [start]
 
     for (let i = 2; i <= 20; i++) {
@@ -87,7 +87,7 @@ describe('Verkettung unter Last', () => {
           { bezeichnung: 'Test', menge: 1, einzelpreisBreutto: 100, mwstSatz: 'normal' },
         ],
       }
-      const beleg = signiereBeleg(raw, kontext)
+      const beleg = await signiereBeleg(raw, kontext)
       kontext.letzterBelegCode = beleg.maschinenlesbareCode
       belege.push(beleg)
     }
@@ -101,12 +101,12 @@ describe('Verkettung unter Last', () => {
     }
   })
 
-  it('Manipulation eines mittleren Beleg-Codes bricht die Kette', () => {
-    const { beleg: start, kontext } = erstelleStartbeleg(KASSE, see)
+  it('Manipulation eines mittleren Beleg-Codes bricht die Kette', async () => {
+    const { beleg: start, kontext } = await erstelleStartbeleg(KASSE, see)
     const belege: SignedBeleg[] = [start]
 
     for (let i = 2; i <= 10; i++) {
-      const beleg = signiereBeleg({
+      const beleg = await signiereBeleg({
         kassenId:     KASSE,
         belegNummer:  i,
         datumUhrzeit: new Date(),
@@ -125,12 +125,12 @@ describe('Verkettung unter Last', () => {
     expect(pruefeKette(KASSE, manipuliert)).toBe(false)
   })
 
-  it('Wiederhergestellte Kasse setzt Kette korrekt fort', () => {
-    const { beleg: start, kontext } = erstelleStartbeleg(KASSE, see)
+  it('Wiederhergestellte Kasse setzt Kette korrekt fort', async () => {
+    const { beleg: start, kontext } = await erstelleStartbeleg(KASSE, see)
     const belege: SignedBeleg[] = [start]
 
     for (let i = 2; i <= 5; i++) {
-      const beleg = signiereBeleg({
+      const beleg = await signiereBeleg({
         kassenId:     KASSE,
         belegNummer:  i,
         datumUhrzeit: new Date(),
@@ -148,7 +148,7 @@ describe('Verkettung unter Last', () => {
       kontext.letzterBelegCode!,
     )
 
-    const naechsterBeleg = wiederhergestellt.signiereBeleg({
+    const naechsterBeleg = await wiederhergestellt.signiereBeleg({
       kassenId:     KASSE,
       belegNummer:  6,
       datumUhrzeit: new Date(),
@@ -160,14 +160,14 @@ describe('Verkettung unter Last', () => {
     expect(pruefeKette(KASSE, belege)).toBe(true)
   })
 
-  it('500 Belege Kettentest – keine Performance-Regression', () => {
-    const { beleg: start, kontext } = erstelleStartbeleg(KASSE, see)
+  it('500 Belege Kettentest – keine Performance-Regression', async () => {
+    const { beleg: start, kontext } = await erstelleStartbeleg(KASSE, see)
     const belege: SignedBeleg[] = [start]
 
     const t0 = Date.now()
 
     for (let i = 2; i <= 501; i++) {
-      const beleg = signiereBeleg({
+      const beleg = await signiereBeleg({
         kassenId:     KASSE,
         belegNummer:  i,
         datumUhrzeit: new Date(),
@@ -194,52 +194,52 @@ describe('AES-ICM Grenzwerte', () => {
   const key      = generiereAesSchluessel()
   const kassenId = KASSE
 
-  it('Nullwert (leerer Umsatz)', () => {
+  it('Nullwert (leerer Umsatz)', async () => {
     const enc = verschluesselUmsatzzaehler(0n, key, kassenId, 1)
     expect(entschluesselUmsatzzaehler(enc, key, kassenId, 1)).toBe(0n)
   })
 
-  it('Negativer Wert (Storno, -99999 Cent)', () => {
+  it('Negativer Wert (Storno, -99999 Cent)', async () => {
     const enc = verschluesselUmsatzzaehler(-99999n, key, kassenId, 1)
     expect(entschluesselUmsatzzaehler(enc, key, kassenId, 1)).toBe(-99999n)
   })
 
-  it('Sehr großer positiver Wert (Int64-Max = 9223372036854775807)', () => {
+  it('Sehr großer positiver Wert (Int64-Max = 9223372036854775807)', async () => {
     const max = 9223372036854775807n  // 2^63 - 1
     const enc = verschluesselUmsatzzaehler(max, key, kassenId, 99)
     expect(entschluesselUmsatzzaehler(enc, key, kassenId, 99)).toBe(max)
   })
 
-  it('Negativer Extremwert (Int64-Min = -9223372036854775808)', () => {
+  it('Negativer Extremwert (Int64-Min = -9223372036854775808)', async () => {
     const min = -9223372036854775808n  // -(2^63)
     const enc = verschluesselUmsatzzaehler(min, key, kassenId, 1)
     expect(entschluesselUmsatzzaehler(enc, key, kassenId, 1)).toBe(min)
   })
 
-  it('Einzelner Cent (1)', () => {
+  it('Einzelner Cent (1)', async () => {
     const enc = verschluesselUmsatzzaehler(1n, key, kassenId, 1)
     expect(entschluesselUmsatzzaehler(enc, key, kassenId, 1)).toBe(1n)
   })
 
-  it('Falscher Schlüssel liefert falsches Ergebnis', () => {
+  it('Falscher Schlüssel liefert falsches Ergebnis', async () => {
     const original = 1000n
     const enc = verschluesselUmsatzzaehler(original, key, kassenId, 1)
     expect(entschluesselUmsatzzaehler(enc, generiereAesSchluessel(), kassenId, 1)).not.toBe(original)
   })
 
-  it('Falsche Kassen-ID liefert falsches Ergebnis (IV-Abhängigkeit)', () => {
+  it('Falsche Kassen-ID liefert falsches Ergebnis (IV-Abhängigkeit)', async () => {
     const original = 1000n
     const enc = verschluesselUmsatzzaehler(original, key, kassenId, 1)
     expect(entschluesselUmsatzzaehler(enc, key, 'ANDERE-KASSE', 1)).not.toBe(original)
   })
 
-  it('Falsche Belegnummer liefert falsches Ergebnis', () => {
+  it('Falsche Belegnummer liefert falsches Ergebnis', async () => {
     const original = 50000n
     const enc = verschluesselUmsatzzaehler(original, key, kassenId, 1)
     expect(entschluesselUmsatzzaehler(enc, key, kassenId, 2)).not.toBe(original)
   })
 
-  it('Verschlüsselung ist 8 Bytes für alle Grenzwerte', () => {
+  it('Verschlüsselung ist 8 Bytes für alle Grenzwerte', async () => {
     const werte = [0n, 1n, -1n, 9223372036854775807n, -9223372036854775808n, 999999999999n]
     for (const wert of werte) {
       const enc = verschluesselUmsatzzaehler(wert, key, kassenId, 1)
@@ -247,7 +247,7 @@ describe('AES-ICM Grenzwerte', () => {
     }
   })
 
-  it('IV: Spec-Konstruktion, 16 Byte, große Belegnummer (2^32 - 1)', () => {
+  it('IV: Spec-Konstruktion, 16 Byte, große Belegnummer (2^32 - 1)', async () => {
     const iv = berechneIV(kassenId, 0xFFFFFFFF)
     expect(iv).toHaveLength(16)
     expect(iv.equals(berechneIV(kassenId, 0xFFFFFFFF))).toBe(true)  // deterministisch
@@ -283,8 +283,8 @@ describe('Alle Belegtypen', () => {
     'Trainingsbeleg',
   ]
 
-  it('jeder Belegtyp erzeugt einen gültigen maschinenlesbaren Code', () => {
-    const { kontext } = erstelleStartbeleg(KASSE, see)
+  it('jeder Belegtyp erzeugt einen gültigen maschinenlesbaren Code', async () => {
+    const { kontext } = await erstelleStartbeleg(KASSE, see)
 
     for (let i = 0; i < belegTypen.length; i++) {
       const typ = belegTypen[i]!
@@ -297,7 +297,7 @@ describe('Alle Belegtypen', () => {
           ? [{ bezeichnung: 'Test', menge: 1, einzelpreisBreutto: 100, mwstSatz: 'normal' }]
           : [],
       }
-      const beleg = signiereBeleg(raw, kontext)
+      const beleg = await signiereBeleg(raw, kontext)
       kontext.letzterBelegCode = beleg.maschinenlesbareCode
 
       expect(beleg.maschinenlesbareCode).toMatch(/^_R1-AT0_/)
@@ -306,15 +306,15 @@ describe('Alle Belegtypen', () => {
     }
   })
 
-  it('Startbeleg: Umsatzzähler bleibt 0', () => {
-    const { beleg, kontext } = erstelleStartbeleg(KASSE, see)
+  it('Startbeleg: Umsatzzähler bleibt 0', async () => {
+    const { beleg, kontext } = await erstelleStartbeleg(KASSE, see)
     expect(kontext.umsatzzaehler.aktuell).toBe(0n)
     expect(beleg.belegTyp).toBe('Startbeleg')
   })
 
-  it('Barzahlungsbeleg: Umsatzzähler steigt', () => {
-    const { kontext } = erstelleStartbeleg(KASSE, see)
-    signiereBeleg({
+  it('Barzahlungsbeleg: Umsatzzähler steigt', async () => {
+    const { kontext } = await erstelleStartbeleg(KASSE, see)
+    await signiereBeleg({
       kassenId: KASSE, belegNummer: 2,
       datumUhrzeit: new Date(), belegTyp: 'Barzahlungsbeleg',
       positionen: [{ bezeichnung: 'X', menge: 1, einzelpreisBreutto: 1000, mwstSatz: 'normal' }],
@@ -322,10 +322,10 @@ describe('Alle Belegtypen', () => {
     expect(kontext.umsatzzaehler.aktuell).toBe(1000n)
   })
 
-  it('Stornobeleg: Umsatzzähler sinkt (negativer Betrag)', () => {
-    const { kontext } = erstelleStartbeleg(KASSE, see)
+  it('Stornobeleg: Umsatzzähler sinkt (negativer Betrag)', async () => {
+    const { kontext } = await erstelleStartbeleg(KASSE, see)
     // Erst Barzahlung
-    signiereBeleg({
+    await signiereBeleg({
       kassenId: KASSE, belegNummer: 2,
       datumUhrzeit: new Date(), belegTyp: 'Barzahlungsbeleg',
       positionen: [{ bezeichnung: 'Kaffee', menge: 1, einzelpreisBreutto: 350, mwstSatz: 'ermaessigt1' }],
@@ -333,7 +333,7 @@ describe('Alle Belegtypen', () => {
 
     const vorStorno = kontext.umsatzzaehler.aktuell
     // Dann Storno (negative Menge → negativer Betrag)
-    signiereBeleg({
+    await signiereBeleg({
       kassenId: KASSE, belegNummer: 3,
       datumUhrzeit: new Date(), belegTyp: 'Stornobeleg',
       positionen: [{ bezeichnung: 'Kaffee (Storno)', menge: -1, einzelpreisBreutto: 350, mwstSatz: 'ermaessigt1' }],
@@ -342,12 +342,10 @@ describe('Alle Belegtypen', () => {
     expect(kontext.umsatzzaehler.aktuell).toBe(vorStorno - 350n)
   })
 
-  it.each(['Monatsbeleg', 'Jahresbeleg', 'Trainingsbeleg', 'Schlussbeleg'] as BelegTyp[])(
-    '%s: ändert Umsatzzähler NICHT',
-    (typ) => {
-      const { kontext } = erstelleStartbeleg(KASSE, see)
+  it.each(['Monatsbeleg', 'Jahresbeleg', 'Trainingsbeleg', 'Schlussbeleg'] as BelegTyp[])('%s: ändert Umsatzzähler NICHT', async (typ) => {
+      const { kontext } = await erstelleStartbeleg(KASSE, see)
       const vorher = kontext.umsatzzaehler.aktuell
-      signiereBeleg({
+      await signiereBeleg({
         kassenId: KASSE, belegNummer: 2,
         datumUhrzeit: new Date(), belegTyp: typ,
         positionen: typ === 'Trainingsbeleg'
@@ -358,9 +356,9 @@ describe('Alle Belegtypen', () => {
     },
   )
 
-  it('QR-Code-Format: alle 13 Felder vorhanden (Barzahlungsbeleg)', () => {
-    const { kontext } = erstelleStartbeleg(KASSE, see)
-    const beleg = signiereBeleg({
+  it('QR-Code-Format: alle 13 Felder vorhanden (Barzahlungsbeleg)', async () => {
+    const { kontext } = await erstelleStartbeleg(KASSE, see)
+    const beleg = await signiereBeleg({
       kassenId: KASSE, belegNummer: 2,
       datumUhrzeit: new Date('2026-06-16T09:00:00'), belegTyp: 'Barzahlungsbeleg',
       positionen: [{ bezeichnung: 'Test', menge: 1, einzelpreisBreutto: 1000, mwstSatz: 'normal' }],
@@ -382,12 +380,12 @@ describe('Alle Belegtypen', () => {
 // ---------------------------------------------------------------------------
 
 describe('DEP7-Format', () => {
-  it('valider Export mit 50 Belegen – alle validiert', () => {
-    const { beleg: start, kontext } = erstelleStartbeleg(KASSE, see)
+  it('valider Export mit 50 Belegen – alle validiert', async () => {
+    const { beleg: start, kontext } = await erstelleStartbeleg(KASSE, see)
     const belege: SignedBeleg[] = [start]
 
     for (let i = 2; i <= 51; i++) {
-      const beleg = signiereBeleg({
+      const beleg = await signiereBeleg({
         kassenId: KASSE, belegNummer: i,
         datumUhrzeit: new Date(), belegTyp: 'Barzahlungsbeleg',
         positionen: [{ bezeichnung: 'Pos', menge: 1, einzelpreisBreutto: 100, mwstSatz: 'normal' }],
@@ -404,9 +402,9 @@ describe('DEP7-Format', () => {
     expect(result.fehler).toHaveLength(0)
   })
 
-  it('DEP7-JSON: Serialisierung und Deserialisierung erhält alle Daten', () => {
-    const { beleg: start, kontext } = erstelleStartbeleg(KASSE, see)
-    const beleg2 = signiereBeleg({
+  it('DEP7-JSON: Serialisierung und Deserialisierung erhält alle Daten', async () => {
+    const { beleg: start, kontext } = await erstelleStartbeleg(KASSE, see)
+    const beleg2 = await signiereBeleg({
       kassenId: KASSE, belegNummer: 2,
       datumUhrzeit: new Date(), belegTyp: 'Barzahlungsbeleg',
       positionen: [{ bezeichnung: 'Test', menge: 1, einzelpreisBreutto: 500, mwstSatz: 'normal' }],
@@ -423,8 +421,8 @@ describe('DEP7-Format', () => {
     expect(parsed['Belege-Gruppe'][0]?.['Belege-kompakt']).toHaveLength(2)
   })
 
-  it('DEP7: jede Gruppe enthält Signaturzertifikat', () => {
-    const { beleg: start } = erstelleStartbeleg(KASSE, see)
+  it('DEP7: jede Gruppe enthält Signaturzertifikat', async () => {
+    const { beleg: start } = await erstelleStartbeleg(KASSE, see)
     const dep = erstelleDEP7Export([start], see)
 
     for (const pkg of dep['Belege-Gruppe']) {
@@ -433,9 +431,9 @@ describe('DEP7-Format', () => {
     }
   })
 
-  it('DEP7: alle Einträge sind RKSV-JWS (Payload beginnt mit _R1-)', () => {
-    const { beleg: start, kontext } = erstelleStartbeleg(KASSE, see)
-    const beleg2 = signiereBeleg({
+  it('DEP7: alle Einträge sind RKSV-JWS (Payload beginnt mit _R1-)', async () => {
+    const { beleg: start, kontext } = await erstelleStartbeleg(KASSE, see)
+    const beleg2 = await signiereBeleg({
       kassenId: KASSE, belegNummer: 2,
       datumUhrzeit: new Date(), belegTyp: 'Monatsbeleg',
       positionen: [],
@@ -452,7 +450,7 @@ describe('DEP7-Format', () => {
     }
   })
 
-  it('DEP7: ungültiger Eintrag wird als Fehler gemeldet', () => {
+  it('DEP7: ungültiger Eintrag wird als Fehler gemeldet', async () => {
     const dep = {
       'Belege-Gruppe': [{
         Signaturzertifikat: 'CERT',
@@ -465,12 +463,12 @@ describe('DEP7-Format', () => {
     expect(result.fehler.length).toBeGreaterThan(0)
   })
 
-  it('DEP7: Verkettung der Belege bleibt nach DEP7-Roundtrip rekonstruierbar', () => {
-    const { beleg: start, kontext } = erstelleStartbeleg(KASSE, see)
+  it('DEP7: Verkettung der Belege bleibt nach DEP7-Roundtrip rekonstruierbar', async () => {
+    const { beleg: start, kontext } = await erstelleStartbeleg(KASSE, see)
     const alleSignedBelege: SignedBeleg[] = [start]
 
     for (let i = 2; i <= 5; i++) {
-      const beleg = signiereBeleg({
+      const beleg = await signiereBeleg({
         kassenId: KASSE, belegNummer: i,
         datumUhrzeit: new Date(), belegTyp: 'Barzahlungsbeleg',
         positionen: [{ bezeichnung: 'X', menge: 1, einzelpreisBreutto: 100, mwstSatz: 'normal' }],

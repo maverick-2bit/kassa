@@ -66,7 +66,7 @@ export async function kasseAbgeben(
     belegTyp:     'Schlussbeleg',
     positionen:   [],
   }
-  const schlussbeleg = signiereBeleg(schlussRaw, kontext)
+  const schlussbeleg = await signiereBeleg(schlussRaw, kontext)
 
   // DEP7-Export
   const depExport = erstelleDEP7Export([...alleBelege, schlussbeleg], kontext.see)
@@ -138,7 +138,7 @@ export async function kasseUebernehmen(
     belegTyp:     'Startbeleg',
     positionen:   [],
   }
-  const startbeleg = signiereBeleg(startRaw, kontext)
+  const startbeleg = await signiereBeleg(startRaw, kontext)
   kontext.letzterBelegCode = startbeleg.maschinenlesbareCode
 
   // Startbeleg bei FinanzOnline prüfen

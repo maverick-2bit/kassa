@@ -38,6 +38,9 @@ import type {
   FavoritenReihenfolgeUpdate,
   LagerstandBulkInput,
   SbBestellung,
+  SeeConfig,
+  SeeConfigUpdate,
+  SeeTestErgebnis,
   Seriennummer,
   TischplanBereich,
   TischplanBereichErstellen,
@@ -411,6 +414,19 @@ export const preisregelApi = {
     request<Preisregel>('PATCH', `/api/preisregeln/${id}`, input),
   remove: (id: string) =>
     request<void>('DELETE', `/api/preisregeln/${id}`),
+}
+
+// ---------------------------------------------------------------------------
+// Signaturerstellungseinheit (SEE) je Kasse
+// ---------------------------------------------------------------------------
+
+export const seeApi = {
+  get:    (kasseId: string) =>
+    request<SeeConfig>('GET', `/api/kassen/${kasseId}/see`),
+  test:   (kasseId: string, input: SeeConfigUpdate) =>
+    request<SeeTestErgebnis>('POST', `/api/kassen/${kasseId}/see/test`, input),
+  update: (kasseId: string, input: SeeConfigUpdate) =>
+    request<SeeTestErgebnis>('PATCH', `/api/kassen/${kasseId}/see`, input),
 }
 
 // ---------------------------------------------------------------------------
