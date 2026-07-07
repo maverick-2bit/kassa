@@ -891,6 +891,16 @@ export async function listeBelege(
   return rows.map(r => toDto(r, r.positionen as BelegPosition[]))
 }
 
+/** Einzelnen Beleg laden (mandanten-scoped) — z. B. für den Rechnungsdruck am KDS. */
+export async function holeBeleg(db: Db, belegId: string, mandantId: string): Promise<BelegResponse | null> {
+  const [row] = await db
+    .select()
+    .from(belege)
+    .where(and(eq(belege.id, belegId), eq(belege.mandantId, mandantId)))
+    .limit(1)
+  return row ? toDto(row, row.positionen as BelegPosition[]) : null
+}
+
 // ---------------------------------------------------------------------------
 // DEP-Export (DEP7 + DEP131)
 // ---------------------------------------------------------------------------

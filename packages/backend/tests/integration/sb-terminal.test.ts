@@ -252,6 +252,24 @@ describe('SB-Terminal (Integration, echtes PostgreSQL)', () => {
     await idb.db.update(kassen).set({ zvtAktiv: false, zvtIp: null }).where(eq(kassen.id, kasseId))
   }, 20_000)
 
+  it('KDS-Rechnungsdruck: Endpoint liefert Beleg + Mandant zur SB-Bestellung', async () => {
+    const res = await srv.fastify.inject({
+      method: 'GET', url: `/api/kds/sb/${ersteBestellungId}/rechnung`, headers: auth(),
+    })
+    expect(res.statusCode).toBe(200)
+    const antwort = res.json() as {
+      beleg: { belegTyp: string; summeKarteCent: number; signaturwert: string }
+      mandant: { firmenname: string; uid: string }
+      bestellNummer: number
+    }
+    expect(antwort.bestellNummer).toBe(1)
+    expect(antwort.beleg.belegTyp).toBe('Barzahlungsbeleg')
+    expect(antwort.beleg.summeKarteCent).toBe(2 * 890 + 450)
+    expect(antwort.beleg.signaturwert).toBeTruthy()
+    expect(antwort.mandant.firmenname).toBe('SB-Terminal Test GmbH')
+    expect(antwort.mandant.uid).toBe('ATU99999906')
+  })
+
   it('Abbruch im Demo-Modus setzt die Bestellung auf „abgebrochen"', async () => {
     const anlage = await srv.fastify.inject({
       method: 'POST', url: '/api/terminal/bestellung',
