@@ -5,7 +5,6 @@ import type {
   Artikel,
   BelegResponse,
   BonierungErgebnis,
-  BonierungInput,
   ModifikatorAuswahl,
   ModifikatorGruppe,
   RabattInput,
@@ -33,6 +32,7 @@ import { Input } from '../components/ui/Input'
 import { BonAnzeige } from '../components/BonAnzeige'
 import { KartenzahlungModal } from '../components/KartenzahlungModal'
 import { RabattModal } from '../components/RabattModal'
+import { BarRueckgeldModal } from '../components/BarRueckgeldModal'
 import { ArtikelGrid } from '../components/ArtikelGrid'
 
 // ---------------------------------------------------------------------------
@@ -76,6 +76,7 @@ export function TischTabPage() {
   const [umbenennenOffen, setUmbenennenOffen]       = useState(false)
   const [splitOffen, setSplitOffen]                 = useState(false)
   const [verlaufOffen, setVerlaufOffen]             = useState(false)
+  const [barGebenOffen, setBarGebenOffen]           = useState(false)
 
   const zvtCfg = useQuery({
     queryKey: ['zvt', identity.kasseId],
@@ -222,25 +223,37 @@ export function TischTabPage() {
   // Mutations
   // ---------------------------------------------------------------------------
 
-  const speichernMutation = useMutation({
-    mutationFn: (positionen: TabPosition[]) =>
-      tischTabApi.aktualisierePositionen(tabId!, positionen),
-    onSuccess: () => {
+  // Parken = Positionen auf den Tisch buchen. Boniert Küche/Drucker, wo Artikel
+  // zugeordnet sind; Artikel OHNE KDS-Station/Bonierdrucker werden trotzdem
+  // gespeichert (das „nichts zu bonieren" des Servers wird geschluckt).
+  const parkenMutation = useMutation({
+    mutationFn: async () => {
+      let ergebnis: BonierungErgebnis | null = null
+      try {
+        ergebnis = await bonierApi.bonieren({
+          kasseId:    identity.kasseId,
+          tabId:      tabId!,
+          tisch:      tab?.tischNummer ?? '',
+          kellner:    tab?.kellner ?? '',
+          positionen: korb.map(p => ({ artikelId: p.artikel.id, menge: p.menge })),
+        })
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        if (!/nichts zu bonieren/i.test(msg)) throw err  // echte Fehler weiterreichen
+      }
+      // Immer speichern (Parken bucht die Positionen auf den Tisch)
+      await tischTabApi.aktualisierePositionen(tabId!, allePositionen)
+      return ergebnis
+    },
+    onSuccess: (ergebnis) => {
+      // Bonier-Ergebnis nur zeigen, wenn wirklich etwas an Küche/Drucker ging
+      if (ergebnis && (ergebnis.stationen.length > 0 || ergebnis.drucker.length > 0)) {
+        setBonierungErgebnis(ergebnis)
+      }
       qc.invalidateQueries({ queryKey: ['tisch-tab', tabId] })
+      qc.invalidateQueries({ queryKey: ['artikel', identity.mandantId] })
       setKorb([])
       setFehler(null)
-    },
-    onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
-  })
-
-  const bonierMutation = useMutation({
-    mutationFn: (input: BonierungInput) => bonierApi.bonieren(input),
-    onSuccess: async (ergebnis) => {
-      setBonierungErgebnis(ergebnis)
-      // Neuen Korb-Inhalt zum Tab speichern
-      await speichernMutation.mutateAsync(allePositionen)
-      // Artikel neu laden, damit dekrementierte Restbestände sofort sichtbar sind
-      qc.invalidateQueries({ queryKey: ['artikel', identity.mandantId] })
     },
     onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
   })
@@ -306,22 +319,10 @@ export function TischTabPage() {
   // Handler
   // ---------------------------------------------------------------------------
 
-  const handleBonieren = () => {
+  const handleParken = () => {
     setFehler(null)
     if (korb.length === 0) { setFehler('Keine neuen Artikel im Warenkorb.'); return }
-    // Alle Positionen senden — Server entscheidet über KDS- und Bonierdrucker-Routing
-    bonierMutation.mutate({
-      kasseId:    identity.kasseId,
-      tabId:      tabId,
-      tisch:      tab?.tischNummer ?? '',
-      kellner:    tab?.kellner ?? '',
-      positionen: korb.map(p => ({ artikelId: p.artikel.id, menge: p.menge })),
-    })
-  }
-
-  const handleHinzufuegen = () => {
-    if (korb.length === 0) return
-    speichernMutation.mutate(allePositionen)
+    parkenMutation.mutate()
   }
 
   const handlePosRabatteBestaetigen = (neuePosRabatte: Record<number, number>) => {
@@ -501,26 +502,17 @@ export function TischTabPage() {
               <div className="rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">{fehler}</div>
             )}
 
-            {/* Warenkorb-Aktionen */}
+            {/* Warenkorb-Aktion: „Parken" bucht die neuen Positionen auf den Tisch
+                (boniert Küche/Drucker wo zugeordnet, speichert immer) */}
             {korb.length > 0 && (
-              <div className="flex gap-2">
-                <Button
-                  variant="secondary"
-                  onClick={handleBonieren}
-                  loading={bonierMutation.isPending}
-                  className="flex-1 text-xs"
-                >
-                  Bonieren + Speichern
-                </Button>
-                <Button
-                  variant="secondary"
-                  onClick={handleHinzufuegen}
-                  loading={speichernMutation.isPending}
-                  className="flex-1 text-xs"
-                >
-                  Nur speichern
-                </Button>
-              </div>
+              <Button
+                variant="secondary"
+                onClick={handleParken}
+                loading={parkenMutation.isPending}
+                className="w-full text-xs"
+              >
+                Parken
+              </Button>
             )}
 
             {/* Rabatt auf den ganzen Tisch (vor der Zahlung) */}
@@ -565,6 +557,16 @@ export function TischTabPage() {
               </Button>
             </div>
 
+            {/* Optional: gegebenen Bar-Betrag eingeben → Retourgeld berechnen (Bar bleibt Ein-Klick) */}
+            <button
+              type="button"
+              onClick={() => { setFehler(null); setBarGebenOffen(true) }}
+              disabled={gesamt === 0 || bezahlenMutation.isPending}
+              className="self-start text-xs text-brand-600 hover:underline font-medium disabled:text-ink-subtle disabled:no-underline"
+            >
+              € Betrag geben (Retourgeld)…
+            </button>
+
             <div className="flex gap-2">
               <Button
                 variant="secondary"
@@ -603,6 +605,13 @@ export function TischTabPage() {
         summeCent={gesamtVorRabatt}
         onSubmit={(r) => { setRabatt(r); setRabattOffen(false) }}
         onClose={() => setRabattOffen(false)}
+      />
+
+      <BarRueckgeldModal
+        open={barGebenOffen}
+        summeCent={gesamt}
+        onClose={() => setBarGebenOffen(false)}
+        onBuchen={() => { setBarGebenOffen(false); handleBarBezahlen() }}
       />
 
       <ArtikelRabatteModal

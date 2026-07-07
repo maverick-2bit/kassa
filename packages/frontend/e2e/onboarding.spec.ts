@@ -425,8 +425,9 @@ test('Tisch-Split: Rechnung auf 2 Zahler teilen schließt den Tab mit 2 Bons', a
   await page.getByRole('button', { name: 'Kaffee' }).first().click()
   await page.getByRole('button', { name: 'Kaffee' }).first().click()
 
-  // Ohne Bonieren speichern (kein KDS/Bonierdrucker konfiguriert)
-  await page.getByRole('button', { name: 'Nur speichern' }).click()
+  // Parken bucht auf den Tisch (Artikel ohne KDS/Bonierdrucker → „nichts zu
+  // bonieren" wird geschluckt, gespeichert wird trotzdem)
+  await page.getByRole('button', { name: 'Parken' }).click()
   await expect(page.getByText('2× Kaffee')).toBeVisible({ timeout: 10_000 })
 
   // ---- Rechnung teilen: Zahler 1 startet mit allem → 1× zu Zahler 2 schieben ----
@@ -931,8 +932,8 @@ test('Modifikator-Lagerstand: bonierte Option zieht den Varianten-Bestand ab', a
   await page.getByRole('button', { name: new RegExp(optName) }).click()
   await page.getByRole('button', { name: /Hinzufügen/ }).click()
 
-  // Positionen speichern → Tisch-Tab-Service zieht den Modifikator-Bestand ab
-  await page.getByRole('button', { name: 'Nur speichern' }).click()
+  // Parken speichert die Positionen → Tisch-Tab-Service zieht den Modifikator-Bestand ab
+  await page.getByRole('button', { name: 'Parken' }).click()
 
   // Varianten-Bestand ist von 5 auf 4 gesunken
   await expect.poll(async () => {
@@ -1507,7 +1508,7 @@ test('Tisch umbuchen: gebuchten Tisch auf einen anderen Tisch verschieben', asyn
   await page.getByRole('button', { name: 'Tisch öffnen' }).click()
   await expect(page.getByRole('heading', { name: `Tisch ${tischAlt}` })).toBeVisible({ timeout: 10_000 })
   await page.getByRole('button', { name: art }).first().click()
-  await page.getByRole('button', { name: 'Nur speichern' }).click()
+  await page.getByRole('button', { name: 'Parken' }).click()
 
   // Umbuchen: „Tisch wechseln" → neuen Tisch eingeben → „Umbuchen"
   await page.getByRole('button', { name: /Tisch wechseln/ }).click()
