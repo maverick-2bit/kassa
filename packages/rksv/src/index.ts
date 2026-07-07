@@ -28,6 +28,7 @@ export type {
   FinanzOnlineCredentials,
   KassenRegistrierung,
   RegistrierungErgebnis,
+  ArtSe,
   BetreiberwechselExport,
   BetreiberwechselImport,
 } from './types.js'
@@ -75,7 +76,17 @@ export { erstelleDEP7Export, mergeDEP7Exports, validiereDEP7, dep7ZuJson, dep7Au
 export type { DEP7ValidationResult } from './dep.js'
 
 // FinanzOnline
-export { FinanzOnlineClient } from './finanz-online.js'
+export { FinanzOnlineClient, zertSeriennummerDezimal } from './finanz-online.js'
+export { fonLogin, fonLogout } from './fon/session.js'
+export {
+  baueRkdbBody,
+  datensatzRegistrierungSe,
+  datensatzRegistrierungKasse,
+  rkdbRegistriere,
+  rkdbStatusKasse,
+  rkdbStatusSe,
+} from './fon/rkdb.js'
+export { xmlEscape, extractValue, extractAll, soapEnvelope, FonSoapError } from './fon/soap.js'
 
 // Setup-Orchestrierung (automatische Einrichtung)
 export {

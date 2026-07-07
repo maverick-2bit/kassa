@@ -243,17 +243,32 @@ export interface DEP131BelegInput {
 // ---------------------------------------------------------------------------
 
 export interface FinanzOnlineCredentials {
-  /** Teilnehmer-ID (z. B. "TID/BID") */
+  /** Teilnehmer-Identifikation (TID) */
   teilnehmerId: string
+  /** Benutzer-Identifikation (BENID) */
   benutzerkennung: string
   pin: string
+  /**
+   * Software-Hersteller-ID (10–24 Zeichen), bei BMF registriert. Optional —
+   * fehlt sie, wird die konfigurierte Default-Hersteller-ID verwendet.
+   */
+  herstellerId?: string
 }
+
+/** Art der Signaturerstellungseinheit im FON-rkdb-Datensatz `registrierung_se`. */
+export type ArtSe = 'SIGNATURKARTE' | 'EIGENES_HSM' | 'HSM_DIENSTLEISTER'
 
 export interface KassenRegistrierung {
   kassenId:        string
   uid:             string
   zertifikatDER:   Buffer
   credentials:     FinanzOnlineCredentials
+  /** Umsatzzähler-AES-Schlüssel base64 (FON-Feld `benutzerschluessel`) */
+  benutzerschluesselBase64: string
+  /** ZDA-/VDA-Kennung (FON-Feld `vda_id`), z. B. 'AT1' (A-Trust), 'AT0' (Software) */
+  vdaId:           string
+  /** Art der SEE (FON-Feld `art_se`) */
+  artSe:           ArtSe
 }
 
 export interface RegistrierungErgebnis {

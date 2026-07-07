@@ -760,6 +760,9 @@ export async function registriereKasseBeiFinanzOnline(
       kassenId:          kassen.kassenId,
       umgebung:          kassen.umgebung,
       seeZertifikatDer:  kassen.seeZertifikatDer,
+      seeZdaId:          kassen.seeZdaId,
+      seeTyp:            kassen.seeTyp,
+      aesSchluesselEnc:  kassen.aesSchluesselEnc,
       registriert:       kassen.bei_fo_registriert,
       uid:               mandanten.uid,
     })
@@ -769,24 +772,34 @@ export async function registriereKasseBeiFinanzOnline(
   const k = rows[0]
   if (!k) throw new BelegError(404, 'Kasse nicht gefunden')
   if (k.registriert) throw new BelegError(409, 'Kasse ist bereits bei FinanzOnline registriert')
+  if (!k.aesSchluesselEnc) throw new BelegError(409, 'Kasse hat noch keinen Umsatzzähler-Schlüssel — bitte zuerst einen Beleg erstellen')
 
   const client = deps.finanzOnlineClient
     ?? new FinanzOnlineClient(k.umgebung === 'test' ? 'test' : 'produktion')
   const zertifikatDER = Buffer.from(k.seeZertifikatDer, 'base64')
+  const aesSchluessel = decryptPrivateKey(k.aesSchluesselEnc, deps.masterPassphrase)
 
-  // 1. SEE + Kasse bei FinanzOnline registrieren
-  const reg = await client.kasseInBetriebNehmen({ kassenId: k.kassenId, uid: k.uid, zertifikatDER, credentials })
+  // 1. SEE + Kasse bei FinanzOnline registrieren (benutzerschluessel = AES-Schlüssel base64)
+  const reg = await client.kasseInBetriebNehmen({
+    kassenId:      k.kassenId,
+    uid:           k.uid,
+    zertifikatDER,
+    credentials,
+    benutzerschluesselBase64: aesSchluessel.toString('base64'),
+    vdaId:         k.seeZdaId,
+    artSe:         k.seeTyp === 'atrust_hsm' ? 'HSM_DIENSTLEISTER' : 'EIGENES_HSM',
+  })
   if (!reg.erfolgreich) throw new BelegError(502, reg.fehler ?? 'FinanzOnline-Registrierung fehlgeschlagen')
 
-  // 2. Bestehenden Startbeleg prüfen lassen
+  // 2. Kassen-Status abfragen (Startbeleg selbst wird mit der BMF-BelegCheck-App geprüft)
   const [sb] = await deps.db
     .select({ code: belege.maschinenlesbareCode })
     .from(belege)
     .where(and(eq(belege.kasseId, kasseId), eq(belege.belegTyp, 'Startbeleg'))).limit(1)
   let pruefwert: string | undefined
   if (sb) {
-    const pruef = await client.startbelegPruefen({ maschinenlesbareCode: sb.code } as unknown as SignedBeleg, credentials)
-    if (!pruef.erfolgreich) throw new BelegError(502, pruef.fehler ?? 'Startbeleg-Prüfung fehlgeschlagen')
+    const pruef = await client.startbelegPruefen({ maschinenlesbareCode: sb.code } as unknown as SignedBeleg, credentials, k.kassenId)
+    if (!pruef.erfolgreich) throw new BelegError(502, pruef.fehler ?? 'Kassen-Statusabfrage fehlgeschlagen')
     pruefwert = pruef.pruefwert
   }
 

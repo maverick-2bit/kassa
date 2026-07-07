@@ -67,8 +67,9 @@ export function FoStatusBanner() {
         {offen && (
           <div className="mt-2.5 rounded-md bg-amber-50 border border-amber-300 p-3">
             <p className="text-xs text-amber-800 mb-2">
-              FinanzOnline-Zugangsdaten eingeben — die Kasse und Signatureinrichtung werden registriert
-              und der Startbeleg geprüft. Die Zugangsdaten werden nicht gespeichert.
+              FinanzOnline-Zugangsdaten eingeben — Kasse und Signatureinrichtung werden registriert
+              und der Kassenstatus abgefragt (den Startbeleg prüfst du danach mit der BMF-BelegCheck-App).
+              Die Zugangsdaten werden nicht gespeichert.
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <input value={tid} onChange={e => setTid(e.target.value)} placeholder="Teilnehmer-ID (TID)" autoComplete="off"

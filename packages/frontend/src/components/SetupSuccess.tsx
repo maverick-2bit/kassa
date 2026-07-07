@@ -17,8 +17,9 @@ export function SetupSuccess({ data }: Props) {
           Kasse erfolgreich eingerichtet
         </h2>
         <p className="mt-2 max-w-sm text-sm text-ink-muted">
-          Die Kasse ist bei FinanzOnline registriert und der Startbeleg wurde geprüft.
-          Sie können jetzt Belege erstellen.
+          Die Kasse ist bei FinanzOnline registriert. Prüfe den Startbeleg zum
+          Abschluss mit der BMF-BelegCheck-App (QR-Code scannen). Du kannst jetzt
+          Belege erstellen.
         </p>
       </div>
 
@@ -30,7 +31,7 @@ export function SetupSuccess({ data }: Props) {
           </div>
           {data.pruefwert && (
             <div className="sm:col-span-2">
-              <dt className="font-medium text-ink-muted">FinanzOnline-Prüfwert</dt>
+              <dt className="font-medium text-ink-muted">FinanzOnline-Kassenstatus</dt>
               <dd className="font-mono text-xs text-ink break-all">{data.pruefwert}</dd>
             </div>
           )}

@@ -1,24 +1,21 @@
 /**
- * FinanzOnline RKSV WebService Client
+ * FinanzOnline RKSV-WebService-Client — gegen die ECHTE BMF-Schnittstelle.
  *
- * ⚠️ ACHTUNG — ENTSPRICHT NICHT DER ECHTEN BMF-SCHNITTSTELLE.
- * Diese Implementierung wurde nie gegen den realen FinanzOnline-Webservice
- * validiert und weicht auf JEDER Ebene ab (Endpoint, Namespace, Auth,
- * Operationsnamen, Payload, Response). Sie funktioniert bisher nur gegen den
- * eigenen Stub (FO_STUB). Vor Produktivbetrieb ist eine Neuimplementierung
- * gegen die echte Schnittstelle + Validierung mit einem FinanzOnline-
- * Webservice-Testbenutzer zwingend. Details + korrekte Struktur:
- *   packages/rksv/FINANZONLINE-ABGLEICH.md
+ * Session-basiert (session.xsd + regKasseWs.xsd/regKasse.xsd):
+ *   1. login(tid, benid, pin, herstellerid) am Session-WS → Session-ID
+ *   2. rkdb(id, art_uebermittlung, <Aktion>) am RegKasse-WS
+ *      (EINE Operation; Aktion = registrierung_se/-kasse | status_kasse/-se)
+ *   3. logout(tid, benid, id)
  *
- * Echte Schnittstelle (BMF, Session-basiert):
- *   Session-WS:  https://finanzonline.bmf.gv.at/fonws/ws/session   (login/logout)
- *   RegKasse-WS: https://finanzonline.bmf.gv.at/fonws/ws/rkdb       (nur „rkdb")
- *   Ablauf: login(tid,benid,pin) → Session-ID → rkdb(id, Datensätze) → logout.
+ * `art_uebermittlung` = 'T' (Test, verbucht nichts) für Kassen der Umgebung
+ * 'test', sonst 'P' (Produktion).
  *
- * Der übrige RKSV-Kern (SEE-Signatur, Umsatzzähler, DEP, Belegkette) ist von
- * diesem Mangel NICHT betroffen und korrekt.
+ * Die Startbeleg-Prüfung läuft NICHT über diesen WebService, sondern über die
+ * BMF-BelegCheck-App bzw. den DEP-Upload — `startbelegPruefen` fragt daher den
+ * Kassen-Status ab, statt den Beleg zu übermitteln.
  *
- * Implementiert als direkte SOAP-Aufrufe via fetch (kein node-soap).
+ * Die Fassade behält die bisherigen Methodensignaturen bei; die Aufrufer im
+ * Backend bleiben stabil.
  */
 
 import { X509Certificate } from 'node:crypto'
@@ -28,275 +25,182 @@ import type {
   RegistrierungErgebnis,
   SignedBeleg,
 } from './types.js'
+import { fonLogin, fonLogout } from './fon/session.js'
+import {
+  rkdbRegistriere,
+  rkdbStatusKasse,
+  rkdbStatusSe,
+  rkdbAktion,
+  type ArtUebermittlung,
+  type RkdbSession,
+} from './fon/rkdb.js'
+import { xmlEscape } from './fon/soap.js'
 
 // ---------------------------------------------------------------------------
 // Endpunkte
 // ---------------------------------------------------------------------------
 
+const BASIS = 'https://finanzonline.bmf.gv.at/fonws/ws'
 const ENDPOINTS = {
-  produktion: 'https://finanzonline.bmf.gv.at/fon/ws/rksv/',
-  test:       'https://finanzonline-test.bmf.gv.at/fon/ws/rksv/',
+  session: `${BASIS}/session`,
+  rkdb:    `${BASIS}/rkdb`,
 } as const
 
-type Umgebung = keyof typeof ENDPOINTS
+/** Default-Software-Hersteller-ID (bei BMF zu registrieren; via Credentials überschreibbar). */
+const DEFAULT_HERSTELLER_ID = 'ATU_KASSA_RKSV_0001'
 
-// ---------------------------------------------------------------------------
-// SOAP-Hilfsfunktionen
-// ---------------------------------------------------------------------------
-
-function soapEnvelope(body: string): string {
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<soapenv:Envelope
-  xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
-  xmlns:rksv="https://finanzonline.bmf.gv.at/fon/ws/rksv">
-  <soapenv:Header/>
-  <soapenv:Body>
-    ${body}
-  </soapenv:Body>
-</soapenv:Envelope>`
-}
-
-function extractSoapValue(xml: string, tag: string): string | undefined {
-  const regex = new RegExp(`<(?:[^:>]+:)?${tag}[^>]*>([\\s\\S]*?)<\\/(?:[^:>]+:)?${tag}>`)
-  return regex.exec(xml)?.[1]?.trim()
-}
-
-async function soapRequest(
-  endpoint: string,
-  action: string,
-  body: string,
-): Promise<string> {
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'text/xml; charset=utf-8',
-      'SOAPAction':   `"${action}"`,
-    },
-    body: soapEnvelope(body),
-  })
-
-  if (!response.ok) {
-    throw new Error(`FinanzOnline HTTP ${response.status}: ${await response.text()}`)
-  }
-
-  return response.text()
-}
-
-// ---------------------------------------------------------------------------
-// FinanzOnline Client
-// ---------------------------------------------------------------------------
+type Umgebung = 'produktion' | 'test'
 
 export class FinanzOnlineClient {
-  private endpoint: string
+  private readonly artUebermittlung: ArtUebermittlung
 
   constructor(umgebung: Umgebung = 'produktion') {
-    this.endpoint = ENDPOINTS[umgebung]
+    this.artUebermittlung = umgebung === 'test' ? 'T' : 'P'
   }
 
-  // -------------------------------------------------------------------------
-  // Kasse in Betrieb nehmen
-  // -------------------------------------------------------------------------
+  /** login → op(session) → logout. Fehlermeldungen als RegistrierungErgebnis. */
+  private async imSession<T>(
+    credentials: FinanzOnlineCredentials,
+    op: (session: RkdbSession) => Promise<T>,
+  ): Promise<{ ok: true; wert: T } | { ok: false; fehler: string }> {
+    const herstellerId = credentials.herstellerId ?? DEFAULT_HERSTELLER_ID
+    const login = await fonLogin(
+      ENDPOINTS.session,
+      credentials.teilnehmerId,
+      credentials.benutzerkennung,
+      credentials.pin,
+      herstellerId,
+    )
+    if (!login.erfolgreich || !login.sessionId) {
+      return { ok: false, fehler: `FON-Login fehlgeschlagen (rc ${login.rc ?? '?'}): ${login.msg ?? ''}`.trim() }
+    }
 
-  /**
-   * Registriert eine Kasse und ihr Signaturzertifikat bei FinanzOnline.
-   * Muss VOR dem ersten Startbeleg aufgerufen werden.
-   */
+    const session: RkdbSession = {
+      tid:   credentials.teilnehmerId,
+      benid: credentials.benutzerkennung,
+      id:    login.sessionId,
+      artUebermittlung: this.artUebermittlung,
+    }
+    try {
+      return { ok: true, wert: await op(session) }
+    } finally {
+      await fonLogout(ENDPOINTS.session, credentials.teilnehmerId, credentials.benutzerkennung, login.sessionId)
+    }
+  }
+
+  /** Registriert SEE + Kasse (registrierung_se + registrierung_kasse in einem rkdb). */
   async kasseInBetriebNehmen(reg: KassenRegistrierung): Promise<RegistrierungErgebnis> {
-    const cert       = new X509Certificate(reg.zertifikatDER)
-    const certBase64 = reg.zertifikatDER.toString('base64')
-
-    // Schritt 1: SEE registrieren
-    const seeBody = `
-      <rksv:SEERegistrierung>
-        <rksv:TID>${xmlEscape(reg.credentials.teilnehmerId)}</rksv:TID>
-        <rksv:BenID>${xmlEscape(reg.credentials.benutzerkennung)}</rksv:BenID>
-        <rksv:PIN>${xmlEscape(reg.credentials.pin)}</rksv:PIN>
-        <rksv:ArtDerSEE>SOFTWARE</rksv:ArtDerSEE>
-        <rksv:ZertifikatSEE>${certBase64}</rksv:ZertifikatSEE>
-        <rksv:SeriennummerZertifikat>${cert.serialNumber}</rksv:SeriennummerZertifikat>
-      </rksv:SEERegistrierung>`
-
-    const seeXml = await soapRequest(
-      this.endpoint,
-      'https://finanzonline.bmf.gv.at/fon/ws/rksv/SEERegistrierung',
-      seeBody,
+    const res = await this.imSession(reg.credentials, (session) =>
+      rkdbRegistriere(
+        ENDPOINTS.rkdb,
+        session,
+        { artSe: reg.artSe, vdaId: reg.vdaId, zertifikatsseriennummer: zertSeriennummerDezimal(reg.zertifikatDER) },
+        { kassenidentifikationsnummer: reg.kassenId, benutzerschluesselBase64: reg.benutzerschluesselBase64 },
+      ),
     )
-
-    const seeCode = extractSoapValue(seeXml, 'Code')
-    if (seeCode !== '000') {
-      return {
-        erfolgreich: false,
-        fehler: `SEE-Registrierung fehlgeschlagen (Code ${seeCode}): ${extractSoapValue(seeXml, 'Info')}`,
-      }
-    }
-
-    // Schritt 2: Kasse registrieren
-    const kasseBody = `
-      <rksv:KasseRegistrierung>
-        <rksv:TID>${xmlEscape(reg.credentials.teilnehmerId)}</rksv:TID>
-        <rksv:BenID>${xmlEscape(reg.credentials.benutzerkennung)}</rksv:BenID>
-        <rksv:PIN>${xmlEscape(reg.credentials.pin)}</rksv:PIN>
-        <rksv:KUID>${xmlEscape(reg.uid)}</rksv:KUID>
-        <rksv:KassenID>${xmlEscape(reg.kassenId)}</rksv:KassenID>
-        <rksv:SeriennummerZertifikat>${cert.serialNumber}</rksv:SeriennummerZertifikat>
-      </rksv:KasseRegistrierung>`
-
-    const kasseXml = await soapRequest(
-      this.endpoint,
-      'https://finanzonline.bmf.gv.at/fon/ws/rksv/KasseRegistrierung',
-      kasseBody,
-    )
-
-    const kasseCode = extractSoapValue(kasseXml, 'Code')
-    if (kasseCode !== '000') {
-      return {
-        erfolgreich: false,
-        fehler: `Kassen-Registrierung fehlgeschlagen (Code ${kasseCode}): ${extractSoapValue(kasseXml, 'Info')}`,
-      }
-    }
-
-    return { erfolgreich: true }
+    if (!res.ok) return { erfolgreich: false, fehler: res.fehler }
+    return res.wert.erfolgreich
+      ? { erfolgreich: true }
+      : { erfolgreich: false, fehler: `Registrierung abgelehnt (rc ${res.wert.rc}): ${res.wert.msg ?? ''}`.trim() }
   }
 
-  // -------------------------------------------------------------------------
-  // Startbeleg prüfen
-  // -------------------------------------------------------------------------
-
   /**
-   * Lässt den Startbeleg von FinanzOnline prüfen.
-   * MUSS nach der Registrierung und dem ersten Beleg aufgerufen werden.
+   * „Startbeleg-Prüfung": über den WebService NICHT möglich — hier wird
+   * stattdessen der Kassen-Status abgefragt (REGISTRIERT/IN_BETRIEB = ok).
+   * Der Startbeleg selbst ist mit der BMF-BelegCheck-App zu prüfen.
    */
   async startbelegPruefen(
-    startbeleg: SignedBeleg,
+    _startbeleg: SignedBeleg,
     credentials: FinanzOnlineCredentials,
+    kassenId?: string,
   ): Promise<RegistrierungErgebnis> {
-    const body = `
-      <rksv:StartbelegPruefen>
-        <rksv:TID>${xmlEscape(credentials.teilnehmerId)}</rksv:TID>
-        <rksv:BenID>${xmlEscape(credentials.benutzerkennung)}</rksv:BenID>
-        <rksv:PIN>${xmlEscape(credentials.pin)}</rksv:PIN>
-        <rksv:Startbeleg>${xmlEscape(startbeleg.maschinenlesbareCode)}</rksv:Startbeleg>
-      </rksv:StartbelegPruefen>`
-
-    const xml      = await soapRequest(
-      this.endpoint,
-      'https://finanzonline.bmf.gv.at/fon/ws/rksv/StartbelegPruefen',
-      body,
-    )
-    const code     = extractSoapValue(xml, 'Code')
-    const pruefwert = extractSoapValue(xml, 'Pruefwert')
-
-    const ergebnis: RegistrierungErgebnis = { erfolgreich: code === '000' }
-    if (pruefwert) ergebnis.pruefwert = pruefwert
-    if (code !== '000') {
-      ergebnis.fehler = `Startbeleg-Prüfung fehlgeschlagen (Code ${code}): ${extractSoapValue(xml, 'Info') ?? ''}`
+    if (!kassenId) {
+      // Ohne Kassen-ID keine Statusabfrage möglich — als „ok, aber via App prüfen".
+      return { erfolgreich: true }
     }
-    return ergebnis
+    const res = await this.imSession(credentials, (session) => rkdbStatusKasse(ENDPOINTS.rkdb, session, kassenId))
+    if (!res.ok) return { erfolgreich: false, fehler: res.fehler }
+    const status = res.wert.abfrageErgebnis
+    const ok = res.wert.erfolgreich && (status === 'REGISTRIERT' || status === 'IN_BETRIEB' || status == null)
+    return ok
+      ? { erfolgreich: true, ...(status && { pruefwert: status }) }
+      : { erfolgreich: false, fehler: `Kassen-Status: ${status ?? res.wert.msg ?? 'unbekannt'}` }
   }
 
-  // -------------------------------------------------------------------------
-  // Kasse außer Betrieb nehmen (für Betreiberwechsel / Stilllegung)
-  // -------------------------------------------------------------------------
-
-  /**
-   * Meldet eine Kasse bei FinanzOnline ab.
-   * MUSS nach dem Schlussbeleg aufgerufen werden.
-   */
+  /** Kasse abmelden (Außerbetriebnahme-Datensatz mit Ende-Zeitstempel). */
   async kasseAusserBetriebNehmen(
     kassenId: string,
     credentials: FinanzOnlineCredentials,
   ): Promise<RegistrierungErgebnis> {
-    const body = `
-      <rksv:KasseAusserBetriebnahme>
-        <rksv:TID>${xmlEscape(credentials.teilnehmerId)}</rksv:TID>
-        <rksv:BenID>${xmlEscape(credentials.benutzerkennung)}</rksv:BenID>
-        <rksv:PIN>${xmlEscape(credentials.pin)}</rksv:PIN>
-        <rksv:KassenID>${xmlEscape(kassenId)}</rksv:KassenID>
-      </rksv:KasseAusserBetriebnahme>`
-
-    const xml  = await soapRequest(
-      this.endpoint,
-      'https://finanzonline.bmf.gv.at/fon/ws/rksv/KasseAusserBetriebnahme',
-      body,
-    )
-    const code = extractSoapValue(xml, 'Code')
-
-    const ergebnis: RegistrierungErgebnis = { erfolgreich: code === '000' }
-    if (code !== '000') {
-      ergebnis.fehler = `Außerbetriebnahme fehlgeschlagen (Code ${code}): ${extractSoapValue(xml, 'Info') ?? ''}`
-    }
-    return ergebnis
+    const datensatz =
+      `<ausserbetriebnahme_kasse>` +
+      `<satznr>1</satznr>` +
+      `<kassenidentifikationsnummer>${xmlEscape(kassenId)}</kassenidentifikationsnummer>` +
+      `<ende>${new Date().toISOString()}</ende>` +
+      `</ausserbetriebnahme_kasse>`
+    return this.rkdbFacade(credentials, datensatz, 'Außerbetriebnahme')
   }
 
-  // -------------------------------------------------------------------------
-  // SEE-Ausfall / Wiederinbetriebnahme melden
-  // -------------------------------------------------------------------------
-
-  /**
-   * Meldet den Ausfall der Signaturerstellungseinheit (SEE) an FinanzOnline.
-   * RKSV verlangt die Meldung eines Ausfalls, der länger als 48 Stunden dauert.
-   *
-   * Hinweis: Die Element-/Action-Namen folgen dem RKSV-WebService; sie sind vor
-   * dem Produktivbetrieb gegen die aktuelle BMF-WSDL zu verifizieren.
-   */
+  /** SEE-Ausfall melden. */
   async seeAusfallMelden(
-    kassenId: string,
+    _kassenId: string,
     seriennummerZertifikat: string,
     credentials: FinanzOnlineCredentials,
   ): Promise<RegistrierungErgebnis> {
-    return this.seeStatusMelden('SEEAusfall', kassenId, seriennummerZertifikat, credentials)
+    const datensatz =
+      `<ausfall_se>` +
+      `<satznr>1</satznr>` +
+      `<zertifikatsseriennummer>${xmlEscape(seriennummerZertifikat)}</zertifikatsseriennummer>` +
+      `<beginn>${new Date().toISOString()}</beginn>` +
+      `</ausfall_se>`
+    return this.rkdbFacade(credentials, datensatz, 'SEE-Ausfall')
   }
 
-  /**
-   * Meldet die Wiederinbetriebnahme der SEE nach einem Ausfall an FinanzOnline.
-   */
+  /** SEE-Wiederinbetriebnahme melden. */
   async seeWiederinbetriebnahmeMelden(
-    kassenId: string,
+    _kassenId: string,
     seriennummerZertifikat: string,
     credentials: FinanzOnlineCredentials,
   ): Promise<RegistrierungErgebnis> {
-    return this.seeStatusMelden('SEEWiederinbetriebnahme', kassenId, seriennummerZertifikat, credentials)
+    const datensatz =
+      `<wiederinbetriebnahme_se>` +
+      `<satznr>1</satznr>` +
+      `<zertifikatsseriennummer>${xmlEscape(seriennummerZertifikat)}</zertifikatsseriennummer>` +
+      `<ende>${new Date().toISOString()}</ende>` +
+      `</wiederinbetriebnahme_se>`
+    return this.rkdbFacade(credentials, datensatz, 'SEE-Wiederinbetriebnahme')
   }
 
-  private async seeStatusMelden(
-    operation: 'SEEAusfall' | 'SEEWiederinbetriebnahme',
-    kassenId: string,
+  /** Status einer SEE abfragen (AKTIVIERT/AUSFALL). */
+  async statusSe(
     seriennummerZertifikat: string,
     credentials: FinanzOnlineCredentials,
   ): Promise<RegistrierungErgebnis> {
-    const body = `
-      <rksv:${operation}>
-        <rksv:TID>${xmlEscape(credentials.teilnehmerId)}</rksv:TID>
-        <rksv:BenID>${xmlEscape(credentials.benutzerkennung)}</rksv:BenID>
-        <rksv:PIN>${xmlEscape(credentials.pin)}</rksv:PIN>
-        <rksv:KassenID>${xmlEscape(kassenId)}</rksv:KassenID>
-        <rksv:SeriennummerZertifikat>${xmlEscape(seriennummerZertifikat)}</rksv:SeriennummerZertifikat>
-      </rksv:${operation}>`
+    const res = await this.imSession(credentials, (session) => rkdbStatusSe(ENDPOINTS.rkdb, session, seriennummerZertifikat))
+    if (!res.ok) return { erfolgreich: false, fehler: res.fehler }
+    return res.wert.erfolgreich
+      ? { erfolgreich: true, ...(res.wert.abfrageErgebnis && { pruefwert: res.wert.abfrageErgebnis }) }
+      : { erfolgreich: false, fehler: res.wert.msg ?? 'Status-Abfrage fehlgeschlagen' }
+  }
 
-    const xml  = await soapRequest(
-      this.endpoint,
-      `https://finanzonline.bmf.gv.at/fon/ws/rksv/${operation}`,
-      body,
-    )
-    const code = extractSoapValue(xml, 'Code')
-
-    const ergebnis: RegistrierungErgebnis = { erfolgreich: code === '000' }
-    if (code !== '000') {
-      ergebnis.fehler = `${operation} fehlgeschlagen (Code ${code}): ${extractSoapValue(xml, 'Info') ?? ''}`
-    }
-    return ergebnis
+  private async rkdbFacade(
+    credentials: FinanzOnlineCredentials,
+    datensatzXml: string,
+    kontext: string,
+  ): Promise<RegistrierungErgebnis> {
+    const res = await this.imSession(credentials, (session) => rkdbAktion(ENDPOINTS.rkdb, session, datensatzXml))
+    if (!res.ok) return { erfolgreich: false, fehler: res.fehler }
+    return res.wert.erfolgreich
+      ? { erfolgreich: true }
+      : { erfolgreich: false, fehler: `${kontext} abgelehnt (rc ${res.wert.rc}): ${res.wert.msg ?? ''}`.trim() }
   }
 }
 
-// ---------------------------------------------------------------------------
-// Hilfsfunktionen
-// ---------------------------------------------------------------------------
-
-function xmlEscape(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;')
+/**
+ * Zertifikats-Seriennummer DEZIMAL — FON erwartet die Seriennummer als
+ * Dezimalzahl, X509Certificate.serialNumber liefert sie hexadezimal.
+ */
+export function zertSeriennummerDezimal(zertifikatDER: Buffer): string {
+  const hex = new X509Certificate(zertifikatDER).serialNumber
+  return BigInt(`0x${hex}`).toString(10)
 }
