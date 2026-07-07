@@ -62,14 +62,13 @@ export function TischTabPage() {
   const [korb, setKorb]                             = useState<KorbPosition[]>([])
   const [letzterBon, setLetzterBon]                 = useState<BelegResponse | null>(null)
   const [bonierungErgebnis, setBonierungErgebnis]   = useState<BonierungErgebnis | null>(null)
-  const [bezahlenOffen, setBezahlenOffen]           = useState(false)
   const [rabatt, setRabatt]                         = useState<RabattInput | null>(null)
   const [rabattOffen, setRabattOffen]               = useState(false)
   const [posRabatteOffen, setPosRabatteOffen]       = useState(false)
   /** positionIndex → neuer Einzelpreis in Cent */
   const [posRabatte, setPosRabatte]                 = useState<Record<number, number>>({})
-  const [barInput, setBarInput]                     = useState('')
-  const [karteInput, setKarteInput]                 = useState('')
+  /** Welche Zahlart gerade bucht (für den Button-Spinner) */
+  const [zahlartLaeuft, setZahlartLaeuft]           = useState<'bar' | 'karte' | null>(null)
   const [fehler, setFehler]                         = useState<string | null>(null)
   const [zvtOffen, setZvtOffen]                     = useState(false)
   const [zvtBetrag, setZvtBetrag]                   = useState(0)
@@ -261,13 +260,13 @@ export function TischTabPage() {
       })
     },
     onSuccess: async ({ belegId }) => {
-      setBezahlenOffen(false)
+      setZahlartLaeuft(null)
       const beleg = await belegApi.list(identity.kasseId, 1).then(l => l[0] ?? null)
       if (beleg && beleg.id === belegId) setLetzterBon(beleg)
       qc.invalidateQueries({ queryKey: ['tisch-tabs'] })
       qc.invalidateQueries({ queryKey: ['belege'] })
     },
-    onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
+    onError: (err) => { setZahlartLaeuft(null); setFehler(err instanceof Error ? err.message : String(err)) },
   })
 
   const umbenennenMutation = useMutation({
@@ -325,36 +324,30 @@ export function TischTabPage() {
     speichernMutation.mutate(allePositionen)
   }
 
-  const handleBezahlen = () => {
-    setFehler(null)
-    setRabatt(null)
-    setBezahlenOffen(true)
-    setBarInput('')
-    setKarteInput('')
-  }
-
   const handlePosRabatteBestaetigen = (neuePosRabatte: Record<number, number>) => {
     setPosRabatte(neuePosRabatte)
     setPosRabatteOffen(false)
   }
 
-  const handleBezahlenBestaetigen = () => {
-    const bar   = parseInt(barInput   || '0', 10) || 0
-    const karte = parseInt(karteInput || '0', 10) || 0
-    if (bar + karte !== gesamt) {
-      setFehler(`Zahlungssumme passt nicht: ${formatPreis(bar + karte)} statt ${formatPreis(gesamt)}`)
-      return
-    }
+  /** Bar bezahlen: Gesamtbetrag sofort buchen. */
+  const handleBarBezahlen = () => {
+    setFehler(null)
+    if (gesamt <= 0) return
+    setZahlartLaeuft('bar')
+    bezahlenMutation.mutate({ bar: gesamt, karte: 0 })
+  }
 
-    // Kartenzahlung mit aktiviertem ZVT → erst Terminal, dann Beleg
-    if (karte > 0 && zvtCfg.data?.zvtAktiv) {
-      setBezahlenOffen(false)
-      setZvtBetrag(karte)
+  /** Karte bezahlen: bei aktivem ZVT direkt ans Terminal, sonst sofort buchen. */
+  const handleKarteBezahlen = () => {
+    setFehler(null)
+    if (gesamt <= 0) return
+    if (zvtCfg.data?.zvtAktiv) {
+      setZvtBetrag(gesamt)
       setZvtOffen(true)
       return
     }
-
-    bezahlenMutation.mutate({ bar, karte })
+    setZahlartLaeuft('karte')
+    bezahlenMutation.mutate({ bar: 0, karte: gesamt })
   }
 
   const handleBonGeschlossen = () => {
@@ -530,13 +523,47 @@ export function TischTabPage() {
               </div>
             )}
 
-            <Button
-              onClick={handleBezahlen}
-              className="w-full"
-              disabled={gesamt === 0}
-            >
-              Bezahlen ({formatPreis(gesamt)})
-            </Button>
+            {/* Rabatt auf den ganzen Tisch (vor der Zahlung) */}
+            {rabatt ? (
+              <div className="flex items-center justify-between text-sm text-green-700 bg-green-50 rounded px-2 py-1.5 border border-green-200">
+                <span className="flex items-center gap-1.5">
+                  {rabatt.typ === 'prozent'
+                    ? `${rabatt.bezeichnung ?? 'Rabatt'} (${rabatt.prozent}%)`
+                    : (rabatt.bezeichnung ?? 'Rabatt')}
+                  <button type="button" onClick={() => setRabatt(null)} className="text-green-500 hover:text-red-500 text-xs px-1">×</button>
+                </span>
+                <span className="font-mono font-medium">−{formatPreis(rabattCent)}</span>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => { setFehler(null); setRabattOffen(true) }}
+                disabled={gesamt === 0}
+                className="self-start text-xs text-brand-600 hover:underline font-medium disabled:text-ink-subtle disabled:no-underline"
+              >
+                + Rabatt hinzufügen
+              </button>
+            )}
+
+            {/* Zahlung — ein Klick: Bar bucht sofort, Karte geht bei aktivem ZVT ans Terminal */}
+            <div className="flex gap-2">
+              <Button
+                onClick={handleBarBezahlen}
+                disabled={gesamt === 0 || bezahlenMutation.isPending}
+                loading={zahlartLaeuft === 'bar'}
+                className="flex-1"
+              >
+                Bar ({formatPreis(gesamt)})
+              </Button>
+              <Button
+                onClick={handleKarteBezahlen}
+                disabled={gesamt === 0 || bezahlenMutation.isPending}
+                loading={zahlartLaeuft === 'karte'}
+                className="flex-1"
+              >
+                Karte ({formatPreis(gesamt)})
+              </Button>
+            </div>
 
             <div className="flex gap-2">
               <Button
@@ -570,91 +597,6 @@ export function TischTabPage() {
           </div>
         </section>
       </div>
-
-      {/* Bezahlen-Modal */}
-      <Modal
-        open={bezahlenOffen}
-        onClose={() => setBezahlenOffen(false)}
-        title={`Tisch ${tab.tischNummer} bezahlen`}
-      >
-        <div className="space-y-4">
-          <div className="flex items-center justify-between text-sm text-ink-muted">
-            <span>Zwischensumme</span>
-            <span>{formatPreis(gesamtVorRabatt)}</span>
-          </div>
-
-          {/* Rabatt im Bezahlen-Modal */}
-          {rabatt ? (
-            <div className="flex items-center justify-between text-sm text-green-700 bg-green-50 rounded px-2 py-1.5 border border-green-200">
-              <span className="flex items-center gap-1.5">
-                {rabatt.typ === 'prozent'
-                  ? `${rabatt.bezeichnung ?? 'Rabatt'} (${rabatt.prozent}%)`
-                  : (rabatt.bezeichnung ?? 'Rabatt')}
-                <button type="button" onClick={() => setRabatt(null)} className="text-green-500 hover:text-red-500 text-xs px-1">×</button>
-              </span>
-              <span className="font-mono font-medium">−{formatPreis(rabattCent)}</span>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setRabattOffen(true)}
-              className="text-xs text-brand-600 hover:underline font-medium"
-            >
-              + Rabatt hinzufügen
-            </button>
-          )}
-
-          <div className="flex items-center justify-between text-base font-bold text-ink">
-            <span>Zu zahlen</span>
-            <span>{formatPreis(gesamt)}</span>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <label className="block">
-              <span className="text-xs font-medium text-ink-muted">Bar (Cent)</span>
-              <Input
-                autoFocus
-                inputMode="numeric"
-                placeholder="0"
-                value={barInput}
-                onChange={(e) => setBarInput(e.target.value.replace(/[^0-9]/g, ''))}
-                className="mt-0.5"
-              />
-            </label>
-            <label className="block">
-              <span className="text-xs font-medium text-ink-muted">Karte (Cent)</span>
-              <Input
-                inputMode="numeric"
-                placeholder="0"
-                value={karteInput}
-                onChange={(e) => setKarteInput(e.target.value.replace(/[^0-9]/g, ''))}
-                className="mt-0.5"
-              />
-            </label>
-          </div>
-          <p className="text-xs text-ink-muted">
-            Schnellbuttons:&nbsp;
-            <button type="button" onClick={() => { setBarInput(String(gesamt)); setKarteInput('') }} className="text-brand-600 hover:underline">Bar = Gesamt</button>
-            {' · '}
-            <button type="button" onClick={() => { setKarteInput(String(gesamt)); setBarInput('') }} className="text-brand-600 hover:underline">Karte = Gesamt</button>
-          </p>
-          {fehler && (
-            <div className="rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">{fehler}</div>
-          )}
-          <div className="flex gap-2 pt-1">
-            <Button variant="secondary" onClick={() => setBezahlenOffen(false)} className="flex-1">
-              Abbrechen
-            </Button>
-            <Button
-              onClick={handleBezahlenBestaetigen}
-              loading={bezahlenMutation.isPending}
-              className="flex-1"
-            >
-              Bon erstellen
-            </Button>
-          </div>
-        </div>
-      </Modal>
 
       <RabattModal
         open={rabattOffen}
@@ -794,13 +736,11 @@ export function TischTabPage() {
         betragCent={zvtBetrag}
         onErfolg={(_job, trinkgeldCent) => {
           setZvtOffen(false)
-          const bar   = parseInt(barInput   || '0', 10) || 0
-          const karte = parseInt(karteInput || '0', 10) || 0
-          bezahlenMutation.mutate({ bar, karte, trinkgeldCent })
+          setZahlartLaeuft('karte')
+          bezahlenMutation.mutate({ bar: 0, karte: gesamt, trinkgeldCent })
         }}
         onAbbruch={() => {
           setZvtOffen(false)
-          setBezahlenOffen(true)
           setFehler('Kartenzahlung abgebrochen — kein Beleg erstellt')
         }}
       />
