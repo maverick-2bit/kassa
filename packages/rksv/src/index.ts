@@ -40,6 +40,16 @@ export { verkettungswertStartbeleg, verkettungswertFolgebeleg, pruefeKette } fro
 
 // SEE
 export { generateSEE, ladeSeInfo, signiereRoh, verifiziere, zertifikatSN } from './see.js'
+
+// Signatureinheiten (Software / A-Trust HSM)
+export {
+  SoftwareSignaturEinheit,
+  ATrustHsmEinheit,
+  ATrustHsmError,
+  ATRUST_ABNAHME_BASIS_URL,
+  ATRUST_PRODUKTION_BASIS_URL,
+} from './see/signatur-einheit.js'
+export type { SignaturEinheit, ZertifikatInfo, ATrustHsmConfig } from './see/signatur-einheit.js'
 export type { SEEGenerierungsOptionen } from './see.js'
 
 // Beleg
@@ -113,8 +123,8 @@ export class RKSVKasse {
   }
 
   /** Neue Kasse initialisieren und Startbeleg erstellen */
-  static initialisieren(see: SEEConfig): { kasse: RKSVKasse; startbeleg: SignedBeleg } {
-    const { beleg, kontext } = erstelleStartbeleg(see.kassenId, see)
+  static async initialisieren(see: SEEConfig): Promise<{ kasse: RKSVKasse; startbeleg: SignedBeleg }> {
+    const { beleg, kontext } = await erstelleStartbeleg(see.kassenId, see)
     return { kasse: new RKSVKasse(kontext), startbeleg: beleg }
   }
 
@@ -133,8 +143,8 @@ export class RKSVKasse {
   }
 
   /** Beleg signieren und Kontext für nächsten Beleg aktualisieren */
-  signiereBeleg(raw: RawBeleg): SignedBeleg {
-    const beleg = signiereBeleg(raw, this.kontext)
+  async signiereBeleg(raw: RawBeleg): Promise<SignedBeleg> {
+    const beleg = await signiereBeleg(raw, this.kontext)
     this.kontext.letzterBelegCode = beleg.maschinenlesbareCode
     return beleg
   }

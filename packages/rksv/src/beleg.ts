@@ -205,26 +205,38 @@ export function istAusfallBeleg(signaturwert: string): boolean {
 // Hauptfunktion: Beleg signieren
 // ---------------------------------------------------------------------------
 
+/**
+ * Pluggable Signaturerstellungseinheit (Software / A-Trust HSM / später CHIP).
+ * Interface lebt in see/signatur-einheit.ts — hier nur strukturell referenziert,
+ * um Import-Zyklen zu vermeiden.
+ */
+export interface BelegSignaturEinheit {
+  signiereBelegzeile(codeOhneSig: string): Promise<Buffer>
+}
+
 export interface SignierungsKontext {
   see:             SEEConfig
   umsatzzaehler:   Umsatzzaehler
   /** Kompletter maschinenlesbarer Code des zuletzt signierten Belegs, undefined für den ersten Beleg */
   letzterBelegCode?: string
+  /** Optionale externe Signatureinheit — ohne sie signiert der lokale Software-Key aus `see` */
+  einheit?: BelegSignaturEinheit
 }
 
 /**
  * Signiert einen Rohbeleg und gibt den vollständigen RKSV-Beleg zurück.
+ * Async, weil externe Signatureinheiten (A-Trust HSM) über HTTP signieren.
  *
  * @param raw     Rohdaten des Belegs
  * @param kontext Signierungskontext mit SEE, Umsatzzähler und Vorbeleg-Code
  * @param opts    `ausfallModus`: statt ECDSA-Signatur den SEE-Ausfallmarker setzen
  */
-export function signiereBeleg(
+export async function signiereBeleg(
   raw: RawBeleg,
   kontext: SignierungsKontext,
   opts: { ausfallModus?: boolean } = {},
-): SignedBeleg {
-  const { see, umsatzzaehler, letzterBelegCode } = kontext
+): Promise<SignedBeleg> {
+  const { see, umsatzzaehler, letzterBelegCode, einheit } = kontext
 
   // 1. Beträge summieren
   const betraege = berechneBetraege(raw.positionen)
@@ -262,10 +274,14 @@ export function signiereBeleg(
     sigVorbeleg,
   )
 
-  // 6. Signieren als JWS (ES256) — im Ausfallmodus der BMF-Marker
+  // 6. Signieren als JWS (ES256) — im Ausfallmodus der BMF-Marker.
+  //    Externe Einheit (A-Trust) falls konfiguriert, sonst lokaler Software-Key.
   const signaturwert = opts.ausfallModus
     ? SEE_AUSFALL_SIGNATUR
-    : signiereRoh(jwsSigningInput(codeOhneSig), see).toString('base64')
+    : (einheit
+        ? await einheit.signiereBelegzeile(codeOhneSig)
+        : signiereRoh(jwsSigningInput(codeOhneSig), see)
+      ).toString('base64')
 
   // 7. Vollständiger maschinenlesbarer Code (QR) + JWS-Compact (DEP)
   const maschinenlesbareCode = `${codeOhneSig}_${signaturwert}`
@@ -288,12 +304,16 @@ export function signiereBeleg(
 // Hilfsfunktion: Kasse initialisieren (Startbeleg)
 // ---------------------------------------------------------------------------
 
-export function erstelleStartbeleg(kassenId: string, see: SEEConfig): {
+export async function erstelleStartbeleg(
+  kassenId: string,
+  see: SEEConfig,
+  einheit?: BelegSignaturEinheit,
+): Promise<{
   beleg:    SignedBeleg
   kontext:  SignierungsKontext
-} {
+}> {
   const umsatzzaehler = new Umsatzzaehler(0n)
-  const kontext: SignierungsKontext = { see, umsatzzaehler }
+  const kontext: SignierungsKontext = { see, umsatzzaehler, ...(einheit ? { einheit } : {}) }
 
   const raw: RawBeleg = {
     kassenId,
@@ -303,7 +323,7 @@ export function erstelleStartbeleg(kassenId: string, see: SEEConfig): {
     positionen:   [],
   }
 
-  const beleg = signiereBeleg(raw, kontext)
+  const beleg = await signiereBeleg(raw, kontext)
   kontext.letzterBelegCode = beleg.maschinenlesbareCode
 
   return { beleg, kontext }
@@ -313,11 +333,11 @@ export function erstelleStartbeleg(kassenId: string, see: SEEConfig): {
 // Hilfsfunktion: Nullbeleg (täglich wenn kein Umsatz)
 // ---------------------------------------------------------------------------
 
-export function erstelleNullbeleg(
+export async function erstelleNullbeleg(
   kassenId: string,
   belegNummer: number,
   kontext: SignierungsKontext,
-): SignedBeleg {
+): Promise<SignedBeleg> {
   const raw: RawBeleg = {
     kassenId,
     belegNummer,
@@ -325,7 +345,7 @@ export function erstelleNullbeleg(
     belegTyp:     'Nullbeleg',
     positionen:   [],
   }
-  const beleg = signiereBeleg(raw, kontext)
+  const beleg = await signiereBeleg(raw, kontext)
   kontext.letzterBelegCode = beleg.maschinenlesbareCode
   return beleg
 }

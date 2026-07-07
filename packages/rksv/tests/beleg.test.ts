@@ -49,7 +49,7 @@ beforeAll(async () => {
 // ---------------------------------------------------------------------------
 
 describe('berechneBetraege', () => {
-  it('summiert Beträge pro Steuersatz', () => {
+  it('summiert Beträge pro Steuersatz', async () => {
     const betraege = berechneBetraege([
       { bezeichnung: 'Kaffee',    menge: 2, einzelpreisBreutto: 350,  mwstSatz: 'ermaessigt1' },
       { bezeichnung: 'Kuchen',    menge: 1, einzelpreisBreutto: 450,  mwstSatz: 'ermaessigt1' },
@@ -60,7 +60,7 @@ describe('berechneBetraege', () => {
     expect(betraege.null).toBe(0)
   })
 
-  it('leere Positionen → alle Null', () => {
+  it('leere Positionen → alle Null', async () => {
     const betraege = berechneBetraege([])
     expect(betraege.normal).toBe(0)
     expect(betraege.ermaessigt1).toBe(0)
@@ -75,35 +75,35 @@ describe('berechneBetraege', () => {
 // ---------------------------------------------------------------------------
 
 describe('erstelleStartbeleg', () => {
-  it('hat Belegtyp Startbeleg', () => {
-    const { beleg } = erstelleStartbeleg('TEST-KASSE-001', see)
+  it('hat Belegtyp Startbeleg', async () => {
+    const { beleg } = await erstelleStartbeleg('TEST-KASSE-001', see)
     expect(beleg.belegTyp).toBe('Startbeleg')
   })
 
-  it('hat Belegnummer 1', () => {
-    const { beleg } = erstelleStartbeleg('TEST-KASSE-001', see)
+  it('hat Belegnummer 1', async () => {
+    const { beleg } = await erstelleStartbeleg('TEST-KASSE-001', see)
     expect(beleg.belegNummer).toBe(1)
   })
 
-  it('maschinenlesbareCode beginnt mit dem ZDA-Prefix _R1-AT0_ (Software-SEE)', () => {
-    const { beleg } = erstelleStartbeleg('TEST-KASSE-001', see)
+  it('maschinenlesbareCode beginnt mit dem ZDA-Prefix _R1-AT0_ (Software-SEE)', async () => {
+    const { beleg } = await erstelleStartbeleg('TEST-KASSE-001', see)
     expect(beleg.maschinenlesbareCode).toMatch(/^_R1-AT0_/)
   })
 
-  it('sigVorbeleg entspricht dem Verkettungswert der Kassen-ID (Startbeleg-Spezifikation)', () => {
-    const { beleg } = erstelleStartbeleg('TEST-KASSE-001', see)
+  it('sigVorbeleg entspricht dem Verkettungswert der Kassen-ID (Startbeleg-Spezifikation)', async () => {
+    const { beleg } = await erstelleStartbeleg('TEST-KASSE-001', see)
     expect(beleg.sigVorbeleg).toBe(verkettungswertStartbeleg('TEST-KASSE-001'))
     // 8 Byte, Standard-Base64
     expect(Buffer.from(beleg.sigVorbeleg, 'base64')).toHaveLength(8)
   })
 
-  it('hat ein zertifikatSN', () => {
-    const { beleg } = erstelleStartbeleg('TEST-KASSE-001', see)
+  it('hat ein zertifikatSN', async () => {
+    const { beleg } = await erstelleStartbeleg('TEST-KASSE-001', see)
     expect(beleg.zertifikatSN).toBeTruthy()
   })
 
-  it('Umsatzzähler bleibt bei 0 (Startbeleg ändert nicht)', () => {
-    const { kontext } = erstelleStartbeleg('TEST-KASSE-001', see)
+  it('Umsatzzähler bleibt bei 0 (Startbeleg ändert nicht)', async () => {
+    const { kontext } = await erstelleStartbeleg('TEST-KASSE-001', see)
     expect(kontext.umsatzzaehler.aktuell).toBe(0n)
   })
 })
@@ -113,8 +113,8 @@ describe('erstelleStartbeleg', () => {
 // ---------------------------------------------------------------------------
 
 describe('signiereBeleg – Barzahlungsbeleg', () => {
-  it('signiert einen einfachen Beleg (BASE64_STD-Signatur, JWS-Compact vorhanden)', () => {
-    const { kontext } = erstelleStartbeleg('TEST-KASSE-001', see)
+  it('signiert einen einfachen Beleg (BASE64_STD-Signatur, JWS-Compact vorhanden)', async () => {
+    const { kontext } = await erstelleStartbeleg('TEST-KASSE-001', see)
 
     const raw: RawBeleg = {
       kassenId:     'TEST-KASSE-001',
@@ -126,7 +126,7 @@ describe('signiereBeleg – Barzahlungsbeleg', () => {
       ],
     }
 
-    const beleg = signiereBeleg(raw, kontext)
+    const beleg = await signiereBeleg(raw, kontext)
 
     expect(beleg.signaturwert).toBeTruthy()
     // Signatur im QR: Standard-Base64 einer 64-Byte-P1363-Signatur
@@ -139,11 +139,11 @@ describe('signiereBeleg – Barzahlungsbeleg', () => {
     expect(qrCodeZuJwsCompact(beleg.maschinenlesbareCode)).toBe(beleg.jwsCompact)
   })
 
-  it('erhöht den Umsatzzähler', () => {
-    const { kontext } = erstelleStartbeleg('TEST-KASSE-001', see)
+  it('erhöht den Umsatzzähler', async () => {
+    const { kontext } = await erstelleStartbeleg('TEST-KASSE-001', see)
     const vorher = kontext.umsatzzaehler.aktuell
 
-    signiereBeleg({
+    await signiereBeleg({
       kassenId:     'TEST-KASSE-001',
       belegNummer:  2,
       datumUhrzeit: new Date(),
@@ -156,10 +156,10 @@ describe('signiereBeleg – Barzahlungsbeleg', () => {
     expect(kontext.umsatzzaehler.aktuell).toBe(vorher + 1000n)
   })
 
-  it('Umsatzzähler ist korrekt im Beleg verschlüsselt (eigener AES-Schlüssel, BASE64_STD)', () => {
-    const { kontext } = erstelleStartbeleg('TEST-KASSE-001', see)
+  it('Umsatzzähler ist korrekt im Beleg verschlüsselt (eigener AES-Schlüssel, BASE64_STD)', async () => {
+    const { kontext } = await erstelleStartbeleg('TEST-KASSE-001', see)
 
-    const beleg = signiereBeleg({
+    const beleg = await signiereBeleg({
       kassenId:     'TEST-KASSE-001',
       belegNummer:  2,
       datumUhrzeit: new Date(),
@@ -180,13 +180,13 @@ describe('signiereBeleg – Barzahlungsbeleg', () => {
 // ---------------------------------------------------------------------------
 
 describe('Verkettung', () => {
-  it('drei aufeinanderfolgende Belege bilden eine valide Kette', () => {
-    const { beleg: start, kontext } = erstelleStartbeleg('TEST-KASSE-001', see)
+  it('drei aufeinanderfolgende Belege bilden eine valide Kette', async () => {
+    const { beleg: start, kontext } = await erstelleStartbeleg('TEST-KASSE-001', see)
 
     const belege = [start]
 
     for (let i = 2; i <= 3; i++) {
-      const beleg = signiereBeleg({
+      const beleg = await signiereBeleg({
         kassenId:     'TEST-KASSE-001',
         belegNummer:  i,
         datumUhrzeit: new Date(),
@@ -202,10 +202,10 @@ describe('Verkettung', () => {
     expect(pruefeKette('TEST-KASSE-001', belege)).toBe(true)
   })
 
-  it('Kette ist ungültig wenn der Vorbeleg-Code manipuliert wird', () => {
-    const { beleg: start, kontext } = erstelleStartbeleg('TEST-KASSE-001', see)
+  it('Kette ist ungültig wenn der Vorbeleg-Code manipuliert wird', async () => {
+    const { beleg: start, kontext } = await erstelleStartbeleg('TEST-KASSE-001', see)
 
-    const beleg2 = signiereBeleg({
+    const beleg2 = await signiereBeleg({
       kassenId:     'TEST-KASSE-001',
       belegNummer:  2,
       datumUhrzeit: new Date(),
@@ -229,9 +229,9 @@ describe('Verkettung', () => {
 // die ECDSA-Signaturprüfung über die Felder deckt das auf.
 
 describe('verifiziereBelegSignatur (Tamper-Detection)', () => {
-  function signiereBarzahlung(betragCent: number) {
-    const { kontext } = erstelleStartbeleg('TEST-KASSE-001', see)
-    const beleg = signiereBeleg({
+  async function signiereBarzahlung(betragCent: number) {
+    const { kontext } = await erstelleStartbeleg('TEST-KASSE-001', see)
+    const beleg = await signiereBeleg({
       kassenId:     'TEST-KASSE-001',
       belegNummer:  2,
       datumUhrzeit: new Date('2026-03-15T10:30:00'),
@@ -243,41 +243,41 @@ describe('verifiziereBelegSignatur (Tamper-Detection)', () => {
     return { ...beleg, zdaId: see.zdaId }
   }
 
-  it('unveränderter Beleg verifiziert gegen das Zertifikat', () => {
-    const beleg = signiereBarzahlung(2000)
+  it('unveränderter Beleg verifiziert gegen das Zertifikat', async () => {
+    const beleg = await signiereBarzahlung(2000)
     expect(verifiziereBelegSignatur(beleg, see.zertifikatDER)).toBe(true)
   })
 
-  it('der komplette QR-Code verifiziert direkt (verifiziereQrCode)', () => {
-    const beleg = signiereBarzahlung(2000)
+  it('der komplette QR-Code verifiziert direkt (verifiziereQrCode)', async () => {
+    const beleg = await signiereBarzahlung(2000)
     expect(verifiziereQrCode(beleg.maschinenlesbareCode, see.zertifikatDER)).toBe(true)
   })
 
-  it('manipulierter Betrag wird erkannt', () => {
-    const beleg = signiereBarzahlung(2000)
+  it('manipulierter Betrag wird erkannt', async () => {
+    const beleg = await signiereBarzahlung(2000)
     const manipuliert = { ...beleg, betraege: { ...beleg.betraege, normal: 1000 } }
     expect(verifiziereBelegSignatur(manipuliert, see.zertifikatDER)).toBe(false)
   })
 
-  it('manipulierte Belegnummer wird erkannt', () => {
-    const beleg = signiereBarzahlung(2000)
+  it('manipulierte Belegnummer wird erkannt', async () => {
+    const beleg = await signiereBarzahlung(2000)
     expect(verifiziereBelegSignatur({ ...beleg, belegNummer: 99 }, see.zertifikatDER)).toBe(false)
   })
 
-  it('manipuliertes Datum wird erkannt', () => {
-    const beleg = signiereBarzahlung(2000)
+  it('manipuliertes Datum wird erkannt', async () => {
+    const beleg = await signiereBarzahlung(2000)
     const manipuliert = { ...beleg, datumUhrzeit: new Date('2026-03-15T10:30:01') }
     expect(verifiziereBelegSignatur(manipuliert, see.zertifikatDER)).toBe(false)
   })
 
-  it('manipulierter Umsatzzähler wird erkannt', () => {
-    const beleg = signiereBarzahlung(2000)
+  it('manipulierter Umsatzzähler wird erkannt', async () => {
+    const beleg = await signiereBarzahlung(2000)
     const manipuliert = { ...beleg, umsatzzaehlerVerschluesselt: beleg.umsatzzaehlerVerschluesselt.slice(0, -2) + 'AA' }
     expect(verifiziereBelegSignatur(manipuliert, see.zertifikatDER)).toBe(false)
   })
 
   it('falsches Zertifikat verifiziert nicht', async () => {
-    const beleg = signiereBarzahlung(2000)
+    const beleg = await signiereBarzahlung(2000)
     const fremd = await generateSEE({ kassenId: 'ANDERE-KASSE', uid: 'ATU00000000', firmenname: 'Fremd GmbH' })
     expect(verifiziereBelegSignatur(beleg, fremd.zertifikatDER)).toBe(false)
   })
@@ -288,7 +288,7 @@ describe('verifiziereBelegSignatur (Tamper-Detection)', () => {
 // ---------------------------------------------------------------------------
 
 describe('signiereBeleg – SEE-Ausfallmodus', () => {
-  function barzahlung(belegNummer: number, betragCent: number, kontext: SignierungsKontext, ausfall: boolean) {
+  async function barzahlung(belegNummer: number, betragCent: number, kontext: SignierungsKontext, ausfall: boolean) {
     return signiereBeleg({
       kassenId:     'TEST-KASSE-001',
       belegNummer,
@@ -298,9 +298,9 @@ describe('signiereBeleg – SEE-Ausfallmodus', () => {
     }, kontext, { ausfallModus: ausfall })
   }
 
-  it('setzt den BMF-Marker statt einer ECDSA-Signatur (BASE64_STD)', () => {
-    const { kontext } = erstelleStartbeleg('TEST-KASSE-001', see)
-    const beleg = barzahlung(2, 2000, kontext, true)
+  it('setzt den BMF-Marker statt einer ECDSA-Signatur (BASE64_STD)', async () => {
+    const { kontext } = await erstelleStartbeleg('TEST-KASSE-001', see)
+    const beleg = await barzahlung(2, 2000, kontext, true)
 
     expect(beleg.signaturwert).toBe(SEE_AUSFALL_SIGNATUR)
     expect(beleg.ausgefallen).toBe(true)
@@ -311,11 +311,11 @@ describe('signiereBeleg – SEE-Ausfallmodus', () => {
       .toBe('Sicherheitseinrichtung ausgefallen')
   })
 
-  it('verschlüsselt den Umsatzzähler weiterhin und erhöht ihn', () => {
-    const { kontext } = erstelleStartbeleg('TEST-KASSE-001', see)
+  it('verschlüsselt den Umsatzzähler weiterhin und erhöht ihn', async () => {
+    const { kontext } = await erstelleStartbeleg('TEST-KASSE-001', see)
     const vorher = kontext.umsatzzaehler.aktuell
 
-    const beleg = barzahlung(2, 1500, kontext, true)
+    const beleg = await barzahlung(2, 1500, kontext, true)
 
     expect(kontext.umsatzzaehler.aktuell).toBe(vorher + 1500n)
     expect(beleg.umsatzzaehlerVerschluesselt).toBeTruthy()
@@ -325,19 +325,19 @@ describe('signiereBeleg – SEE-Ausfallmodus', () => {
     expect(decrypted).toBe(vorher + 1500n)
   })
 
-  it('ein Ausfallbeleg verifiziert NICHT gegen das Zertifikat', () => {
-    const { kontext } = erstelleStartbeleg('TEST-KASSE-001', see)
-    const beleg = barzahlung(2, 2000, kontext, true)
+  it('ein Ausfallbeleg verifiziert NICHT gegen das Zertifikat', async () => {
+    const { kontext } = await erstelleStartbeleg('TEST-KASSE-001', see)
+    const beleg = await barzahlung(2, 2000, kontext, true)
     expect(verifiziereBelegSignatur({ ...beleg, zdaId: see.zdaId }, see.zertifikatDER)).toBe(false)
   })
 
-  it('die Kette läuft über den Ausfall hinweg weiter (Marker-Beleg → Folgebeleg)', () => {
-    const { beleg: start, kontext } = erstelleStartbeleg('TEST-KASSE-001', see)
+  it('die Kette läuft über den Ausfall hinweg weiter (Marker-Beleg → Folgebeleg)', async () => {
+    const { beleg: start, kontext } = await erstelleStartbeleg('TEST-KASSE-001', see)
 
-    const ausfall = barzahlung(2, 1000, kontext, true)
+    const ausfall = await barzahlung(2, 1000, kontext, true)
     kontext.letzterBelegCode = ausfall.maschinenlesbareCode
 
-    const danach = barzahlung(3, 500, kontext, false) // SEE wieder da, normal signiert
+    const danach = await barzahlung(3, 500, kontext, false) // SEE wieder da, normal signiert
     kontext.letzterBelegCode = danach.maschinenlesbareCode
 
     expect(istAusfallBeleg(danach.signaturwert)).toBe(false)
@@ -350,13 +350,13 @@ describe('signiereBeleg – SEE-Ausfallmodus', () => {
 // ---------------------------------------------------------------------------
 
 describe('RKSVKasse', () => {
-  it('initialisiert und signiert Belege', () => {
-    const { kasse, startbeleg } = RKSVKasse.initialisieren(see)
+  it('initialisiert und signiert Belege', async () => {
+    const { kasse, startbeleg } = await RKSVKasse.initialisieren(see)
 
     expect(startbeleg.belegTyp).toBe('Startbeleg')
     expect(kasse.umsatzzaehlerCent).toBe(0n)
 
-    const beleg = kasse.signiereBeleg({
+    const beleg = await kasse.signiereBeleg({
       kassenId:     see.kassenId,
       belegNummer:  2,
       datumUhrzeit: new Date(),
@@ -370,15 +370,15 @@ describe('RKSVKasse', () => {
     expect(kasse.umsatzzaehlerCent).toBe(2000n)
   })
 
-  it('lässt sich aus DB-State wiederherstellen und setzt die Kette korrekt fort', () => {
-    const { kasse: original, startbeleg } = RKSVKasse.initialisieren(see)
+  it('lässt sich aus DB-State wiederherstellen und setzt die Kette korrekt fort', async () => {
+    const { kasse: original, startbeleg } = await RKSVKasse.initialisieren(see)
     const zaehlerStand = original.umsatzzaehlerCent
     const letzterCode  = original.letzterBelegCode ?? ''
 
     const wiederhergestellt = RKSVKasse.wiederherstellen(see, zaehlerStand, letzterCode)
     expect(wiederhergestellt.umsatzzaehlerCent).toBe(zaehlerStand)
 
-    const folge = wiederhergestellt.signiereBeleg({
+    const folge = await wiederhergestellt.signiereBeleg({
       kassenId:     see.kassenId,
       belegNummer:  2,
       datumUhrzeit: new Date(),
@@ -394,10 +394,10 @@ describe('RKSVKasse', () => {
 // ---------------------------------------------------------------------------
 
 describe('DEP7', () => {
-  it('Export im Spec-Format: Belege-Gruppe mit Belege-kompakt (JWS)', () => {
-    const { beleg: start, kontext } = erstelleStartbeleg('TEST-KASSE-001', see)
+  it('Export im Spec-Format: Belege-Gruppe mit Belege-kompakt (JWS)', async () => {
+    const { beleg: start, kontext } = await erstelleStartbeleg('TEST-KASSE-001', see)
 
-    const beleg2 = signiereBeleg({
+    const beleg2 = await signiereBeleg({
       kassenId:     'TEST-KASSE-001',
       belegNummer:  2,
       datumUhrzeit: new Date(),

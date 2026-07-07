@@ -176,6 +176,13 @@
       "when": 1779808574000,
       "tag": "0025_rksv_spec_konform",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1779808575000,
+      "tag": "0026_see_einheit",
+      "breakpoints": true
     }
   ]
 }

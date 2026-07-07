@@ -7,7 +7,10 @@ import { and, asc, desc, eq, sql } from 'drizzle-orm'
 import type { Db } from '../db/client.js'
 import { belege, kassen } from '../db/schema.js'
 import { z } from 'zod'
-import { FinanzOnlineCredentialsSchema, KasseBezeichnungUpdateSchema, WeitereKasseInputSchema, type KasseListeItem, type WeitereKasseResponse } from '@kassa/shared'
+import { FinanzOnlineCredentialsSchema, KasseBezeichnungUpdateSchema, SeeConfigUpdateSchema, WeitereKasseInputSchema, type KasseListeItem, type WeitereKasseResponse } from '@kassa/shared'
+import { ATrustHsmEinheit } from '@kassa/rksv'
+import { X509Certificate } from 'node:crypto'
+import { decryptPrivateKey, encryptPrivateKey } from '../crypto/master-key.js'
 import { legeWeitereKasseAn } from '../services/kasse.service.js'
 import type { SetupServiceDeps } from '../services/setup.service.js'
 import { BelegError, nimmKasseAusserBetrieb, type BelegServiceDeps } from '../services/beleg.service.js'
@@ -239,5 +242,124 @@ export const kasseRoute: FastifyPluginAsync<KasseRouteOptions> = async (fastify,
       .returning({ id: kassen.id, bezeichnung: kassen.bezeichnung })
 
     return reply.send(updated)
+  })
+
+  // ---------------------------------------------------------------------------
+  // Signaturerstellungseinheit (SEE): Software (Dev) oder A-Trust a.sign RK HSM
+  // ---------------------------------------------------------------------------
+
+  const ladeKasse = async (id: string, mandantId: string) => {
+    const [kasse] = await opts.db
+      .select()
+      .from(kassen)
+      .where(and(eq(kassen.id, id), eq(kassen.mandantId, mandantId)))
+      .limit(1)
+    return kasse
+  }
+
+  /** A-Trust-Zugang aus Update-Body + gespeicherten Werten aufloesen. */
+  const atrustZugang = (
+    kasse: typeof kassen.$inferSelect,
+    body: { atrustBasisUrl?: string | undefined; atrustBenutzer?: string | undefined; atrustPasswort?: string | undefined },
+  ): { basisUrl: string; benutzer: string; passwort: string } | { fehler: string } => {
+    const basisUrl = body.atrustBasisUrl ?? kasse.atrustBasisUrl ?? ''
+    const benutzer = body.atrustBenutzer ?? kasse.atrustBenutzer ?? ''
+    const passwort = body.atrustPasswort ?? (kasse.atrustPasswortEnc
+      ? decryptPrivateKey(kasse.atrustPasswortEnc, opts.belegDeps.masterPassphrase).toString('utf8')
+      : '')
+    if (!basisUrl || !benutzer || !passwort) {
+      return { fehler: 'A-Trust-Zugang unvollstaendig (Basis-URL, Benutzer und Passwort erforderlich)' }
+    }
+    return { basisUrl, benutzer, passwort }
+  }
+
+  /** GET /kassen/:id/see — aktuelle SEE-Konfiguration (ohne Geheimnisse) */
+  fastify.get<{ Params: { id: string } }>('/kassen/:id/see', auth, async (request, reply) => {
+    const kasse = await ladeKasse(request.params.id, request.user.mandantId)
+    if (!kasse) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
+
+    return reply.send({
+      seeTyp:                kasse.seeTyp,
+      seeZdaId:              kasse.seeZdaId,
+      atrustBasisUrl:        kasse.atrustBasisUrl,
+      atrustBenutzer:        kasse.atrustBenutzer,
+      atrustPasswortGesetzt: kasse.atrustPasswortEnc != null,
+      zertifikatSn:          kasse.seeZertifikatSn,
+      zertifikatGueltigBis:  kasse.seeGueltigBis.toISOString(),
+    })
+  })
+
+  /** POST /kassen/:id/see/test — Verbindung zur A-Trust-Einheit pruefen (ohne zu speichern) */
+  fastify.post<{ Params: { id: string } }>('/kassen/:id/see/test', auth, async (request, reply) => {
+    if (!darfVerwalten(request.user)) return reply.status(403).send({ fehler: 'Keine Berechtigung' })
+    const body = SeeConfigUpdateSchema.safeParse(request.body ?? {})
+    if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
+
+    const kasse = await ladeKasse(request.params.id, request.user.mandantId)
+    if (!kasse) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
+
+    const zugang = atrustZugang(kasse, body.data)
+    if ('fehler' in zugang) return reply.status(400).send({ erfolgreich: false, fehler: zugang.fehler })
+
+    try {
+      const einheit = new ATrustHsmEinheit(zugang)
+      const [zda, zert] = await Promise.all([einheit.zdaId(), einheit.zertifikat()])
+      return reply.send({ erfolgreich: true, zdaId: zda, zertifikatSn: zert.seriennummerHex })
+    } catch (err) {
+      return reply.send({ erfolgreich: false, fehler: err instanceof Error ? err.message : String(err) })
+    }
+  })
+
+  /**
+   * PATCH /kassen/:id/see — SEE-Konfiguration speichern.
+   * Bei atrust_hsm wird die Verbindung geprueft und Zertifikat + ZDA der Kasse
+   * uebernommen. Achtung Zertifikatswechsel: aeltere Belege verifizieren nur
+   * noch gegen das fruehere Zertifikat — fuer den Echtbetrieb die SEE nur bei
+   * Kassen-Neuanlage wechseln.
+   */
+  fastify.patch<{ Params: { id: string } }>('/kassen/:id/see', auth, async (request, reply) => {
+    if (!darfVerwalten(request.user)) return reply.status(403).send({ fehler: 'Keine Berechtigung' })
+    const body = SeeConfigUpdateSchema.safeParse(request.body)
+    if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
+
+    const kasse = await ladeKasse(request.params.id, request.user.mandantId)
+    if (!kasse) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
+
+    if (body.data.seeTyp === 'software') {
+      await opts.db
+        .update(kassen)
+        .set({ seeTyp: 'software', seeZdaId: 'AT0', updatedAt: new Date() })
+        .where(eq(kassen.id, kasse.id))
+      return reply.send({ erfolgreich: true, zdaId: 'AT0', zertifikatSn: kasse.seeZertifikatSn })
+    }
+
+    // atrust_hsm: Verbindung pruefen, dann Zugang + Zertifikat uebernehmen
+    const zugang = atrustZugang(kasse, body.data)
+    if ('fehler' in zugang) return reply.status(400).send({ erfolgreich: false, fehler: zugang.fehler })
+
+    try {
+      const einheit = new ATrustHsmEinheit(zugang)
+      const [zda, zert] = await Promise.all([einheit.zdaId(), einheit.zertifikat()])
+      const zertifikat = new X509Certificate(Buffer.from(zert.derBase64, 'base64'))
+
+      await opts.db
+        .update(kassen)
+        .set({
+          seeTyp:            'atrust_hsm',
+          seeZdaId:          zda,
+          atrustBasisUrl:    zugang.basisUrl,
+          atrustBenutzer:    zugang.benutzer,
+          atrustPasswortEnc: encryptPrivateKey(Buffer.from(zugang.passwort, 'utf8'), opts.belegDeps.masterPassphrase),
+          seeZertifikatDer:  zert.derBase64,
+          seeZertifikatSn:   zert.seriennummerHex,
+          seeGueltigBis:     new Date(zertifikat.validTo),
+          updatedAt:         new Date(),
+        })
+        .where(eq(kassen.id, kasse.id))
+
+      return reply.send({ erfolgreich: true, zdaId: zda, zertifikatSn: zert.seriennummerHex })
+    } catch (err) {
+      return reply.status(502).send({ erfolgreich: false, fehler: err instanceof Error ? err.message : String(err) })
+    }
   })
 }
