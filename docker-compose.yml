@@ -109,6 +109,30 @@ services:
     ports:
       - "${KELLNER_PORT:-8083}:80"
 
+  # ── SB-Bestellterminal (Vite → nginx) ────────────────────────────────────────
+  terminal:
+    build:
+      context:    .
+      dockerfile: packages/terminal/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${TERMINAL_PORT:-8084}:80"
+
+  # ── Abholmonitor (Vite → nginx) ──────────────────────────────────────────────
+  abholmonitor:
+    build:
+      context:    .
+      dockerfile: packages/abholmonitor/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${ABHOLMONITOR_PORT:-8085}:80"
+
   # ── Off-Site-Backup (restic → S3-kompatibel) ────────────────────────────────
   # Schiebt die vom Backend erzeugten DB- und DEP-Sicherungen verschlüsselt und
   # dedupliziert an externen Object-Storage. Ohne RESTIC_REPOSITORY/RESTIC_PASSWORD
@@ -146,9 +170,36 @@ services:
       retries:      2
       start_period: 30m   # Zeit für den initialen Backup-Lauf beim Start
 
+  # ── Reverse-Proxy (Caddy) — OPTIONAL, nur mit „--profile proxy" ──────────────
+  # Ein einziger Eingang mit automatischem HTTPS (Let's Encrypt) statt Ports.
+  # Aktivieren:  docker compose --profile proxy up -d
+  # Voraussetzung: KASSA_DOMAIN gesetzt + DNS-Records der Subdomains (kasse.,
+  # kds., terminal., …) bzw. ein Wildcard-Record zeigen auf diese Box.
+  # Caddy erreicht die App-Container intern per Servicename — die Host-Ports der
+  # Apps oben bleiben für den LAN-Modus erhalten, werden vom Proxy aber nicht genutzt.
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    profiles: ["proxy"]
+    depends_on:
+      - frontend
+    environment:
+      KASSA_DOMAIN: ${KASSA_DOMAIN:-}
+      ACME_EMAIL:   ${ACME_EMAIL:-}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3
+    volumes:
+      - ./ops/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
 volumes:
   postgres_data:
   db_backups:
   dep_backups:
   restic_cache:
   backup_status:
+  caddy_data:
+  caddy_config:
