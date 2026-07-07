@@ -121,6 +121,9 @@ export async function kasseUebernehmen(
     uid:           imp.neueUid,
     zertifikatDER: see.zertifikatDER,
     credentials:   imp.foCredentials,
+    benutzerschluesselBase64: see.aesSchluessel.toString('base64'),
+    vdaId:         see.zdaId,
+    artSe:         see.zdaId === 'AT0' ? 'EIGENES_HSM' : 'HSM_DIENSTLEISTER',
   })
 
   if (!registrierung.erfolgreich) {

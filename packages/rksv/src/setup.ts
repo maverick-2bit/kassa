@@ -248,6 +248,9 @@ export async function kasseAutomatischEinrichten(
         kassenId:      input.kassenId,
         uid:           input.uid,
         zertifikatDER: see.zertifikatDER,
+        benutzerschluesselBase64: see.aesSchluessel.toString('base64'),
+        vdaId:         see.zdaId,
+        artSe:         see.zdaId === 'AT0' ? 'EIGENES_HSM' : 'HSM_DIENSTLEISTER',
         credentials:   fo!,
       })
       registrierungErfolg = ergebnis.erfolgreich
