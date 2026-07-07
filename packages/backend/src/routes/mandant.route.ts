@@ -31,6 +31,7 @@ export const mandantRoute: FastifyPluginAsync<MandantRouteOptions> = async (fast
         modulMergeportAktiv:      mandanten.modulMergeportAktiv,
         modulReservierungenAktiv: mandanten.modulReservierungenAktiv,
         modulZeiterfassungAktiv:  mandanten.modulZeiterfassungAktiv,
+        modulSbTerminalAktiv:     mandanten.modulSbTerminalAktiv,
       })
       .from(mandanten)
       .where(eq(mandanten.id, request.user.mandantId))
@@ -59,6 +60,7 @@ export const mandantRoute: FastifyPluginAsync<MandantRouteOptions> = async (fast
       modulMergeportAktiv:      boolean
       modulReservierungenAktiv: boolean
       modulZeiterfassungAktiv:  boolean
+      modulSbTerminalAktiv:     boolean
     }> = {}
 
     if (body.data.modulGastroAktiv         !== undefined) updates.modulGastroAktiv         = body.data.modulGastroAktiv
@@ -66,6 +68,7 @@ export const mandantRoute: FastifyPluginAsync<MandantRouteOptions> = async (fast
     if (body.data.modulMergeportAktiv      !== undefined) updates.modulMergeportAktiv      = body.data.modulMergeportAktiv
     if (body.data.modulReservierungenAktiv !== undefined) updates.modulReservierungenAktiv = body.data.modulReservierungenAktiv
     if (body.data.modulZeiterfassungAktiv  !== undefined) updates.modulZeiterfassungAktiv  = body.data.modulZeiterfassungAktiv
+    if (body.data.modulSbTerminalAktiv     !== undefined) updates.modulSbTerminalAktiv     = body.data.modulSbTerminalAktiv
 
     if (Object.keys(updates).length === 0) {
       return reply.status(400).send({ fehler: 'Keine Änderungen angegeben' })
@@ -81,6 +84,7 @@ export const mandantRoute: FastifyPluginAsync<MandantRouteOptions> = async (fast
         modulMergeportAktiv:      mandanten.modulMergeportAktiv,
         modulReservierungenAktiv: mandanten.modulReservierungenAktiv,
         modulZeiterfassungAktiv:  mandanten.modulZeiterfassungAktiv,
+        modulSbTerminalAktiv:     mandanten.modulSbTerminalAktiv,
       })
 
     if (!row) return reply.status(404).send({ fehler: 'Mandant nicht gefunden' })

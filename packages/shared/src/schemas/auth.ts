@@ -89,6 +89,7 @@ export const LoginResponseSchema = z.object({
     modulMergeportAktiv:      z.boolean(),
     modulReservierungenAktiv: z.boolean(),
     modulZeiterfassungAktiv:  z.boolean(),
+    modulSbTerminalAktiv:     z.boolean(),
   }),
   kassen: z.array(z.object({
     id:          z.string().uuid(),

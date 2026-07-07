@@ -165,6 +165,8 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
       lagerstandMenge: lsMenge,
       mindestbestand:  mindest,
       seriennummernAktiv: values.seriennummernAktiv,
+      // Wird zentral im SB-Terminal-Bereich der Einstellungen verwaltet — hier nur erhalten
+      terminalSichtbar: initial?.terminalSichtbar ?? null,
       bild,
     })
   })

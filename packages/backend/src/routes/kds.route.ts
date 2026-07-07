@@ -15,7 +15,7 @@ import { z } from 'zod'
 import type { Db } from '../db/client.js'
 import { onKdsEvent, emitKdsEvent } from '../sse/kds-event-bus.js'
 import { emitKasseEvent } from '../sse/event-bus.js'
-import { kassen } from '../db/schema.js'
+import { kassen, kdsBons } from '../db/schema.js'
 import {
   kdsOffeneBons,
   kdsUebersicht,
@@ -24,6 +24,7 @@ import {
   kdsArchivBons,
   kdsBonNachdrucken,
 } from '../services/kds/kds-store.service.js'
+import { sbAutoBereitNachBonErledigt } from '../services/sb-bestellung.service.js'
 
 export interface KdsRouteOptions { db: Db }
 
@@ -56,6 +57,21 @@ const AntwortBody      = z.object({
 })
 
 export const kdsRoute: FastifyPluginAsync<KdsRouteOptions> = async (fastify, opts) => {
+
+  /**
+   * SB-Auto-„bereit": Bon gehört zu einer Terminal-Bestellung und ALLE ihre
+   * Bons sind erledigt → Bestellung springt am Abholmonitor auf „bereit".
+   */
+  const pruefeSbBereit = async (bonId: string, mandantId: string): Promise<void> => {
+    const [bon] = await opts.db
+      .select({ sbBestellungId: kdsBons.sbBestellungId })
+      .from(kdsBons)
+      .where(eq(kdsBons.id, bonId))
+      .limit(1)
+    if (bon?.sbBestellungId) {
+      await sbAutoBereitNachBonErledigt(opts.db, bon.sbBestellungId, mandantId)
+    }
+  }
 
   // ── SSE-Stream ──────────────────────────────────────────────────────────────
   fastify.get<{ Querystring: { station?: string; token?: string } }>(
@@ -154,6 +170,8 @@ export const kdsRoute: FastifyPluginAsync<KdsRouteOptions> = async (fastify, opt
 
       const ok = await kdsBonErledigt(opts.db, p.data.id, request.user.mandantId)
       if (!ok) return reply.status(404).send({ fehler: 'Bon nicht gefunden oder bereits erledigt' })
+
+      await pruefeSbBereit(p.data.id, request.user.mandantId)
 
       return reply.send({ erfolgreich: true })
     },
@@ -270,6 +288,9 @@ export const kdsRoute: FastifyPluginAsync<KdsRouteOptions> = async (fastify, opt
         b.data.positionsMengen,
       )
       if (!result) return reply.status(404).send({ fehler: 'Bon nicht gefunden oder bereits erledigt' })
+
+      // Teilbon kann den Bon vervollständigen → SB-Auto-„bereit" prüfen
+      await pruefeSbBereit(p.data.id, request.user.mandantId)
 
       return reply.send({ erfolgreich: true })
     },

@@ -53,6 +53,8 @@ import { exportRoute }           from './routes/export.route.js'
 import { werbefolienRoute }      from './routes/werbefolien.route.js'
 import { dienstplanRoute }       from './routes/dienstplan.route.js'
 import { selfcheckoutRoute }     from './routes/selfcheckout.route.js'
+import { registerTerminalRoutes } from './routes/terminal.route.js'
+import { sbBestellungRoute }     from './routes/sb-bestellung.route.js'
 
 export interface ServerDeps {
   config:          Config
@@ -122,6 +124,9 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   // Display-Routen: POST /api/display + GET /sse/display
   await registerDisplayRoutes(fastify)
 
+  // SB-Terminal (öffentlich): /api/terminal/* + GET /sse/abholung
+  await registerTerminalRoutes(fastify, { deps: { db: deps.db, belegDeps: deps.belegDeps } })
+
   await fastify.register(async (api) => {
     // Offene Routen (kein Login nötig)
     await api.register(healthRoute,  { db:   deps.db })
@@ -169,6 +174,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     await api.register(werbefolienRoute,        { db: deps.db })
     await api.register(dienstplanRoute,         { db: deps.db })
     await api.register(selfcheckoutRoute,       { db: deps.db })
+    await api.register(sbBestellungRoute,       { db: deps.db })
   }, { prefix: '/api' })
 
   await fastify.register(monitoringRoute, {

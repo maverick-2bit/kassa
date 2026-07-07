@@ -18,6 +18,7 @@ import {
   bigint,
   real,
   timestamp,
+  date,
   jsonb,
   boolean,
   uniqueIndex,
@@ -58,6 +59,8 @@ export const mandanten = pgTable('mandanten', {
   modulReservierungenAktiv: boolean('modul_reservierungen_aktiv').notNull().default(false),
   /** Personalzeiterfassung: PIN-Stempeluhr + Stundenauswertung */
   modulZeiterfassungAktiv:  boolean('modul_zeiterfassung_aktiv').notNull().default(false),
+  /** SB-Terminal: Selbstbedienungs-Kiosk + Abholmonitor */
+  modulSbTerminalAktiv:     boolean('modul_sb_terminal_aktiv').notNull().default(false),
 
   createdAt:    timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt:    timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -521,6 +524,8 @@ export const kategorien = pgTable('kategorien', {
   aktiv:           boolean('aktiv').notNull().default(true),
   /** Standard-Bonierdrucker für alle Artikel dieser Kategorie */
   bonierdruckerId: uuid('bonierdrucker_id').references(() => bonierdrucker.id, { onDelete: 'set null' }),
+  /** SB-Terminal: Artikel dieser Warengruppe am Bestellterminal anzeigen */
+  terminalSichtbar: boolean('terminal_sichtbar').notNull().default(false),
   createdAt:       timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt:       timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
@@ -551,6 +556,8 @@ export const artikel = pgTable('artikel', {
   mindestbestand:      integer('mindestbestand'),
   /** Seriennummern-Verwaltung: Bestand = Anzahl freier Seriennummern im Pool */
   seriennummernAktiv:  boolean('seriennummern_aktiv').notNull().default(false),
+  /** SB-Terminal-Sichtbarkeit: NULL = erbt von der Kategorie, true/false = Override */
+  terminalSichtbar:    boolean('terminal_sichtbar'),
   /** Erscheint im Favoriten-Tab der POS-Ansicht */
   istFavorit:          boolean('ist_favorit').notNull().default(false),
   /** Sortierung innerhalb der Kategorie (global, für alle Kassen gleich) */
@@ -937,9 +944,14 @@ export const kdsBons = pgTable('kds_bons', {
   positionen: jsonb('positionen').notNull().$type<KdsPosition[]>(),
   /** 'offen' | 'erledigt' */
   status:     varchar('status', { length: 20 }).notNull().default('offen'),
+  /** Verweis auf die SB-Bestellung (Kiosk) — steuert Badge + Auto-„bereit" */
+  sbBestellungId:  uuid('sb_bestellung_id'),
+  /** 4-stellige SB-Bestellnummer für den Badge am KDS (denormalisiert) */
+  sbBestellNummer: varchar('sb_bestell_nummer', { length: 10 }),
   erstelltAt: timestamp('erstellt_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
   mandantStationIdx: index('kds_bons_mandant_station_idx').on(t.mandantId, t.station, t.status),
+  sbBestellungIdx:   index('kds_bons_sb_bestellung_idx').on(t.sbBestellungId),
 }))
 
 export interface KdsPosition {
@@ -1169,3 +1181,43 @@ export const seriennummern = pgTable('seriennummern', {
 
 export type Seriennummer    = typeof seriennummern.$inferSelect
 export type NewSeriennummer = typeof seriennummern.$inferInsert
+
+// ---------------------------------------------------------------------------
+// SB-Bestellungen (Selbstbedienungs-Terminal + Abholmonitor)
+// ---------------------------------------------------------------------------
+
+/** Positions-Snapshot: Preise zum Bestellzeitpunkt eingefroren */
+export interface SbBestellungPosition {
+  artikelId:       string
+  bezeichnung:     string
+  menge:           number
+  preisBruttoCent: number
+}
+
+export const sbBestellungen = pgTable('sb_bestellungen', {
+  id:            uuid('id').primaryKey().defaultRandom(),
+  mandantId:     uuid('mandant_id').notNull().references(() => mandanten.id),
+  kasseId:       uuid('kasse_id').notNull().references(() => kassen.id),
+  /** 4-stellig, täglich ab 1 je Mandant — erst bei erfolgreicher Zahlung vergeben */
+  bestellNummer: integer('bestell_nummer'),
+  /** Kalendertag des Nummernkreises (YYYY-MM-DD) */
+  datum:         date('datum').notNull(),
+  positionen:    jsonb('positionen').notNull().$type<SbBestellungPosition[]>(),
+  summeCent:     integer('summe_cent').notNull(),
+  /** zahlung | offen | bereit | abgeholt | abgebrochen */
+  status:        varchar('status', { length: 20 }).notNull().default('zahlung'),
+  /** ZVT-Job der laufenden Kartenzahlung (in-memory, nur zur Poll-Zuordnung) */
+  zvtJobId:      uuid('zvt_job_id'),
+  /** RKSV-Beleg nach erfolgreicher Zahlung */
+  belegId:       uuid('beleg_id').references(() => belege.id),
+  erstelltAt:    timestamp('erstellt_at', { withTimezone: true }).notNull().defaultNow(),
+  bereitAt:      timestamp('bereit_at', { withTimezone: true }),
+  abgeholtAt:    timestamp('abgeholt_at', { withTimezone: true }),
+}, (t) => ({
+  // Bestellnummer eindeutig je Mandant und Tag (NULLs kollidieren nicht)
+  nummerTagUnique: uniqueIndex('sb_bestellungen_nummer_tag_unique').on(t.mandantId, t.datum, t.bestellNummer),
+  mandantStatusIdx: index('sb_bestellungen_mandant_status_idx').on(t.mandantId, t.status),
+}))
+
+export type SbBestellungRow    = typeof sbBestellungen.$inferSelect
+export type NewSbBestellungRow = typeof sbBestellungen.$inferInsert

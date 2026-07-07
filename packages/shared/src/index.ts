@@ -327,6 +327,7 @@ export {
   GastBestellungEventSchema,
   NeueReservierungEventSchema,
   ZahlungAngefordertEventSchema,
+  SbBestellungEventSchema,
   KasseEventSchema,
 } from './schemas/events.js'
 export type {
@@ -337,8 +338,35 @@ export type {
   GastBestellungEvent,
   NeueReservierungEvent,
   ZahlungAngefordertEvent,
+  SbBestellungEvent,
   KasseEvent,
 } from './schemas/events.js'
+
+// SB-Terminal (Kiosk + Abholmonitor)
+export {
+  SbBestellungStatusSchema,
+  SB_STATUS_LABELS,
+  SbPositionSchema,
+  SbBestellungSchema,
+  formatSbNummer,
+  TerminalBestellungInputSchema,
+  TerminalArtikelSchema,
+  TerminalSortimentSchema,
+  TerminalBestellungStatusSchema,
+  AbholungEintragSchema,
+  AbholungEventSchema,
+} from './schemas/sb-terminal.js'
+export type {
+  SbBestellungStatus,
+  SbPosition,
+  SbBestellung,
+  TerminalBestellungInput,
+  TerminalArtikel,
+  TerminalSortiment,
+  TerminalBestellungStatus,
+  AbholungEintrag,
+  AbholungEvent,
+} from './schemas/sb-terminal.js'
 
 // Kunde (CRM)
 export {

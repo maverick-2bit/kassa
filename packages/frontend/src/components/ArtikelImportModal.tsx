@@ -102,7 +102,7 @@ export function ArtikelImportModal({ open, kategorien, mandantId, onClose }: Pro
       const katMap = new Map(kategorien.map(k => [k.name.toLowerCase(), k.id]))
 
       for (const name of neueKatNamen) {
-        const neu = await kategorieApi.create({ name, farbe: 'grau', reihenfolge: 0 })
+        const neu = await kategorieApi.create({ name, farbe: 'grau', reihenfolge: 0, terminalSichtbar: false })
         katMap.set(neu.name.toLowerCase(), neu.id)
       }
 

@@ -57,6 +57,8 @@ export function KategorieFormular({ initial, bonierdrucker, onSubmit, onCancel, 
       farbe:           values.farbe,
       reihenfolge:     parseInt(values.reihenfolge || '0', 10) || 0,
       bonierdruckerId: values.bonierdruckerId || null,
+      // Wird zentral im SB-Terminal-Bereich der Einstellungen verwaltet — hier nur erhalten
+      terminalSichtbar: initial?.terminalSichtbar ?? false,
     })
   })
 

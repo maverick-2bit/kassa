@@ -23,6 +23,9 @@ export interface NeueBonEingabe {
     menge:       number
     details?:    string
   }>
+  /** SB-Terminal-Bestellung: steuert Badge am KDS + Auto-„bereit" bei erledigt */
+  sbBestellungId?:  string
+  sbBestellNummer?: string
 }
 
 /** Neuen KDS-Bon anlegen (wird beim Bonieren aufgerufen) */
@@ -43,6 +46,8 @@ export async function kdsBonErstellen(db: Db, eingabe: NeueBonEingabe): Promise<
     bereich:   eingabe.bereich ?? null,
     kellner:   eingabe.kellner,
     positionen,
+    sbBestellungId:  eingabe.sbBestellungId ?? null,
+    sbBestellNummer: eingabe.sbBestellNummer ?? null,
   }).returning()
 
   if (!bon) return
@@ -59,6 +64,7 @@ export async function kdsBonErstellen(db: Db, eingabe: NeueBonEingabe): Promise<
       kellner:    bon.kellner,
       positionen: bon.positionen,
       erstelltAt: bon.erstelltAt.toISOString(),
+      ...(bon.sbBestellNummer ? { sbBestellNummer: bon.sbBestellNummer } : {}),
     },
   })
 }
@@ -107,6 +113,7 @@ export async function kdsOffeneBons(db: Db, mandantId: string, station: string) 
     kellner:    b.kellner,
     positionen: b.positionen,
     erstelltAt: b.erstelltAt.toISOString(),
+    ...(b.sbBestellNummer ? { sbBestellNummer: b.sbBestellNummer } : {}),
   }))
 }
 

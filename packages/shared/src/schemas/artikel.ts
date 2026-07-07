@@ -37,6 +37,8 @@ export const ArtikelSchema = z.object({
   favoritenReihenfolge: z.number().int(),
   bonierdruckerId:      z.string().uuid().nullable(),
   lieferantId:          z.string().uuid().nullable(),
+  /** SB-Terminal-Sichtbarkeit: null = erbt von der Kategorie, true/false = Override */
+  terminalSichtbar:     z.boolean().nullable(),
   /** Artikelbild als Data-URL (client-seitig auf max. 200×200 px / JPEG komprimiert) */
   bild:                 z.string().nullable().optional(),
   createdAt:            z.string(),
@@ -59,6 +61,7 @@ export const ArtikelInputSchema = z.object({
   istFavorit:      z.boolean().default(false),
   bonierdruckerId: z.string().uuid().optional().nullable(),
   lieferantId:     z.string().uuid().optional().nullable(),
+  terminalSichtbar: z.boolean().nullable().default(null),
   bild:            z.string().nullable().optional(),
 })
 export type ArtikelInput = z.infer<typeof ArtikelInputSchema>
@@ -79,6 +82,7 @@ export const ArtikelUpdateSchema = z.object({
   favoritenReihenfolge: z.number().int().nonnegative().optional(),
   bonierdruckerId:      z.string().uuid().nullable().optional(),
   lieferantId:          z.string().uuid().nullable().optional(),
+  terminalSichtbar:     z.boolean().nullable().optional(),
   bild:                 z.string().nullable().optional(),
 })
 export type ArtikelUpdate = z.infer<typeof ArtikelUpdateSchema>

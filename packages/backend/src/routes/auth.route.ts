@@ -162,6 +162,7 @@ export const authRoute: FastifyPluginAsync<AuthRouteOptions> = async (fastify, o
         modulMergeportAktiv:      mandanten.modulMergeportAktiv,
         modulReservierungenAktiv: mandanten.modulReservierungenAktiv,
         modulZeiterfassungAktiv:  mandanten.modulZeiterfassungAktiv,
+        modulSbTerminalAktiv:     mandanten.modulSbTerminalAktiv,
       })
       .from(mandanten)
       .where(eq(mandanten.id, user.mandantId))

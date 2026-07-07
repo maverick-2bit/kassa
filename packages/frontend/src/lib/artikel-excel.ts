@@ -378,6 +378,7 @@ function parseZeile(
       lagerstandMenge,
       mindestbestand,
       seriennummernAktiv: false,
+      terminalSichtbar: null,
     },
   }
 }

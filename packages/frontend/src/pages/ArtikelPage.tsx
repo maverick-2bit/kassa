@@ -737,7 +737,7 @@ export function ArtikelPage() {
           bonierdrucker={bonierdruckerQuery.data}
           lieferanten={lieferantenQuery.data}
           onNeueKategorie={async (name) => {
-            const neu = await kategorieApi.create({ name, farbe: 'grau', reihenfolge: katList.data?.length ?? 0 })
+            const neu = await kategorieApi.create({ name, farbe: 'grau', reihenfolge: katList.data?.length ?? 0, terminalSichtbar: false })
             invalidateKategorien()
             return neu
           }}
