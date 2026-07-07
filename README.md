@@ -14,6 +14,13 @@
 | `kundendisplay` | Kundendisplay |
 | `gast` | Gast-Bestellsystem (QR-Code) |
 | `kellner` | Kellner-App (mobile-first) |
+| `terminal` | SB-Bestellterminal (Selbstbedienungs-Kiosk) |
+| `abholmonitor` | Abholmonitor (Bestellt / Zur Abholung bereit) |
+
+## Produktiv-Deployment
+
+Eine Box im Laden aufsetzen (alle Container, Autostart, Backup, optional HTTPS):
+siehe **[ops/DEPLOYMENT.md](ops/DEPLOYMENT.md)**.
 
 ## Lokale Entwicklung
 

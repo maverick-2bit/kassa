@@ -1,0 +1,51 @@
+# =============================================================================
+# Kassa – Caddy Reverse-Proxy (optionales „proxy"-Profil)
+#
+# Ein Eingang mit automatischem HTTPS. Subdomain-Routing, weil die SPAs mit
+# Root-Base gebaut sind (Pfad-Routing würde die Asset-URLs brechen).
+#
+# Aktivieren:   docker compose --profile proxy up -d
+# Voraussetzung: KASSA_DOMAIN + ACME_EMAIL gesetzt; die folgenden Subdomains
+#   (oder ein Wildcard *.KASSA_DOMAIN) per DNS auf diese Box zeigen lassen.
+#
+# Geräte rufen dann z. B. auf:
+#   Kasse         https://kasse.<domain>
+#   KDS           https://kds.<domain>?station=kueche&token=<jwt>
+#   Kundendisplay https://kundendisplay.<domain>?kasseId=<uuid>
+#   Gast          https://gast.<domain>?kasseId=<uuid>&tisch=<nr>
+#   Kellner       https://kellner.<domain>
+#   SB-Terminal   https://terminal.<domain>?kasseId=<uuid>
+#   Abholmonitor  https://abholmonitor.<domain>?kasseId=<uuid>
+# =============================================================================
+
+{
+	email {$ACME_EMAIL}
+}
+
+kasse.{$KASSA_DOMAIN} {
+	reverse_proxy frontend:80
+}
+
+kds.{$KASSA_DOMAIN} {
+	reverse_proxy kds:80
+}
+
+kundendisplay.{$KASSA_DOMAIN} {
+	reverse_proxy kundendisplay:80
+}
+
+gast.{$KASSA_DOMAIN} {
+	reverse_proxy gast:80
+}
+
+kellner.{$KASSA_DOMAIN} {
+	reverse_proxy kellner:80
+}
+
+terminal.{$KASSA_DOMAIN} {
+	reverse_proxy terminal:80
+}
+
+abholmonitor.{$KASSA_DOMAIN} {
+	reverse_proxy abholmonitor:80
+}
