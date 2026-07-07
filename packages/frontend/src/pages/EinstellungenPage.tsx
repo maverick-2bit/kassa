@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { QRCodeSVG } from 'qrcode.react'
-import { ALLE_STATIONEN, STATION_LABELS, type Station, type ZvtConfig, type WeitereKasseInput, type PosKonfig } from '@kassa/shared'
-import { druckerApi, kdsApi, zvtApi, downloadDepExport, healthApi, monitoringApi, mandantApi, kasseApi, kategorieApi, posConfigApi, tischplanApi, dbBackupApi, belegApi, type DruckerConfig, type KdsConfig, type DbSicherungRow, type MonitoringStatus } from '../lib/api'
+import { ALLE_STATIONEN, STATION_LABELS, type Station, type ZvtConfig, type WeitereKasseInput, type PosKonfig, type Artikel, type Kategorie } from '@kassa/shared'
+import { druckerApi, kdsApi, zvtApi, downloadDepExport, healthApi, monitoringApi, mandantApi, kasseApi, kategorieApi, artikelApi, posConfigApi, tischplanApi, dbBackupApi, belegApi, type DruckerConfig, type KdsConfig, type DbSicherungRow, type MonitoringStatus } from '../lib/api'
 import { formatAusfallDauer } from '../components/SeeStatusBanner'
 import { getKasseIdentity, setKasseIdentity } from '../lib/kasse'
 import { getAuth, hasModul, updateKasseBezeichnung, addKasse, removeKasse } from '../lib/auth'
@@ -19,7 +19,7 @@ import { TischplanEditor } from '../components/TischplanEditor'
 // Seiten-Reload beim Kassen-Wechsel und ist direkt verlinkbar.
 // ---------------------------------------------------------------------------
 
-type Bereich = 'kassen' | 'beleg' | 'hardware' | 'rksv' | 'gastro' | 'system'
+type Bereich = 'kassen' | 'beleg' | 'hardware' | 'rksv' | 'gastro' | 'terminal' | 'system'
 
 const BEREICHE: { key: Bereich; label: string; beschreibung: string }[] = [
   { key: 'kassen',   label: 'Kassen',         beschreibung: 'Kassen verwalten, wechseln, Warengruppen verteilen' },
@@ -27,14 +27,17 @@ const BEREICHE: { key: Bereich; label: string; beschreibung: string }[] = [
   { key: 'hardware', label: 'Hardware',       beschreibung: 'Bondrucker, Küchen-Display, Kartenterminal' },
   { key: 'rksv',     label: 'RKSV',           beschreibung: 'Datenexport und Signatureinrichtung' },
   { key: 'gastro',   label: 'Gastro',         beschreibung: 'Tischplan und Gast-Bestellsystem' },
+  { key: 'terminal', label: 'SB-Terminal',    beschreibung: 'Bestellterminal-Sortiment und Geräte-Links' },
   { key: 'system',   label: 'System',         beschreibung: 'Datenbank-Sicherung und Systeminfo' },
 ]
 
 export function EinstellungenPage() {
   const [searchParams, setSearchParams] = useSearchParams()
+  // SB-Terminal-Bereich nur bei aktivem Modul anbieten
+  const bereiche = BEREICHE.filter(b => b.key !== 'terminal' || hasModul('sbTerminal'))
   const raw = searchParams.get('bereich')
-  const bereich: Bereich = (BEREICHE.some(b => b.key === raw) ? raw : 'kassen') as Bereich
-  const aktiverBereich = BEREICHE.find(b => b.key === bereich)!
+  const bereich: Bereich = (bereiche.some(b => b.key === raw) ? raw : 'kassen') as Bereich
+  const aktiverBereich = bereiche.find(b => b.key === bereich)!
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-6 sm:py-8 space-y-6">
@@ -45,7 +48,7 @@ export function EinstellungenPage() {
 
       {/* Bereichs-Navigation */}
       <div className="flex flex-wrap gap-1 rounded-xl bg-panel-2 p-1">
-        {BEREICHE.map(b => (
+        {bereiche.map(b => (
           <button
             key={b.key}
             onClick={() => setSearchParams({ bereich: b.key }, { replace: true })}
@@ -87,6 +90,12 @@ export function EinstellungenPage() {
         <>
           {hasModul('gastro') && <TischplanSektion />}
           <GastQrCodeSektion />
+        </>
+      )}
+      {bereich === 'terminal' && (
+        <>
+          <TerminalSortimentSektion />
+          <TerminalUrlsSektion />
         </>
       )}
       {bereich === 'system' && (
@@ -2133,6 +2142,303 @@ function SystemInfoSektion() {
           Letzter Check: {new Date(health.data.timestamp).toLocaleTimeString('de-AT')}
         </p>
       )}
+    </section>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// SB-Terminal: Sortiment-Sichtbarkeit (Kategorie-Toggle + Artikel-Override)
+// ---------------------------------------------------------------------------
+
+function TerminalSortimentSektion() {
+  const auth        = getAuth()!
+  const queryClient = useQueryClient()
+  const [offen, setOffen] = useState<Set<string>>(new Set())
+
+  const kategorienQuery = useQuery({
+    queryKey: ['kategorien'],
+    queryFn:  () => kategorieApi.list(true),
+  })
+  const artikelQuery = useQuery({
+    queryKey: ['artikel', auth.mandant.id],
+    queryFn:  () => artikelApi.list(auth.mandant.id),
+  })
+
+  const kategorieMutation = useMutation({
+    mutationFn: ({ id, sichtbar }: { id: string; sichtbar: boolean }) =>
+      kategorieApi.update(id, { terminalSichtbar: sichtbar }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['kategorien'] }),
+  })
+  const artikelMutation = useMutation({
+    mutationFn: ({ id, wert }: { id: string; wert: boolean | null }) =>
+      artikelApi.update(id, { terminalSichtbar: wert }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['artikel', auth.mandant.id] }),
+  })
+
+  const kategorien = kategorienQuery.data ?? []
+  const artikel    = artikelQuery.data ?? []
+  const proKategorie = new Map<string | null, Artikel[]>()
+  for (const a of artikel) {
+    const key = a.kategorieId
+    const liste = proKategorie.get(key) ?? []
+    liste.push(a)
+    proKategorie.set(key, liste)
+  }
+  const ohneKategorie = proKategorie.get(null) ?? []
+
+  const toggleOffen = (id: string) => setOffen(prev => {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id); else next.add(id)
+    return next
+  })
+
+  return (
+    <section className="rounded-xl border border-line bg-panel p-6 space-y-5">
+      <div>
+        <h2 className="text-lg font-semibold text-ink">Terminal-Sortiment</h2>
+        <p className="mt-1 text-sm text-ink-muted">
+          Welche Warengruppen und Artikel am Bestellterminal angeboten werden.
+          Artikel erben die Einstellung ihrer Warengruppe und können einzeln
+          übersteuert werden — ganz ohne doppelte Artikelpflege.
+        </p>
+      </div>
+
+      {(kategorienQuery.isLoading || artikelQuery.isLoading) ? (
+        <p className="text-sm text-ink-muted">Lade Sortiment…</p>
+      ) : (
+        <div className="space-y-2">
+          {kategorien.map(k => (
+            <TerminalKategorieZeile
+              key={k.id}
+              kategorie={k}
+              artikel={proKategorie.get(k.id) ?? []}
+              offen={offen.has(k.id)}
+              onToggleOffen={() => toggleOffen(k.id)}
+              onKategorieToggle={(sichtbar) => kategorieMutation.mutate({ id: k.id, sichtbar })}
+              onArtikelWert={(id, wert) => artikelMutation.mutate({ id, wert })}
+              speichert={kategorieMutation.isPending || artikelMutation.isPending}
+            />
+          ))}
+
+          {ohneKategorie.length > 0 && (
+            <div className="rounded-lg border border-line">
+              <button
+                type="button"
+                onClick={() => toggleOffen('__ohne__')}
+                className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+              >
+                <span className="text-sm font-medium text-ink">Ohne Warengruppe</span>
+                <span className="text-xs text-ink-muted">{ohneKategorie.length} Artikel {offen.has('__ohne__') ? '▲' : '▼'}</span>
+              </button>
+              {offen.has('__ohne__') && (
+                <div className="border-t border-line divide-y divide-line">
+                  {ohneKategorie.map(a => (
+                    <TerminalArtikelZeile
+                      key={a.id}
+                      artikel={a}
+                      kategorieSichtbar={false}
+                      ohneKategorie
+                      onWert={(wert) => artikelMutation.mutate({ id: a.id, wert })}
+                      speichert={artikelMutation.isPending}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  )
+}
+
+function TerminalKategorieZeile({
+  kategorie,
+  artikel,
+  offen,
+  onToggleOffen,
+  onKategorieToggle,
+  onArtikelWert,
+  speichert,
+}: {
+  kategorie:         Kategorie
+  artikel:           Artikel[]
+  offen:             boolean
+  onToggleOffen:     () => void
+  onKategorieToggle: (sichtbar: boolean) => void
+  onArtikelWert:     (id: string, wert: boolean | null) => void
+  speichert:         boolean
+}) {
+  const sichtbareAnzahl = artikel.filter(a =>
+    !a.seriennummernAktiv &&
+    (a.terminalSichtbar === true || (a.terminalSichtbar === null && kategorie.terminalSichtbar))
+  ).length
+
+  return (
+    <div className="rounded-lg border border-line">
+      <div className="flex items-center gap-3 px-4 py-3">
+        <button type="button" onClick={onToggleOffen} className="flex flex-1 items-center gap-3 text-left">
+          <span className="text-sm font-medium text-ink">{kategorie.name}</span>
+          <span className="text-xs text-ink-muted">
+            {sichtbareAnzahl} von {artikel.length} am Terminal {offen ? '▲' : '▼'}
+          </span>
+        </button>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={kategorie.terminalSichtbar}
+          aria-label={`Warengruppe ${kategorie.name} am Terminal`}
+          disabled={speichert}
+          onClick={() => onKategorieToggle(!kategorie.terminalSichtbar)}
+          className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors focus:outline-none ${
+            kategorie.terminalSichtbar ? 'bg-brand-600' : 'bg-panel-2'
+          }`}
+        >
+          <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-panel shadow transition-transform ${
+            kategorie.terminalSichtbar ? 'translate-x-5' : 'translate-x-0'
+          }`} />
+        </button>
+      </div>
+      {offen && (
+        <div className="border-t border-line divide-y divide-line">
+          {artikel.length === 0 ? (
+            <p className="px-4 py-3 text-xs text-ink-muted">Keine Artikel in dieser Warengruppe.</p>
+          ) : artikel.map(a => (
+            <TerminalArtikelZeile
+              key={a.id}
+              artikel={a}
+              kategorieSichtbar={kategorie.terminalSichtbar}
+              onWert={(wert) => onArtikelWert(a.id, wert)}
+              speichert={speichert}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TerminalArtikelZeile({
+  artikel: a,
+  kategorieSichtbar,
+  ohneKategorie = false,
+  onWert,
+  speichert,
+}: {
+  artikel:           Artikel
+  kategorieSichtbar: boolean
+  ohneKategorie?:    boolean
+  onWert:            (wert: boolean | null) => void
+  speichert:         boolean
+}) {
+  const effektivSichtbar = !a.seriennummernAktiv && (
+    a.terminalSichtbar === true || (a.terminalSichtbar === null && kategorieSichtbar)
+  )
+
+  const optionen: { wert: boolean | null; label: string }[] = ohneKategorie
+    ? [{ wert: true, label: 'An' }, { wert: null, label: 'Aus' }]
+    : [{ wert: null, label: 'Erbt' }, { wert: true, label: 'An' }, { wert: false, label: 'Aus' }]
+
+  return (
+    <div className="flex items-center gap-3 px-4 py-2">
+      <span
+        className={`h-2 w-2 shrink-0 rounded-full ${effektivSichtbar ? 'bg-green-500' : 'bg-line-strong'}`}
+        title={effektivSichtbar ? 'Am Terminal sichtbar' : 'Am Terminal nicht sichtbar'}
+      />
+      <span className="flex-1 text-sm text-ink">
+        {a.bezeichnung}
+        {a.seriennummernAktiv && (
+          <span className="ml-2 text-xs text-amber-700">Seriennummern — am Terminal nicht verfügbar</span>
+        )}
+      </span>
+      {!a.seriennummernAktiv && (
+        <div className="flex rounded-md border border-line-strong overflow-hidden">
+          {optionen.map(o => (
+            <button
+              key={String(o.wert)}
+              type="button"
+              disabled={speichert}
+              onClick={() => onWert(o.wert)}
+              className={`px-2.5 py-1 text-xs font-medium transition ${
+                a.terminalSichtbar === o.wert
+                  ? 'bg-brand-600 text-white'
+                  : 'bg-panel text-ink-muted hover:text-ink'
+              }`}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// SB-Terminal: Geräte-URLs (Bestellterminal + Abholmonitor je Kasse)
+// ---------------------------------------------------------------------------
+
+function TerminalUrlsSektion() {
+  const auth   = getAuth()!
+  const kassen = auth.kassen
+
+  const istDev = window.location.hostname === 'localhost'
+  const basis  = (port: number, prodPort: number) =>
+    `${window.location.protocol}//${window.location.hostname}:${istDev ? port : prodPort}`
+
+  const [terminalBasis, setTerminalBasis] = useState(() => basis(5179, 8083))
+  const [monitorBasis,  setMonitorBasis]  = useState(() => basis(5180, 8084))
+  const [kopiert, setKopiert] = useState<string | null>(null)
+
+  const kopieren = (url: string, key: string) => {
+    void navigator.clipboard.writeText(url)
+    setKopiert(key)
+    setTimeout(() => setKopiert(k => (k === key ? null : k)), 1500)
+  }
+
+  return (
+    <section className="rounded-xl border border-line bg-panel p-6 space-y-5">
+      <div>
+        <h2 className="text-lg font-semibold text-ink">Geräte-Links</h2>
+        <p className="mt-1 text-sm text-ink-muted">
+          Diese Adressen am jeweiligen Gerät im Browser (Vollbild/Kiosk-Modus) öffnen.
+          Das Bestellterminal nimmt Bestellungen entgegen, der Abholmonitor zeigt die
+          Bestellnummern in „Bestellt" und „Zur Abholung bereit".
+        </p>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Basis-URL Bestellterminal">
+          <Input value={terminalBasis} onChange={e => setTerminalBasis(e.target.value)} />
+        </Field>
+        <Field label="Basis-URL Abholmonitor">
+          <Input value={monitorBasis} onChange={e => setMonitorBasis(e.target.value)} />
+        </Field>
+      </div>
+
+      <div className="space-y-3">
+        {kassen.map(k => {
+          const terminalUrl = `${terminalBasis}/?kasseId=${encodeURIComponent(k.id)}`
+          const monitorUrl  = `${monitorBasis}/?kasseId=${encodeURIComponent(k.id)}`
+          return (
+            <div key={k.id} className="rounded-lg border border-line p-4 space-y-2">
+              <p className="text-sm font-semibold text-ink">{k.bezeichnung || k.kassenId}</p>
+              {[
+                { label: 'Bestellterminal', url: terminalUrl, key: `t-${k.id}` },
+                { label: 'Abholmonitor',    url: monitorUrl,  key: `m-${k.id}` },
+              ].map(zeile => (
+                <div key={zeile.key} className="flex items-center gap-2">
+                  <span className="w-32 shrink-0 text-xs text-ink-muted">{zeile.label}</span>
+                  <code className="flex-1 truncate rounded bg-panel-2 px-2 py-1 text-xs text-ink">{zeile.url}</code>
+                  <Button size="sm" variant="secondary" onClick={() => kopieren(zeile.url, zeile.key)}>
+                    {kopiert === zeile.key ? 'Kopiert ✓' : 'Kopieren'}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )
+        })}
+      </div>
     </section>
   )
 }
