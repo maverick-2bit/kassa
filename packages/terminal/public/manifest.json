@@ -1,0 +1,13 @@
+{
+  "name": "SB-Terminal",
+  "short_name": "SB-Terminal",
+  "description": "Selbstbedienungs-Bestellterminal",
+  "start_url": "/",
+  "display": "fullscreen",
+  "orientation": "portrait",
+  "background_color": "#f4f5f7",
+  "theme_color": "#1d4ed8",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
