@@ -4,7 +4,7 @@ import { z } from 'zod'
 // Mandanten-Module
 // ---------------------------------------------------------------------------
 
-export const MandantModulSchema = z.enum(['gastro', 'angebote', 'mergeport', 'reservierungen', 'zeiterfassung'])
+export const MandantModulSchema = z.enum(['gastro', 'angebote', 'mergeport', 'reservierungen', 'zeiterfassung', 'sbTerminal'])
 export type MandantModul = z.infer<typeof MandantModulSchema>
 
 export const MANDANT_MODUL_LABELS: Record<MandantModul, string> = {
@@ -13,6 +13,7 @@ export const MANDANT_MODUL_LABELS: Record<MandantModul, string> = {
   mergeport:      'Lieferservice-Integration',
   reservierungen: 'Tischreservierungen',
   zeiterfassung:  'Personalzeiterfassung',
+  sbTerminal:     'SB-Terminal & Abholmonitor',
 }
 
 export const MANDANT_MODUL_BESCHREIBUNGEN: Record<MandantModul, string> = {
@@ -31,6 +32,9 @@ export const MANDANT_MODUL_BESCHREIBUNGEN: Record<MandantModul, string> = {
   zeiterfassung:
     'Mitarbeiter stempeln per PIN ein und aus. Schichtübersicht, ' +
     'Stundenauswertung und Monatsexport für die Lohnverrechnung.',
+  sbTerminal:
+    'Gäste bestellen selbst am Touch-Terminal und zahlen mit Karte. ' +
+    'Bestellnummern laufen am KDS auf und erscheinen am Abholmonitor.',
 }
 
 export const MandantModuleSchema = z.object({
@@ -39,6 +43,7 @@ export const MandantModuleSchema = z.object({
   modulMergeportAktiv:       z.boolean(),
   modulReservierungenAktiv:  z.boolean(),
   modulZeiterfassungAktiv:   z.boolean(),
+  modulSbTerminalAktiv:      z.boolean(),
 })
 export type MandantModule = z.infer<typeof MandantModuleSchema>
 

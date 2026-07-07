@@ -37,9 +37,19 @@ interface BonierbonPosition {
 
 type DruckerRow = typeof bonierdrucker.$inferSelect
 
+export interface BonierOptionen {
+  /**
+   * SB-Terminal-Bestellung: Browser-KDS-Bons entstehen IMMER (auch ohne
+   * kdsAktiv; Positionen ohne Station landen auf 'kueche'), mit
+   * Bestellnummern-Badge. TCP-KDS/ESC-POS-Verhalten bleibt unverändert.
+   */
+  sb?: { bestellungId: string; bestellNummer: string }
+}
+
 export async function bonierBestellung(
   input: BonierungInput,
   deps:  BonierServiceDeps,
+  optionen: BonierOptionen = {},
 ): Promise<BonierungErgebnis> {
   // Tisch-Label: leer = Direktverkauf an der Schank (ohne Tisch)
   const tischLabel = input.tisch?.trim() || 'Direkt'
@@ -131,9 +141,10 @@ export async function bonierBestellung(
     }
     allePositionen.push(pos)
 
-    // KDS-Routing (nur wenn kdsAktiv und Artikel eine Station hat)
-    if (kasse.kdsAktiv) {
-      const station = a.station as Station | null
+    // KDS-Routing (nur wenn kdsAktiv und Artikel eine Station hat).
+    // SB-Bestellungen: immer KDS — Positionen ohne Station fallen auf 'kueche'.
+    if (kasse.kdsAktiv || optionen.sb) {
+      const station = (a.station as Station | null) ?? (optionen.sb ? 'kueche' : null)
       if (station) {
         const liste = proStation.get(station) ?? []
         liste.push(pos)
@@ -167,6 +178,9 @@ export async function bonierBestellung(
   // 7. KDS senden (pro Station)
   const stationenErgebnisse: BonierungErgebnis['stationen'] = []
   for (const [station, positionen] of proStation) {
+    // TCP-KDS nur wenn das KDS an der Kasse aktiv ist (SB füllt proStation
+    // auch ohne kdsAktiv — dann existiert nur der Browser-KDS-Bon).
+    if (!kasse.kdsAktiv) break
     const ip = kdsStationen[station]
     if (!ip) {
       stationenErgebnisse.push({
@@ -249,6 +263,16 @@ export async function bonierBestellung(
   const zuDekrementieren = input.positionen
     .map(p => ({ a: artikelById.get(p.artikelId)!, menge: p.menge }))
     .filter(({ a }) => a.lagerstandAktiv && a.lagerstandMenge !== null)
+    // SB-Bestellung: der RKSV-Beleg (bereits erstellt) dekrementiert Artikel OHNE
+    // Bonierrouting selbst — hier nur echte geroutete Positionen abziehen, sonst
+    // würden ungeroutete (Kueche-Fallback) doppelt gezählt.
+    .filter(({ a }) => {
+      if (!optionen.sb) return true
+      const hatKategorieRouting = a.kategorieId
+        ? (kategorieMap.get(a.kategorieId)?.bonierdruckerId ?? null) !== null
+        : false
+      return a.station !== null || a.bonierdruckerId !== null || hatKategorieRouting
+    })
 
   if (zuDekrementieren.length > 0) {
     await deps.db.transaction(async (tx) => {
@@ -286,8 +310,9 @@ export async function bonierBestellung(
     drucker:   druckerErgebnisse,
   }
 
-  // 11a. KDS-Bons in DB schreiben (Browser-Display) — parallel, Fehler nicht fatal
-  if (kasse.kdsAktiv && proStation.size > 0) {
+  // 11a. KDS-Bons in DB schreiben (Browser-Display) — parallel, Fehler nicht fatal.
+  //      SB-Bestellungen erzeugen die Browser-Bons immer (Grundlage für Badge + Auto-„bereit").
+  if ((kasse.kdsAktiv || optionen.sb) && proStation.size > 0) {
     const schreibPromises = [...proStation.entries()].map(([station, positionen]) =>
       kdsBonErstellen(deps.db, {
         mandantId:  kasse.mandantId,
@@ -301,6 +326,10 @@ export async function bonierBestellung(
           menge:       p.menge,
           ...(p.details ? { details: p.details } : {}),
         })),
+        ...(optionen.sb ? {
+          sbBestellungId:  optionen.sb.bestellungId,
+          sbBestellNummer: optionen.sb.bestellNummer,
+        } : {}),
       }).catch(err => { console.error('KDS-DB-Fehler:', err) })
     )
     await Promise.all(schreibPromises)

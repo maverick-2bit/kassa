@@ -162,6 +162,13 @@
       "when": 1779808572000,
       "tag": "0023_seriennummern",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1779808573000,
+      "tag": "0024_sb_terminal",
+      "breakpoints": true
     }
   ]
 }

@@ -24,6 +24,8 @@ export interface KdsBonDto {
   kellner:    string
   positionen: KdsPositionDto[]
   erstelltAt: string
+  /** 4-stellige SB-Bestellnummer (nur bei Terminal-Bestellungen) */
+  sbBestellNummer?: string
 }
 
 export interface KdsPositionDto {

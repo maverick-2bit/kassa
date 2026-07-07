@@ -32,6 +32,8 @@ export const KategorieSchema = z.object({
   reihenfolge:     z.number().int(),
   aktiv:           z.boolean(),
   bonierdruckerId: z.string().uuid().nullable(),
+  /** SB-Terminal: Artikel dieser Warengruppe am Bestellterminal anzeigen */
+  terminalSichtbar: z.boolean(),
   createdAt:       z.string(),
   updatedAt:       z.string(),
 })
@@ -42,6 +44,7 @@ export const KategorieInputSchema = z.object({
   farbe:           KategorieFarbeSchema,
   reihenfolge:     z.number().int().nonnegative().default(0),
   bonierdruckerId: z.string().uuid().optional().nullable(),
+  terminalSichtbar: z.boolean().default(false),
 })
 export type KategorieInput = z.infer<typeof KategorieInputSchema>
 
@@ -51,5 +54,6 @@ export const KategorieUpdateSchema = z.object({
   reihenfolge:     z.number().int().nonnegative().optional(),
   aktiv:           z.boolean().optional(),
   bonierdruckerId: z.string().uuid().nullable().optional(),
+  terminalSichtbar: z.boolean().optional(),
 })
 export type KategorieUpdate = z.infer<typeof KategorieUpdateSchema>

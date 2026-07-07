@@ -203,7 +203,7 @@ export function SetupForm({ onSubmit, loading = false, error }: Props) {
           subtitle="Welche Funktionen benötigst du? Kann jederzeit unter Einstellungen → Module geändert werden."
         />
         <div className="space-y-2">
-          {(['gastro', 'angebote', 'mergeport', 'reservierungen', 'zeiterfassung'] as MandantModul[]).map((modul) => (
+          {(['gastro', 'angebote', 'mergeport', 'reservierungen', 'zeiterfassung', 'sbTerminal'] as MandantModul[]).map((modul) => (
             <label
               key={modul}
               className={`flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition ${

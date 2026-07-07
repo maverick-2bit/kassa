@@ -60,12 +60,13 @@ export function hasModul(modul: MandantModul): boolean {
   if (modul === 'mergeport')      return auth.mandant.modulMergeportAktiv
   if (modul === 'reservierungen') return auth.mandant.modulReservierungenAktiv
   if (modul === 'zeiterfassung')  return auth.mandant.modulZeiterfassungAktiv
+  if (modul === 'sbTerminal')     return auth.mandant.modulSbTerminalAktiv
   return false
 }
 
 /** Aktualisiert die Modul-Flags im LocalStorage ohne Re-Login. */
 export function updateMandantModule(
-  updates: Partial<{ modulGastroAktiv: boolean; modulAngeboteAktiv: boolean; modulMergeportAktiv: boolean; modulReservierungenAktiv: boolean; modulZeiterfassungAktiv: boolean }>,
+  updates: Partial<{ modulGastroAktiv: boolean; modulAngeboteAktiv: boolean; modulMergeportAktiv: boolean; modulReservierungenAktiv: boolean; modulZeiterfassungAktiv: boolean; modulSbTerminalAktiv: boolean }>,
 ): void {
   const auth = getAuth()
   if (!auth) return

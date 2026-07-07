@@ -77,6 +77,16 @@ export const ZahlungAngefordertEventSchema = z.object({
 })
 export type ZahlungAngefordertEvent = z.infer<typeof ZahlungAngefordertEventSchema>
 
+export const SbBestellungEventSchema = z.object({
+  typ:              z.literal('neue_sb_bestellung'),
+  bestellungId:     z.string().uuid(),
+  kasseId:          z.string().uuid(),
+  bestellNummer:    z.number().int(),
+  anzahlPositionen: z.number().int(),
+  summeCent:        z.number().int(),
+})
+export type SbBestellungEvent = z.infer<typeof SbBestellungEventSchema>
+
 export const KasseEventSchema = z.discriminatedUnion('typ', [
   BonierbonEventSchema,
   NeueBestellungEventSchema,
@@ -85,5 +95,6 @@ export const KasseEventSchema = z.discriminatedUnion('typ', [
   GastBestellungEventSchema,
   NeueReservierungEventSchema,
   ZahlungAngefordertEventSchema,
+  SbBestellungEventSchema,
 ])
 export type KasseEvent = z.infer<typeof KasseEventSchema>
