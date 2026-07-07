@@ -1,13 +1,13 @@
 /**
  * Integrationstests für die vollständige Belegsignierung
  *
- * Prüft den gesamten RKSV-Ablauf:
+ * Prüft den gesamten RKSV-Ablauf gemäß Detailspezifikation:
  *   - SEE generieren
- *   - Startbeleg erstellen
- *   - Barzahlungsbelege signieren
- *   - Signaturkette validieren
- *   - Umsatzzähler-Konsistenz
- *   - DEP7-Export
+ *   - Startbeleg erstellen (Verkettung über die Kassen-ID)
+ *   - Barzahlungsbelege signieren (JWS ES256, BASE64_STD im QR)
+ *   - Verkettung über den kompletten Vorbeleg-Code validieren
+ *   - Umsatzzähler-Konsistenz (eigener AES-Schlüssel)
+ *   - DEP7-Export (Belege-Gruppe / Belege-kompakt als JWS)
  */
 
 import { describe, it, expect, beforeAll } from 'vitest'
@@ -18,13 +18,15 @@ import {
   erstelleStartbeleg,
   berechneBetraege,
   verifiziereBelegSignatur,
+  verifiziereQrCode,
+  qrCodeZuJwsCompact,
+  JWS_HEADER_B64URL,
   SEE_AUSFALL_SIGNATUR,
   istAusfallBeleg,
-  Umsatzzaehler,
   type SignierungsKontext,
 } from '../src/beleg.js'
-import { pruefeKette } from '../src/crypto/chain.js'
-import { erstelleDEP7Export, validiereDEP7 } from '../src/dep.js'
+import { pruefeKette, verkettungswertStartbeleg } from '../src/crypto/chain.js'
+import { erstelleDEP7Export, validiereDEP7, dep7ZuJson, dep7AusJson } from '../src/dep.js'
 import { entschluesselUmsatzzaehler } from '../src/crypto/aes-icm.js'
 import type { RawBeleg, SEEConfig } from '../src/types.js'
 
@@ -83,17 +85,16 @@ describe('erstelleStartbeleg', () => {
     expect(beleg.belegNummer).toBe(1)
   })
 
-  it('maschinenlesbareCode beginnt mit _R1-AT_', () => {
+  it('maschinenlesbareCode beginnt mit dem ZDA-Prefix _R1-AT0_ (Software-SEE)', () => {
     const { beleg } = erstelleStartbeleg('TEST-KASSE-001', see)
-    expect(beleg.maschinenlesbareCode).toMatch(/^_R1-AT_/)
+    expect(beleg.maschinenlesbareCode).toMatch(/^_R1-AT0_/)
   })
 
-  it('sigVorbeleg entspricht dem SHA-256 von Null-Bytes (Startbeleg-Spezifikation)', () => {
+  it('sigVorbeleg entspricht dem Verkettungswert der Kassen-ID (Startbeleg-Spezifikation)', () => {
     const { beleg } = erstelleStartbeleg('TEST-KASSE-001', see)
-    const erwartet = Buffer
-      .from('66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925', 'hex')
-      .toString('base64url')
-    expect(beleg.sigVorbeleg).toBe(erwartet)
+    expect(beleg.sigVorbeleg).toBe(verkettungswertStartbeleg('TEST-KASSE-001'))
+    // 8 Byte, Standard-Base64
+    expect(Buffer.from(beleg.sigVorbeleg, 'base64')).toHaveLength(8)
   })
 
   it('hat ein zertifikatSN', () => {
@@ -112,7 +113,7 @@ describe('erstelleStartbeleg', () => {
 // ---------------------------------------------------------------------------
 
 describe('signiereBeleg – Barzahlungsbeleg', () => {
-  it('signiert einen einfachen Beleg', () => {
+  it('signiert einen einfachen Beleg (BASE64_STD-Signatur, JWS-Compact vorhanden)', () => {
     const { kontext } = erstelleStartbeleg('TEST-KASSE-001', see)
 
     const raw: RawBeleg = {
@@ -125,19 +126,23 @@ describe('signiereBeleg – Barzahlungsbeleg', () => {
       ],
     }
 
-    kontext.letzterSignaturwert = 'startbelegSig'
     const beleg = signiereBeleg(raw, kontext)
 
     expect(beleg.signaturwert).toBeTruthy()
-    expect(beleg.maschinenlesbareCode).toContain('_R1-AT_')
+    // Signatur im QR: Standard-Base64 einer 64-Byte-P1363-Signatur
+    expect(Buffer.from(beleg.signaturwert, 'base64')).toHaveLength(64)
+    expect(beleg.maschinenlesbareCode).toContain('_R1-AT0_')
     expect(beleg.betraege.ermaessigt1).toBe(350)
+    // JWS-Compact: header.payload.signature mit fixem ES256-Header
+    expect(beleg.jwsCompact.startsWith(`${JWS_HEADER_B64URL}.`)).toBe(true)
+    expect(beleg.jwsCompact.split('.')).toHaveLength(3)
+    expect(qrCodeZuJwsCompact(beleg.maschinenlesbareCode)).toBe(beleg.jwsCompact)
   })
 
   it('erhöht den Umsatzzähler', () => {
     const { kontext } = erstelleStartbeleg('TEST-KASSE-001', see)
     const vorher = kontext.umsatzzaehler.aktuell
 
-    kontext.letzterSignaturwert = 'sig'
     signiereBeleg({
       kassenId:     'TEST-KASSE-001',
       belegNummer:  2,
@@ -151,9 +156,8 @@ describe('signiereBeleg – Barzahlungsbeleg', () => {
     expect(kontext.umsatzzaehler.aktuell).toBe(vorher + 1000n)
   })
 
-  it('Umsatzzähler ist korrekt im Beleg verschlüsselt', () => {
+  it('Umsatzzähler ist korrekt im Beleg verschlüsselt (eigener AES-Schlüssel, BASE64_STD)', () => {
     const { kontext } = erstelleStartbeleg('TEST-KASSE-001', see)
-    kontext.letzterSignaturwert = 'sig'
 
     const beleg = signiereBeleg({
       kassenId:     'TEST-KASSE-001',
@@ -165,17 +169,17 @@ describe('signiereBeleg – Barzahlungsbeleg', () => {
       ],
     }, kontext)
 
-    const encrypted  = Buffer.from(beleg.umsatzzaehlerVerschluesselt, 'base64url')
-    const decrypted  = entschluesselUmsatzzaehler(encrypted, see.zertifikatDER, see.kassenId, 2)
+    const encrypted  = Buffer.from(beleg.umsatzzaehlerVerschluesselt, 'base64')
+    const decrypted  = entschluesselUmsatzzaehler(encrypted, see.aesSchluessel, see.kassenId, 2)
     expect(decrypted).toBe(1000n) // 2 × 500
   })
 })
 
 // ---------------------------------------------------------------------------
-// Signaturkette
+// Verkettung
 // ---------------------------------------------------------------------------
 
-describe('Signaturkette', () => {
+describe('Verkettung', () => {
   it('drei aufeinanderfolgende Belege bilden eine valide Kette', () => {
     const { beleg: start, kontext } = erstelleStartbeleg('TEST-KASSE-001', see)
 
@@ -191,14 +195,14 @@ describe('Signaturkette', () => {
           { bezeichnung: 'Artikel', menge: 1, einzelpreisBreutto: 100, mwstSatz: 'normal' },
         ],
       }, kontext)
-      kontext.letzterSignaturwert = beleg.signaturwert
+      kontext.letzterBelegCode = beleg.maschinenlesbareCode
       belege.push(beleg)
     }
 
-    expect(pruefeKette(belege)).toBe(true)
+    expect(pruefeKette('TEST-KASSE-001', belege)).toBe(true)
   })
 
-  it('Kette ist ungültig wenn ein Signaturwert manipuliert wird', () => {
+  it('Kette ist ungültig wenn der Vorbeleg-Code manipuliert wird', () => {
     const { beleg: start, kontext } = erstelleStartbeleg('TEST-KASSE-001', see)
 
     const beleg2 = signiereBeleg({
@@ -211,9 +215,9 @@ describe('Signaturkette', () => {
       ],
     }, kontext)
 
-    // Signaturwert manipulieren
-    const manipuliert = { ...start, signaturwert: 'MANIPULIERT' }
-    expect(pruefeKette([manipuliert, beleg2])).toBe(false)
+    // Vorbeleg (Startbeleg) nachträglich manipulieren → Verkettung bricht
+    const manipuliert = { ...start, maschinenlesbareCode: start.maschinenlesbareCode.replace('0,00', '1,00') }
+    expect(pruefeKette('TEST-KASSE-001', [manipuliert, beleg2])).toBe(false)
   })
 })
 
@@ -227,8 +231,7 @@ describe('Signaturkette', () => {
 describe('verifiziereBelegSignatur (Tamper-Detection)', () => {
   function signiereBarzahlung(betragCent: number) {
     const { kontext } = erstelleStartbeleg('TEST-KASSE-001', see)
-    kontext.letzterSignaturwert = 'startbelegSig'
-    return signiereBeleg({
+    const beleg = signiereBeleg({
       kassenId:     'TEST-KASSE-001',
       belegNummer:  2,
       datumUhrzeit: new Date('2026-03-15T10:30:00'),
@@ -237,11 +240,17 @@ describe('verifiziereBelegSignatur (Tamper-Detection)', () => {
         { bezeichnung: 'Test', menge: 1, einzelpreisBreutto: betragCent, mwstSatz: 'normal' },
       ],
     }, kontext)
+    return { ...beleg, zdaId: see.zdaId }
   }
 
   it('unveränderter Beleg verifiziert gegen das Zertifikat', () => {
     const beleg = signiereBarzahlung(2000)
     expect(verifiziereBelegSignatur(beleg, see.zertifikatDER)).toBe(true)
+  })
+
+  it('der komplette QR-Code verifiziert direkt (verifiziereQrCode)', () => {
+    const beleg = signiereBarzahlung(2000)
+    expect(verifiziereQrCode(beleg.maschinenlesbareCode, see.zertifikatDER)).toBe(true)
   })
 
   it('manipulierter Betrag wird erkannt', () => {
@@ -289,23 +298,21 @@ describe('signiereBeleg – SEE-Ausfallmodus', () => {
     }, kontext, { ausfallModus: ausfall })
   }
 
-  it('setzt den BMF-Marker statt einer ECDSA-Signatur', () => {
+  it('setzt den BMF-Marker statt einer ECDSA-Signatur (BASE64_STD)', () => {
     const { kontext } = erstelleStartbeleg('TEST-KASSE-001', see)
-    kontext.letzterSignaturwert = 'startbelegSig'
     const beleg = barzahlung(2, 2000, kontext, true)
 
     expect(beleg.signaturwert).toBe(SEE_AUSFALL_SIGNATUR)
     expect(beleg.ausgefallen).toBe(true)
     expect(istAusfallBeleg(beleg.signaturwert)).toBe(true)
     expect(beleg.maschinenlesbareCode.endsWith(`_${SEE_AUSFALL_SIGNATUR}`)).toBe(true)
-    // Marker dekodiert zur lesbaren BMF-Zeichenkette
-    expect(Buffer.from(beleg.signaturwert, 'base64url').toString('utf8'))
+    // Marker dekodiert (Standard-Base64) zur lesbaren BMF-Zeichenkette
+    expect(Buffer.from(beleg.signaturwert, 'base64').toString('utf8'))
       .toBe('Sicherheitseinrichtung ausgefallen')
   })
 
   it('verschlüsselt den Umsatzzähler weiterhin und erhöht ihn', () => {
     const { kontext } = erstelleStartbeleg('TEST-KASSE-001', see)
-    kontext.letzterSignaturwert = 'sig'
     const vorher = kontext.umsatzzaehler.aktuell
 
     const beleg = barzahlung(2, 1500, kontext, true)
@@ -313,30 +320,28 @@ describe('signiereBeleg – SEE-Ausfallmodus', () => {
     expect(kontext.umsatzzaehler.aktuell).toBe(vorher + 1500n)
     expect(beleg.umsatzzaehlerVerschluesselt).toBeTruthy()
     const decrypted = entschluesselUmsatzzaehler(
-      Buffer.from(beleg.umsatzzaehlerVerschluesselt, 'base64url'), see.zertifikatDER, see.kassenId, 2,
+      Buffer.from(beleg.umsatzzaehlerVerschluesselt, 'base64'), see.aesSchluessel, see.kassenId, 2,
     )
     expect(decrypted).toBe(vorher + 1500n)
   })
 
   it('ein Ausfallbeleg verifiziert NICHT gegen das Zertifikat', () => {
     const { kontext } = erstelleStartbeleg('TEST-KASSE-001', see)
-    kontext.letzterSignaturwert = 'sig'
     const beleg = barzahlung(2, 2000, kontext, true)
-    expect(verifiziereBelegSignatur(beleg, see.zertifikatDER)).toBe(false)
+    expect(verifiziereBelegSignatur({ ...beleg, zdaId: see.zdaId }, see.zertifikatDER)).toBe(false)
   })
 
-  it('die Kette läuft über den Ausfall hinweg weiter (Marker → Folgebeleg)', () => {
+  it('die Kette läuft über den Ausfall hinweg weiter (Marker-Beleg → Folgebeleg)', () => {
     const { beleg: start, kontext } = erstelleStartbeleg('TEST-KASSE-001', see)
 
     const ausfall = barzahlung(2, 1000, kontext, true)
-    kontext.letzterSignaturwert = ausfall.signaturwert // = Marker
+    kontext.letzterBelegCode = ausfall.maschinenlesbareCode
 
     const danach = barzahlung(3, 500, kontext, false) // SEE wieder da, normal signiert
-    kontext.letzterSignaturwert = danach.signaturwert
+    kontext.letzterBelegCode = danach.maschinenlesbareCode
 
-    // sigVorbeleg des Folgebelegs hängt am (Marker-)Signaturwert des Vorbelegs
     expect(istAusfallBeleg(danach.signaturwert)).toBe(false)
-    expect(pruefeKette([start, ausfall, danach])).toBe(true)
+    expect(pruefeKette('TEST-KASSE-001', [start, ausfall, danach])).toBe(true)
   })
 })
 
@@ -365,13 +370,22 @@ describe('RKSVKasse', () => {
     expect(kasse.umsatzzaehlerCent).toBe(2000n)
   })
 
-  it('lässt sich aus DB-State wiederherstellen', () => {
-    const { kasse: original } = RKSVKasse.initialisieren(see)
+  it('lässt sich aus DB-State wiederherstellen und setzt die Kette korrekt fort', () => {
+    const { kasse: original, startbeleg } = RKSVKasse.initialisieren(see)
     const zaehlerStand = original.umsatzzaehlerCent
-    const letzterSig   = original.letzterSignaturwert ?? ''
+    const letzterCode  = original.letzterBelegCode ?? ''
 
-    const wiederhergestellt = RKSVKasse.wiederherstellen(see, zaehlerStand, letzterSig)
+    const wiederhergestellt = RKSVKasse.wiederherstellen(see, zaehlerStand, letzterCode)
     expect(wiederhergestellt.umsatzzaehlerCent).toBe(zaehlerStand)
+
+    const folge = wiederhergestellt.signiereBeleg({
+      kassenId:     see.kassenId,
+      belegNummer:  2,
+      datumUhrzeit: new Date(),
+      belegTyp:     'Barzahlungsbeleg',
+      positionen: [{ bezeichnung: 'Test', menge: 1, einzelpreisBreutto: 100, mwstSatz: 'normal' }],
+    })
+    expect(pruefeKette(see.kassenId, [startbeleg, folge])).toBe(true)
   })
 })
 
@@ -380,7 +394,7 @@ describe('RKSVKasse', () => {
 // ---------------------------------------------------------------------------
 
 describe('DEP7', () => {
-  it('Export enthält alle Belege', () => {
+  it('Export im Spec-Format: Belege-Gruppe mit Belege-kompakt (JWS)', () => {
     const { beleg: start, kontext } = erstelleStartbeleg('TEST-KASSE-001', see)
 
     const beleg2 = signiereBeleg({
@@ -393,11 +407,21 @@ describe('DEP7', () => {
       ],
     }, kontext)
 
-    const dep = erstelleDEP7Export([start, beleg2], see, 'TEST-KASSE-001')
+    const dep = erstelleDEP7Export([start, beleg2], see)
     const result = validiereDEP7(dep)
 
     expect(result.gueltig).toBe(true)
     expect(result.anzahlBelege).toBe(2)
     expect(result.fehler).toHaveLength(0)
+
+    // Spec-Feldnamen + JWS-Inhalt
+    const gruppe = dep['Belege-Gruppe'][0]!
+    expect(gruppe.Signaturzertifikat).toBe(see.zertifikatDER.toString('base64'))
+    expect(gruppe['Belege-kompakt'][0]).toBe(start.jwsCompact)
+    expect(gruppe['Belege-kompakt'][1]!.split('.')).toHaveLength(3)
+
+    // JSON-Roundtrip erhält die Struktur
+    const wieder = dep7AusJson(dep7ZuJson(dep))
+    expect(validiereDEP7(wieder).anzahlBelege).toBe(2)
   })
 })

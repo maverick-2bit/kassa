@@ -157,12 +157,12 @@ describe('Nebenläufige Signierung (Integration, echtes PostgreSQL)', () => {
       expect(belege[i]!.belegNummer).toBe(belege[i - 1]!.belegNummer + 1)
     }
 
-    // Die SHA-256-Verkettung über die ECDSA-Signaturwerte muss in der durch die
+    // Die Verkettung über die kompletten Beleg-Codes muss in der durch die
     // Belegnummer definierten Reihenfolge geschlossen sein — das beweist, dass
     // das Lock jeden Beleg an den korrekten Vorgänger gekettet hat.
-    expect(pruefeKette(belege.map(b => ({
-      signaturwert: b.signaturwert,
-      sigVorbeleg:  b.sigVorbeleg,
+    expect(pruefeKette('NL-001', belege.map(b => ({
+      maschinenlesbareCode: b.maschinenlesbareCode,
+      sigVorbeleg:          b.sigVorbeleg,
     })))).toBe(true)
   })
 })

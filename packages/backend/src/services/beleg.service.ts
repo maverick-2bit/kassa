@@ -14,6 +14,8 @@ import {
   Umsatzzaehler,
   signiereBeleg,
   gesamtBetragCent,
+  generiereAesSchluessel,
+  qrCodeZuJwsCompact,
   erstelleDEP7Export,
   erstelleDEP131Export,
   dep7ZuJson,
@@ -42,7 +44,7 @@ import { ArtikelPositionSchema } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import { artikel, belege, kassen, kategorien, mandanten, modifikatoren, seriennummern } from '../db/schema.js'
 import { erstelleKunde, ladeKundeSnapshot } from './kunde.service.js'
-import { decryptPrivateKey } from '../crypto/master-key.js'
+import { decryptPrivateKey, encryptPrivateKey } from '../crypto/master-key.js'
 
 export interface BelegServiceDeps {
   db:               Db
@@ -143,10 +145,26 @@ async function signiereImTx(
 
     // SEE wiederherstellen
     const privateKeyDER = decryptPrivateKey(kasse.seePrivateKeyEnc, deps.masterPassphrase)
+
+    // Umsatzzähler-AES-Schlüssel: entschlüsseln — für Alt-Kassen (vor Migration
+    // 0025) einmalig erzeugen und in derselben Tx persistieren.
+    let aesSchluessel: Buffer
+    if (kasse.aesSchluesselEnc) {
+      aesSchluessel = decryptPrivateKey(kasse.aesSchluesselEnc, deps.masterPassphrase)
+    } else {
+      aesSchluessel = generiereAesSchluessel()
+      await tx
+        .update(kassen)
+        .set({ aesSchluesselEnc: encryptPrivateKey(aesSchluessel, deps.masterPassphrase) })
+        .where(eq(kassen.id, kasse.id))
+    }
+
     const see: SEEConfig = {
       kassenId:      kasse.kassenId,
       zertifikatDER: Buffer.from(kasse.seeZertifikatDer, 'base64'),
       privateKeyDER,
+      aesSchluessel,
+      zdaId:         'AT0', // Software-SEE (Dev) — echte ZDA-Kennung kommt mit der A-Trust-Anbindung
     }
 
     // Signierungs-Kontext aus letztem DB-Zustand
@@ -154,7 +172,7 @@ async function signiereImTx(
     const kontext: SignierungsKontext = {
       see,
       umsatzzaehler,
-      ...(kasse.letzterSignaturwert && { letzterSignaturwert: kasse.letzterSignaturwert }),
+      ...(kasse.letzterBelegCode && { letzterBelegCode: kasse.letzterBelegCode }),
     }
 
     // Signieren
@@ -231,7 +249,7 @@ async function signiereImTx(
     const kasseUpdate: Partial<typeof kassen.$inferInsert> = {
       umsatzzaehlerCent:   umsatzzaehler.aktuell,
       letzteBelegNummer:   signed.belegNummer,
-      letzterSignaturwert: signed.signaturwert,
+      letzterBelegCode:    signed.maschinenlesbareCode,
       updatedAt:           new Date(),
     }
     if (input.wiederherstellung) {
@@ -916,15 +934,14 @@ export async function erstelleDep7Json(
   filter: DepExportFilter,
 ): Promise<{ json: string; kassenId: string; anzahl: number }> {
   const { rows, kassenId, zertBase64 } = await ladeDepDaten(db, filter)
-  const maschinenCodes = rows.map(r => r.maschinenlesbareCode)
 
+  // Belege-kompakt = JWS-Compact — aus dem gespeicherten QR-Code umgerechnet
   const dep7 = erstelleDEP7Export(
-    rows.map(r => ({ maschinenlesbareCode: r.maschinenlesbareCode } as SignedBeleg)),
-    { zertifikatDER: Buffer.from(zertBase64, 'base64'), kassenId, privateKeyDER: Buffer.alloc(0) },
-    kassenId,
+    rows.map(r => ({ jwsCompact: qrCodeZuJwsCompact(r.maschinenlesbareCode) } as SignedBeleg)),
+    { zertifikatDER: Buffer.from(zertBase64, 'base64') },
   )
 
-  return { json: dep7ZuJson(dep7), kassenId, anzahl: maschinenCodes.length }
+  return { json: dep7ZuJson(dep7), kassenId, anzahl: rows.length }
 }
 
 export async function erstelleDep131Json(

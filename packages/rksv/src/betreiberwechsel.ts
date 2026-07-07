@@ -69,11 +69,7 @@ export async function kasseAbgeben(
   const schlussbeleg = signiereBeleg(schlussRaw, kontext)
 
   // DEP7-Export
-  const depExport = erstelleDEP7Export(
-    [...alleBelege, schlussbeleg],
-    kontext.see,
-    kontext.see.kassenId,
-  )
+  const depExport = erstelleDEP7Export([...alleBelege, schlussbeleg], kontext.see)
 
   // FinanzOnline: Kasse abmelden
   const foClient = new FinanzOnlineClient(umgebung)
@@ -143,7 +139,7 @@ export async function kasseUebernehmen(
     positionen:   [],
   }
   const startbeleg = signiereBeleg(startRaw, kontext)
-  kontext.letzterSignaturwert = startbeleg.signaturwert
+  kontext.letzterBelegCode = startbeleg.maschinenlesbareCode
 
   // Startbeleg bei FinanzOnline prüfen
   const pruefung = await foClient.startbelegPruefen(startbeleg, imp.foCredentials)

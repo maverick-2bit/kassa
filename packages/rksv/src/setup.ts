@@ -88,8 +88,8 @@ export interface KasseEinrichtenErgebnis {
   see?: SEEConfig
   /** Signierter Startbeleg (für DEP-Archiv) */
   startbeleg?: SignedBeleg
-  /** Signaturwert des Startbelegs — Basis für die Signaturkette */
-  letzterSignaturwert?: string
+  /** Maschinenlesbarer Code des Startbelegs — Basis für die Verkettung */
+  letzterBelegCode?: string
   /** Prüfwert von FinanzOnline (Bestätigung der Inbetriebnahme) */
   pruefwert?: string
   /**
@@ -325,7 +325,7 @@ export async function kasseAutomatischEinrichten(
     fonRegistriert:      fonAktiv,
     see,
     startbeleg,
-    letzterSignaturwert: startbeleg.signaturwert,
+    letzterBelegCode:    startbeleg.maschinenlesbareCode,
     ...(pruefwert !== undefined && { pruefwert }),
     schritte,
   }

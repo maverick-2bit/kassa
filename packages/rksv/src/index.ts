@@ -35,11 +35,11 @@ export type {
 export { MWST_PROZENT, BELEG_AENDERT_ZAEHLER } from './types.js'
 
 // Crypto
-export { deriveAesKey, verschluesselUmsatzzaehler, entschluesselUmsatzzaehler } from './crypto/aes-icm.js'
-export { startbelegVorSignatur, folgebelegVorSignatur, pruefeKette } from './crypto/chain.js'
+export { generiereAesSchluessel, berechneIV, verschluesselUmsatzzaehler, entschluesselUmsatzzaehler } from './crypto/aes-icm.js'
+export { verkettungswertStartbeleg, verkettungswertFolgebeleg, pruefeKette } from './crypto/chain.js'
 
 // SEE
-export { generateSEE, ladeSeInfo, signiere, verifiziere, zertifikatSN } from './see.js'
+export { generateSEE, ladeSeInfo, signiereRoh, verifiziere, zertifikatSN } from './see.js'
 export type { SEEGenerierungsOptionen } from './see.js'
 
 // Beleg
@@ -51,6 +51,10 @@ export {
   erstelleStartbeleg,
   erstelleNullbeleg,
   verifiziereBelegSignatur,
+  verifiziereQrCode,
+  jwsSigningInput,
+  qrCodeZuJwsCompact,
+  JWS_HEADER_B64URL,
   SEE_AUSFALL_SIGNATUR,
   istAusfallBeleg,
 } from './beleg.js'
@@ -117,27 +121,27 @@ export class RKSVKasse {
   /**
    * Kasse aus dem Datenbankzustand wiederherstellen (nach Neustart).
    * @param umsatzzaehlerCent  Letzter gespeicherter Umsatzzählerstand
-   * @param letzterSignaturwert Signaturwert des zuletzt gespeicherten Belegs
+   * @param letzterBelegCode   Maschinenlesbarer Code des zuletzt gespeicherten Belegs
    */
   static wiederherstellen(
     see: SEEConfig,
     umsatzzaehlerCent: bigint,
-    letzterSignaturwert: string,
+    letzterBelegCode: string,
   ): RKSVKasse {
     const umsatzzaehler = new Umsatzzaehler(umsatzzaehlerCent)
-    return new RKSVKasse({ see, umsatzzaehler, letzterSignaturwert })
+    return new RKSVKasse({ see, umsatzzaehler, letzterBelegCode })
   }
 
   /** Beleg signieren und Kontext für nächsten Beleg aktualisieren */
   signiereBeleg(raw: RawBeleg): SignedBeleg {
     const beleg = signiereBeleg(raw, this.kontext)
-    this.kontext.letzterSignaturwert = beleg.signaturwert
+    this.kontext.letzterBelegCode = beleg.maschinenlesbareCode
     return beleg
   }
 
   /** DEP7-Export für Finanzprüfung oder Archivierung */
   exportiereDEP(alleBelege: SignedBeleg[]): ReturnType<typeof erstelleDEP7Export> {
-    return erstelleDEP7Export(alleBelege, this.kontext.see, this.kontext.see.kassenId)
+    return erstelleDEP7Export(alleBelege, this.kontext.see)
   }
 
   /** Aktueller Umsatzzählerstand in Cent (für DB-Persistenz) */
@@ -145,8 +149,8 @@ export class RKSVKasse {
     return this.kontext.umsatzzaehler.aktuell
   }
 
-  /** Letzter Signaturwert (für DB-Persistenz) */
-  get letzterSignaturwert(): string | undefined {
-    return this.kontext.letzterSignaturwert
+  /** Maschinenlesbarer Code des letzten Belegs (für DB-Persistenz) */
+  get letzterBelegCode(): string | undefined {
+    return this.kontext.letzterBelegCode
   }
 }

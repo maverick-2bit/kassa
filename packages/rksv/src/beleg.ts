@@ -1,15 +1,19 @@
 /**
- * Beleg-Signierung – Herzstück des RKSV-Moduls.
+ * Beleg-Signierung – Herzstück des RKSV-Moduls (BMF-Detailspezifikation).
  *
  * Ablauf pro Beleg:
  *   1. Betragsummen pro Steuersatz berechnen
- *   2. Umsatzzähler aktualisieren und verschlüsseln (AES-256-ICM)
- *   3. SigVorbeleg ermitteln (SHA-256 des Vorgänger-Signaturwerts)
- *   4. Maschinenlesbaren Code (QR-Code-String) gemäß BMF-Format aufbauen
- *   5. Signieren (ECDSA-P256-SHA256)
+ *   2. Umsatzzähler aktualisieren und verschlüsseln (AES-256-ICM, eigener Schlüssel)
+ *   3. Verkettungswert ermitteln (8 Byte SHA-256; Start: Kassen-ID, sonst Vorbeleg-Code)
+ *   4. Maschinenlesbaren Code (QR-Repräsentation) aufbauen — Base64-STANDARD-Felder
+ *   5. Signieren als JWS: ES256 über base64url(header) + "." + base64url(code)
  *
- * QR-Code-Format (BMF Detailspezifikation §5):
- *   _R1-AT_{KID}_{BNR}_{BDT}_{BS-N}_{BS-E1}_{BS-E2}_{BS-0}_{BS-B}_{BSAU}_{ZKSN}_{BSKBV}_{SIG}
+ * QR-Code-Format:
+ *   _R1-{ZDA}_{KID}_{BNR}_{BDT}_{BS-N}_{BS-E1}_{BS-E2}_{BS-0}_{BS-B}_{BSAU}_{ZKSN}_{BSKBV}_{SIG}
+ *   (BSAU/BSKBV/SIG in BASE64_STD; ZKSN hexadezimal)
+ *
+ * Referenz-Beleg (BMF-Mustercode):
+ *   _R1-AT2_CASHBOX-DEMO-1_…_2016-03-11T03:57:08_0,00_…_4BMxCg==_011388844D20A02C087A4BE257_cg8hNU5ihto=_RFvjH0H5…Ew==
  */
 
 import { BELEG_AENDERT_ZAEHLER } from './types.js'
@@ -23,8 +27,8 @@ import type {
   SignedBeleg,
 } from './types.js'
 import { verschluesselUmsatzzaehler } from './crypto/aes-icm.js'
-import { startbelegVorSignatur, folgebelegVorSignatur } from './crypto/chain.js'
-import { signiere, verifiziere, zertifikatSN as ladeZertifikatSN } from './see.js'
+import { verkettungswertStartbeleg, verkettungswertFolgebeleg } from './crypto/chain.js'
+import { signiereRoh, verifiziere, zertifikatSN as ladeZertifikatSN } from './see.js'
 
 // ---------------------------------------------------------------------------
 // Umsatzzähler-State
@@ -127,6 +131,7 @@ function formatBetrag(cent: number): string {
  *   {obiger String}_{SIG}
  */
 function baueMaschinenlesbareCodeOhneSig(
+  zdaId: string,
   kassenId: string,
   belegNummer: number,
   datumUhrzeit: Date,
@@ -136,7 +141,7 @@ function baueMaschinenlesbareCodeOhneSig(
   sigVorbeleg: string,
 ): string {
   return [
-    '_R1-AT',
+    `_R1-${zdaId}`,
     kassenId,
     String(belegNummer),
     formatDatum(datumUhrzeit),
@@ -152,18 +157,44 @@ function baueMaschinenlesbareCodeOhneSig(
 }
 
 // ---------------------------------------------------------------------------
+// JWS (RFC 7515) — RKSV signiert den Code als ES256-JWS
+// ---------------------------------------------------------------------------
+
+/** Fixer JWS-Header der RKSV-Suite R1: {"alg":"ES256"} (base64url) */
+export const JWS_HEADER_B64URL: string =
+  Buffer.from(JSON.stringify({ alg: 'ES256' }), 'utf8').toString('base64url')
+
+/** JWS-Signing-Input: base64url(header) + "." + base64url(codeOhneSig) */
+export function jwsSigningInput(codeOhneSig: string): string {
+  return `${JWS_HEADER_B64URL}.${Buffer.from(codeOhneSig, 'utf8').toString('base64url')}`
+}
+
+/**
+ * Rechnet die QR-Repräsentation in die JWS-Compact-Repräsentation um
+ * (für den DEP-Export): header.payload.signature, alles base64url.
+ * Funktioniert auch für Ausfall-Belege (Marker wird base64url umkodiert).
+ */
+export function qrCodeZuJwsCompact(maschinenlesbareCode: string): string {
+  const idx         = maschinenlesbareCode.lastIndexOf('_')
+  const codeOhneSig = maschinenlesbareCode.slice(0, idx)
+  const sigBase64   = maschinenlesbareCode.slice(idx + 1)
+  const sigB64url   = Buffer.from(sigBase64, 'base64').toString('base64url')
+  return `${jwsSigningInput(codeOhneSig)}.${sigB64url}`
+}
+
+// ---------------------------------------------------------------------------
 // SEE-Ausfall
 // ---------------------------------------------------------------------------
 
 /**
  * BMF-Marker für den SEE-Ausfall: fällt die Signaturerstellungseinheit aus,
  * werden Belege weiter ausgegeben, der Signaturwert wird aber durch die
- * base64(url)-kodierte Zeichenkette „Sicherheitseinrichtung ausgefallen"
- * ersetzt (RKSV / BMF-Detailspezifikation §). Bei Wiederinbetriebnahme ist ein
+ * BASE64-Standard-kodierte Zeichenkette „Sicherheitseinrichtung ausgefallen"
+ * ersetzt (BMF-Detailspezifikation). Bei Wiederinbetriebnahme ist ein
  * signierter (Sammel-)Beleg zu erstellen.
  */
 export const SEE_AUSFALL_SIGNATUR: string =
-  Buffer.from('Sicherheitseinrichtung ausgefallen', 'utf8').toString('base64url')
+  Buffer.from('Sicherheitseinrichtung ausgefallen', 'utf8').toString('base64')
 
 /** true, wenn der Signaturwert der BMF-Ausfallmarker ist (Beleg unsigniert). */
 export function istAusfallBeleg(signaturwert: string): boolean {
@@ -177,15 +208,15 @@ export function istAusfallBeleg(signaturwert: string): boolean {
 export interface SignierungsKontext {
   see:             SEEConfig
   umsatzzaehler:   Umsatzzaehler
-  /** Signaturwert des zuletzt signierten Belegs (base64url), undefined für den ersten Beleg */
-  letzterSignaturwert?: string
+  /** Kompletter maschinenlesbarer Code des zuletzt signierten Belegs, undefined für den ersten Beleg */
+  letzterBelegCode?: string
 }
 
 /**
  * Signiert einen Rohbeleg und gibt den vollständigen RKSV-Beleg zurück.
  *
  * @param raw     Rohdaten des Belegs
- * @param kontext Signierungskontext mit SEE, Umsatzzähler und Vorgänger-Signaturwert
+ * @param kontext Signierungskontext mit SEE, Umsatzzähler und Vorbeleg-Code
  * @param opts    `ausfallModus`: statt ECDSA-Signatur den SEE-Ausfallmarker setzen
  */
 export function signiereBeleg(
@@ -193,7 +224,7 @@ export function signiereBeleg(
   kontext: SignierungsKontext,
   opts: { ausfallModus?: boolean } = {},
 ): SignedBeleg {
-  const { see, umsatzzaehler, letzterSignaturwert } = kontext
+  const { see, umsatzzaehler, letzterBelegCode } = kontext
 
   // 1. Beträge summieren
   const betraege = berechneBetraege(raw.positionen)
@@ -202,25 +233,26 @@ export function signiereBeleg(
   if (BELEG_AENDERT_ZAEHLER[raw.belegTyp]) {
     umsatzzaehler.addiere(gesamtBetragCent(betraege))
   }
-  // Aktuellen Zählerstand verschlüsseln
+  // Aktuellen Zählerstand verschlüsseln — BASE64_STD im QR-Code
   const umsatzzaehlerBuf = verschluesselUmsatzzaehler(
     umsatzzaehler.aktuell,
-    see.zertifikatDER,
+    see.aesSchluessel,
     see.kassenId,
     raw.belegNummer,
   )
-  const umsatzzaehlerVerschluesselt = umsatzzaehlerBuf.toString('base64url')
+  const umsatzzaehlerVerschluesselt = umsatzzaehlerBuf.toString('base64')
 
-  // 3. SigVorbeleg
-  const sigVorbeleg = letzterSignaturwert == null
-    ? startbelegVorSignatur()
-    : folgebelegVorSignatur(letzterSignaturwert)
+  // 3. Verkettungswert: Startbeleg über die Kassen-ID, sonst über den Vorbeleg-Code
+  const sigVorbeleg = letzterBelegCode == null
+    ? verkettungswertStartbeleg(raw.kassenId)
+    : verkettungswertFolgebeleg(letzterBelegCode)
 
-  // 4. Zertifikats-Seriennummer
+  // 4. Zertifikats-Seriennummer (hexadezimal, wie im QR-Code)
   const zertSN = ladeZertifikatSN(see.zertifikatDER)
 
   // 5. Maschinenlesbarer Code ohne Signatur
   const codeOhneSig = baueMaschinenlesbareCodeOhneSig(
+    see.zdaId,
     raw.kassenId,
     raw.belegNummer,
     raw.datumUhrzeit,
@@ -230,13 +262,14 @@ export function signiereBeleg(
     sigVorbeleg,
   )
 
-  // 6. Signieren — im Ausfallmodus den BMF-Marker statt der ECDSA-Signatur
+  // 6. Signieren als JWS (ES256) — im Ausfallmodus der BMF-Marker
   const signaturwert = opts.ausfallModus
     ? SEE_AUSFALL_SIGNATUR
-    : signiere(codeOhneSig, see)
+    : signiereRoh(jwsSigningInput(codeOhneSig), see).toString('base64')
 
-  // 7. Vollständiger maschinenlesbarer Code
+  // 7. Vollständiger maschinenlesbarer Code (QR) + JWS-Compact (DEP)
   const maschinenlesbareCode = `${codeOhneSig}_${signaturwert}`
+  const jwsCompact           = qrCodeZuJwsCompact(maschinenlesbareCode)
 
   return {
     ...raw,
@@ -246,6 +279,7 @@ export function signiereBeleg(
     sigVorbeleg,
     signaturwert,
     maschinenlesbareCode,
+    jwsCompact,
     ...(opts.ausfallModus && { ausgefallen: true }),
   }
 }
@@ -270,7 +304,7 @@ export function erstelleStartbeleg(kassenId: string, see: SEEConfig): {
   }
 
   const beleg = signiereBeleg(raw, kontext)
-  kontext.letzterSignaturwert = beleg.signaturwert
+  kontext.letzterBelegCode = beleg.maschinenlesbareCode
 
   return { beleg, kontext }
 }
@@ -292,7 +326,7 @@ export function erstelleNullbeleg(
     positionen:   [],
   }
   const beleg = signiereBeleg(raw, kontext)
-  kontext.letzterSignaturwert = beleg.signaturwert
+  kontext.letzterBelegCode = beleg.maschinenlesbareCode
   return beleg
 }
 
@@ -302,6 +336,7 @@ export function erstelleNullbeleg(
 
 /** Die strukturierten Felder, aus denen der signierte Code rekonstruiert wird. */
 export interface VerifizierbarerBeleg {
+  zdaId:                       string
   kassenId:                    string
   belegNummer:                 number
   datumUhrzeit:                Date
@@ -309,6 +344,7 @@ export interface VerifizierbarerBeleg {
   umsatzzaehlerVerschluesselt: string
   zertifikatSN:                string
   sigVorbeleg:                 string
+  /** BASE64_STD wie im QR-Code */
   signaturwert:                string
 }
 
@@ -316,15 +352,17 @@ export interface VerifizierbarerBeleg {
  * Prüft die ECDSA-Signatur eines Belegs gegen seine strukturierten Felder.
  *
  * Der signierte maschinenlesbare Code wird aus den Feldern (Betrag, Datum,
- * Umsatzzähler, …) NEU aufgebaut und gegen den gespeicherten Signaturwert
- * verifiziert. Wurde ein Feld nachträglich verändert — etwa ein Betrag direkt
- * in der Datenbank — passt die Signatur nicht mehr und die Prüfung schlägt
- * fehl. Es wird nur das öffentliche Zertifikat benötigt.
+ * Umsatzzähler, …) NEU aufgebaut, in den JWS-Signing-Input überführt und gegen
+ * den gespeicherten Signaturwert verifiziert. Wurde ein Feld nachträglich
+ * verändert — etwa ein Betrag direkt in der Datenbank — passt die Signatur
+ * nicht mehr und die Prüfung schlägt fehl. Es wird nur das öffentliche
+ * Zertifikat benötigt.
  *
  * @returns true, wenn die Signatur zu den Feldern passt (unverändert)
  */
 export function verifiziereBelegSignatur(beleg: VerifizierbarerBeleg, zertifikatDER: Buffer): boolean {
   const codeOhneSig = baueMaschinenlesbareCodeOhneSig(
+    beleg.zdaId,
     beleg.kassenId,
     beleg.belegNummer,
     beleg.datumUhrzeit,
@@ -333,9 +371,24 @@ export function verifiziereBelegSignatur(beleg: VerifizierbarerBeleg, zertifikat
     beleg.zertifikatSN,
     beleg.sigVorbeleg,
   )
-  return verifiziere(codeOhneSig, beleg.signaturwert, {
-    kassenId:      beleg.kassenId,
+  return verifiziere(
+    jwsSigningInput(codeOhneSig),
+    Buffer.from(beleg.signaturwert, 'base64'),
     zertifikatDER,
-    privateKeyDER: Buffer.alloc(0), // bei der Verifikation ungenutzt
-  })
+  )
+}
+
+/**
+ * Prüft die Signatur direkt aus dem maschinenlesbaren Code (QR-Repräsentation) —
+ * ohne Rekonstruktion aus Feldern. Für Fixtures/Fremdbelege und die Finanzprüfung.
+ */
+export function verifiziereQrCode(maschinenlesbareCode: string, zertifikatDER: Buffer): boolean {
+  const idx         = maschinenlesbareCode.lastIndexOf('_')
+  const codeOhneSig = maschinenlesbareCode.slice(0, idx)
+  const sigBase64   = maschinenlesbareCode.slice(idx + 1)
+  return verifiziere(
+    jwsSigningInput(codeOhneSig),
+    Buffer.from(sigBase64, 'base64'),
+    zertifikatDER,
+  )
 }

@@ -153,12 +153,12 @@ describe('Beleg-Fluss (Integration, echtes PostgreSQL)', () => {
       expect(belege[i]!.belegNummer).toBe(belege[i - 1]!.belegNummer + 1)
     }
 
-    // Echte SHA-256-Verkettung über die ECDSA-Signaturwerte
+    // Echte Verkettung über die kompletten Beleg-Codes (Detailspezifikation)
     const kette = belege.map(b => ({
-      signaturwert: b.signaturwert,
-      sigVorbeleg:  b.sigVorbeleg,
+      maschinenlesbareCode: b.maschinenlesbareCode,
+      sigVorbeleg:          b.sigVorbeleg,
     }))
-    expect(pruefeKette(kette)).toBe(true)
+    expect(pruefeKette('ITEST-001', kette)).toBe(true)
   })
 
   it('Nullbeleg lässt sich erstellen und verlängert die Kette', async () => {
@@ -175,9 +175,9 @@ describe('Beleg-Fluss (Integration, echtes PostgreSQL)', () => {
     })
     const belege = (liste.json() as BelegResponse[])
       .sort((a, b) => a.belegNummer - b.belegNummer)
-    expect(pruefeKette(belege.map(b => ({
-      signaturwert: b.signaturwert,
-      sigVorbeleg:  b.sigVorbeleg,
+    expect(pruefeKette('ITEST-001', belege.map(b => ({
+      maschinenlesbareCode: b.maschinenlesbareCode,
+      sigVorbeleg:          b.sigVorbeleg,
     })))).toBe(true)
   })
 })

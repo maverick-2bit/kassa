@@ -33,40 +33,30 @@ import type {
  */
 export function erstelleDEP7Export(
   belege: SignedBeleg[],
-  see: SEEConfig,
-  kassenId: string,
+  see: Pick<SEEConfig, 'zertifikatDER'>,
 ): DEP7Export {
   const zertBase64 = see.zertifikatDER.toString('base64')
 
-  const dep7Belege: string[] = belege.map(b => b.maschinenlesbareCode)
+  // Belege-kompakt = JWS-Compact-Repräsentation (Detailspezifikation Abs. 3)
+  const belegeKompakt: string[] = belege.map(b => b.jwsCompact)
 
   const package_: DEP7BelegPackage = {
     Signaturzertifikat:      zertBase64,
     Zertifizierungsstellen:  [], // leer bei self-signed
-    Belege:                  dep7Belege,
+    'Belege-kompakt':        belegeKompakt,
   }
 
-  return {
-    exportDatum: new Date().toISOString(),
-    kassenId,
-    Belege: [package_],
-  }
+  return { 'Belege-Gruppe': [package_] }
 }
 
 /**
- * Zusammenführen mehrerer DEP7-Exporte (z. B. nach Betreiberwechsel).
- * Die Packages werden der Reihe nach angehängt.
+ * Zusammenführen mehrerer DEP7-Exporte (z. B. nach Betreiberwechsel /
+ * Zertifikatswechsel). Die Packages werden der Reihe nach angehängt.
  */
 export function mergeDEP7Exports(...exporte: DEP7Export[]): DEP7Export {
   if (exporte.length === 0) throw new Error('Keine Exporte angegeben')
-  const erster = exporte[0]
-  if (!erster) throw new Error('Keine Exporte angegeben')
 
-  return {
-    exportDatum: new Date().toISOString(),
-    kassenId:    erster.kassenId,
-    Belege:      exporte.flatMap(e => e.Belege),
-  }
+  return { 'Belege-Gruppe': exporte.flatMap(e => e['Belege-Gruppe']) }
 }
 
 // ---------------------------------------------------------------------------
@@ -86,25 +76,28 @@ export interface DEP7ValidationResult {
 export function validiereDEP7(dep: DEP7Export): DEP7ValidationResult {
   const fehler: string[] = []
 
-  if (!dep.kassenId) fehler.push('kassenId fehlt')
-  if (!dep.exportDatum) fehler.push('exportDatum fehlt')
-  if (!Array.isArray(dep.Belege) || dep.Belege.length === 0) {
-    fehler.push('Keine Belegpackages vorhanden')
+  const gruppen = dep['Belege-Gruppe']
+  if (!Array.isArray(gruppen) || gruppen.length === 0) {
+    fehler.push('Keine Belege-Gruppe vorhanden')
     return { gueltig: false, anzahlBelege: 0, fehler }
   }
 
   let anzahlBelege = 0
 
-  for (const pkg of dep.Belege) {
-    if (!pkg.Signaturzertifikat) fehler.push('Package ohne Signaturzertifikat')
-    if (!Array.isArray(pkg.Belege)) {
-      fehler.push('Package.Belege ist kein Array')
+  for (const pkg of gruppen) {
+    if (!pkg.Signaturzertifikat) fehler.push('Gruppe ohne Signaturzertifikat')
+    const kompakt = pkg['Belege-kompakt']
+    if (!Array.isArray(kompakt)) {
+      fehler.push('Belege-kompakt ist kein Array')
       continue
     }
 
-    for (const belegCode of pkg.Belege) {
-      if (!belegCode.startsWith('_R1-AT_')) {
-        fehler.push(`Ungültiger Beleg-Code: ${belegCode.substring(0, 30)}...`)
+    for (const jws of kompakt) {
+      // JWS compact: header.payload.signature — Payload dekodiert beginnt mit _R1-
+      const teile = jws.split('.')
+      const payload = teile[1] ? Buffer.from(teile[1], 'base64url').toString('utf8') : ''
+      if (teile.length !== 3 || !payload.startsWith('_R1-')) {
+        fehler.push(`Ungültiger Beleg (kein RKSV-JWS): ${jws.substring(0, 30)}...`)
       } else {
         anzahlBelege++
       }
@@ -130,7 +123,7 @@ export function dep7AusJson(json: string): DEP7Export {
   const parsed = JSON.parse(json) as unknown
   if (
     typeof parsed !== 'object' || parsed === null ||
-    !('kassenId' in parsed) || !('Belege' in parsed)
+    !('Belege-Gruppe' in parsed)
   ) {
     throw new Error('Ungültiges DEP7-Format')
   }

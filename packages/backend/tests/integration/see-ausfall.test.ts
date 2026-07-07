@@ -78,6 +78,7 @@ describe('SEE-Ausfall + Wiederinbetriebnahme (Integration, echtes PostgreSQL)', 
 
   function alsVerifizierbar(row: typeof belege.$inferSelect): VerifizierbarerBeleg {
     return {
+      zdaId:        'AT0',
       kassenId:     kassenKID,
       belegNummer:  row.belegNummer,
       datumUhrzeit: row.belegDatum,
@@ -244,8 +245,8 @@ describe('SEE-Ausfall + Wiederinbetriebnahme (Integration, echtes PostgreSQL)', 
     for (let i = 1; i < rows.length; i++) {
       expect(rows[i]!.belegNummer).toBe(rows[i - 1]!.belegNummer + 1)
     }
-    // Verkettung der Signaturwerte (Marker zählt als Signaturwert) ist geschlossen
-    expect(pruefeKette(rows.map(r => ({ signaturwert: r.signaturwert, sigVorbeleg: r.sigVorbeleg })))).toBe(true)
+    // Verkettung der Beleg-Codes (Ausfall-Belege eingeschlossen) ist geschlossen
+    expect(pruefeKette('SA-001', rows.map(r => ({ maschinenlesbareCode: r.maschinenlesbareCode, sigVorbeleg: r.sigVorbeleg })))).toBe(true)
 
     // genau zwei Belege tragen den Ausfallmarker
     expect(rows.filter(r => istAusfallBeleg(r.signaturwert))).toHaveLength(2)

@@ -169,6 +169,13 @@
       "when": 1779808573000,
       "tag": "0024_sb_terminal",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1779808574000,
+      "tag": "0025_rksv_spec_konform",
+      "breakpoints": true
     }
   ]
 }

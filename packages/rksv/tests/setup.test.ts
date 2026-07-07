@@ -124,7 +124,7 @@ describe('kasseAutomatischEinrichten – Happy Path', () => {
     expect(ergebnis.see).toBeDefined()
     expect(ergebnis.startbeleg).toBeDefined()
     expect(ergebnis.pruefwert).toBe('PW-ABC-123')
-    expect(ergebnis.letzterSignaturwert).toBeTruthy()
+    expect(ergebnis.letzterBelegCode).toBeTruthy()
     expect(ergebnis.fehler).toBeUndefined()
 
     // Schritte: jeweils startet + erfolgreich = 10 Einträge
@@ -151,7 +151,7 @@ describe('kasseAutomatischEinrichten – Happy Path', () => {
 
     expect(ergebnis.startbeleg?.belegTyp).toBe('Startbeleg')
     expect(ergebnis.startbeleg?.belegNummer).toBe(1)
-    expect(ergebnis.startbeleg?.maschinenlesbareCode).toMatch(/^_R1-AT_/)
+    expect(ergebnis.startbeleg?.maschinenlesbareCode).toMatch(/^_R1-AT0_/)
   })
 
   it('ruft FinanzOnline-Client mit korrekten Daten auf', async () => {
