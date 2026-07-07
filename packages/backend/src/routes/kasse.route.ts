@@ -178,25 +178,36 @@ export const kasseRoute: FastifyPluginAsync<KasseRouteOptions> = async (fastify,
     const { kasseId } = request.params as { kasseId: string }
     const mandantId   = request.user.mandantId
 
-    // Ownership-Check
+    // Ownership-Check + Jahre in Wiener Ortszeit (konsistent zur Beleg-Abfrage)
     const [kasse] = await opts.db
-      .select({ id: kassen.id })
+      .select({
+        id:            kassen.id,
+        erstelltJahr:  sql<number>`EXTRACT(YEAR FROM (${kassen.createdAt} AT TIME ZONE 'Europe/Vienna'))::int`,
+        aktuellesJahr: sql<number>`EXTRACT(YEAR FROM (now() AT TIME ZONE 'Europe/Vienna'))::int`,
+      })
       .from(kassen)
       .where(and(eq(kassen.id, kasseId), eq(kassen.mandantId, mandantId)))
       .limit(1)
     if (!kasse) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
 
-    // Aktuelles Jahr in Wiener Ortszeit (UTC+1/+2 — Differenz zum Jahr irrelevant)
-    const aktuellesJahr = new Date().getFullYear()
+    // Der Jahresbeleg (letzter Monatsbeleg des Kalenderjahres) wird erst NACH
+    // Ablauf eines Kalenderjahres fällig — Prüf-/Erstellungsfrist reicht in die
+    // ersten Tage des Folgejahres. Er ist also für das VORJAHR fällig, und nur
+    // wenn die Kasse in diesem Vorjahr bereits bestand. Eine im laufenden Jahr
+    // angelegte Kasse braucht noch keinen Jahresbeleg (kein Fehlalarm).
+    const vorjahr = kasse.aktuellesJahr - 1
 
-    // Jüngsten Jahresbeleg im laufenden Kalenderjahr suchen
+    if (kasse.erstelltJahr > vorjahr) {
+      return reply.send({ jahr: vorjahr, jahresbelegFaellig: false, jahresbelegErstelltAm: null })
+    }
+
     const rows = await opts.db
       .select({ id: belege.id, belegDatum: belege.belegDatum })
       .from(belege)
       .where(and(
         eq(belege.kasseId, kasseId),
         eq(belege.belegTyp, 'Jahresbeleg'),
-        sql`EXTRACT(YEAR FROM (${belege.belegDatum} AT TIME ZONE 'Europe/Vienna')) = ${aktuellesJahr}`,
+        sql`EXTRACT(YEAR FROM (${belege.belegDatum} AT TIME ZONE 'Europe/Vienna')) = ${vorjahr}`,
       ))
       .orderBy(desc(belege.belegDatum))
       .limit(1)
@@ -204,7 +215,7 @@ export const kasseRoute: FastifyPluginAsync<KasseRouteOptions> = async (fastify,
     const letzter = rows[0] ?? null
 
     return reply.send({
-      jahr:                   aktuellesJahr,
+      jahr:                   vorjahr,
       jahresbelegFaellig:     letzter === null,
       jahresbelegErstelltAm:  letzter?.belegDatum.toISOString() ?? null,
     })
