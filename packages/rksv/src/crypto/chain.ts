@@ -1,57 +1,52 @@
 /**
- * SHA-256-Chaining für den RKSV-Signaturwert des Vorbelegs.
+ * RKSV-Verkettungswert gemäß BMF-Detailspezifikation:
  *
- * Gemäß BMF Detailspezifikation §4 Abs. 3:
- *   - Startbeleg (kein Vorgänger): base64url( SHA-256( 0x00 × 32 ) )
- *   - Folgebeleg:                  base64url( SHA-256( base64url_decode(vorSignaturwert) ) )
+ *   Verkettungswert = BASE64_STD( erste 8 Byte von SHA-256(Input) )
  *
- * Wichtig: Es wird nicht der rohe Signaturwert weitergegeben, sondern dessen SHA-256-Hash.
- * Damit ist die Kette auch bei sehr langen ECDSA-Signaturen kompakt (immer 44 Zeichen base64url).
+ *   - Startbeleg (kein Vorgänger): Input = Kassen-Identifikationsnummer
+ *   - Folgebeleg:                  Input = KOMPLETTER maschinenlesbarer Code
+ *                                  des Vorbelegs (QR-Repräsentation inkl. Signatur)
+ *
+ * Referenzwert-Beispiel (BMF-Mustercode): `cg8hNU5ihto=` — 8 Byte,
+ * Standard-Base64 mit Padding (12 Zeichen).
  */
 
 import { createHash } from 'node:crypto'
 
-const NULL_VEKTOR = Buffer.alloc(32, 0)
+function verkettungswert(input: string): string {
+  return createHash('sha256').update(input, 'utf8').digest().subarray(0, 8).toString('base64')
+}
 
-/**
- * Berechnet den SigVorbeleg-Wert für den Startbeleg.
- * Ergibt base64url( SHA-256( 32 × 0x00 ) ).
- */
-export function startbelegVorSignatur(): string {
-  return hashZuBase64Url(NULL_VEKTOR)
+/** Verkettungswert für den Startbeleg: Input ist die Kassen-ID. */
+export function verkettungswertStartbeleg(kassenId: string): string {
+  return verkettungswert(kassenId)
+}
+
+/** Verkettungswert für Folgebelege: Input ist der komplette maschinenlesbare Code des Vorbelegs. */
+export function verkettungswertFolgebeleg(vorbelegCode: string): string {
+  return verkettungswert(vorbelegCode)
 }
 
 /**
- * Berechnet den SigVorbeleg-Wert aus dem Signaturwert des unmittelbaren Vorgängers.
- * @param vorSignaturwert  base64url-kodierter Signaturwert des Vorgängers
- */
-export function folgebelegVorSignatur(vorSignaturwert: string): string {
-  const decoded = Buffer.from(vorSignaturwert, 'base64url')
-  return hashZuBase64Url(decoded)
-}
-
-function hashZuBase64Url(data: Buffer): string {
-  return createHash('sha256').update(data).digest().toString('base64url')
-}
-
-/**
- * Prüft ob eine Signaturkette konsistent ist.
- * @param belege  Geordnete Liste von { signaturwert, sigVorbeleg }
+ * Prüft die Verkettung einer chronologisch geordneten Belegfolge.
+ * Der gespeicherte `sigVorbeleg` jedes Belegs muss dem Verkettungswert aus
+ * Kassen-ID (Startbeleg) bzw. dem maschinenlesbaren Code des Vorgängers entsprechen.
  */
 export function pruefeKette(
-  belege: ReadonlyArray<{ signaturwert: string; sigVorbeleg: string }>,
+  kassenId: string,
+  belege: ReadonlyArray<{ maschinenlesbareCode: string; sigVorbeleg: string }>,
 ): boolean {
   if (belege.length === 0) return true
 
   const erster = belege[0]
   if (!erster) return false
-  if (erster.sigVorbeleg !== startbelegVorSignatur()) return false
+  if (erster.sigVorbeleg !== verkettungswertStartbeleg(kassenId)) return false
 
   for (let i = 1; i < belege.length; i++) {
     const vorgaenger = belege[i - 1]
     const aktuell    = belege[i]
     if (!vorgaenger || !aktuell) return false
-    if (aktuell.sigVorbeleg !== folgebelegVorSignatur(vorgaenger.signaturwert)) {
+    if (aktuell.sigVorbeleg !== verkettungswertFolgebeleg(vorgaenger.maschinenlesbareCode)) {
       return false
     }
   }

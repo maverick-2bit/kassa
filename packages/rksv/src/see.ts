@@ -19,6 +19,7 @@ import {
   type KeyObject,
 } from 'node:crypto'
 import type { SEEConfig, SEEInfo } from './types.js'
+import { generiereAesSchluessel } from './crypto/aes-icm.js'
 
 // ---------------------------------------------------------------------------
 // Schlüssel & Zertifikat erzeugen
@@ -72,6 +73,10 @@ export async function generateSEE(opts: SEEGenerierungsOptionen): Promise<SEECon
     kassenId:      opts.kassenId,
     zertifikatDER: certDER,
     privateKeyDER,
+    // Eigenständiger Umsatzzähler-Schlüssel (wird bei FON als base64 gemeldet)
+    aesSchluessel: generiereAesSchluessel(),
+    // Software-SEE: Kennzeichen für geschlossene Gesamtsysteme — nur Dev/Test
+    zdaId:         'AT0',
   }
 }
 
@@ -96,9 +101,10 @@ export function ladeSeInfo(config: SEEConfig): SEEInfo {
 
 /**
  * Signiert eine UTF-8-kodierte Zeichenkette mit ECDSA-P256-SHA256.
- * @returns  base64url-kodierte DER-Signatur (IEEE P1363 Format für RKSV)
+ * @returns  Rohsignatur im IEEE-P1363-Format (r ‖ s, 64 Byte) — die Kodierung
+ *           (BASE64_STD für den QR-Code, base64url für JWS) wählt der Aufrufer.
  */
-export function signiere(daten: string, config: SEEConfig): string {
+export function signiereRoh(daten: string, config: Pick<SEEConfig, 'privateKeyDER'>): Buffer {
   const privKey = createPrivateKey({
     key:    config.privateKeyDER,
     format: 'der',
@@ -108,25 +114,24 @@ export function signiere(daten: string, config: SEEConfig): string {
   const sign = createSign('SHA256')
   sign.update(daten, 'utf8')
 
-  // DER-Signatur → in P1363-Format (r ‖ s, je 32 Byte) umwandeln für kompakteren QR-Code
   const derSig = sign.sign(privKey)
-  return derZuP1363(derSig).toString('base64url')
+  return derZuP1363(derSig)
 }
 
 /**
  * Verifiziert eine RKSV-Signatur (für Tests und Finanzprüfung).
+ * @param signaturP1363  Rohsignatur (64 Byte, r ‖ s)
  */
-export function verifiziere(daten: string, signaturBase64url: string, config: SEEConfig): boolean {
+export function verifiziere(daten: string, signaturP1363: Buffer, zertifikatDER: Buffer): boolean {
   try {
     // zertifikatDER ist ein vollständiges X.509-Zertifikat (siehe generateSEE);
     // der öffentliche Schlüssel wird daraus extrahiert.
-    const pubKey = new X509Certificate(config.zertifikatDER).publicKey
+    const pubKey = new X509Certificate(zertifikatDER).publicKey
 
     const verify = createVerify('SHA256')
     verify.update(daten, 'utf8')
 
-    const p1363Sig = Buffer.from(signaturBase64url, 'base64url')
-    const derSig   = p1363ZuDer(p1363Sig)
+    const derSig = p1363ZuDer(signaturP1363)
     return verify.verify(pubKey, derSig)
   } catch {
     return false

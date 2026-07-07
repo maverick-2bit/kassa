@@ -1,95 +1,111 @@
 /**
- * Tests für SHA-256-Chaining (SigVorbeleg-Berechnung)
+ * Tests für den RKSV-Verkettungswert (BMF-Detailspezifikation):
+ * BASE64_STD( erste 8 Byte von SHA-256(Input) );
+ * Startbeleg-Input = Kassen-ID, Folgebeleg-Input = Vorbeleg-Code.
  */
 
+import { createHash } from 'node:crypto'
 import { describe, it, expect } from 'vitest'
 import {
-  startbelegVorSignatur,
-  folgebelegVorSignatur,
+  verkettungswertStartbeleg,
+  verkettungswertFolgebeleg,
   pruefeKette,
 } from '../src/crypto/chain.js'
 
-describe('startbelegVorSignatur', () => {
+/**
+ * Referenz-Beleg aus dem BMF-Mustercode (Issue #385) — dient als Fixture
+ * für Format-Eigenschaften des Verkettungswerts (8 Byte, Standard-Base64).
+ */
+const REFERENZ_VERKETTUNGSWERT = 'cg8hNU5ihto='
+
+describe('verkettungswertStartbeleg', () => {
   it('ist deterministisch', () => {
-    expect(startbelegVorSignatur()).toBe(startbelegVorSignatur())
+    expect(verkettungswertStartbeleg('KASSE-1')).toBe(verkettungswertStartbeleg('KASSE-1'))
   })
 
-  it('ist ein gültiger base64url-String', () => {
-    const val = startbelegVorSignatur()
-    expect(val).toMatch(/^[A-Za-z0-9_-]+=*$/)
+  it('entspricht BASE64_STD der ersten 8 Byte von SHA-256(kassenId)', () => {
+    const kassenId = 'DEMO-CASH-BOX'
+    const erwartet = createHash('sha256').update(kassenId, 'utf8').digest().subarray(0, 8).toString('base64')
+    expect(verkettungswertStartbeleg(kassenId)).toBe(erwartet)
   })
 
-  it('entspricht SHA-256 von 32 Null-Bytes (BMF-Spezifikation)', () => {
-    // SHA-256(0x00 × 32) = 66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925
-    // base64url davon:
-    const erwartet = Buffer
-      .from('66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925', 'hex')
-      .toString('base64url')
-    expect(startbelegVorSignatur()).toBe(erwartet)
+  it('hat das Referenz-Format: 12 Zeichen Standard-Base64 mit Padding (8 Byte)', () => {
+    const wert = verkettungswertStartbeleg('KASSE-1')
+    expect(wert).toHaveLength(REFERENZ_VERKETTUNGSWERT.length) // 12
+    expect(wert.endsWith('=')).toBe(true)
+    expect(wert).toMatch(/^[A-Za-z0-9+/]+=$/)                  // Standard-Base64, KEIN base64url
+    expect(Buffer.from(wert, 'base64')).toHaveLength(8)
+  })
+
+  it('unterscheidet sich je Kassen-ID', () => {
+    expect(verkettungswertStartbeleg('KASSE-1')).not.toBe(verkettungswertStartbeleg('KASSE-2'))
   })
 })
 
-describe('folgebelegVorSignatur', () => {
-  it('erzeugt konsistente Werte', () => {
-    const sigVor = 'abc123def456'
-    expect(folgebelegVorSignatur(sigVor)).toBe(folgebelegVorSignatur(sigVor))
-  })
-
-  it('unterscheidet sich vom Startbeleg-Wert', () => {
-    const start = startbelegVorSignatur()
-    const folge = folgebelegVorSignatur('irgendeinWert')
-    expect(start).not.toBe(folge)
+describe('verkettungswertFolgebeleg', () => {
+  it('hasht den kompletten Vorbeleg-Code', () => {
+    const code = '_R1-AT0_KASSE-1_1_2026-01-01T10:00:00_0,00_0,00_0,00_0,00_0,00_QUJDREVGR0g=_1A2B_abcdefgh_c2ln'
+    const erwartet = createHash('sha256').update(code, 'utf8').digest().subarray(0, 8).toString('base64')
+    expect(verkettungswertFolgebeleg(code)).toBe(erwartet)
   })
 
   it('unterschiedliche Eingaben → unterschiedliche Ausgaben', () => {
-    const f1 = folgebelegVorSignatur('sig1')
-    const f2 = folgebelegVorSignatur('sig2')
-    expect(f1).not.toBe(f2)
+    expect(verkettungswertFolgebeleg('code-a')).not.toBe(verkettungswertFolgebeleg('code-b'))
+  })
+
+  it('unterscheidet sich vom Startbeleg-Wert derselben Zeichenkette nicht (gleiche Funktion, gleicher Input)', () => {
+    // Start- und Folgewert nutzen dieselbe Hash-Konstruktion — nur der Input unterscheidet sie
+    expect(verkettungswertFolgebeleg('KASSE-1')).toBe(verkettungswertStartbeleg('KASSE-1'))
   })
 })
 
 describe('pruefeKette', () => {
+  const KASSE = 'KETTE-KASSE-1'
+
+  /** Baut eine synthetische, korrekt verkettete Belegfolge. */
+  function baueKette(anzahl: number): { maschinenlesbareCode: string; sigVorbeleg: string }[] {
+    const belege: { maschinenlesbareCode: string; sigVorbeleg: string }[] = []
+    for (let i = 0; i < anzahl; i++) {
+      const vorheriger = belege[i - 1]
+      const sigVorbeleg = vorheriger === undefined
+        ? verkettungswertStartbeleg(KASSE)
+        : verkettungswertFolgebeleg(vorheriger.maschinenlesbareCode)
+      belege.push({
+        maschinenlesbareCode: `_R1-AT0_${KASSE}_${i + 1}_2026-01-01T10:00:0${i}_0,00_0,00_0,00_0,00_0,00_enc${i}=_SN_${sigVorbeleg}_sig${i}`,
+        sigVorbeleg,
+      })
+    }
+    return belege
+  }
+
   it('leere Liste ist gültig', () => {
-    expect(pruefeKette([])).toBe(true)
+    expect(pruefeKette(KASSE, [])).toBe(true)
   })
 
   it('valide Kette mit einem Beleg', () => {
-    const sig = 'ersteSig'
-    const kette = [{ signaturwert: sig, sigVorbeleg: startbelegVorSignatur() }]
-    expect(pruefeKette(kette)).toBe(true)
+    expect(pruefeKette(KASSE, baueKette(1))).toBe(true)
   })
 
-  it('valide Kette mit zwei Belegen', () => {
-    const sig1 = 'ersterSignaturwert'
-    const sig2 = 'zweiterSignaturwert'
-    const kette = [
-      { signaturwert: sig1, sigVorbeleg: startbelegVorSignatur() },
-      { signaturwert: sig2, sigVorbeleg: folgebelegVorSignatur(sig1) },
-    ]
-    expect(pruefeKette(kette)).toBe(true)
+  it('valide Kette mit fünf Belegen', () => {
+    expect(pruefeKette(KASSE, baueKette(5))).toBe(true)
   })
 
-  it('erkennt falschen Startbeleg-SigVorbeleg', () => {
-    const kette = [{ signaturwert: 'sig', sigVorbeleg: 'falscherWert' }]
-    expect(pruefeKette(kette)).toBe(false)
+  it('erkennt falschen Startbeleg-Verkettungswert (falsche Kassen-ID)', () => {
+    const kette = baueKette(2)
+    expect(pruefeKette('ANDERE-KASSE', kette)).toBe(false)
   })
 
-  it('erkennt unterbrochene Kette', () => {
-    const sig1 = 'sig1'
-    const kette = [
-      { signaturwert: sig1, sigVorbeleg: startbelegVorSignatur() },
-      { signaturwert: 'sig2', sigVorbeleg: 'nichtKorrektAbgeleitet' },
-    ]
-    expect(pruefeKette(kette)).toBe(false)
+  it('erkennt manipulierten Vorbeleg-Code (Kettenbruch)', () => {
+    const kette = baueKette(3)
+    const zweiter = kette[1]!
+    kette[1] = { ...zweiter, maschinenlesbareCode: zweiter.maschinenlesbareCode.replace('0,00', '9,99') }
+    expect(pruefeKette(KASSE, kette)).toBe(false)
   })
 
-  it('valide Kette mit drei Belegen', () => {
-    const s1 = 'sigA', s2 = 'sigB', s3 = 'sigC'
-    const kette = [
-      { signaturwert: s1, sigVorbeleg: startbelegVorSignatur() },
-      { signaturwert: s2, sigVorbeleg: folgebelegVorSignatur(s1) },
-      { signaturwert: s3, sigVorbeleg: folgebelegVorSignatur(s2) },
-    ]
-    expect(pruefeKette(kette)).toBe(true)
+  it('erkennt manipulierten Verkettungswert', () => {
+    const kette = baueKette(3)
+    const dritter = kette[2]!
+    kette[2] = { ...dritter, sigVorbeleg: verkettungswertStartbeleg('FALSCH') }
+    expect(pruefeKette(KASSE, kette)).toBe(false)
   })
 })

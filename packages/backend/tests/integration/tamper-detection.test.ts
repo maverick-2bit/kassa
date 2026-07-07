@@ -42,6 +42,7 @@ const setupInput = {
 /** DB-Beleg-Zeile + Kassen-KID → die von der rksv-Verifikation erwartete Form. */
 function alsVerifizierbar(row: typeof belege.$inferSelect, kassenId: string): VerifizierbarerBeleg {
   return {
+    zdaId: 'AT0',
     kassenId,
     belegNummer:  row.belegNummer,
     datumUhrzeit: row.belegDatum,

@@ -13,6 +13,7 @@ const KASSE_ID   = '20000000-0000-0000-0000-000000000001'
 
 let seeDer: Buffer
 let seeEnc: string
+let aesEnc: string
 
 beforeAll(async () => {
   const see = await generateSEE({
@@ -22,6 +23,7 @@ beforeAll(async () => {
   })
   seeDer = see.zertifikatDER
   seeEnc = encryptPrivateKey(see.privateKeyDER, TEST_MASTER)
+  aesEnc = encryptPrivateKey(see.aesSchluessel, TEST_MASTER)
 })
 
 // ---------------------------------------------------------------------------
@@ -110,11 +112,12 @@ function aktiveKasse() {
     umgebung:            'test',
     seeZertifikatDer:    seeDer.toString('base64'),
     seePrivateKeyEnc:    seeEnc,
+    aesSchluesselEnc:    aesEnc,
     seeZertifikatSn:     '12345',
     seeGueltigBis:       new Date('2030-01-01'),
     umsatzzaehlerCent:   0n,
     letzteBelegNummer:   1,
-    letzterSignaturwert: 'startbeleg-signaturwert-base64url',
+    letzterBelegCode:    '_R1-AT0_KASSE-TEST_1_2026-01-01T08:00:00_0,00_0,00_0,00_0,00_0,00_QUJDREVGR0g=_12345_dGVzdHZrdw==_c3RhcnRzaWc=',
     bei_fo_registriert:  true,
     fo_pruefwert:        'PW-TEST',
     registriert_am:      new Date('2026-05-20'),
@@ -206,7 +209,7 @@ describe('POST /api/belege/barzahlung', () => {
     expect(body.belegNummer).toBe(2)
     expect(body.belegTyp).toBe('Barzahlungsbeleg')
     expect(body.gesamtbetragCent).toBe(700)
-    expect(body.maschinenlesbareCode).toMatch(/^_R1-AT_/)
+    expect(body.maschinenlesbareCode).toMatch(/^_R1-AT0_/)
     expect(belegInsertSpy).toHaveBeenCalledOnce()
     expect(kasseUpdateSpy).toHaveBeenCalledOnce()
     await srv.close()
@@ -366,7 +369,7 @@ describe('Spezialbelege (Nullbeleg, Monatsbeleg, Jahresbeleg)', () => {
     expect(body.belegTyp).toBe(erwarteterTyp)
     expect(body.gesamtbetragCent).toBe(0)
     expect(body.positionen).toEqual([])
-    expect(body.maschinenlesbareCode).toMatch(/^_R1-AT_/)
+    expect(body.maschinenlesbareCode).toMatch(/^_R1-AT0_/)
     await srv.close()
   })
 

@@ -119,9 +119,9 @@ describe('Kasse außer Betrieb nehmen (Integration)', () => {
     const alle = await idb.db.select().from(belege)
       .where(eq(belege.kasseId, zweiteKasseId)).orderBy(asc(belege.belegNummer))
     expect(alle.at(-1)!.belegTyp).toBe('Schlussbeleg')
-    const kettValide = pruefeKette(alle.map(b => ({
-      signaturwert: b.signaturwert,
-      sigVorbeleg:  b.sigVorbeleg,
+    const kettValide = pruefeKette('AB-KASSE-002', alle.map(b => ({
+      maschinenlesbareCode: b.maschinenlesbareCode,
+      sigVorbeleg:          b.sigVorbeleg,
     })))
     expect(kettValide).toBe(true)
   })

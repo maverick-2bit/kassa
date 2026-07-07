@@ -93,19 +93,26 @@ export interface RawBeleg {
 /** Vollständig signierter RKSV-Beleg */
 export interface SignedBeleg extends RawBeleg {
   betraege: BetraegeSummen
-  /** base64url-kodierte AES-256-ICM-Verschlüsselung des Umsatzzählers (8 Byte) */
+  /** BASE64-Standard-kodierte AES-256-ICM-Verschlüsselung des Umsatzzählers (8 Byte) */
   umsatzzaehlerVerschluesselt: string
-  /** Dezimale Seriennummer des SEE-Zertifikats */
+  /** Hexadezimale Seriennummer des SEE-Zertifikats (wie im QR-Code) */
   zertifikatSN: string
   /**
-   * Signaturwert des unmittelbaren Vorbelegs (base64url).
-   * Beim Startbeleg: base64url(SHA-256(32 × 0x00)).
+   * Verkettungswert Vorbeleg: BASE64_STD( erste 8 Byte von SHA-256(Input) ).
+   * Startbeleg: Input = Kassen-ID; Folgebeleg: Input = kompletter
+   * maschinenlesbarer Code des Vorbelegs (Detailspezifikation).
    */
   sigVorbeleg: string
-  /** ECDSA-P256-Signatur über den maschinenlesbaren Code (base64url) */
+  /**
+   * ECDSA-P256-Signatur (64 Byte P1363) über den JWS-Signing-Input
+   * base64url(header{"alg":"ES256"}) + "." + base64url(codeOhneSig),
+   * BASE64-Standard-kodiert wie im QR-Code.
+   */
   signaturwert: string
   /** Vollständiger QR-Code-Inhalt gemäß BMF-Spezifikation */
   maschinenlesbareCode: string
+  /** JWS-Compact-Repräsentation (header.payload.signature, base64url) — für den DEP-Export */
+  jwsCompact: string
   /**
    * true, wenn der Beleg im SEE-Ausfallmodus erzeugt wurde: statt einer
    * ECDSA-Signatur trägt `signaturwert` den BMF-Marker für „Sicherheits-
@@ -125,6 +132,18 @@ export interface SEEConfig {
   zertifikatDER: Buffer
   /** PKCS#8 DER-kodierter privater Schlüssel (ECDSA P-256) */
   privateKeyDER: Buffer
+  /**
+   * Eigenständiger AES-256-Schlüssel (32 Byte) für die Umsatzzähler-
+   * Verschlüsselung — wird bei der FON-Kassenregistrierung als base64 gemeldet
+   * (Detailspezifikation; NICHT aus dem Zertifikat abgeleitet).
+   */
+  aesSchluessel: Buffer
+  /**
+   * ZDA-Kennzeichen im QR-Prefix `_R1-<ZDA>_`: 'AT1' (A-Trust), 'AT2' (GlobalTrust),
+   * 'AT3' (PrimeSign); 'AT0' = geschlossenes Gesamtsystem — Kennzeichen der
+   * Software-SEE (nur Entwicklung/Test).
+   */
+  zdaId: string
 }
 
 export interface SEEInfo {
@@ -139,12 +158,12 @@ export interface SEEInfo {
 // DEP7 – Datenerfassungsprotokoll
 // ---------------------------------------------------------------------------
 
-/** DEP7-Exportformat gemäß BMF-Spezifikation (für Finanzprüfung, 7 Jahre aufzubewahren) */
+/**
+ * DEP7-Exportformat gemäß BMF-Detailspezifikation Abs. 3:
+ * `{"Belege-Gruppe":[{ "Signaturzertifikat", "Zertifizierungsstellen", "Belege-kompakt": [JWS…] }]}`
+ */
 export interface DEP7Export {
-  /** ISO 8601 Exportzeitpunkt */
-  exportDatum: string
-  kassenId: string
-  Belege: DEP7BelegPackage[]
+  'Belege-Gruppe': DEP7BelegPackage[]
 }
 
 export interface DEP7BelegPackage {
@@ -152,8 +171,8 @@ export interface DEP7BelegPackage {
   Signaturzertifikat: string
   /** base64-Standard-kodierte DER-Zwischenzertifikate (leer bei Self-signed) */
   Zertifizierungsstellen: string[]
-  /** Liste der signierten Belegdaten */
-  Belege: string[]
+  /** Belege als JWS-Compact-Repräsentation (header.payload.signature, base64url) */
+  'Belege-kompakt': string[]
 }
 
 // ---------------------------------------------------------------------------

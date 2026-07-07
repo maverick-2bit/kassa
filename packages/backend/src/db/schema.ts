@@ -94,7 +94,10 @@ export const kassen = pgTable('kassen', {
   // RKSV-Laufzeitdaten
   umsatzzaehlerCent:     bigint('umsatzzaehler_cent', { mode: 'bigint' }).notNull().default(sql`0`),
   letzteBelegNummer:     integer('letzte_beleg_nummer').notNull().default(0),
-  letzterSignaturwert:   text('letzter_signaturwert'),
+  /** Kompletter maschinenlesbarer Code des letzten Belegs (Verkettungs-Basis, Detailspez) */
+  letzterBelegCode:      text('letzter_beleg_code'),
+  /** AES-256-GCM-verschlüsselter Umsatzzähler-Schlüssel (32 Byte; wird bei FON gemeldet) */
+  aesSchluesselEnc:      text('aes_schluessel_enc'),
 
   /** Gesetzt, solange die SEE ausgefallen ist (Belege tragen den Ausfallmarker, statt signiert zu sein). NULL = SEE in Betrieb. */
   seeAusgefallenSeit:    timestamp('see_ausgefallen_seit', { withTimezone: true }),

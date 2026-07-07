@@ -1,98 +1,84 @@
 /**
- * Tests für AES-256-ICM (Umsatzzähler-Verschlüsselung)
- *
- * Testvektoren aus der BMF-Referenzimplementierung:
- * https://github.com/a-sit-plus/at-registrierkassen-mustercode
+ * Tests für AES-256-ICM (Umsatzzähler-Verschlüsselung, BMF-Detailspezifikation):
+ * eigenständiger 32-Byte-Schlüssel, IV = erste 16 Byte SHA-256(kassenId ‖ belegNummer).
  */
 
+import { createHash } from 'node:crypto'
 import { describe, it, expect } from 'vitest'
 import {
-  deriveAesKey,
-  belegNummerZuIV,
+  generiereAesSchluessel,
+  berechneIV,
   verschluesselUmsatzzaehler,
   entschluesselUmsatzzaehler,
 } from '../src/crypto/aes-icm.js'
 
-describe('deriveAesKey', () => {
+describe('generiereAesSchluessel', () => {
   it('erzeugt einen 32-Byte-Schlüssel', () => {
-    const cert    = Buffer.from('TESTCERT', 'utf8')
-    const key     = deriveAesKey(cert, 'KASSE-001')
-    expect(key).toHaveLength(32)
+    expect(generiereAesSchluessel()).toHaveLength(32)
   })
 
-  it('ist deterministisch', () => {
-    const cert = Buffer.from('TESTCERT', 'utf8')
-    const k1   = deriveAesKey(cert, 'KASSE-001')
-    const k2   = deriveAesKey(cert, 'KASSE-001')
-    expect(k1.equals(k2)).toBe(true)
-  })
-
-  it('unterscheidet sich bei anderer KassenID', () => {
-    const cert = Buffer.from('TESTCERT', 'utf8')
-    const k1   = deriveAesKey(cert, 'KASSE-001')
-    const k2   = deriveAesKey(cert, 'KASSE-002')
-    expect(k1.equals(k2)).toBe(false)
+  it('erzeugt bei jedem Aufruf einen anderen Schlüssel', () => {
+    expect(generiereAesSchluessel().equals(generiereAesSchluessel())).toBe(false)
   })
 })
 
-describe('belegNummerZuIV', () => {
-  it('erzeugt einen 16-Byte-IV', () => {
-    expect(belegNummerZuIV(1)).toHaveLength(16)
+describe('berechneIV', () => {
+  it('entspricht den ersten 16 Byte von SHA-256(kassenId + belegNummer)', () => {
+    const erwartet = createHash('sha256').update('KASSE-001' + '42', 'utf8').digest().subarray(0, 16)
+    expect(berechneIV('KASSE-001', 42).equals(erwartet)).toBe(true)
   })
 
-  it('kodiert die Nummer Big-Endian in den letzten 8 Bytes', () => {
-    const iv = belegNummerZuIV(1)
-    expect(iv.subarray(0, 8).equals(Buffer.alloc(8, 0))).toBe(true)
-    expect(iv.readBigUInt64BE(8)).toBe(1n)
+  it('erzeugt einen 16-Byte-IV', () => {
+    expect(berechneIV('KASSE-001', 1)).toHaveLength(16)
   })
 
   it('unterscheidet sich bei verschiedenen Belegnummern', () => {
-    const iv1 = belegNummerZuIV(1)
-    const iv2 = belegNummerZuIV(2)
-    expect(iv1.equals(iv2)).toBe(false)
+    expect(berechneIV('KASSE-001', 1).equals(berechneIV('KASSE-001', 2))).toBe(false)
+  })
+
+  it('unterscheidet sich bei anderer Kassen-ID', () => {
+    expect(berechneIV('KASSE-001', 1).equals(berechneIV('KASSE-002', 1))).toBe(false)
   })
 })
 
 describe('verschluesselUmsatzzaehler / entschluesselUmsatzzaehler', () => {
-  const cert      = Buffer.from('DEMO-CERT-DER', 'utf8')
-  const kassenId  = 'DEMO-CASH-BOX817'
-  const belegNr   = 1
+  const key = generiereAesSchluessel()
 
   it('verschlüsselt und entschlüsselt korrekt (Roundtrip)', () => {
-    const original  = 1050n  // 10,50 €
-    const encrypted = verschluesselUmsatzzaehler(original, cert, kassenId, belegNr)
-    const decrypted = entschluesselUmsatzzaehler(encrypted, cert, kassenId, belegNr)
-    expect(decrypted).toBe(original)
+    const enc = verschluesselUmsatzzaehler(123456n, key, 'KASSE-001', 7)
+    expect(entschluesselUmsatzzaehler(enc, key, 'KASSE-001', 7)).toBe(123456n)
   })
 
   it('Roundtrip mit negativem Wert (Storno)', () => {
-    const original  = -500n  // -5,00 €
-    const encrypted = verschluesselUmsatzzaehler(original, cert, kassenId, belegNr)
-    const decrypted = entschluesselUmsatzzaehler(encrypted, cert, kassenId, belegNr)
-    expect(decrypted).toBe(original)
+    const enc = verschluesselUmsatzzaehler(-9999n, key, 'KASSE-001', 8)
+    expect(entschluesselUmsatzzaehler(enc, key, 'KASSE-001', 8)).toBe(-9999n)
   })
 
   it('Roundtrip mit Nullwert', () => {
-    const original  = 0n
-    const encrypted = verschluesselUmsatzzaehler(original, cert, kassenId, belegNr)
-    const decrypted = entschluesselUmsatzzaehler(encrypted, cert, kassenId, belegNr)
-    expect(decrypted).toBe(original)
+    const enc = verschluesselUmsatzzaehler(0n, key, 'KASSE-001', 1)
+    expect(entschluesselUmsatzzaehler(enc, key, 'KASSE-001', 1)).toBe(0n)
   })
 
-  it('ergibt 8 Byte verschlüsselte Daten', () => {
-    const encrypted = verschluesselUmsatzzaehler(1000n, cert, kassenId, belegNr)
-    expect(encrypted).toHaveLength(8)
+  it('ergibt 8 Byte verschlüsselte Daten (BASE64_STD: 12 Zeichen)', () => {
+    const enc = verschluesselUmsatzzaehler(555n, key, 'KASSE-001', 3)
+    expect(enc).toHaveLength(8)
+    // Wie der Referenz-Beleg des BMF-Mustercodes: z. B. "4BMxCg==" (8 Byte → 12 Zeichen)
+    expect(enc.toString('base64')).toHaveLength(12)
   })
 
   it('verschiedene Belegnummern erzeugen verschiedene Ciphertexte', () => {
-    const e1 = verschluesselUmsatzzaehler(1000n, cert, kassenId, 1)
-    const e2 = verschluesselUmsatzzaehler(1000n, cert, kassenId, 2)
-    expect(e1.equals(e2)).toBe(false)
+    const a = verschluesselUmsatzzaehler(100n, key, 'KASSE-001', 1)
+    const b = verschluesselUmsatzzaehler(100n, key, 'KASSE-001', 2)
+    expect(a.equals(b)).toBe(false)
+  })
+
+  it('falscher Schlüssel bei Entschlüsselung liefert falschen Wert', () => {
+    const enc = verschluesselUmsatzzaehler(777n, key, 'KASSE-001', 5)
+    expect(entschluesselUmsatzzaehler(enc, generiereAesSchluessel(), 'KASSE-001', 5)).not.toBe(777n)
   })
 
   it('falsche Belegnummer bei Entschlüsselung liefert falschen Wert', () => {
-    const encrypted = verschluesselUmsatzzaehler(1000n, cert, kassenId, 1)
-    const wrongDec  = entschluesselUmsatzzaehler(encrypted, cert, kassenId, 2)
-    expect(wrongDec).not.toBe(1000n)
+    const enc = verschluesselUmsatzzaehler(777n, key, 'KASSE-001', 5)
+    expect(entschluesselUmsatzzaehler(enc, key, 'KASSE-001', 6)).not.toBe(777n)
   })
 })

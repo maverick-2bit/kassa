@@ -111,17 +111,18 @@ describe('DEP-Export (Integration, echtes PostgreSQL)', () => {
     expect(res.headers['x-anzahl-belege']).toBe('5')
 
     const dep = dep7AusJson(res.body)
-    expect(dep.kassenId).toBe('DEP-001')
-    expect(dep.Belege).toHaveLength(1) // ein Package (kein Zertifikatswechsel)
+    expect(dep['Belege-Gruppe']).toHaveLength(1) // eine Gruppe (kein Zertifikatswechsel)
 
     const val = validiereDEP7(dep)
     expect(val.gueltig).toBe(true)
     expect(val.fehler).toEqual([])
     expect(val.anzahlBelege).toBe(5)
 
-    // jeder Beleg ist ein RKSV-Maschinencode
-    for (const code of dep.Belege[0]!.Belege) {
-      expect(code.startsWith('_R1-AT_')).toBe(true)
+    // jeder Beleg ist ein RKSV-JWS (Payload = Code ohne Signatur)
+    for (const jws of dep['Belege-Gruppe'][0]!['Belege-kompakt']) {
+      const teile = jws.split('.')
+      expect(teile).toHaveLength(3)
+      expect(Buffer.from(teile[1]!, 'base64url').toString('utf8').startsWith('_R1-AT0_')).toBe(true)
     }
   })
 
@@ -140,7 +141,7 @@ describe('DEP-Export (Integration, echtes PostgreSQL)', () => {
     expect(dep.Belege[0]!.Belegtyp).toBe('Startbeleg')
     for (const b of dep.Belege) {
       expect(b.Signaturwert).toBeTruthy()
-      expect(b.MaschinenlesbareCode.startsWith('_R1-AT_')).toBe(true)
+      expect(b.MaschinenlesbareCode.startsWith('_R1-AT0_')).toBe(true)
       expect(typeof b.SigVorbeleg).toBe('string')
     }
 
