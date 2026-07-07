@@ -65,6 +65,7 @@ export async function kdsBonErstellen(db: Db, eingabe: NeueBonEingabe): Promise<
       positionen: bon.positionen,
       erstelltAt: bon.erstelltAt.toISOString(),
       ...(bon.sbBestellNummer ? { sbBestellNummer: bon.sbBestellNummer } : {}),
+      ...(bon.sbBestellungId  ? { sbBestellungId:  bon.sbBestellungId }  : {}),
     },
   })
 }
@@ -114,6 +115,7 @@ export async function kdsOffeneBons(db: Db, mandantId: string, station: string) 
     positionen: b.positionen,
     erstelltAt: b.erstelltAt.toISOString(),
     ...(b.sbBestellNummer ? { sbBestellNummer: b.sbBestellNummer } : {}),
+    ...(b.sbBestellungId  ? { sbBestellungId:  b.sbBestellungId }  : {}),
   }))
 }
 

@@ -37,6 +37,9 @@ export interface KdsBon {
   kellner:    string
   positionen: KdsPosition[]
   erstelltAt: string   // ISO
+  /** SB-Terminal-Bestellung: 4-stellige Nummer + ID (Badge, Rechnungsdruck) */
+  sbBestellNummer?: string
+  sbBestellungId?:  string
 }
 
 // SSE-Ereignisse vom Backend

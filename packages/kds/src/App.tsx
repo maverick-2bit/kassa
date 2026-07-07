@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { getTheme, toggleTheme, type ThemeMode } from './theme'
 import type { KdsBon, KdsStation, KdsSseEvent } from './types'
 import { STATION_LABELS, STATION_FARBEN } from './types'
-import { fetchBons, ladeKassen, nachrichtSenden, type KdsKasse } from './api'
+import { fetchBons, ladeKassen, nachrichtSenden, sbAbgeholt, sbBestellungen, type KdsKasse, type SbBestellungEintrag } from './api'
 import { useKdsSse } from './hooks/useKdsSse'
 import { BonKarte } from './components/BonKarte'
 import { GrossAnzeige } from './components/GrossAnzeige'
@@ -299,6 +299,61 @@ interface KellerAntwort {
   zeit:             string
 }
 
+/**
+ * SB-Abhol-Leiste: zeigt „zur Abholung bereit"-Bestellungen des SB-Terminals
+ * als Chips. Tap = Abholung quittiert → verschwindet vom Abholmonitor.
+ * Aktualisiert per Polling (10 s) — robust, kein eigener SSE-Kanal nötig.
+ */
+function SbAbholLeiste({ token }: { token: string }) {
+  const [bereite, setBereite] = useState<SbBestellungEintrag[]>([])
+  const [laedt, setLaedt]     = useState<string | null>(null)
+
+  useEffect(() => {
+    let aktiv = true
+    const laden = async () => {
+      try {
+        const liste = await sbBestellungen(token)
+        if (aktiv) setBereite(liste.filter(b => b.status === 'bereit'))
+      } catch { /* Modul inaktiv oder Netzfehler — Leiste bleibt einfach leer */ }
+    }
+    void laden()
+    const t = setInterval(laden, 10_000)
+    return () => { aktiv = false; clearInterval(t) }
+  }, [token])
+
+  if (bereite.length === 0) return null
+
+  const abholen = async (id: string) => {
+    setLaedt(id)
+    try {
+      await sbAbgeholt(id, token)
+      setBereite(prev => prev.filter(b => b.id !== id))
+    } catch (e) {
+      alert('Konnte nicht quittiert werden: ' + (e instanceof Error ? e.message : e))
+    } finally {
+      setLaedt(null)
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-3 px-5 py-2.5 border-b border-line bg-panel-2 overflow-x-auto">
+      <span className="shrink-0 text-sm font-bold text-ink-muted">Zur Abholung bereit:</span>
+      {bereite.map(b => (
+        <button
+          key={b.id}
+          onClick={() => abholen(b.id)}
+          disabled={laedt === b.id}
+          title="Tippen = als abgeholt quittieren"
+          className="shrink-0 flex items-center gap-2 rounded-full bg-brand-600 pl-3 pr-2 py-1.5 text-white font-black font-mono text-lg hover:opacity-85 transition disabled:opacity-50"
+        >
+          {String(b.bestellNummer).padStart(4, '0')}
+          <span className="rounded-full bg-white/20 px-2 py-0.5 text-xs font-bold font-sans">✓ abgeholt</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
 export default function App() {
   const [config, setConfig] = useState(getConfig)
   const [bons, setBons]     = useState<KdsBon[]>([])
@@ -554,6 +609,9 @@ export default function App() {
           Verbindungsfehler: {fehler} – wird automatisch erneut versucht…
         </div>
       )}
+
+      {/* SB-Terminal: bereite Bestellungen — Tap = abgeholt (verschwindet vom Monitor) */}
+      <SbAbholLeiste token={token} />
 
       {/* Haupt-Bereich: Aggregations-Spalte links + Bons-Grid rechts */}
       <div className="flex-1 flex overflow-hidden">

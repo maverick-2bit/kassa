@@ -342,6 +342,22 @@ export type {
   KasseEvent,
 } from './schemas/events.js'
 
+// Rechnung als druckfertiges A4-HTML (Frontend + KDS)
+export {
+  MWST_SAETZE,
+  centZuEuro,
+  formatDatumDe,
+  esc,
+  generiereBaseCss,
+  berechneSteueraufteilung,
+  berechneSteueraufteilungVonPositionen,
+  generiereRechnungHtml,
+} from './rechnung-html.js'
+export type {
+  RechnungMandantInfo,
+  SteuerZeile,
+} from './rechnung-html.js'
+
 // SB-Terminal (Kiosk + Abholmonitor)
 export {
   SbBestellungStatusSchema,

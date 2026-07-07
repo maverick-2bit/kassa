@@ -10,12 +10,13 @@
  */
 
 import type { FastifyPluginAsync } from 'fastify'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import type { Db } from '../db/client.js'
 import { onKdsEvent, emitKdsEvent } from '../sse/kds-event-bus.js'
 import { emitKasseEvent } from '../sse/event-bus.js'
-import { kassen, kdsBons } from '../db/schema.js'
+import { kassen, kdsBons, mandanten, sbBestellungen } from '../db/schema.js'
+import { holeBeleg } from '../services/beleg.service.js'
 import {
   kdsOffeneBons,
   kdsUebersicht,
@@ -293,6 +294,34 @@ export const kdsRoute: FastifyPluginAsync<KdsRouteOptions> = async (fastify, opt
       await pruefeSbBereit(p.data.id, request.user.mandantId)
 
       return reply.send({ erfolgreich: true })
+    },
+  )
+
+  // ── SB-Bestellung: Beleg + Mandant für den Rechnungsdruck am KDS ────────────
+  fastify.get(
+    '/kds/sb/:id/rechnung',
+    { onRequest: [fastify.authenticate] },
+    async (request, reply) => {
+      const p = IdParam.safeParse(request.params)
+      if (!p.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
+
+      const [sb] = await opts.db
+        .select()
+        .from(sbBestellungen)
+        .where(and(eq(sbBestellungen.id, p.data.id), eq(sbBestellungen.mandantId, request.user.mandantId)))
+        .limit(1)
+      if (!sb?.belegId) return reply.status(404).send({ fehler: 'Bestellung oder Beleg nicht gefunden' })
+
+      const beleg = await holeBeleg(opts.db, sb.belegId, request.user.mandantId)
+      if (!beleg) return reply.status(404).send({ fehler: 'Beleg nicht gefunden' })
+
+      const [mandant] = await opts.db
+        .select({ firmenname: mandanten.firmenname, uid: mandanten.uid })
+        .from(mandanten)
+        .where(eq(mandanten.id, request.user.mandantId))
+        .limit(1)
+
+      return reply.send({ beleg, mandant, bestellNummer: sb.bestellNummer })
     },
   )
 }

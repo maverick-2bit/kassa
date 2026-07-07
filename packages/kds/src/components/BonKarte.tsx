@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react'
+import { generiereRechnungHtml } from '@kassa/shared'
 import type { KdsBon, KdsPosition } from '../types'
-import { bonErledigt, bonTeilbon } from '../api'
+import { bonErledigt, bonTeilbon, sbRechnung } from '../api'
 
 interface BonKarteProps {
   bon:     KdsBon
@@ -31,6 +32,38 @@ function AlterBadge({ erstelltAt }: { erstelltAt: string }) {
 
 function offeneMenge(pos: KdsPosition): number {
   return pos.menge - (pos.erledigtMenge ?? 0)
+}
+
+/** Rechnung zur SB-Bestellung als A4-Druckdialog öffnen (Browser-Druck am KDS-Gerät) */
+function RechnungButton({ sbBestellungId, token }: { sbBestellungId: string; token: string }) {
+  const [laedt, setLaedt] = useState(false)
+
+  const drucken = useCallback(async () => {
+    setLaedt(true)
+    try {
+      const { beleg, mandant } = await sbRechnung(sbBestellungId, token)
+      const html = generiereRechnungHtml(beleg, mandant)
+      const win  = window.open('', '_blank', 'width=900,height=1200')
+      if (!win) { alert('Bitte Pop-ups erlauben, um die Rechnung zu drucken.'); return }
+      win.document.write(html)
+      win.document.close()
+    } catch (e) {
+      alert('Rechnung konnte nicht geladen werden: ' + (e instanceof Error ? e.message : e))
+    } finally {
+      setLaedt(false)
+    }
+  }, [sbBestellungId, token])
+
+  return (
+    <button
+      onClick={drucken}
+      disabled={laedt}
+      title="Rechnung drucken"
+      className="px-2 py-1 rounded-lg bg-panel border border-line-strong text-xs font-bold text-ink-muted hover:text-ink transition"
+    >
+      🖨 Rechnung
+    </button>
+  )
 }
 
 export function BonKarte({ bon, token, onErledigt }: BonKarteProps) {
@@ -101,14 +134,24 @@ export function BonKarte({ bon, token, onErledigt }: BonKarteProps) {
       {/* Header */}
       <div className="bg-panel-2 px-4 py-3 flex items-start justify-between gap-2">
         <div>
-          <div className="text-2xl font-black text-ink leading-none">
-            {bon.bereich ? `${bon.bereich} / T${bon.tisch}` : `Tisch ${bon.tisch}`}
-          </div>
+          {bon.sbBestellNummer ? (
+            <div className="flex items-center gap-2">
+              <span className="rounded-lg bg-brand-600 px-2.5 py-1 font-mono text-2xl font-black leading-none text-white">
+                {bon.sbBestellNummer}
+              </span>
+              <span className="rounded-full bg-brand-100 px-2 py-0.5 text-xs font-bold text-brand-800">SB</span>
+            </div>
+          ) : (
+            <div className="text-2xl font-black text-ink leading-none">
+              {bon.bereich ? `${bon.bereich} / T${bon.tisch}` : `Tisch ${bon.tisch}`}
+            </div>
+          )}
           <div className="text-sm text-ink-muted mt-1">{bon.kellner}</div>
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
           <AlterBadge erstelltAt={bon.erstelltAt} />
           <span className="text-xs text-ink-subtle font-mono">{bon.bonNummer}</span>
+          {bon.sbBestellungId && <RechnungButton sbBestellungId={bon.sbBestellungId} token={token} />}
         </div>
       </div>
 

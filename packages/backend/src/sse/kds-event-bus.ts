@@ -26,6 +26,8 @@ export interface KdsBonDto {
   erstelltAt: string
   /** 4-stellige SB-Bestellnummer (nur bei Terminal-Bestellungen) */
   sbBestellNummer?: string
+  /** SB-Bestellungs-ID (für Rechnungsdruck + Abholen am KDS) */
+  sbBestellungId?: string
 }
 
 export interface KdsPositionDto {

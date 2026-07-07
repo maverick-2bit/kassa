@@ -25,6 +25,8 @@ export async function bonErledigt(bonId: string, token: string) {
   const res = await fetch(`${BASE}/bon/${bonId}/erledigt`, {
     method: 'POST',
     headers: headers(token),
+    // Fastify lehnt leere Bodies mit JSON-Content-Type ab (400)
+    body: '{}',
   })
   if (!res.ok) throw new Error(`Fehler: ${res.status}`)
   return res.json()
@@ -100,6 +102,8 @@ export async function bonNachdrucken(
   const res = await fetch(`${BASE}/bon/${bonId}/nachdrucken`, {
     method: 'POST',
     headers: headers(token),
+    // Fastify lehnt leere Bodies mit JSON-Content-Type ab (400)
+    body: '{}',
   })
   if (!res.ok) throw new Error(`Fehler: ${res.status}`)
   return res.json()
@@ -122,4 +126,48 @@ export interface ArchivBon {
   }>
   status:     string
   erstelltAt: string
+}
+
+// ---------------------------------------------------------------------------
+// SB-Terminal-Bestellungen (Abhol-Leiste + Rechnungsdruck)
+// ---------------------------------------------------------------------------
+
+export interface SbBestellungEintrag {
+  id:            string
+  bestellNummer: number
+  status:        string
+  summeCent:     number
+  positionen:    { bezeichnung: string; menge: number }[]
+  erstelltAt:    string
+  bereitAt:      string | null
+}
+
+/** Heutige SB-Bestellungen (für die Abhol-Leiste: Status 'bereit' filtern) */
+export async function sbBestellungen(token: string): Promise<SbBestellungEintrag[]> {
+  const res = await fetch('/api/sb-bestellungen', { headers: headers(token) })
+  if (!res.ok) throw new Error(`Fehler: ${res.status}`)
+  return res.json()
+}
+
+/** SB-Bestellung als abgeholt quittieren — verschwindet vom Abholmonitor */
+export async function sbAbgeholt(id: string, token: string): Promise<void> {
+  const res = await fetch(`/api/sb-bestellungen/${id}/abgeholt`, {
+    method: 'POST',
+    headers: headers(token),
+    body: '{}',
+  })
+  if (!res.ok) throw new Error(`Fehler: ${res.status}`)
+}
+
+export interface SbRechnungAntwort {
+  beleg:         import('@kassa/shared').BelegResponse
+  mandant:       { firmenname: string; uid: string }
+  bestellNummer: number | null
+}
+
+/** Beleg + Mandant-Stammdaten für den Rechnungsdruck zu einer SB-Bestellung */
+export async function sbRechnung(id: string, token: string): Promise<SbRechnungAntwort> {
+  const res = await fetch(`${BASE}/sb/${id}/rechnung`, { headers: headers(token) })
+  if (!res.ok) throw new Error(`Fehler: ${res.status}`)
+  return res.json()
 }
