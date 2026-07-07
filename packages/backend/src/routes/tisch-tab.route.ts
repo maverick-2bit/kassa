@@ -22,6 +22,7 @@ import {
   TischTabError,
   type TischTabServiceDeps,
 } from '../services/tisch-tab.service.js'
+import { tryDruckeBeleg } from '../services/drucker.service.js'
 
 export interface TischTabRouteOptions {
   deps: TischTabServiceDeps
@@ -79,6 +80,8 @@ export const tischTabRoute: FastifyPluginAsync<TischTabRouteOptions> = async (fa
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     try {
       const result = await bezahleTab(id, parsed.data, request.user.mandantId, opts.deps)
+      // Auto-Druck des Bons (fire-and-forget; No-Op wenn kein Drucker konfiguriert)
+      tryDruckeBeleg(opts.deps.db, result.belegId, fastify.log)
       return reply.send(result)
     } catch (err) {
       if (err instanceof TischTabError) return reply.status(err.httpStatus).send({ fehler: err.message })
@@ -143,6 +146,8 @@ export const tischTabRoute: FastifyPluginAsync<TischTabRouteOptions> = async (fa
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     try {
       const result = await splitteUndBezahleTab(id, parsed.data, request.user.mandantId, opts.deps)
+      // Auto-Druck je Teilbeleg (fire-and-forget; No-Op wenn kein Drucker konfiguriert)
+      for (const belegId of result.belegIds) tryDruckeBeleg(opts.deps.db, belegId, fastify.log)
       return reply.send(result)
     } catch (err) {
       if (err instanceof TischTabError) return reply.status(err.httpStatus).send({ fehler: err.message })
