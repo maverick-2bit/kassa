@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
-import type { BonierbonEvent, GastBestellungEvent, KasseEvent, LagerstandWarnungEvent, ZahlungAngefordertEvent } from '@kassa/shared'
-import { STATION_LABELS } from '@kassa/shared'
+import { Link } from 'react-router-dom'
+import type { BonierbonEvent, GastBestellungEvent, KasseEvent, LagerstandWarnungEvent, SbBestellungEvent, ZahlungAngefordertEvent } from '@kassa/shared'
+import { STATION_LABELS, formatSbNummer } from '@kassa/shared'
 import { useKasseEvents } from '../lib/sse'
 import { formatPreis } from '../lib/format'
 
@@ -20,10 +21,15 @@ export function KdsToasts() {
   const [toasts, setToasts]             = useState<Toast[]>([])
   const [gastBestellungen, setGastBest] = useState<GastBestellungEvent[]>([])
   const [zahlungen, setZahlungen]       = useState<ZahlungAngefordertEvent[]>([])
+  const [sbBestellungen, setSbBest]     = useState<SbBestellungEvent[]>([])
 
   const handleEvent = useCallback((event: KasseEvent) => {
     if (event.typ === 'neue_gastbestellung') {
       setGastBest(prev => [...prev, event])
+      return
+    }
+    if (event.typ === 'neue_sb_bestellung') {
+      setSbBest(prev => prev.some(s => s.bestellungId === event.bestellungId) ? prev : [...prev, event])
       return
     }
     if (event.typ === 'zahlung_angefordert') {
@@ -49,10 +55,46 @@ export function KdsToasts() {
 
   useKasseEvents(handleEvent)
 
-  if (toasts.length === 0 && gastBestellungen.length === 0 && zahlungen.length === 0) return null
+  if (toasts.length === 0 && gastBestellungen.length === 0 && zahlungen.length === 0 && sbBestellungen.length === 0) return null
 
   return (
     <>
+      {/* SB-Terminal-Bestellungen — persistent, oben rechts */}
+      {sbBestellungen.length > 0 && (
+        <div className="fixed top-20 right-4 z-50 flex flex-col gap-2 items-end">
+          {sbBestellungen.map((s) => (
+            <div key={s.bestellungId} className="w-72 rounded-lg border-2 border-brand-400 shadow-lg bg-brand-50 text-sm overflow-hidden">
+              <div className="bg-brand-500 px-3 py-2 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">🛒</span>
+                  <span className="font-black text-white text-sm">Neue SB-Bestellung!</span>
+                </div>
+                <button onClick={() => setSbBest(prev => prev.filter(x => x.bestellungId !== s.bestellungId))} className="text-white/80 hover:text-white font-bold">×</button>
+              </div>
+              <div className="px-3 py-2.5 space-y-1">
+                <p className="font-semibold text-ink">Bestellnummer: <span className="text-brand-700 font-mono">{formatSbNummer(s.bestellNummer)}</span></p>
+                <p className="text-xs text-ink-muted">{s.anzahlPositionen} Artikel · {formatPreis(s.summeCent)} · Karte bezahlt</p>
+              </div>
+              <div className="px-3 pb-2.5 flex gap-2">
+                <Link
+                  to="/sb-bestellungen"
+                  onClick={() => setSbBest(prev => prev.filter(x => x.bestellungId !== s.bestellungId))}
+                  className="flex-1 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold transition text-center"
+                >
+                  Zu den Bestellungen
+                </Link>
+                <button
+                  onClick={() => setSbBest(prev => prev.filter(x => x.bestellungId !== s.bestellungId))}
+                  className="px-3 py-1.5 rounded-lg bg-panel border border-line text-ink-muted hover:text-ink text-xs font-bold transition"
+                >
+                  ✓
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Zahlungs-Anforderungen (Self-Checkout) — persistent, oben rechts */}
       {zahlungen.length > 0 && (
         <div className="fixed top-20 left-4 z-50 flex flex-col gap-2 items-start">

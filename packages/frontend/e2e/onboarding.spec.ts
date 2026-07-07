@@ -1979,4 +1979,70 @@ test('Seriennummern: an der Kasse verkaufen druckt sie auf den Beleg und markier
   expect(treffer).toBeDefined()
 })
 
+/**
+ * SB-Terminal-Journey (Etappe 2 — zentrale Kassa): Modul aktivieren, Terminal-
+ * Sortiment freischalten, Demo-Bestellung über die öffentliche Terminal-API
+ * aufgeben und an der /sb-bestellungen-Seite „bereit" + „abgeholt" quittieren.
+ * Zusätzlich: der Einstellungen-Bereich „SB-Terminal" (Sortiment + Geräte-Links)
+ * ist erreichbar.
+ */
+test('SB-Terminal: Bestellung erscheint an der Kassa und wird bereit/abgeholt quittiert', async ({ page, request }) => {
+  const login = await ensureAuth(request)
+  const token = login.token as string, kasseId = login.kassen[0].id as string, mandantId = login.mandant.id as string
+  const authHeader = { Authorization: `Bearer ${token}` }
+
+  // Modul aktivieren + Terminal-sichtbare Kategorie mit Artikel anlegen
+  const module = await (await request.get('/api/mandanten/module', { headers: authHeader })).json()
+  await request.patch('/api/mandanten/module', { headers: authHeader, data: { ...module, modulSbTerminalAktiv: true } })
+
+  const ts  = Date.now()
+  const art = `SB-Snack ${ts}`
+  const kat = await (await request.post('/api/kategorien', {
+    headers: authHeader, data: { name: `SB-Kat ${ts}`, farbe: 'orange', reihenfolge: 0, terminalSichtbar: true },
+  })).json()
+  const artikel = await (await request.post('/api/artikel', {
+    headers: authHeader, data: { bezeichnung: art, preisBruttoCent: 990, mwstSatz: 'ermaessigt1', kategorieId: kat.id },
+  })).json()
+
+  // Demo-Bestellung über die öffentliche Terminal-API (Kasse ohne ZVT)
+  const anlage = await (await request.post('/api/terminal/bestellung', {
+    data: { kasseId, positionen: [{ artikelId: artikel.id, menge: 2 }] },
+  })).json()
+  expect(anlage.demoZahlung).toBe(true)
+  const fertig = await (await request.post(`/api/terminal/bestellung/${anlage.id}/bestaetigen`)).json()
+  expect(fertig.status).toBe('offen')
+  const nummer = String(fertig.bestellNummer).padStart(4, '0')
+
+  await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
+    localStorage.setItem('kassa:token', d.token)
+    localStorage.setItem('kassa:auth', d.authJson)
+    localStorage.setItem('kassa:mandantId', d.mandantId)
+    localStorage.setItem('kassa:kasseId', d.kasseId)
+  }, {
+    token,
+    authJson: JSON.stringify({ user: login.user, mandant: { ...login.mandant, modulSbTerminalAktiv: true }, kassen: login.kassen }),
+    mandantId,
+    kasseId,
+  })
+
+  // Kassa-Seite zeigt die Bestellung mit Nummer + Positionen
+  await page.goto('/sb-bestellungen')
+  await expect(page.getByText(nummer, { exact: true })).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByText(`2× ${art}`).first()).toBeVisible()
+
+  // „Zur Abholung bereit" → Button verschwindet, Badge + „bereit seit" erscheinen
+  await page.getByRole('button', { name: 'Zur Abholung bereit' }).click()
+  await expect(page.getByRole('button', { name: 'Zur Abholung bereit' })).toBeHidden()
+  await expect(page.getByText(/bereit seit \d+ min/)).toBeVisible()
+
+  // „Abgeholt" → wandert in den Erledigt-Bereich
+  await page.getByRole('button', { name: 'Abgeholt', exact: true }).click()
+  await expect(page.getByText(/Erledigt heute \(\d+\)/)).toBeVisible()
+
+  // Einstellungen-Bereich „SB-Terminal": Sortiment-Verwaltung + Geräte-Links sind da
+  await page.goto('/einstellungen?bereich=terminal')
+  await expect(page.getByRole('heading', { name: 'Terminal-Sortiment' })).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByRole('heading', { name: 'Geräte-Links' })).toBeVisible()
+})
+
 })

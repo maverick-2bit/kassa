@@ -31,6 +31,7 @@ const WareneingangPage          = lazyPage(() => import('./pages/WareneingangPag
 const LagerstandPage            = lazyPage(() => import('./pages/LagerstandPage'), 'LagerstandPage')
 const OffenePostenPage          = lazyPage(() => import('./pages/OffenePostenPage'), 'OffenePostenPage')
 const GutscheinPage             = lazyPage(() => import('./pages/GutscheinPage'), 'GutscheinPage')
+const SbBestellungenPage        = lazyPage(() => import('./pages/SbBestellungenPage'), 'SbBestellungenPage')
 const LieferungenPage           = lazyPage(() => import('./pages/LieferungenPage'), 'LieferungenPage')
 const MandantenEinstellungenPage = lazyPage(() => import('./pages/MandantenEinstellungenPage'), 'MandantenEinstellungenPage')
 const DashboardPage             = lazyPage(() => import('./pages/DashboardPage'), 'DashboardPage')
@@ -114,6 +115,7 @@ function AppRoutes() {
           <Route path="/angebote"       element={<Require b="kasse"            m="angebote"><AngebotePage /></Require>} />
           <Route path="/offene-posten"  element={<Require b="kunden.verwalten"             ><OffenePostenPage /></Require>} />
           <Route path="/gutscheine"     element={<Require b="kasse"                        ><GutscheinPage /></Require>} />
+          <Route path="/sb-bestellungen" element={<Require b="kasse"          m="sbTerminal"><SbBestellungenPage /></Require>} />
           <Route path="/lieferungen"     element={<Require b="kasse"            m="mergeport"      ><LieferungenPage /></Require>} />
           <Route path="/reservierungen"  element={<Require b="kasse"            m="reservierungen" ><ReservierungenPage /></Require>} />
           <Route path="/zeiterfassung"   element={<Require b="einstellungen"    m="zeiterfassung"  ><ZeiterfassungPage /></Require>} />

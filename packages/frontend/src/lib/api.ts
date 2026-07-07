@@ -37,6 +37,7 @@ import type {
   ReihenfolgeUpdate,
   FavoritenReihenfolgeUpdate,
   LagerstandBulkInput,
+  SbBestellung,
   Seriennummer,
   TischplanBereich,
   TischplanBereichErstellen,
@@ -410,6 +411,19 @@ export const preisregelApi = {
     request<Preisregel>('PATCH', `/api/preisregeln/${id}`, input),
   remove: (id: string) =>
     request<void>('DELETE', `/api/preisregeln/${id}`),
+}
+
+// ---------------------------------------------------------------------------
+// SB-Bestellungen (Terminal-Verwaltung an der zentralen Kassa)
+// ---------------------------------------------------------------------------
+
+export const sbBestellungApi = {
+  liste:    (datum?: string) =>
+    request<SbBestellung[]>('GET', `/api/sb-bestellungen${datum ? `?datum=${datum}` : ''}`),
+  bereit:   (id: string) =>
+    request<SbBestellung>('POST', `/api/sb-bestellungen/${id}/bereit`, {}),
+  abgeholt: (id: string) =>
+    request<SbBestellung>('POST', `/api/sb-bestellungen/${id}/abgeholt`, {}),
 }
 
 export const kategorieApi = {
