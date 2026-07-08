@@ -128,6 +128,12 @@ export const kassen = pgTable('kassen', {
   /** TCP-Timeout in Sekunden (Standard: 5) */
   druckerTimeoutSek:     integer('drucker_timeout_sek').notNull().default(5),
 
+  // Belegausgabe (Papier-Bon und/oder digitaler Beleg via QR)
+  /** 'drucken' | 'digital' (QR → öffentliche Web-Ansicht) | 'beides' */
+  belegModus:            varchar('beleg_modus', { length: 16 }).notNull().default('drucken'),
+  /** Optionale öffentliche Basis-URL für den digitalen Beleg-QR (leer = Origin der Kassa-App) */
+  belegBasisUrl:         varchar('beleg_basis_url', { length: 255 }),
+
   // KDS-Konfiguration (Küchen-Display-System)
   /** Mapping Stations-Slug → IP-Adresse, z. B. { kueche: "192.168.192.210" } */
   kdsStationen:          jsonb('kds_stationen').notNull().default({}),

@@ -45,6 +45,15 @@ export type BonierdruckerUpdate = z.infer<typeof BonierdruckerUpdateSchema>
 export const StartseitenEnum = z.enum(['tische', 'kasse', 'kasse_favoriten', 'dashboard'])
 export type Startseite = z.infer<typeof StartseitenEnum>
 
+/**
+ * Belegausgabe-Modus je Kasse:
+ *   drucken → nur Papier-Bon (Bondrucker)
+ *   digital → nur digitaler Beleg (QR → öffentliche Web-Ansicht), KEIN Druck
+ *   beides  → Papier UND digitaler QR
+ */
+export const BelegModusEnum = z.enum(['drucken', 'digital', 'beides'])
+export type BelegModus = z.infer<typeof BelegModusEnum>
+
 export const PosKonfigSchema = z.object({
   /** IDs der Kategorien, die in dieser Kasse im POS sichtbar sind */
   sichtbareKategorieIds: z.array(z.string().uuid()),

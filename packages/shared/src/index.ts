@@ -211,6 +211,7 @@ export {
   PosKonfigSchema,
   PosKonfigUpdateSchema,
   StartseitenEnum,
+  BelegModusEnum,
   ReihenfolgeUpdateSchema,
   FavoritenReihenfolgeUpdateSchema,
 } from './schemas/bonierdrucker.js'
@@ -221,6 +222,7 @@ export type {
   PosKonfig,
   PosKonfigUpdate,
   Startseite,
+  BelegModus,
   ReihenfolgeUpdate,
   FavoritenReihenfolgeUpdate,
 } from './schemas/bonierdrucker.js'

@@ -202,7 +202,10 @@ export function druckerConfigVonKasse(kasse: {
   druckerAktiv:      boolean
   druckerBreite:     number
   druckerTimeoutSek: number
+  belegModus?:       string
 }): DruckerConfig | null {
+  // Reiner Digital-Modus (QR) → gar nicht drucken
+  if (kasse.belegModus === 'digital') return null
   if (!kasse.druckerAktiv || !kasse.druckerIp) return null
   return {
     ip:        kasse.druckerIp,
@@ -299,7 +302,7 @@ export function tryDruckeBeleg(
 // Helfer: DB-Row → BelegResponse (für Druck-Layout)
 // ---------------------------------------------------------------------------
 
-function belegRowZuDto(row: typeof belege.$inferSelect): BelegResponse {
+export function belegRowZuDto(row: typeof belege.$inferSelect): BelegResponse {
   const betraege = {
     normal:      row.betragNormalCent,
     ermaessigt1: row.betragErmaessigt1Cent,

@@ -20,8 +20,9 @@ import type {
   TischTabResponse,
 } from '@kassa/shared'
 import { GUTSCHEIN_STATUS_LABELS, MWST_LABELS, STATION_LABELS, happyHourPreisCent, aktiverRabattProzent } from '@kassa/shared'
-import { angebotApi, artikelApi, belegApi, bonierApi, gutscheinApi, kategorieApi, lieferscheinApi, modifikatorApi, offenerPostenApi, posConfigApi, preisregelApi, tischTabApi, zvtApi, displayApi } from '../lib/api'
+import { angebotApi, artikelApi, belegApi, bonierApi, druckerApi, gutscheinApi, kategorieApi, lieferscheinApi, modifikatorApi, offenerPostenApi, posConfigApi, preisregelApi, tischTabApi, zvtApi, displayApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
+import { digitalerBelegUrl } from '../lib/belegDigital'
 import { getAuth, hasBerechtigung } from '../lib/auth'
 import { formatPreis } from '../lib/format'
 import {
@@ -170,6 +171,11 @@ export function KassePage() {
   const posConfigQuery = useQuery({
     queryKey: ['pos-config', identity.kasseId],
     queryFn:  () => posConfigApi.get(identity.kasseId),
+  })
+
+  const druckerCfg = useQuery({
+    queryKey: ['drucker', identity.kasseId],
+    queryFn:  () => druckerApi.get(identity.kasseId),
   })
 
   // Map: artikelId → ModifikatorGruppe[] (nur aktive Gruppen mit aktiven Optionen)
@@ -334,9 +340,13 @@ export function KassePage() {
           console.error('Gutschein-Einlösung fehlgeschlagen:', e)
         }
       }
-      // Display: Beleg-Bestätigung anzeigen, dann leer
+      // Display: Beleg-Bestätigung anzeigen, dann leer. Bei digitalem Beleg die QR-URL mitschicken.
       const summeCent = (beleg.summeBarCent ?? 0) + (beleg.summeKarteCent ?? 0) + (beleg.summeSonstigeCent ?? 0)
-      displayApi.push(identity.kasseId, { typ: 'beleg_erstellt', belegNummer: beleg.belegNummer, summeCent }).catch(() => {})
+      const belegUrl  = digitalerBelegUrl(druckerCfg.data, beleg.id)
+      displayApi.push(identity.kasseId, {
+        typ: 'beleg_erstellt', belegNummer: beleg.belegNummer, summeCent,
+        belegId: beleg.id, ...(belegUrl ? { belegUrl } : {}),
+      }).catch(() => {})
       setTimeout(() => displayApi.push(identity.kasseId, { typ: 'leer' }).catch(() => {}), 5000)
       setLetzterBon(beleg)
       reset()
@@ -979,7 +989,7 @@ export function KassePage() {
         title={`Beleg #${letzterBon?.belegNummer} erstellt`}
         size="lg"
       >
-        {letzterBon && <BonAnzeige beleg={letzterBon} />}
+        {letzterBon && <BonAnzeige beleg={letzterBon} belegQrUrl={digitalerBelegUrl(druckerCfg.data, letzterBon.id)} />}
       </Modal>
 
       {/* Erfolgs-Modal Angebot */}

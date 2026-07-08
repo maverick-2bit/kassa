@@ -14,7 +14,8 @@ import type {
   TischTabResponse,
 } from '@kassa/shared'
 import { STATION_LABELS, happyHourPreisCent, aktiverRabattProzent } from '@kassa/shared'
-import { artikelApi, belegApi, bonierApi, kategorieApi, modifikatorApi, posConfigApi, preisregelApi, tischTabApi, zvtApi } from '../lib/api'
+import { artikelApi, belegApi, bonierApi, druckerApi, kategorieApi, modifikatorApi, posConfigApi, preisregelApi, tischTabApi, zvtApi } from '../lib/api'
+import { digitalerBelegUrl } from '../lib/belegDigital'
 import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
 import { warenkorbSummeCent, positionsPreisCent, rabattBetragCent } from '../lib/warenkorb'
@@ -81,6 +82,11 @@ export function TischTabPage() {
   const zvtCfg = useQuery({
     queryKey: ['zvt', identity.kasseId],
     queryFn:  () => zvtApi.getConfig(identity.kasseId),
+  })
+
+  const druckerCfg = useQuery({
+    queryKey: ['drucker', identity.kasseId],
+    queryFn:  () => druckerApi.get(identity.kasseId),
   })
 
   const tabQuery = useQuery({
@@ -629,7 +635,7 @@ export function TischTabPage() {
         title={`Beleg #${letzterBon?.belegNummer} erstellt`}
         size="lg"
       >
-        {letzterBon && <BonAnzeige beleg={letzterBon} />}
+        {letzterBon && <BonAnzeige beleg={letzterBon} belegQrUrl={digitalerBelegUrl(druckerCfg.data, letzterBon.id)} />}
       </Modal>
 
       {/* Bonierungs-Ergebnis */}

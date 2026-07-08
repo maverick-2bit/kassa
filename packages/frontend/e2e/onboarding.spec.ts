@@ -2046,4 +2046,39 @@ test('SB-Terminal: Bestellung erscheint an der Kassa und wird bereit/abgeholt qu
   await expect(page.getByRole('heading', { name: 'Geräte-Links' })).toBeVisible()
 })
 
+/**
+ * Digitaler-Beleg-Journey: Kasse auf Belegmodus „beides" stellen, einen
+ * Barzahlungsbeleg erzeugen und die ÖFFENTLICHE Beleg-Seite /beleg/:id OHNE
+ * Login öffnen — sie muss den Beleg rendern (kein Redirect auf /login).
+ */
+test('Digitaler Beleg: öffentliche Beleg-Seite rendert den Beleg ohne Login', async ({ page, request }) => {
+  const login = await ensureAuth(request)
+  const token   = login.token as string
+  const kasseId = login.kassen[0].id
+  const authHeader = { Authorization: `Bearer ${token}` }
+
+  // Belegausgabe „beides" (Papier + digitaler QR)
+  const patch = await request.patch(`/api/kassen/${kasseId}/drucker`, {
+    headers: authHeader, data: { belegModus: 'beides' },
+  })
+  expect(patch.ok()).toBeTruthy()
+
+  // Barzahlungsbeleg via API erzeugen → dessen id ist der öffentliche Zugang
+  const bon = await (await request.post('/api/belege/barzahlung', {
+    headers: authHeader,
+    data: {
+      kasseId,
+      positionen: [{ bezeichnung: 'Digital-Test', preisBruttoCent: 700, mwstSatz: 'normal', menge: 1 }],
+      zahlung: { barCent: 700, karteCent: 0, sonstigeCent: 0 },
+    },
+  })).json()
+
+  // Öffentliche Seite OHNE Auth öffnen — muss den Beleg zeigen (kein /login-Redirect)
+  await page.goto(`/beleg/${bon.id}`)
+  await expect(page).toHaveURL(new RegExp(`/beleg/${bon.id}$`))
+  await expect(page.getByText('Gesamt')).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByText(/7,00/).first()).toBeVisible()
+  await expect(page.getByRole('button', { name: /PDF speichern/ })).toBeVisible()
+})
+
 })
