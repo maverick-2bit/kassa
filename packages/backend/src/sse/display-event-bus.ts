@@ -16,7 +16,7 @@ export interface DisplayPosition {
 
 export type DisplayEvent =
   | { typ: 'warenkorb';     positionen: DisplayPosition[]; summeCent: number }
-  | { typ: 'beleg_erstellt'; belegNummer: number; summeCent: number }
+  | { typ: 'beleg_erstellt'; belegNummer: number; summeCent: number; belegId?: string; belegUrl?: string }
   | { typ: 'leer' }
 
 const bus = new EventEmitter()

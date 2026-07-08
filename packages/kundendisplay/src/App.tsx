@@ -10,6 +10,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { QRCodeSVG } from 'qrcode.react'
 
 // ---------------------------------------------------------------------------
 // Typen (gespiegelt vom Backend display-event-bus.ts)
@@ -23,7 +24,7 @@ interface DisplayPosition {
 
 type DisplayEvent =
   | { typ: 'warenkorb';     positionen: DisplayPosition[]; summeCent: number }
-  | { typ: 'beleg_erstellt'; belegNummer: number; summeCent: number }
+  | { typ: 'beleg_erstellt'; belegNummer: number; summeCent: number; belegId?: string; belegUrl?: string }
   | { typ: 'leer' }
 
 // ---------------------------------------------------------------------------
@@ -126,7 +127,7 @@ export default function App() {
       <div className="flex-1 flex flex-col">
         {state.typ === 'leer' && <LeerBildschirm mandantId={mandantId} />}
         {state.typ === 'warenkorb' && <WarenkorbAnsicht positionen={state.positionen} summeCent={state.summeCent} />}
-        {state.typ === 'beleg_erstellt' && <DankeschoenBildschirm belegNummer={state.belegNummer} summeCent={state.summeCent} />}
+        {state.typ === 'beleg_erstellt' && <DankeschoenBildschirm belegNummer={state.belegNummer} summeCent={state.summeCent} belegUrl={state.belegUrl} />}
       </div>
     </div>
   )
@@ -273,15 +274,17 @@ function WarenkorbAnsicht({ positionen, summeCent }: { positionen: DisplayPositi
 // Dankeschön-Bildschirm
 // ---------------------------------------------------------------------------
 
-function DankeschoenBildschirm({ belegNummer, summeCent }: { belegNummer: number; summeCent: number }) {
+function DankeschoenBildschirm({ belegNummer, summeCent, belegUrl }: { belegNummer: number; summeCent: number; belegUrl?: string }) {
   return (
-    <div className="flex-1 flex flex-col items-center justify-center gap-8 p-12">
-      <div className="w-28 h-28 rounded-full bg-emerald-900/50 border-4 border-emerald-500 flex items-center justify-center">
-        <svg className="h-14 w-14 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-        </svg>
-      </div>
-      <div className="text-center space-y-3">
+    <div className="flex-1 flex flex-col items-center justify-center gap-6 p-12">
+      {!belegUrl && (
+        <div className="w-28 h-28 rounded-full bg-emerald-900/50 border-4 border-emerald-500 flex items-center justify-center">
+          <svg className="h-14 w-14 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+          </svg>
+        </div>
+      )}
+      <div className="text-center space-y-2">
         <p className="text-4xl font-black text-emerald-400">Danke!</p>
         <p className="text-xl text-ink-muted">
           Beleg <span className="font-mono font-bold">#{belegNummer}</span>
@@ -290,6 +293,16 @@ function DankeschoenBildschirm({ belegNummer, summeCent }: { belegNummer: number
           {formatPreis(summeCent)}
         </p>
       </div>
+      {/* Digitaler Beleg: QR zum Scannen */}
+      {belegUrl && (
+        <div className="flex flex-col items-center gap-3">
+          <div className="rounded-2xl bg-white p-4">
+            <QRCodeSVG value={belegUrl} size={220} level="M" includeMargin />
+          </div>
+          <p className="text-2xl font-bold text-ink">Beleg scannen</p>
+          <p className="text-base text-ink-muted">QR-Code mit dem Handy scannen — Ihr Beleg zum Mitnehmen</p>
+        </div>
+      )}
     </div>
   )
 }

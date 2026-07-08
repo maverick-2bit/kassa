@@ -512,6 +512,10 @@ export interface DruckerConfig {
   druckerAktiv:      boolean
   druckerBreite:     number
   druckerTimeoutSek: number
+  /** Belegausgabe: 'drucken' | 'digital' (QR) | 'beides' */
+  belegModus:        'drucken' | 'digital' | 'beides'
+  /** Optionale öffentliche Basis-URL für den digitalen Beleg-QR (null = Origin der App) */
+  belegBasisUrl:     string | null
 }
 
 export interface DruckerStatus {
@@ -1128,12 +1132,34 @@ export interface DisplayPosition {
 
 export type DisplayEventPayload =
   | { typ: 'warenkorb'; positionen: DisplayPosition[]; summeCent: number }
-  | { typ: 'beleg_erstellt'; belegNummer: number; summeCent: number }
+  | { typ: 'beleg_erstellt'; belegNummer: number; summeCent: number; belegId?: string; belegUrl?: string }
   | { typ: 'leer' }
 
 export const displayApi = {
   push: (kasseId: string, event: DisplayEventPayload) =>
     request<{ ok: boolean }>('POST', '/api/display', { kasseId, event }),
+}
+
+// ---------------------------------------------------------------------------
+// Digitaler Beleg — öffentliche Web-Ansicht (KEIN Login)
+// ---------------------------------------------------------------------------
+
+export interface OeffentlicherBeleg {
+  firmenname: string
+  uid:        string
+  kassenId:   string
+  beleg:      BelegResponse
+}
+
+export const oeffentlicherBelegApi = {
+  /** Ruft den öffentlichen Beleg ohne Auth ab (der Gast hat den QR gescannt). */
+  get: async (belegId: string): Promise<OeffentlicherBeleg> => {
+    const res = await fetch(`/api/oeffentlich/beleg/${belegId}`)
+    if (!res.ok) {
+      throw new Error(res.status === 404 ? 'Beleg nicht gefunden' : `Beleg konnte nicht geladen werden (${res.status})`)
+    }
+    return res.json() as Promise<OeffentlicherBeleg>
+  },
 }
 
 // ---------------------------------------------------------------------------

@@ -5,6 +5,7 @@
 
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
+import { QRCodeSVG } from 'qrcode.react'
 import type { BelegResponse } from '@kassa/shared'
 import { MWST_LABELS } from '@kassa/shared'
 import { druckerApi, emailApi } from '../lib/api'
@@ -16,9 +17,11 @@ interface Props {
   beleg:            BelegResponse
   /** Maschinenlesbaren Code sofort aufgeklappt zeigen (z. B. für Jahresbeleg-Prüfung) */
   codeAufgeklappt?: boolean
+  /** Wenn gesetzt: „Digitaler Beleg"-QR (URL zur öffentlichen Beleg-Ansicht) zum Scannen anzeigen */
+  belegQrUrl?:      string | undefined
 }
 
-export function BonAnzeige({ beleg, codeAufgeklappt = false }: Props) {
+export function BonAnzeige({ beleg, codeAufgeklappt = false, belegQrUrl }: Props) {
   const [druckStatus, setDruckStatus] = useState<{ typ: 'ok' | 'fehler'; text: string } | null>(null)
   const [emailOffen,  setEmailOffen]  = useState(false)
   const [emailAdresse, setEmailAdresse] = useState('')
@@ -137,6 +140,16 @@ export function BonAnzeige({ beleg, codeAufgeklappt = false }: Props) {
           <div className="flex justify-between"><span>Sonstige</span><span className="font-mono">{formatPreis(beleg.summeSonstigeCent)}</span></div>
         )}
       </div>
+
+      {/* Digitaler Beleg — QR zum Scannen (Gast holt sich den Beleg aufs Handy) */}
+      {belegQrUrl && beleg.belegTyp === 'Barzahlungsbeleg' && (
+        <div className="border-t border-line pt-4 flex flex-col items-center gap-2">
+          <div className="rounded-lg bg-white p-2 border border-line">
+            <QRCodeSVG value={belegQrUrl} size={128} level="M" includeMargin />
+          </div>
+          <p className="text-xs font-medium text-ink">Digitaler Beleg — zum Mitnehmen scannen</p>
+        </div>
+      )}
 
       {/* Drucken */}
       <div className="border-t border-line pt-3 flex items-center justify-between flex-wrap gap-2">

@@ -45,6 +45,7 @@ const KassenStartseiteSeite     = lazyPage(() => import('./pages/KassenStartseit
 const DepExportPage             = lazyPage(() => import('./pages/DepExportPage'), 'DepExportPage')
 const FinanzpruefungPage        = lazyPage(() => import('./pages/FinanzpruefungPage'), 'FinanzpruefungPage')
 const PruefungsansichtPage      = lazyPage(() => import('./pages/PruefungsansichtPage'), 'PruefungsansichtPage')
+const OeffentlicherBelegPage    = lazyPage(() => import('./pages/OeffentlicherBelegPage'), 'OeffentlicherBelegPage')
 const LieferantenPage           = lazyPage(() => import('./pages/LieferantenPage'), 'LieferantenPage')
 const BestelllistePage          = lazyPage(() => import('./pages/BestelllistePage'), 'BestelllistePage')
 const ModifikatorenPage         = lazyPage(() => import('./pages/ModifikatorenPage'), 'ModifikatorenPage')
@@ -91,6 +92,7 @@ function AppRoutes() {
         <Route path="/buchung"      element={<OnlineBuchungPage />} />
         <Route path="/selfcheckout" element={<SelfCheckoutPage />} />
         <Route path="/pruefung/:token" element={<PruefungsansichtPage />} />
+        <Route path="/beleg/:belegId"  element={<OeffentlicherBelegPage />} />
         <Route element={<Layout />}>
           <Route path="/dashboard"        element={<Require b="belege.lesen"                 ><DashboardPage /></Require>} />
           <Route path="/tische"         element={<Require b="tische"          m="gastro"   ><TischePage /></Require>} />

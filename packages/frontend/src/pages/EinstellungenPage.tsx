@@ -1331,6 +1331,7 @@ function DruckerSektion() {
   const queryClient = useQueryClient()
   const [form, setForm] = useState<DruckerConfig>({
     druckerIp: '', druckerPort: 9100, druckerAktiv: false, druckerBreite: 42, druckerTimeoutSek: 5,
+    belegModus: 'drucken', belegBasisUrl: null,
   })
   const [meldung, setMeldung]   = useState<{ typ: 'ok' | 'fehler'; text: string } | null>(null)
   const [logOffen, setLogOffen] = useState(false)
@@ -1361,6 +1362,8 @@ function DruckerSektion() {
         druckerAktiv:      cfgQuery.data.druckerAktiv,
         druckerBreite:     cfgQuery.data.druckerBreite,
         druckerTimeoutSek: cfgQuery.data.druckerTimeoutSek ?? 5,
+        belegModus:        cfgQuery.data.belegModus ?? 'drucken',
+        belegBasisUrl:     cfgQuery.data.belegBasisUrl ?? null,
       })
     }
   }, [cfgQuery.data])
@@ -1372,6 +1375,8 @@ function DruckerSektion() {
       druckerAktiv:      form.druckerAktiv,
       druckerBreite:     form.druckerBreite,
       druckerTimeoutSek: form.druckerTimeoutSek,
+      belegModus:        form.belegModus,
+      belegBasisUrl:     form.belegBasisUrl?.trim() || null,
     }),
     onSuccess: () => {
       setMeldung({ typ: 'ok', text: 'Drucker-Einstellungen gespeichert' })
@@ -1420,6 +1425,18 @@ function DruckerSektion() {
         <p className="text-sm text-ink-muted">Konfiguration wird geladen…</p>
       ) : (
         <>
+          <Field label="Belegausgabe" hint="Wie der Kundenbeleg ausgegeben wird (Österreich: digitaler Beleg zulässig)">
+            <select
+              className="block w-full rounded-md border border-line-strong px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500/40"
+              value={form.belegModus}
+              onChange={(e) => setForm({ ...form, belegModus: e.target.value as DruckerConfig['belegModus'] })}
+            >
+              <option value="drucken">Nur drucken (Papier-Bon)</option>
+              <option value="digital">Nur digital (QR-Code zum Scannen)</option>
+              <option value="beides">Beides (Papier + QR)</option>
+            </select>
+          </Field>
+
           <label className="inline-flex items-center gap-2 text-sm font-medium text-ink">
             <input
               type="checkbox"
@@ -1471,6 +1488,19 @@ function DruckerSektion() {
               />
             </Field>
           </div>
+
+          {(form.belegModus === 'digital' || form.belegModus === 'beides') && (
+            <Field
+              label="Öffentliche Beleg-URL (optional)"
+              hint="Adresse, unter der die Kassa-App vom Gäste-Handy erreichbar ist (z. B. https://kasse.mein-lokal.at). Leer = automatisch die aktuelle Adresse der Kassa."
+            >
+              <Input
+                value={form.belegBasisUrl ?? ''}
+                onChange={(e) => setForm({ ...form, belegBasisUrl: e.target.value })}
+                placeholder="https://kasse.mein-lokal.at"
+              />
+            </Field>
+          )}
 
           {meldung && (
             <div className={`rounded-md p-3 text-sm ${

@@ -12,7 +12,7 @@ import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { desc, eq } from 'drizzle-orm'
 import { Buffer } from 'node:buffer'
-import { StationSchema } from '@kassa/shared'
+import { StationSchema, BelegModusEnum } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import { druckLog, kassen } from '../db/schema.js'
 import { pruefeBelegGehoertZuMandant, pruefeKasseGehoertZuMandant } from '../auth/scope.js'
@@ -36,6 +36,8 @@ const DruckerConfigInputSchema = z.object({
   druckerAktiv:       z.boolean().optional(),
   druckerBreite:      z.number().int().min(20).max(80).optional(),
   druckerTimeoutSek:  z.number().int().min(1).max(30).optional(),
+  belegModus:         BelegModusEnum.optional(),
+  belegBasisUrl:      z.string().trim().max(255).nullable().optional(),
 })
 
 function kasseZuDruckerDto(kasse: typeof kassen.$inferSelect) {
@@ -45,6 +47,8 @@ function kasseZuDruckerDto(kasse: typeof kassen.$inferSelect) {
     druckerAktiv:      kasse.druckerAktiv,
     druckerBreite:     kasse.druckerBreite,
     druckerTimeoutSek: kasse.druckerTimeoutSek,
+    belegModus:        kasse.belegModus,
+    belegBasisUrl:     kasse.belegBasisUrl,
   }
 }
 
@@ -79,6 +83,8 @@ export const druckerRoute: FastifyPluginAsync<DruckerRouteOptions> = async (fast
     if (body.data.druckerAktiv      !== undefined) update.druckerAktiv      = body.data.druckerAktiv
     if (body.data.druckerBreite     !== undefined) update.druckerBreite     = body.data.druckerBreite
     if (body.data.druckerTimeoutSek !== undefined) update.druckerTimeoutSek = body.data.druckerTimeoutSek
+    if (body.data.belegModus        !== undefined) update.belegModus        = body.data.belegModus
+    if (body.data.belegBasisUrl     !== undefined) update.belegBasisUrl     = body.data.belegBasisUrl ?? null
 
     const [updated] = await opts.db.update(kassen).set(update).where(eq(kassen.id, params.data.id)).returning()
     if (!updated) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })

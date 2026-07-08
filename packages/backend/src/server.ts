@@ -51,6 +51,7 @@ import { buchungRoute }          from './routes/buchung.route.js'
 import { zeiterfassungRoute }    from './routes/zeiterfassung.route.js'
 import { exportRoute }           from './routes/export.route.js'
 import { werbefolienRoute }      from './routes/werbefolien.route.js'
+import { oeffentlicherBelegRoute } from './routes/oeffentlicher-beleg.route.js'
 import { dienstplanRoute }       from './routes/dienstplan.route.js'
 import { selfcheckoutRoute }     from './routes/selfcheckout.route.js'
 import { registerTerminalRoutes } from './routes/terminal.route.js'
@@ -172,6 +173,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     await api.register(zeiterfassungRoute,      { db: deps.db })
     await api.register(exportRoute,             { db: deps.db })
     await api.register(werbefolienRoute,        { db: deps.db })
+    await api.register(oeffentlicherBelegRoute, { db: deps.db })
     await api.register(dienstplanRoute,         { db: deps.db })
     await api.register(selfcheckoutRoute,       { db: deps.db })
     await api.register(sbBestellungRoute,       { db: deps.db })

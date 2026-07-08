@@ -183,6 +183,13 @@
       "when": 1779808575000,
       "tag": "0026_see_einheit",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1783468800000,
+      "tag": "0027_belegausgabe",
+      "breakpoints": true
     }
   ]
 }
