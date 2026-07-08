@@ -1408,9 +1408,13 @@ function DruckerSektion() {
     <section className="rounded-lg bg-panel shadow-sm border border-line p-6 space-y-5">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-base font-semibold text-ink">Bondrucker (ESC/POS via TCP)</h2>
+          <h2 className="text-base font-semibold text-ink">
+            {form.belegModus === 'digital' ? 'Ausweich-Bondrucker (für „Nicht akzeptiert")' : 'Bondrucker (ESC/POS via TCP)'}
+          </h2>
           <p className="text-sm text-ink-muted mt-0.5">
-            Netzwerkdrucker (Epson TM-T20, Star TSP100, Bixolon SRP, …)
+            {form.belegModus === 'digital'
+              ? 'Wird nur gedruckt, wenn der Gast den digitalen Beleg ablehnt. Netzwerkdrucker (Epson, Star, Bixolon …).'
+              : 'Netzwerkdrucker (Epson TM-T20, Star TSP100, Bixolon SRP, …)'}
           </p>
         </div>
         {statusDot && (

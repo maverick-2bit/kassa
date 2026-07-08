@@ -541,8 +541,8 @@ export const druckerApi = {
     request<DruckerConfig>('PATCH', `/api/kassen/${kasseId}/drucker`, config),
   test:       (kasseId: string) =>
     request<{ erfolgreich: boolean }>('POST', `/api/kassen/${kasseId}/drucker/test`),
-  reprint:    (belegId: string) =>
-    request<{ erfolgreich: boolean }>('POST', `/api/belege/${belegId}/drucken`),
+  reprint:    (belegId: string, opts?: { ausweich?: boolean }) =>
+    request<{ erfolgreich: boolean }>('POST', `/api/belege/${belegId}/drucken`, opts ?? {}),
   status:     (kasseId: string) =>
     request<DruckerStatus>('GET', `/api/kassen/${kasseId}/drucker/status`),
   log:        (kasseId: string) =>

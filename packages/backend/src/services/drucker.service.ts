@@ -203,9 +203,10 @@ export function druckerConfigVonKasse(kasse: {
   druckerBreite:     number
   druckerTimeoutSek: number
   belegModus?:       string
-}): DruckerConfig | null {
-  // Reiner Digital-Modus (QR) → gar nicht drucken
-  if (kasse.belegModus === 'digital') return null
+}, opts?: { ignoreBelegModus?: boolean }): DruckerConfig | null {
+  // Reiner Digital-Modus (QR) → normal gar nicht drucken. Ausnahme: Ausweich-Druck
+  // („Nicht akzeptiert") setzt ignoreBelegModus und druckt auf den Kassa-Bondrucker.
+  if (!opts?.ignoreBelegModus && kasse.belegModus === 'digital') return null
   if (!kasse.druckerAktiv || !kasse.druckerIp) return null
   return {
     ip:        kasse.druckerIp,
@@ -219,14 +220,14 @@ export function druckerConfigVonKasse(kasse: {
 // High-Level: Beleg drucken (DB-Lookup + Bon-Aufbau + Senden + Log)
 // ---------------------------------------------------------------------------
 
-export async function druckeBeleg(db: Db, belegId: string): Promise<void> {
+export async function druckeBeleg(db: Db, belegId: string, opts?: { ignoreModus?: boolean }): Promise<void> {
   const [beleg] = await db.select().from(belege).where(eq(belege.id, belegId)).limit(1)
   if (!beleg) throw new DruckerError(404, 'Beleg nicht gefunden')
 
   const [kasse] = await db.select().from(kassen).where(eq(kassen.id, beleg.kasseId)).limit(1)
   if (!kasse) throw new DruckerError(404, 'Kasse nicht gefunden')
 
-  const druckerConfig = druckerConfigVonKasse(kasse)
+  const druckerConfig = druckerConfigVonKasse(kasse, { ignoreBelegModus: opts?.ignoreModus ?? false })
   if (!druckerConfig) throw new DruckerError(409, 'Drucker nicht konfiguriert oder deaktiviert')
 
   const [mandant] = await db.select().from(mandanten).where(eq(mandanten.id, beleg.mandantId)).limit(1)

@@ -989,7 +989,7 @@ export function KassePage() {
         title={`Beleg #${letzterBon?.belegNummer} erstellt`}
         size="lg"
       >
-        {letzterBon && <BonAnzeige beleg={letzterBon} belegQrUrl={digitalerBelegUrl(druckerCfg.data, letzterBon.id)} />}
+        {letzterBon && <BonAnzeige beleg={letzterBon} belegQrUrl={digitalerBelegUrl(druckerCfg.data, letzterBon.id)} belegModus={druckerCfg.data?.belegModus} onAkzeptiert={() => setLetzterBon(null)} />}
       </Modal>
 
       {/* Erfolgs-Modal Angebot */}

@@ -1,11 +1,19 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
+import { QRCodeSVG } from 'qrcode.react'
 import type { TabPosition } from '@kassa/shared'
-import { tischTabApi, bonierApi } from '../lib/api'
+import { tischTabApi, bonierApi, druckerApi, type DruckerConfig } from '../lib/api'
 import { getAuth } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
+
+/** URL zur öffentlichen Beleg-Ansicht (Ziel des QR); null bei reinem Druck-Modus. */
+function digitalerBelegUrl(cfg: DruckerConfig | undefined, belegId: string): string | null {
+  if (!cfg || cfg.belegModus === 'drucken') return null
+  const basis = (cfg.belegBasisUrl?.trim() || window.location.origin).replace(/\/+$/, '')
+  return `${basis}/beleg/${belegId}`
+}
 
 export function TabPage() {
   const { tabId }   = useParams<{ tabId: string }>()
@@ -43,6 +51,38 @@ export function TabPage() {
       setTimeout(() => setBonierErfolg(false), 3000)
     },
     onError: (err) => setBonierFehler(err instanceof Error ? err.message : 'Fehler beim Bonieren'),
+  })
+
+  // ---- Kassieren (Bar) + digitaler Beleg ----
+  const [bezahltBeleg, setBezahltBeleg]   = useState<{ belegId: string; betragCent: number } | null>(null)
+  const [ausweichFehler, setAusweichFehler] = useState<string | null>(null)
+
+  const fertig = () => {
+    setBezahltBeleg(null)
+    setAusweichFehler(null)
+    qc.invalidateQueries({ queryKey: ['tisch-tab', tabId] })
+    navigate('/')
+  }
+
+  const druckerCfg = useQuery({
+    queryKey: ['drucker', tabQuery.data?.kasseId],
+    queryFn:  () => druckerApi.get(tabQuery.data!.kasseId),
+    enabled:  !!tabQuery.data?.kasseId,
+  })
+
+  const bezahleMutation = useMutation({
+    mutationFn: () => {
+      const t = tabQuery.data!
+      return tischTabApi.bezahle(t.id, { zahlung: { barCent: t.summeGesamtCent, karteCent: 0, sonstigeCent: 0 } })
+    },
+    onSuccess: (res) => setBezahltBeleg({ belegId: res.belegId, betragCent: tabQuery.data!.summeGesamtCent }),
+    onError:   (err) => setBonierFehler(err instanceof Error ? err.message : 'Fehler beim Kassieren'),
+  })
+
+  const nichtAkzeptiertMutation = useMutation({
+    mutationFn: (belegId: string) => druckerApi.druckenAusweich(belegId),
+    onSuccess:  () => fertig(),
+    onError:    (err) => setAusweichFehler(err instanceof Error ? err.message : 'Ausweich-Druck fehlgeschlagen'),
   })
 
   function positionEntfernen(idx: number) {
@@ -191,11 +231,56 @@ export function TabPage() {
             {bonierMutation.isPending ? '⏳ Wird gesendet…' : '🍳 Bonieren'}
           </button>
 
-          <p className="text-center text-xs text-ink-subtle">
-            Bezahlung an der Hauptkasse
-          </p>
+          <button
+            onClick={() => { setBonierFehler(null); bezahleMutation.mutate() }}
+            disabled={bezahleMutation.isPending}
+            className="w-full py-4 rounded-2xl bg-green-600 text-white font-black text-lg active:scale-95 transition disabled:opacity-50"
+          >
+            {bezahleMutation.isPending ? '⏳ Kassiere…' : `💶 Kassieren (Bar) · ${formatPreis(tab.summeGesamtCent)}`}
+          </button>
         </div>
       )}
+
+      {/* Bezahlt-Overlay: digitaler Beleg (QR) + Akzeptiert/Nicht-akzeptiert */}
+      {bezahltBeleg && (() => {
+        const url   = digitalerBelegUrl(druckerCfg.data, bezahltBeleg.belegId)
+        const modus = druckerCfg.data?.belegModus
+        return (
+          <div className="fixed inset-0 z-50 bg-surface flex flex-col items-center justify-center p-6 max-w-lg mx-auto">
+            <div className="text-center space-y-1 mb-6">
+              <p className="text-5xl">✅</p>
+              <p className="text-2xl font-black text-ink">Bezahlt</p>
+              <p className="text-xl font-mono font-bold text-ink">{formatPreis(bezahltBeleg.betragCent)}</p>
+            </div>
+            {url && (
+              <div className="flex flex-col items-center gap-3 mb-6">
+                <div className="rounded-2xl bg-white p-4"><QRCodeSVG value={url} size={200} level="M" includeMargin /></div>
+                <p className="text-lg font-bold text-ink">Beleg scannen</p>
+              </div>
+            )}
+            {modus === 'digital' ? (
+              <div className="w-full space-y-3">
+                <p className="text-center text-sm text-ink-muted">Hat der Gast den digitalen Beleg angenommen?</p>
+                <button onClick={fertig} className="w-full py-4 rounded-2xl bg-brand-600 text-white font-black text-lg active:scale-95 transition">
+                  Akzeptiert
+                </button>
+                <button
+                  onClick={() => { setAusweichFehler(null); nichtAkzeptiertMutation.mutate(bezahltBeleg.belegId) }}
+                  disabled={nichtAkzeptiertMutation.isPending}
+                  className="w-full py-4 rounded-2xl border border-line-strong bg-panel text-ink font-black text-lg active:scale-95 transition disabled:opacity-50"
+                >
+                  {nichtAkzeptiertMutation.isPending ? 'Drucke…' : 'Nicht akzeptiert (drucken)'}
+                </button>
+                {ausweichFehler && <p className="text-center text-sm text-red-500">{ausweichFehler}</p>}
+              </div>
+            ) : (
+              <button onClick={fertig} className="w-full py-4 rounded-2xl bg-brand-600 text-white font-black text-lg active:scale-95 transition">
+                Fertig
+              </button>
+            )}
+          </div>
+        )
+      })()}
     </div>
   )
 }
