@@ -1,5 +1,13 @@
+// SW nur im Produktions-Build (Dev: Stale-Code-Falle → Alt-Registrierungen entfernen).
+// Versionierte URL: neue App-Version ⇒ neuer SW ⇒ frische, versionierte Caches.
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/sw.js').catch(() => { /* silent */ })
+  if (import.meta.env.PROD) {
+    navigator.serviceWorker.register(`/sw.js?v=${__APP_VERSION__}`).catch(() => { /* silent */ })
+  } else {
+    navigator.serviceWorker.getRegistrations()
+      .then(regs => regs.forEach(r => { void r.unregister() }))
+      .catch(() => { /* silent */ })
+  }
 }
 
 import { StrictMode } from 'react'

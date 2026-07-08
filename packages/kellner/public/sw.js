@@ -1,4 +1,8 @@
-const CACHE = 'kellner-v1'
+// App-Version aus der Registrierungs-URL (/sw.js?v=<version>) — je Release neu.
+// Neue Version ⇒ neue SW-URL ⇒ Browser installiert neu ⇒ frischer Cache,
+// activate räumt alle kellner-*-Caches fremder Versionen ab.
+const APP_VERSION = new URLSearchParams(self.location.search).get('v') || 'dev'
+const CACHE = 'kellner-' + APP_VERSION
 const SHELL  = ['/', '/index.html']
 
 self.addEventListener('install', e => {
@@ -10,7 +14,9 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
+      .then(keys => Promise.all(
+        keys.filter(k => k.startsWith('kellner-') && k !== CACHE).map(k => caches.delete(k))
+      ))
       .then(() => self.clients.claim())
   )
 })

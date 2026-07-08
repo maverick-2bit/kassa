@@ -8,7 +8,11 @@
  *  4. Alle anderen GET /api/* → Network-First mit Cache-Fallback
  */
 
-const CACHE_VERSION       = 'kassa-v1'
+// App-Version aus der Registrierungs-URL (/sw.js?v=<version>) — je Release neu.
+// Neue Version ⇒ neue SW-URL ⇒ Browser installiert neu ⇒ frische Caches,
+// activate räumt alle kassa-*-Caches fremder Versionen ab.
+const APP_VERSION         = new URLSearchParams(self.location.search).get('v') || 'dev'
+const CACHE_VERSION       = 'kassa-' + APP_VERSION
 const STATIC_CACHE        = CACHE_VERSION + '-static'
 const API_CACHE           = CACHE_VERSION + '-api'
 const OFFLINE_QUEUE_STORE = 'offline-queue'

@@ -35,11 +35,20 @@ export class OfflineManager {
     window.addEventListener('online',  () => this.handleOnline())
     window.addEventListener('offline', () => this.handleOffline())
 
-    // Service Worker registrieren
+    // Service Worker registrieren — NUR im Produktions-Build. Im Dev stören
+    // cache-first-SWs nur (Stale-Code-Falle); dort werden Alt-Registrierungen
+    // aktiv entfernt. Die versionierte URL (?v=) sorgt dafür, dass der Browser
+    // bei jedem Release einen neuen SW installiert (frische, versionierte Caches).
     if (!('serviceWorker' in navigator)) return
+    if (!import.meta.env.PROD) {
+      navigator.serviceWorker.getRegistrations()
+        .then(regs => regs.forEach(r => { void r.unregister() }))
+        .catch(() => { /* egal */ })
+      return
+    }
 
     try {
-      const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' })
+      const reg = await navigator.serviceWorker.register(`/sw.js?v=${__APP_VERSION__}`, { scope: '/' })
       this._swReady = true
       console.info('[Offline] Service Worker registriert:', reg.scope)
 
