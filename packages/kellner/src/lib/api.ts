@@ -9,6 +9,9 @@ import type {
   BonierungErgebnis,
   ModifikatorGruppe,
   TischTabBezahlenInput,
+  ZvtConfig,
+  ZvtJob,
+  ZvtZahlungInput,
 } from '@kassa/shared'
 import { getToken, clearAuth } from './auth'
 import { clearKasseIdentity } from './kasse'
@@ -130,6 +133,21 @@ export interface OeffentlicherBeleg {
 export const oeffentlicherBelegApi = {
   get: (belegId: string) =>
     request<OeffentlicherBeleg>('GET', `/api/oeffentlich/beleg/${belegId}`),
+}
+
+// ---------------------------------------------------------------------------
+// ZVT-Kartenterminal (Spiegel der Haupt-App-zvtApi)
+// ---------------------------------------------------------------------------
+
+export const zvtApi = {
+  getConfig: (kasseId: string) =>
+    request<ZvtConfig>('GET', `/api/kassen/${kasseId}/zvt`),
+  starteZahlung: (input: ZvtZahlungInput) =>
+    request<{ jobId: string }>('POST', '/api/zvt/zahlung', input),
+  getJob: (jobId: string) =>
+    request<ZvtJob>('GET', `/api/zvt/zahlung/${jobId}`),
+  abbrechen: (jobId: string) =>
+    request<ZvtJob>('POST', `/api/zvt/zahlung/${jobId}/abbrechen`),
 }
 
 // ---------------------------------------------------------------------------

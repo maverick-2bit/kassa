@@ -3,10 +3,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
 import { QRCodeSVG } from 'qrcode.react'
 import type { TabPosition } from '@kassa/shared'
-import { tischTabApi, bonierApi, druckerApi, oeffentlicherBelegApi } from '../lib/api'
+import { tischTabApi, bonierApi, druckerApi, oeffentlicherBelegApi, zvtApi } from '../lib/api'
 import { getAuth } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
+import { KartenzahlungOverlay } from '../components/KartenzahlungOverlay'
 
 export function TabPage() {
   const { tabId }   = useParams<{ tabId: string }>()
@@ -63,6 +64,14 @@ export function TabPage() {
     enabled:  !!tabQuery.data?.kasseId,
   })
 
+  // Kartenzahlung: ZVT-Konfiguration der Kasse + Overlay-Zustand
+  const [karteOffen, setKarteOffen] = useState(false)
+  const zvtCfg = useQuery({
+    queryKey: ['zvt', tabQuery.data?.kasseId],
+    queryFn:  () => zvtApi.getConfig(tabQuery.data!.kasseId),
+    enabled:  !!tabQuery.data?.kasseId,
+  })
+
   // Foto-Beleg: nach der Zahlung den vollständigen Beleg laden (digital/beides) —
   // wird am Handy-Bildschirm angezeigt, der Gast fotografiert ihn ab.
   const fotoBeleg = useQuery({
@@ -73,13 +82,30 @@ export function TabPage() {
   })
 
   const bezahleMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: ({ art, trinkgeldCent = 0 }: { art: 'bar' | 'karte'; trinkgeldCent?: number }) => {
       const t = tabQuery.data!
-      return tischTabApi.bezahle(t.id, { zahlung: { barCent: t.summeGesamtCent, karteCent: 0, sonstigeCent: 0 } })
+      return tischTabApi.bezahle(t.id, {
+        zahlung: {
+          barCent:      art === 'bar'   ? t.summeGesamtCent : 0,
+          karteCent:    art === 'karte' ? t.summeGesamtCent : 0,
+          sonstigeCent: 0,
+        },
+        ...(trinkgeldCent > 0 ? { trinkgeldCent } : {}),
+      })
     },
-    onSuccess: (res) => setBezahltBeleg({ belegId: res.belegId, betragCent: tabQuery.data!.summeGesamtCent }),
-    onError:   (err) => setBonierFehler(err instanceof Error ? err.message : 'Fehler beim Kassieren'),
+    onSuccess: (res, vars) => {
+      setKarteOffen(false)
+      setBezahltBeleg({ belegId: res.belegId, betragCent: tabQuery.data!.summeGesamtCent + (vars.trinkgeldCent ?? 0) })
+    },
+    onError: (err) => { setKarteOffen(false); setBonierFehler(err instanceof Error ? err.message : 'Fehler beim Kassieren') },
   })
+
+  /** Karte: bei aktivem ZVT ans Terminal (Overlay mit Trinkgeld), sonst direkt buchen. */
+  const handleKarte = () => {
+    setBonierFehler(null)
+    if (zvtCfg.data?.zvtAktiv) { setKarteOffen(true); return }
+    bezahleMutation.mutate({ art: 'karte' })
+  }
 
   const nichtAkzeptiertMutation = useMutation({
     mutationFn: (belegId: string) => druckerApi.druckenAusweich(belegId),
@@ -233,14 +259,33 @@ export function TabPage() {
             {bonierMutation.isPending ? '⏳ Wird gesendet…' : '🍳 Bonieren'}
           </button>
 
-          <button
-            onClick={() => { setBonierFehler(null); bezahleMutation.mutate() }}
-            disabled={bezahleMutation.isPending}
-            className="w-full py-4 rounded-2xl bg-green-600 text-white font-black text-lg active:scale-95 transition disabled:opacity-50"
-          >
-            {bezahleMutation.isPending ? '⏳ Kassiere…' : `💶 Kassieren (Bar) · ${formatPreis(tab.summeGesamtCent)}`}
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => { setBonierFehler(null); bezahleMutation.mutate({ art: 'bar' }) }}
+              disabled={bezahleMutation.isPending}
+              className="flex-1 py-4 rounded-2xl bg-green-600 text-white font-black text-base active:scale-95 transition disabled:opacity-50"
+            >
+              {bezahleMutation.isPending ? '⏳…' : `💶 Bar · ${formatPreis(tab.summeGesamtCent)}`}
+            </button>
+            <button
+              onClick={handleKarte}
+              disabled={bezahleMutation.isPending}
+              className="flex-1 py-4 rounded-2xl bg-blue-600 text-white font-black text-base active:scale-95 transition disabled:opacity-50"
+            >
+              {`💳 Karte · ${formatPreis(tab.summeGesamtCent)}`}
+            </button>
+          </div>
         </div>
+      )}
+
+      {/* Kartenzahlung: Trinkgeld + ZVT-Terminal (nur bei aktivem ZVT) */}
+      {karteOffen && tab && (
+        <KartenzahlungOverlay
+          kasseId={tab.kasseId}
+          betragCent={tab.summeGesamtCent}
+          onErfolg={(trinkgeldCent) => bezahleMutation.mutate({ art: 'karte', trinkgeldCent })}
+          onAbbruch={() => { setKarteOffen(false); setBonierFehler('Kartenzahlung abgebrochen — kein Beleg erstellt') }}
+        />
       )}
 
       {/* Bezahlt-Overlay: Foto-Beleg (vollständiger Beleg inkl. RKSV-QR am Handy-Bildschirm,
