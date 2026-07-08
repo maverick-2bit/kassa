@@ -3,17 +3,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
 import { QRCodeSVG } from 'qrcode.react'
 import type { TabPosition } from '@kassa/shared'
-import { tischTabApi, bonierApi, druckerApi, type DruckerConfig } from '../lib/api'
+import { tischTabApi, bonierApi, druckerApi, oeffentlicherBelegApi } from '../lib/api'
 import { getAuth } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
-
-/** URL zur öffentlichen Beleg-Ansicht (Ziel des QR); null bei reinem Druck-Modus. */
-function digitalerBelegUrl(cfg: DruckerConfig | undefined, belegId: string): string | null {
-  if (!cfg || cfg.belegModus === 'drucken') return null
-  const basis = (cfg.belegBasisUrl?.trim() || window.location.origin).replace(/\/+$/, '')
-  return `${basis}/beleg/${belegId}`
-}
 
 export function TabPage() {
   const { tabId }   = useParams<{ tabId: string }>()
@@ -68,6 +61,15 @@ export function TabPage() {
     queryKey: ['drucker', tabQuery.data?.kasseId],
     queryFn:  () => druckerApi.get(tabQuery.data!.kasseId),
     enabled:  !!tabQuery.data?.kasseId,
+  })
+
+  // Foto-Beleg: nach der Zahlung den vollständigen Beleg laden (digital/beides) —
+  // wird am Handy-Bildschirm angezeigt, der Gast fotografiert ihn ab.
+  const fotoBeleg = useQuery({
+    queryKey: ['foto-beleg', bezahltBeleg?.belegId],
+    queryFn:  () => oeffentlicherBelegApi.get(bezahltBeleg!.belegId),
+    enabled:  !!bezahltBeleg &&
+              (druckerCfg.data?.belegModus === 'digital' || druckerCfg.data?.belegModus === 'beides'),
   })
 
   const bezahleMutation = useMutation({
@@ -241,21 +243,41 @@ export function TabPage() {
         </div>
       )}
 
-      {/* Bezahlt-Overlay: digitaler Beleg (QR) + Akzeptiert/Nicht-akzeptiert */}
+      {/* Bezahlt-Overlay: Foto-Beleg (vollständiger Beleg inkl. RKSV-QR am Handy-Bildschirm,
+          der Gast fotografiert ihn ab) + Akzeptiert/Nicht-akzeptiert */}
       {bezahltBeleg && (() => {
-        const url   = digitalerBelegUrl(druckerCfg.data, bezahltBeleg.belegId)
         const modus = druckerCfg.data?.belegModus
+        const fb    = fotoBeleg.data
         return (
-          <div className="fixed inset-0 z-50 bg-surface flex flex-col items-center justify-center p-6 max-w-lg mx-auto">
-            <div className="text-center space-y-1 mb-6">
-              <p className="text-5xl">✅</p>
+          <div className="fixed inset-0 z-50 bg-surface flex flex-col p-5 max-w-lg mx-auto overflow-y-auto">
+            <div className="text-center space-y-1 mb-4 mt-2">
+              <p className="text-4xl">✅</p>
               <p className="text-2xl font-black text-ink">Bezahlt</p>
               <p className="text-xl font-mono font-bold text-ink">{formatPreis(bezahltBeleg.betragCent)}</p>
             </div>
-            {url && (
-              <div className="flex flex-col items-center gap-3 mb-6">
-                <div className="rounded-2xl bg-white p-4"><QRCodeSVG value={url} size={200} level="M" includeMargin /></div>
-                <p className="text-lg font-bold text-ink">Beleg scannen</p>
+            {(modus === 'digital' || modus === 'beides') && fb && (
+              <div className="bg-white text-gray-900 rounded-2xl px-5 py-4 mb-4 shadow-lg">
+                <div className="text-center border-b border-dashed border-gray-300 pb-2">
+                  <p className="text-lg font-black">{fb.firmenname}</p>
+                  <p className="text-xs text-gray-500">UID: {fb.uid} · Beleg #{fb.beleg.belegNummer}</p>
+                </div>
+                <table className="w-full text-sm my-2">
+                  <tbody>
+                    {fb.beleg.positionen.map((p, i) => (
+                      <tr key={i}>
+                        <td className="py-0.5 pr-2">{p.menge}× {p.bezeichnung}</td>
+                        <td className="py-0.5 text-right font-mono whitespace-nowrap">{formatPreis(p.einzelpreisBreutto * p.menge)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div className="flex justify-between font-black border-t-2 border-gray-900 pt-1.5">
+                  <span>Gesamt</span><span className="font-mono">{formatPreis(fb.beleg.gesamtbetragCent)}</span>
+                </div>
+                <div className="mt-3 flex flex-col items-center gap-1.5">
+                  <QRCodeSVG value={fb.beleg.maschinenlesbareCode} size={170} level="M" includeMargin />
+                  <p className="text-sm font-bold">Digitaler Beleg — bitte abfotografieren</p>
+                </div>
               </div>
             )}
             {modus === 'digital' ? (

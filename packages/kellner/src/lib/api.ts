@@ -115,6 +115,23 @@ export const druckerApi = {
     request<{ erfolgreich: boolean }>('POST', `/api/belege/${belegId}/drucken`, { ausweich: true }),
 }
 
+/** Öffentliche Beleg-Route (LAN-intern) — Datenquelle für den Foto-Beleg am Handy-Bildschirm */
+export interface OeffentlicherBeleg {
+  firmenname: string
+  uid:        string
+  beleg: {
+    belegNummer:          number
+    positionen:           { bezeichnung: string; menge: number; einzelpreisBreutto: number }[]
+    gesamtbetragCent:     number
+    maschinenlesbareCode: string
+  }
+}
+
+export const oeffentlicherBelegApi = {
+  get: (belegId: string) =>
+    request<OeffentlicherBeleg>('GET', `/api/oeffentlich/beleg/${belegId}`),
+}
+
 // ---------------------------------------------------------------------------
 // Bonierung
 // ---------------------------------------------------------------------------

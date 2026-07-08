@@ -37,6 +37,8 @@ export interface BelegEmailDaten {
   }>
   summeCent:    number
   signaturwert: string
+  /** Voller RKSV-Maschinencode — macht die Mail zum rechtlich vollständigen elektronischen Beleg */
+  maschinenlesbareCode?: string
 }
 
 export async function sendeBelegEmail(
@@ -97,8 +99,9 @@ export async function sendeBelegEmail(
     </div>
 
     <div style="padding:12px 28px 24px;background:#f9fafb">
+      <p style="margin:0 0 4px;font-size:10px;color:#6b7280;font-weight:600">RKSV-Maschinencode</p>
       <p style="margin:0;font-size:10px;color:#9ca3af;font-family:monospace;word-break:break-all">
-        Sig: ${daten.signaturwert.substring(0, 40)}…
+        ${daten.maschinenlesbareCode ?? `Sig: ${daten.signaturwert.substring(0, 40)}…`}
       </p>
     </div>
   </div>

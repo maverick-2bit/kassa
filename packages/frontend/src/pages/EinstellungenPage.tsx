@@ -1436,8 +1436,8 @@ function DruckerSektion() {
               onChange={(e) => setForm({ ...form, belegModus: e.target.value as DruckerConfig['belegModus'] })}
             >
               <option value="drucken">Nur drucken (Papier-Bon)</option>
-              <option value="digital">Nur digital (QR-Code zum Scannen)</option>
-              <option value="beides">Beides (Papier + QR)</option>
+              <option value="digital">Nur digital (Beleg am Bildschirm + E-Mail)</option>
+              <option value="beides">Beides (Papier + Beleg am Bildschirm)</option>
             </select>
           </Field>
 
@@ -1494,16 +1494,11 @@ function DruckerSektion() {
           </div>
 
           {(form.belegModus === 'digital' || form.belegModus === 'beides') && (
-            <Field
-              label="Öffentliche Beleg-URL (optional)"
-              hint="Adresse, unter der die Kassa-App vom Gäste-Handy erreichbar ist (z. B. https://kasse.mein-lokal.at). Leer = automatisch die aktuelle Adresse der Kassa."
-            >
-              <Input
-                value={form.belegBasisUrl ?? ''}
-                onChange={(e) => setForm({ ...form, belegBasisUrl: e.target.value })}
-                placeholder="https://kasse.mein-lokal.at"
-              />
-            </Field>
+            <p className="rounded-md border border-line bg-panel-2 px-3 py-2 text-xs text-ink-muted">
+              Digitaler Beleg: nach der Zahlung wird der vollständige Beleg (inkl. RKSV-QR) am
+              Kassen- und Kundendisplay-Bildschirm angezeigt — der Gast fotografiert ihn ab oder
+              erhält ihn per E-Mail. Es wird nichts ins Internet übertragen.
+            </p>
           )}
 
           {meldung && (

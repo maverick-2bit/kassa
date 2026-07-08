@@ -28,7 +28,6 @@ const DisplayPushSchema = z.object({
       belegNummer: z.number().int(),
       summeCent:   z.number().int(),
       belegId:     z.string().uuid().optional(),
-      belegUrl:    z.string().max(512).optional(),
     }),
     z.object({ typ: z.literal('leer') }),
   ]),
