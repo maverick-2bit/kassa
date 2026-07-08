@@ -15,7 +15,6 @@ import type {
 } from '@kassa/shared'
 import { STATION_LABELS, happyHourPreisCent, aktiverRabattProzent } from '@kassa/shared'
 import { artikelApi, belegApi, bonierApi, druckerApi, kategorieApi, modifikatorApi, posConfigApi, preisregelApi, tischTabApi, zvtApi } from '../lib/api'
-import { digitalerBelegUrl } from '../lib/belegDigital'
 import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
 import { warenkorbSummeCent, positionsPreisCent, rabattBetragCent } from '../lib/warenkorb'
@@ -635,7 +634,7 @@ export function TischTabPage() {
         title={`Beleg #${letzterBon?.belegNummer} erstellt`}
         size="lg"
       >
-        {letzterBon && <BonAnzeige beleg={letzterBon} belegQrUrl={digitalerBelegUrl(druckerCfg.data, letzterBon.id)} belegModus={druckerCfg.data?.belegModus} onAkzeptiert={handleBonGeschlossen} />}
+        {letzterBon && <BonAnzeige beleg={letzterBon} belegModus={druckerCfg.data?.belegModus} onAkzeptiert={handleBonGeschlossen} />}
       </Modal>
 
       {/* Bonierungs-Ergebnis */}

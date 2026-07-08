@@ -17,15 +17,13 @@ interface Props {
   beleg:            BelegResponse
   /** Maschinenlesbaren Code sofort aufgeklappt zeigen (z. B. für Jahresbeleg-Prüfung) */
   codeAufgeklappt?: boolean
-  /** Wenn gesetzt: „Digitaler Beleg"-QR (URL zur öffentlichen Beleg-Ansicht) zum Scannen anzeigen */
-  belegQrUrl?:      string | undefined
-  /** Belegausgabe-Modus der Kasse — 'digital' zeigt Akzeptiert/Nicht-akzeptiert statt Druck-Buttons */
+  /** Belegausgabe-Modus der Kasse — 'digital'/'beides' zeigt den Foto-Beleg (RKSV-QR am Bildschirm) */
   belegModus?:      string | undefined
   /** Aufruf wenn der Gast den digitalen Beleg akzeptiert (bzw. nach Ausweich-Druck) → Dialog schließen */
   onAkzeptiert?:    () => void
 }
 
-export function BonAnzeige({ beleg, codeAufgeklappt = false, belegQrUrl, belegModus, onAkzeptiert }: Props) {
+export function BonAnzeige({ beleg, codeAufgeklappt = false, belegModus, onAkzeptiert }: Props) {
   const [druckStatus, setDruckStatus] = useState<{ typ: 'ok' | 'fehler'; text: string } | null>(null)
   const [emailOffen,  setEmailOffen]  = useState(false)
   const [emailAdresse, setEmailAdresse] = useState('')
@@ -154,13 +152,19 @@ export function BonAnzeige({ beleg, codeAufgeklappt = false, belegQrUrl, belegMo
         )}
       </div>
 
-      {/* Digitaler Beleg — QR zum Scannen (Gast holt sich den Beleg aufs Handy) */}
-      {belegQrUrl && beleg.belegTyp === 'Barzahlungsbeleg' && (
+      {/* Digitaler Beleg = Foto-Beleg: vollständiger Beleg am Bildschirm inkl. RKSV-QR,
+          der Gast fotografiert ihn ab (kein Netz nötig — nichts verlässt den Laden) */}
+      {(belegModus === 'digital' || belegModus === 'beides') && beleg.belegTyp === 'Barzahlungsbeleg' && (
         <div className="border-t border-line pt-4 flex flex-col items-center gap-2">
+          {(() => { const auth = getAuth(); return auth ? (
+            <p className="text-xs text-ink-muted text-center">
+              <span className="font-semibold text-ink">{auth.mandant.firmenname}</span> · UID {auth.mandant.uid}
+            </p>
+          ) : null })()}
           <div className="rounded-lg bg-white p-2 border border-line">
-            <QRCodeSVG value={belegQrUrl} size={128} level="M" includeMargin />
+            <QRCodeSVG value={beleg.maschinenlesbareCode} size={148} level="M" includeMargin />
           </div>
-          <p className="text-xs font-medium text-ink">Digitaler Beleg — zum Mitnehmen scannen</p>
+          <p className="text-xs font-medium text-ink">Digitaler Beleg — bitte abfotografieren, oder per E-Mail erhalten</p>
         </div>
       )}
 

@@ -24,8 +24,24 @@ interface DisplayPosition {
 
 type DisplayEvent =
   | { typ: 'warenkorb';     positionen: DisplayPosition[]; summeCent: number }
-  | { typ: 'beleg_erstellt'; belegNummer: number; summeCent: number; belegId?: string; belegUrl?: string }
+  | { typ: 'beleg_erstellt'; belegNummer: number; summeCent: number; belegId?: string }
   | { typ: 'leer' }
+
+/** Antwort der öffentlichen Beleg-Route (LAN-intern, kein Auth) — nur die hier benötigten Felder */
+interface OeffentlicherBeleg {
+  firmenname: string
+  uid:        string
+  beleg: {
+    belegNummer:          number
+    belegDatum:           string
+    positionen:           { bezeichnung: string; menge: number; einzelpreisBreutto: number }[]
+    gesamtbetragCent:     number
+    summeBarCent:         number
+    summeKarteCent:       number
+    summeSonstigeCent:    number
+    maschinenlesbareCode: string
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Hilfsfunktion
@@ -127,7 +143,7 @@ export default function App() {
       <div className="flex-1 flex flex-col">
         {state.typ === 'leer' && <LeerBildschirm mandantId={mandantId} />}
         {state.typ === 'warenkorb' && <WarenkorbAnsicht positionen={state.positionen} summeCent={state.summeCent} />}
-        {state.typ === 'beleg_erstellt' && <DankeschoenBildschirm belegNummer={state.belegNummer} summeCent={state.summeCent} belegUrl={state.belegUrl} />}
+        {state.typ === 'beleg_erstellt' && <DankeschoenBildschirm belegNummer={state.belegNummer} summeCent={state.summeCent} belegId={state.belegId} />}
       </div>
     </div>
   )
@@ -274,16 +290,70 @@ function WarenkorbAnsicht({ positionen, summeCent }: { positionen: DisplayPositi
 // Dankeschön-Bildschirm
 // ---------------------------------------------------------------------------
 
-function DankeschoenBildschirm({ belegNummer, summeCent, belegUrl }: { belegNummer: number; summeCent: number; belegUrl?: string }) {
+function DankeschoenBildschirm({ belegNummer, summeCent, belegId }: { belegNummer: number; summeCent: number; belegId?: string }) {
+  // Digitaler Beleg (Foto-Beleg): vollständigen Beleg LAN-intern laden und am
+  // Bildschirm zeigen — der Gast fotografiert ihn ab. Kein Netz-Zugriff von außen.
+  const [belegDaten, setBelegDaten] = useState<OeffentlicherBeleg | null>(null)
+
+  useEffect(() => {
+    setBelegDaten(null)
+    if (!belegId) return
+    let aktiv = true
+    fetch(`/api/oeffentlich/beleg/${belegId}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (aktiv && d) setBelegDaten(d as OeffentlicherBeleg) })
+      .catch(() => { /* Fallback: einfacher Danke-Bildschirm */ })
+    return () => { aktiv = false }
+  }, [belegId])
+
+  if (belegDaten) {
+    const b = belegDaten.beleg
+    return (
+      <div className="flex-1 flex items-center justify-center p-6 overflow-y-auto">
+        <div className="w-full max-w-xl bg-white text-gray-900 rounded-2xl px-8 py-6 shadow-lg">
+          {/* Kopf */}
+          <div className="text-center border-b border-dashed border-gray-300 pb-3">
+            <p className="text-2xl font-black">{belegDaten.firmenname}</p>
+            <p className="text-sm text-gray-500">UID: {belegDaten.uid} · Beleg #{b.belegNummer}</p>
+          </div>
+          {/* Positionen */}
+          <table className="w-full text-lg my-3">
+            <tbody>
+              {b.positionen.map((p, i) => (
+                <tr key={i}>
+                  <td className="py-0.5 pr-2">{p.menge}× {p.bezeichnung}</td>
+                  <td className="py-0.5 text-right font-mono whitespace-nowrap">{formatPreis(p.einzelpreisBreutto * p.menge)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {/* Gesamt + Zahlung */}
+          <div className="flex justify-between text-2xl font-black border-t-2 border-gray-900 pt-2">
+            <span>Gesamt</span><span className="font-mono">{formatPreis(b.gesamtbetragCent)}</span>
+          </div>
+          <div className="mt-1 text-sm text-gray-500 space-y-0.5">
+            {b.summeBarCent > 0 && <div className="flex justify-between"><span>Bar</span><span className="font-mono">{formatPreis(b.summeBarCent)}</span></div>}
+            {b.summeKarteCent > 0 && <div className="flex justify-between"><span>Karte</span><span className="font-mono">{formatPreis(b.summeKarteCent)}</span></div>}
+            {b.summeSonstigeCent > 0 && <div className="flex justify-between"><span>Sonstige</span><span className="font-mono">{formatPreis(b.summeSonstigeCent)}</span></div>}
+          </div>
+          {/* RKSV-QR + Hinweis */}
+          <div className="mt-4 flex flex-col items-center gap-2">
+            <QRCodeSVG value={b.maschinenlesbareCode} size={190} level="M" includeMargin />
+            <p className="text-lg font-bold">Digitaler Beleg — bitte abfotografieren</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Fallback (kein belegId / Fetch fehlgeschlagen / lädt noch): einfacher Danke-Bildschirm
   return (
     <div className="flex-1 flex flex-col items-center justify-center gap-6 p-12">
-      {!belegUrl && (
-        <div className="w-28 h-28 rounded-full bg-emerald-900/50 border-4 border-emerald-500 flex items-center justify-center">
-          <svg className="h-14 w-14 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-          </svg>
-        </div>
-      )}
+      <div className="w-28 h-28 rounded-full bg-emerald-900/50 border-4 border-emerald-500 flex items-center justify-center">
+        <svg className="h-14 w-14 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+        </svg>
+      </div>
       <div className="text-center space-y-2">
         <p className="text-4xl font-black text-emerald-400">Danke!</p>
         <p className="text-xl text-ink-muted">
@@ -293,16 +363,6 @@ function DankeschoenBildschirm({ belegNummer, summeCent, belegUrl }: { belegNumm
           {formatPreis(summeCent)}
         </p>
       </div>
-      {/* Digitaler Beleg: QR zum Scannen */}
-      {belegUrl && (
-        <div className="flex flex-col items-center gap-3">
-          <div className="rounded-2xl bg-white p-4">
-            <QRCodeSVG value={belegUrl} size={220} level="M" includeMargin />
-          </div>
-          <p className="text-2xl font-bold text-ink">Beleg scannen</p>
-          <p className="text-base text-ink-muted">QR-Code mit dem Handy scannen — Ihr Beleg zum Mitnehmen</p>
-        </div>
-      )}
     </div>
   )
 }

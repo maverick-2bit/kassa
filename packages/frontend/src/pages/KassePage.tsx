@@ -22,7 +22,6 @@ import type {
 import { GUTSCHEIN_STATUS_LABELS, MWST_LABELS, STATION_LABELS, happyHourPreisCent, aktiverRabattProzent } from '@kassa/shared'
 import { angebotApi, artikelApi, belegApi, bonierApi, druckerApi, gutscheinApi, kategorieApi, lieferscheinApi, modifikatorApi, offenerPostenApi, posConfigApi, preisregelApi, tischTabApi, zvtApi, displayApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
-import { digitalerBelegUrl } from '../lib/belegDigital'
 import { getAuth, hasBerechtigung } from '../lib/auth'
 import { formatPreis } from '../lib/format'
 import {
@@ -177,6 +176,15 @@ export function KassePage() {
     queryKey: ['drucker', identity.kasseId],
     queryFn:  () => druckerApi.get(identity.kasseId),
   })
+
+  /** Beleg-Dialog schließen; im Digital-/Beides-Modus zugleich den Foto-Beleg am Kundendisplay räumen. */
+  const schliesseBon = () => {
+    setLetzterBon(null)
+    const modus = druckerCfg.data?.belegModus
+    if (modus === 'digital' || modus === 'beides') {
+      displayApi.push(identity.kasseId, { typ: 'leer' }).catch(() => {})
+    }
+  }
 
   // Map: artikelId → ModifikatorGruppe[] (nur aktive Gruppen mit aktiven Optionen)
   const artikelGruppenMap = useMemo<Map<string, ModifikatorGruppe[]>>(() => {
@@ -340,14 +348,18 @@ export function KassePage() {
           console.error('Gutschein-Einlösung fehlgeschlagen:', e)
         }
       }
-      // Display: Beleg-Bestätigung anzeigen, dann leer. Bei digitalem Beleg die QR-URL mitschicken.
+      // Display: Beleg anzeigen, dann leer. Digital/Beides → Foto-Beleg bleibt stehen, bis der
+      // Beleg-Dialog schließt (schliesseBon), Fallback 20s (Display nie länger blockieren);
+      // Drucken → kurze Bestätigung (5s) wie bisher.
       const summeCent = (beleg.summeBarCent ?? 0) + (beleg.summeKarteCent ?? 0) + (beleg.summeSonstigeCent ?? 0)
-      const belegUrl  = digitalerBelegUrl(druckerCfg.data, beleg.id)
+      const modus = druckerCfg.data?.belegModus
       displayApi.push(identity.kasseId, {
-        typ: 'beleg_erstellt', belegNummer: beleg.belegNummer, summeCent,
-        belegId: beleg.id, ...(belegUrl ? { belegUrl } : {}),
+        typ: 'beleg_erstellt', belegNummer: beleg.belegNummer, summeCent, belegId: beleg.id,
       }).catch(() => {})
-      setTimeout(() => displayApi.push(identity.kasseId, { typ: 'leer' }).catch(() => {}), 5000)
+      setTimeout(
+        () => displayApi.push(identity.kasseId, { typ: 'leer' }).catch(() => {}),
+        modus === 'digital' || modus === 'beides' ? 20_000 : 5000,
+      )
       setLetzterBon(beleg)
       reset()
       void queryClient.invalidateQueries({ queryKey: ['belege'] })
@@ -985,11 +997,11 @@ export function KassePage() {
       {/* Erfolgs-Modal Beleg */}
       <Modal
         open={!!letzterBon}
-        onClose={() => setLetzterBon(null)}
+        onClose={schliesseBon}
         title={`Beleg #${letzterBon?.belegNummer} erstellt`}
         size="lg"
       >
-        {letzterBon && <BonAnzeige beleg={letzterBon} belegQrUrl={digitalerBelegUrl(druckerCfg.data, letzterBon.id)} belegModus={druckerCfg.data?.belegModus} onAkzeptiert={() => setLetzterBon(null)} />}
+        {letzterBon && <BonAnzeige beleg={letzterBon} belegModus={druckerCfg.data?.belegModus} onAkzeptiert={schliesseBon} />}
       </Modal>
 
       {/* Erfolgs-Modal Angebot */}

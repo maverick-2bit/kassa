@@ -2114,6 +2114,8 @@ test('Digitaler Beleg (digital): Dialog zeigt Akzeptiert/Nicht-akzeptiert, Akzep
   await page.getByRole('button', { name: 'Bon erstellen' }).click()
 
   await expect(page.getByText(/Beleg #\d+ erstellt/)).toBeVisible({ timeout: 20_000 })
+  // Foto-Beleg: vollständiger Beleg am Bildschirm inkl. RKSV-QR — Gast fotografiert ab (kein Link-QR)
+  await expect(page.getByText(/bitte abfotografieren/)).toBeVisible()
   await expect(page.getByRole('button', { name: 'Akzeptiert', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: /Nicht akzeptiert/ })).toBeVisible()
 
