@@ -7,6 +7,7 @@ import { kasseApi } from '../lib/api'
 import { KdsToasts } from './KdsToasts'
 import { KdsNachrichten } from './KdsNachrichten'
 import { OfflineStatusBar } from './OfflineStatusBar'
+import { UpdateHinweis } from './UpdateHinweis'
 import { SeeStatusBanner } from './SeeStatusBanner'
 import { FoStatusBanner } from './FoStatusBanner'
 import { ErrorBoundary } from './ErrorBoundary'
@@ -16,6 +17,7 @@ export function Layout() {
   return (
     <div className="min-h-screen flex flex-col">
       <OfflineStatusBar />
+      <UpdateHinweis />
       <SeeStatusBanner />
       <FoStatusBanner />
       <Header />
