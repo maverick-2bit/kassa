@@ -2081,4 +2081,44 @@ test('Digitaler Beleg: öffentliche Beleg-Seite rendert den Beleg ohne Login', a
   await expect(page.getByRole('button', { name: /PDF speichern/ })).toBeVisible()
 })
 
+/**
+ * Digital-Modus-Journey: Kasse auf belegModus 'digital', Bon erstellen → der
+ * Beleg-Dialog zeigt „Akzeptiert" + „Nicht akzeptiert" (AT-Belegerteilungspflicht);
+ * „Akzeptiert" schliesst den Dialog.
+ */
+test('Digitaler Beleg (digital): Dialog zeigt Akzeptiert/Nicht-akzeptiert, Akzeptiert schliesst', async ({ page, request }) => {
+  const login = await ensureAuth(request)
+  const token     = login.token as string
+  const kasseId   = login.kassen[0].id as string
+  const mandantId = login.mandant.id as string
+  const authHeader = { Authorization: `Bearer ${token}` }
+
+  await request.patch(`/api/kassen/${kasseId}/drucker`, { headers: authHeader, data: { belegModus: 'digital' } })
+
+  const uid = `${Date.now()}`
+  await request.post('/api/artikel', {
+    headers: authHeader,
+    data: { bezeichnung: `Digi-${uid}`, preisBruttoCent: 300, mwstSatz: 'normal' },
+  })
+
+  await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
+    localStorage.setItem('kassa:token', d.token)
+    localStorage.setItem('kassa:auth', d.authJson)
+    localStorage.setItem('kassa:mandantId', d.mandantId)
+    localStorage.setItem('kassa:kasseId', d.kasseId)
+  }, { token, authJson: JSON.stringify({ user: login.user, mandant: login.mandant, kassen: login.kassen }), mandantId, kasseId })
+
+  await page.goto('/kasse')
+  await page.getByRole('button', { name: new RegExp(`Digi-${uid}`) }).first().click()
+  await page.getByRole('button', { name: 'Exakt' }).click()
+  await page.getByRole('button', { name: 'Bon erstellen' }).click()
+
+  await expect(page.getByText(/Beleg #\d+ erstellt/)).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByRole('button', { name: 'Akzeptiert', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: /Nicht akzeptiert/ })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Akzeptiert', exact: true }).click()
+  await expect(page.getByText(/Beleg #\d+ erstellt/)).toHaveCount(0)
+})
+
 })

@@ -8,6 +8,7 @@ import type {
   BonierungInput,
   BonierungErgebnis,
   ModifikatorGruppe,
+  TischTabBezahlenInput,
 } from '@kassa/shared'
 import { getToken, clearAuth } from './auth'
 import { clearKasseIdentity } from './kasse'
@@ -93,6 +94,25 @@ export const tischTabApi = {
     request<TischTabResponse>('POST', '/api/tisch-tabs', input),
   aktualisierePositionen: (id: string, positionen: TabPosition[]) =>
     request<TischTabResponse>('PUT', `/api/tisch-tabs/${id}/positionen`, { positionen }),
+  bezahle: (id: string, input: TischTabBezahlenInput) =>
+    request<{ tab: TischTabResponse; belegId: string }>('POST', `/api/tisch-tabs/${id}/bezahlen`, input),
+}
+
+// ---------------------------------------------------------------------------
+// Belegausgabe (digitaler Beleg / Ausweich-Druck)
+// ---------------------------------------------------------------------------
+
+export interface DruckerConfig {
+  belegModus:    'drucken' | 'digital' | 'beides'
+  belegBasisUrl: string | null
+}
+
+export const druckerApi = {
+  get: (kasseId: string) =>
+    request<DruckerConfig>('GET', `/api/kassen/${kasseId}/drucker`),
+  /** „Nicht akzeptiert" → Rechnung auf den Kassa-Bondrucker erzwingen */
+  druckenAusweich: (belegId: string) =>
+    request<{ erfolgreich: boolean }>('POST', `/api/belege/${belegId}/drucken`, { ausweich: true }),
 }
 
 // ---------------------------------------------------------------------------

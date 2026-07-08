@@ -147,8 +147,11 @@ export const druckerRoute: FastifyPluginAsync<DruckerRouteOptions> = async (fast
     if (!(await pruefeBelegGehoertZuMandant(opts.db, params.data.id, request.user.mandantId)))
       return reply.status(404).send({ fehler: 'Beleg nicht gefunden' })
 
+    // „Nicht akzeptiert" (Digital-Modus): ausweich=true erzwingt den Papier-Druck
+    const ausweich = (request.body as { ausweich?: boolean } | undefined)?.ausweich === true
+
     try {
-      await druckeBeleg(opts.db, params.data.id)
+      await druckeBeleg(opts.db, params.data.id, { ignoreModus: ausweich })
       return reply.send({ erfolgreich: true })
     } catch (err) {
       if (err instanceof DruckerError)

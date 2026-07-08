@@ -19,17 +19,30 @@ interface Props {
   codeAufgeklappt?: boolean
   /** Wenn gesetzt: „Digitaler Beleg"-QR (URL zur öffentlichen Beleg-Ansicht) zum Scannen anzeigen */
   belegQrUrl?:      string | undefined
+  /** Belegausgabe-Modus der Kasse — 'digital' zeigt Akzeptiert/Nicht-akzeptiert statt Druck-Buttons */
+  belegModus?:      string | undefined
+  /** Aufruf wenn der Gast den digitalen Beleg akzeptiert (bzw. nach Ausweich-Druck) → Dialog schließen */
+  onAkzeptiert?:    () => void
 }
 
-export function BonAnzeige({ beleg, codeAufgeklappt = false, belegQrUrl }: Props) {
+export function BonAnzeige({ beleg, codeAufgeklappt = false, belegQrUrl, belegModus, onAkzeptiert }: Props) {
   const [druckStatus, setDruckStatus] = useState<{ typ: 'ok' | 'fehler'; text: string } | null>(null)
   const [emailOffen,  setEmailOffen]  = useState(false)
   const [emailAdresse, setEmailAdresse] = useState('')
+
+  const istDigital = belegModus === 'digital' && beleg.belegTyp === 'Barzahlungsbeleg'
 
   const druckMutation = useMutation({
     mutationFn: () => druckerApi.reprint(beleg.id),
     onSuccess:  () => setDruckStatus({ typ: 'ok', text: 'Druckauftrag gesendet' }),
     onError:    (err) => setDruckStatus({ typ: 'fehler', text: err instanceof Error ? err.message : String(err) }),
+  })
+
+  // „Nicht akzeptiert" → Rechnung auf den Kassa-Bondrucker drucken (Ausweich, erzwungen)
+  const nichtAkzeptiertMutation = useMutation({
+    mutationFn: () => druckerApi.reprint(beleg.id, { ausweich: true }),
+    onSuccess:  () => onAkzeptiert?.(),
+    onError:    (err) => setDruckStatus({ typ: 'fehler', text: `Ausweich-Druck fehlgeschlagen: ${err instanceof Error ? err.message : String(err)}` }),
   })
 
   const emailMutation = useMutation({
@@ -151,6 +164,33 @@ export function BonAnzeige({ beleg, codeAufgeklappt = false, belegQrUrl }: Props
         </div>
       )}
 
+      {/* Digital-Modus: rechtlicher Akzeptanz-Ablauf (Belegerteilungspflicht) */}
+      {istDigital && (
+        <div className="border-t border-line pt-4 space-y-2">
+          <p className="text-center text-xs text-ink-muted">Hat der Gast den digitalen Beleg angenommen?</p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => onAkzeptiert?.()}
+              className="flex-1 rounded-md bg-brand-600 px-3 py-2.5 text-sm font-semibold text-white hover:bg-brand-700"
+            >
+              Akzeptiert
+            </button>
+            <button
+              type="button"
+              onClick={() => { setDruckStatus(null); nichtAkzeptiertMutation.mutate() }}
+              disabled={nichtAkzeptiertMutation.isPending}
+              className="flex-1 rounded-md border border-line-strong bg-panel px-3 py-2.5 text-sm font-semibold text-ink hover:bg-panel-2 disabled:opacity-50"
+            >
+              {nichtAkzeptiertMutation.isPending ? 'Drucke…' : 'Nicht akzeptiert (drucken)'}
+            </button>
+          </div>
+          {druckStatus && druckStatus.typ === 'fehler' && (
+            <p className="text-center text-xs text-red-600">{druckStatus.text}</p>
+          )}
+        </div>
+      )}
+
       {/* Drucken */}
       <div className="border-t border-line pt-3 flex items-center justify-between flex-wrap gap-2">
         <div>
@@ -176,17 +216,20 @@ export function BonAnzeige({ beleg, codeAufgeklappt = false, belegQrUrl }: Props
               Rechnung / PDF
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => { setDruckStatus(null); druckMutation.mutate() }}
-            disabled={druckMutation.isPending}
-            className="inline-flex items-center gap-1.5 rounded-md border border-line-strong bg-panel px-3 py-1.5 text-sm font-medium text-ink hover:bg-panel-2 disabled:opacity-50"
-          >
-            <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M5 4v3H4a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h1v2a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-2h1a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-1V4a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2zm8 0H7v3h6V4zm0 8H7v4h6v-4z" clipRule="evenodd"/>
-            </svg>
-            {druckMutation.isPending ? 'Drucke…' : 'Bon drucken'}
-          </button>
+          {/* „Bon drucken" nicht im Digital-Modus (dort läuft der Druck über „Nicht akzeptiert") */}
+          {!istDigital && (
+            <button
+              type="button"
+              onClick={() => { setDruckStatus(null); druckMutation.mutate() }}
+              disabled={druckMutation.isPending}
+              className="inline-flex items-center gap-1.5 rounded-md border border-line-strong bg-panel px-3 py-1.5 text-sm font-medium text-ink hover:bg-panel-2 disabled:opacity-50"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M5 4v3H4a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h1v2a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-2h1a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-1V4a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2zm8 0H7v3h6V4zm0 8H7v4h6v-4z" clipRule="evenodd"/>
+              </svg>
+              {druckMutation.isPending ? 'Drucke…' : 'Bon drucken'}
+            </button>
+          )}
           {/* E-Mail-Button */}
           {!emailOffen ? (
             <button
