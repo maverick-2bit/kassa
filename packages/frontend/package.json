@@ -1,6 +1,6 @@
 {
   "name": "@kassa/frontend",
-  "version": "0.7.64",
+  "version": "0.7.65",
   "private": true,
   "type": "module",
   "scripts": {
