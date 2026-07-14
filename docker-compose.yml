@@ -1,3 +1,8 @@
+# Fester Compose-Projektname: Image-/Container-/Volume-Namen sind damit
+# unabhängig vom Verzeichnisnamen — Voraussetzung dafür, dass offline
+# transportierte Images (docker save/load) auf dem Ziel-PC gefunden werden.
+name: kassa
+
 services:
 
   # ── PostgreSQL ──────────────────────────────────────────────────────────────

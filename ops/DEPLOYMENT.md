@@ -35,6 +35,22 @@ aktiviert das Setup sie und bittet um **einen Neustart** — danach einfach
 **Update später:** dieselbe Datei einfach erneut doppelklicken
 (`.env`, Datenbank und alle Belege bleiben erhalten).
 
+### Offline-Installation (Ziel-PC ganz ohne Internet)
+
+Für PCs ohne Internetzugang gibt es ein **Offline-Paket** (USB-Stick, ~2–3 GB):
+
+1. **Paket erstellen** — einmalig auf einem PC **mit** Docker + Internet (z. B. dem
+   Test-PC): `ops/erstelle-offline-paket.ps1` ausführen. Ergebnis: Ordner
+   `kassa-offline-paket` am Desktop mit allem drin (Docker-Desktop-Installer,
+   WSL2-Kernel, alle fertig gebauten Container-Images, Code, Setup, LIES-MICH).
+2. **Ordner auf den Ziel-PC kopieren** (USB-Stick) und dort
+   **`Kassa-Setup-Offline.cmd` doppelklicken** — installiert alles ohne Internet
+   (inkl. Docker Desktop, Autostart, Firewall; bei fehlendem WSL2 einmaliger
+   Neustart, danach erneut doppelklicken).
+
+**Update offline:** neues Paket erstellen, rüberkopieren, erneut doppelklicken
+(Datenbank/Belege/`.env` bleiben erhalten).
+
 <details>
 <summary>Alternative: Installation per PowerShell-Befehl (ohne Setup-Datei)</summary>
 
