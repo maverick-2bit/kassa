@@ -140,7 +140,11 @@ class ApiError extends Error {
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const token = getToken()
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  // Content-Type NUR bei tatsächlichem Body setzen. Sonst wirft Fastify bei
+  // body-losen POST/DELETE (Testdruck, Löschen …) FST_ERR_CTP_EMPTY_JSON_BODY
+  // → HTTP 400 ("JSON angekündigt, aber leer").
+  const headers: Record<string, string> = {}
+  if (body !== undefined) headers['Content-Type'] = 'application/json'
   if (token) headers['Authorization'] = `Bearer ${token}`
 
   const res = await fetch(path, {
