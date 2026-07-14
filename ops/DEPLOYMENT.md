@@ -20,19 +20,20 @@ mit Autostart, verschlüsseltem Off-Site-Backup und optionalem HTTPS-Zugang.
    (USB-Stick, Netzlaufwerk, oder im Browser von GitHub herunterladen).
 2. **Doppelklick** → UAC-Abfrage bestätigen. Fertig.
 
-Das Setup holt sich Administrator-Rechte, lädt den aktuellen Installer + Code von
-GitHub, **bietet die automatische Docker-Desktop-Installation an** (falls noch nicht
-vorhanden — danach Docker Desktop einmal öffnen/bestätigen und das Setup erneut
-doppelklicken), erzeugt die `.env` mit sicheren Zufalls-Secrets, baut und startet
-alle Container, öffnet die Windows-Firewall und zeigt am Ende die
-**Geräte-URL-Tabelle** (Kassa, KDS, Kundendisplay, Kellner-Handy, …) mit der LAN-IP.
+Das Setup erledigt alles selbst: holt sich Administrator-Rechte, lädt Installer +
+Code von GitHub, **installiert bei Bedarf Docker Desktop automatisch** (inkl.
+Lizenz-Bestätigung), **startet Docker Desktop und richtet den Windows-Autostart
+ein** (Docker + Kassa kommen nach jedem PC-Neustart von selbst hoch), erzeugt die
+`.env` mit sicheren Zufalls-Secrets, baut und startet alle Container, öffnet die
+Windows-Firewall und zeigt am Ende die **Geräte-URL-Tabelle** (Kassa, KDS,
+Kundendisplay, Kellner-Handy, …) mit der LAN-IP.
+
+**Einziger möglicher Zwischenstopp:** Fehlt auf dem PC die Windows-Funktion WSL2,
+aktiviert das Setup sie und bittet um **einen Neustart** — danach einfach
+`Kassa-Setup.cmd` erneut doppelklicken, die Installation läuft automatisch weiter.
 
 **Update später:** dieselbe Datei einfach erneut doppelklicken
 (`.env`, Datenbank und alle Belege bleiben erhalten).
-
-**Wichtig nach der Docker-Installation:** in den Docker-Desktop-Einstellungen
-**„Start Docker Desktop when you sign in"** aktivieren — sonst kommt die Kassa nach
-einem PC-Neustart nicht von selbst hoch.
 
 <details>
 <summary>Alternative: Installation per PowerShell-Befehl (ohne Setup-Datei)</summary>

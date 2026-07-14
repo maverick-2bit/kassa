@@ -64,54 +64,98 @@ if (-not $istAdmin -and -not $OhneDocker) {
   exit 1
 }
 
-# ── 1. Docker Desktop prüfen ─────────────────────────────────────────────────
+# ── 1. Docker Desktop prüfen / installieren / starten (vollautomatisch) ──────
+
+$desktopExe = Join-Path $env:ProgramFiles 'Docker\Docker\Docker Desktop.exe'
+
+function Docker-Laeuft {
+  try { docker info *> $null; return ($LASTEXITCODE -eq 0) } catch { return $false }
+}
+
+# Windows-Autostart für Docker Desktop setzen (das ist derselbe Mechanismus,
+# den der Schalter "Start Docker Desktop when you sign in" verwendet) und die
+# Docker-Desktop-Einstellung spiegeln, damit der Schalter in der UI an ist.
+function Aktiviere-DockerAutostart {
+  if (-not (Test-Path $desktopExe)) { return }
+  New-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' `
+    -Name 'Docker Desktop' -Value ('"' + $desktopExe + '"') -PropertyType String -Force | Out-Null
+  foreach ($datei in @("$env:APPDATA\Docker\settings-store.json", "$env:APPDATA\Docker\settings.json")) {
+    if (Test-Path $datei) {
+      try {
+        $json = Get-Content -Raw $datei | ConvertFrom-Json
+        if ($json.PSObject.Properties.Name -contains 'AutoStart')      { $json.AutoStart = $true }
+        elseif ($json.PSObject.Properties.Name -contains 'autoStart')  { $json.autoStart = $true }
+        else { $json | Add-Member -NotePropertyName 'AutoStart' -NotePropertyValue $true -Force }
+        $json | ConvertTo-Json -Depth 20 | Set-Content -Path $datei -Encoding utf8
+      } catch { }
+    }
+  }
+  Ok 'Autostart für Docker Desktop aktiviert (startet künftig mit Windows)'
+}
+
+# Docker Desktop starten und warten, bis die Engine antwortet.
+function Starte-DockerDesktop([int]$MaxSekunden) {
+  Hinweis 'Starte Docker Desktop — die Engine braucht beim ersten Mal einige Minuten …'
+  Start-Process $desktopExe | Out-Null
+  $bisher = 0
+  while ($bisher -lt $MaxSekunden) {
+    Start-Sleep -Seconds 5
+    $bisher += 5
+    if (Docker-Laeuft) { return $true }
+  }
+  return $false
+}
+
 if (-not $OhneDocker) {
   Schritt 'Prüfe Docker Desktop'
-  $dockerOk = $false
-  try {
-    docker info *> $null
-    if ($LASTEXITCODE -eq 0) { $dockerOk = $true }
-  } catch { $dockerOk = $false }
 
-  if (-not $dockerOk) {
-    Fehler 'Docker Desktop läuft nicht (oder ist nicht installiert).'
-    # Ist Docker Desktop nur nicht gestartet? Dann versuchen zu starten.
-    $desktopExe = Join-Path $env:ProgramFiles 'Docker\Docker\Docker Desktop.exe'
-    if (Test-Path $desktopExe) {
-      Hinweis 'Docker Desktop ist installiert — starte es jetzt (dauert bis zu 2 Minuten) …'
-      Start-Process $desktopExe | Out-Null
-      for ($i = 0; $i -lt 40; $i++) {
-        Start-Sleep -Seconds 3
-        try { docker info *> $null; if ($LASTEXITCODE -eq 0) { $dockerOk = $true; break } } catch { }
-      }
-      if (-not $dockerOk) {
-        Fehler 'Docker Desktop wurde gestartet, ist aber noch nicht bereit.'
-        Hinweis 'Bitte warten, bis das Docker-Symbol unten rechts "running" zeigt,'
-        Hinweis 'und dieses Setup dann erneut ausführen.'
+  if (-not (Docker-Laeuft)) {
+
+    # 1a. Noch gar nicht installiert → automatisch installieren
+    if (-not (Test-Path $desktopExe)) {
+      Hinweis 'Docker Desktop ist nicht installiert.'
+      $antwort = 'j'
+      try { $antwort = Read-Host 'Docker Desktop jetzt automatisch installieren? (J/n)' } catch { }
+      if ($antwort -match '^[nN]') {
+        Hinweis 'Abgebrochen. Manuelle Installation:  winget install -e --id Docker.DockerDesktop'
         exit 1
       }
-    } else {
-      # Nicht installiert → automatische Installation anbieten (winget)
-      $antwort = 'n'
-      try { $antwort = Read-Host 'Docker Desktop jetzt automatisch installieren? (j/n)' } catch { }
-      if ($antwort -match '^[jJyY]') {
-        Schritt 'Installiere Docker Desktop (winget — Download ~500 MB, bitte warten)'
-        winget install -e --id Docker.DockerDesktop --accept-package-agreements --accept-source-agreements
-        if ($LASTEXITCODE -ne 0) {
-          Fehler 'winget-Installation fehlgeschlagen. Bitte Docker Desktop manuell installieren: https://www.docker.com/products/docker-desktop/'
-          exit 1
-        }
-        Ok 'Docker Desktop installiert'
-        Hinweis 'JETZT NÖTIG (einmalig): Docker Desktop über das Startmenü öffnen,'
-        Hinweis 'die Lizenz/WSL2-Abfrage bestätigen und warten, bis es "running" zeigt.'
-        Hinweis 'In den Docker-Einstellungen "Start Docker Desktop when you sign in" aktivieren.'
-        Hinweis 'Danach dieses Setup einfach erneut ausführen — es macht dann fertig.'
+
+      # WSL2 ist Voraussetzung — fehlt es, aktiviert Windows es nur mit Neustart.
+      $wslOk = $false
+      try { wsl.exe --status *> $null; if ($LASTEXITCODE -eq 0) { $wslOk = $true } } catch { }
+      if (-not $wslOk) {
+        Schritt 'Aktiviere WSL2 (Windows-Subsystem — einmalig nötig)'
+        wsl.exe --install --no-distribution
+        Write-Host ''
+        Hinweis '>>> NEUSTART ERFORDERLICH (einmalig, wegen Windows-Funktion WSL2). <<<'
+        Hinweis 'Nach dem Neustart einfach Kassa-Setup.cmd ERNEUT doppelklicken —'
+        Hinweis 'die Installation läuft dann automatisch weiter.'
         exit 0
       }
-      Hinweis 'Manuelle Installation:  winget install -e --id Docker.DockerDesktop'
-      Hinweis 'Danach Docker Desktop einmal starten und dieses Setup erneut ausführen.'
+
+      Schritt 'Installiere Docker Desktop (Download ~500 MB — bitte warten)'
+      winget install -e --id Docker.DockerDesktop `
+        --accept-package-agreements --accept-source-agreements `
+        --override 'install --quiet --accept-license'
+      if ($LASTEXITCODE -ne 0 -or -not (Test-Path $desktopExe)) {
+        Fehler 'Automatische Installation fehlgeschlagen. Manuell installieren: https://www.docker.com/products/docker-desktop/'
+        exit 1
+      }
+      Ok 'Docker Desktop installiert (Lizenz akzeptiert)'
+    }
+
+    # 1b. Installiert, aber Engine läuft nicht → Autostart setzen + jetzt starten
+    Aktiviere-DockerAutostart
+    if (-not (Starte-DockerDesktop 360)) {
+      Fehler 'Docker Desktop wurde gestartet, ist aber nach 6 Minuten noch nicht bereit.'
+      Hinweis 'Bitte warten, bis das Docker-Symbol unten rechts "running" zeigt,'
+      Hinweis 'und Kassa-Setup.cmd dann erneut doppelklicken.'
       exit 1
     }
+  } else {
+    # Docker läuft schon — Autostart trotzdem sicherstellen
+    Aktiviere-DockerAutostart
   }
   Ok 'Docker ist erreichbar'
 }
@@ -238,7 +282,7 @@ Write-Host ('   1. Am PC öffnen:  http://localhost' + $(if ($ports['Kassa (Haup
 Write-Host '   2. Setup-Assistent ausfüllen (Firma, Kasse, Admin) — RKSV-Testmodus wählen'
 Write-Host '   3. Bondrucker: Einstellungen -> Hardware -> IP des LAN-Druckers eintragen + Testdruck'
 Write-Host ''
-Write-Host ' Update später: dieses Skript einfach erneut ausführen.' -ForegroundColor Yellow
-Write-Host ' Wichtig: In Docker Desktop den Autostart aktivieren, damit die Kassa nach' -ForegroundColor Yellow
-Write-Host ' einem PC-Neustart von selbst hochkommt (Container starten automatisch).' -ForegroundColor Yellow
+Write-Host ' Update später: Kassa-Setup.cmd einfach erneut doppelklicken.' -ForegroundColor Yellow
+Write-Host ' Autostart ist eingerichtet: Nach einem PC-Neustart starten Docker Desktop' -ForegroundColor Yellow
+Write-Host ' und alle Kassa-Container automatisch (Anmeldung am PC genügt).' -ForegroundColor Yellow
 Write-Host ''
