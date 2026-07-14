@@ -9,9 +9,9 @@
 #   5. öffnet die Windows-Firewall für die Geräte im LAN
 #   6. zeigt die Geräte-URLs an
 #
-# Aufruf (PowerShell ALS ADMINISTRATOR):
-#   Invoke-WebRequest https://raw.githubusercontent.com/maverick-2bit/kassa/master/ops/install.ps1 -OutFile install.ps1
-#   powershell -ExecutionPolicy Bypass -File .\install.ps1
+# Aufruf (PowerShell ALS ADMINISTRATOR, EINE Zeile — umgeht Execution-Policy-
+# und TLS-Stolpersteine frischer Windows-Installationen):
+#   Set-ExecutionPolicy Bypass -Scope Process -Force; [Net.ServicePointManager]::SecurityProtocol = 3072; iwr 'https://raw.githubusercontent.com/maverick-2bit/kassa/master/ops/install.ps1' -OutFile "$env:TEMP\kassa-install.ps1" -UseBasicParsing; & "$env:TEMP\kassa-install.ps1"
 #
 # Erneut ausführen = Update (Code neu laden + Container neu bauen; .env und
 # alle Daten/Volumes bleiben unangetastet).
@@ -30,6 +30,12 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference    = 'SilentlyContinue'   # schnellere Downloads in PS 5.1
+
+# TLS 1.2 erzwingen — ältere PowerShell-5.1-Setups verhandeln sonst kein
+# GitHub-HTTPS ("Could not create SSL/TLS secure channel").
+try {
+  [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor 3072
+} catch { }
 
 function Schritt([string]$Text)  { Write-Host "`n==> $Text" -ForegroundColor Cyan }
 function Ok([string]$Text)       { Write-Host "    OK: $Text" -ForegroundColor Green }

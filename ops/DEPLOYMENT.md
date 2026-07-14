@@ -23,12 +23,16 @@ startet alle Container und öffnet die Windows-Firewall für die Geräte im LAN.
 Docker-Desktop-Einstellungen **„Start Docker Desktop when you sign in"** aktivieren
 (sonst kommt die Kassa nach einem PC-Neustart nicht von selbst hoch).
 
-Dann **PowerShell als Administrator** öffnen und:
+Dann **PowerShell als Administrator** öffnen (Startmenü → „PowerShell" tippen →
+Rechtsklick → *Als Administrator ausführen* — blaues Fenster, NICHT die
+„Eingabeaufforderung"/CMD) und diese **eine Zeile** komplett einfügen:
 
 ```powershell
-Invoke-WebRequest https://raw.githubusercontent.com/maverick-2bit/kassa/master/ops/install.ps1 -OutFile install.ps1
-powershell -ExecutionPolicy Bypass -File .\install.ps1
+Set-ExecutionPolicy Bypass -Scope Process -Force; [Net.ServicePointManager]::SecurityProtocol = 3072; iwr 'https://raw.githubusercontent.com/maverick-2bit/kassa/master/ops/install.ps1' -OutFile "$env:TEMP\kassa-install.ps1" -UseBasicParsing; & "$env:TEMP\kassa-install.ps1"
 ```
+
+Die Zeile umgeht die zwei üblichen Stolpersteine frischer Windows-PCs
+(Skript-Ausführungsrichtlinie und fehlendes TLS 1.2 beim Download).
 
 Das Skript zeigt am Ende die **Geräte-URL-Tabelle** (Kassa, KDS, Kundendisplay,
 Kellner-Handy, …) mit der LAN-IP des PCs. **Update später:** dasselbe Skript einfach
