@@ -12,6 +12,33 @@ mit Autostart, verschlüsseltem Off-Site-Backup und optionalem HTTPS-Zugang.
 
 ---
 
+## Schnellstart: Windows-PC (Test-/Pilotbetrieb)
+
+Für einen Windows-Test-PC gibt es einen **Ein-Befehl-Installer** (`ops/install.ps1`):
+lädt den Code von GitHub, erzeugt die `.env` mit sicheren Zufalls-Secrets, baut und
+startet alle Container und öffnet die Windows-Firewall für die Geräte im LAN.
+
+**Einmalig vorher:** Docker Desktop installieren und starten
+(`winget install -e --id Docker.DockerDesktop`), WSL2-Backend bestätigen und in den
+Docker-Desktop-Einstellungen **„Start Docker Desktop when you sign in"** aktivieren
+(sonst kommt die Kassa nach einem PC-Neustart nicht von selbst hoch).
+
+Dann **PowerShell als Administrator** öffnen und:
+
+```powershell
+Invoke-WebRequest https://raw.githubusercontent.com/maverick-2bit/kassa/master/ops/install.ps1 -OutFile install.ps1
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+Das Skript zeigt am Ende die **Geräte-URL-Tabelle** (Kassa, KDS, Kundendisplay,
+Kellner-Handy, …) mit der LAN-IP des PCs. **Update später:** dasselbe Skript einfach
+erneut ausführen (`.env`, Datenbank und alle Daten bleiben erhalten).
+
+> Der Windows-Weg ist für **Test/Pilot** gedacht; für die endgültige Laden-Box wird
+> das Linux-Setup unten empfohlen (identische Container, robusterer Unterbau).
+
+---
+
 ## 1. Voraussetzungen
 
 - Eine Box mit Linux (Debian 12 / Ubuntu 22.04+ empfohlen), 2+ GB RAM, x86-64.
