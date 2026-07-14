@@ -3,7 +3,9 @@ import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { QRCodeSVG } from 'qrcode.react'
 import { ALLE_STATIONEN, STATION_LABELS, type Station, type ZvtConfig, type WeitereKasseInput, type PosKonfig, type Artikel, type Kategorie, type SeeTyp } from '@kassa/shared'
-import { druckerApi, kdsApi, seeApi, zvtApi, downloadDepExport, healthApi, monitoringApi, mandantApi, kasseApi, kategorieApi, artikelApi, posConfigApi, tischplanApi, dbBackupApi, belegApi, type DruckerConfig, type KdsConfig, type DbSicherungRow, type MonitoringStatus } from '../lib/api'
+import { druckerApi, druckerPoolApi, kdsApi, seeApi, zvtApi, downloadDepExport, healthApi, monitoringApi, mandantApi, kasseApi, kategorieApi, artikelApi, posConfigApi, tischplanApi, dbBackupApi, belegApi, type DruckerConfig, type KdsConfig, type DbSicherungRow, type MonitoringStatus } from '../lib/api'
+import type { DruckerPool, DruckerPoolInput } from '@kassa/shared'
+import { Modal } from '../components/ui/Modal'
 import { formatAusfallDauer } from '../components/SeeStatusBanner'
 import { getKasseIdentity, setKasseIdentity } from '../lib/kasse'
 import { getAuth, hasModul, updateKasseBezeichnung, addKasse, removeKasse } from '../lib/auth'
@@ -1329,10 +1331,7 @@ function GastQrCodeSektion() {
 function DruckerSektion() {
   const identity    = getKasseIdentity()!
   const queryClient = useQueryClient()
-  const [form, setForm] = useState<DruckerConfig>({
-    druckerIp: '', druckerPort: 9100, druckerAktiv: false, druckerBreite: 42, druckerTimeoutSek: 5,
-    belegModus: 'drucken', belegBasisUrl: null,
-  })
+  const [belegModus, setBelegModus] = useState<DruckerConfig['belegModus']>('drucken')
   const [meldung, setMeldung]   = useState<{ typ: 'ok' | 'fehler'; text: string } | null>(null)
   const [logOffen, setLogOffen] = useState(false)
 
@@ -1341,12 +1340,8 @@ function DruckerSektion() {
     queryFn:  () => druckerApi.get(identity.kasseId),
   })
 
-  const statusQuery = useQuery({
-    queryKey:        ['drucker-status', identity.kasseId],
-    queryFn:         () => druckerApi.status(identity.kasseId),
-    refetchInterval: 30_000,
-    enabled:         !!cfgQuery.data?.druckerAktiv && !!cfgQuery.data?.druckerIp,
-  })
+  // Bondrucker-Bibliothek (mandantenweit)
+  const poolQuery = useQuery({ queryKey: ['drucker-pool'], queryFn: () => druckerPoolApi.list() })
 
   const logQuery = useQuery({
     queryKey: ['drucker-log', identity.kasseId],
@@ -1355,74 +1350,38 @@ function DruckerSektion() {
   })
 
   useEffect(() => {
-    if (cfgQuery.data) {
-      setForm({
-        druckerIp:         cfgQuery.data.druckerIp ?? '',
-        druckerPort:       cfgQuery.data.druckerPort,
-        druckerAktiv:      cfgQuery.data.druckerAktiv,
-        druckerBreite:     cfgQuery.data.druckerBreite,
-        druckerTimeoutSek: cfgQuery.data.druckerTimeoutSek ?? 5,
-        belegModus:        cfgQuery.data.belegModus ?? 'drucken',
-        belegBasisUrl:     cfgQuery.data.belegBasisUrl ?? null,
-      })
-    }
+    if (cfgQuery.data) setBelegModus(cfgQuery.data.belegModus ?? 'drucken')
   }, [cfgQuery.data])
 
+  const invalidateCfg = () => {
+    queryClient.invalidateQueries({ queryKey: ['drucker', identity.kasseId] })
+    queryClient.invalidateQueries({ queryKey: ['drucker', identity.kasseId, 'sektion'] })
+  }
+
+  // Belegausgabe (belegModus) speichern
   const speichern = useMutation({
-    mutationFn: () => druckerApi.patch(identity.kasseId, {
-      druckerIp:         form.druckerIp?.trim() || null,
-      druckerPort:       form.druckerPort,
-      druckerAktiv:      form.druckerAktiv,
-      druckerBreite:     form.druckerBreite,
-      druckerTimeoutSek: form.druckerTimeoutSek,
-      belegModus:        form.belegModus,
-      belegBasisUrl:     form.belegBasisUrl?.trim() || null,
-    }),
-    onSuccess: () => {
-      setMeldung({ typ: 'ok', text: 'Drucker-Einstellungen gespeichert' })
-      queryClient.invalidateQueries({ queryKey: ['drucker', identity.kasseId] })
-      queryClient.invalidateQueries({ queryKey: ['drucker-status', identity.kasseId] })
-    },
+    mutationFn: () => druckerApi.patch(identity.kasseId, { belegModus }),
+    onSuccess: () => { setMeldung({ typ: 'ok', text: 'Belegausgabe gespeichert' }); invalidateCfg() },
     onError: (err) => setMeldung({ typ: 'fehler', text: err instanceof Error ? err.message : String(err) }),
   })
 
-  const testdruck = useMutation({
-    mutationFn: () => druckerApi.test(identity.kasseId),
-    onSuccess:  () => {
-      setMeldung({ typ: 'ok', text: 'Testdruck gesendet — bitte am Drucker prüfen' })
-      queryClient.invalidateQueries({ queryKey: ['drucker-log', identity.kasseId] })
-      queryClient.invalidateQueries({ queryKey: ['drucker-status', identity.kasseId] })
-    },
+  // Drucker für diese Kasse auswählen (aus dem Pool)
+  const waehlen = useMutation({
+    mutationFn: (druckerId: string | null) => druckerApi.patch(identity.kasseId, { druckerId }),
+    onSuccess: () => { setMeldung(null); invalidateCfg() },
     onError: (err) => setMeldung({ typ: 'fehler', text: err instanceof Error ? err.message : String(err) }),
   })
 
-  // Status-Dot
-  const status = statusQuery.data
-  const statusDot = !cfgQuery.data?.druckerAktiv || !cfgQuery.data?.druckerIp ? null
-    : statusQuery.isLoading ? '⬜'
-    : status?.online === true  ? '🟢'
-    : status?.online === false ? '🔴'
-    : '⬜'
+  const gewaehlterDrucker = poolQuery.data?.find(d => d.id === cfgQuery.data?.druckerId) ?? null
+  const istDigital = belegModus === 'digital'
 
   return (
     <section className="rounded-lg bg-panel shadow-sm border border-line p-6 space-y-5">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-base font-semibold text-ink">
-            {form.belegModus === 'digital' ? 'Ausweich-Bondrucker (für „Nicht akzeptiert")' : 'Bondrucker (ESC/POS via TCP)'}
-          </h2>
-          <p className="text-sm text-ink-muted mt-0.5">
-            {form.belegModus === 'digital'
-              ? 'Wird nur gedruckt, wenn der Gast den digitalen Beleg ablehnt. Netzwerkdrucker (Epson, Star, Bixolon …).'
-              : 'Netzwerkdrucker (Epson TM-T20, Star TSP100, Bixolon SRP, …)'}
-          </p>
-        </div>
-        {statusDot && (
-          <div className="flex items-center gap-1.5 text-xs text-ink-muted shrink-0">
-            <span>{statusDot}</span>
-            <span>{status?.online === true ? 'Online' : status?.online === false ? 'Offline' : 'Unbekannt'}</span>
-          </div>
-        )}
+      <div>
+        <h2 className="text-base font-semibold text-ink">Bondrucker &amp; Belegausgabe</h2>
+        <p className="text-sm text-ink-muted mt-0.5">
+          Rechnungsdrucker dieser Kasse — gewählt aus der Bondrucker-Bibliothek.
+        </p>
       </div>
 
       {cfgQuery.isLoading ? (
@@ -1430,76 +1389,69 @@ function DruckerSektion() {
       ) : (
         <>
           <Field label="Belegausgabe" hint="Wie der Kundenbeleg ausgegeben wird (Österreich: digitaler Beleg zulässig)">
+            <div className="flex gap-2">
+              <select
+                className="block w-full rounded-md border border-line-strong px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500/40"
+                value={belegModus}
+                onChange={(e) => setBelegModus(e.target.value as DruckerConfig['belegModus'])}
+              >
+                <option value="drucken">Nur drucken (Papier-Bon)</option>
+                <option value="digital">Nur digital (Beleg am Bildschirm + E-Mail)</option>
+                <option value="beides">Beides (Papier + Beleg am Bildschirm)</option>
+              </select>
+              <Button
+                onClick={() => { setMeldung(null); speichern.mutate() }}
+                loading={speichern.isPending}
+                disabled={belegModus === cfgQuery.data?.belegModus}
+              >
+                Speichern
+              </Button>
+            </div>
+          </Field>
+
+          <Field
+            label={istDigital ? 'Ausweich-Bondrucker (für „Nicht akzeptiert")' : 'Rechnung drucken auf'}
+            hint={istDigital
+              ? 'Wird nur gedruckt, wenn der Gast den digitalen Beleg ablehnt.'
+              : 'Aus der Bibliothek unten wählen. „— kein Drucker —" = diese Kasse druckt nicht.'}
+          >
             <select
               className="block w-full rounded-md border border-line-strong px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500/40"
-              value={form.belegModus}
-              onChange={(e) => setForm({ ...form, belegModus: e.target.value as DruckerConfig['belegModus'] })}
+              value={cfgQuery.data?.druckerId ?? ''}
+              disabled={waehlen.isPending}
+              onChange={(e) => waehlen.mutate(e.target.value || null)}
             >
-              <option value="drucken">Nur drucken (Papier-Bon)</option>
-              <option value="digital">Nur digital (Beleg am Bildschirm + E-Mail)</option>
-              <option value="beides">Beides (Papier + Beleg am Bildschirm)</option>
+              <option value="">— kein Drucker —</option>
+              {(poolQuery.data ?? []).map(d => (
+                <option key={d.id} value={d.id}>
+                  {d.name} ({d.ip}){d.aktiv ? '' : ' — deaktiviert'}
+                </option>
+              ))}
             </select>
           </Field>
 
-          <label className="inline-flex items-center gap-2 text-sm font-medium text-ink">
-            <input
-              type="checkbox"
-              className="rounded border-line-strong text-brand-500 focus:ring-brand-500"
-              checked={form.druckerAktiv}
-              onChange={(e) => setForm({ ...form, druckerAktiv: e.target.checked })}
-            />
-            Drucker aktiviert
-          </label>
+          {gewaehlterDrucker && (
+            <p className="text-xs text-ink-muted -mt-2">
+              Aktiv: <span className="font-medium text-ink">{gewaehlterDrucker.name}</span> ·
+              {' '}{gewaehlterDrucker.ip}:{gewaehlterDrucker.port} · {gewaehlterDrucker.breite} Zeichen
+            </p>
+          )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="sm:col-span-2">
-              <Field label="IP-Adresse" hint="z. B. 192.168.1.100">
-                <Input
-                  value={form.druckerIp ?? ''}
-                  onChange={(e) => setForm({ ...form, druckerIp: e.target.value })}
-                  placeholder="192.168.1.100"
-                />
-              </Field>
-            </div>
-            <Field label="Port">
-              <Input
-                type="number"
-                value={form.druckerPort}
-                onChange={(e) => setForm({ ...form, druckerPort: parseInt(e.target.value || '9100', 10) })}
-              />
-            </Field>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Field label="Papierbreite" hint="Zeichen pro Zeile">
-              <select
-                className="block w-full rounded-md border border-line-strong px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500/40"
-                value={form.druckerBreite}
-                onChange={(e) => setForm({ ...form, druckerBreite: parseInt(e.target.value, 10) })}
-              >
-                <option value={32}>58mm (32 Zeichen)</option>
-                <option value={42}>80mm Standard (42 Zeichen)</option>
-                <option value={48}>80mm Kompakt (48 Zeichen)</option>
-              </select>
-            </Field>
-            <Field label="Timeout" hint="Sekunden bis Verbindungsabbruch (1–30)">
-              <Input
-                type="number"
-                min={1}
-                max={30}
-                value={form.druckerTimeoutSek}
-                onChange={(e) => setForm({ ...form, druckerTimeoutSek: Math.min(30, Math.max(1, parseInt(e.target.value || '5', 10))) })}
-              />
-            </Field>
-          </div>
-
-          {(form.belegModus === 'digital' || form.belegModus === 'beides') && (
+          {(belegModus === 'digital' || belegModus === 'beides') && (
             <p className="rounded-md border border-line bg-panel-2 px-3 py-2 text-xs text-ink-muted">
               Digitaler Beleg: nach der Zahlung wird der vollständige Beleg (inkl. RKSV-QR) am
               Kassen- und Kundendisplay-Bildschirm angezeigt — der Gast fotografiert ihn ab oder
               erhält ihn per E-Mail. Es wird nichts ins Internet übertragen.
             </p>
           )}
+
+          {/* Bondrucker-Bibliothek (mandantenweit) */}
+          <DruckerBibliothek
+            drucker={poolQuery.data ?? []}
+            isLoading={poolQuery.isLoading}
+            onChanged={() => queryClient.invalidateQueries({ queryKey: ['drucker-pool'] })}
+            onCfgChanged={invalidateCfg}
+          />
 
           {meldung && (
             <div className={`rounded-md p-3 text-sm ${
@@ -1510,15 +1462,6 @@ function DruckerSektion() {
           )}
 
           <div className="flex flex-wrap gap-2 pt-2 border-t border-line">
-            <Button onClick={() => { setMeldung(null); speichern.mutate() }} loading={speichern.isPending}>Speichern</Button>
-            <Button
-              variant="secondary"
-              onClick={() => { setMeldung(null); testdruck.mutate() }}
-              loading={testdruck.isPending}
-              disabled={!form.druckerAktiv || !form.druckerIp}
-            >
-              Testdruck
-            </Button>
             <button
               type="button"
               onClick={() => setLogOffen(v => !v)}
@@ -1572,6 +1515,141 @@ function DruckerSektion() {
         </>
       )}
     </section>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Bondrucker-Bibliothek — mandantenweiter Pool (anlegen / bearbeiten / löschen / testen)
+// ---------------------------------------------------------------------------
+
+const LEERER_DRUCKER: DruckerPoolInput = { name: '', ip: '', port: 9100, breite: 42, timeoutSek: 5, aktiv: true }
+
+function DruckerBibliothek({ drucker, isLoading, onChanged, onCfgChanged }: {
+  drucker:      DruckerPool[]
+  isLoading:    boolean
+  onChanged:    () => void
+  onCfgChanged: () => void
+}) {
+  const [modalOpen, setModalOpen] = useState(false)
+  const [editing, setEditing]     = useState<DruckerPool | null>(null)
+  const [form, setForm]           = useState<DruckerPoolInput>(LEERER_DRUCKER)
+  const [fehler, setFehler]       = useState<string | null>(null)
+  const [testMeldung, setTestMeldung] = useState<Record<string, string>>({})
+
+  const oeffnen = (d: DruckerPool | null) => {
+    setEditing(d)
+    setForm(d ? { name: d.name, ip: d.ip, port: d.port, breite: d.breite, timeoutSek: d.timeoutSek, aktiv: d.aktiv } : LEERER_DRUCKER)
+    setFehler(null)
+    setModalOpen(true)
+  }
+
+  const speichern = useMutation({
+    mutationFn: () => editing
+      ? druckerPoolApi.update(editing.id, form)
+      : druckerPoolApi.create(form),
+    onSuccess: () => { setModalOpen(false); setEditing(null); onChanged(); onCfgChanged() },
+    onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
+  })
+
+  const loeschen = useMutation({
+    mutationFn: (id: string) => druckerPoolApi.delete(id),
+    onSuccess: () => { onChanged(); onCfgChanged() },
+  })
+
+  const testen = useMutation({
+    mutationFn: (id: string) => druckerPoolApi.test(id),
+    onSuccess: (res, id) => setTestMeldung(m => ({ ...m, [id]: res.erfolgreich ? '✓ Testdruck gesendet' : `✗ ${res.fehler ?? 'Fehler'}` })),
+    onError: (err, id) => setTestMeldung(m => ({ ...m, [id]: `✗ ${err instanceof Error ? err.message : 'Fehler'}` })),
+  })
+
+  return (
+    <div className="border-t border-line pt-4 space-y-3">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h3 className="text-sm font-semibold text-ink">Drucker-Bibliothek</h3>
+          <p className="text-xs text-ink-muted">Alle Bondrucker im Betrieb. Jede Kasse wählt oben ihren daraus.</p>
+        </div>
+        <Button variant="secondary" onClick={() => oeffnen(null)}>+ weiteren Drucker einrichten</Button>
+      </div>
+
+      {isLoading ? (
+        <p className="text-xs text-ink-subtle">Wird geladen…</p>
+      ) : drucker.length === 0 ? (
+        <p className="text-xs text-ink-subtle">Noch kein Drucker angelegt — „weiteren Drucker einrichten" klicken.</p>
+      ) : (
+        <div className="divide-y divide-line rounded-lg border border-line">
+          {drucker.map(d => (
+            <div key={d.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-ink">
+                  {d.name}
+                  {!d.aktiv && <span className="ml-2 text-xs text-ink-subtle">(deaktiviert)</span>}
+                </p>
+                <p className="text-xs text-ink-muted font-mono">
+                  {d.ip}:{d.port} · {d.breite} Zeichen · {d.timeoutSek}s
+                  {testMeldung[d.id] && <span className={`ml-2 ${testMeldung[d.id]?.startsWith('✓') ? 'text-green-700' : 'text-red-700'}`}>{testMeldung[d.id]}</span>}
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button type="button" onClick={() => testen.mutate(d.id)} disabled={testen.isPending}
+                  className="text-xs px-2 py-1 rounded border border-line-strong text-ink hover:border-brand-400 disabled:opacity-50">Testdruck</button>
+                <button type="button" onClick={() => oeffnen(d)}
+                  className="text-xs px-2 py-1 rounded border border-line-strong text-ink hover:border-brand-400">Bearbeiten</button>
+                <button type="button" onClick={() => { if (confirm(`Drucker „${d.name}" löschen? Kassen, die ihn nutzen, drucken danach nicht mehr.`)) loeschen.mutate(d.id) }}
+                  className="text-xs px-2 py-1 rounded border border-red-200 text-red-700 hover:bg-red-50">Löschen</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Drucker bearbeiten' : 'Neuen Drucker einrichten'}>
+        <div className="space-y-4">
+          <Field label="Name" hint="z. B. Kasse vorne oder Theke">
+            <Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Kasse vorne" autoFocus />
+          </Field>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="col-span-2">
+              <Field label="IP-Adresse" hint="z. B. 192.168.1.100">
+                <Input value={form.ip} onChange={e => setForm({ ...form, ip: e.target.value })} placeholder="192.168.1.100" />
+              </Field>
+            </div>
+            <Field label="Port">
+              <Input type="number" value={form.port} onChange={e => setForm({ ...form, port: parseInt(e.target.value || '9100', 10) })} />
+            </Field>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Papierbreite" hint="Zeichen pro Zeile">
+              <select className="block w-full rounded-md border border-line-strong px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500/40"
+                value={form.breite} onChange={e => setForm({ ...form, breite: parseInt(e.target.value, 10) })}>
+                <option value={32}>58mm (32 Zeichen)</option>
+                <option value={42}>80mm Standard (42 Zeichen)</option>
+                <option value={48}>80mm Kompakt (48 Zeichen)</option>
+              </select>
+            </Field>
+            <Field label="Timeout" hint="Sekunden (1–30)">
+              <Input type="number" min={1} max={30} value={form.timeoutSek}
+                onChange={e => setForm({ ...form, timeoutSek: Math.min(30, Math.max(1, parseInt(e.target.value || '5', 10))) })} />
+            </Field>
+          </div>
+          <label className="inline-flex items-center gap-2 text-sm font-medium text-ink">
+            <input type="checkbox" className="rounded border-line-strong text-brand-500 focus:ring-brand-500"
+              checked={form.aktiv} onChange={e => setForm({ ...form, aktiv: e.target.checked })} />
+            Drucker aktiviert
+          </label>
+
+          {fehler && <div className="rounded-md bg-red-50 border border-red-200 text-red-700 p-3 text-sm">{fehler}</div>}
+
+          <div className="flex gap-2 pt-1">
+            <Button variant="secondary" onClick={() => setModalOpen(false)} className="flex-1">Abbrechen</Button>
+            <Button onClick={() => { setFehler(null); speichern.mutate() }} loading={speichern.isPending}
+              disabled={!form.name.trim() || !form.ip.trim()} className="flex-1">
+              {editing ? 'Speichern' : 'Anlegen'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    </div>
   )
 }
 

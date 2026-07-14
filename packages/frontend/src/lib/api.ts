@@ -125,6 +125,9 @@ import type {
   ArbeitszeitUpdate,
   StempelInput,
   StempelResponse,
+  DruckerPool,
+  DruckerPoolInput,
+  DruckerPoolUpdate,
 } from '@kassa/shared'
 import { getToken, handleUnauthorized } from './auth.js'
 
@@ -492,6 +495,23 @@ export const bonierdruckerApi = {
 }
 
 // ---------------------------------------------------------------------------
+// Bondrucker-Bibliothek (mandantenweiter Pool)
+// ---------------------------------------------------------------------------
+
+export const druckerPoolApi = {
+  list:   () =>
+    request<DruckerPool[]>('GET', '/api/drucker'),
+  create: (input: DruckerPoolInput) =>
+    request<DruckerPool>('POST', '/api/drucker', input),
+  update: (id: string, input: DruckerPoolUpdate) =>
+    request<DruckerPool>('PATCH', `/api/drucker/${id}`, input),
+  delete: (id: string) =>
+    request<void>('DELETE', `/api/drucker/${id}`),
+  test:   (id: string) =>
+    request<{ erfolgreich: boolean; fehler?: string }>('POST', `/api/drucker/${id}/test`),
+}
+
+// ---------------------------------------------------------------------------
 // POS-Konfiguration
 // ---------------------------------------------------------------------------
 
@@ -511,6 +531,8 @@ export const posConfigApi = {
 // ---------------------------------------------------------------------------
 
 export interface DruckerConfig {
+  /** Gewählter Bondrucker aus der Bibliothek (null = kein Drucker) */
+  druckerId:         string | null
   druckerIp:         string | null
   druckerPort:       number
   druckerAktiv:      boolean

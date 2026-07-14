@@ -119,7 +119,12 @@ export const kassen = pgTable('kassen', {
   fo_pruefwert:          text('fo_pruefwert'),
   registriert_am:        timestamp('registriert_am', { withTimezone: true }),
 
-  // Drucker-Konfiguration (ESC/POS via TCP — z. B. Epson TM-T20, Star TSP100)
+  // Bondrucker-Konfiguration (ESC/POS via TCP — z. B. Epson TM-T20, Star TSP100).
+  // Die Inline-Felder sind der aufgelöste SNAPSHOT des gewählten Pool-Druckers
+  // (druckerId): der Druckpfad liest weiterhin nur diese Felder. Auswahl/Bearbeiten
+  // eines Pool-Druckers frischt den Snapshot auf. Siehe drucker-Tabelle unten.
+  /** Gewählter Bondrucker aus der mandantenweiten Bibliothek (null = kein Drucker) */
+  druckerId:             uuid('drucker_id'),
   druckerIp:             varchar('drucker_ip',   { length: 64 }),
   druckerPort:           integer('drucker_port').notNull().default(9100),
   druckerAktiv:          boolean('drucker_aktiv').notNull().default(false),
@@ -505,6 +510,29 @@ export const userKassen = pgTable('user_kassen', {
   kasseId: uuid('kasse_id').notNull().references(() => kassen.id, { onDelete: 'cascade' }),
 }, (t) => ({
   pk: primaryKey({ columns: [t.userId, t.kasseId] }),
+}))
+
+// ---------------------------------------------------------------------------
+// Bondrucker-Bibliothek — mandantenweiter Pool von Rechnungs-/Bondruckern.
+// Jede Kasse wählt daraus ihren Drucker (kassen.druckerId); die kassen.drucker*-
+// Inline-Felder sind der aufgelöste Snapshot (Druckpfad bleibt unverändert).
+// ---------------------------------------------------------------------------
+
+export const drucker = pgTable('drucker', {
+  id:          uuid('id').primaryKey().defaultRandom(),
+  mandantId:   uuid('mandant_id').notNull().references(() => mandanten.id),
+  name:        text('name').notNull(),
+  ip:          varchar('ip', { length: 64 }).notNull(),
+  port:        integer('port').notNull().default(9100),
+  /** Zeichen pro Zeile — 32 für 58mm, 42/48 für 80mm */
+  breiteZeichen: integer('breite_zeichen').notNull().default(42),
+  /** TCP-Timeout in Sekunden */
+  timeoutSek:  integer('timeout_sek').notNull().default(5),
+  aktiv:       boolean('aktiv').notNull().default(true),
+  createdAt:   timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:   timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  mandantIdx: index('drucker_mandant_idx').on(t.mandantId),
 }))
 
 // ---------------------------------------------------------------------------

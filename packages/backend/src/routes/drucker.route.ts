@@ -16,6 +16,7 @@ import { StationSchema, BelegModusEnum } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import { druckLog, kassen } from '../db/schema.js'
 import { pruefeBelegGehoertZuMandant, pruefeKasseGehoertZuMandant } from '../auth/scope.js'
+import { waehleDruckerFuerKasse } from '../services/drucker-pool.service.js'
 import {
   druckeBeleg,
   sendBytes,
@@ -31,6 +32,8 @@ export interface DruckerRouteOptions { db: Db }
 const IdParamSchema = z.object({ id: z.string().uuid() })
 
 const DruckerConfigInputSchema = z.object({
+  // Auswahl aus der Bondrucker-Bibliothek (null = kein Drucker). Setzt den Snapshot.
+  druckerId:          z.string().uuid().nullable().optional(),
   druckerIp:          z.string().trim().min(1).max(64).nullable().optional(),
   druckerPort:        z.number().int().min(1).max(65535).optional(),
   druckerAktiv:       z.boolean().optional(),
@@ -42,6 +45,7 @@ const DruckerConfigInputSchema = z.object({
 
 function kasseZuDruckerDto(kasse: typeof kassen.$inferSelect) {
   return {
+    druckerId:         kasse.druckerId,
     druckerIp:         kasse.druckerIp,
     druckerPort:       kasse.druckerPort,
     druckerAktiv:      kasse.druckerAktiv,
@@ -77,12 +81,22 @@ export const druckerRoute: FastifyPluginAsync<DruckerRouteOptions> = async (fast
     const body = DruckerConfigInputSchema.safeParse(request.body)
     if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
 
+    // Drucker-Auswahl aus der Bibliothek → schreibt den Inline-Snapshot der Kasse.
+    if (body.data.druckerId !== undefined) {
+      const ok = await waehleDruckerFuerKasse(opts.db, params.data.id, request.user.mandantId, body.data.druckerId)
+      if (!ok) return reply.status(400).send({ fehler: 'Gewählter Drucker nicht gefunden' })
+    }
+
     const update: Partial<typeof kassen.$inferInsert> = { updatedAt: new Date() }
-    if (body.data.druckerIp         !== undefined) update.druckerIp         = body.data.druckerIp ?? null
-    if (body.data.druckerPort       !== undefined) update.druckerPort       = body.data.druckerPort
-    if (body.data.druckerAktiv      !== undefined) update.druckerAktiv      = body.data.druckerAktiv
-    if (body.data.druckerBreite     !== undefined) update.druckerBreite     = body.data.druckerBreite
-    if (body.data.druckerTimeoutSek !== undefined) update.druckerTimeoutSek = body.data.druckerTimeoutSek
+    // Alt-Inline-Felder nur akzeptieren, wenn NICHT gleichzeitig per Pool gewählt wurde
+    // (sonst würde der eben geschriebene Snapshot überschrieben).
+    if (body.data.druckerId === undefined) {
+      if (body.data.druckerIp         !== undefined) update.druckerIp         = body.data.druckerIp ?? null
+      if (body.data.druckerPort       !== undefined) update.druckerPort       = body.data.druckerPort
+      if (body.data.druckerAktiv      !== undefined) update.druckerAktiv      = body.data.druckerAktiv
+      if (body.data.druckerBreite     !== undefined) update.druckerBreite     = body.data.druckerBreite
+      if (body.data.druckerTimeoutSek !== undefined) update.druckerTimeoutSek = body.data.druckerTimeoutSek
+    }
     if (body.data.belegModus        !== undefined) update.belegModus        = body.data.belegModus
     if (body.data.belegBasisUrl     !== undefined) update.belegBasisUrl     = body.data.belegBasisUrl ?? null
 
