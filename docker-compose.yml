@@ -47,8 +47,11 @@ services:
       - db_backups:/data/db-backups
       - dep_backups:/data/dep-backups
     healthcheck:
-      # wget ist in alpine enthalten; node:22-alpine bringt es mit
-      test:         ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health | grep -q 'ok'"]
+      # Check mit Node selbst (garantiert im Image) statt wget: busybox-wget +
+      # localhost-Auflösung erwiesen sich im Erstlauf als unzuverlässig
+      # (Container blieb trotz laufendem Server dauerhaft "unhealthy").
+      # 127.0.0.1 statt localhost vermeidet zudem die IPv6-(::1)-Falle.
+      test:         ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval:     10s
       timeout:      5s
       retries:      5
