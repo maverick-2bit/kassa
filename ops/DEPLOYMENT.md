@@ -16,8 +16,9 @@ mit Autostart, verschlüsseltem Off-Site-Backup und optionalem HTTPS-Zugang.
 
 **Der einfachste Weg — Doppelklick-Installer:**
 
-1. Die Datei **[`ops/Kassa-Setup.cmd`](Kassa-Setup.cmd)** auf den Ziel-PC kopieren
-   (USB-Stick, Netzlaufwerk, oder im Browser von GitHub herunterladen).
+1. **Download (direkter Link):**
+   <https://github.com/maverick-2bit/kassa/releases/latest/download/Kassa-Setup.cmd>
+   — und die Datei auf den Ziel-PC kopieren (USB-Stick, Netzlaufwerk, …).
 2. **Doppelklick** → UAC-Abfrage bestätigen. Fertig.
 
 Das Setup erledigt alles selbst: holt sich Administrator-Rechte, lädt Installer +
