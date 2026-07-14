@@ -14,29 +14,36 @@ mit Autostart, verschlüsseltem Off-Site-Backup und optionalem HTTPS-Zugang.
 
 ## Schnellstart: Windows-PC (Test-/Pilotbetrieb)
 
-Für einen Windows-Test-PC gibt es einen **Ein-Befehl-Installer** (`ops/install.ps1`):
-lädt den Code von GitHub, erzeugt die `.env` mit sicheren Zufalls-Secrets, baut und
-startet alle Container und öffnet die Windows-Firewall für die Geräte im LAN.
+**Der einfachste Weg — Doppelklick-Installer:**
 
-**Einmalig vorher:** Docker Desktop installieren und starten
-(`winget install -e --id Docker.DockerDesktop`), WSL2-Backend bestätigen und in den
-Docker-Desktop-Einstellungen **„Start Docker Desktop when you sign in"** aktivieren
-(sonst kommt die Kassa nach einem PC-Neustart nicht von selbst hoch).
+1. Die Datei **[`ops/Kassa-Setup.cmd`](Kassa-Setup.cmd)** auf den Ziel-PC kopieren
+   (USB-Stick, Netzlaufwerk, oder im Browser von GitHub herunterladen).
+2. **Doppelklick** → UAC-Abfrage bestätigen. Fertig.
 
-Dann **PowerShell als Administrator** öffnen (Startmenü → „PowerShell" tippen →
-Rechtsklick → *Als Administrator ausführen* — blaues Fenster, NICHT die
-„Eingabeaufforderung"/CMD) und diese **eine Zeile** komplett einfügen:
+Das Setup holt sich Administrator-Rechte, lädt den aktuellen Installer + Code von
+GitHub, **bietet die automatische Docker-Desktop-Installation an** (falls noch nicht
+vorhanden — danach Docker Desktop einmal öffnen/bestätigen und das Setup erneut
+doppelklicken), erzeugt die `.env` mit sicheren Zufalls-Secrets, baut und startet
+alle Container, öffnet die Windows-Firewall und zeigt am Ende die
+**Geräte-URL-Tabelle** (Kassa, KDS, Kundendisplay, Kellner-Handy, …) mit der LAN-IP.
+
+**Update später:** dieselbe Datei einfach erneut doppelklicken
+(`.env`, Datenbank und alle Belege bleiben erhalten).
+
+**Wichtig nach der Docker-Installation:** in den Docker-Desktop-Einstellungen
+**„Start Docker Desktop when you sign in"** aktivieren — sonst kommt die Kassa nach
+einem PC-Neustart nicht von selbst hoch.
+
+<details>
+<summary>Alternative: Installation per PowerShell-Befehl (ohne Setup-Datei)</summary>
+
+PowerShell **als Administrator** öffnen (blaues Fenster, nicht CMD) und diese eine
+Zeile einfügen:
 
 ```powershell
 Set-ExecutionPolicy Bypass -Scope Process -Force; [Net.ServicePointManager]::SecurityProtocol = 3072; iwr 'https://raw.githubusercontent.com/maverick-2bit/kassa/master/ops/install.ps1' -OutFile "$env:TEMP\kassa-install.ps1" -UseBasicParsing; & "$env:TEMP\kassa-install.ps1"
 ```
-
-Die Zeile umgeht die zwei üblichen Stolpersteine frischer Windows-PCs
-(Skript-Ausführungsrichtlinie und fehlendes TLS 1.2 beim Download).
-
-Das Skript zeigt am Ende die **Geräte-URL-Tabelle** (Kassa, KDS, Kundendisplay,
-Kellner-Handy, …) mit der LAN-IP des PCs. **Update später:** dasselbe Skript einfach
-erneut ausführen (`.env`, Datenbank und alle Daten bleiben erhalten).
+</details>
 
 > Der Windows-Weg ist für **Test/Pilot** gedacht; für die endgültige Laden-Box wird
 > das Linux-Setup unten empfohlen (identische Container, robusterer Unterbau).
