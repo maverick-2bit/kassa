@@ -31,7 +31,7 @@ import { artikelApi, kategorieApi, posConfigApi, bonierdruckerApi } from '../lib
 import { getKasseIdentity } from '../lib/kasse'
 import { Button } from '../components/ui/Button'
 
-type Tab = 'warengruppen' | 'artikel' | 'favoriten' | 'zahlungsarten' | 'bonierdrucker'
+type Tab = 'warengruppen' | 'artikel' | 'favoriten' | 'zahlungsarten'
 
 const STARTSEITEN: { value: Startseite; label: string; beschreibung: string }[] = [
   { value: 'tische',          label: 'Tische',             beschreibung: 'Tischübersicht (Gastro)' },
@@ -683,90 +683,6 @@ const FARB_MAP: Record<string, string> = {
   pink:   '#ec4899',
 }
 
-// ---------------------------------------------------------------------------
-// Tab: Bonierdrucker-Auswahl pro Kasse
-// ---------------------------------------------------------------------------
-
-function TabBonierdrucker({ kasseId }: { kasseId: string }) {
-  const qc = useQueryClient()
-
-  const posQuery = useQuery({
-    queryKey: ['pos-config', kasseId],
-    queryFn:  () => posConfigApi.get(kasseId),
-  })
-  const druckerQuery = useQuery({
-    queryKey: ['bonierdrucker'],
-    queryFn:  bonierdruckerApi.list,
-  })
-
-  // Leere Auswahl = alle Drucker aktiv (abwärtskompatibel).
-  const [sichtbar, setSichtbar] = useState<Set<string>>(
-    () => new Set(posQuery.data?.sichtbareBonierdruckerIds ?? [])
-  )
-  useEffect(() => {
-    if (posQuery.data) setSichtbar(new Set(posQuery.data.sichtbareBonierdruckerIds))
-  }, [posQuery.data])
-
-  const mut = useMutation({
-    mutationFn: (ids: string[]) =>
-      posConfigApi.update(kasseId, { sichtbareBonierdruckerIds: ids }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['pos-config', kasseId] }),
-  })
-
-  const toggle = (id: string) => {
-    const next = new Set(sichtbar)
-    if (next.has(id)) next.delete(id); else next.add(id)
-    setSichtbar(next)
-    mut.mutate([...next])
-  }
-
-  const drucker = druckerQuery.data ?? []
-  const alleAktiv = sichtbar.size === 0
-
-  return (
-    <div className="space-y-4 max-w-md">
-      <p className="text-sm text-ink-muted">
-        Welche Bonierdrucker sind an dieser Kasse aktiv? Bonierbons werden nur an die
-        ausgewählten Drucker gesendet. Ist <strong>nichts</strong> ausgewählt, gelten
-        (wie bisher) alle Bonierdrucker.
-      </p>
-
-      {alleAktiv && (
-        <div className="rounded-md border border-brand-200 bg-brand-50 p-3 text-xs text-brand-700">
-          Keine Auswahl — es sind aktuell <strong>alle</strong> Bonierdrucker aktiv.
-        </div>
-      )}
-
-      {druckerQuery.isLoading ? (
-        <p className="text-sm text-ink-subtle">Laden…</p>
-      ) : drucker.length === 0 ? (
-        <p className="text-sm text-ink-subtle">Noch keine Bonierdrucker angelegt.</p>
-      ) : (
-        <div className="space-y-2">
-          {drucker.map(d => (
-            <label key={d.id} className="flex items-center gap-3 cursor-pointer rounded-xl border border-line bg-panel px-4 py-3 hover:bg-panel-2">
-              <input
-                type="checkbox"
-                checked={sichtbar.has(d.id)}
-                onChange={() => toggle(d.id)}
-                className="h-4 w-4 rounded border-line-strong text-brand-600 focus:ring-brand-500"
-              />
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-ink truncate">
-                  {d.name}
-                  {d.istBackup && <span className="ml-2 text-xs text-ink-subtle">(Backup)</span>}
-                  {!d.aktiv && <span className="ml-2 text-xs text-red-600">inaktiv</span>}
-                </p>
-                <p className="text-xs text-ink-subtle">{d.ip}:{d.port}</p>
-              </div>
-            </label>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
 export function PosKonfigPage() {
   const identity = getKasseIdentity()!
   const [aktuellerTab, setAktuellerTab] = useState<Tab>('warengruppen')
@@ -786,7 +702,6 @@ export function PosKonfigPage() {
     { key: 'artikel',       label: 'Artikel' },
     { key: 'favoriten',     label: 'Favoriten' },
     { key: 'zahlungsarten', label: 'Zahlungsarten' },
-    { key: 'bonierdrucker', label: 'Bonierdrucker' },
   ]
 
   const kategorien  = kategorienQuery.data ?? []
@@ -834,9 +749,6 @@ export function PosKonfigPage() {
           )}
           {aktuellerTab === 'zahlungsarten' && (
             <TabZahlungsarten kasseId={identity.kasseId} />
-          )}
-          {aktuellerTab === 'bonierdrucker' && (
-            <TabBonierdrucker kasseId={identity.kasseId} />
           )}
         </div>
       )}

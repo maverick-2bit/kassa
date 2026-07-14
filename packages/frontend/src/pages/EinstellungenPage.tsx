@@ -6,6 +6,8 @@ import { ALLE_STATIONEN, STATION_LABELS, type Station, type ZvtConfig, type Weit
 import { druckerApi, druckerPoolApi, kdsApi, seeApi, zvtApi, downloadDepExport, healthApi, monitoringApi, mandantApi, kasseApi, kategorieApi, artikelApi, posConfigApi, tischplanApi, dbBackupApi, belegApi, type DruckerConfig, type KdsConfig, type DbSicherungRow, type MonitoringStatus } from '../lib/api'
 import type { DruckerPool, DruckerPoolInput } from '@kassa/shared'
 import { Modal } from '../components/ui/Modal'
+import { BonierdruckerBibliothek } from '../components/BonierdruckerBibliothek'
+import { KassenDruckerZuordnung } from '../components/KassenDruckerZuordnung'
 import { formatAusfallDauer } from '../components/SeeStatusBanner'
 import { getKasseIdentity, setKasseIdentity } from '../lib/kasse'
 import { getAuth, hasModul, updateKasseBezeichnung, addKasse, removeKasse } from '../lib/auth'
@@ -1331,14 +1333,8 @@ function GastQrCodeSektion() {
 function DruckerSektion() {
   const identity    = getKasseIdentity()!
   const queryClient = useQueryClient()
-  const [belegModus, setBelegModus] = useState<DruckerConfig['belegModus']>('drucken')
-  const [meldung, setMeldung]   = useState<{ typ: 'ok' | 'fehler'; text: string } | null>(null)
+  const istGastro   = hasModul('gastro')
   const [logOffen, setLogOffen] = useState(false)
-
-  const cfgQuery = useQuery({
-    queryKey: ['drucker', identity.kasseId],
-    queryFn:  () => druckerApi.get(identity.kasseId),
-  })
 
   // Bondrucker-Bibliothek (mandantenweit)
   const poolQuery = useQuery({ queryKey: ['drucker-pool'], queryFn: () => druckerPoolApi.list() })
@@ -1349,118 +1345,36 @@ function DruckerSektion() {
     enabled:  logOffen,
   })
 
-  useEffect(() => {
-    if (cfgQuery.data) setBelegModus(cfgQuery.data.belegModus ?? 'drucken')
-  }, [cfgQuery.data])
-
-  const invalidateCfg = () => {
-    queryClient.invalidateQueries({ queryKey: ['drucker', identity.kasseId] })
-    queryClient.invalidateQueries({ queryKey: ['drucker', identity.kasseId, 'sektion'] })
-  }
-
-  // Belegausgabe (belegModus) speichern
-  const speichern = useMutation({
-    mutationFn: () => druckerApi.patch(identity.kasseId, { belegModus }),
-    onSuccess: () => { setMeldung({ typ: 'ok', text: 'Belegausgabe gespeichert' }); invalidateCfg() },
-    onError: (err) => setMeldung({ typ: 'fehler', text: err instanceof Error ? err.message : String(err) }),
-  })
-
-  // Drucker für diese Kasse auswählen (aus dem Pool)
-  const waehlen = useMutation({
-    mutationFn: (druckerId: string | null) => druckerApi.patch(identity.kasseId, { druckerId }),
-    onSuccess: () => { setMeldung(null); invalidateCfg() },
-    onError: (err) => setMeldung({ typ: 'fehler', text: err instanceof Error ? err.message : String(err) }),
-  })
-
-  const gewaehlterDrucker = poolQuery.data?.find(d => d.id === cfgQuery.data?.druckerId) ?? null
-  const istDigital = belegModus === 'digital'
-
   return (
     <section className="rounded-lg bg-panel shadow-sm border border-line p-6 space-y-5">
       <div>
-        <h2 className="text-base font-semibold text-ink">Bondrucker &amp; Belegausgabe</h2>
+        <h2 className="text-base font-semibold text-ink">Drucker</h2>
         <p className="text-sm text-ink-muted mt-0.5">
-          Rechnungsdrucker dieser Kasse — gewählt aus der Bondrucker-Bibliothek.
+          Alle Bondrucker{istGastro ? ' und Bonierdrucker' : ''} zentral anlegen und den Kassen zuordnen.
         </p>
       </div>
 
-      {cfgQuery.isLoading ? (
-        <p className="text-sm text-ink-muted">Konfiguration wird geladen…</p>
-      ) : (
-        <>
-          <Field label="Belegausgabe" hint="Wie der Kundenbeleg ausgegeben wird (Österreich: digitaler Beleg zulässig)">
-            <div className="flex gap-2">
-              <select
-                className="block w-full rounded-md border border-line-strong px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500/40"
-                value={belegModus}
-                onChange={(e) => setBelegModus(e.target.value as DruckerConfig['belegModus'])}
-              >
-                <option value="drucken">Nur drucken (Papier-Bon)</option>
-                <option value="digital">Nur digital (Beleg am Bildschirm + E-Mail)</option>
-                <option value="beides">Beides (Papier + Beleg am Bildschirm)</option>
-              </select>
-              <Button
-                onClick={() => { setMeldung(null); speichern.mutate() }}
-                loading={speichern.isPending}
-                disabled={belegModus === cfgQuery.data?.belegModus}
-              >
-                Speichern
-              </Button>
-            </div>
-          </Field>
+      {/* Bondrucker-Bibliothek (mandantenweit) */}
+      <DruckerBibliothek
+        drucker={poolQuery.data ?? []}
+        isLoading={poolQuery.isLoading}
+        onChanged={() => queryClient.invalidateQueries({ queryKey: ['drucker-pool'] })}
+        onCfgChanged={() => queryClient.invalidateQueries({ queryKey: ['drucker'] })}
+      />
 
-          <Field
-            label={istDigital ? 'Ausweich-Bondrucker (für „Nicht akzeptiert")' : 'Rechnung drucken auf'}
-            hint={istDigital
-              ? 'Wird nur gedruckt, wenn der Gast den digitalen Beleg ablehnt.'
-              : 'Aus der Bibliothek unten wählen. „— kein Drucker —" = diese Kasse druckt nicht.'}
-          >
-            <select
-              className="block w-full rounded-md border border-line-strong px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500/40"
-              value={cfgQuery.data?.druckerId ?? ''}
-              disabled={waehlen.isPending}
-              onChange={(e) => waehlen.mutate(e.target.value || null)}
-            >
-              <option value="">— kein Drucker —</option>
-              {(poolQuery.data ?? []).map(d => (
-                <option key={d.id} value={d.id}>
-                  {d.name} ({d.ip}){d.aktiv ? '' : ' — deaktiviert'}
-                </option>
-              ))}
-            </select>
-          </Field>
+      {/* Bonierdrucker-Bibliothek (nur Gastro) */}
+      {istGastro && (
+        <div className="border-t border-line pt-4">
+          <BonierdruckerBibliothek />
+        </div>
+      )}
 
-          {gewaehlterDrucker && (
-            <p className="text-xs text-ink-muted -mt-2">
-              Aktiv: <span className="font-medium text-ink">{gewaehlterDrucker.name}</span> ·
-              {' '}{gewaehlterDrucker.ip}:{gewaehlterDrucker.port} · {gewaehlterDrucker.breite} Zeichen
-            </p>
-          )}
+      {/* Zentrale Kassen-Zuordnung (Belegausgabe + Bondrucker + Bonierdrucker je Kasse) */}
+      <div className="border-t border-line pt-4">
+        <KassenDruckerZuordnung />
+      </div>
 
-          {(belegModus === 'digital' || belegModus === 'beides') && (
-            <p className="rounded-md border border-line bg-panel-2 px-3 py-2 text-xs text-ink-muted">
-              Digitaler Beleg: nach der Zahlung wird der vollständige Beleg (inkl. RKSV-QR) am
-              Kassen- und Kundendisplay-Bildschirm angezeigt — der Gast fotografiert ihn ab oder
-              erhält ihn per E-Mail. Es wird nichts ins Internet übertragen.
-            </p>
-          )}
-
-          {/* Bondrucker-Bibliothek (mandantenweit) */}
-          <DruckerBibliothek
-            drucker={poolQuery.data ?? []}
-            isLoading={poolQuery.isLoading}
-            onChanged={() => queryClient.invalidateQueries({ queryKey: ['drucker-pool'] })}
-            onCfgChanged={invalidateCfg}
-          />
-
-          {meldung && (
-            <div className={`rounded-md p-3 text-sm ${
-              meldung.typ === 'ok'
-                ? 'bg-green-50 border border-green-200 text-green-700'
-                : 'bg-red-50 border border-red-200 text-red-700'
-            }`}>{meldung.text}</div>
-          )}
-
+      <>
           <div className="flex flex-wrap gap-2 pt-2 border-t border-line">
             <button
               type="button"
@@ -1513,7 +1427,6 @@ function DruckerSektion() {
             </div>
           )}
         </>
-      )}
     </section>
   )
 }
