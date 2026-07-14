@@ -4,3 +4,4 @@ ops/backup/restic-backup.sh text eol=lf
 
 # Compose-Dateien LF erzwingen (Inline-Shell in Services darf kein CRLF tragen).
 docker-compose*.yml text eol=lf
+*.cmd -text
