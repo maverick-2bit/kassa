@@ -53,8 +53,12 @@ COPY --from=builder /standalone/node_modules ./node_modules
 # … gebauter Code …
 COPY --from=builder /app/packages/backend/dist ./dist
 
-# … und Datenbank-Migrationen (werden beim Start automatisch eingespielt)
+# … Datenbank-Migrationen (werden beim Start automatisch eingespielt) …
 COPY --from=builder /app/packages/backend/drizzle ./drizzle
+
+# … und die package.json: health-/monitoring-Route lesen daraus zur Laufzeit
+# die Version (require('../../package.json') relativ zu /app/dist/routes → /app)
+COPY --from=builder /app/packages/backend/package.json ./package.json
 
 # Nicht als root laufen
 USER node
