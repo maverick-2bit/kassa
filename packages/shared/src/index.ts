@@ -227,6 +227,18 @@ export type {
   FavoritenReihenfolgeUpdate,
 } from './schemas/bonierdrucker.js'
 
+// Bondrucker-Bibliothek (mandantenweiter Pool)
+export {
+  DruckerPoolSchema,
+  DruckerPoolInputSchema,
+  DruckerPoolUpdateSchema,
+} from './schemas/drucker-pool.js'
+export type {
+  DruckerPool,
+  DruckerPoolInput,
+  DruckerPoolUpdate,
+} from './schemas/drucker-pool.js'
+
 // Lagerstand (Wareneingang / Inventur)
 export {
   LagerstandEintragSchema,
