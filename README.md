@@ -21,6 +21,9 @@
 
 Eine Box im Laden aufsetzen (alle Container, Autostart, Backup, optional HTTPS):
 siehe **[ops/DEPLOYMENT.md](ops/DEPLOYMENT.md)**.
+Für einen **Windows-Test-PC** gibt es den Ein-Befehl-Installer
+**[ops/install.ps1](ops/install.ps1)** (Docker Desktop vorausgesetzt — Details im
+Deployment-Handbuch).
 
 ## Lokale Entwicklung
 
