@@ -97,7 +97,6 @@ function baueNavGruppen(): NavGruppe[] {
       wenn(b('einstellungen'),                    '/einstellungen',     'Einstellungen'),
       wenn(b('einstellungen'),                    '/pos-konfiguration', 'POS-Konfig'),
       wenn(b('einstellungen'),                    '/kassen-startseite', 'Startseiten'),
-      wenn(b('einstellungen') && m('gastro'),     '/bonierdrucker',     'Bonierdrucker'),
       wenn(b('einstellungen'),                    '/dep-export',        'DEP-Export'),
       wenn(b('einstellungen'),                    '/bmd-export',        'BMD-Export'),
       wenn(b('einstellungen'),                    '/werbefolien',       'Werbefolien'),
