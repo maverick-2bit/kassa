@@ -45,6 +45,7 @@ function toDto(row: typeof artikel.$inferSelect): Artikel {
     reihenfolge:          row.reihenfolge,
     favoritenReihenfolge: row.favoritenReihenfolge,
     bonierdruckerId:      row.bonierdruckerId,
+    bonierBeiDirektverkauf: row.bonierBeiDirektverkauf,
     lieferantId:          row.lieferantId,
     terminalSichtbar:     row.terminalSichtbar,
     ...(row.bild != null  && { bild: row.bild }),
@@ -68,6 +69,7 @@ export async function erstelleArtikel(db: Db, input: ArtikelInput): Promise<Arti
     seriennummernAktiv: input.seriennummernAktiv ?? false,
     istFavorit:      input.istFavorit ?? false,
     bonierdruckerId: input.bonierdruckerId ?? null,
+    bonierBeiDirektverkauf: input.bonierBeiDirektverkauf ?? false,
     terminalSichtbar: input.terminalSichtbar ?? null,
     ...(input.bild != null && { bild: input.bild }),
   }).returning()
@@ -114,6 +116,7 @@ export async function aktualisiereArtikel(
   if (update.reihenfolge          !== undefined) values.reihenfolge          = update.reihenfolge
   if (update.favoritenReihenfolge !== undefined) values.favoritenReihenfolge = update.favoritenReihenfolge
   if (update.bonierdruckerId      !== undefined) values.bonierdruckerId      = update.bonierdruckerId
+  if (update.bonierBeiDirektverkauf !== undefined) values.bonierBeiDirektverkauf = update.bonierBeiDirektverkauf
   if (update.terminalSichtbar     !== undefined) values.terminalSichtbar     = update.terminalSichtbar
   if (update.bild                 !== undefined) values.bild                 = update.bild ?? null
 

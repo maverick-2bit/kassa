@@ -130,12 +130,13 @@ function baueBonierbon(tischNummer: string, kellner: string, zeilen: Bonierdruck
   add(`${kellner}  ${new Date().toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' })}\n`)
   add('--------------------------------\n')
   add([ESC, 0x61, 0x00])
+  // Artikel groß + fett (fett 0x08 + doppelte Höhe 0x10 = 0x18) für gute Lesbarkeit
+  // in der Küche. Preis entfällt (küchenirrelevant) — Fokus auf Menge + Bezeichnung.
+  add([ESC, 0x21, 0x18])
   for (const z of zeilen) {
-    const links  = `${z.menge}x ${z.bezeichnung}`
-    const rechts = z.preisLabel
-    const leer   = Math.max(1, 32 - links.length - rechts.length)
-    add(`${links}${' '.repeat(leer)}${rechts}\n`)
+    add(`${z.menge}x ${z.bezeichnung}\n`)
   }
+  add([ESC, 0x21, 0x00])
   add('--------------------------------\n')
   add(ep.cut())   // Vorschub (4 Zeilen) + Schnitt — sonst bleibt der Bon im Gerät stecken
   return Buffer.concat(parts)

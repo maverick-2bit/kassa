@@ -379,6 +379,7 @@ function parseZeile(
       mindestbestand,
       seriennummernAktiv: false,
       terminalSichtbar: null,
+      bonierBeiDirektverkauf: false,
     },
   }
 }
