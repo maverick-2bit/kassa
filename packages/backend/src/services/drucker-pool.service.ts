@@ -12,6 +12,7 @@ import type { DruckerPool, DruckerPoolInput, DruckerPoolUpdate } from '@kassa/sh
 import type { Db } from '../db/client.js'
 import { drucker, kassen } from '../db/schema.js'
 import { sendBytes } from './drucker.service.js'
+import * as ep from './escpos/commands.js'
 
 function toDto(row: typeof drucker.$inferSelect): DruckerPool {
   return {
@@ -139,15 +140,12 @@ export async function waehleDruckerFuerKasse(
 
 export async function testdruckDrucker(ip: string, port: number, timeoutSek = 5): Promise<void> {
   const ESC = 0x1b
-  const GS  = 0x1d
-  const bon = Buffer.from([
-    ESC, 0x40,               // Reset
-    ESC, 0x61, 0x01,         // zentriert
-    ESC, 0x21, 0x38,         // fett + doppelt
-    ...Buffer.from('TESTDRUCK\n', 'utf8'),
-    ESC, 0x21, 0x00,
-    ...Buffer.from('Bondrucker ist erreichbar.\n\n', 'utf8'),
-    GS, 0x56, 0x42, 0x00,    // Feed + Cut
+  const bon = Buffer.concat([
+    Buffer.from([ESC, 0x40, ESC, 0x61, 0x01, ESC, 0x21, 0x38]),  // Reset, zentriert, fett+doppelt
+    Buffer.from('TESTDRUCK\n', 'utf8'),
+    Buffer.from([ESC, 0x21, 0x00, ESC, 0x61, 0x00]),             // normal, linksbündig
+    Buffer.from('Bondrucker ist erreichbar.\n', 'utf8'),
+    ep.cut(),                                                     // Vorschub (4 Zeilen) + Schnitt
   ])
   // Über den bewährten sendBytes-Pfad: schreiben, flushen, dann sauber schließen
   // (socket.end statt destroy) — sonst verwirft der Drucker die Bytes.
