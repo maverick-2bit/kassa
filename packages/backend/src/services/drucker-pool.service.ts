@@ -8,10 +8,10 @@
  */
 
 import { and, asc, eq } from 'drizzle-orm'
-import net from 'net'
 import type { DruckerPool, DruckerPoolInput, DruckerPoolUpdate } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import { drucker, kassen } from '../db/schema.js'
+import { sendBytes } from './drucker.service.js'
 
 function toDto(row: typeof drucker.$inferSelect): DruckerPool {
   return {
@@ -137,25 +137,19 @@ export async function waehleDruckerFuerKasse(
 // Testdruck (minimaler ESC/POS-Bon direkt an IP:Port)
 // ---------------------------------------------------------------------------
 
-export function testdruckDrucker(ip: string, port: number, timeoutSek = 5): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const socket = new net.Socket()
-    const ESC = 0x1b
-    const GS  = 0x1d
-    const bon = Buffer.from([
-      ESC, 0x40,               // Reset
-      ESC, 0x61, 0x01,         // zentriert
-      ESC, 0x21, 0x38,         // fett + doppelt
-      ...Buffer.from('TESTDRUCK\n', 'utf8'),
-      ESC, 0x21, 0x00,
-      ...Buffer.from('Bondrucker ist erreichbar.\n\n', 'utf8'),
-      GS, 0x56, 0x42, 0x00,    // Feed + Cut
-    ])
-    socket.setTimeout(timeoutSek * 1000)
-    socket.connect(port, ip, () => {
-      socket.write(bon, () => { socket.destroy(); resolve() })
-    })
-    socket.on('timeout', () => { socket.destroy(); reject(new Error('Timeout')) })
-    socket.on('error', (err) => reject(err))
-  })
+export async function testdruckDrucker(ip: string, port: number, timeoutSek = 5): Promise<void> {
+  const ESC = 0x1b
+  const GS  = 0x1d
+  const bon = Buffer.from([
+    ESC, 0x40,               // Reset
+    ESC, 0x61, 0x01,         // zentriert
+    ESC, 0x21, 0x38,         // fett + doppelt
+    ...Buffer.from('TESTDRUCK\n', 'utf8'),
+    ESC, 0x21, 0x00,
+    ...Buffer.from('Bondrucker ist erreichbar.\n\n', 'utf8'),
+    GS, 0x56, 0x42, 0x00,    // Feed + Cut
+  ])
+  // Über den bewährten sendBytes-Pfad: schreiben, flushen, dann sauber schließen
+  // (socket.end statt destroy) — sonst verwirft der Drucker die Bytes.
+  await sendBytes(bon, { ip, port, breite: 42, timeoutMs: timeoutSek * 1000 })
 }

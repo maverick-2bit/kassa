@@ -18,6 +18,7 @@ import {
   loescheBonierdrucker,
   testdruckBonierdrucker,
 } from '../services/bonierdrucker.service.js'
+import { aktualisiereStatus, getDruckerStatus } from '../services/drucker.service.js'
 import { bonierdrucker } from '../db/schema.js'
 import { and, eq } from 'drizzle-orm'
 
@@ -78,5 +79,25 @@ export const bonierdruckerRoute: FastifyPluginAsync<BonierdruckerRouteOptions> =
     } catch (err) {
       return reply.send({ erfolgreich: false, fehler: err instanceof Error ? err.message : 'Verbindungsfehler' })
     }
+  })
+
+  // Online-Status (TCP-Erreichbarkeit), 30s-Cache
+  fastify.get('/bonierdrucker/:id/status', { onRequest: [fastify.authenticate] }, async (request, reply) => {
+    const id = IdParam.safeParse(request.params)
+    if (!id.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
+
+    const [row] = await opts.db
+      .select({ ip: bonierdrucker.ip, port: bonierdrucker.port })
+      .from(bonierdrucker)
+      .where(and(eq(bonierdrucker.id, id.data.id), eq(bonierdrucker.mandantId, request.user.mandantId)))
+      .limit(1)
+    if (!row) return reply.status(404).send({ fehler: 'Bonierdrucker nicht gefunden' })
+
+    const cached = getDruckerStatus(row.ip, row.port)
+    if (cached && Date.now() - cached.geprüftAm.getTime() < 30_000) {
+      return reply.send({ online: cached.online, geprüftAm: cached.geprüftAm })
+    }
+    const online = await aktualisiereStatus(row.ip, row.port)
+    return reply.send({ online, geprüftAm: new Date() })
   })
 }

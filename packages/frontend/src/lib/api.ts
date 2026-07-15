@@ -492,6 +492,8 @@ export const bonierdruckerApi = {
     request<void>('DELETE', `/api/bonierdrucker/${id}`),
   test:   (id: string) =>
     request<{ erfolgreich: boolean; fehler?: string }>('POST', `/api/bonierdrucker/${id}/test`),
+  status: (id: string) =>
+    request<DruckerStatus>('GET', `/api/bonierdrucker/${id}/status`),
 }
 
 // ---------------------------------------------------------------------------
@@ -509,6 +511,8 @@ export const druckerPoolApi = {
     request<void>('DELETE', `/api/drucker/${id}`),
   test:   (id: string) =>
     request<{ erfolgreich: boolean; fehler?: string }>('POST', `/api/drucker/${id}/test`),
+  status: (id: string) =>
+    request<DruckerStatus>('GET', `/api/drucker/${id}/status`),
 }
 
 // ---------------------------------------------------------------------------

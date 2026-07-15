@@ -45,9 +45,12 @@ interface DruckerStatus {
 
 const statusCache = new Map<string, DruckerStatus>()
 
+/** Cache-Schlüssel: ip:port — zwei Drucker können dieselbe IP mit anderem Port haben. */
+const statusKey = (ip: string, port: number) => `${ip}:${port}`
+
 /** Gibt den letzten bekannten Status zurück (oder undefined wenn noch nie geprüft) */
-export function getDruckerStatus(ip: string): DruckerStatus | undefined {
-  return statusCache.get(ip)
+export function getDruckerStatus(ip: string, port: number): DruckerStatus | undefined {
+  return statusCache.get(statusKey(ip, port))
 }
 
 /** Alle gecachten Status-Einträge (für Status-Endpoint) */
@@ -79,7 +82,7 @@ async function prüfeVerbindung(ip: string, port: number, timeoutMs = 3000): Pro
 /** Drucker-Status prüfen und Cache aktualisieren */
 export async function aktualisiereStatus(ip: string, port: number): Promise<boolean> {
   const online = await prüfeVerbindung(ip, port)
-  statusCache.set(ip, { online, geprüftAm: new Date() })
+  statusCache.set(statusKey(ip, port), { online, geprüftAm: new Date() })
   return online
 }
 
@@ -119,7 +122,7 @@ function planRetry(job: RetryJob): void {
     job.logger.warn?.({ ip: job.config.ip, versuch: job.versuch + 1 }, `Drucker-Retry Versuch ${job.versuch + 1}`)
     try {
       await sendBytes(job.bytes, job.config)
-      statusCache.set(job.config.ip, { online: true, geprüftAm: new Date() })
+      statusCache.set(statusKey(job.config.ip, job.config.port), { online: true, geprüftAm: new Date() })
       void job.logFn?.(true)
     } catch {
       planRetry({ ...job, versuch: job.versuch + 1 })
@@ -142,7 +145,7 @@ export async function sendBytes(bytes: Buffer, config: DruckerConfig): Promise<v
       if (settled) return
       settled = true
       socket.destroy()
-      statusCache.set(config.ip, { online: false, geprüftAm: new Date() })
+      statusCache.set(statusKey(config.ip, config.port), { online: false, geprüftAm: new Date() })
       reject(err)
     }
 
@@ -150,7 +153,7 @@ export async function sendBytes(bytes: Buffer, config: DruckerConfig): Promise<v
       if (settled) return
       settled = true
       socket.end()
-      statusCache.set(config.ip, { online: true, geprüftAm: new Date() })
+      statusCache.set(statusKey(config.ip, config.port), { online: true, geprüftAm: new Date() })
       resolve()
     }
 
