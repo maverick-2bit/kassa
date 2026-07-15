@@ -18,6 +18,7 @@ import {
   loescheDrucker,
   testdruckDrucker,
 } from '../services/drucker-pool.service.js'
+import { aktualisiereStatus, getDruckerStatus } from '../services/drucker.service.js'
 import { drucker } from '../db/schema.js'
 import { and, eq } from 'drizzle-orm'
 
@@ -78,5 +79,25 @@ export const druckerPoolRoute: FastifyPluginAsync<DruckerPoolRouteOptions> = asy
     } catch (err) {
       return reply.send({ erfolgreich: false, fehler: err instanceof Error ? err.message : 'Verbindungsfehler' })
     }
+  })
+
+  // Online-Status (TCP-Erreichbarkeit), 30s-Cache
+  fastify.get('/drucker/:id/status', { onRequest: [fastify.authenticate] }, async (request, reply) => {
+    const id = IdParam.safeParse(request.params)
+    if (!id.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
+
+    const [row] = await opts.db
+      .select({ ip: drucker.ip, port: drucker.port })
+      .from(drucker)
+      .where(and(eq(drucker.id, id.data.id), eq(drucker.mandantId, request.user.mandantId)))
+      .limit(1)
+    if (!row) return reply.status(404).send({ fehler: 'Drucker nicht gefunden' })
+
+    const cached = getDruckerStatus(row.ip, row.port)
+    if (cached && Date.now() - cached.geprüftAm.getTime() < 30_000) {
+      return reply.send({ online: cached.online, geprüftAm: cached.geprüftAm })
+    }
+    const online = await aktualisiereStatus(row.ip, row.port)
+    return reply.send({ online, geprüftAm: new Date() })
   })
 }

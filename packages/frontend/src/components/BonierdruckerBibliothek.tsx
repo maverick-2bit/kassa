@@ -14,6 +14,7 @@ import { Button } from './ui/Button'
 import { Modal } from './ui/Modal'
 import { Field } from './ui/Field'
 import { Input } from './ui/Input'
+import { DruckerStatusLed } from './DruckerStatusLed'
 
 type FormValues = { name: string; ip: string; port: string; istBackup: boolean }
 
@@ -150,6 +151,7 @@ export function BonierdruckerBibliothek() {
                   </p>
                   <p className="text-xs text-ink-muted font-mono">{d.ip}:{d.port}</p>
                 </div>
+                <DruckerStatusLed druckerId={d.id} fetchStatus={bonierdruckerApi.status} />
                 <div className="flex items-center gap-1.5 shrink-0">
                   <button onClick={() => handleTest(d)} disabled={status === 'loading'}
                     className={`text-xs px-2 py-1 rounded border transition ${

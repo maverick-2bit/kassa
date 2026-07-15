@@ -4,10 +4,10 @@
  */
 
 import { and, asc, eq } from 'drizzle-orm'
-import net from 'net'
 import type { Bonierdrucker, BonierdruckerInput, BonierdruckerUpdate } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import { bonierdrucker } from '../db/schema.js'
+import { sendBytes } from './drucker.service.js'
 
 function toDto(row: typeof bonierdrucker.$inferSelect): Bonierdrucker {
   return {
@@ -87,37 +87,21 @@ export async function loescheBonierdrucker(
 // Testdruck
 // ---------------------------------------------------------------------------
 
-/** Sendet einen minimalen ESC/POS-Testbon an den Drucker. */
-export function testdruckBonierdrucker(ip: string, port: number): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const socket = new net.Socket()
-    const timeout = 5000
-
-    const ESC = 0x1b
-    const GS  = 0x1d
-
-    const bon = Buffer.from([
-      // ESC @ — Reset
-      ESC, 0x40,
-      // ESC ! 0x38 — fett + doppelt
-      ESC, 0x21, 0x38,
-      ...Buffer.from('  TESTDRUCK\n', 'utf8'),
-      ESC, 0x21, 0x00,
-      ...Buffer.from('Bonierdrucker ist erreichbar.\n\n', 'utf8'),
-      // Feed + Cut
-      GS, 0x56, 0x42, 0x00,
-    ])
-
-    socket.setTimeout(timeout)
-    socket.connect(port, ip, () => {
-      socket.write(bon, () => {
-        socket.destroy()
-        resolve()
-      })
-    })
-    socket.on('timeout', () => { socket.destroy(); reject(new Error('Timeout')) })
-    socket.on('error', (err) => reject(err))
-  })
+/** Sendet einen minimalen ESC/POS-Testbon an den Drucker (über den bewährten
+ *  sendBytes-Pfad mit sauberem socket.end statt destroy — sonst verwirft der
+ *  Drucker die gerade gesendeten Bytes). */
+export async function testdruckBonierdrucker(ip: string, port: number): Promise<void> {
+  const ESC = 0x1b
+  const GS  = 0x1d
+  const bon = Buffer.from([
+    ESC, 0x40,
+    ESC, 0x21, 0x38,
+    ...Buffer.from('  TESTDRUCK\n', 'utf8'),
+    ESC, 0x21, 0x00,
+    ...Buffer.from('Bonierdrucker ist erreichbar.\n\n', 'utf8'),
+    GS, 0x56, 0x42, 0x00,
+  ])
+  await sendBytes(bon, { ip, port, breite: 42, timeoutMs: 5000 })
 }
 
 // ---------------------------------------------------------------------------
@@ -160,15 +144,9 @@ function baueBonierbon(tischNummer: string, kellner: string, zeilen: Bonierdruck
 }
 
 function sendTcp(ip: string, port: number, bon: Buffer): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const socket = new net.Socket()
-    socket.setTimeout(5000)
-    socket.connect(port, ip, () => {
-      socket.write(bon, () => { socket.destroy(); resolve() })
-    })
-    socket.on('timeout', () => { socket.destroy(); reject(new Error('Timeout')) })
-    socket.on('error', (err) => reject(err))
-  })
+  // sendBytes schließt die Verbindung sauber (flush + socket.end); ein abruptes
+  // socket.destroy() direkt nach dem Schreiben verwirft die Bytes am Drucker.
+  return sendBytes(bon, { ip, port, breite: 42, timeoutMs: 5000 })
 }
 
 /**

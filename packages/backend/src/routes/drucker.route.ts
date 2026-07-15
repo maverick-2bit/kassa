@@ -120,7 +120,7 @@ export const druckerRoute: FastifyPluginAsync<DruckerRouteOptions> = async (fast
     }
 
     // Cache nutzen wenn < 30s alt
-    const cached = getDruckerStatus(kasse.druckerIp)
+    const cached = getDruckerStatus(kasse.druckerIp, kasse.druckerPort)
     if (cached && Date.now() - cached.geprüftAm.getTime() < 30_000) {
       return reply.send({ online: cached.online, geprüftAm: cached.geprüftAm })
     }

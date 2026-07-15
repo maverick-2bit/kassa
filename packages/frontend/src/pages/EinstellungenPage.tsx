@@ -8,6 +8,7 @@ import type { DruckerPool, DruckerPoolInput } from '@kassa/shared'
 import { Modal } from '../components/ui/Modal'
 import { BonierdruckerBibliothek } from '../components/BonierdruckerBibliothek'
 import { KassenDruckerZuordnung } from '../components/KassenDruckerZuordnung'
+import { DruckerStatusLed } from '../components/DruckerStatusLed'
 import { formatAusfallDauer } from '../components/SeeStatusBanner'
 import { getKasseIdentity, setKasseIdentity } from '../lib/kasse'
 import { getAuth, hasModul, updateKasseBezeichnung, addKasse, removeKasse } from '../lib/auth'
@@ -1503,6 +1504,7 @@ function DruckerBibliothek({ drucker, isLoading, onChanged, onCfgChanged }: {
                   {testMeldung[d.id] && <span className={`ml-2 ${testMeldung[d.id]?.startsWith('✓') ? 'text-green-700' : 'text-red-700'}`}>{testMeldung[d.id]}</span>}
                 </p>
               </div>
+              <DruckerStatusLed druckerId={d.id} fetchStatus={druckerPoolApi.status} />
               <div className="flex items-center gap-1.5 shrink-0">
                 <button type="button" onClick={() => testen.mutate(d.id)} disabled={testen.isPending}
                   className="text-xs px-2 py-1 rounded border border-line-strong text-ink hover:border-brand-400 disabled:opacity-50">Testdruck</button>
