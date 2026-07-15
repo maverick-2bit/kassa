@@ -31,8 +31,9 @@ describe('ESC/POS Commands', () => {
     expect(b[2]).toBe(0b0001_1000)
   })
 
-  it('cut liefert GS V', () => {
-    expect(ep.cut()).toEqual(Buffer.from([0x1D, 0x56, 0x42, 3]))
+  it('cut schiebt genug vor (4 Zeilen) und schneidet dann (GS V 66 0)', () => {
+    // Kopf-zu-Messer-Abstand: ohne Vorschub bleibt das Bon-Ende im Gerät stecken.
+    expect(ep.cut()).toEqual(Buffer.from([0x0a, 0x0a, 0x0a, 0x0a, 0x1D, 0x56, 0x42, 0]))
   })
 
   it('selectCodepage 19 (CP858)', () => {
@@ -138,9 +139,9 @@ describe('baueBon()', () => {
     expect(bytes.includes(Buffer.from('ATU12345678'))).toBe(true)
     // Enthält QR-Code-Inhalt
     expect(bytes.includes(Buffer.from('_R1-AT_KASSE-001'))).toBe(true)
-    // Endet mit Cut-Command (GS V 66 3)
-    const cutCmd = Buffer.from([0x1D, 0x56, 0x42, 3])
-    expect(bytes.subarray(bytes.length - 4)).toEqual(cutCmd)
+    // Endet mit Vorschub (4×LF) + Cut-Command (GS V 66 0)
+    const cutCmd = Buffer.from([0x0a, 0x0a, 0x0a, 0x0a, 0x1D, 0x56, 0x42, 0])
+    expect(bytes.subarray(bytes.length - cutCmd.length)).toEqual(cutCmd)
   })
 
   it('produziert auch Bon für Nullbeleg (leere Positionen)', () => {

@@ -68,10 +68,13 @@ export function newline(n = 1): Buffer {
   return Buffer.from(Array(n).fill(LF))
 }
 
-/** Drucker schneiden (Papier-Schnitt) */
+/** Drucker schneiden (Papier-Schnitt) mit ausreichendem Vorschub.
+ *  WICHTIG: Bei der TM-T20IV sitzt der Druckkopf ~12–13 mm VOR dem Messer.
+ *  Wird zu wenig vorgeschoben, bleibt das Bon-Ende im Gerät stecken (der Bon
+ *  „kommt nicht raus"). Darum erst 4 Zeilen (~17 mm) vorschieben, dann Teil-Schnitt
+ *  (GS V 66 0). GS V 66 n zählt n in PUNKTEN, nicht Zeilen — daher explizite LFs. */
 export function cut(): Buffer {
-  // GS V 66 3 — Cut mit 3 Zeilen Vorschub
-  return Buffer.from([GS, 0x56, 0x42, 3])
+  return Buffer.concat([newline(4), Buffer.from([GS, 0x56, 0x42, 0])])
 }
 
 /** Kassalade öffnen (Drawer-Kick auf Pin 2 oder 5) */

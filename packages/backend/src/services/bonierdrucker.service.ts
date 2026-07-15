@@ -8,6 +8,7 @@ import type { Bonierdrucker, BonierdruckerInput, BonierdruckerUpdate } from '@ka
 import type { Db } from '../db/client.js'
 import { bonierdrucker } from '../db/schema.js'
 import { sendBytes } from './drucker.service.js'
+import * as ep from './escpos/commands.js'
 
 function toDto(row: typeof bonierdrucker.$inferSelect): Bonierdrucker {
   return {
@@ -92,14 +93,12 @@ export async function loescheBonierdrucker(
  *  Drucker die gerade gesendeten Bytes). */
 export async function testdruckBonierdrucker(ip: string, port: number): Promise<void> {
   const ESC = 0x1b
-  const GS  = 0x1d
-  const bon = Buffer.from([
-    ESC, 0x40,
-    ESC, 0x21, 0x38,
-    ...Buffer.from('  TESTDRUCK\n', 'utf8'),
-    ESC, 0x21, 0x00,
-    ...Buffer.from('Bonierdrucker ist erreichbar.\n\n', 'utf8'),
-    GS, 0x56, 0x42, 0x00,
+  const bon = Buffer.concat([
+    Buffer.from([ESC, 0x40, ESC, 0x61, 0x01, ESC, 0x21, 0x38]),  // Reset, zentriert, fett+doppelt
+    Buffer.from('TESTDRUCK\n', 'utf8'),
+    Buffer.from([ESC, 0x21, 0x00, ESC, 0x61, 0x00]),             // normal, linksbündig
+    Buffer.from('Bonierdrucker ist erreichbar.\n', 'utf8'),
+    ep.cut(),                                                     // Vorschub (4 Zeilen) + Schnitt
   ])
   await sendBytes(bon, { ip, port, breite: 42, timeoutMs: 5000 })
 }
