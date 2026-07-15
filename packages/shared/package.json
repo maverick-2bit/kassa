@@ -1,6 +1,6 @@
 {
   "name": "@kassa/shared",
-  "version": "0.7.77",
+  "version": "0.7.78",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
