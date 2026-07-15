@@ -10,7 +10,7 @@ import { describe, it, expect, afterEach } from 'vitest'
 import net from 'net'
 import { sendBytes } from '../../src/services/drucker.service.js'
 import { testdruckDrucker } from '../../src/services/drucker-pool.service.js'
-import { testdruckBonierdrucker } from '../../src/services/bonierdrucker.service.js'
+import { testdruckBonierdrucker, druckeBonierbonDirekt } from '../../src/services/bonierdrucker.service.js'
 
 let server: net.Server | null = null
 
@@ -63,6 +63,20 @@ describe('Drucker-Sendepfad überträgt Bytes vollständig', () => {
     const buf = empfangen()
     expect(buf.toString('latin1')).toContain('TESTDRUCK')
     expect(buf.includes(Buffer.from([0x1d, 0x56, 0x42, 0x00]))).toBe(true)
+  })
+
+  it('druckeBonierbonDirekt sendet den Bonierbon mit genug Vorschub + Cut', async () => {
+    const { port, empfangen } = await fakeDrucker()
+    await druckeBonierbonDirekt('127.0.0.1', port, '5', 'Chef', [
+      { menge: 2, bezeichnung: 'Pommes', preisLabel: '5,00' },
+    ])
+    await new Promise((r) => setTimeout(r, 50))
+    const buf = empfangen()
+    expect(buf.toString('latin1')).toContain('Pommes')
+    expect(buf.includes(Buffer.from([0x1d, 0x56, 0x42, 0x00]))).toBe(true)  // GS V B 0 = Cut
+    const cutIdx = buf.indexOf(Buffer.from([0x1d, 0x56, 0x42, 0x00]))
+    const lfVorCut = buf.subarray(0, cutIdx).filter((b) => b === 0x0a).length
+    expect(lfVorCut).toBeGreaterThanOrEqual(4)  // sonst bleibt der Bon im Gerät stecken
   })
 
   it('meldet Fehler wenn der Drucker nicht erreichbar ist (kein falscher Erfolg)', async () => {

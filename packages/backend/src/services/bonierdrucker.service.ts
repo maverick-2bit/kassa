@@ -116,7 +116,6 @@ export interface BonierdruckZeile {
 /** Baut den ESC/POS-Buffer für einen Bonierbon zusammen. */
 function baueBonierbon(tischNummer: string, kellner: string, zeilen: BonierdruckZeile[]): Buffer {
   const ESC = 0x1b
-  const GS  = 0x1d
   const parts: Buffer[] = []
   const add = (data: number[] | Buffer | string) => {
     if (typeof data === 'string') parts.push(Buffer.from(data, 'utf8'))
@@ -138,7 +137,7 @@ function baueBonierbon(tischNummer: string, kellner: string, zeilen: Bonierdruck
     add(`${links}${' '.repeat(leer)}${rechts}\n`)
   }
   add('--------------------------------\n')
-  add([GS, 0x56, 0x42, 0x00])
+  add(ep.cut())   // Vorschub (4 Zeilen) + Schnitt — sonst bleibt der Bon im Gerät stecken
   return Buffer.concat(parts)
 }
 
