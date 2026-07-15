@@ -12,6 +12,7 @@ import {
   MonatsbelegInputSchema,
   JahresbelegInputSchema,
   TagesabschlussQuerySchema,
+  type BarzahlungsbelegInput,
 } from '@kassa/shared'
 import {
   erstelleBarzahlungsbeleg,
@@ -35,11 +36,12 @@ import {
   TagesabschlussError,
 } from '../services/tagesabschluss.service.js'
 import { tryDruckeBeleg, druckerConfigVonKasse, sendBytes } from '../services/drucker.service.js'
+import { bonierBestellung } from '../services/bonier.service.js'
 import { baueZBon, baueKassensturzBon } from '../services/escpos/layout.js'
 import { listeKassenbuchBuchungen } from '../services/kassenbuch.service.js'
 import { pruefeKasseGehoertZuMandant } from '../auth/scope.js'
-import { eq } from 'drizzle-orm'
-import { kassen, mandanten } from '../db/schema.js'
+import { and, eq, inArray } from 'drizzle-orm'
+import { artikel, kassen, kategorien, mandanten } from '../db/schema.js'
 import type { Config } from '../config.js'
 import { isEmailAktiv, sendeTagesabschlussEmail } from '../services/email.service.js'
 
@@ -76,12 +78,14 @@ async function fuehreAus<T extends { id: string }>(
   deps:    BelegServiceDeps,
   fn:      () => Promise<T>,
   successStatus = 201,
-  opts?:   { skipAutodruck?: boolean },
+  opts?:   { skipAutodruck?: boolean; onErstellt?: (result: T) => void },
 ): Promise<unknown> {
   try {
     const result = await fn()
     // „Alternativdruck" unterdrückt den Auto-Druck — die Ausgabe wählt der Kassier im Dialog.
     if (!opts?.skipAutodruck) tryDruckeBeleg(deps.db, result.id, fastify.log)
+    // Weitere Nach-Erstellungs-Effekte (z. B. Direktverkauf-Bonierung) — nur bei Erfolg.
+    opts?.onErstellt?.(result)
     return reply.status(successStatus).send(result)
   } catch (err) {
     if (err instanceof BelegError) {
@@ -107,6 +111,74 @@ async function pruefeKasseScope(
   return true
 }
 
+/**
+ * Fire-and-forget: druckt beim direkten „Bon erstellen" einen Bonierbon (Küchenzettel)
+ * für Positionen, deren Artikel `bonierBeiDirektverkauf` gesetzt haben. Läuft NACH der
+ * Belegerstellung (wie tryDruckeBeleg) und blockiert die Antwort nicht.
+ *
+ * Lagerstand: `bonierBestellung` dekrementiert bonier-geroutete Countdown-Artikel; genau
+ * diese überspringt `erstelleBarzahlungsbeleg` bereits (beleg.service De-Dup) → kein
+ * Doppelabzug. Damit ein (fehlkonfiguriert) geflaggter Artikel OHNE Bonierrouting nicht
+ * doppelt gezählt wird, filtern wir hier auf dieselbe Routing-Bedingung (Artikel- ODER
+ * Kategorieebene) — nur wirklich geroutete Positionen gehen an `bonierBestellung`.
+ */
+function tryBonierDirektverkauf(
+  deps:   BelegServiceDeps,
+  input:  BarzahlungsbelegInput,
+  logger: { error: (obj: unknown, msg?: string) => void },
+): void {
+  void (async () => {
+    try {
+      const artikelPositionen = input.positionen.filter(
+        (p): p is Extract<typeof p, { artikelId: string }> => 'artikelId' in p,
+      )
+      if (artikelPositionen.length === 0) return
+
+      const artikelIds = [...new Set(artikelPositionen.map(p => p.artikelId))]
+      const rows = await deps.db
+        .select()
+        .from(artikel)
+        .where(and(inArray(artikel.id, artikelIds), eq(artikel.aktiv, true)))
+      const flagged = rows.filter(a => a.bonierBeiDirektverkauf)
+      if (flagged.length === 0) return
+
+      // Kategorie-Bonierdrucker für die Routing-Prüfung (spiegelt beleg.service De-Dup)
+      const katIds = [...new Set(flagged.map(a => a.kategorieId).filter((id): id is string => id !== null))]
+      const katBonierdruckerMap = new Map<string, string | null>()
+      if (katIds.length > 0) {
+        const katRows = await deps.db
+          .select({ id: kategorien.id, bonierdruckerId: kategorien.bonierdruckerId })
+          .from(kategorien)
+          .where(inArray(kategorien.id, katIds))
+        for (const k of katRows) katBonierdruckerMap.set(k.id, k.bonierdruckerId)
+      }
+
+      const geroutet = new Set(
+        flagged
+          .filter(a =>
+            a.station !== null ||
+            a.bonierdruckerId !== null ||
+            (a.kategorieId ? (katBonierdruckerMap.get(a.kategorieId) ?? null) !== null : false),
+          )
+          .map(a => a.id),
+      )
+      if (geroutet.size === 0) return
+
+      const positionen = artikelPositionen
+        .filter(p => geroutet.has(p.artikelId))
+        .map(p => ({ artikelId: p.artikelId, menge: p.menge }))
+      if (positionen.length === 0) return
+
+      await bonierBestellung(
+        { kasseId: input.kasseId, tisch: 'Direkt', kellner: 'Kassa', positionen },
+        deps,
+      )
+    } catch (err) {
+      logger.error({ err }, 'Direktverkauf-Bonierung fehlgeschlagen')
+    }
+  })()
+}
+
 export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify, opts) => {
   const guard = { onRequest: [fastify.authenticate] }
 
@@ -115,7 +187,10 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     if (!(await pruefeKasseScope(request, reply, opts.deps, parsed.data.kasseId))) return
     return fuehreAus(fastify, reply, opts.deps, () => erstelleBarzahlungsbeleg(parsed.data, opts.deps), 201,
-      { skipAutodruck: parsed.data.keinAutodruck ?? false })
+      {
+        skipAutodruck: parsed.data.keinAutodruck ?? false,
+        onErstellt: () => tryBonierDirektverkauf(opts.deps, parsed.data, fastify.log),
+      })
   })
 
   fastify.post('/belege/storno', guard, async (request, reply) => {

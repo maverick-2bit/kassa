@@ -197,6 +197,13 @@
       "when": 1784500000000,
       "tag": "0028_bondrucker_pool",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1784600000000,
+      "tag": "0029_artikel_bonier_direktverkauf",
+      "breakpoints": true
     }
   ]
 }

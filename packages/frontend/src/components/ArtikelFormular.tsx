@@ -26,6 +26,7 @@ type FormValues = {
   kategorieId:          string
   istFavorit:           boolean
   bonierdruckerId:      string
+  bonierBeiDirektverkauf: boolean
   lieferantId:          string
   lagerstandAktiv:      boolean
   lagerstandMengeStr:   string
@@ -109,6 +110,7 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
       kategorieId:        initial?.kategorieId      ?? '',
       istFavorit:         initial?.istFavorit       ?? false,
       bonierdruckerId:    initial?.bonierdruckerId  ?? '',
+      bonierBeiDirektverkauf: initial?.bonierBeiDirektverkauf ?? false,
       lieferantId:        initial?.lieferantId      ?? '',
       lagerstandAktiv:    initial?.lagerstandAktiv  ?? false,
       lagerstandMengeStr: initial?.lagerstandMenge   != null ? String(initial.lagerstandMenge)   : '',
@@ -129,6 +131,7 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
       kategorieId:        initial?.kategorieId      ?? '',
       istFavorit:         initial?.istFavorit       ?? false,
       bonierdruckerId:    initial?.bonierdruckerId  ?? '',
+      bonierBeiDirektverkauf: initial?.bonierBeiDirektverkauf ?? false,
       lieferantId:        initial?.lieferantId      ?? '',
       lagerstandAktiv:    initial?.lagerstandAktiv  ?? false,
       lagerstandMengeStr: initial?.lagerstandMenge   != null ? String(initial.lagerstandMenge)   : '',
@@ -160,6 +163,7 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
       kategorieId:     values.kategorieId      || null,
       istFavorit:      values.istFavorit,
       bonierdruckerId: values.bonierdruckerId  || null,
+      bonierBeiDirektverkauf: values.bonierBeiDirektverkauf,
       lieferantId:     values.lieferantId      || null,
       lagerstandAktiv: values.lagerstandAktiv,
       lagerstandMenge: lsMenge,
@@ -331,6 +335,18 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
             </Select>
           </Field>
         )}
+
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            className="h-4 w-4 rounded border-line-strong text-brand-600 focus:ring-brand-500"
+            {...register('bonierBeiDirektverkauf')}
+          />
+          <div>
+            <p className="text-sm font-medium text-ink">🧾 Bonierbon auch beim Direktverkauf</p>
+            <p className="text-xs text-ink-subtle">Beim direkten „Bon erstellen" mitdrucken (sonst nur bei Tischbuchung)</p>
+          </div>
+        </label>
 
         {lieferanten && lieferanten.length > 0 && (
           <Field label="Lieferant" hint="Für Bestellliste und Einkauf">

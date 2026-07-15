@@ -612,6 +612,8 @@ export const artikel = pgTable('artikel', {
   favoritenReihenfolge: integer('favoriten_reihenfolge').notNull().default(0),
   /** Override: Bonierdrucker für diesen Artikel (überschreibt Kategorie-Einstellung) */
   bonierdruckerId:     uuid('bonierdrucker_id').references(() => bonierdrucker.id, { onDelete: 'set null' }),
+  /** Bonierbon auch beim direkten „Bon erstellen" drucken (sonst nur bei Tischbuchung) */
+  bonierBeiDirektverkauf: boolean('bonier_bei_direktverkauf').notNull().default(false),
   /** Lieferant für Bestellliste und Einkauf */
   lieferantId:         uuid('lieferant_id').references((): AnyPgColumn => lieferanten.id, { onDelete: 'set null' }),
   /** Artikelbild als Data-URL (max. 200×200 px JPEG, client-seitig komprimiert) */

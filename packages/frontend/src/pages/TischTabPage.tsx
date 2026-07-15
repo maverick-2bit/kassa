@@ -13,7 +13,7 @@ import type {
   TischTabSplittenInput,
   TischTabResponse,
 } from '@kassa/shared'
-import { STATION_LABELS, happyHourPreisCent, aktiverRabattProzent } from '@kassa/shared'
+import { happyHourPreisCent, aktiverRabattProzent } from '@kassa/shared'
 import { artikelApi, belegApi, bonierApi, druckerApi, kategorieApi, modifikatorApi, posConfigApi, preisregelApi, tischTabApi, zvtApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
@@ -61,7 +61,7 @@ export function TischTabPage() {
   // Neu hinzugefügte Artikel (Warenkorb für diese Session)
   const [korb, setKorb]                             = useState<KorbPosition[]>([])
   const [letzterBon, setLetzterBon]                 = useState<BelegResponse | null>(null)
-  const [bonierungErgebnis, setBonierungErgebnis]   = useState<BonierungErgebnis | null>(null)
+  const [geparkt, setGeparkt]                       = useState(false)
   const [rabatt, setRabatt]                         = useState<RabattInput | null>(null)
   const [rabattOffen, setRabattOffen]               = useState(false)
   const [posRabatteOffen, setPosRabatteOffen]       = useState(false)
@@ -250,15 +250,15 @@ export function TischTabPage() {
       await tischTabApi.aktualisierePositionen(tabId!, allePositionen)
       return ergebnis
     },
-    onSuccess: (ergebnis) => {
-      // Bonier-Ergebnis nur zeigen, wenn wirklich etwas an Küche/Drucker ging
-      if (ergebnis && (ergebnis.stationen.length > 0 || ergebnis.drucker.length > 0)) {
-        setBonierungErgebnis(ergebnis)
-      }
+    onSuccess: () => {
+      // Parken bucht auf den Tisch + druckt den Küchenzettel still. Kein „AE1…"-Modal —
+      // nur eine kurze Bestätigung.
       qc.invalidateQueries({ queryKey: ['tisch-tab', tabId] })
       qc.invalidateQueries({ queryKey: ['artikel', identity.mandantId] })
       setKorb([])
       setFehler(null)
+      setGeparkt(true)
+      setTimeout(() => setGeparkt(false), 3000)
     },
     onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
   })
@@ -279,10 +279,18 @@ export function TischTabPage() {
     },
     onSuccess: async ({ belegId }) => {
       setZahlartLaeuft(null)
-      const beleg = await belegApi.list(identity.kasseId, 1).then(l => l[0] ?? null)
-      if (beleg && beleg.id === belegId) setLetzterBon(beleg)
       qc.invalidateQueries({ queryKey: ['tisch-tabs'] })
       qc.invalidateQueries({ queryKey: ['belege'] })
+      // Im Druck-Modus druckt der Server den Beleg bereits automatisch
+      // (tisch-tab.route → tryDruckeBeleg) — kein Auswahl-Dialog nötig, direkt
+      // zurück zur Tischübersicht. Nur bei digitalem Beleg (digital/beides) den
+      // Bon-Dialog mit RKSV-QR zum Abfotografieren für den Gast öffnen.
+      const belegModus = druckerCfg.data?.belegModus
+      if (belegModus === 'digital' || belegModus === 'beides') {
+        const beleg = await belegApi.list(identity.kasseId, 1).then(l => l[0] ?? null)
+        if (beleg && beleg.id === belegId) { setLetzterBon(beleg); return }
+      }
+      navigate('/tische')
     },
     onError: (err) => { setZahlartLaeuft(null); setFehler(err instanceof Error ? err.message : String(err)) },
   })
@@ -507,6 +515,12 @@ export function TischTabPage() {
               <div className="rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">{fehler}</div>
             )}
 
+            {geparkt && (
+              <div className="rounded border border-green-200 bg-green-50 p-2 text-center text-xs font-semibold text-green-800">
+                ✓ Geparkt — auf den Tisch gebucht
+              </div>
+            )}
+
             {/* Warenkorb-Aktion: „Parken" bucht die neuen Positionen auf den Tisch
                 (boniert Küche/Drucker wo zugeordnet, speichert immer) */}
             {korb.length > 0 && (
@@ -635,74 +649,6 @@ export function TischTabPage() {
         size="lg"
       >
         {letzterBon && <BonAnzeige beleg={letzterBon} belegModus={druckerCfg.data?.belegModus} onAkzeptiert={handleBonGeschlossen} />}
-      </Modal>
-
-      {/* Bonierungs-Ergebnis */}
-      <Modal
-        open={!!bonierungErgebnis}
-        onClose={() => setBonierungErgebnis(null)}
-        title={`Bonierung ${bonierungErgebnis?.bonNummer ?? ''}`}
-      >
-        {bonierungErgebnis && (
-          <div className="space-y-4">
-            {bonierungErgebnis.stationen.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">KDS-Stationen</p>
-                <ul className="space-y-1.5">
-                  {bonierungErgebnis.stationen.map((s) => (
-                    <li
-                      key={s.station}
-                      className={`flex items-center justify-between rounded-md border px-3 py-2 text-sm ${
-                        s.erfolgreich
-                          ? 'border-green-200 bg-green-50 text-green-800'
-                          : 'border-red-200 bg-red-50 text-red-700'
-                      }`}
-                    >
-                      <span className="font-medium">
-                        {STATION_LABELS[s.station]}{' '}
-                        <span className="font-mono text-xs opacity-60">({s.ip || '—'})</span>
-                      </span>
-                      <span>
-                        {s.erfolgreich ? `${s.positionen} Pos.` : s.fehler ?? 'Fehler'}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {bonierungErgebnis.drucker.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Bonierdrucker</p>
-                <ul className="space-y-1.5">
-                  {bonierungErgebnis.drucker.map((d) => (
-                    <li
-                      key={d.druckerId}
-                      className={`flex items-center justify-between rounded-md border px-3 py-2 text-sm ${
-                        d.erfolgreich
-                          ? 'border-green-200 bg-green-50 text-green-800'
-                          : 'border-red-200 bg-red-50 text-red-700'
-                      }`}
-                    >
-                      <span className="font-medium">
-                        {d.name}
-                        {d.istBackup && <span className="ml-1.5 text-[10px] rounded-full bg-black/10 px-1.5 py-0.5">Backup</span>}
-                        {' '}<span className="font-mono text-xs opacity-60">({d.ip})</span>
-                      </span>
-                      <span>
-                        {d.erfolgreich ? `${d.positionen} Pos.` : d.fehler ?? 'Fehler'}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {bonierungErgebnis.stationen.length === 0 && bonierungErgebnis.drucker.length === 0 && (
-              <p className="text-sm text-ink-muted text-center py-2">Keine Stationen oder Drucker konfiguriert.</p>
-            )}
-          </div>
-        )}
       </Modal>
 
       {/* Bonierverlauf */}
