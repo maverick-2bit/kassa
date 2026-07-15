@@ -76,10 +76,12 @@ async function fuehreAus<T extends { id: string }>(
   deps:    BelegServiceDeps,
   fn:      () => Promise<T>,
   successStatus = 201,
+  opts?:   { skipAutodruck?: boolean },
 ): Promise<unknown> {
   try {
     const result = await fn()
-    tryDruckeBeleg(deps.db, result.id, fastify.log)
+    // „Alternativdruck" unterdrückt den Auto-Druck — die Ausgabe wählt der Kassier im Dialog.
+    if (!opts?.skipAutodruck) tryDruckeBeleg(deps.db, result.id, fastify.log)
     return reply.status(successStatus).send(result)
   } catch (err) {
     if (err instanceof BelegError) {
@@ -112,7 +114,8 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
     const parsed = BarzahlungsbelegInputSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     if (!(await pruefeKasseScope(request, reply, opts.deps, parsed.data.kasseId))) return
-    return fuehreAus(fastify, reply, opts.deps, () => erstelleBarzahlungsbeleg(parsed.data, opts.deps))
+    return fuehreAus(fastify, reply, opts.deps, () => erstelleBarzahlungsbeleg(parsed.data, opts.deps), 201,
+      { skipAutodruck: parsed.data.keinAutodruck ?? false })
   })
 
   fastify.post('/belege/storno', guard, async (request, reply) => {

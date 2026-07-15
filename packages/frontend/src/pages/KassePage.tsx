@@ -115,6 +115,10 @@ export function KassePage() {
   const [kellner, setKellner] = useState<string>('Service')
   const [barEuro, setBarEuro] = useState<string>('')
   const [letzterBon, setLetzterBon] = useState<BelegResponse | null>(null)
+  // Kurze Bestätigung nach „Bon erstellen" (kein Dialog im Druck-Modus)
+  const [belegBestaetigung, setBelegBestaetigung] = useState<string | null>(null)
+  // „Alternativdruck": Verkauf ohne Auto-Druck, dann Auswahl-Dialog. Ref übersteht Serial-/ZVT-Modal.
+  const alternativRef = useRef(false)
   const [letzterAngebot, setLetzterAngebot] = useState<AngebotResponse | null>(null)
   const [bonierungErgebnis, setBonierungErgebnis] = useState<BonierungErgebnis | null>(null)
   const [fehler, setFehler] = useState<string | null>(null)
@@ -319,7 +323,7 @@ export function KassePage() {
 
   const belegMutation = useMutation({
     mutationFn: belegApi.barzahlung,
-    onSuccess: async (beleg) => {
+    onSuccess: async (beleg, variables) => {
       // Offline-Fall: SW gibt 202 + { _offline: true } zurück
       if ((beleg as unknown as { _offline?: boolean })?._offline) {
         setOfflineBelegGespeichert(true)
@@ -360,7 +364,15 @@ export function KassePage() {
         () => displayApi.push(identity.kasseId, { typ: 'leer' }).catch(() => {}),
         modus === 'digital' || modus === 'beides' ? 20_000 : 5000,
       )
-      setLetzterBon(beleg)
+      // Dialog nur bei „Alternativdruck" (kein Autodruck) ODER im Digital-Beleg-Modus
+      // (dort IST der Bildschirm-Beleg die Ausgabe). Sonst still + kurze Bestätigung.
+      const zeigeDialog = !!variables.keinAutodruck || modus === 'digital' || modus === 'beides'
+      if (zeigeDialog) {
+        setLetzterBon(beleg)
+      } else {
+        setBelegBestaetigung(`Beleg #${beleg.belegNummer} erstellt`)
+        setTimeout(() => setBelegBestaetigung(null), 4000)
+      }
       reset()
       void queryClient.invalidateQueries({ queryKey: ['belege'] })
     },
@@ -502,16 +514,18 @@ export function KassePage() {
       ...(rabatt && { rabatt }),
       ...(neuerKunde ? { neuerKunde }           : {}),
       ...(kunde && !neuerKunde ? { kundeId: kunde.id } : {}),
+      ...(alternativRef.current ? { keinAutodruck: true } : {}),
     }
     belegMutation.mutate(input)
   }
 
-  const handleBonErstellen = () => {
+  const handleBonErstellen = (alternativ = false) => {
     setFehler(null)
     if (korb.length === 0) {
       setFehler('Der Warenkorb ist leer.')
       return
     }
+    alternativRef.current = alternativ
     // Serialisierte Artikel: zuerst Seriennummern wählen (sofern noch nicht geschehen)
     if (serialPositionen.length > 0 && serialsRef.current === null) {
       setSerialModalOffen(true)
@@ -531,6 +545,14 @@ export function KassePage() {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-4">
+      {/* Beleg-erstellt-Bestätigung (Druck-Modus: kein Dialog, nur kurze Rückmeldung) */}
+      {belegBestaetigung && (
+        <div className="mb-3 bg-green-50 border border-green-300 text-green-800
+                        rounded-lg px-4 py-3 flex items-center gap-3 text-sm font-medium">
+          <span className="text-lg">✅</span>
+          <span>{belegBestaetigung}</span>
+        </div>
+      )}
       {/* Offline-Beleg-gespeichert Toast */}
       {offlineBelegGespeichert && (
         <div className="mb-3 bg-amber-50 border border-amber-300 text-amber-800
@@ -921,14 +943,26 @@ export function KassePage() {
                       Auf Kredit buchen
                     </Button>
                   ) : (
-                    <Button
-                      onClick={handleBonErstellen}
-                      loading={belegMutation.isPending}
-                      className="flex-1 bg-green-600 hover:bg-green-700 focus:ring-green-400"
-                      disabled={korb.length === 0}
-                    >
-                      Bon erstellen
-                    </Button>
+                    <>
+                      <Button
+                        onClick={() => handleBonErstellen(false)}
+                        loading={belegMutation.isPending && !alternativRef.current}
+                        className="flex-1 bg-green-600 hover:bg-green-700 focus:ring-green-400"
+                        disabled={korb.length === 0}
+                      >
+                        Bon erstellen
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        onClick={() => handleBonErstellen(true)}
+                        loading={belegMutation.isPending && alternativRef.current}
+                        className="flex-none"
+                        disabled={korb.length === 0}
+                        title="Verkauf abschließen und Ausgabe (Bon / Rechnung-PDF / E-Mail) wählen"
+                      >
+                        Alternativdruck
+                      </Button>
+                    </>
                   )}
                 </div>
 
