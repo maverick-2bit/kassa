@@ -73,6 +73,9 @@ export const BarzahlungsbelegInputSchema = z.object({
   kundeId:    z.string().uuid().optional(),
   /** Neuen Kunden anlegen und direkt verknüpfen */
   neuerKunde: KundeInputSchema.optional(),
+  /** Auto-Druck unterdrücken (für „Alternativdruck": Ausgabe wird im Dialog gewählt).
+   *  Reines Transport-Flag, wird nicht persistiert. */
+  keinAutodruck: z.boolean().optional(),
 })
 export type BarzahlungsbelegInput = z.infer<typeof BarzahlungsbelegInputSchema>
 

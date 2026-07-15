@@ -130,7 +130,7 @@ function KasseKarte({ kasseId, titel, untertitel, pool, bonier, istGastro }: {
               disabled={patchDrucker.isPending}
               onChange={(e) => patchDrucker.mutate({ druckerId: e.target.value || null })}
             >
-              <option value="">— kein Drucker —</option>
+              <option value="">— ohne Druck fortfahren —</option>
               {pool.map(d => (
                 <option key={d.id} value={d.id}>{d.name} ({d.ip}){d.aktiv ? '' : ' — deaktiviert'}</option>
               ))}

@@ -838,11 +838,11 @@ test('Kunde auf Beleg: gewählter Kunde erscheint auf dem Bon', async ({ page, r
   await page.getByPlaceholder('Kunde suchen…').fill('E2E-Beleg-Kunde')
   await page.getByRole('button', { name: /E2E-Beleg-Kunde/ }).click()
 
-  // Bar exakt bezahlen → Bon
+  // Bar exakt bezahlen → „Alternativdruck" öffnet den Beleg-Dialog (Bon zeigt den Kunden)
   await page.getByRole('button', { name: 'Exakt' }).click()
-  await page.getByRole('button', { name: 'Bon erstellen' }).click()
+  await page.getByRole('button', { name: 'Alternativdruck' }).click()
 
-  // Der Bon zeigt den Kunden
+  // Der Bon-Dialog zeigt den Kunden
   await expect(page.getByText(/Beleg #\d+ erstellt/)).toBeVisible({ timeout: 20_000 })
   await expect(page.getByText('E2E-Beleg-Kunde').first()).toBeVisible()
 })
