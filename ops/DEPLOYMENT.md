@@ -195,3 +195,14 @@ Container, die Daten (Postgres-Volume) bleiben erhalten.
   (`docker compose logs <app>`), und `CORS_ORIGIN` zur aufgerufenen URL passt.
 - **DB-Backup/Restore:** die Sicherungen liegen im Volume `db_backups`; Restore
   per `pg_restore` in einen frischen Postgres-Container (Runbook auf Anfrage).
+- **Bondrucker: „Testdruck gesendet"/LED online, aber es kommt NICHTS raus** —
+  häufigste Ursache bei Epson TM (z. B. TM-T20IV) mit modernem Web-Interface:
+  in der Drucker-Weboberfläche (http://\<drucker-ip\>) unter
+  **Advanced Settings → Secure Printing** steht **Enable**. Das erzwingt
+  verschlüsseltes Drucken (ePOS-Print) und **verwirft den normalen Roh-Druck auf
+  Port 9100**, den die Kassa nutzt. **Fix: Secure Printing → Disable** (lässt den
+  gesicherten UND den Roh-Druck zu; für einen Bondrucker im Laden-LAN Standard).
+  Gegenprobe, ob der Drucker grundsätzlich druckt: Selbsttest (Drucker aus →
+  Papiervorschub-Taste halten → einschalten). Und: nach dem Text immer genug
+  Vorschub vor dem Schnitt (Kopf-zu-Messer-Abstand ~12–15 mm; erledigt die Kassa
+  automatisch).
