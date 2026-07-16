@@ -44,6 +44,12 @@ export interface BonierOptionen {
    * Bestellnummern-Badge. TCP-KDS/ESC-POS-Verhalten bleibt unverändert.
    */
   sb?: { bestellungId: string; bestellNummer: string }
+  /**
+   * Nur drucken (KDS + Bonierdrucker), KEIN Lagerabzug. Für Tisch-Bonierungen
+   * (Parken/Sofort-Kassieren): dort ist der Lagerstand die alleinige Sache von
+   * aktualisiereStockDeltas (Positionsänderung) — sonst Doppel-Abzug.
+   */
+  ohneLagerabzug?: boolean
 }
 
 export async function bonierBestellung(
@@ -260,7 +266,9 @@ export async function bonierBestellung(
   // 10. Lagerstand dekrementieren (atomar, direkt in der DB)
   //     Countdown-Artikel: Menge beim Bonieren abziehen, nicht erst beim Kassieren.
   //     SQL GREATEST(0, …) verhindert negative Bestände.
-  const zuDekrementieren = input.positionen
+  //     ohneLagerabzug: Tisch-Bonierung (Parken/Sofort-Kassieren) — der Lagerstand
+  //     läuft dort allein über aktualisiereStockDeltas, hier NICHT abziehen.
+  const zuDekrementieren = (optionen.ohneLagerabzug ? [] : input.positionen)
     .map(p => ({ a: artikelById.get(p.artikelId)!, menge: p.menge }))
     .filter(({ a }) => a.lagerstandAktiv && a.lagerstandMenge !== null)
     // SB-Bestellung: der RKSV-Beleg (bereits erstellt) dekrementiert Artikel OHNE

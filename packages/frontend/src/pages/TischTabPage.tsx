@@ -241,6 +241,9 @@ export function TischTabPage() {
           tisch:      tab?.tischNummer ?? '',
           kellner:    tab?.kellner ?? '',
           positionen: korb.map(p => ({ artikelId: p.artikel.id, menge: p.menge })),
+          // Nur drucken (KDS + Bonierdrucker) — der Lagerstand wird beim Speichern
+          // der Positionen (aktualisierePositionen) abgezogen, nicht hier.
+          ohneLagerabzug: true,
         })
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
@@ -266,6 +269,24 @@ export function TischTabPage() {
   const bezahlenMutation = useMutation({
     mutationFn: async ({ bar, karte, trinkgeldCent = 0 }: { bar: number; karte: number; trinkgeldCent?: number }) => {
       if (korb.length > 0) {
+        // Sofort-Kassieren am Tisch: die noch nicht bonierten Korb-Positionen an
+        // Küche/Schank (KDS + Bonierdrucker) senden — ident zum Parken, damit
+        // hergerichtet + an den Tisch geliefert werden kann. Nur drucken, KEIN
+        // Lagerabzug (den macht aktualisierePositionen). „nichts zu bonieren"
+        // (Artikel ohne KDS/Bonierdrucker) wird geschluckt.
+        try {
+          await bonierApi.bonieren({
+            kasseId:    identity.kasseId,
+            tabId:      tabId!,
+            tisch:      tab?.tischNummer ?? '',
+            kellner:    tab?.kellner ?? '',
+            positionen: korb.map(p => ({ artikelId: p.artikel.id, menge: p.menge })),
+            ohneLagerabzug: true,
+          })
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          if (!/nichts zu bonieren/i.test(msg)) throw err
+        }
         await tischTabApi.aktualisierePositionen(tabId!, allePositionen)
       }
       const posRabatteArr = Object.entries(posRabatte)

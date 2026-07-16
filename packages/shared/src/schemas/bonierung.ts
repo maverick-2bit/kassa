@@ -22,6 +22,12 @@ export const BonierungInputSchema = z.object({
   bereich: z.string().trim().max(60).optional(),
   kellner: z.string().trim().min(1).max(60),
   positionen: z.array(BonierungPositionSchema).min(1, 'Mindestens eine Position erforderlich'),
+  /**
+   * Nur drucken (KDS + Bonierdrucker), KEIN Lagerabzug. Für Tisch-Bonierungen
+   * (Parken/Sofort-Kassieren) — dort zieht aktualisiereStockDeltas den Lagerstand
+   * bereits ab; ohne dieses Flag käme es zum Doppel-Abzug.
+   */
+  ohneLagerabzug: z.boolean().optional(),
 })
 export type BonierungInput = z.infer<typeof BonierungInputSchema>
 

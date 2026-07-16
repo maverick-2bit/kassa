@@ -22,7 +22,9 @@ export const bonierRoute: FastifyPluginAsync<BonierRouteOptions> = async (fastif
     }
 
     try {
-      const ergebnis = await bonierBestellung(parsed.data, opts.deps)
+      const ergebnis = await bonierBestellung(parsed.data, opts.deps, {
+        ...(parsed.data.ohneLagerabzug && { ohneLagerabzug: true }),
+      })
       const erfolg = ergebnis.stationen.every((s) => s.erfolgreich)
       return reply.status(erfolg ? 200 : 207).send(ergebnis)
     } catch (err) {

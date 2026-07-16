@@ -288,6 +288,7 @@ async function signiereImTx(
 export async function erstelleBarzahlungsbeleg(
   input: BarzahlungsbelegInput,
   deps:  BelegServiceDeps,
+  opts:  { skipLagerstand?: boolean } = {},
 ): Promise<BelegResponse> {
   // Kunden-Snapshot vor der Transaktion auflösen (neuer Kunde wird hier angelegt)
   let kundeId:       string | undefined
@@ -443,8 +444,11 @@ export async function erstelleBarzahlungsbeleg(
       //  • Artikel MIT Bonierrouting (station oder bonierdruckerId, egal ob auf Artikel- oder
       //    Kategorieebene) → Lagerstand wurde bereits beim Bonieren dekrementiert; hier NICHT.
       //  • Artikel OHNE Bonierrouting (reines Direktkassieren, z. B. To-go) → hier dekrementieren.
-
-      for (const p of input.positionen) {
+      //
+      // skipLagerstand: Für Tisch-Zahlungen komplett überspringen — dort ist der
+      // Lagerstand bereits über aktualisiereStockDeltas (Positionsänderung) abgezogen
+      // (einzige Quelle der Wahrheit im Tisch-Fluss), sonst Doppel-Abzug.
+      for (const p of (opts.skipLagerstand ? [] : input.positionen)) {
         if (!('artikelId' in p)) continue  // freie Position: kein Lagerstand
         const a = artikelById.get(p.artikelId)
         if (!a || !a.lagerstandAktiv) continue
