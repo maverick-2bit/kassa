@@ -612,9 +612,14 @@ export async function verschiebePositionen(
     }
     const neueZielPos = reihenfolge.map(k => zielMap.get(k)!)
 
-    // Schreiben (KEIN Lagerabzug — Move ist lagerneutral)
+    // Schreiben (KEIN Lagerabzug — Move ist lagerneutral). Wandern ALLE Artikel
+    // weg, wird der Quell-Tab geschlossen (Status 'zusammengefuehrt' wie beim Merge)
+    // — ein leerer offener Tisch soll nicht stehen bleiben.
+    const quelleLeer = neueQuellPos.length === 0
     const [quellRow] = await tx.update(tischTabs)
-      .set({ positionen: neueQuellPos, updatedAt: jetzt })
+      .set(quelleLeer
+        ? { positionen: neueQuellPos, status: 'zusammengefuehrt', geschlossenAm: jetzt, updatedAt: jetzt }
+        : { positionen: neueQuellPos, updatedAt: jetzt })
       .where(eq(tischTabs.id, quellId)).returning()
     const [zielRow] = await tx.update(tischTabs)
       .set({ positionen: neueZielPos, updatedAt: jetzt })
@@ -624,7 +629,7 @@ export async function verschiebePositionen(
     const anzahl = bewegtePos.reduce((s, p) => s + p.menge, 0)
     await tx.insert(tabEreignisse).values({
       tabId: quellId, mandantId, typ: 'positionen_verschoben',
-      details: { richtung: 'raus', zielTabId: ziel.id, zielTisch: zielTischNummer, anzahl },
+      details: { richtung: 'raus', zielTabId: ziel.id, zielTisch: zielTischNummer, anzahl, quelleGeschlossen: quelleLeer },
     })
     await tx.insert(tabEreignisse).values({
       tabId: ziel.id, mandantId, typ: 'positionen_verschoben',

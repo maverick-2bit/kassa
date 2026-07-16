@@ -12,14 +12,14 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import type { TischplanBereich, TischTabResponse, TischTabErstellenInput } from '@kassa/shared'
+import type { TabPosition, TischplanBereich, TischTabResponse, TischTabErstellenInput } from '@kassa/shared'
 import { tischTabApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
 import { Modal } from './ui/Modal'
 import { Input } from './ui/Input'
 import { Button } from './ui/Button'
-import { UmbuchenForm, ZusammenfuehrenForm } from './tischAktionenForms'
+import { UmbuchenForm, ZusammenfuehrenForm, TeilUmbuchenForm } from './tischAktionenForms'
 
 interface Props {
   bereiche: TischplanBereich[]
@@ -33,6 +33,7 @@ export function TischplanAnsicht({ bereiche, tabs }: Props) {
   const [gruppenAuswahl, setGruppenAuswahl] = useState<{ bezeichnung: string; tabs: TischTabResponse[] } | null>(null)
   const [neueGruppeFuer,  setNeueGruppeFuer]  = useState<string | null>(null)
   const [umbuchenTab,     setUmbuchenTab]     = useState<TischTabResponse | null>(null)
+  const [teilTab,         setTeilTab]         = useState<TischTabResponse | null>(null)
   const [zusammenGruppe,  setZusammenGruppe]  = useState<TischTabResponse[] | null>(null)
   const [kellner,         setKellner]         = useState('Service')
   const [fehler,          setFehler]          = useState<string | null>(null)
@@ -71,6 +72,17 @@ export function TischplanAnsicht({ bereiche, tabs }: Props) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tisch-tabs'] })
       setZusammenGruppe(null)
+      setFehler(null)
+    },
+    onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
+  })
+
+  const verschiebeMutation = useMutation({
+    mutationFn: ({ id, zielTischNummer, positionen }: { id: string; zielTischNummer: string; positionen: TabPosition[] }) =>
+      tischTabApi.verschiebePositionen(id, { zielTischNummer, positionen }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tisch-tabs'] })
+      setTeilTab(null)
       setFehler(null)
     },
     onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
@@ -185,7 +197,7 @@ export function TischplanAnsicht({ bereiche, tabs }: Props) {
                 return (
                   <li
                     key={t.id}
-                    className="flex items-center justify-between gap-3 rounded-lg border border-orange-300 bg-orange-50 px-3 py-2.5"
+                    className="rounded-lg border border-orange-300 bg-orange-50 px-3 py-2.5 space-y-2"
                   >
                     <div className="min-w-0">
                       <p className="font-semibold text-orange-900 truncate">
@@ -195,16 +207,18 @@ export function TischplanAnsicht({ bereiche, tabs }: Props) {
                         {t.positionen.reduce((n, p) => n + p.menge, 0)} Pos. · {formatPreis(t.summeGesamtCent)} · {dauer}
                       </p>
                     </div>
-                    <div className="flex gap-1.5 shrink-0">
+                    <div className="flex flex-wrap gap-1.5">
                       <Button size="sm" onClick={() => { setGruppenAuswahl(null); navigate(`/tische/${t.id}`) }}>
                         Öffnen
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => { setGruppenAuswahl(null); setFehler(null); setUmbuchenTab(t) }}
-                      >
+                      <Button size="sm" variant="secondary" onClick={() => { setGruppenAuswahl(null); setFehler(null); setUmbuchenTab(t) }}>
                         Umbuchen
+                      </Button>
+                      <Button size="sm" variant="secondary" onClick={() => { setGruppenAuswahl(null); setFehler(null); setTeilTab(t) }}>
+                        Artikel umb.
+                      </Button>
+                      <Button size="sm" variant="secondary" onClick={() => { setGruppenAuswahl(null); navigate(`/tische/${t.id}?aktion=split`) }}>
+                        Rechnung teilen
                       </Button>
                     </div>
                   </li>
@@ -281,6 +295,23 @@ export function TischplanAnsicht({ bereiche, tabs }: Props) {
             fehler={fehler}
             onSubmit={(tischNummer) => umbuchenMutation.mutate({ id: umbuchenTab.id, tischNummer })}
             onAbbrechen={() => { setUmbuchenTab(null); setFehler(null) }}
+          />
+        )}
+      </Modal>
+
+      {/* Dialog: Artikel teilweise auf einen anderen Tisch umbuchen */}
+      <Modal
+        open={teilTab !== null}
+        onClose={() => { setTeilTab(null); setFehler(null) }}
+        title="Artikel umbuchen"
+      >
+        {teilTab && (
+          <TeilUmbuchenForm
+            tab={teilTab}
+            loading={verschiebeMutation.isPending}
+            fehler={fehler}
+            onSubmit={(zielTischNummer, positionen) => verschiebeMutation.mutate({ id: teilTab.id, zielTischNummer, positionen })}
+            onAbbrechen={() => { setTeilTab(null); setFehler(null) }}
           />
         )}
       </Modal>
