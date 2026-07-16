@@ -73,11 +73,11 @@ describe('Drucker-Sendepfad überträgt Bytes vollständig', () => {
     await new Promise((r) => setTimeout(r, 50))
     const buf = empfangen()
     expect(buf.toString('latin1')).toContain('Pommes')
-    // Artikelzeilen groß + fett (ESC ! 0x18 = fett 0x08 + doppelte Höhe 0x10) für die Küche
-    const modusIdx = buf.indexOf(Buffer.from([0x1b, 0x21, 0x18]))
-    expect(modusIdx).toBeGreaterThanOrEqual(0)
-    // Die Groß/Fett-Sequenz steht VOR dem Artikelnamen
-    expect(buf.indexOf('Pommes', modusIdx, 'latin1')).toBeGreaterThan(modusIdx)
+    // Tischnummer UND Artikelzeilen groß + fett (ESC ! 0x18 = fett 0x08 + doppelte Höhe 0x10)
+    // für die Küche — die Modus-Sequenz steht jeweils direkt vor dem Text.
+    const bold = Buffer.from([0x1b, 0x21, 0x18])
+    expect(buf.includes(Buffer.concat([bold, Buffer.from('Tisch ', 'latin1')]))).toBe(true)
+    expect(buf.includes(Buffer.concat([bold, Buffer.from('2x Pommes', 'latin1')]))).toBe(true)
     expect(buf.includes(Buffer.from([0x1d, 0x56, 0x42, 0x00]))).toBe(true)  // GS V B 0 = Cut
     const cutIdx = buf.indexOf(Buffer.from([0x1d, 0x56, 0x42, 0x00]))
     const lfVorCut = buf.subarray(0, cutIdx).filter((b) => b === 0x0a).length
