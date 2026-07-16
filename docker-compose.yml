@@ -43,9 +43,12 @@ services:
       DB_BACKUP_RETENTION: ${DB_BACKUP_RETENTION:-30}
       DEP_BACKUP_DIR:    /data/dep-backups
       MONITORING_TOKEN:  ${MONITORING_TOKEN:-}
+      # Kontroll-Verzeichnis für den In-App-Updater (geteiltes Volume mit 'updater')
+      UPDATE_CONTROL_DIR: /control
     volumes:
       - db_backups:/data/db-backups
       - dep_backups:/data/dep-backups
+      - update_control:/control
     healthcheck:
       # Check mit Node selbst (garantiert im Image) statt wget: busybox-wget +
       # localhost-Auflösung erwiesen sich im Erstlauf als unzuverlässig
@@ -178,6 +181,26 @@ services:
       retries:      2
       start_period: 30m   # Zeit für den initialen Backup-Lauf beim Start
 
+  # ── In-App-Updater ──────────────────────────────────────────────────────────
+  # Ermöglicht „Jetzt aktualisieren" direkt in der Kassa (Einstellungen → System).
+  # Führt AUSSCHLIESSLICH den festen Rebuild aus (neuen Code laden + docker compose
+  # up -d --build der App-Services) — nimmt KEINE Befehle vom Backend entgegen; das
+  # Backend legt nur eine leere „request"-Datei im geteilten /control-Volume an.
+  # Der Docker-Socket ist NUR hier gemountet (nicht im Backend).
+  updater:
+    image: docker:27-cli
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "/updater.sh"]
+    environment:
+      KASSA_BRANCH:       ${KASSA_BRANCH:-master}
+      UPDATE_CONTROL_DIR: /control
+      KASSA_WORKSPACE:    /workspace
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock      # steuert die Host-Engine (nur hier!)
+      - .:/workspace                                   # Install-Verzeichnis (Quellcode + .env)
+      - update_control:/control                        # Trigger/Status (geteilt mit backend)
+      - ./ops/updater/updater.sh:/updater.sh:ro
+
   # ── Reverse-Proxy (Caddy) — OPTIONAL, nur mit „--profile proxy" ──────────────
   # Ein einziger Eingang mit automatischem HTTPS (Let's Encrypt) statt Ports.
   # Aktivieren:  docker compose --profile proxy up -d
@@ -209,5 +232,6 @@ volumes:
   dep_backups:
   restic_cache:
   backup_status:
+  update_control:
   caddy_data:
   caddy_config:

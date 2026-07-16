@@ -9,6 +9,7 @@ import type { BelegServiceDeps } from './services/beleg.service.js'
 import { registerAuth } from './auth/plugin.js'
 import { setupRoute } from './routes/setup.route.js'
 import { healthRoute } from './routes/health.route.js'
+import { systemRoute } from './routes/system.route.js'
 import { authRoute } from './routes/auth.route.js'
 import { artikelRoute } from './routes/artikel.route.js'
 import { belegRoute } from './routes/beleg.route.js'
@@ -132,6 +133,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   await fastify.register(async (api) => {
     // Offene Routen (kein Login nötig)
     await api.register(healthRoute,  { db:   deps.db })
+    await api.register(systemRoute)
     await api.register(authRoute,    { db:   deps.db })
     await api.register(setupRoute,   { deps: deps.setupDeps })
 

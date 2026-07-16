@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { QRCodeSVG } from 'qrcode.react'
 import { ALLE_STATIONEN, STATION_LABELS, type Station, type ZvtConfig, type WeitereKasseInput, type PosKonfig, type Artikel, type Kategorie, type SeeTyp } from '@kassa/shared'
-import { druckerApi, druckerPoolApi, kdsApi, seeApi, zvtApi, downloadDepExport, healthApi, monitoringApi, mandantApi, kasseApi, kategorieApi, artikelApi, posConfigApi, tischplanApi, dbBackupApi, belegApi, type DruckerConfig, type KdsConfig, type DbSicherungRow, type MonitoringStatus } from '../lib/api'
+import { druckerApi, druckerPoolApi, kdsApi, seeApi, zvtApi, downloadDepExport, healthApi, monitoringApi, mandantApi, kasseApi, kategorieApi, artikelApi, posConfigApi, tischplanApi, dbBackupApi, belegApi, systemApi, type DruckerConfig, type KdsConfig, type DbSicherungRow, type MonitoringStatus } from '../lib/api'
 import type { DruckerPool, DruckerPoolInput } from '@kassa/shared'
 import { Modal } from '../components/ui/Modal'
 import { BonierdruckerBibliothek } from '../components/BonierdruckerBibliothek'
@@ -106,6 +106,7 @@ export function EinstellungenPage() {
       )}
       {bereich === 'system' && (
         <>
+          <AktualisierungSektion />
           <DbBackupSektion />
           <SystemInfoSektion />
         </>
@@ -1974,6 +1975,142 @@ function DbBackupSektion() {
       )}
       {!listeQuery.isLoading && liste.length === 0 && (
         <p className="text-sm text-ink-subtle">Noch keine Backups vorhanden. Täglich um 3:00 Uhr wird automatisch eines erstellt.</p>
+      )}
+    </section>
+  )
+}
+
+function AktualisierungSektion() {
+  const auth    = getAuth()!
+  const isAdmin = auth.user.rolle === 'admin'
+  const qc      = useQueryClient()
+  const [angefordert, setAngefordert] = useState(false)
+  const [schnell, setSchnell]         = useState(false)
+  const [bestaetigen, setBestaetigen] = useState(false)
+  const [fehler, setFehler]           = useState<string | null>(null)
+
+  const statusQ = useQuery({
+    queryKey:        ['system-status'],
+    queryFn:         systemApi.status,
+    refetchInterval: schnell ? 3000 : 60_000,
+    retry:           false,
+  })
+  const s        = statusQ.data
+  const upStatus = s?.update?.status
+  // Während des Updates startet das Backend neu → der Poll schlägt zeitweise fehl.
+  const startetNeu = angefordert && statusQ.isError
+  const laeuft     = angefordert || upStatus === 'laeuft'
+  const fertig     = upStatus === 'fertig'
+
+  useEffect(() => { setSchnell(angefordert || upStatus === 'laeuft') }, [angefordert, upStatus])
+  useEffect(() => { if (upStatus === 'fertig' || upStatus === 'fehler') setAngefordert(false) }, [upStatus])
+
+  const start = useMutation({
+    mutationFn: systemApi.ausloesen,
+    onSuccess:  () => { setAngefordert(true); setBestaetigen(false); setFehler(null); void qc.invalidateQueries({ queryKey: ['system-status'] }) },
+    onError:    (e) => { setFehler(e instanceof Error ? e.message : String(e)); setBestaetigen(false) },
+  })
+
+  return (
+    <section className="rounded-xl border border-line bg-panel p-6 space-y-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-ink">Aktualisierung</h2>
+          <p className="mt-0.5 text-sm text-ink-muted">Kassa direkt auf die neueste Version bringen.</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => { setFehler(null); void statusQ.refetch() }}
+          disabled={statusQ.isFetching || laeuft}
+          className="text-xs text-brand-600 hover:text-brand-700 disabled:text-ink-subtle"
+        >
+          {statusQ.isFetching ? 'Prüfe…' : '↻ Nach Updates suchen'}
+        </button>
+      </div>
+
+      {/* Versionszeile */}
+      <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+        <div>
+          <dt className="text-ink-muted">Installiert</dt>
+          <dd className="mt-0.5 font-mono font-medium text-ink">v{s?.installiert ?? __APP_VERSION__}</dd>
+        </div>
+        <div>
+          <dt className="text-ink-muted">Neueste</dt>
+          <dd className="mt-0.5 font-mono font-medium text-ink">
+            {s?.neueste ? `v${s.neueste}` : <span className="text-ink-subtle">unbekannt</span>}
+          </dd>
+        </div>
+      </dl>
+
+      {/* Statuszeile / Aktion */}
+      {laeuft || startetNeu ? (
+        <div className="rounded-lg border border-brand-200 bg-brand-50 p-4 text-sm text-brand-800">
+          <div className="flex items-center gap-2 font-medium">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-brand-500" />
+            Update läuft…
+          </div>
+          <p className="mt-1 text-brand-700">
+            {startetNeu
+              ? 'Die Kassa startet gerade neu — einen Moment, die Verbindung kommt gleich zurück.'
+              : (s?.update?.schritt || 'Wird vorbereitet…')}
+          </p>
+          <p className="mt-2 text-xs text-brand-600">Bitte das Fenster offen lassen und jetzt nicht kassieren.</p>
+        </div>
+      ) : fertig ? (
+        <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800">
+          <p className="font-medium">✓ Update abgeschlossen{s?.update?.version ? ` — v${s.update.version}` : ''}.</p>
+          <p className="mt-1 text-green-700">Zum Übernehmen die Kassa neu laden.</p>
+          <div className="mt-3">
+            <Button variant="primary" onClick={() => window.location.reload()}>Jetzt neu laden</Button>
+          </div>
+        </div>
+      ) : s && !s.updaterVerfuegbar ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          <p className="font-medium">Update-Dienst nicht aktiv.</p>
+          <p className="mt-1 text-amber-700">
+            Der Ein-Klick-Update-Dienst fehlt in dieser Installation. Einmal <strong>Kassa-Setup</strong> erneut
+            ausführen (fügt ihn hinzu) — danach klappt „Jetzt aktualisieren" per Klick.
+          </p>
+        </div>
+      ) : s?.updateVerfuegbar ? (
+        <div className="rounded-lg border border-brand-200 bg-brand-50 p-4">
+          <p className="text-sm font-medium text-brand-800">Update verfügbar: v{s.neueste}</p>
+          {isAdmin ? (
+            bestaetigen ? (
+              <div className="mt-3 space-y-2">
+                <p className="text-xs text-brand-700">
+                  Die Kassa lädt den neuen Stand und baut die Dienste neu — dabei ist sie <strong>rund 1 Minute
+                  offline</strong>. Nur starten, wenn gerade nicht kassiert wird. Fortfahren?
+                </p>
+                <div className="flex gap-2">
+                  <Button variant="primary" loading={start.isPending} onClick={() => start.mutate()}>
+                    Ja, jetzt aktualisieren
+                  </Button>
+                  <Button variant="secondary" onClick={() => setBestaetigen(false)}>Abbrechen</Button>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-3">
+                <Button variant="primary" onClick={() => { setFehler(null); setBestaetigen(true) }}>Jetzt aktualisieren</Button>
+              </div>
+            )
+          ) : (
+            <p className="mt-1 text-xs text-brand-600">Ein Update kann nur ein Administrator starten.</p>
+          )}
+        </div>
+      ) : (
+        <div className="rounded-lg border border-line bg-panel-2 p-4 text-sm text-ink-muted">
+          {s ? 'Die Kassa ist auf dem neuesten Stand.' : 'Status wird geladen…'}
+        </div>
+      )}
+
+      {s?.update?.status === 'fehler' && s.update.fehler && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+          Letztes Update fehlgeschlagen: {s.update.schritt || s.update.fehler}
+        </div>
+      )}
+      {fehler && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700">{fehler}</div>
       )}
     </section>
   )

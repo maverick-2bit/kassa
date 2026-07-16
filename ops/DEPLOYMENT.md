@@ -233,8 +233,27 @@ Subdomain (`https://kasse.example.com`, `https://terminal.example.com`, …).
 
 ## 8. Aktualisieren
 
+**Am einfachsten — direkt in der Kassa (Ein-Klick):**
+**Einstellungen → System → Aktualisierung**. Zeigt installierte vs. neueste Version;
+ein Klick auf **„Jetzt aktualisieren"** (nur Admin) holt den neuen Stand und baut die
+Container neu. Die Kassa ist dabei ~1 Minute offline (nicht während des Kassierens
+starten). Nach Abschluss erscheint **„Jetzt neu laden"**.
+
+> Dahinter steckt ein eigener `updater`-Container (in `docker-compose.yml` enthalten),
+> der als Einziger den Docker-Socket sieht und **ausschließlich** den festen Rebuild
+> ausführt — das Backend gibt nur das Startsignal (Datei im `update_control`-Volume),
+> kann also keine beliebigen Befehle auslösen.
+>
+> **Erststart des Update-Dienstes:** Auf bereits laufenden Installationen ohne
+> `updater`-Container zeigt das Panel „Update-Dienst nicht aktiv". Dann **einmal**
+> `Kassa-Setup` (Doppelklick) bzw. den `install.sh`-Einzeiler ausführen — das fügt den
+> Dienst hinzu; ab dann läuft jedes weitere Update per Klick.
+
+**Manuell (Terminal), immer möglich:**
+
 ```bash
-git pull
+cd ~/kassa   # bzw. das Install-Verzeichnis
+git pull 2>/dev/null || true     # oder Kassa-Setup / install.sh erneut ausführen
 docker compose up -d --build     # ggf. mit --profile proxy
 ```
 

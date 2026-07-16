@@ -174,6 +174,32 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 }
 
 // ---------------------------------------------------------------------------
+// System / In-App-Update
+// ---------------------------------------------------------------------------
+
+export interface SystemUpdateStatus {
+  status:   'idle' | 'angefordert' | 'laeuft' | 'fertig' | 'fehler'
+  schritt?: string
+  fehler?:  string | null
+  version?: string | null
+  zeit?:    string
+}
+
+export interface SystemStatus {
+  installiert:       string
+  neueste:           string | null
+  updateVerfuegbar:  boolean
+  updaterVerfuegbar: boolean
+  update:            SystemUpdateStatus
+}
+
+export const systemApi = {
+  status:    () => request<SystemStatus>('GET', '/api/system/status'),
+  /** Löst das Update aus (Admin). Body-los — der Updater-Dienst holt das Signal ab. */
+  ausloesen: () => request<{ angefordert: boolean }>('POST', '/api/system/update'),
+}
+
+// ---------------------------------------------------------------------------
 // DEP-Export (Datei-Download)
 // ---------------------------------------------------------------------------
 
