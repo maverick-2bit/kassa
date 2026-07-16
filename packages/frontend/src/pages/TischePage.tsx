@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { TischTabErstellenInput, TischTabResponse } from '@kassa/shared'
+import type { TabPosition, TischTabErstellenInput, TischTabResponse } from '@kassa/shared'
 import { tischTabApi, tischplanApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
@@ -9,7 +9,7 @@ import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
 import { TischplanAnsicht } from '../components/TischplanAnsicht'
-import { UmbuchenForm, ZusammenfuehrenForm } from '../components/tischAktionenForms'
+import { UmbuchenForm, ZusammenfuehrenForm, TeilUmbuchenForm } from '../components/tischAktionenForms'
 
 // ---------------------------------------------------------------------------
 // Haupt-Seite
@@ -26,6 +26,8 @@ export function TischePage() {
   const [vorbelegterTisch, setVorbelegterTisch] = useState<string>('')
   const [umbuchenTab, setUmbuchenTab]         = useState<TischTabResponse | null>(null)
   const [zusammenGruppe, setZusammenGruppe]   = useState<TischTabResponse[] | null>(null)
+  const [splitTab, setSplitTab]               = useState<TischTabResponse | null>(null)   // Aktions-Auswahl
+  const [teilTab, setTeilTab]                 = useState<TischTabResponse | null>(null)   // Teil-Umbuchen
   const [fehler, setFehler]                   = useState<string | null>(null)
 
   const tabsQuery = useQuery({
@@ -66,6 +68,17 @@ export function TischePage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tisch-tabs'] })
       setZusammenGruppe(null)
+      setFehler(null)
+    },
+    onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
+  })
+
+  const verschiebeMutation = useMutation({
+    mutationFn: ({ id, zielTischNummer, positionen }: { id: string; zielTischNummer: string; positionen: TabPosition[] }) =>
+      tischTabApi.verschiebePositionen(id, { zielTischNummer, positionen }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tisch-tabs'] })
+      setTeilTab(null)
       setFehler(null)
     },
     onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
@@ -144,6 +157,7 @@ export function TischePage() {
                 setVorbelegterTisch(tischNummer)
               }}
               onUmbuchen={(tab) => { setFehler(null); setUmbuchenTab(tab) }}
+              onSplit={(tab) => { setFehler(null); setSplitTab(tab) }}
               onZusammenfuehren={(gruppe) => { setFehler(null); setZusammenGruppe(gruppe) }}
             />
           )}
@@ -195,6 +209,52 @@ export function TischePage() {
             fehler={fehler}
             onSubmit={(zielId, quellTabIds) => zusammenfuehrenMutation.mutate({ zielId, quellTabIds })}
             onAbbrechen={() => { setZusammenGruppe(null); setFehler(null) }}
+          />
+        )}
+      </Modal>
+
+      {/* Split-Aktion wählen: Artikel umbuchen oder Rechnung teilen */}
+      <Modal
+        open={!!splitTab}
+        onClose={() => setSplitTab(null)}
+        title={splitTab ? `Tisch ${splitTab.tischNummer} teilen` : 'Teilen'}
+      >
+        {splitTab && (
+          <div className="space-y-3">
+            <p className="text-sm text-ink-muted">Was möchtest du tun?</p>
+            <button
+              type="button"
+              onClick={() => { const t = splitTab; setSplitTab(null); setTeilTab(t) }}
+              className="w-full rounded-lg border border-line p-4 text-left hover:border-brand-400 hover:bg-brand-50 transition"
+            >
+              <p className="text-sm font-semibold text-ink">↔ Artikel umbuchen</p>
+              <p className="mt-0.5 text-xs text-ink-muted">Einzelne Artikel auf einen anderen Tisch verschieben.</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate(`/tische/${splitTab.id}?aktion=split`)}
+              className="w-full rounded-lg border border-line p-4 text-left hover:border-brand-400 hover:bg-brand-50 transition"
+            >
+              <p className="text-sm font-semibold text-ink">⊢ Rechnung teilen</p>
+              <p className="mt-0.5 text-xs text-ink-muted">Die Rechnung auf mehrere Zahler aufteilen und kassieren.</p>
+            </button>
+          </div>
+        )}
+      </Modal>
+
+      {/* Artikel teilweise auf einen anderen Tisch umbuchen */}
+      <Modal
+        open={!!teilTab}
+        onClose={() => { setTeilTab(null); setFehler(null) }}
+        title="Artikel umbuchen"
+      >
+        {teilTab && (
+          <TeilUmbuchenForm
+            tab={teilTab}
+            loading={verschiebeMutation.isPending}
+            fehler={fehler}
+            onSubmit={(zielTischNummer, positionen) => verschiebeMutation.mutate({ id: teilTab.id, zielTischNummer, positionen })}
+            onAbbrechen={() => { setTeilTab(null); setFehler(null) }}
           />
         )}
       </Modal>
@@ -255,11 +315,13 @@ function TischKarte({
   gruppeNr,
   onClick,
   onUmbuchen,
+  onSplit,
 }: {
   tab:        TischTabResponse
   gruppeNr:   number | undefined
   onClick:    () => void
   onUmbuchen: () => void
+  onSplit:    () => void
 }) {
   useMinutenticker()
   const min   = minOffen(tab.geoffnetAm)
@@ -292,18 +354,31 @@ function TischKarte({
         </p>
       </button>
 
-      {/* Umbuchen direkt aus der Übersicht (ohne den Tab zu öffnen) */}
-      <button
-        type="button"
-        onClick={onUmbuchen}
-        title="Tisch umbuchen"
-        aria-label={`Tisch ${tab.tischNummer} umbuchen`}
-        className="absolute bottom-2 right-2 inline-flex h-8 w-8 items-center justify-center rounded-lg
-                   border border-line-strong bg-panel/80 text-base text-ink-muted shadow-sm backdrop-blur
-                   hover:border-brand-400 hover:text-brand-600"
-      >
-        ⇄
-      </button>
+      {/* Direkt-Aktionen aus der Übersicht (ohne den Tab zu öffnen) */}
+      <div className="absolute bottom-2 right-2 flex gap-1.5">
+        <button
+          type="button"
+          onClick={onSplit}
+          title="Tisch teilen (Artikel umbuchen / Rechnung teilen)"
+          aria-label={`Tisch ${tab.tischNummer} teilen`}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg
+                     border border-line-strong bg-panel/80 text-base text-ink-muted shadow-sm backdrop-blur
+                     hover:border-brand-400 hover:text-brand-600"
+        >
+          ✂
+        </button>
+        <button
+          type="button"
+          onClick={onUmbuchen}
+          title="Tisch umbuchen"
+          aria-label={`Tisch ${tab.tischNummer} umbuchen`}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg
+                     border border-line-strong bg-panel/80 text-base text-ink-muted shadow-sm backdrop-blur
+                     hover:border-brand-400 hover:text-brand-600"
+        >
+          ⇄
+        </button>
+      </div>
     </div>
   )
 }
@@ -321,12 +396,14 @@ function TischListeGruppiert({
   onTabClick,
   onNeueGruppe,
   onUmbuchen,
+  onSplit,
   onZusammenfuehren,
 }: {
   tabs:              TischTabResponse[]
   onTabClick:        (id: string) => void
   onNeueGruppe:      (tischNummer: string) => void
   onUmbuchen:        (tab: TischTabResponse) => void
+  onSplit:           (tab: TischTabResponse) => void
   onZusammenfuehren: (gruppe: TischTabResponse[]) => void
 }) {
   // Tabs nach tischNummer gruppieren (Reihenfolge: erste Öffnungszeit)
@@ -371,6 +448,7 @@ function TischListeGruppiert({
                 gruppeNr={gruppe.length > 1 ? i + 1 : undefined}
                 onClick={() => onTabClick(tab.id)}
                 onUmbuchen={() => onUmbuchen(tab)}
+                onSplit={() => onSplit(tab)}
               />
             ))}
             {/* „+ Neue Gruppe" als Ghost-Karte wenn mehrere Gruppen vorhanden */}

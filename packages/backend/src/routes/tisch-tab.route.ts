@@ -7,6 +7,7 @@ import {
   TischTabUmbenennenInputSchema,
   TischTabSplittenInputSchema,
   TischTabZusammenfuehrenInputSchema,
+  TischTabVerschiebenInputSchema,
 } from '@kassa/shared'
 import {
   listOffeneTabs,
@@ -19,6 +20,7 @@ import {
   umbucheTab,
   splitteUndBezahleTab,
   verschmelzeTabs,
+  verschiebePositionen,
   TischTabError,
   type TischTabServiceDeps,
 } from '../services/tisch-tab.service.js'
@@ -123,6 +125,20 @@ export const tischTabRoute: FastifyPluginAsync<TischTabRouteOptions> = async (fa
     try {
       const tab = await verschmelzeTabs(id, parsed.data, request.user.mandantId, opts.deps)
       return reply.send(tab)
+    } catch (err) {
+      if (err instanceof TischTabError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      throw err
+    }
+  })
+
+  // Teilweises Umbuchen: eine Teilmenge von Positionen auf einen anderen offenen Tisch
+  fastify.post('/tisch-tabs/:id/verschieben', auth, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const parsed = TischTabVerschiebenInputSchema.safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
+    try {
+      const result = await verschiebePositionen(id, parsed.data, request.user.mandantId, opts.deps)
+      return reply.send(result)
     } catch (err) {
       if (err instanceof TischTabError) return reply.status(err.httpStatus).send({ fehler: err.message })
       throw err

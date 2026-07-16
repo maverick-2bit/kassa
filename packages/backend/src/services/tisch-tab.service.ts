@@ -10,6 +10,7 @@ import type {
   TischTabUmbuchenInput,
   TischTabUmbenennenInput,
   TischTabZusammenfuehrenInput,
+  TischTabVerschiebenInput,
   TischTabResponse,
 } from '@kassa/shared'
 import type { Db } from '../db/client.js'
@@ -511,6 +512,126 @@ export async function verschmelzeTabs(
     })
 
     return toResponse(zielRow)
+  })
+}
+
+/**
+ * Teilweises Umbuchen: verschiebt eine Teilmenge von Positionen vom Quell-Tab auf
+ * einen anderen offenen Tisch (per Tischnummer; existiert dort keiner, wird er
+ * angelegt). Transaktional + `FOR UPDATE` (Muster verschmelzeTabs).
+ *
+ * LAGERNEUTRAL: Die Artikel bleiben in einem offenen Tab — daher KEIN
+ * aktualisiereStockDeltas (sonst würde der Abzug auf B + die Rückbuchung auf A den
+ * „einzige-Lagerquelle"-Invariant verletzen und ein Fehl-Storno loggen). Genau wie
+ * verschmelzeTabs rührt der Move den Lagerstand nicht an.
+ */
+export async function verschiebePositionen(
+  quellId: string,
+  input: TischTabVerschiebenInput,
+  mandantId: string,
+  deps: TischTabServiceDeps,
+): Promise<{ quelle: TischTabResponse; ziel: TischTabResponse }> {
+  const zielTischNummer = input.zielTischNummer.trim()
+  if (input.positionen.length === 0) throw new TischTabError(400, 'Keine Positionen zum Umbuchen')
+
+  return deps.db.transaction(async (tx) => {
+    // Quell-Tab sperren + validieren
+    const [quelle] = await tx
+      .select()
+      .from(tischTabs)
+      .where(and(eq(tischTabs.id, quellId), eq(tischTabs.mandantId, mandantId)))
+      .for('update')
+      .limit(1)
+    if (!quelle) throw new TischTabError(404, 'Quell-Tisch nicht gefunden')
+    if (quelle.status !== 'offen') throw new TischTabError(409, 'Quell-Tisch ist nicht mehr offen')
+    if (zielTischNummer === quelle.tischNummer) throw new TischTabError(400, 'Ziel-Tisch ist derselbe wie der Quell-Tisch')
+
+    // Zu verschiebende Menge je Positions-Schlüssel (Varianten getrennt) aufsummieren
+    const moveByKey = new Map<string, number>()
+    for (const mp of input.positionen) {
+      const k = positionKey(mp)
+      moveByKey.set(k, (moveByKey.get(k) ?? 0) + mp.menge)
+    }
+
+    // Quell-Positionen durchgehen: gewünschte Mengen abziehen, Bewegtes sammeln
+    const quellPos    = (quelle.positionen as TabPosition[]) ?? []
+    const neueQuellPos: TabPosition[] = []
+    const bewegtePos:  TabPosition[] = []
+    for (const p of quellPos) {
+      const k    = positionKey(p)
+      const move = moveByKey.get(k) ?? 0
+      if (move <= 0) { neueQuellPos.push(p); continue }
+      const nimm = Math.min(move, p.menge)
+      moveByKey.set(k, move - nimm)
+      if (nimm > 0)              bewegtePos.push({ ...p, menge: nimm })
+      if (p.menge - nimm > 0)    neueQuellPos.push({ ...p, menge: p.menge - nimm })
+    }
+    for (const rest of moveByKey.values()) {
+      if (rest > 0) throw new TischTabError(400, 'Zu verschiebende Menge übersteigt den Bestand des Tisches')
+    }
+    if (bewegtePos.length === 0) throw new TischTabError(400, 'Keine passenden Positionen zum Umbuchen gefunden')
+
+    const jetzt = new Date()
+
+    // Ziel-Tab: offener Tab mit der Tischnummer (gleiche Kasse) — oder neu anlegen
+    let [ziel] = await tx
+      .select()
+      .from(tischTabs)
+      .where(and(
+        eq(tischTabs.mandantId, mandantId),
+        eq(tischTabs.kasseId, quelle.kasseId),
+        eq(tischTabs.tischNummer, zielTischNummer),
+        eq(tischTabs.status, 'offen'),
+      ))
+      .for('update')
+      .limit(1)
+    if (!ziel) {
+      const [neu] = await tx
+        .insert(tischTabs)
+        .values({
+          mandantId, kasseId: quelle.kasseId, tischNummer: zielTischNummer,
+          kellner: quelle.kellner, positionen: [], status: 'offen', geoffnetAm: jetzt,
+        })
+        .returning()
+      if (!neu) throw new TischTabError(500, 'Ziel-Tisch konnte nicht angelegt werden')
+      await tx.insert(tabEreignisse).values({
+        tabId: neu.id, mandantId, typ: 'geoeffnet',
+        details: { tischNummer: zielTischNummer, kellner: quelle.kellner },
+      })
+      ziel = neu
+    }
+
+    // Bewegte Positionen an den Ziel-Tab anhängen; gleicher positionKey → mengen mergen
+    const zielMap = new Map<string, TabPosition>()
+    const reihenfolge: string[] = []
+    for (const p of [...((ziel.positionen as TabPosition[]) ?? []), ...bewegtePos]) {
+      const k  = positionKey(p)
+      const ex = zielMap.get(k)
+      if (ex) ex.menge += p.menge
+      else { zielMap.set(k, { ...p }); reihenfolge.push(k) }
+    }
+    const neueZielPos = reihenfolge.map(k => zielMap.get(k)!)
+
+    // Schreiben (KEIN Lagerabzug — Move ist lagerneutral)
+    const [quellRow] = await tx.update(tischTabs)
+      .set({ positionen: neueQuellPos, updatedAt: jetzt })
+      .where(eq(tischTabs.id, quellId)).returning()
+    const [zielRow] = await tx.update(tischTabs)
+      .set({ positionen: neueZielPos, updatedAt: jetzt })
+      .where(eq(tischTabs.id, ziel.id)).returning()
+    if (!quellRow || !zielRow) throw new TischTabError(500, 'Umbuchen fehlgeschlagen')
+
+    const anzahl = bewegtePos.reduce((s, p) => s + p.menge, 0)
+    await tx.insert(tabEreignisse).values({
+      tabId: quellId, mandantId, typ: 'positionen_verschoben',
+      details: { richtung: 'raus', zielTabId: ziel.id, zielTisch: zielTischNummer, anzahl },
+    })
+    await tx.insert(tabEreignisse).values({
+      tabId: ziel.id, mandantId, typ: 'positionen_verschoben',
+      details: { richtung: 'rein', quellTabId: quellId, quellTisch: quelle.tischNummer, anzahl },
+    })
+
+    return { quelle: toResponse(quellRow), ziel: toResponse(zielRow) }
   })
 }
 

@@ -187,6 +187,7 @@ export {
   TischTabUmbenennenInputSchema,
   TischTabSplittenInputSchema,
   TischTabZusammenfuehrenInputSchema,
+  TischTabVerschiebenInputSchema,
   TischTabBezahlenInputSchema,
   TischTabResponseSchema,
 } from './schemas/tisch-tab.js'
@@ -199,6 +200,7 @@ export type {
   TischTabUmbenennenInput,
   TischTabSplittenInput,
   TischTabZusammenfuehrenInput,
+  TischTabVerschiebenInput,
   TischTabBezahlenInput,
   TischTabResponse,
 } from './schemas/tisch-tab.js'

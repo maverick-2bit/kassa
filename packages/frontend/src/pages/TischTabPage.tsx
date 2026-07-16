@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
   Artikel,
@@ -142,6 +142,16 @@ export function TischTabPage() {
   }, [modGruppenQuery.data, modZuweisungenQuery.data])
 
   const tab = tabQuery.data
+
+  // Direkt-Split aus der Tischliste: „/tische/:id?aktion=split" öffnet den Teilen-Dialog
+  const [searchParams, setSearchParams] = useSearchParams()
+  useEffect(() => {
+    if (searchParams.get('aktion') === 'split' && tab && tab.positionen.length > 0) {
+      setSplitOffen(true)
+      searchParams.delete('aktion')
+      setSearchParams(searchParams, { replace: true })
+    }
+  }, [searchParams, tab, setSearchParams])
 
   // Alle Positionen (bestehend + Warenkorb) für Gesamtanzeige und Bezahlen
   const allePositionen: TabPosition[] = useMemo(() => {
@@ -759,6 +769,7 @@ const EREIGNIS_CONFIG: Record<TabEreignis['typ'], { label: string; icon: string;
   bezahlt:                 { label: 'Bezahlt',               icon: '✓',  color: 'text-green-700  bg-green-50  border-green-200'  },
   gesplittet:              { label: 'Rechnung geteilt',      icon: '⊢',  color: 'text-purple-700 bg-purple-50 border-purple-200' },
   zusammengefuehrt:        { label: 'Gruppen zusammengeführt', icon: '⋈', color: 'text-purple-700 bg-purple-50 border-purple-200' },
+  positionen_verschoben:   { label: 'Artikel umgebucht',     icon: '↔',  color: 'text-amber-700  bg-amber-50  border-amber-200'  },
 }
 
 function EreignisDetails({ typ, details }: { typ: TabEreignis['typ']; details: Record<string, unknown> }) {
@@ -819,6 +830,11 @@ function EreignisDetails({ typ, details }: { typ: TabEreignis['typ']; details: R
           {Number(details.anzahlZahler)} Zahler · {formatPreis(Number(details.gesamtCent))}
         </span>
       )
+
+    case 'positionen_verschoben':
+      return details.richtung === 'raus'
+        ? <span><strong>{Number(details.anzahl)}</strong> Artikel → Tisch <strong>{String(details.zielTisch)}</strong></span>
+        : <span><strong>{Number(details.anzahl)}</strong> Artikel ← Tisch <strong>{String(details.quellTisch)}</strong></span>
 
     default:
       return null
