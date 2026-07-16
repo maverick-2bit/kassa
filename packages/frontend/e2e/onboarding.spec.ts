@@ -115,11 +115,8 @@ test('Kassier-Flow: Artikel in den Warenkorb, Barzahlung erzeugt signierten Bele
   // Artikel-Kachel anklicken → Warenkorb
   await page.getByRole('button', { name: 'Kaffee' }).first().click()
 
-  // Bar-Betrag exakt auf die Summe setzen (Voll-Barzahlung, kein ZVT noetig)
-  await page.getByRole('button', { name: 'Exakt' }).click()
-
-  // Beleg erstellen → RKSV-Signierung
-  await page.getByRole('button', { name: 'Bon erstellen' }).click()
+  // Voll-Barzahlung mit einem Klick (großer „Bar (…)"-Button, wie an der Tischbuchung)
+  await page.getByRole('button', { name: /^Bar \(/ }).click()
 
   // Erfolg: signierter Barzahlungsbeleg (Startbeleg war #1 -> dieser #2+)
   await expect(page.getByText(/Beleg #\d+ erstellt/)).toBeVisible({ timeout: 20_000 })
@@ -198,9 +195,8 @@ test('Rabatt + Modifikator: Aufschlag und 10%-Rabatt fließen korrekt in den sig
   await expect(page.getByText(/Rabatt \(10%\)/)).toBeVisible()
   await expect(page.getByText(/0,35/)).toBeVisible()
 
-  // Bar exakt (= 3,15 EUR nach Rabatt) und signierten Beleg erstellen
-  await page.getByRole('button', { name: 'Exakt' }).click()
-  await page.getByRole('button', { name: 'Bon erstellen' }).click()
+  // Voll-Barzahlung (= 3,15 EUR nach Rabatt) mit einem Klick → signierter Beleg
+  await page.getByRole('button', { name: /^Bar \(/ }).click()
 
   await expect(page.getByText(/Beleg #\d+ erstellt/)).toBeVisible({ timeout: 20_000 })
 })
@@ -493,8 +489,8 @@ test('Gutschein: einlösen deckt die Rechnung voll, signierter Beleg entsteht', 
   await expect(page.getByText('E2EGS01').first()).toBeVisible({ timeout: 10_000 })
   await page.getByRole('button', { name: 'Einlösen', exact: true }).click()
 
-  // Zu zahlen ist 0 € (Gutschein deckt voll) → signierter Beleg
-  await page.getByRole('button', { name: 'Bon erstellen' }).click()
+  // Zu zahlen ist 0 € (Gutschein deckt voll) → mit einem Klick abschließen → signierter Beleg
+  await page.getByRole('button', { name: /^Bar \(/ }).click()
   await expect(page.getByText(/Beleg #\d+ erstellt/)).toBeVisible({ timeout: 20_000 })
 
   // Gutschein ist danach eingelöst (Restwert 0)
@@ -697,9 +693,8 @@ test('Kartenzahlung: per Karte bezahlen erzeugt einen Beleg mit Kartenumsatz', a
 
   await page.goto('/kasse')
   await page.getByRole('button', { name: 'Kaffee' }).first().click()
-  // „Karte": leert den Bar-Betrag → der volle Betrag läuft auf Karte
-  await page.getByRole('button', { name: 'Karte', exact: true }).click()
-  await page.getByRole('button', { name: 'Bon erstellen' }).click()
+  // Großer „Karte (…)"-Button: voller Betrag läuft auf Karte (ein Klick, kein ZVT aktiv)
+  await page.getByRole('button', { name: /^Karte \(/ }).click()
   await expect(page.getByText(/Beleg #\d+ erstellt/)).toBeVisible({ timeout: 20_000 })
 
   // Es existiert ein Beleg mit vollem Kartenumsatz (250) und 0 bar
@@ -838,9 +833,9 @@ test('Kunde auf Beleg: gewählter Kunde erscheint auf dem Bon', async ({ page, r
   await page.getByPlaceholder('Kunde suchen…').fill('E2E-Beleg-Kunde')
   await page.getByRole('button', { name: /E2E-Beleg-Kunde/ }).click()
 
-  // Bar exakt bezahlen → „Alternativdruck" öffnet den Beleg-Dialog (Bon zeigt den Kunden)
-  await page.getByRole('button', { name: 'Exakt' }).click()
-  await page.getByRole('button', { name: 'Alternativdruck' }).click()
+  // „Ausgabe wählen" ankreuzen → Bar-Zahlung öffnet den Beleg-Dialog (Bon zeigt den Kunden)
+  await page.getByRole('checkbox', { name: /Ausgabe wählen/ }).check()
+  await page.getByRole('button', { name: /^Bar \(/ }).click()
 
   // Der Bon-Dialog zeigt den Kunden
   await expect(page.getByText(/Beleg #\d+ erstellt/)).toBeVisible({ timeout: 20_000 })
@@ -1952,12 +1947,11 @@ test('Seriennummern: an der Kasse verkaufen druckt sie auf den Beleg und markier
 
   await page.goto('/kasse')
 
-  // Serialisierten Artikel in den Warenkorb + Voll-Barzahlung
+  // Serialisierten Artikel in den Warenkorb
   await page.getByRole('button', { name: art }).first().click()
-  await page.getByRole('button', { name: 'Exakt' }).click()
 
-  // „Bon erstellen" öffnet die Seriennummern-Wahl (statt direkt zu kassieren)
-  await page.getByRole('button', { name: 'Bon erstellen' }).click()
+  // „Bar (…)" öffnet zuerst die Seriennummern-Wahl (statt direkt zu kassieren)
+  await page.getByRole('button', { name: /^Bar \(/ }).click()
   await expect(page.getByText('Seriennummern für die Rechnung wählen')).toBeVisible({ timeout: 10_000 })
 
   // Seriennummer wählen → übernehmen & kassieren
@@ -2110,8 +2104,8 @@ test('Digitaler Beleg (digital): Dialog zeigt Akzeptiert/Nicht-akzeptiert, Akzep
 
   await page.goto('/kasse')
   await page.getByRole('button', { name: new RegExp(`Digi-${uid}`) }).first().click()
-  await page.getByRole('button', { name: 'Exakt' }).click()
-  await page.getByRole('button', { name: 'Bon erstellen' }).click()
+  // Im Digital-Modus öffnet die Bar-Zahlung direkt den Foto-Beleg-Dialog
+  await page.getByRole('button', { name: /^Bar \(/ }).click()
 
   await expect(page.getByText(/Beleg #\d+ erstellt/)).toBeVisible({ timeout: 20_000 })
   // Foto-Beleg: vollständiger Beleg am Bildschirm inkl. RKSV-QR — Gast fotografiert ab (kein Link-QR)

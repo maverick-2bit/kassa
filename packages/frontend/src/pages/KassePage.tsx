@@ -29,8 +29,6 @@ import {
   warenkorbSummeCent,
   rabattBetragCent,
   preisNachPositionsRabattCent,
-  barEingabeCent,
-  zahlungsAufteilung,
 } from '../lib/warenkorb'
 import { druckeAngebot, druckeGutschein, druckeLiferschein } from '../lib/rechnung'
 import { Button } from '../components/ui/Button'
@@ -40,6 +38,7 @@ import { BonAnzeige } from '../components/BonAnzeige'
 import { KartenzahlungModal } from '../components/KartenzahlungModal'
 import { SerialAuswahlModal, type SerialPos } from '../components/SerialAuswahlModal'
 import { RabattModal } from '../components/RabattModal'
+import { BarRueckgeldModal } from '../components/BarRueckgeldModal'
 import { ArtikelGrid } from '../components/ArtikelGrid'
 import { KundePicker } from '../components/KundePicker'
 
@@ -113,12 +112,16 @@ export function KassePage() {
   const [neuerKunde, setNeuerKunde] = useState<KundeInput | undefined>(undefined)
   const [tisch, setTisch] = useState<string>('1')
   const [kellner, setKellner] = useState<string>('Service')
-  const [barEuro, setBarEuro] = useState<string>('')
   const [letzterBon, setLetzterBon] = useState<BelegResponse | null>(null)
   // Kurze Bestätigung nach „Bon erstellen" (kein Dialog im Druck-Modus)
   const [belegBestaetigung, setBelegBestaetigung] = useState<string | null>(null)
-  // „Alternativdruck": Verkauf ohne Auto-Druck, dann Auswahl-Dialog. Ref übersteht Serial-/ZVT-Modal.
+  // „Ausgabe wählen" (früher Alternativdruck): Verkauf ohne Auto-Druck → Auswahl-Dialog.
+  const [ausgabeWaehlen, setAusgabeWaehlen] = useState(false)
   const alternativRef = useRef(false)
+  // Optional: gegebenen Bar-Betrag eingeben → Retourgeld (Bar bleibt Ein-Klick, wie am Tisch)
+  const [barGebenOffen, setBarGebenOffen] = useState(false)
+  // Gewählter Betrags-Split (bar/karte) — übersteht Serial-/ZVT-Modal bis zur Beleg-Erstellung
+  const zahlungRef = useRef<{ barCent: number; karteCent: number }>({ barCent: 0, karteCent: 0 })
   const [letzterAngebot, setLetzterAngebot] = useState<AngebotResponse | null>(null)
   const [bonierungErgebnis, setBonierungErgebnis] = useState<BonierungErgebnis | null>(null)
   const [fehler, setFehler] = useState<string | null>(null)
@@ -235,12 +238,6 @@ export function KassePage() {
   const gutscheinCent          = gutschein?.einloesungCent ?? 0
   const summeNachGutscheinCent = Math.max(0, summeNachRabattCent - gutscheinCent)
 
-  // Zahlungsberechnung -------------------------------------------------------
-  const barCentEingabe = useMemo(() => barEingabeCent(barEuro), [barEuro])
-  // Bar-Anteil (gedeckelt), Karten-Rest und Wechselgeld in einem Schritt.
-  const { barCentBeleg, karteCentBeleg, wechselgeldCent: wechselgeld } =
-    zahlungsAufteilung(summeNachGutscheinCent, barCentEingabe)
-
   // ---------------------------------------------------------------------------
   // Warenkorb-Aktionen
   // ---------------------------------------------------------------------------
@@ -307,7 +304,6 @@ export function KassePage() {
   const reset = () => {
     setKorb([])
     setRabatt(null)
-    setBarEuro('')
     setFehler(null)
     setKunde(null)
     setNeuerKunde(undefined)
@@ -519,25 +515,31 @@ export function KassePage() {
     belegMutation.mutate(input)
   }
 
-  const handleBonErstellen = (alternativ = false) => {
+  // Ein-Klick-Zahlung (wie am Tisch): expliziter Bar/Karte-Split, der Serial- und
+  // ZVT-Modal übersteht (in zahlungRef gemerkt), am Ende wird der Beleg erstellt.
+  const starteZahlung = (barCent: number, karteCent: number, alternativ = false) => {
     setFehler(null)
     if (korb.length === 0) {
       setFehler('Der Warenkorb ist leer.')
       return
     }
     alternativRef.current = alternativ
+    zahlungRef.current = { barCent, karteCent }
     // Serialisierte Artikel: zuerst Seriennummern wählen (sofern noch nicht geschehen)
     if (serialPositionen.length > 0 && serialsRef.current === null) {
       setSerialModalOffen(true)
       return
     }
-    if (karteCentBeleg > 0 && zvtCfg.data?.zvtAktiv) {
-      setZvtBetrag(karteCentBeleg)
+    // Karte + aktives ZVT-Terminal → erst ans Terminal, danach Beleg
+    if (karteCent > 0 && zvtCfg.data?.zvtAktiv) {
+      setZvtBetrag(karteCent)
       setZvtOffen(true)
       return
     }
-    erstelleBeleg(barCentBeleg, karteCentBeleg)
+    erstelleBeleg(barCent, karteCent)
   }
+  const zahleBar   = (alternativ = false) => starteZahlung(summeNachGutscheinCent, 0, alternativ)
+  const zahleKarte = (alternativ = false) => starteZahlung(0, summeNachGutscheinCent, alternativ)
 
   // ---------------------------------------------------------------------------
   // UI
@@ -825,7 +827,7 @@ export function KassePage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => { setKreditModus(true); setBarEuro('') }}
+                      onClick={() => { setKreditModus(true) }}
                       className={`flex-1 px-3 py-1.5 text-xs font-medium border-l border-line-strong transition ${
                         kreditModus ? 'bg-orange-500 text-white' : 'bg-panel text-ink-muted hover:bg-panel-2'
                       }`}
@@ -846,69 +848,48 @@ export function KassePage() {
                     <p className="text-xs text-orange-600">Es wird ein regulärer Beleg erstellt (Zahlungsart: Sonstige).</p>
                   </div>
                 ) : (
-                  <>
-                    {/* Bar-Eingabe */}
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-ink-muted">Bar (€)</label>
-                      <div className="flex gap-1.5">
-                        <Input
-                          inputMode="decimal"
-                          placeholder="0,00"
-                          value={barEuro}
-                          onChange={(e) => setBarEuro(e.target.value.replace(/[^0-9.,]/g, ''))}
-                          className="flex-1"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setBarEuro((summeNachRabattCent / 100).toFixed(2).replace('.', ','))}
-                          className="shrink-0 rounded-md border border-line-strong bg-panel px-2.5 py-1.5 text-xs font-medium text-ink hover:bg-panel-2 hover:border-brand-400 transition"
-                        >
-                          Exakt
-                        </button>
-                      </div>
-                      {/* Schein-Schnellbuttons */}
-                      <div className="flex flex-wrap gap-1">
-                        {[5_00, 10_00, 20_00, 50_00, 100_00].map(cent => (
-                          <button
-                            key={cent}
-                            type="button"
-                            onClick={() => setBarEuro((cent / 100).toFixed(2).replace('.', ','))}
-                            className={`rounded border px-2 py-1 text-xs font-medium transition ${
-                              barCentEingabe === cent
-                                ? 'bg-brand-600 border-brand-600 text-white'
-                                : 'border-line-strong bg-panel text-ink-muted hover:border-brand-400 hover:bg-panel-2'
-                            }`}
-                          >
-                            € {cent / 100}
-                          </button>
-                        ))}
-                        <button
-                          type="button"
-                          onClick={() => { setBarEuro(''); }}
-                          className="rounded border border-line px-2 py-1 text-xs text-ink-subtle hover:text-red-500 hover:border-red-300 transition"
-                          title="Bar-Betrag leeren → alles Karte"
-                        >
-                          Karte
-                        </button>
-                      </div>
+                  /* Bar/Karte — Ein-Klick, identisch zur Tischbuchung */
+                  <div className="space-y-2">
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={() => zahleBar(ausgabeWaehlen)}
+                        loading={belegMutation.isPending}
+                        disabled={korb.length === 0}
+                        className="flex-1 py-3 text-base"
+                      >
+                        Bar ({formatPreis(summeNachGutscheinCent)})
+                      </Button>
+                      <Button
+                        onClick={() => zahleKarte(ausgabeWaehlen)}
+                        loading={belegMutation.isPending}
+                        disabled={korb.length === 0}
+                        className="flex-1 py-3 text-base"
+                      >
+                        Karte ({formatPreis(summeNachGutscheinCent)})
+                      </Button>
                     </div>
 
-                    {/* Karte-Rest (auto) */}
-                    {karteCentBeleg > 0 && (
-                      <div className="flex items-center justify-between rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
-                        <span className="font-medium">Karte</span>
-                        <span className="font-mono font-semibold">{formatPreis(karteCentBeleg)}</span>
-                      </div>
-                    )}
+                    {/* Optional: gegebenen Bar-Betrag eingeben → Retourgeld (Bar bleibt Ein-Klick) */}
+                    <button
+                      type="button"
+                      onClick={() => { setFehler(null); setBarGebenOffen(true) }}
+                      disabled={korb.length === 0}
+                      className="text-xs text-brand-600 hover:underline font-medium disabled:text-ink-subtle disabled:no-underline"
+                    >
+                      € Betrag geben (Retourgeld)…
+                    </button>
 
-                    {/* Wechselgeld */}
-                    {wechselgeld > 0 && (
-                      <div className="flex items-center justify-between rounded-md border border-green-200 bg-green-50 px-3 py-2.5 text-sm text-green-800">
-                        <span className="font-semibold">Wechselgeld</span>
-                        <span className="font-mono text-base font-bold">{formatPreis(wechselgeld)}</span>
-                      </div>
-                    )}
-                  </>
+                    {/* Ausgabe manuell wählen (früher „Alternativdruck") statt Standarddruck */}
+                    <label className="flex items-center gap-2 text-xs text-ink-muted cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={ausgabeWaehlen}
+                        onChange={(e) => setAusgabeWaehlen(e.target.checked)}
+                        className="h-3.5 w-3.5 rounded border-line-strong text-brand-600 focus:ring-brand-500"
+                      />
+                      Ausgabe wählen (Bon · Rechnung-PDF · E-Mail) statt Standarddruck
+                    </label>
+                  </div>
                 )}
 
                 {fehler && (
@@ -928,7 +909,7 @@ export function KassePage() {
                       Bonieren
                     </Button>
                   )}
-                  {kreditModus ? (
+                  {kreditModus && (
                     <Button
                       onClick={() => {
                         setFehler(null)
@@ -942,27 +923,6 @@ export function KassePage() {
                     >
                       Auf Kredit buchen
                     </Button>
-                  ) : (
-                    <>
-                      <Button
-                        onClick={() => handleBonErstellen(false)}
-                        loading={belegMutation.isPending && !alternativRef.current}
-                        className="flex-1 bg-green-600 hover:bg-green-700 focus:ring-green-400"
-                        disabled={korb.length === 0}
-                      >
-                        Bon erstellen
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        onClick={() => handleBonErstellen(true)}
-                        loading={belegMutation.isPending && alternativRef.current}
-                        className="flex-none"
-                        disabled={korb.length === 0}
-                        title="Verkauf abschließen und Ausgabe (Bon / Rechnung-PDF / E-Mail) wählen"
-                      >
-                        Alternativdruck
-                      </Button>
-                    </>
                   )}
                 </div>
 
@@ -1214,7 +1174,8 @@ export function KassePage() {
           for (const z of zuweisungen) m.set(z.positionIndex, z.seriennummern)
           serialsRef.current = m
           setSerialModalOffen(false)
-          handleBonErstellen()  // erneut — jetzt mit gesetzten Serials weiter zu ZVT/Beleg
+          // erneut mit dem gemerkten Bar/Karte-Split — jetzt mit Serials weiter zu ZVT/Beleg
+          starteZahlung(zahlungRef.current.barCent, zahlungRef.current.karteCent, alternativRef.current)
         }}
         onClose={() => setSerialModalOffen(false)}
         title="Seriennummern für die Rechnung wählen"
@@ -1228,12 +1189,20 @@ export function KassePage() {
         betragCent={zvtBetrag}
         onErfolg={(_job, trinkgeldCent) => {
           setZvtOffen(false)
-          erstelleBeleg(barCentBeleg, karteCentBeleg, trinkgeldCent)
+          erstelleBeleg(zahlungRef.current.barCent, zahlungRef.current.karteCent, trinkgeldCent)
         }}
         onAbbruch={() => {
           setZvtOffen(false)
           setFehler('Kartenzahlung abgebrochen — kein Beleg erstellt')
         }}
+      />
+
+      {/* Bar geben → Retourgeld (Bar bleibt Ein-Klick; gebucht wird der volle Betrag) */}
+      <BarRueckgeldModal
+        open={barGebenOffen}
+        summeCent={summeNachGutscheinCent}
+        onClose={() => setBarGebenOffen(false)}
+        onBuchen={() => { setBarGebenOffen(false); zahleBar(ausgabeWaehlen) }}
       />
 
       <RabattModal
