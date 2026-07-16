@@ -1599,6 +1599,83 @@ test('Tisch umbuchen aus der Übersicht: direkt an der Kachel', async ({ page, r
 })
 
 /**
+ * Teil-Umbuchen aus der Übersicht: über den „✂"-Button an der Kachel einzelne
+ * Artikel (Teilmenge) auf einen anderen Tisch verschieben (neu: verschiebePositionen,
+ * lagerneutral). Journey: Tisch mit 2 Kaffee seeden → /tische → ✂ → „Artikel umbuchen"
+ * → 1 Kaffee wählen + Ziel-Tisch → umbuchen → Quelle hat 1, Ziel (neu) hat 1 (per API).
+ */
+test('Teil-Umbuchen: einzelne Artikel aus der Übersicht auf einen anderen Tisch', async ({ page, request }) => {
+  const login = await ensureAuth(request)
+  const token = login.token, mandantId = login.mandant.id, kasseId = login.kassen[0].id
+  const authHeader = { Authorization: `Bearer ${token}` }
+
+  const kaffee = ((await (await request.get(`/api/artikel?mandantId=${mandantId}`, { headers: authHeader })).json()) as { id: string; bezeichnung: string }[])
+    .find(a => a.bezeichnung === 'Kaffee')!
+  const ts        = Date.now()
+  const tischAlt  = `TEIL-A-${ts}`
+  const tischZiel    = `TEIL-Z-${ts}`
+
+  const tab = await (await request.post('/api/tisch-tabs', { headers: authHeader, data: { kasseId, tischNummer: tischAlt, kellner: 'Service' } })).json()
+  await request.put(`/api/tisch-tabs/${tab.id}/positionen`, {
+    headers: authHeader,
+    data: { positionen: [{ artikelId: kaffee.id, bezeichnung: 'Kaffee', preisBruttoCent: 250, menge: 2 }] },
+  })
+
+  await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
+    localStorage.setItem('kassa:token', d.token)
+    localStorage.setItem('kassa:auth', d.authJson)
+    localStorage.setItem('kassa:mandantId', d.mandantId)
+    localStorage.setItem('kassa:kasseId', d.kasseId)
+  }, { token, authJson: JSON.stringify({ user: login.user, mandant: login.mandant, kassen: login.kassen }), mandantId, kasseId })
+
+  await page.goto('/tische')
+  await page.getByRole('button', { name: `Tisch ${tischAlt} teilen` }).click()
+  await page.getByRole('button', { name: /Artikel umbuchen/ }).click()   // Aktions-Auswahl
+  // 1 von 2 Kaffee wählen (+ einmal) + Ziel-Tisch, dann umbuchen
+  await page.getByRole('button', { name: '+', exact: true }).click()
+  await page.getByPlaceholder(/Terrasse 2/).fill(tischZiel)
+  await page.getByRole('button', { name: /\d+ Artikel umbuchen/ }).click()
+
+  // Quelle hat 1 Kaffee übrig, Ziel-Tisch (neu angelegt) hat 1 Kaffee
+  await expect.poll(async () => {
+    const tabs = await (await request.get(`/api/tisch-tabs?kasseId=${kasseId}`, { headers: authHeader })).json()
+    const a = (tabs as { tischNummer: string; positionen: { menge: number }[] }[]).find(t => t.tischNummer === tischAlt)
+    const z = (tabs as { tischNummer: string; positionen: { menge: number }[] }[]).find(t => t.tischNummer === tischZiel)
+    return `${a?.positionen.reduce((n, p) => n + p.menge, 0)}/${z?.positionen.reduce((n, p) => n + p.menge, 0)}`
+  }, { timeout: 10_000 }).toBe('1/1')
+})
+
+/**
+ * Split-Direktbutton aus der Übersicht: „✂" → „Rechnung teilen" navigiert zum Tab
+ * und öffnet direkt den Split-Dialog (Query-Param ?aktion=split).
+ */
+test('Split-Button aus der Übersicht öffnet den Teilen-Dialog am Tab', async ({ page, request }) => {
+  const login = await ensureAuth(request)
+  const token = login.token, mandantId = login.mandant.id, kasseId = login.kassen[0].id
+  const authHeader = { Authorization: `Bearer ${token}` }
+
+  const kaffee = ((await (await request.get(`/api/artikel?mandantId=${mandantId}`, { headers: authHeader })).json()) as { id: string; bezeichnung: string }[])
+    .find(a => a.bezeichnung === 'Kaffee')!
+  const tischNr = `SPLITBTN-${Date.now()}`
+  const tab = await (await request.post('/api/tisch-tabs', { headers: authHeader, data: { kasseId, tischNummer: tischNr, kellner: 'Service' } })).json()
+  await request.put(`/api/tisch-tabs/${tab.id}/positionen`, {
+    headers: authHeader, data: { positionen: [{ artikelId: kaffee.id, bezeichnung: 'Kaffee', preisBruttoCent: 250, menge: 2 }] },
+  })
+
+  await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
+    localStorage.setItem('kassa:token', d.token)
+    localStorage.setItem('kassa:auth', d.authJson)
+    localStorage.setItem('kassa:mandantId', d.mandantId)
+    localStorage.setItem('kassa:kasseId', d.kasseId)
+  }, { token, authJson: JSON.stringify({ user: login.user, mandant: login.mandant, kassen: login.kassen }), mandantId, kasseId })
+
+  await page.goto('/tische')
+  await page.getByRole('button', { name: `Tisch ${tischNr} teilen` }).click()
+  await page.getByRole('button', { name: /Rechnung teilen/ }).click()   // navigiert zum Tab mit ?aktion=split
+  await expect(page.getByText(new RegExp(`Rechnung teilen — Tisch ${tischNr}`))).toBeVisible({ timeout: 10_000 })
+})
+
+/**
  * Gruppen-Zusammenführen: zwei getrennte Parteien/Gruppen an EINEM Tisch werden
  * zu einer zusammengeführt. Getrennte Gruppen (Tabs mit gleicher Tischnummer)
  * gab es schon; das Zusammenführen ist neu (POST /tisch-tabs/:id/zusammenfuehren,

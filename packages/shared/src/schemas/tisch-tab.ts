@@ -49,6 +49,14 @@ export const TischTabZusammenfuehrenInputSchema = z.object({
 })
 export type TischTabZusammenfuehrenInput = z.infer<typeof TischTabZusammenfuehrenInputSchema>
 
+// Teilweises Umbuchen: eine Teilmenge von Positionen auf einen anderen offenen Tisch
+// (per Tischnummer) verschieben. Existiert dort kein offener Tab, wird er angelegt.
+export const TischTabVerschiebenInputSchema = z.object({
+  zielTischNummer: z.string().trim().min(1).max(40),
+  positionen:      z.array(TabPositionSchema).min(1, 'Mindestens eine Position wählen'),
+})
+export type TischTabVerschiebenInput = z.infer<typeof TischTabVerschiebenInputSchema>
+
 export const TischTabSplitZahlungSchema = z.object({
   positionen: z.array(TabPositionSchema).min(1),
   zahlung: z.object({
@@ -96,6 +104,7 @@ export const TabEreignisSchema = z.object({
     'bezahlt',
     'gesplittet',
     'zusammengefuehrt',
+    'positionen_verschoben',
   ]),
   details:   z.record(z.unknown()),
   createdAt: z.string(),
