@@ -3,9 +3,14 @@
  *
  * Strategie:
  *  1. App-Shell (HTML/JS/CSS) → Cache-First
- *  2. Artikel, Kategorien, Pos-Konfig → Stale-While-Revalidate
- *  3. POST /api/belege/* (offline) → IndexedDB-Queue + Background Sync
- *  4. Alle anderen GET /api/* → Network-First mit Cache-Fallback
+ *  2. POST /api/belege/* (offline) → IndexedDB-Queue + Background Sync
+ *  3. ALLE GET /api/* → Network-First mit Cache-Fallback
+ *
+ * Hinweis: Früher liefen Artikel/Kategorien/Pos-Konfig über Stale-While-Revalidate.
+ * Das lieferte nach dem Anlegen/Ändern zunächst die VERALTETE Cache-Version und
+ * aktualisierte den Cache nur im Hintergrund → der neue Posten erschien erst beim
+ * nächsten Aufruf („einen Reload hinterher"). Darum jetzt einheitlich Network-First:
+ * online immer frisch, der Cache dient nur als Offline-Fallback.
  */
 
 // App-Version aus der Registrierungs-URL (/sw.js?v=<version>) — je Release neu.
@@ -20,14 +25,6 @@ const DB_NAME             = 'kassa-sw-db'
 const DB_VERSION          = 1
 
 const SHELL_ASSETS = ['/', '/index.html']
-
-const CACHEABLE_API = [
-  '/api/artikel',
-  '/api/kategorien',
-  '/api/modifikator-gruppen',
-  '/api/artikel-modifikator-gruppen',
-  '/api/pos-konfig',
-]
 
 // ---------------------------------------------------------------------------
 // IndexedDB
@@ -152,14 +149,7 @@ self.addEventListener('fetch', function(event) {
     return
   }
 
-  // GET gecachte API-Pfade → Stale-While-Revalidate
-  if (request.method === 'GET' &&
-      CACHEABLE_API.some(function(p) { return url.pathname.startsWith(p) })) {
-    event.respondWith(staleWhileRevalidate(request, API_CACHE))
-    return
-  }
-
-  // Alle anderen GET /api/* → Network-First
+  // ALLE GET /api/* → Network-First (online immer frisch, Cache nur Offline-Fallback)
   if (request.method === 'GET' && url.pathname.startsWith('/api/')) {
     event.respondWith(networkFirst(request, API_CACHE))
     return
@@ -201,18 +191,6 @@ async function networkFirst(request, cacheName) {
       status: 503, headers: { 'Content-Type': 'application/json' }
     })
   }
-}
-
-async function staleWhileRevalidate(request, cacheName) {
-  var cache  = await caches.open(cacheName)
-  var cached = await cache.match(request)
-  var fetchPromise = fetch(request.clone()).then(function(response) {
-    if (response.ok) cache.put(request, response.clone())
-    return response
-  }).catch(function() { return null })
-  return cached || (await fetchPromise) || new Response('[]', {
-    status: 200, headers: { 'Content-Type': 'application/json' }
-  })
 }
 
 async function cacheFirst(request) {
