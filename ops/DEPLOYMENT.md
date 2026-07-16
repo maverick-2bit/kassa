@@ -64,7 +64,61 @@ Set-ExecutionPolicy Bypass -Scope Process -Force; [Net.ServicePointManager]::Sec
 </details>
 
 > Der Windows-Weg ist für **Test/Pilot** gedacht; für die endgültige Laden-Box wird
-> das Linux-Setup unten empfohlen (identische Container, robusterer Unterbau).
+> das Linux-/Raspberry-Setup unten empfohlen (identische Container, robusterer Unterbau).
+
+---
+
+## Schnellstart: macOS
+
+**Ein Skript, das alles erledigt** — Docker prüfen/installieren, Code laden, `.env`
+mit Zufalls-Secrets erzeugen, alle Container bauen + starten, Geräte-URLs anzeigen.
+
+**Variante A — Doppelklick-Installer:**
+
+1. Datei `ops/Kassa-Setup.command` auf den Mac kopieren.
+2. **Rechtsklick → „Öffnen" → „Öffnen"** (nur beim ersten Mal; danach reicht Doppelklick).
+   macOS blockiert frisch geladene Skripte sonst als „nicht verifiziert".
+
+**Variante B — ein Terminal-Befehl** (Programme → Dienstprogramme → Terminal):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/maverick-2bit/kassa/master/ops/install.sh | bash
+```
+
+Fehlt Docker, installiert das Skript **Docker Desktop per Homebrew** (`brew install --cask
+docker`). Ist kein Homebrew da, führt es dich zum Docker-Desktop-Download und du startest
+danach erneut. Die Container werden **nativ** gebaut (Apple Silicon = arm64, Intel = amd64).
+
+- **Update:** denselben Befehl / dieselbe Datei erneut ausführen (`.env`, DB, Belege bleiben).
+- **Autostart:** in Docker Desktop → Settings → **„Start Docker Desktop when you sign in"**
+  aktivieren; die Container kommen dank `restart: unless-stopped` dann von selbst mit hoch.
+
+---
+
+## Schnellstart: Raspberry Pi (und andere Linux-Boxen)
+
+Empfohlen: **Raspberry Pi 4 oder 5 mit 64-bit Raspberry Pi OS** (Bookworm) und **≥ 4 GB RAM**.
+Ein Terminal öffnen und **einen** Befehl ausführen:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/maverick-2bit/kassa/master/ops/install.sh | bash
+```
+
+Das Skript installiert Docker (offizielles `get.docker.com`), lädt den Code und baut die
+Container **nativ für arm64** — es sind keine vorgefertigten Images nötig.
+
+- **Erster Build dauert 15–40 Min.** (die 8 Frontends werden auf dem Pi kompiliert). Danach
+  laufen Updates schneller.
+- **Nur 4 GB RAM?** Swap vergrößern, sonst kann der Build am Speicher scheitern:
+  `sudo dphys-swapfile swapoff && sudo sed -i 's/^CONF_SWAPSIZE=.*/CONF_SWAPSIZE=2048/' /etc/dphys-swapfile && sudo dphys-swapfile setup && sudo dphys-swapfile swapon`
+- **docker ohne sudo:** das Skript trägt dich in die `docker`-Gruppe ein — dafür einmal
+  ab- und wieder anmelden (oder Pi neu starten).
+- **Autostart:** automatisch — der Docker-Dienst wird aktiviert, die Container starten nach
+  jedem Neustart von selbst (`restart: unless-stopped`).
+- **Update:** denselben Befehl erneut ausführen (`.env`, Datenbank, Belege bleiben erhalten).
+
+> Zielverzeichnis ist standardmäßig `~/kassa`. Anpassbar per `KASSA_DIR=/opt/kassa curl … | bash`.
+> Ein Testlauf ohne Docker (nur Code + `.env`): `KASSA_OHNE_DOCKER=1 bash ops/install.sh`.
 
 ---
 
