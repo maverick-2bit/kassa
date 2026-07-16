@@ -1,6 +1,6 @@
 {
   "name": "@kassa/terminal",
-  "version": "0.7.84",
+  "version": "0.7.85",
   "private": true,
   "type": "module",
   "scripts": {
