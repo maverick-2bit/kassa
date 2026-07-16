@@ -124,7 +124,9 @@ function baueBonierbon(tischNummer: string, kellner: string, zeilen: Bonierdruck
 
   add([ESC, 0x40])
   add([ESC, 0x61, 0x01])
-  add([ESC, 0x21, 0x10])
+  // Tischnummer fett + doppelte Höhe (0x08 fett + 0x10 doppelhoch = 0x18) — gut
+  // sichtbar in der Küche, welcher Tisch die Bestellung ist.
+  add([ESC, 0x21, 0x18])
   add(`Tisch ${tischNummer}\n`)
   add([ESC, 0x21, 0x00])
   add(`${kellner}  ${new Date().toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' })}\n`)
