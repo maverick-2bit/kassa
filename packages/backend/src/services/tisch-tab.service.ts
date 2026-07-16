@@ -357,7 +357,7 @@ export async function bezahleTab(
     positionen: belegPositionen,
     zahlung:    zahlungMitTrinkgeld,
     ...(input.rabatt && { rabatt: input.rabatt }),
-  }, deps.belegDeps)
+  }, deps.belegDeps, { skipLagerstand: true })  // Tisch: Lager läuft über Positionsänderung
 
   const [row] = await deps.db
     .update(tischTabs)
@@ -534,7 +534,7 @@ export async function splitteUndBezahleTab(
       kasseId:    existing.kasseId,
       positionen: zahlung.positionen.map(p => ({ artikelId: p.artikelId, menge: p.menge })),
       zahlung:    zahlung.zahlung,
-    }, deps.belegDeps)
+    }, deps.belegDeps, { skipLagerstand: true })  // Tisch: Lager läuft über Positionsänderung
     belegIds.push(beleg.id)
   }
 

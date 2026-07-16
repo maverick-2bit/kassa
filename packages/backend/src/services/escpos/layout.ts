@@ -105,8 +105,11 @@ export function baueBon(
   add(trennlinie(W))
 
   // ----- Gesamt -----
+  // Nur doppelte Höhe (nicht doppelte Breite) → Zeichen bleiben 1 Spalte breit,
+  // daher die volle Breite W nutzen, damit der Betrag rechtsbündig unter den
+  // Positionsbeträgen steht (nicht W/2 = Zeilenmitte).
   add(ep.font({ bold: true, doubleHeight: true }))
-  add(ep.textLine(zweispaltig('GESAMT', formatCent(beleg.gesamtbetragCent), Math.floor(W / 2))))
+  add(ep.textLine(zweispaltig('GESAMT', formatCent(beleg.gesamtbetragCent), W)))
   add(ep.font())
   add(trennlinie(W))
 
@@ -585,8 +588,9 @@ export function baueLieferbestellungBon(
   add(trennlinie(W))
 
   // ----- Gesamt -----
+  // Volle Breite W (nur doppelte Höhe, normale Zeichenbreite) → Betrag rechtsbündig.
   add(ep.font({ bold: true, doubleHeight: true }))
-  add(ep.textLine(zweispaltig('GESAMT', formatCent(bestellung.gesamtbetragCent), Math.floor(W / 2))))
+  add(ep.textLine(zweispaltig('GESAMT', formatCent(bestellung.gesamtbetragCent), W)))
   add(ep.font())
 
   // ----- Bestellnotiz -----
