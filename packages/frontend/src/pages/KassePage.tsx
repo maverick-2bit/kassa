@@ -39,6 +39,7 @@ import { KartenzahlungModal } from '../components/KartenzahlungModal'
 import { SerialAuswahlModal, type SerialPos } from '../components/SerialAuswahlModal'
 import { RabattModal } from '../components/RabattModal'
 import { BarRueckgeldModal } from '../components/BarRueckgeldModal'
+import { BarKarteSplitModal } from '../components/BarKarteSplitModal'
 import { ArtikelGrid } from '../components/ArtikelGrid'
 import { KundePicker } from '../components/KundePicker'
 
@@ -120,6 +121,8 @@ export function KassePage() {
   const alternativRef = useRef(false)
   // Optional: gegebenen Bar-Betrag eingeben → Retourgeld (Bar bleibt Ein-Klick, wie am Tisch)
   const [barGebenOffen, setBarGebenOffen] = useState(false)
+  // Gemischte Zahlung (Bar-Anteil eingeben, Rest auf Karte)
+  const [barKarteSplitOffen, setBarKarteSplitOffen] = useState(false)
   // Gewählter Betrags-Split (bar/karte) — übersteht Serial-/ZVT-Modal bis zur Beleg-Erstellung
   const zahlungRef = useRef<{ barCent: number; karteCent: number }>({ barCent: 0, karteCent: 0 })
   const [letzterAngebot, setLetzterAngebot] = useState<AngebotResponse | null>(null)
@@ -869,15 +872,25 @@ export function KassePage() {
                       </Button>
                     </div>
 
-                    {/* Optional: gegebenen Bar-Betrag eingeben → Retourgeld (Bar bleibt Ein-Klick) */}
-                    <button
-                      type="button"
-                      onClick={() => { setFehler(null); setBarGebenOffen(true) }}
-                      disabled={korb.length === 0}
-                      className="text-xs text-brand-600 hover:underline font-medium disabled:text-ink-subtle disabled:no-underline"
-                    >
-                      € Betrag geben (Retourgeld)…
-                    </button>
+                    {/* Optional: Retourgeld-Eingabe + gemischte Zahlung (Bar bleibt Ein-Klick) */}
+                    <div className="flex flex-wrap gap-x-4 gap-y-1">
+                      <button
+                        type="button"
+                        onClick={() => { setFehler(null); setBarGebenOffen(true) }}
+                        disabled={korb.length === 0}
+                        className="text-xs text-brand-600 hover:underline font-medium disabled:text-ink-subtle disabled:no-underline"
+                      >
+                        € Betrag geben (Retourgeld)…
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setFehler(null); setBarKarteSplitOffen(true) }}
+                        disabled={korb.length === 0}
+                        className="text-xs text-brand-600 hover:underline font-medium disabled:text-ink-subtle disabled:no-underline"
+                      >
+                        Bar + Karte aufteilen…
+                      </button>
+                    </div>
 
                     {/* Ausgabe manuell wählen (früher „Alternativdruck") statt Standarddruck */}
                     <label className="flex items-center gap-2 text-xs text-ink-muted cursor-pointer select-none">
@@ -1203,6 +1216,14 @@ export function KassePage() {
         summeCent={summeNachGutscheinCent}
         onClose={() => setBarGebenOffen(false)}
         onBuchen={() => { setBarGebenOffen(false); zahleBar(ausgabeWaehlen) }}
+      />
+
+      {/* Gemischte Zahlung: Bar-Anteil eingeben → Rest auf Karte (bei ZVT nur Karten-Anteil ans Terminal) */}
+      <BarKarteSplitModal
+        open={barKarteSplitOffen}
+        summeCent={summeNachGutscheinCent}
+        onClose={() => setBarKarteSplitOffen(false)}
+        onSubmit={(bar, karte) => { setBarKarteSplitOffen(false); starteZahlung(bar, karte, ausgabeWaehlen) }}
       />
 
       <RabattModal

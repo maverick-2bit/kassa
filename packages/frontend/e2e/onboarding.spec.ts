@@ -704,6 +704,42 @@ test('Kartenzahlung: per Karte bezahlen erzeugt einen Beleg mit Kartenumsatz', a
 })
 
 /**
+ * Gemischte-Zahlung-Journey: ein Kaffee (2,50 €), dann „Bar + Karte aufteilen…" →
+ * „Hälfte" (1,25 bar / Rest 1,25 Karte) → buchen. Deckt den in v0.7.85 wieder
+ * eingebauten gemischten Zahlweg (BarKarteSplitModal → starteZahlung(bar, karte)).
+ */
+test('Gemischte Zahlung: Bar + Karte aufteilen erzeugt einen Beleg mit bar UND karte', async ({ page, request }) => {
+  const login = await ensureAuth(request)
+  const token = login.token, mandantId = login.mandant.id, kasseId = login.kassen[0].id
+  const authHeader = { Authorization: `Bearer ${token}` }
+
+  await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
+    localStorage.setItem('kassa:token', d.token)
+    localStorage.setItem('kassa:auth', d.authJson)
+    localStorage.setItem('kassa:mandantId', d.mandantId)
+    localStorage.setItem('kassa:kasseId', d.kasseId)
+  }, {
+    token,
+    authJson: JSON.stringify({ user: login.user, mandant: login.mandant, kassen: login.kassen }),
+    mandantId,
+    kasseId,
+  })
+
+  await page.goto('/kasse')
+  await page.getByRole('button', { name: 'Kaffee' }).first().click()
+  await page.getByRole('button', { name: /Bar \+ Karte aufteilen/ }).click()
+  // „Hälfte" von 2,50 € = 1,25 € bar → Rest 1,25 € auf Karte
+  await page.getByRole('button', { name: 'Hälfte' }).click()
+  await page.getByRole('button', { name: /Bar \+ Karte buchen/ }).click()
+  await expect(page.getByText(/Beleg #\d+ erstellt/)).toBeVisible({ timeout: 20_000 })
+
+  // Beleg mit gesplittetem Betrag (125 bar + 125 karte = 250)
+  const belege = await (await request.get(`/api/belege?kasseId=${kasseId}`, { headers: authHeader })).json()
+  expect((belege as { summeKarteCent: number; summeBarCent: number }[])
+    .some(b => b.summeBarCent === 125 && b.summeKarteCent === 125)).toBe(true)
+})
+
+/**
  * RKSV Monats- + Jahresbeleg-Journey: beide Spezialbelege auf der Belegseite
  * erstellen — werden signiert und in die Belegkette eingereiht.
  */
