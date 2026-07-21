@@ -60,6 +60,12 @@ COPY --from=builder /app/packages/backend/drizzle ./drizzle
 # die Version (require('../../package.json') relativ zu /app/dist/routes → /app)
 COPY --from=builder /app/packages/backend/package.json ./package.json
 
+# Backup-Verzeichnisse anlegen und dem node-User übereignen. Wichtig: ohne diese
+# Verzeichnisse IM IMAGE initialisiert Docker die dort gemounteten Named Volumes
+# (db_backups/dep_backups) als root:root — der als 'node' laufende Backend-Prozess
+# könnte dann seine pg_dump-DB-Backups nicht schreiben (Permission denied).
+RUN mkdir -p /data/db-backups /data/dep-backups && chown -R node:node /data
+
 # Nicht als root laufen
 USER node
 
