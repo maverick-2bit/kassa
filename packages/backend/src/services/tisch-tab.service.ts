@@ -17,6 +17,7 @@ import type { Db } from '../db/client.js'
 import { artikel, kassen, modifikatoren, tabEreignisse, tischTabs } from '../db/schema.js'
 import type { BelegServiceDeps } from './beleg.service.js'
 import { erstelleBarzahlungsbeleg } from './beleg.service.js'
+import { ladeRezepte, wendeBestandteilDeltasAn } from './bestandteil.service.js'
 
 export interface TischTabServiceDeps {
   db:        Db
@@ -155,6 +156,29 @@ async function aktualisiereStockDeltas(
       await db.update(modifikatoren)
         .set({ lagerstandMenge: neueMenge })
         .where(eq(modifikatoren.id, row.id))
+    }
+  }
+
+  // Bestandteil-Deltas (Rezepte) anwenden — netto je Artikel, unabhängig von
+  // Modifikator-Varianten: zusammengesetzte Artikel buchen ihre Bestandteile ab,
+  // egal ob mit oder ohne Variante bestellt. delta>0 = Abzug, delta<0 = Rückbuchung.
+  const artikelNettoDelta = new Map<string, number>()
+  for (const key of allKeys) {
+    const alt = altMap.get(key)
+    const neu = neuMap.get(key)
+    const delta = (neu?.menge ?? 0) - (alt?.menge ?? 0)
+    if (delta === 0) continue
+    const artikelId = neu?.artikelId ?? alt?.artikelId
+    if (artikelId) artikelNettoDelta.set(artikelId, (artikelNettoDelta.get(artikelId) ?? 0) + delta)
+  }
+  if (artikelNettoDelta.size > 0) {
+    const rezepte = await ladeRezepte(db, [...artikelNettoDelta.keys()])
+    if (rezepte.size > 0) {
+      await wendeBestandteilDeltasAn(
+        db,
+        [...artikelNettoDelta.entries()].map(([artikelId, delta]) => ({ artikelId, delta })),
+        rezepte,
+      )
     }
   }
 }

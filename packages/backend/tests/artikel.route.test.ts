@@ -24,7 +24,24 @@ function mockDb(state: MockDbState = {}): Db {
   const insertSpy = state.insertSpy ?? vi.fn()
   const updateSpy = state.updateSpy ?? vi.fn()
 
-  return {
+  // Universeller Select-Chain: unterstützt from/innerJoin/where/limit/orderBy und
+  // ist selbst awaitable (für den Rezept-Join in ladeRezepteAngereichert). Die
+  // Rezept-Abfrage liefert leere Artikelzeilen → verfuegbareMenge/bestandteile bleiben leer.
+  const makeSel = () => {
+    const result = Promise.resolve(state.selectReturning ?? [])
+    const sel: Record<string, unknown> = {
+      from:      () => sel,
+      innerJoin: () => sel,
+      leftJoin:  () => sel,
+      where:     () => sel,
+      limit:     () => result,
+      orderBy:   () => result,
+      then:      (res: (v: unknown) => unknown, rej: (e: unknown) => unknown) => result.then(res, rej),
+    }
+    return sel
+  }
+
+  const db: Record<string, unknown> = {
     execute: () => Promise.resolve([{ naechste: 1 }]),
     insert: (...args: unknown[]) => {
       insertSpy(...args)
@@ -34,15 +51,7 @@ function mockDb(state: MockDbState = {}): Db {
         }),
       }
     },
-    select: () => ({
-      from: () => ({
-        where: () => ({
-          // Ownership-Check (.limit(1)) und Liste (.orderBy()) liefern dasselbe
-          limit:   () => Promise.resolve(state.selectReturning ?? []),
-          orderBy: () => Promise.resolve(state.selectReturning ?? []),
-        }),
-      }),
-    }),
+    select: () => makeSel(),
     update: (...args: unknown[]) => {
       updateSpy(...args)
       return {
@@ -53,7 +62,10 @@ function mockDb(state: MockDbState = {}): Db {
         }),
       }
     },
-  } as unknown as Db
+    delete: () => ({ where: () => Promise.resolve([]) }),
+    transaction: (fn: (tx: unknown) => unknown) => fn(db),
+  }
+  return db as unknown as Db
 }
 
 // ---------------------------------------------------------------------------

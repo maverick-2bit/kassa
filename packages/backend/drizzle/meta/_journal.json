@@ -204,6 +204,13 @@
       "when": 1784600000000,
       "tag": "0029_artikel_bonier_direktverkauf",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1784700000000,
+      "tag": "0030_artikel_bestandteile",
+      "breakpoints": true
     }
   ]
 }

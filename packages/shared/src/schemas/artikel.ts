@@ -14,6 +14,24 @@ export const MWST_LABELS: Record<MwStSatz, string> = {
 }
 
 // ---------------------------------------------------------------------------
+// Stückliste / Rezept — ein Bestandteil (Rohstoff-Artikel) + Menge
+// ---------------------------------------------------------------------------
+
+/** Bestandteil in der Response (mit Bezeichnung zur Anzeige). */
+export const ArtikelBestandteilSchema = z.object({
+  bestandteilArtikelId: z.string().uuid(),
+  bezeichnung:          z.string(),
+  menge:                z.number().int().positive(),
+})
+export type ArtikelBestandteil = z.infer<typeof ArtikelBestandteilSchema>
+
+/** Bestandteil im Input/Update (ohne Bezeichnung — wird serverseitig aufgelöst). */
+export const ArtikelBestandteilInputSchema = z.object({
+  bestandteilArtikelId: z.string().uuid(),
+  menge:                z.number().int().positive('Menge muss positiv sein'),
+})
+
+// ---------------------------------------------------------------------------
 // Artikel
 // ---------------------------------------------------------------------------
 
@@ -38,6 +56,12 @@ export const ArtikelSchema = z.object({
   bonierdruckerId:      z.string().uuid().nullable(),
   /** Bonierbon auch beim direkten „Bon erstellen" drucken (sonst nur bei Tischbuchung) */
   bonierBeiDirektverkauf: z.boolean(),
+  /** Rohstoff/Bestandteil: nur Lager, nicht direkt verkäuflich */
+  istBestandteil:       z.boolean(),
+  /** Rezept: Bestandteile dieses Verkaufsartikels (leer = kein Rezept) */
+  bestandteile:         z.array(ArtikelBestandteilSchema).default([]),
+  /** Abgeleitete Verfügbarkeit aus dem Rezept (min über Bestandteile); null = kein Rezept */
+  verfuegbareMenge:     z.number().int().nonnegative().nullable().optional(),
   lieferantId:          z.string().uuid().nullable(),
   /** SB-Terminal-Sichtbarkeit: null = erbt von der Kategorie, true/false = Override */
   terminalSichtbar:     z.boolean().nullable(),
@@ -63,6 +87,8 @@ export const ArtikelInputSchema = z.object({
   istFavorit:      z.boolean().default(false),
   bonierdruckerId: z.string().uuid().optional().nullable(),
   bonierBeiDirektverkauf: z.boolean().default(false),
+  istBestandteil:  z.boolean().default(false),
+  bestandteile:    z.array(ArtikelBestandteilInputSchema).default([]),
   lieferantId:     z.string().uuid().optional().nullable(),
   terminalSichtbar: z.boolean().nullable().default(null),
   bild:            z.string().nullable().optional(),
@@ -85,6 +111,8 @@ export const ArtikelUpdateSchema = z.object({
   favoritenReihenfolge: z.number().int().nonnegative().optional(),
   bonierdruckerId:      z.string().uuid().nullable().optional(),
   bonierBeiDirektverkauf: z.boolean().optional(),
+  istBestandteil:       z.boolean().optional(),
+  bestandteile:         z.array(ArtikelBestandteilInputSchema).optional(),
   lieferantId:          z.string().uuid().nullable().optional(),
   terminalSichtbar:     z.boolean().nullable().optional(),
   bild:                 z.string().nullable().optional(),

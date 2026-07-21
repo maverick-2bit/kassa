@@ -380,6 +380,8 @@ function parseZeile(
       seriennummernAktiv: false,
       terminalSichtbar: null,
       bonierBeiDirektverkauf: false,
+      istBestandteil:  false,
+      bestandteile:    [],
     },
   }
 }

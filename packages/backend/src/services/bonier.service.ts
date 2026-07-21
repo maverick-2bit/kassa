@@ -18,6 +18,7 @@ import { druckeBonierbonDirekt } from './bonierdrucker.service.js'
 import { emitKasseEvent } from '../sse/event-bus.js'
 import { logBonierEreignis } from './tisch-tab.service.js'
 import { kdsBonErstellen } from './kds/kds-store.service.js'
+import { dekrementiereBestandteile, ladeRezepte } from './bestandteil.service.js'
 
 export class BonierError extends Error {
   constructor(public readonly httpStatus: number, message: string) {
@@ -282,7 +283,24 @@ export async function bonierBestellung(
       return a.station !== null || a.bonierdruckerId !== null || hatKategorieRouting
     })
 
-  if (zuDekrementieren.length > 0) {
+  // Bestandteil-Abbuchung (Rezepte): gleiche Gates wie der Artikel-Abzug, aber
+  // unabhängig vom artikel-eigenen Lagerstand — zusammengesetzte Artikel führen
+  // selbst keinen Lagerstand, ihre Verfügbarkeit ergibt sich aus den Bestandteilen.
+  const bestandteilPositionen = (optionen.ohneLagerabzug ? [] : input.positionen)
+    .filter(p => {
+      if (!optionen.sb) return true
+      const a = artikelById.get(p.artikelId)!
+      const hatKategorieRouting = a.kategorieId
+        ? (kategorieMap.get(a.kategorieId)?.bonierdruckerId ?? null) !== null
+        : false
+      return a.station !== null || a.bonierdruckerId !== null || hatKategorieRouting
+    })
+    .map(p => ({ artikelId: p.artikelId, menge: p.menge }))
+  const rezepte = bestandteilPositionen.length > 0
+    ? await ladeRezepte(deps.db, [...new Set(bestandteilPositionen.map(p => p.artikelId))])
+    : new Map()
+
+  if (zuDekrementieren.length > 0 || rezepte.size > 0) {
     await deps.db.transaction(async (tx) => {
       for (const { a, menge } of zuDekrementieren) {
         await tx
@@ -293,6 +311,7 @@ export async function bonierBestellung(
           })
           .where(eq(artikel.id, a.id))
       }
+      await dekrementiereBestandteile(tx, bestandteilPositionen, rezepte)
     })
 
     // Lagerstand-Warnungen emittieren wenn Bestand ≤ Mindestbestand nach Dekrement

@@ -778,6 +778,65 @@ test('Bonier-Suche: Artikel per Name und per Artikelnummer finden', async ({ pag
 })
 
 /**
+ * Rohstoff-Rezept-Journey: einen zusammengesetzten Artikel (2× Rohstoff) anlegen,
+ * per Direktverkauf den Bestandteil-Lager abbuchen (100→98), prüfen dass der Rohstoff
+ * NICHT im Kassen-Raster erscheint und der zusammengesetzte Artikel bei Bestandteil-
+ * Lager 0 gesperrt („Ausverkauft") wird.
+ */
+test('Rohstoff-Rezept: Bestandteil-Lager wird abgebucht und sperrt den Artikel', async ({ page, request }) => {
+  const login = await ensureAuth(request)
+  const token = login.token, mandantId = login.mandant.id, kasseId = login.kassen[0].id
+  const authHeader = { Authorization: `Bearer ${token}` }
+  const uid = `${Date.now()}`
+
+  // Rohstoff (istBestandteil, Lager 100)
+  const roh = await (await request.post('/api/artikel', {
+    headers: authHeader,
+    data: { bezeichnung: `Rohstoff-${uid}`, preisBruttoCent: 0, mwstSatz: 'normal',
+            istBestandteil: true, lagerstandAktiv: true, lagerstandMenge: 100 },
+  })).json()
+  // Zusammengesetzter Artikel = 2× Rohstoff
+  const wienerName = `WienerRezept-${uid}`
+  const wiener = await (await request.post('/api/artikel', {
+    headers: authHeader,
+    data: { bezeichnung: wienerName, preisBruttoCent: 1500, mwstSatz: 'normal',
+            bestandteile: [{ bestandteilArtikelId: roh.id, menge: 2 }] },
+  })).json()
+  expect(wiener.verfuegbareMenge).toBe(50)   // floor(100 / 2)
+
+  // Direktverkauf 1 Wiener → Bestandteil-Lager 100 → 98 (kein Doppelabzug)
+  await request.post('/api/belege/barzahlung', {
+    headers: authHeader,
+    data: { kasseId, positionen: [{ artikelId: wiener.id, menge: 1 }],
+            zahlung: { barCent: 1500, karteCent: 0, sonstigeCent: 0 } },
+  })
+  const liste1 = await (await request.get(`/api/artikel?mandantId=${mandantId}&nurAktive=true`, { headers: authHeader })).json()
+  expect((liste1 as { id: string; lagerstandMenge: number }[]).find(a => a.id === roh.id)?.lagerstandMenge).toBe(98)
+
+  await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
+    localStorage.setItem('kassa:token', d.token)
+    localStorage.setItem('kassa:auth', d.authJson)
+    localStorage.setItem('kassa:mandantId', d.mandantId)
+    localStorage.setItem('kassa:kasseId', d.kasseId)
+  }, { token, authJson: JSON.stringify({ user: login.user, mandant: login.mandant, kassen: login.kassen }), mandantId, kasseId })
+
+  await page.goto('/kasse')
+
+  // Zusammengesetzter Artikel sichtbar, Rohstoff NICHT (aus dem Raster ausgeblendet)
+  await page.getByPlaceholder(/Artikel suchen/).fill(uid)
+  await expect(page.getByRole('button', { name: new RegExp(wienerName) })).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByRole('button', { name: new RegExp(`Rohstoff-${uid}`) })).toHaveCount(0)
+
+  // Bestandteil auf 0 → zusammengesetzter Artikel gesperrt (Ausverkauft/disabled)
+  await request.put(`/api/artikel/${roh.id}`, { headers: authHeader, data: { lagerstandMenge: 0 } })
+  await page.reload()
+  await page.getByPlaceholder(/Artikel suchen/).fill(wienerName)
+  const tile = page.getByRole('button', { name: new RegExp(wienerName) })
+  await expect(tile).toBeVisible({ timeout: 10_000 })
+  await expect(tile).toBeDisabled()
+})
+
+/**
  * RKSV Monats- + Jahresbeleg-Journey: beide Spezialbelege auf der Belegseite
  * erstellen — werden signiert und in die Belegkette eingereiht.
  */

@@ -27,6 +27,7 @@ type FormValues = {
   istFavorit:           boolean
   bonierdruckerId:      string
   bonierBeiDirektverkauf: boolean
+  istBestandteil:       boolean
   lieferantId:          string
   lagerstandAktiv:      boolean
   lagerstandMengeStr:   string
@@ -34,12 +35,17 @@ type FormValues = {
   seriennummernAktiv:   boolean
 }
 
+/** Ein Rezept-Bestandteil im Editor (lokaler State, nicht in react-hook-form). */
+type RezeptZeile = { bestandteilArtikelId: string; menge: number }
+
 interface Props {
   mandantId:     string
   initial?:      Artikel | null
   kategorien?:   Kategorie[] | undefined
   bonierdrucker?: Bonierdrucker[] | undefined
   lieferanten?:  Lieferant[] | undefined
+  /** Alle Artikel des Mandanten — Auswahl für die Rezept-Bestandteile */
+  alleArtikel?:  Artikel[] | undefined
   onSubmit:      (input: ArtikelInput) => void
   onCancel:      () => void
   loading?:      boolean
@@ -50,9 +56,14 @@ interface Props {
 
 const MWST_OPTIONS: MwStSatz[] = ['normal', 'ermaessigt1', 'ermaessigt2', 'null', 'besonders']
 
-export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker, lieferanten, onSubmit, onCancel, loading, fehler, onNeueKategorie }: Props) {
+export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker, lieferanten, alleArtikel, onSubmit, onCancel, loading, fehler, onNeueKategorie }: Props) {
   const [preisFehler, setPreisFehler] = useState<string | null>(null)
   const [bild,        setBild]        = useState<string | null>(initial?.bild ?? null)
+  // Rezept-Bestandteile (Stückliste) — lokaler State
+  const [bestandteile, setBestandteile] = useState<RezeptZeile[]>(
+    initial?.bestandteile?.map(b => ({ bestandteilArtikelId: b.bestandteilArtikelId, menge: b.menge })) ?? [],
+  )
+  const [neuerBestandteilId, setNeuerBestandteilId] = useState('')
   // Inline-Anlegen einer Warengruppe direkt aus dem Artikel-Formular
   const [neueKatOffen, setNeueKatOffen] = useState(false)
   const [neuerKatName, setNeuerKatName] = useState('')
@@ -111,6 +122,7 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
       istFavorit:         initial?.istFavorit       ?? false,
       bonierdruckerId:    initial?.bonierdruckerId  ?? '',
       bonierBeiDirektverkauf: initial?.bonierBeiDirektverkauf ?? false,
+      istBestandteil:     initial?.istBestandteil   ?? false,
       lieferantId:        initial?.lieferantId      ?? '',
       lagerstandAktiv:    initial?.lagerstandAktiv  ?? false,
       lagerstandMengeStr: initial?.lagerstandMenge   != null ? String(initial.lagerstandMenge)   : '',
@@ -132,6 +144,7 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
       istFavorit:         initial?.istFavorit       ?? false,
       bonierdruckerId:    initial?.bonierdruckerId  ?? '',
       bonierBeiDirektverkauf: initial?.bonierBeiDirektverkauf ?? false,
+      istBestandteil:     initial?.istBestandteil   ?? false,
       lieferantId:        initial?.lieferantId      ?? '',
       lagerstandAktiv:    initial?.lagerstandAktiv  ?? false,
       lagerstandMengeStr: initial?.lagerstandMenge   != null ? String(initial.lagerstandMenge)   : '',
@@ -139,7 +152,29 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
       seriennummernAktiv: initial?.seriennummernAktiv ?? false,
     })
     setBild(initial?.bild ?? null)
+    setBestandteile(initial?.bestandteile?.map(b => ({ bestandteilArtikelId: b.bestandteilArtikelId, menge: b.menge })) ?? [])
+    setNeuerBestandteilId('')
   }, [initial, reset])
+
+  // Namens-Lookup + Kandidaten für die Rezept-Auswahl (sich selbst + bereits gewählte ausschließen)
+  const artikelNameById = new Map((alleArtikel ?? []).map(a => [a.id, a.bezeichnung] as const))
+  const bestandteilKandidaten = (alleArtikel ?? [])
+    .filter(a => a.id !== initial?.id && !bestandteile.some(b => b.bestandteilArtikelId === a.id))
+    .sort((a, b) => a.bezeichnung.localeCompare(b.bezeichnung))
+
+  const bestandteilHinzufuegen = () => {
+    if (!neuerBestandteilId) return
+    setBestandteile(prev =>
+      prev.some(b => b.bestandteilArtikelId === neuerBestandteilId)
+        ? prev
+        : [...prev, { bestandteilArtikelId: neuerBestandteilId, menge: 1 }],
+    )
+    setNeuerBestandteilId('')
+  }
+  const bestandteilMengeSetzen = (id: string, menge: number) =>
+    setBestandteile(prev => prev.map(b => b.bestandteilArtikelId === id ? { ...b, menge: Math.max(1, menge) } : b))
+  const bestandteilEntfernen = (id: string) =>
+    setBestandteile(prev => prev.filter(b => b.bestandteilArtikelId !== id))
 
   const submit = handleSubmit((values) => {
     const cent = parseEuroToCent(values.preisEuro)
@@ -164,6 +199,8 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
       istFavorit:      values.istFavorit,
       bonierdruckerId: values.bonierdruckerId  || null,
       bonierBeiDirektverkauf: values.bonierBeiDirektverkauf,
+      istBestandteil:  values.istBestandteil,
+      bestandteile:    bestandteile.filter(b => b.menge > 0),
       lieferantId:     values.lieferantId      || null,
       lagerstandAktiv: values.lagerstandAktiv,
       lagerstandMenge: lsMenge,
@@ -425,6 +462,89 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
             </span>
           )}
         </label>
+      </div>
+
+      {/* Rohstoff-Flag */}
+      <div className="rounded-lg border border-line p-3">
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            className="h-4 w-4 rounded border-line-strong text-brand-600 focus:ring-brand-500"
+            {...register('istBestandteil')}
+          />
+          <div>
+            <p className="text-sm font-semibold text-ink">🥩 Rohstoff (nur Lager, nicht direkt verkäuflich)</p>
+            <p className="text-xs text-ink-muted">
+              Wird nicht in der Bonieroberfläche gezeigt, dient nur als Bestandteil anderer Artikel.
+            </p>
+          </div>
+        </label>
+      </div>
+
+      {/* Zusammensetzung / Rezept (Stückliste) */}
+      <div className="rounded-lg border border-line p-3 space-y-3">
+        <div>
+          <p className="text-sm font-semibold text-ink">🧩 Zusammensetzung / Rezept (optional)</p>
+          <p className="text-xs text-ink-muted">
+            Aus welchen Bestandteilen besteht dieser Artikel? Beim Verkauf wird der Lagerstand der
+            Bestandteile abgezogen; ist ein Bestandteil aufgebraucht, sperrt der Artikel.
+          </p>
+        </div>
+
+        {bestandteile.length > 0 && (
+          <ul className="space-y-2">
+            {bestandteile.map((b) => (
+              <li key={b.bestandteilArtikelId} className="flex items-center gap-2">
+                <span className="flex-1 text-sm text-ink truncate">
+                  {artikelNameById.get(b.bestandteilArtikelId) ?? '— unbekannter Artikel —'}
+                </span>
+                <Input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={String(b.menge)}
+                  onChange={(e) => bestandteilMengeSetzen(b.bestandteilArtikelId, parseInt(e.target.value, 10) || 1)}
+                  className="w-20"
+                  aria-label="Menge"
+                />
+                <span className="text-xs text-ink-subtle">×</span>
+                <button
+                  type="button"
+                  onClick={() => bestandteilEntfernen(b.bestandteilArtikelId)}
+                  aria-label="Bestandteil entfernen"
+                  className="text-red-500 hover:text-red-600 text-lg leading-none px-1"
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {bestandteilKandidaten.length > 0 ? (
+          <div className="flex items-center gap-2">
+            <Select
+              value={neuerBestandteilId}
+              onChange={(e) => setNeuerBestandteilId(e.target.value)}
+              className="flex-1"
+              aria-label="Bestandteil wählen"
+            >
+              <option value="">— Bestandteil wählen —</option>
+              {bestandteilKandidaten.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.bezeichnung}{a.artikelnummer ? ` (${a.artikelnummer})` : ''}
+                </option>
+              ))}
+            </Select>
+            <Button type="button" variant="secondary" onClick={bestandteilHinzufuegen} disabled={!neuerBestandteilId}>
+              + Hinzufügen
+            </Button>
+          </div>
+        ) : (
+          bestandteile.length === 0 && (
+            <p className="text-xs text-ink-subtle">Keine weiteren Artikel als Bestandteile verfügbar.</p>
+          )
+        )}
       </div>
 
       {fehler && (

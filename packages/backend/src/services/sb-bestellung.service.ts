@@ -30,6 +30,7 @@ import {
 import type { BelegServiceDeps } from './beleg.service.js'
 import { erstelleBarzahlungsbeleg } from './beleg.service.js'
 import { bonierBestellung } from './bonier.service.js'
+import { berechneVerfuegbareMenge, ladeRezepteAngereichert } from './bestandteil.service.js'
 import { starteZahlung, getJob, abbrechen } from './zvt/zvt.service.js'
 import { emitAbholungEvent } from '../sse/abholung-event-bus.js'
 import { emitKasseEvent } from '../sse/event-bus.js'
@@ -114,11 +115,15 @@ export async function holeTerminalSortiment(db: Db, kasseId: string): Promise<Te
       seriennummernAktiv: artikel.seriennummernAktiv,
       lagerstandAktiv:    artikel.lagerstandAktiv,
       lagerstandMenge:    artikel.lagerstandMenge,
+      istBestandteil:     artikel.istBestandteil,
       reihenfolge:        artikel.reihenfolge,
     })
     .from(artikel)
     .where(and(eq(artikel.mandantId, kasse.mandantId), eq(artikel.aktiv, true)))
     .orderBy(asc(artikel.reihenfolge))
+
+  // Rezept-Verfügbarkeit: zusammengesetzte Artikel sind ausverkauft, wenn ein Bestandteil fehlt.
+  const rezepte = await ladeRezepteAngereichert(db, alleArtikel.map(a => a.id))
 
   const sichtbareArtikel = alleArtikel.filter(a => {
     const effektivSichtbar =
@@ -126,7 +131,10 @@ export async function holeTerminalSortiment(db: Db, kasseId: string): Promise<Te
       (a.terminalSichtbar === null && a.kategorieId !== null && sichtbareKategorieIds.has(a.kategorieId))
     if (!effektivSichtbar) return false
     if (a.seriennummernAktiv) return false
+    if (a.istBestandteil) return false  // Rohstoffe sind nicht direkt bestellbar
     if (a.lagerstandAktiv && (a.lagerstandMenge === null || a.lagerstandMenge <= 0)) return false
+    const verfuegbar = berechneVerfuegbareMenge(rezepte.get(a.id) ?? [])
+    if (verfuegbar !== null && verfuegbar <= 0) return false
     return true
   })
 
@@ -175,16 +183,23 @@ export async function erstelleSbBestellung(
     .where(eq(kategorien.mandantId, kasse.mandantId))
   const katSichtbar = new Map(sortimentKategorien.map(k => [k.id, k.terminalSichtbar]))
 
+  // Rezept-Verfügbarkeit der bestellten Artikel
+  const rezepte = await ladeRezepteAngereichert(deps.db, artikelIds)
+
   for (const p of input.positionen) {
     const a = byId.get(p.artikelId)
     if (!a || !a.aktiv) throw new SbBestellungError(400, 'Artikel nicht verfügbar')
     const effektivSichtbar =
       a.terminalSichtbar === true ||
       (a.terminalSichtbar === null && a.kategorieId !== null && (katSichtbar.get(a.kategorieId) ?? false))
-    if (!effektivSichtbar || a.seriennummernAktiv) {
+    if (!effektivSichtbar || a.seriennummernAktiv || a.istBestandteil) {
       throw new SbBestellungError(400, 'Artikel ist am Terminal nicht bestellbar')
     }
     if (a.lagerstandAktiv && (a.lagerstandMenge === null || a.lagerstandMenge < p.menge)) {
+      throw new SbBestellungError(400, `„${a.bezeichnung}" ist nicht mehr in ausreichender Menge verfügbar`)
+    }
+    const verfuegbar = berechneVerfuegbareMenge(rezepte.get(a.id) ?? [])
+    if (verfuegbar !== null && verfuegbar < p.menge) {
       throw new SbBestellungError(400, `„${a.bezeichnung}" ist nicht mehr in ausreichender Menge verfügbar`)
     }
   }
