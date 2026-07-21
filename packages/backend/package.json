@@ -1,6 +1,6 @@
 {
   "name": "@kassa/backend",
-  "version": "0.7.92",
+  "version": "0.7.93",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
