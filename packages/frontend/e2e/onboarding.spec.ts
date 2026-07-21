@@ -740,6 +740,44 @@ test('Gemischte Zahlung: Bar + Karte aufteilen erzeugt einen Beleg mit bar UND k
 })
 
 /**
+ * Bonier-Suche-Journey: in der Bonieroberfläche (ArtikelGrid) nach einem Artikel
+ * per Name UND per Artikelnummer suchen — nur der Treffer bleibt sichtbar.
+ */
+test('Bonier-Suche: Artikel per Name und per Artikelnummer finden', async ({ page, request }) => {
+  const login = await ensureAuth(request)
+  const token = login.token, mandantId = login.mandant.id, kasseId = login.kassen[0].id
+  const authHeader = { Authorization: `Bearer ${token}` }
+
+  const uid = `${Date.now()}`
+  const name = `Zzz-Such-${uid}`
+  const art = await (await request.post('/api/artikel', {
+    headers: authHeader,
+    data: { bezeichnung: name, preisBruttoCent: 300, mwstSatz: 'normal' },
+  })).json()
+  const nummer = art.artikelnummer as string   // serverseitig vergeben
+
+  await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
+    localStorage.setItem('kassa:token', d.token)
+    localStorage.setItem('kassa:auth', d.authJson)
+    localStorage.setItem('kassa:mandantId', d.mandantId)
+    localStorage.setItem('kassa:kasseId', d.kasseId)
+  }, { token, authJson: JSON.stringify({ user: login.user, mandant: login.mandant, kassen: login.kassen }), mandantId, kasseId })
+
+  await page.goto('/kasse')
+  const suche = page.getByPlaceholder(/Artikel suchen/)
+
+  // Suche per Name → Treffer sichtbar, Kaffee (anderer Artikel) ausgefiltert
+  await suche.fill(name)
+  await expect(page.getByRole('button', { name: new RegExp(name) })).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByRole('button', { name: 'Kaffee' })).toHaveCount(0)
+
+  // Suche per Artikelnummer → derselbe Treffer
+  await suche.fill('')
+  await suche.fill(nummer)
+  await expect(page.getByRole('button', { name: new RegExp(name) })).toBeVisible({ timeout: 10_000 })
+})
+
+/**
  * RKSV Monats- + Jahresbeleg-Journey: beide Spezialbelege auf der Belegseite
  * erstellen — werden signiert und in die Belegkette eingereiht.
  */
