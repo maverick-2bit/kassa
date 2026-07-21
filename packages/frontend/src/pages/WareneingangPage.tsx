@@ -33,7 +33,10 @@ interface ArtikelZeile {
   kategorieName: string | null
   menge:        number | null
   seriennummernAktiv: boolean
+  istBestandteil: boolean
 }
+
+type TypFilter = 'alle' | 'verkauf' | 'rohstoff'
 
 interface VarianteZeile {
   key:          string
@@ -54,6 +57,7 @@ export function WareneingangPage() {
   const qc       = useQueryClient()
 
   const [modus,       setModus]       = useState<'wareneingang' | 'inventur'>('wareneingang')
+  const [typFilter,   setTypFilter]   = useState<TypFilter>('alle')
   const [suche,       setSuche]       = useState('')
   const [eingaben,    setEingaben]    = useState<Record<string, string>>({})
   const [gespeichert, setGespeichert] = useState(false)
@@ -101,6 +105,7 @@ export function WareneingangPage() {
         kategorieName: a.kategorieId ? (kategorienMap.get(a.kategorieId) ?? null) : null,
         menge:         a.lagerstandMenge,
         seriennummernAktiv: a.seriennummernAktiv,
+        istBestandteil: a.istBestandteil,
       }))
 
     // Modifikator-Varianten mit gesetztem Lagerstand
@@ -150,8 +155,17 @@ export function WareneingangPage() {
       ? zeilen.filter(z => z.bezeichnung.toLowerCase().includes(sucheBereinigt))
       : zeilen
 
-  const artGefiltert = filtere(artZeilen) as ArtikelZeile[]
-  const varGefiltert = filtere(varZeilen) as VarianteZeile[]
+  // Typ-Filter: nur Rohstoffe / nur Verkaufsartikel (Varianten sind weder noch → bei
+  // aktivem Typ-Filter ausgeblendet).
+  const artNachTyp =
+    typFilter === 'rohstoff' ? artZeilen.filter(z => z.istBestandteil)
+    : typFilter === 'verkauf' ? artZeilen.filter(z => !z.istBestandteil)
+    : artZeilen
+
+  const artGefiltert = filtere(artNachTyp) as ArtikelZeile[]
+  const varGefiltert = (typFilter === 'alle' ? filtere(varZeilen) : []) as VarianteZeile[]
+
+  const anzahlRohstoffe = artZeilen.filter(z => z.istBestandteil).length
 
   // ---------------------------------------------------------------------------
   // Eingaben zählen
@@ -213,6 +227,9 @@ export function WareneingangPage() {
   const isLoading = artikelQuery.isLoading || gruppenQuery.isLoading
 
   const keineEintraege = !isLoading && artZeilen.length === 0 && varZeilen.length === 0
+  // Es gibt Einträge, aber der aktive Filter/die Suche trifft nichts.
+  const keinTreffer = !isLoading && !keineEintraege
+    && artGefiltert.length === 0 && varGefiltert.length === 0
 
   // ---------------------------------------------------------------------------
   // Render
@@ -272,6 +289,30 @@ export function WareneingangPage() {
                    focus:ring-brand-500 outline-none"
       />
 
+      {/* Typ-Filter — nur relevant wenn es Rohstoffe gibt */}
+      {!isLoading && anzahlRohstoffe > 0 && (
+        <div className="inline-flex rounded-lg border border-line overflow-hidden shadow-sm">
+          {([
+            ['alle',     'Alle'],
+            ['verkauf',  'Verkaufsartikel'],
+            ['rohstoff', `Rohstoffe (${anzahlRohstoffe})`],
+          ] as const).map(([wert, label]) => (
+            <button
+              key={wert}
+              type="button"
+              onClick={() => setTypFilter(wert)}
+              className={`px-4 py-2 text-sm font-medium transition ${
+                typFilter === wert
+                  ? 'bg-brand-600 text-white'
+                  : 'bg-panel text-ink-muted hover:bg-panel-2'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Laden */}
       {isLoading && (
         <p className="text-sm text-ink-muted py-4 text-center">Wird geladen…</p>
@@ -285,6 +326,19 @@ export function WareneingangPage() {
           </p>
           <p className="mt-1 text-xs text-ink-subtle">
             Lagerstand in der <a href="/artikel" className="text-brand-600 hover:underline">Artikel-Verwaltung</a> aktivieren.
+          </p>
+        </div>
+      )}
+
+      {/* Filter/Suche trifft nichts */}
+      {keinTreffer && (
+        <div className="rounded-lg border border-dashed border-line-strong p-8 text-center">
+          <p className="text-sm text-ink-muted">
+            {typFilter === 'rohstoff'
+              ? 'Keine Rohstoffe mit Lagerstand gefunden.'
+              : typFilter === 'verkauf'
+                ? 'Keine Verkaufsartikel mit Lagerstand gefunden.'
+                : 'Keine Treffer für die Suche.'}
           </p>
         </div>
       )}
@@ -428,7 +482,16 @@ function Tabelle({
                     key={z.key}
                     className={istNeu ? 'bg-brand-50' : 'hover:bg-panel-2'}
                   >
-                    <td className="px-4 py-2.5 text-ink">{z.bezeichnung}</td>
+                    <td className="px-4 py-2.5 text-ink">
+                      <span className="inline-flex items-center gap-1.5">
+                        {z.bezeichnung}
+                        {z.type === 'artikel' && z.istBestandteil && (
+                          <span className="shrink-0 rounded-full bg-amber-100 text-amber-700 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide leading-none">
+                            Rohstoff
+                          </span>
+                        )}
+                      </span>
+                    </td>
                     <td className="px-4 py-2.5 text-right font-mono text-ink-muted tabular-nums">
                       {z.menge !== null ? z.menge : (
                         <span className="text-ink-subtle">—</span>
