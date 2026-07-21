@@ -550,6 +550,56 @@ test('Wareneingang: Zugang buchen erhöht den Lagerbestand', async ({ page, requ
 })
 
 /**
+ * Wareneingang-Rohstoff-Filter-Journey: Rohstoff + Verkaufsartikel anlegen, im
+ * Wareneingang über den Typ-Filter „Rohstoffe"/„Verkaufsartikel" umschalten und
+ * prüfen, dass jeweils nur die passenden Zeilen erscheinen + das Rohstoff-Badge sichtbar ist.
+ */
+test('Wareneingang-Filter: Rohstoffe und Verkaufsartikel getrennt anzeigen', async ({ page, request }) => {
+  const login = await ensureAuth(request)
+  const token = login.token, mandantId = login.mandant.id, kasseId = login.kassen[0].id
+  const authHeader = { Authorization: `Bearer ${token}` }
+  const uid = `${Date.now()}`
+  const rohName = `KompE2E-${uid}`      // Rohstoff (ohne „Rohstoff" im Namen → Badge eindeutig)
+  const verkName = `VerkaufE2E-${uid}`  // normaler Verkaufsartikel mit Lager
+
+  await request.post('/api/artikel', {
+    headers: authHeader,
+    data: { bezeichnung: rohName, preisBruttoCent: 0, mwstSatz: 'normal',
+            istBestandteil: true, lagerstandAktiv: true, lagerstandMenge: 30 },
+  })
+  await request.post('/api/artikel', {
+    headers: authHeader,
+    data: { bezeichnung: verkName, preisBruttoCent: 199, mwstSatz: 'normal',
+            lagerstandAktiv: true, lagerstandMenge: 10 },
+  })
+
+  await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
+    localStorage.setItem('kassa:token', d.token)
+    localStorage.setItem('kassa:auth', d.authJson)
+    localStorage.setItem('kassa:mandantId', d.mandantId)
+    localStorage.setItem('kassa:kasseId', d.kasseId)
+  }, { token, authJson: JSON.stringify({ user: login.user, mandant: login.mandant, kassen: login.kassen }), mandantId, kasseId })
+
+  await page.goto('/wareneingang')
+  await page.getByPlaceholder('Artikel oder Variante suchen …').fill(uid)
+
+  // „Alle": beide sichtbar
+  await expect(page.getByText(rohName)).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByText(verkName)).toBeVisible()
+
+  // Filter „Rohstoffe" → nur der Rohstoff + Badge, kein Verkaufsartikel
+  await page.getByRole('button', { name: /Rohstoffe \(\d+\)/ }).click()
+  await expect(page.getByText(rohName)).toBeVisible()
+  await expect(page.getByText(verkName)).toHaveCount(0)
+  await expect(page.getByText('Rohstoff', { exact: true }).first()).toBeVisible()
+
+  // Filter „Verkaufsartikel" → nur der Verkaufsartikel, kein Rohstoff
+  await page.getByRole('button', { name: 'Verkaufsartikel' }).click()
+  await expect(page.getByText(verkName)).toBeVisible()
+  await expect(page.getByText(rohName)).toHaveCount(0)
+})
+
+/**
  * Offene-Posten-Journey: Kredit-Kunden + offenen Posten (5,00 €) per API anlegen,
  * auf der Offene-Posten-Seite die Zahlung erfassen (voller Betrag) und prüfen,
  * dass der Posten danach beglichen ist (Restbetrag 0).
