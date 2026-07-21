@@ -38,6 +38,8 @@ function stubEnv(opts?: { online?: boolean; withSW?: boolean; withController?: b
 
   const serviceWorker = opts?.withSW === false ? undefined : {
     register: vi.fn().mockResolvedValue({ scope: '/' }),
+    // Dev-/Test-Pfad in offline.ts räumt Alt-Registrierungen über getRegistrations() auf.
+    getRegistrations: vi.fn().mockResolvedValue([]),
     addEventListener: (type: string, fn: (...a: unknown[]) => void) => {
       (swListeners[type] ??= []).push(fn)
     },
@@ -72,10 +74,14 @@ beforeAll(async () => {
 beforeEach(() => {
   vi.spyOn(console, 'info').mockImplementation(() => {})
   vi.spyOn(console, 'warn').mockImplementation(() => {})
+  // Diese Tests prüfen die SW-Message-/Sync-/Queue-Verdrahtung, die nur im
+  // Produktions-Build läuft (im Dev räumt init() Alt-SWs auf und kehrt früh zurück).
+  vi.stubEnv('PROD', true)
 })
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
   vi.restoreAllMocks()
 })
 
