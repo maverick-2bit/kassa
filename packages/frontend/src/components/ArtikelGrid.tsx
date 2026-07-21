@@ -14,6 +14,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Artikel, Kategorie, KategorieFarbe, ModifikatorAuswahl, ModifikatorGruppe } from '@kassa/shared'
 import { formatPreis } from '../lib/format'
 import { ModifikatorModal } from './ModifikatorModal'
+import { Input } from './ui/Input'
 
 // ---------------------------------------------------------------------------
 // Farb-Mapping
@@ -100,6 +101,7 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
   )
   const [aktivKategorieId, setAktivKategorieId] = useState<string | null>(initialKategorieId)
   const [modArtikel, setModArtikel] = useState<Artikel | null>(null)
+  const [suche, setSuche] = useState('')
 
   // Scroll-State für Fade-Ränder der Kategorieleiste
   const scrollRef    = useRef<HTMLDivElement>(null)
@@ -148,6 +150,16 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
   }, [aktiveKategorien.length])
 
   const gefilterteArtikel = useMemo(() => {
+    // Aktive Suche überstimmt Kategorie/Favoriten und filtert global über
+    // Bezeichnung UND Artikelnummer (client-seitig, artikel ist komplett geladen).
+    const q = suche.trim().toLowerCase()
+    if (q) {
+      return artikel
+        .filter(a =>
+          a.bezeichnung.toLowerCase().includes(q) ||
+          (a.artikelnummer?.toLowerCase().includes(q) ?? false))
+        .sort((a, b) => a.bezeichnung.localeCompare(b.bezeichnung))
+    }
     if (aktivKategorieId === FAVORITEN_TAB_ID) return favoriten
     if (aktivKategorieId === null) {
       // "Alle"-Tab: nach reihenfolge sortieren
@@ -156,7 +168,7 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
     return artikel
       .filter(a => a.kategorieId === aktivKategorieId)
       .sort((a, b) => a.reihenfolge - b.reihenfolge || a.bezeichnung.localeCompare(b.bezeichnung))
-  }, [aktivKategorieId, artikel, favoriten])
+  }, [aktivKategorieId, artikel, favoriten, suche])
 
   const aktiveKategorie = aktiveKategorien.find((k) => k.id === aktivKategorieId)
 
@@ -179,6 +191,27 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
 
   return (
     <div className="flex flex-col h-full">
+
+      {/* ---- Suchfeld (Name oder Artikelnummer) ---- */}
+      <div className="relative shrink-0 mb-2">
+        <Input
+          value={suche}
+          onChange={(e) => setSuche(e.target.value)}
+          placeholder="Artikel suchen (Name oder Nummer)…"
+          className="pr-8"
+          aria-label="Artikel suchen"
+        />
+        {suche && (
+          <button
+            type="button"
+            onClick={() => setSuche('')}
+            aria-label="Suche löschen"
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-subtle hover:text-red-500 text-lg leading-none"
+          >
+            ×
+          </button>
+        )}
+      </div>
 
       {/* ---- Kategorie-Leiste (bleibt oben) ---- */}
       {(aktiveKategorien.length > 0 || favoriten.length > 0) && (
