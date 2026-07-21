@@ -119,21 +119,24 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
     return sorted
   }, [kategorien, sichtbareKategorieIds])
 
+  // Rohstoffe/Bestandteile sind nur Lager, nicht direkt verkäuflich → aus dem Raster ausblenden.
+  const verkaufsartikel = useMemo(() => artikel.filter(a => !a.istBestandteil), [artikel])
+
   const favoriten = useMemo(
     () =>
-      artikel
+      verkaufsartikel
         .filter(a => a.istFavorit)
         .sort((a, b) => a.favoritenReihenfolge - b.favoritenReihenfolge || a.bezeichnung.localeCompare(b.bezeichnung)),
-    [artikel],
+    [verkaufsartikel],
   )
 
   const anzahlProKategorie = useMemo(() => {
     const map = new Map<string, number>()
-    for (const a of artikel) {
+    for (const a of verkaufsartikel) {
       if (a.kategorieId) map.set(a.kategorieId, (map.get(a.kategorieId) ?? 0) + 1)
     }
     return map
-  }, [artikel])
+  }, [verkaufsartikel])
 
   useEffect(() => {
     const el = scrollRef.current
@@ -154,7 +157,7 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
     // Bezeichnung UND Artikelnummer (client-seitig, artikel ist komplett geladen).
     const q = suche.trim().toLowerCase()
     if (q) {
-      return artikel
+      return verkaufsartikel
         .filter(a =>
           a.bezeichnung.toLowerCase().includes(q) ||
           (a.artikelnummer?.toLowerCase().includes(q) ?? false))
@@ -163,12 +166,12 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
     if (aktivKategorieId === FAVORITEN_TAB_ID) return favoriten
     if (aktivKategorieId === null) {
       // "Alle"-Tab: nach reihenfolge sortieren
-      return [...artikel].sort((a, b) => a.reihenfolge - b.reihenfolge || a.bezeichnung.localeCompare(b.bezeichnung))
+      return [...verkaufsartikel].sort((a, b) => a.reihenfolge - b.reihenfolge || a.bezeichnung.localeCompare(b.bezeichnung))
     }
-    return artikel
+    return verkaufsartikel
       .filter(a => a.kategorieId === aktivKategorieId)
       .sort((a, b) => a.reihenfolge - b.reihenfolge || a.bezeichnung.localeCompare(b.bezeichnung))
-  }, [aktivKategorieId, artikel, favoriten, suche])
+  }, [aktivKategorieId, verkaufsartikel, favoriten, suche])
 
   const aktiveKategorie = aktiveKategorien.find((k) => k.id === aktivKategorieId)
 
@@ -247,7 +250,7 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
               onClick={() => setAktivKategorieId(null)}
               klassen={aktivKategorieId === null ? 'bg-brand-600 text-white' : 'bg-brand-50 text-brand-700 hover:bg-brand-100'}
             >
-              Alle <Anzahl wert={artikel.length} aktiv={aktivKategorieId === null} />
+              Alle <Anzahl wert={verkaufsartikel.length} aktiv={aktivKategorieId === null} />
             </TabBtn>
 
             {aktiveKategorien.map((k) => {
@@ -281,10 +284,17 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
               const farbe         = a.kategorieId ? farbeProKategorie.get(a.kategorieId) : undefined
               const gruppen       = artikelGruppen?.get(a.id) ?? []
               const hatMods       = gruppen.length > 0
-              // Artikel ist ausverkauft wenn Lagerstand aktiv UND Bestand = 0
-              const istAusverkauft = a.lagerstandAktiv && a.lagerstandMenge === 0
-              // Zeigt Restbestand wenn Lagerstand aktiv und > 0
-              const zeigeBestand  = a.lagerstandAktiv && a.lagerstandMenge !== null && a.lagerstandMenge > 0
+              // Abgeleitete Verfügbarkeit aus dem Rezept (null = kein Rezept-Limit)
+              const verfuegbar    = a.verfuegbareMenge ?? null
+              // Ausverkauft wenn eigener Lagerstand = 0 ODER ein Bestandteil fehlt (verfuegbar = 0)
+              const istAusverkauft = (a.lagerstandAktiv && a.lagerstandMenge === 0) || verfuegbar === 0
+              // Restbestand = min aus eigenem Lagerstand und abgeleiteter Rezept-Verfügbarkeit
+              const eigenerBestand = a.lagerstandAktiv ? a.lagerstandMenge : null
+              const restBestand =
+                eigenerBestand !== null && verfuegbar !== null ? Math.min(eigenerBestand, verfuegbar)
+                : eigenerBestand !== null ? eigenerBestand
+                : verfuegbar
+              const zeigeBestand  = !istAusverkauft && restBestand !== null && restBestand > 0
               const mengeImKorb   = mengenProArtikel?.get(a.id) ?? 0
 
               const handleClick = () => {
@@ -351,7 +361,7 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
                         )}
                         {zeigeBestand && (
                           <span className="text-[10px] bg-amber-100 text-amber-700 rounded-full px-1.5 py-0.5 font-medium leading-none">
-                            noch {a.lagerstandMenge}
+                            noch {restBestand}
                           </span>
                         )}
                         {!istAusverkauft && hatMods && (

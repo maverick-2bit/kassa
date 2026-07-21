@@ -4,17 +4,24 @@
  * damit historische Belege weiterhin sinnvoll bleiben).
  */
 
-import { and, asc, eq, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import type { Artikel, ArtikelInput, ArtikelUpdate } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import { artikel } from '../db/schema.js'
+import {
+  berechneVerfuegbareMenge,
+  ladeRezepteAngereichert,
+  schreibeRezept,
+  type BestandteilAngereichert,
+  type DbOrTx,
+} from './bestandteil.service.js'
 
 /**
  * Generiert die nächste freie Artikelnummer für einen Mandanten.
  * Format: fortlaufende Ganzzahl, 4-stellig mit führenden Nullen (z.B. "0001").
  * Beachtet auch nicht-numerische artikelnummern (werden ignoriert).
  */
-async function generiereArtikelNummer(db: Db, mandantId: string): Promise<string> {
+async function generiereArtikelNummer(db: DbOrTx, mandantId: string): Promise<string> {
   const result = await db.execute(sql`
     SELECT COALESCE(MAX(
       CASE WHEN artikelnummer ~ '^[0-9]+$' THEN artikelnummer::integer ELSE 0 END
@@ -26,7 +33,10 @@ async function generiereArtikelNummer(db: Db, mandantId: string): Promise<string
   return String(naechste).padStart(4, '0')
 }
 
-function toDto(row: typeof artikel.$inferSelect): Artikel {
+function toDto(
+  row: typeof artikel.$inferSelect,
+  bestandteile: BestandteilAngereichert[] = [],
+): Artikel {
   return {
     id:                   row.id,
     mandantId:            row.mandantId,
@@ -46,6 +56,13 @@ function toDto(row: typeof artikel.$inferSelect): Artikel {
     favoritenReihenfolge: row.favoritenReihenfolge,
     bonierdruckerId:      row.bonierdruckerId,
     bonierBeiDirektverkauf: row.bonierBeiDirektverkauf,
+    istBestandteil:       row.istBestandteil,
+    bestandteile:         bestandteile.map(b => ({
+      bestandteilArtikelId: b.bestandteilArtikelId,
+      bezeichnung:          b.bezeichnung,
+      menge:                b.menge,
+    })),
+    verfuegbareMenge:     berechneVerfuegbareMenge(bestandteile),
     lieferantId:          row.lieferantId,
     terminalSichtbar:     row.terminalSichtbar,
     ...(row.bild != null  && { bild: row.bild }),
@@ -54,27 +71,41 @@ function toDto(row: typeof artikel.$inferSelect): Artikel {
   }
 }
 
+/** Lädt einen einzelnen Artikel als DTO inkl. Rezept + abgeleiteter Verfügbarkeit. */
+async function ladeArtikelDto(db: Db, row: typeof artikel.$inferSelect): Promise<Artikel> {
+  const rezepte = await ladeRezepteAngereichert(db, [row.id])
+  return toDto(row, rezepte.get(row.id) ?? [])
+}
+
 export async function erstelleArtikel(db: Db, input: ArtikelInput): Promise<Artikel> {
+  // Artikelnummer außerhalb der Tx generieren (unverändertes Verhalten).
   const artikelnummer = await generiereArtikelNummer(db, input.mandantId)
-  const [created] = await db.insert(artikel).values({
-    mandantId:       input.mandantId,
-    bezeichnung:     input.bezeichnung,
-    preisBruttoCent: input.preisBruttoCent,
-    mwstSatz:        input.mwstSatz,
-    artikelnummer,
-    station:         input.station ?? null,
-    kategorieId:     input.kategorieId ?? null,
-    lagerstandAktiv: input.lagerstandAktiv ?? false,
-    lagerstandMenge: input.lagerstandAktiv ? (input.lagerstandMenge ?? null) : null,
-    seriennummernAktiv: input.seriennummernAktiv ?? false,
-    istFavorit:      input.istFavorit ?? false,
-    bonierdruckerId: input.bonierdruckerId ?? null,
-    bonierBeiDirektverkauf: input.bonierBeiDirektverkauf ?? false,
-    terminalSichtbar: input.terminalSichtbar ?? null,
-    ...(input.bild != null && { bild: input.bild }),
-  }).returning()
-  if (!created) throw new Error('Artikel konnte nicht angelegt werden')
-  return toDto(created)
+  const created = await db.transaction(async (tx) => {
+    const [row] = await tx.insert(artikel).values({
+      mandantId:       input.mandantId,
+      bezeichnung:     input.bezeichnung,
+      preisBruttoCent: input.preisBruttoCent,
+      mwstSatz:        input.mwstSatz,
+      artikelnummer,
+      station:         input.station ?? null,
+      kategorieId:     input.kategorieId ?? null,
+      lagerstandAktiv: input.lagerstandAktiv ?? false,
+      lagerstandMenge: input.lagerstandAktiv ? (input.lagerstandMenge ?? null) : null,
+      seriennummernAktiv: input.seriennummernAktiv ?? false,
+      istFavorit:      input.istFavorit ?? false,
+      bonierdruckerId: input.bonierdruckerId ?? null,
+      bonierBeiDirektverkauf: input.bonierBeiDirektverkauf ?? false,
+      istBestandteil:  input.istBestandteil ?? false,
+      terminalSichtbar: input.terminalSichtbar ?? null,
+      ...(input.bild != null && { bild: input.bild }),
+    }).returning()
+    if (!row) throw new Error('Artikel konnte nicht angelegt werden')
+    if (input.bestandteile.length > 0) {
+      await schreibeRezept(tx, row.id, input.mandantId, input.bestandteile)
+    }
+    return row
+  })
+  return ladeArtikelDto(db, created)
 }
 
 export async function listeArtikel(
@@ -92,7 +123,9 @@ export async function listeArtikel(
     .where(conditions)
     .orderBy(asc(artikel.bezeichnung))
 
-  return rows.map(toDto)
+  // Rezepte gebündelt nachladen (ein Join) → verfuegbareMenge + bestandteile je Artikel.
+  const rezepte = await ladeRezepteAngereichert(db, rows.map(r => r.id))
+  return rows.map(r => toDto(r, rezepte.get(r.id) ?? []))
 }
 
 export async function aktualisiereArtikel(
@@ -117,16 +150,25 @@ export async function aktualisiereArtikel(
   if (update.favoritenReihenfolge !== undefined) values.favoritenReihenfolge = update.favoritenReihenfolge
   if (update.bonierdruckerId      !== undefined) values.bonierdruckerId      = update.bonierdruckerId
   if (update.bonierBeiDirektverkauf !== undefined) values.bonierBeiDirektverkauf = update.bonierBeiDirektverkauf
+  if (update.istBestandteil       !== undefined) values.istBestandteil       = update.istBestandteil
   if (update.terminalSichtbar     !== undefined) values.terminalSichtbar     = update.terminalSichtbar
   if (update.bild                 !== undefined) values.bild                 = update.bild ?? null
 
-  const [updated] = await db
-    .update(artikel)
-    .set(values)
-    .where(eq(artikel.id, id))
-    .returning()
+  const updated = await db.transaction(async (tx) => {
+    const [row] = await tx
+      .update(artikel)
+      .set(values)
+      .where(eq(artikel.id, id))
+      .returning()
+    if (!row) return null
+    // Rezept nur ersetzen, wenn explizit mitgeschickt (undefined = unverändert lassen).
+    if (update.bestandteile !== undefined) {
+      await schreibeRezept(tx, row.id, row.mandantId, update.bestandteile)
+    }
+    return row
+  })
 
-  return updated ? toDto(updated) : null
+  return updated ? ladeArtikelDto(db, updated) : null
 }
 
 export async function deaktiviereArtikel(db: Db, id: string): Promise<Artikel | null> {

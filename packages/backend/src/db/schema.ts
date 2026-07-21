@@ -614,6 +614,8 @@ export const artikel = pgTable('artikel', {
   bonierdruckerId:     uuid('bonierdrucker_id').references(() => bonierdrucker.id, { onDelete: 'set null' }),
   /** Bonierbon auch beim direkten „Bon erstellen" drucken (sonst nur bei Tischbuchung) */
   bonierBeiDirektverkauf: boolean('bonier_bei_direktverkauf').notNull().default(false),
+  /** Rohstoff/Bestandteil: nur Lager, nicht direkt verkäuflich (aus der Bonieroberfläche ausgeblendet) */
+  istBestandteil:      boolean('ist_bestandteil').notNull().default(false),
   /** Lieferant für Bestellliste und Einkauf */
   lieferantId:         uuid('lieferant_id').references((): AnyPgColumn => lieferanten.id, { onDelete: 'set null' }),
   /** Artikelbild als Data-URL (max. 200×200 px JPEG, client-seitig komprimiert) */
@@ -623,6 +625,28 @@ export const artikel = pgTable('artikel', {
 }, (t) => ({
   mandantNummerIdx: uniqueIndex('artikel_mandant_nummer_idx').on(t.mandantId, t.artikelnummer),
   kategorieIdx:     index('artikel_kategorie_idx').on(t.kategorieId),
+}))
+
+// ---------------------------------------------------------------------------
+// Artikel-Stückliste / Rezept — ein Verkaufsartikel besteht aus Bestandteilen
+// (Rohstoff-Artikeln) mit Menge. Beim Verkauf/Bonieren wird der Lagerstand der
+// Bestandteile abgebucht; erreicht ein Bestandteil 0, gilt der Verkaufsartikel
+// als ausverkauft (abgeleitete Verfügbarkeit).
+// ---------------------------------------------------------------------------
+
+export const artikelBestandteile = pgTable('artikel_bestandteile', {
+  id:                  uuid('id').primaryKey().defaultRandom(),
+  mandantId:           uuid('mandant_id').notNull().references(() => mandanten.id),
+  /** Der zusammengesetzte Verkaufsartikel */
+  verkaufsartikelId:   uuid('verkaufsartikel_id').notNull().references((): AnyPgColumn => artikel.id, { onDelete: 'cascade' }),
+  /** Der Bestandteil/Rohstoff (ebenfalls ein Artikel, mit eigenem Lagerstand) */
+  bestandteilArtikelId: uuid('bestandteil_artikel_id').notNull().references((): AnyPgColumn => artikel.id, { onDelete: 'cascade' }),
+  /** Menge des Bestandteils je 1× Verkaufsartikel */
+  menge:               integer('menge').notNull(),
+}, (t) => ({
+  uniq:            uniqueIndex('artikel_bestandteil_uniq_idx').on(t.verkaufsartikelId, t.bestandteilArtikelId),
+  verkaufsIdx:     index('artikel_bestandteil_verkaufs_idx').on(t.verkaufsartikelId),
+  bestandteilIdx:  index('artikel_bestandteil_bestandteil_idx').on(t.bestandteilArtikelId),
 }))
 
 // ---------------------------------------------------------------------------

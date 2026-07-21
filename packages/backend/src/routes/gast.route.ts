@@ -11,6 +11,7 @@ import { z } from 'zod'
 import type { Db } from '../db/client.js'
 import { artikel, kategorien, kassen, kassekategorieSichtbarkeit, tischTabs } from '../db/schema.js'
 import { emitKasseEvent } from '../sse/event-bus.js'
+import { berechneVerfuegbareMenge, ladeRezepteAngereichert } from '../services/bestandteil.service.js'
 
 export interface GastRouteOptions { db: Db }
 
@@ -76,15 +77,24 @@ export const gastRoute: FastifyPluginAsync<GastRouteOptions> = async (fastify, o
           reihenfolge:     artikel.reihenfolge,
           lagerstandAktiv: artikel.lagerstandAktiv,
           lagerstandMenge: artikel.lagerstandMenge,
+          istBestandteil:  artikel.istBestandteil,
         })
         .from(artikel)
         .where(and(eq(artikel.mandantId, kasse.mandantId), eq(artikel.aktiv, true)))
         .orderBy(asc(artikel.reihenfolge))
 
-      // Nur verfügbare Artikel (Lagerstand > 0 oder kein Countdown)
-      const verfuegbar = alleArtikel.filter(a =>
-        !a.lagerstandAktiv || (a.lagerstandMenge !== null && a.lagerstandMenge > 0)
-      )
+      // Rezept-Verfügbarkeit: zusammengesetzte Artikel sind ausverkauft, wenn ein Bestandteil fehlt.
+      const rezepte = await ladeRezepteAngereichert(opts.db, alleArtikel.map(a => a.id))
+
+      // Nur verfügbare Artikel (Lagerstand > 0 oder kein Countdown); Rohstoffe ausblenden.
+      const verfuegbar = alleArtikel
+        .filter(a => !a.istBestandteil)
+        .filter(a => !a.lagerstandAktiv || (a.lagerstandMenge !== null && a.lagerstandMenge > 0))
+        .filter(a => {
+          const v = berechneVerfuegbareMenge(rezepte.get(a.id) ?? [])
+          return v === null || v > 0
+        })
+        .map(({ istBestandteil: _istBestandteil, ...rest }) => rest)
 
       return reply.send({
         kasse: {
@@ -125,18 +135,24 @@ export const gastRoute: FastifyPluginAsync<GastRouteOptions> = async (fastify, o
           aktiv:           artikel.aktiv,
           lagerstandAktiv: artikel.lagerstandAktiv,
           lagerstandMenge: artikel.lagerstandMenge,
+          istBestandteil:  artikel.istBestandteil,
         })
         .from(artikel)
         .where(and(eq(artikel.mandantId, kasse.mandantId), inArray(artikel.id, artikelIds)))
 
       const artikelMap = new Map(dbArtikel.map(a => [a.id, a]))
+      const rezepte    = await ladeRezepteAngereichert(opts.db, artikelIds)
 
       for (const p of positionen) {
         const a = artikelMap.get(p.artikelId)
-        if (!a || !a.aktiv) {
+        if (!a || !a.aktiv || a.istBestandteil) {
           return reply.status(400).send({ fehler: 'Artikel nicht verfügbar' })
         }
         if (a.lagerstandAktiv && (a.lagerstandMenge === null || a.lagerstandMenge <= 0)) {
+          return reply.status(400).send({ fehler: 'Artikel nicht mehr verfügbar' })
+        }
+        const verfuegbar = berechneVerfuegbareMenge(rezepte.get(a.id) ?? [])
+        if (verfuegbar !== null && verfuegbar < p.menge) {
           return reply.status(400).send({ fehler: 'Artikel nicht mehr verfügbar' })
         }
       }

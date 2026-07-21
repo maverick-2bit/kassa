@@ -92,6 +92,8 @@ export {
   ArtikelSchema,
   ArtikelInputSchema,
   ArtikelUpdateSchema,
+  ArtikelBestandteilSchema,
+  ArtikelBestandteilInputSchema,
   MwStSatzSchema,
   MWST_LABELS,
 } from './schemas/artikel.js'
@@ -99,6 +101,7 @@ export type {
   Artikel,
   ArtikelInput,
   ArtikelUpdate,
+  ArtikelBestandteil,
   MwStSatz,
 } from './schemas/artikel.js'
 

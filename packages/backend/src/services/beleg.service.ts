@@ -45,6 +45,7 @@ import { ArtikelPositionSchema } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import { artikel, belege, kassen, kategorien, mandanten, modifikatoren, seriennummern } from '../db/schema.js'
 import { erstelleKunde, ladeKundeSnapshot } from './kunde.service.js'
+import { dekrementiereBestandteile, ladeRezepte } from './bestandteil.service.js'
 import { decryptPrivateKey, encryptPrivateKey } from '../crypto/master-key.js'
 
 export interface BelegServiceDeps {
@@ -448,25 +449,37 @@ export async function erstelleBarzahlungsbeleg(
       // skipLagerstand: Für Tisch-Zahlungen komplett überspringen — dort ist der
       // Lagerstand bereits über aktualisiereStockDeltas (Positionsänderung) abgezogen
       // (einzige Quelle der Wahrheit im Tisch-Fluss), sonst Doppel-Abzug.
+      // Bestandteil-Positionen sammeln (Direktkassieren, kein Bonierrouting) → nach der
+      // Schleife abbuchen. Rezepte werden auch dann abgebucht, wenn der zusammengesetzte
+      // Artikel selbst keinen Lagerstand führt.
+      const direktBestandteilPositionen: { artikelId: string; menge: number }[] = []
       for (const p of (opts.skipLagerstand ? [] : input.positionen)) {
         if (!('artikelId' in p)) continue  // freie Position: kein Lagerstand
         const a = artikelById.get(p.artikelId)
-        if (!a || !a.lagerstandAktiv) continue
-        // Bonierbar? → Lagerstand wurde beim Bonieren abgezogen, nicht nochmal hier.
+        if (!a) continue
+        // Bonierbar? → Lagerstand (Artikel + Bestandteile) wurde beim Bonieren abgezogen, nicht hier.
         const hatArtikelBonierrouting  = a.station !== null || a.bonierdruckerId !== null
         const hatKategorieBonierrouting = a.kategorieId
           ? (katBonierdruckerMap.get(a.kategorieId) ?? null) !== null
           : false
         if (hatArtikelBonierrouting || hatKategorieBonierrouting) continue
 
-        // Kein Bonierrouting → Direktkassieren, Lagerstand atomar abziehen
-        await tx
-          .update(artikel)
-          .set({
-            lagerstandMenge: sql`GREATEST(0, COALESCE(${artikel.lagerstandMenge}, 0) - ${p.menge})`,
-            updatedAt:       new Date(),
-          })
-          .where(eq(artikel.id, a.id))
+        // Kein Bonierrouting → Direktkassieren
+        if (a.lagerstandAktiv) {
+          await tx
+            .update(artikel)
+            .set({
+              lagerstandMenge: sql`GREATEST(0, COALESCE(${artikel.lagerstandMenge}, 0) - ${p.menge})`,
+              updatedAt:       new Date(),
+            })
+            .where(eq(artikel.id, a.id))
+        }
+        direktBestandteilPositionen.push({ artikelId: a.id, menge: p.menge })
+      }
+      // Rezept-Bestandteile der direkt kassierten Positionen abbuchen
+      if (direktBestandteilPositionen.length > 0) {
+        const rezepte = await ladeRezepte(tx, [...new Set(direktBestandteilPositionen.map(p => p.artikelId))])
+        await dekrementiereBestandteile(tx, direktBestandteilPositionen, rezepte)
       }
       // (Modifikator-Lagerstand: nie automatisch, bleibt manuell per Wareneingang/Inventur)
 
