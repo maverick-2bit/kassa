@@ -600,6 +600,43 @@ test('Wareneingang-Filter: Rohstoffe und Verkaufsartikel getrennt anzeigen', asy
 })
 
 /**
+ * Tischnummerndruck-Journey: Gast-Basis-URL setzen → auf der Tische-Seite das
+ * Druck-Modal öffnen → der QR-Schalter ist aktiviert (URL gesetzt) und die
+ * Bereichseingabe „1-3" ergibt 3 Etiketten. (Der eigentliche TCP-Druck wird per
+ * Live-Probe gegen einen Fake-Drucker geprüft, nicht hier.)
+ */
+test('Tischnummerndruck: Modal + QR-Schalter folgt der Gast-URL + Bereichseingabe zählt', async ({ page, request }) => {
+  const login = await ensureAuth(request)
+  const token = login.token, mandantId = login.mandant.id, kasseId = login.kassen[0].id
+  const authHeader = { Authorization: `Bearer ${token}` }
+
+  // Gast-Basis-URL setzen → aktiviert den QR-Schalter im Modal
+  const patch = await request.patch(`/api/kassen/${kasseId}/drucker`, {
+    headers: authHeader,
+    data: { gastBasisUrl: 'https://bestellen.example.at' },
+  })
+  expect(patch.ok()).toBeTruthy()
+
+  await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
+    localStorage.setItem('kassa:token', d.token)
+    localStorage.setItem('kassa:auth', d.authJson)
+    localStorage.setItem('kassa:mandantId', d.mandantId)
+    localStorage.setItem('kassa:kasseId', d.kasseId)
+  }, { token, authJson: JSON.stringify({ user: login.user, mandant: login.mandant, kassen: login.kassen }), mandantId, kasseId })
+
+  await page.goto('/tische')
+  await page.getByRole('button', { name: /Tischnummern drucken/ }).click()
+
+  // Modal offen (eindeutiges Label)
+  await expect(page.getByText('Oder Nummern eingeben')).toBeVisible({ timeout: 10_000 })
+  // QR-Schalter aktiviert, weil Gast-URL gesetzt
+  await expect(page.getByRole('checkbox')).toBeEnabled()
+  // Bereichseingabe „1-3" → 3 Etiketten
+  await page.getByPlaceholder(/1-20/).fill('1-3')
+  await expect(page.getByText(/3 Etikett/)).toBeVisible()
+})
+
+/**
  * Offene-Posten-Journey: Kredit-Kunden + offenen Posten (5,00 €) per API anlegen,
  * auf der Offene-Posten-Seite die Zahlung erfassen (voller Betrag) und prüfen,
  * dass der Posten danach beglichen ist (Restbetrag 0).

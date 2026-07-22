@@ -572,6 +572,8 @@ export interface DruckerConfig {
   belegModus:        'drucken' | 'digital' | 'beides'
   /** Optionale öffentliche Basis-URL für den digitalen Beleg-QR (null = Origin der App) */
   belegBasisUrl:     string | null
+  /** Basis-URL der Gast-Bestell-App für den Tisch-QR (null = kein QR-Druck möglich) */
+  gastBasisUrl:      string | null
 }
 
 export interface DruckerStatus {
@@ -597,6 +599,8 @@ export const druckerApi = {
     request<DruckerConfig>('PATCH', `/api/kassen/${kasseId}/drucker`, config),
   test:       (kasseId: string) =>
     request<{ erfolgreich: boolean }>('POST', `/api/kassen/${kasseId}/drucker/test`),
+  druckeTischEtiketten: (kasseId: string, input: { tische: string[]; mitQr: boolean }) =>
+    request<{ erfolgreich: boolean; anzahl: number }>('POST', `/api/kassen/${kasseId}/tisch-etiketten`, input),
   reprint:    (belegId: string, opts?: { ausweich?: boolean }) =>
     request<{ erfolgreich: boolean }>('POST', `/api/belege/${belegId}/drucken`, opts ?? {}),
   status:     (kasseId: string) =>

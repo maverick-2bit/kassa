@@ -26,6 +26,7 @@ import {
   DruckerError,
 } from '../services/drucker.service.js'
 import * as ep from '../services/escpos/commands.js'
+import { baueTischEtikett } from '../services/escpos/layout.js'
 
 export interface DruckerRouteOptions { db: Db }
 
@@ -41,6 +42,7 @@ const DruckerConfigInputSchema = z.object({
   druckerTimeoutSek:  z.number().int().min(1).max(30).optional(),
   belegModus:         BelegModusEnum.optional(),
   belegBasisUrl:      z.string().trim().max(255).nullable().optional(),
+  gastBasisUrl:       z.string().trim().max(300).nullable().optional(),
 })
 
 function kasseZuDruckerDto(kasse: typeof kassen.$inferSelect) {
@@ -53,6 +55,7 @@ function kasseZuDruckerDto(kasse: typeof kassen.$inferSelect) {
     druckerTimeoutSek: kasse.druckerTimeoutSek,
     belegModus:        kasse.belegModus,
     belegBasisUrl:     kasse.belegBasisUrl,
+    gastBasisUrl:      kasse.gastBasisUrl,
   }
 }
 
@@ -99,6 +102,7 @@ export const druckerRoute: FastifyPluginAsync<DruckerRouteOptions> = async (fast
     }
     if (body.data.belegModus        !== undefined) update.belegModus        = body.data.belegModus
     if (body.data.belegBasisUrl     !== undefined) update.belegBasisUrl     = body.data.belegBasisUrl ?? null
+    if (body.data.gastBasisUrl      !== undefined) update.gastBasisUrl      = body.data.gastBasisUrl ?? null
 
     const [updated] = await opts.db.update(kassen).set(update).where(eq(kassen.id, params.data.id)).returning()
     if (!updated) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
@@ -258,6 +262,67 @@ export const druckerRoute: FastifyPluginAsync<DruckerRouteOptions> = async (fast
         kasseId:    kasse.id,
         druckerIp:  config.ip,
         druckerTyp: 'test',
+        erfolg:     false,
+        fehlerText: err instanceof Error ? err.message : String(err),
+      }).catch(() => {})
+      if (err instanceof DruckerError)
+        return reply.status(err.httpStatus).send({ fehler: err.message })
+      return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
+    }
+  })
+
+  // ── POST /kassen/:id/tisch-etiketten ────────────────────────────────────────
+  // Druckt je Tisch ein Etikett (große „Tisch <Nr>"-Zeile) auf den Bondrucker der
+  // Kasse, optional mit Gast-Bestell-QR (nur wenn gastBasisUrl gesetzt ist).
+  const TischEtikettInputSchema = z.object({
+    tische: z.array(z.string().trim().min(1).max(40)).min(1).max(50),
+    mitQr:  z.boolean().default(false),
+  })
+
+  fastify.post('/kassen/:id/tisch-etiketten', auth, async (request, reply) => {
+    const params = IdParamSchema.safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
+    if (!(await pruefeKasseGehoertZuMandant(opts.db, params.data.id, request.user.mandantId)))
+      return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
+
+    const body = TischEtikettInputSchema.safeParse(request.body)
+    if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
+
+    const [kasse] = await opts.db.select().from(kassen).where(eq(kassen.id, params.data.id)).limit(1)
+    if (!kasse) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
+
+    const config = druckerConfigVonKasse(kasse)
+    if (!config) return reply.status(409).send({ fehler: 'Drucker nicht konfiguriert oder deaktiviert' })
+
+    // Eindeutige, getrimmte Tischliste (Reihenfolge bleibt)
+    const tische = [...new Set(body.data.tische.map(t => t.trim()).filter(Boolean))]
+    if (tische.length === 0) return reply.status(400).send({ fehler: 'Keine gültigen Tische angegeben' })
+
+    // QR nur wenn gewünscht UND eine Gast-Basis-URL konfiguriert ist
+    const mitQr = body.data.mitQr && !!kasse.gastBasisUrl
+    const bytes = Buffer.concat(tische.map(tisch => baueTischEtikett(tisch, {
+      breite: config.breite,
+      ...(mitQr
+        ? { qrUrl: `${kasse.gastBasisUrl}?kasseId=${kasse.id}&tisch=${encodeURIComponent(tisch)}` }
+        : {}),
+    })))
+
+    try {
+      await sendBytes(bytes, config)
+      await opts.db.insert(druckLog).values({
+        mandantId:  request.user.mandantId,
+        kasseId:    kasse.id,
+        druckerIp:  config.ip,
+        druckerTyp: 'tisch-etikett',
+        erfolg:     true,
+      })
+      return reply.send({ erfolgreich: true, anzahl: tische.length })
+    } catch (err) {
+      await opts.db.insert(druckLog).values({
+        mandantId:  request.user.mandantId,
+        kasseId:    kasse.id,
+        druckerIp:  config.ip,
+        druckerTyp: 'tisch-etikett',
         erfolg:     false,
         fehlerText: err instanceof Error ? err.message : String(err),
       }).catch(() => {})

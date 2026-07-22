@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest'
 import { Buffer } from 'node:buffer'
 import * as ep from '../src/services/escpos/commands.js'
-import { baueBon, zweispaltig } from '../src/services/escpos/layout.js'
+import { baueBon, baueTischEtikett, zweispaltig } from '../src/services/escpos/layout.js'
 import type { BelegResponse } from '@kassa/shared'
 
 // ---------------------------------------------------------------------------
@@ -166,5 +166,35 @@ describe('baueBon()', () => {
     // Trennlinie sollte 32 Bindestriche enthalten
     expect(bytes.includes(Buffer.from('-'.repeat(32)))).toBe(true)
     expect(bytes.includes(Buffer.from('-'.repeat(42)))).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// baueTischEtikett()
+// ---------------------------------------------------------------------------
+
+describe('baueTischEtikett()', () => {
+  const QR_PRINT = Buffer.from([0x1D, 0x28, 0x6B, 3, 0, 49, 81, 48]) // GS ( k … Print
+  const CUT      = Buffer.from([0x1D, 0x56, 0x42, 0])                // GS V 66 0 (Teilschnitt)
+
+  it('ohne QR: enthält „Tisch X", schneidet, kein QR-Befehl', () => {
+    const bytes = baueTischEtikett('5', { breite: 42 })
+    expect(bytes.includes(Buffer.from('Tisch 5'))).toBe(true)
+    expect(bytes.includes(CUT)).toBe(true)
+    expect(bytes.includes(QR_PRINT)).toBe(false)
+  })
+
+  it('mit QR: enthält die Gast-URL, den QR-Print-Befehl und den Hinweistext', () => {
+    const url = 'https://gast.example/?kasseId=abc&tisch=7'
+    const bytes = baueTischEtikett('7', { breite: 42, qrUrl: url })
+    expect(bytes.includes(Buffer.from('Tisch 7'))).toBe(true)
+    expect(bytes.includes(Buffer.from(url))).toBe(true)
+    expect(bytes.includes(QR_PRINT)).toBe(true)
+    expect(bytes.includes(Buffer.from('Zum Bestellen scannen'))).toBe(true)
+  })
+
+  it('Firmenname erscheint (großgeschrieben) als Kopfzeile', () => {
+    const bytes = baueTischEtikett('3', { breite: 42, firmenname: 'Musterwirt' })
+    expect(bytes.includes(Buffer.from('MUSTERWIRT'))).toBe(true)
   })
 })

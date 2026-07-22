@@ -151,6 +151,58 @@ export function baueBon(
 }
 
 // ---------------------------------------------------------------------------
+// Tischnummern-Etikett (optional mit Gast-Bestell-QR)
+// ---------------------------------------------------------------------------
+
+export interface TischEtikettOptionen {
+  /** Breite des Druckers in Zeichen */
+  breite:      number
+  /** Firmenname als kleine Kopfzeile (optional) */
+  firmenname?: string | undefined
+  /** Gast-Bestell-URL; wenn gesetzt, wird ein QR-Code samt Hinweis gedruckt */
+  qrUrl?:      string | undefined
+}
+
+/**
+ * Ein Tischnummern-Etikett: große fette „Tisch <Nr>"-Zeile, optional darunter
+ * ein QR-Code (native ESC/POS) auf die Gast-Bestell-URL. Endet mit Schnitt,
+ * damit mehrere Etiketten hintereinander als einzelne Bons herauskommen.
+ */
+export function baueTischEtikett(tischNummer: string, opts: TischEtikettOptionen): Buffer {
+  const W = opts.breite
+  const parts: Buffer[] = []
+  const add = (b: Buffer): void => { parts.push(b) }
+
+  add(ep.init())
+  add(ep.selectCodepage(19))      // CP858 (Deutsch + €)
+  add(ep.selectInternational(2))   // Deutsch
+
+  add(ep.align('center'))
+  if (opts.firmenname) {
+    add(ep.textLine(truncate(opts.firmenname.toUpperCase(), W)))
+    add(ep.newline())
+  }
+
+  // Große, fette Tischnummer
+  add(ep.font({ bold: true, doubleHeight: true, doubleWidth: true }))
+  add(ep.textLine(truncate(`Tisch ${tischNummer}`, Math.floor(W / 2))))
+  add(ep.font())
+
+  // Optionaler Gast-Bestell-QR
+  if (opts.qrUrl) {
+    add(ep.newline())
+    add(ep.align('center'))
+    add(ep.qrCode(opts.qrUrl, qrSizeFuerBreite(W), 'M'))
+    add(ep.textLine('Zum Bestellen scannen'))
+  }
+
+  add(ep.newline(2))
+  add(ep.cut())
+
+  return Buffer.concat(parts)
+}
+
+// ---------------------------------------------------------------------------
 // Z-Bon (Tagesabschluss)
 // ---------------------------------------------------------------------------
 
