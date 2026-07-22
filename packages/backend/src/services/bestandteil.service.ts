@@ -213,8 +213,8 @@ export async function wendeBestandteilDeltasAn(
   }
 }
 
-/** Summiert den Bestandteil-Bedarf (bestandteilArtikelId → Σ rezeptMenge × delta). */
-function summiereBedarf(
+/** Summiert den Bestandteil-Bedarf (bestandteilArtikelId → Σ rezeptMenge × delta). Exportiert für Unit-Tests. */
+export function summiereBedarf(
   artikelDeltas: { artikelId: string; delta: number }[],
   rezepte: Map<string, RezeptBestandteil[]>,
 ): Map<string, number> {
