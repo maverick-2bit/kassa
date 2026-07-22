@@ -138,6 +138,8 @@ export const kassen = pgTable('kassen', {
   belegModus:            varchar('beleg_modus', { length: 16 }).notNull().default('drucken'),
   /** Optionale öffentliche Basis-URL für den digitalen Beleg-QR (leer = Origin der Kassa-App) */
   belegBasisUrl:         varchar('beleg_basis_url', { length: 255 }),
+  /** Basis-URL der Gast-Bestell-App für den Tisch-QR (leer = kein QR-Druck möglich) */
+  gastBasisUrl:          varchar('gast_basis_url', { length: 300 }),
 
   // KDS-Konfiguration (Küchen-Display-System)
   /** Mapping Stations-Slug → IP-Adresse, z. B. { kueche: "192.168.192.210" } */

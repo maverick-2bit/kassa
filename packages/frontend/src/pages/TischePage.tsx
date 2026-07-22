@@ -10,6 +10,7 @@ import { Input } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
 import { TischplanAnsicht } from '../components/TischplanAnsicht'
 import { UmbuchenForm, ZusammenfuehrenForm, TeilUmbuchenForm } from '../components/tischAktionenForms'
+import { TischEtikettenModal } from '../components/TischEtikettenModal'
 
 // ---------------------------------------------------------------------------
 // Haupt-Seite
@@ -28,6 +29,7 @@ export function TischePage() {
   const [zusammenGruppe, setZusammenGruppe]   = useState<TischTabResponse[] | null>(null)
   const [splitTab, setSplitTab]               = useState<TischTabResponse | null>(null)   // Aktions-Auswahl
   const [teilTab, setTeilTab]                 = useState<TischTabResponse | null>(null)   // Teil-Umbuchen
+  const [etikettenOffen, setEtikettenOffen]   = useState(false)
   const [fehler, setFehler]                   = useState<string | null>(null)
 
   const tabsQuery = useQuery({
@@ -120,6 +122,9 @@ export function TischePage() {
               </button>
             </div>
           )}
+          <Button variant="secondary" onClick={() => setEtikettenOffen(true)}>
+            🖨 Tischnummern drucken
+          </Button>
           <Button onClick={() => { setFehler(null); setNeuerTischOffen(true) }}>
             + Neuer Tisch
           </Button>
@@ -258,6 +263,13 @@ export function TischePage() {
           />
         )}
       </Modal>
+
+      {/* Tischnummern-Etiketten drucken (optional mit Gast-QR) */}
+      <TischEtikettenModal
+        kasseId={identity.kasseId}
+        open={etikettenOffen}
+        onClose={() => setEtikettenOffen(false)}
+      />
     </div>
   )
 }

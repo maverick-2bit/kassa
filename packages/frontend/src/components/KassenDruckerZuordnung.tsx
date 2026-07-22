@@ -119,6 +119,26 @@ function KasseKarte({ kasseId, titel, untertitel, pool, bonier, istGastro }: {
             </select>
           </label>
 
+          {/* Gast-Bestell-Basis-URL (für den Tisch-QR-Druck) */}
+          <label className="block sm:col-span-2">
+            <span className="text-xs font-medium text-ink-muted">Gast-Bestell-Basis-URL (für Tisch-QR)</span>
+            <input
+              type="url"
+              inputMode="url"
+              placeholder="https://bestellen.example.at"
+              defaultValue={cfg?.gastBasisUrl ?? ''}
+              disabled={patchDrucker.isPending}
+              className="mt-1 block w-full rounded-md border border-line-strong px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500/40"
+              onBlur={(e) => {
+                const v = e.target.value.trim()
+                if (v !== (cfg?.gastBasisUrl ?? '')) patchDrucker.mutate({ gastBasisUrl: v || null })
+              }}
+            />
+            <span className="mt-1 block text-[11px] text-ink-subtle">
+              Basis-URL der Gast-Bestellseite. Nur wenn gesetzt, kann beim Tischnummerndruck der QR-Code mitgedruckt werden.
+            </span>
+          </label>
+
           {/* Bondrucker (1) */}
           <label className="block">
             <span className="text-xs font-medium text-ink-muted">
