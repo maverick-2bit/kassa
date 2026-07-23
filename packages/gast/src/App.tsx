@@ -68,6 +68,14 @@ function formatPreis(cent: number): string {
   return `€ ${(cent / 100).toFixed(2).replace('.', ',')}`
 }
 
+/** Freie €-Eingabe („2,50" / „2.50") → Cent, ≥ 0, gedeckelt bei 1000 €. */
+function parseEuroCent(text: string): number {
+  const norm = text.replace(/\s|€/g, '').replace(',', '.')
+  const euro = Number.parseFloat(norm)
+  if (!Number.isFinite(euro) || euro <= 0) return 0
+  return Math.min(100_000, Math.round(euro * 100))
+}
+
 const LANGS: { code: Lang; label: string }[] = [
   { code: 'de', label: 'DE' },
   { code: 'en', label: 'EN' },
@@ -92,6 +100,7 @@ export default function App() {
   const [korb, setKorb]         = useState<KorbItem[]>([])
   const [aktivKat, setAktivKat] = useState<string | null>(null)
   const [senden, setSenden]     = useState(false)
+  const [trinkgeldInput, setTrinkgeldInput] = useState('')
   const [lang, setLang]         = useState<Lang>(detectLang)
   const [demoBestellId, setDemoBestellId] = useState('')
   const [bestellStatus, setBestellStatus] = useState<StatusDto | null>(null)
@@ -169,6 +178,9 @@ export default function App() {
 
   const gesamtCent  = korb.reduce((s, k) => s + k.artikel.preisBruttoCent * k.menge, 0)
   const gesamtMenge = korb.reduce((s, k) => s + k.menge, 0)
+  const bezahlModus = karte?.gastBestellungAktiv ?? false
+  const trinkgeldCent = bezahlModus ? parseEuroCent(trinkgeldInput) : 0
+  const gesamtMitTrinkgeld = gesamtCent + trinkgeldCent
 
   const artikelInKat = useMemo(() =>
     karte?.artikel.filter(a => a.kategorieId === aktivKat) ?? [],
@@ -202,7 +214,7 @@ export default function App() {
       const res = await fetch('/api/gast/checkout', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ kasseId, tischNummer: tischNummer || 'Unbekannt', positionen: positionenBody() }),
+        body: JSON.stringify({ kasseId, tischNummer: tischNummer || 'Unbekannt', positionen: positionenBody(), trinkgeldCent }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const { bestellungId, checkoutUrl } = await res.json() as { bestellungId: string; checkoutUrl: string | null }
@@ -228,6 +240,7 @@ export default function App() {
 
   function neueBestellung() {
     setKorb([])
+    setTrinkgeldInput('')
     setBestellStatus(null)
     setDemoBestellId('')
     // Bestell-/Abbruch-Parameter aus der URL entfernen
@@ -377,7 +390,7 @@ export default function App() {
           </div>
         )}
         <button
-          onClick={() => { setKorb([]); setPhase('karte') }}
+          onClick={() => { setKorb([]); setTrinkgeldInput(''); setPhase('karte') }}
           className="w-full py-3 rounded-2xl border-2 border-brand-300 text-brand-700 font-bold text-sm hover:bg-brand-100 transition"
         >
           {t.weitereBestellung}
@@ -422,10 +435,52 @@ export default function App() {
             </div>
           ))}
         </div>
-        <div className="bg-panel rounded-2xl border-2 border-brand-200 px-4 py-3 flex justify-between items-center">
-          <span className="font-black text-ink">{t.gesamt}</span>
-          <span className="font-black text-xl text-brand-600 font-mono">{formatPreis(gesamtCent)}</span>
-        </div>
+        {bezahlModus ? (
+          <>
+            {/* Trinkgeld — freiwillige freie Eingabe */}
+            <div className="bg-panel rounded-2xl border border-line px-4 py-3 space-y-2">
+              <label htmlFor="trinkgeld" className="flex items-baseline justify-between gap-2">
+                <span className="font-semibold text-ink text-sm">{t.trinkgeldOptional}</span>
+                <span className="text-[11px] text-ink-subtle">{t.trinkgeldHinweis}</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <span className="text-ink-muted font-bold text-lg">€</span>
+                <input
+                  id="trinkgeld"
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="0,00"
+                  value={trinkgeldInput}
+                  onChange={e => setTrinkgeldInput(e.target.value)}
+                  className="flex-1 rounded-xl border border-line-strong px-3 py-2 text-right font-mono text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/40"
+                />
+              </div>
+            </div>
+
+            {/* Summenaufstellung */}
+            <div className="bg-panel rounded-2xl border-2 border-brand-200 px-4 py-3 space-y-1">
+              <div className="flex justify-between text-sm text-ink-muted">
+                <span>{t.zwischensumme}</span>
+                <span className="font-mono">{formatPreis(gesamtCent)}</span>
+              </div>
+              {trinkgeldCent > 0 && (
+                <div className="flex justify-between text-sm text-ink-muted">
+                  <span>{t.trinkgeld}</span>
+                  <span className="font-mono">{formatPreis(trinkgeldCent)}</span>
+                </div>
+              )}
+              <div className="flex justify-between items-center border-t border-line pt-1 mt-1">
+                <span className="font-black text-ink">{t.gesamt}</span>
+                <span className="font-black text-xl text-brand-600 font-mono">{formatPreis(gesamtMitTrinkgeld)}</span>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="bg-panel rounded-2xl border-2 border-brand-200 px-4 py-3 flex justify-between items-center">
+            <span className="font-black text-ink">{t.gesamt}</span>
+            <span className="font-black text-xl text-brand-600 font-mono">{formatPreis(gesamtCent)}</span>
+          </div>
+        )}
       </div>
 
       <div className="p-4 bg-panel border-t border-line">
@@ -434,7 +489,7 @@ export default function App() {
           disabled={senden}
           className="w-full py-4 rounded-2xl font-black text-lg text-white bg-brand-500 hover:bg-brand-600 active:scale-95 transition disabled:opacity-50"
         >
-          {senden ? t.wirdGesendet : (karte?.gastBestellungAktiv ? t.bestellenZahlen : t.jetztBestellen)}
+          {senden ? t.wirdGesendet : (bezahlModus ? t.bestellenZahlen : t.jetztBestellen)}
         </button>
       </div>
     </div>

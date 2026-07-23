@@ -28,6 +28,8 @@ export interface CheckoutPosition {
 export interface CheckoutInput {
   bestellungId: string
   positionen:   CheckoutPosition[]
+  /** Freiwilliges Trinkgeld (Cent); als eigene „Trinkgeld"-Zeile mitverrechnet, wenn > 0 */
+  trinkgeldCent?: number
   /** Rücksprung in die Gast-App nach (Nicht-)Zahlung */
   successUrl:   string
   cancelUrl:    string
@@ -36,19 +38,31 @@ export interface CheckoutInput {
 /**
  * Erzeugt eine Stripe-Checkout-Session (mode: payment) mit den Positionen als
  * line_items und der Bestell-ID in metadata (für den Webhook). Gibt id + URL zurück.
+ * Ein Trinkgeld (> 0) wird als eigene „Trinkgeld"-Zeile mitberechnet.
  */
 export async function erstelleCheckoutSession(input: CheckoutInput, config: Config): Promise<{ id: string; url: string }> {
   const stripe = client(config)
-  const session = await stripe.checkout.sessions.create({
-    mode: 'payment',
-    line_items: input.positionen.map(p => ({
-      quantity: p.menge,
+  const lineItems = input.positionen.map(p => ({
+    quantity: p.menge,
+    price_data: {
+      currency:     'eur' as const,
+      unit_amount:  p.preisBruttoCent,
+      product_data: { name: p.bezeichnung },
+    },
+  }))
+  if (input.trinkgeldCent && input.trinkgeldCent > 0) {
+    lineItems.push({
+      quantity: 1,
       price_data: {
         currency:     'eur',
-        unit_amount:  p.preisBruttoCent,
-        product_data: { name: p.bezeichnung },
+        unit_amount:  input.trinkgeldCent,
+        product_data: { name: 'Trinkgeld' },
       },
-    })),
+    })
+  }
+  const session = await stripe.checkout.sessions.create({
+    mode: 'payment',
+    line_items: lineItems,
     success_url: input.successUrl,
     cancel_url:  input.cancelUrl,
     metadata:              { bestellungId: input.bestellungId },

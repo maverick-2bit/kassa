@@ -39,6 +39,11 @@ const BestellungBody = z.object({
   ),
 })
 
+// Checkout darf zusätzlich ein freiwilliges Trinkgeld (Cent) mitschicken.
+const CheckoutBody = BestellungBody.extend({
+  trinkgeldCent: z.number().int().min(0).max(100_000).default(0),
+})
+
 export const gastRoute: FastifyPluginAsync<GastRouteOptions> = async (fastify, opts) => {
 
   // ── Speisekarte laden ───────────────────────────────────────────────────────
@@ -207,12 +212,12 @@ export const gastRoute: FastifyPluginAsync<GastRouteOptions> = async (fastify, o
 
   // ── Bestellung + Stripe-Checkout starten ────────────────────────────────────
   fastify.post('/gast/checkout', async (request, reply) => {
-    const b = BestellungBody.safeParse(request.body)
+    const b = CheckoutBody.safeParse(request.body)
     if (!b.success) return reply.status(400).send({ fehler: b.error.issues })
     const gastDeps: GastServiceDeps = { db: opts.db, belegDeps: opts.belegDeps, config: opts.config }
     try {
       const res = await erstelleGastBestellung(
-        { kasseId: b.data.kasseId, tischNummer: b.data.tischNummer, positionen: b.data.positionen },
+        { kasseId: b.data.kasseId, tischNummer: b.data.tischNummer, positionen: b.data.positionen, trinkgeldCent: b.data.trinkgeldCent },
         gastDeps,
       )
       return reply.status(201).send(res)
