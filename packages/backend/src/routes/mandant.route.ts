@@ -61,6 +61,8 @@ export const mandantRoute: FastifyPluginAsync<MandantRouteOptions> = async (fast
         modulReservierungenAktiv: mandanten.modulReservierungenAktiv,
         modulZeiterfassungAktiv:  mandanten.modulZeiterfassungAktiv,
         modulSbTerminalAktiv:     mandanten.modulSbTerminalAktiv,
+        modulGaengeAktiv:         mandanten.modulGaengeAktiv,
+        gaengeAnzahl:             mandanten.gaengeAnzahl,
       })
       .from(mandanten)
       .where(eq(mandanten.id, request.user.mandantId))
@@ -90,6 +92,8 @@ export const mandantRoute: FastifyPluginAsync<MandantRouteOptions> = async (fast
       modulReservierungenAktiv: boolean
       modulZeiterfassungAktiv:  boolean
       modulSbTerminalAktiv:     boolean
+      modulGaengeAktiv:         boolean
+      gaengeAnzahl:             number
     }> = {}
 
     if (body.data.modulGastroAktiv         !== undefined) updates.modulGastroAktiv         = body.data.modulGastroAktiv
@@ -98,6 +102,8 @@ export const mandantRoute: FastifyPluginAsync<MandantRouteOptions> = async (fast
     if (body.data.modulReservierungenAktiv !== undefined) updates.modulReservierungenAktiv = body.data.modulReservierungenAktiv
     if (body.data.modulZeiterfassungAktiv  !== undefined) updates.modulZeiterfassungAktiv  = body.data.modulZeiterfassungAktiv
     if (body.data.modulSbTerminalAktiv     !== undefined) updates.modulSbTerminalAktiv     = body.data.modulSbTerminalAktiv
+    if (body.data.modulGaengeAktiv         !== undefined) updates.modulGaengeAktiv         = body.data.modulGaengeAktiv
+    if (body.data.gaengeAnzahl             !== undefined) updates.gaengeAnzahl             = body.data.gaengeAnzahl
 
     if (Object.keys(updates).length === 0) {
       return reply.status(400).send({ fehler: 'Keine Änderungen angegeben' })
@@ -114,6 +120,8 @@ export const mandantRoute: FastifyPluginAsync<MandantRouteOptions> = async (fast
         modulReservierungenAktiv: mandanten.modulReservierungenAktiv,
         modulZeiterfassungAktiv:  mandanten.modulZeiterfassungAktiv,
         modulSbTerminalAktiv:     mandanten.modulSbTerminalAktiv,
+        modulGaengeAktiv:         mandanten.modulGaengeAktiv,
+        gaengeAnzahl:             mandanten.gaengeAnzahl,
       })
 
     if (!row) return reply.status(404).send({ fehler: 'Mandant nicht gefunden' })
