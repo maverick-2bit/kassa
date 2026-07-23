@@ -20,7 +20,7 @@ import { bonierBestellung } from './bonier.service.js'
 import { berechneVerfuegbareMenge, ladeRezepteAngereichert } from './bestandteil.service.js'
 import { belegRowZuDto } from './drucker.service.js'
 import { emitKasseEvent } from '../sse/event-bus.js'
-import { isStripeAktiv, erstelleCheckoutSession } from './stripe.service.js'
+import { ladeStripeKonfig, erstelleCheckoutSession } from './stripe.service.js'
 
 export class GastBestellungError extends Error {
   constructor(public readonly httpStatus: number, message: string) {
@@ -64,8 +64,9 @@ export async function erstelleGastBestellung(
   if (!kasse) throw new GastBestellungError(404, 'Kasse nicht gefunden')
   if (!kasse.gastBestellungAktiv) throw new GastBestellungError(403, 'Gast-Bestellung ist für diese Kasse nicht aktiv')
 
-  const stripeAktiv = isStripeAktiv(deps.config)
-  if (!stripeAktiv && deps.config.NODE_ENV === 'production') {
+  // Wirksame Stripe-Konfiguration des Mandanten auflösen (eigene Keys > Env-Fallback > null)
+  const stripeKonfig = await ladeStripeKonfig(deps.db, kasse.mandantId, deps.config)
+  if (!stripeKonfig && deps.config.NODE_ENV === 'production') {
     throw new GastBestellungError(503, 'Online-Zahlung ist nicht konfiguriert')
   }
 
@@ -112,7 +113,7 @@ export async function erstelleGastBestellung(
   if (!row) throw new GastBestellungError(500, 'Bestellung konnte nicht angelegt werden')
 
   // Demo-Pfad (kein Stripe konfiguriert, nur Dev/Test): sofort finalisieren.
-  if (!stripeAktiv) {
+  if (!stripeKonfig) {
     await finalisiereGastBestellung(row.id, deps)
     return { bestellungId: row.id, checkoutUrl: null }
   }
@@ -129,7 +130,7 @@ export async function erstelleGastBestellung(
       trinkgeldCent,
       successUrl:   `${basis}${sep}${params}`,
       cancelUrl:    `${basis}${sep}${params}&abbruch=1`,
-    }, deps.config)
+    }, stripeKonfig)
     await deps.db.update(gastBestellungen).set({ stripeSessionId: session.id, updatedAt: new Date() }).where(eq(gastBestellungen.id, row.id))
     return { bestellungId: row.id, checkoutUrl: session.url }
   } catch (err) {

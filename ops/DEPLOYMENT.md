@@ -237,27 +237,45 @@ Gast scannt den Tisch-QR → bestellt am Handy → zahlt online (Stripe Checkout
 RKSV-Beleg + Bonierung an KDS/Warengruppen-Drucker, ohne Zahlkellner. **Voraussetzung:
 die Box ist öffentlich erreichbar (Abschnitt 7), denn Stripe ruft den Webhook direkt an.**
 
-1. **Stripe-Konto** anlegen (ein globales Konto). Im Dashboard den **Secret-Key** kopieren
-   (Test: `sk_test_…`, Live: `sk_live_…`).
-2. **Webhook** im Stripe-Dashboard anlegen: Endpoint
-   `https://kasse.example.com/api/stripe/webhook`, Event **`checkout.session.completed`**.
-   Das erzeugte **Signing-Secret** (`whsec_…`) kopieren.
-3. In `.env`:
+Es gibt **zwei Wege**, das Stripe-Konto zu hinterlegen. Pro-Mandant-Keys haben Vorrang;
+sind für einen Mandanten keine gesetzt, greifen die globalen Env-Keys als Fallback.
+
+**Variante A — pro Betrieb/Mandant (empfohlen, Geld fließt direkt an den Betrieb):**
+1. Jeder Betrieb legt ein **eigenes Stripe-Konto** an und kopiert den **Secret-Key**
+   (Test `sk_test_…` / Live `sk_live_…`).
+2. In der Kassa: **Einstellungen → Gast → „Online-Zahlung (Stripe)"**. Dort wird die
+   **mandant-spezifische Webhook-URL** angezeigt
+   (`https://kasse.example.com/api/stripe/webhook/<mandantId>`). Diese im Stripe-Dashboard
+   als Webhook-Endpoint für **`checkout.session.completed`** eintragen und das erzeugte
+   **Signing-Secret** (`whsec_…`) kopieren.
+3. Secret-Key + Webhook-Secret in dieselbe Maske eintragen und speichern. Die Keys werden
+   **verschlüsselt** gespeichert (AES-256-GCM, Master-Passwort) und nie im Klartext
+   zurückgegeben.
+
+**Variante B — ein globales Konto für alle (Env-Fallback):**
+1. Ein Stripe-Konto; Secret-Key + einen Webhook auf `…/api/stripe/webhook` (ohne mandantId)
+   mit Event `checkout.session.completed` anlegen.
+2. In `.env`:
    ```
    STRIPE_SECRET_KEY=sk_live_…
    STRIPE_WEBHOOK_SECRET=whsec_…
    ```
-   Fehlen die Keys, ist die Online-Zahlung aus (in Dev/Test läuft dann der Demo-Pfad,
-   der ohne echte Zahlung sofort finalisiert — **nie in Produktion ohne Keys**).
-4. Pro Kasse freischalten: **Einstellungen → Hardware → „Gast-Selbstbestellung mit
-   Online-Zahlung"**, und die **Gast-Bestell-Basis-URL** auf die öffentliche Gast-App
-   setzen (z. B. `https://gast.example.com`) — daraus wird der Tisch-QR gebaut und der
-   Rücksprung nach der Zahlung.
-5. Tisch-QRs drucken: **Tische → „Tischnummern drucken"** mit QR (Abschnitt Phase 1).
+
+Fehlen für einen Mandanten sowohl eigene als auch globale Keys, ist die Online-Zahlung aus
+(in Dev/Test läuft dann der Demo-Pfad, der ohne echte Zahlung sofort finalisiert —
+**nie in Produktion ohne Keys**).
+
+**Zusätzlich, unabhängig von Variante A/B:**
+- Pro Kasse freischalten: **Einstellungen → Hardware → „Gast-Selbstbestellung mit
+  Online-Zahlung"**, und die **Gast-Bestell-Basis-URL** auf die öffentliche Gast-App
+  setzen (z. B. `https://gast.example.com`) — daraus wird der Tisch-QR gebaut und der
+  Rücksprung nach der Zahlung.
+- Tisch-QRs drucken: **Tische → „Tischnummern drucken"** mit QR (Abschnitt Phase 1).
 
 **Lokaler Test ohne öffentliche Box:** Stripe-CLI —
-`stripe listen --forward-to localhost:3000/api/stripe/webhook` — leitet Test-Events an
-die lokale Kassa weiter.
+`stripe listen --forward-to localhost:3000/api/stripe/webhook` (globaler Fallback) bzw.
+`… --forward-to localhost:3000/api/stripe/webhook/<mandantId>` (pro-Mandant) — leitet
+Test-Events an die lokale Kassa weiter.
 
 ## 8. Aktualisieren
 

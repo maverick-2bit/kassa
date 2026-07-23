@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { QRCodeSVG } from 'qrcode.react'
 import { ALLE_STATIONEN, STATION_LABELS, type Station, type ZvtConfig, type WeitereKasseInput, type PosKonfig, type Artikel, type Kategorie, type SeeTyp } from '@kassa/shared'
-import { druckerApi, druckerPoolApi, kdsApi, seeApi, zvtApi, downloadDepExport, healthApi, monitoringApi, mandantApi, kasseApi, kategorieApi, artikelApi, posConfigApi, tischplanApi, dbBackupApi, belegApi, systemApi, type DruckerConfig, type KdsConfig, type DbSicherungRow, type MonitoringStatus } from '../lib/api'
+import { druckerApi, druckerPoolApi, kdsApi, seeApi, zvtApi, downloadDepExport, healthApi, monitoringApi, mandantApi, stripeApi, kasseApi, kategorieApi, artikelApi, posConfigApi, tischplanApi, dbBackupApi, belegApi, systemApi, type DruckerConfig, type KdsConfig, type DbSicherungRow, type MonitoringStatus } from '../lib/api'
 import type { DruckerPool, DruckerPoolInput } from '@kassa/shared'
 import { Modal } from '../components/ui/Modal'
 import { BonierdruckerBibliothek } from '../components/BonierdruckerBibliothek'
@@ -96,6 +96,7 @@ export function EinstellungenPage() {
         <>
           {hasModul('gastro') && <TischplanSektion />}
           <GastQrCodeSektion />
+          <StripeZahlungSektion />
         </>
       )}
       {bereich === 'terminal' && (
@@ -1101,6 +1102,135 @@ function TischplanSektion() {
 // ---------------------------------------------------------------------------
 // Gast-QR-Code-Generator
 // ---------------------------------------------------------------------------
+
+function StripeZahlungSektion() {
+  const qc = useQueryClient()
+  const { data: status, isLoading } = useQuery({ queryKey: ['mandant-stripe'], queryFn: stripeApi.get })
+
+  const [secretKey, setSecretKey]         = useState('')
+  const [webhookSecret, setWebhookSecret] = useState('')
+  const [fehler, setFehler]               = useState('')
+
+  const labelCls = 'block text-xs font-semibold text-ink-muted uppercase tracking-wide mb-1.5'
+  const inputCls = 'w-full rounded-lg border border-line-strong px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none font-mono'
+
+  const speichern = useMutation({
+    mutationFn: () => {
+      const patch: { secretKey?: string; webhookSecret?: string } = {}
+      if (secretKey.trim())     patch.secretKey     = secretKey.trim()
+      if (webhookSecret.trim()) patch.webhookSecret = webhookSecret.trim()
+      return stripeApi.patch(patch)
+    },
+    onSuccess: () => {
+      setSecretKey(''); setWebhookSecret(''); setFehler('')
+      qc.invalidateQueries({ queryKey: ['mandant-stripe'] })
+    },
+    onError: (e: unknown) => setFehler(e instanceof Error ? e.message : 'Speichern fehlgeschlagen'),
+  })
+
+  const entfernen = useMutation({
+    mutationFn: () => stripeApi.patch({ secretKey: null, webhookSecret: null }),
+    onSuccess: () => { setSecretKey(''); setWebhookSecret(''); setFehler(''); qc.invalidateQueries({ queryKey: ['mandant-stripe'] }) },
+  })
+
+  const nichtsEingegeben = !secretKey.trim() && !webhookSecret.trim()
+  const hatKeys   = !!(status?.secretKeyGesetzt || status?.webhookSecretGesetzt)
+  const webhookUrl = status ? `${window.location.origin}${status.webhookPfad}` : ''
+
+  return (
+    <section className="rounded-lg border border-line bg-panel p-5 space-y-5">
+      <div>
+        <h2 className="text-base font-semibold text-ink">Online-Zahlung (Stripe)</h2>
+        <p className="text-sm text-ink-muted mt-0.5">
+          Eigenes Stripe-Konto für die Gast-Onlinebestellung — die Zahlungen fließen direkt an deinen Betrieb.
+        </p>
+      </div>
+
+      {/* Status */}
+      {!isLoading && status && (
+        <div className="rounded-lg border border-line bg-panel-2 px-4 py-3 text-sm">
+          {status.eigenesKontoAktiv ? (
+            <span className="font-medium text-emerald-600">✓ Eigenes Stripe-Konto aktiv</span>
+          ) : status.globalerFallbackAktiv ? (
+            <span className="text-ink-muted">Globales Konto (Server-Fallback) aktiv — trage eigene Keys ein, damit die Zahlungen direkt an dich fließen.</span>
+          ) : (
+            <span className="font-medium text-amber-600">Noch nicht konfiguriert — Gäste können nicht online zahlen.</span>
+          )}
+        </div>
+      )}
+
+      {/* Keys (write-only) */}
+      <div className="space-y-4">
+        <div>
+          <label className={labelCls}>Stripe Secret Key</label>
+          <input
+            type="password" autoComplete="off" value={secretKey}
+            onChange={e => setSecretKey(e.target.value)}
+            placeholder={status?.secretKeyGesetzt ? '•••••••••• gesetzt — nur zum Ändern ausfüllen' : 'sk_live_… oder sk_test_…'}
+            className={inputCls}
+          />
+        </div>
+        <div>
+          <label className={labelCls}>Webhook Signing Secret</label>
+          <input
+            type="password" autoComplete="off" value={webhookSecret}
+            onChange={e => setWebhookSecret(e.target.value)}
+            placeholder={status?.webhookSecretGesetzt ? '•••••••••• gesetzt' : 'whsec_…'}
+            className={inputCls}
+          />
+        </div>
+
+        {fehler && <p className="text-sm text-red-600">{fehler}</p>}
+
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={() => speichern.mutate()}
+            disabled={nichtsEingegeben || speichern.isPending}
+            className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+          >
+            {speichern.isPending ? 'Speichern…' : 'Speichern'}
+          </button>
+          {hatKeys && (
+            <button
+              onClick={() => { if (window.confirm('Stripe-Keys dieses Betriebs wirklich entfernen?')) entfernen.mutate() }}
+              disabled={entfernen.isPending}
+              className="rounded-lg border border-line-strong px-4 py-2 text-sm font-medium text-ink hover:bg-panel-2 disabled:opacity-50"
+            >
+              Keys entfernen
+            </button>
+          )}
+          {speichern.isSuccess && <span className="text-sm text-emerald-600">Gespeichert ✓</span>}
+        </div>
+      </div>
+
+      {/* Webhook-URL zum Kopieren */}
+      <div>
+        <label className={labelCls}>Webhook-URL (in Stripe eintragen)</label>
+        <div className="flex gap-2">
+          <input
+            readOnly value={webhookUrl}
+            onFocus={e => e.currentTarget.select()}
+            className={inputCls}
+          />
+          <button
+            type="button"
+            onClick={() => { void navigator.clipboard?.writeText(webhookUrl) }}
+            className="shrink-0 rounded-lg border border-line-strong px-3 py-2 text-sm font-medium text-ink hover:bg-panel-2"
+          >
+            Kopieren
+          </button>
+        </div>
+        <p className="text-xs text-ink-subtle mt-1">
+          Im Stripe-Dashboard unter Entwickler → Webhooks diese URL für das Ereignis <code>checkout.session.completed</code> hinterlegen. Muss öffentlich erreichbar sein (Domain ggf. anpassen).
+        </p>
+      </div>
+
+      <p className="text-xs text-ink-subtle">
+        Zusätzlich muss je Kasse der Schalter „Gast-Selbstbestellung mit Online-Zahlung" (unter Hardware) aktiv sein.
+      </p>
+    </section>
+  )
+}
 
 function GastQrCodeSektion() {
   const auth       = getAuth()!

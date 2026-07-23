@@ -232,6 +232,13 @@
       "when": 1785000000000,
       "tag": "0033_gast_trinkgeld",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1785100000000,
+      "tag": "0034_mandant_stripe",
+      "breakpoints": true
     }
   ]
 }

@@ -1068,6 +1068,31 @@ export const mandantApi = {
 }
 
 // ---------------------------------------------------------------------------
+// Stripe-Zahlung pro Mandant (Keys write-only, Status ohne Klartext-Secrets)
+// ---------------------------------------------------------------------------
+
+export interface MandantStripeStatus {
+  secretKeyGesetzt:      boolean
+  webhookSecretGesetzt:  boolean
+  eigenesKontoAktiv:     boolean
+  globalerFallbackAktiv: boolean
+  /** Pfad, den der Mandant in Stripe als Webhook-URL eintragen muss (Domain davor) */
+  webhookPfad:           string
+}
+export interface MandantStripeUpdate {
+  /** sk_… setzen; null/'' = löschen; weglassen = unverändert */
+  secretKey?:     string | null
+  /** whsec_… setzen; null/'' = löschen; weglassen = unverändert */
+  webhookSecret?: string | null
+}
+export const stripeApi = {
+  get:   (): Promise<MandantStripeStatus> =>
+    request<MandantStripeStatus>('GET', '/api/mandanten/stripe'),
+  patch: (input: MandantStripeUpdate): Promise<MandantStripeStatus> =>
+    request<MandantStripeStatus>('PATCH', '/api/mandanten/stripe', input),
+}
+
+// ---------------------------------------------------------------------------
 // Kassen-Status (Zertifikats-Ablauf)
 // ---------------------------------------------------------------------------
 
