@@ -16,8 +16,10 @@ import { fileURLToPath } from 'url'
 import { join, dirname } from 'path'
 
 export async function runMigrations(databaseUrl: string): Promise<void> {
-  // Eigene Verbindung nur für Migrationen (max 1 Connection, dann sofort schliessen)
-  const sql = postgres(databaseUrl, { max: 1 })
+  // Eigene Verbindung nur für Migrationen (max 1 Connection, dann sofort schliessen).
+  // fetch_types:false → keine Array-Typ-Introspektion, die beim sofortigen sql.end()
+  // als unhandled CONNECTION_CLOSED racen könnte (Schema hat keine Array-/Enum-Typen).
+  const sql = postgres(databaseUrl, { max: 1, fetch_types: false })
   const db  = drizzle(sql)
 
   const migrationsFolder = join(
