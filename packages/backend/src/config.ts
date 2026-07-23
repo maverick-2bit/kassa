@@ -46,6 +46,11 @@ const ConfigSchema = z.object({
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
   SMTP_FROM: z.string().optional(),
+
+  // ── Stripe (optional — fehlen die Keys, ist die Gast-Onlinezahlung deaktiviert
+  //    und läuft nur der Demo-Pfad in Dev/Test). Ein globales Konto. ──
+  STRIPE_SECRET_KEY:     z.string().optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
 })
 
 export type Config = z.infer<typeof ConfigSchema>

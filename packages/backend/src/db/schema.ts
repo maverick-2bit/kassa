@@ -140,6 +140,8 @@ export const kassen = pgTable('kassen', {
   belegBasisUrl:         varchar('beleg_basis_url', { length: 255 }),
   /** Basis-URL der Gast-Bestell-App für den Tisch-QR (leer = kein QR-Druck möglich) */
   gastBasisUrl:          varchar('gast_basis_url', { length: 300 }),
+  /** Gast-Selbstbestellung mit Online-Zahlung (Stripe) freigeschaltet */
+  gastBestellungAktiv:   boolean('gast_bestellung_aktiv').notNull().default(false),
 
   // KDS-Konfiguration (Küchen-Display-System)
   /** Mapping Stations-Slug → IP-Adresse, z. B. { kueche: "192.168.192.210" } */
@@ -1295,3 +1297,30 @@ export const sbBestellungen = pgTable('sb_bestellungen', {
 
 export type SbBestellungRow    = typeof sbBestellungen.$inferSelect
 export type NewSbBestellungRow = typeof sbBestellungen.$inferInsert
+
+// ---------------------------------------------------------------------------
+// Gast-Bestellungen (Handy-Bestellung am Tisch, sofort online bezahlt via Stripe)
+// ---------------------------------------------------------------------------
+
+export const gastBestellungen = pgTable('gast_bestellungen', {
+  id:                    uuid('id').primaryKey().defaultRandom(),
+  mandantId:             uuid('mandant_id').notNull().references(() => mandanten.id),
+  kasseId:               uuid('kasse_id').notNull().references(() => kassen.id),
+  tischNummer:           varchar('tisch_nummer', { length: 40 }).notNull(),
+  positionen:            jsonb('positionen').notNull().$type<SbBestellungPosition[]>(),
+  summeCent:             integer('summe_cent').notNull(),
+  /** zahlung | finalisiere | bezahlt | abgebrochen */
+  status:                varchar('status', { length: 20 }).notNull().default('zahlung'),
+  stripeSessionId:       varchar('stripe_session_id', { length: 255 }),
+  stripePaymentIntentId: varchar('stripe_payment_intent_id', { length: 255 }),
+  /** RKSV-Beleg nach erfolgreicher Zahlung */
+  belegId:               uuid('beleg_id').references(() => belege.id),
+  createdAt:             timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:             timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  mandantStatusIdx: index('gast_bestellungen_mandant_status_idx').on(t.mandantId, t.status),
+  stripeSessionIdx: index('gast_bestellungen_stripe_session_idx').on(t.stripeSessionId),
+}))
+
+export type GastBestellungRow    = typeof gastBestellungen.$inferSelect
+export type NewGastBestellungRow = typeof gastBestellungen.$inferInsert

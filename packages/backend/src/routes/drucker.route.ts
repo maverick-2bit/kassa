@@ -43,6 +43,7 @@ const DruckerConfigInputSchema = z.object({
   belegModus:         BelegModusEnum.optional(),
   belegBasisUrl:      z.string().trim().max(255).nullable().optional(),
   gastBasisUrl:       z.string().trim().max(300).nullable().optional(),
+  gastBestellungAktiv: z.boolean().optional(),
 })
 
 function kasseZuDruckerDto(kasse: typeof kassen.$inferSelect) {
@@ -56,6 +57,7 @@ function kasseZuDruckerDto(kasse: typeof kassen.$inferSelect) {
     belegModus:        kasse.belegModus,
     belegBasisUrl:     kasse.belegBasisUrl,
     gastBasisUrl:      kasse.gastBasisUrl,
+    gastBestellungAktiv: kasse.gastBestellungAktiv,
   }
 }
 
@@ -103,6 +105,7 @@ export const druckerRoute: FastifyPluginAsync<DruckerRouteOptions> = async (fast
     if (body.data.belegModus        !== undefined) update.belegModus        = body.data.belegModus
     if (body.data.belegBasisUrl     !== undefined) update.belegBasisUrl     = body.data.belegBasisUrl ?? null
     if (body.data.gastBasisUrl      !== undefined) update.gastBasisUrl      = body.data.gastBasisUrl ?? null
+    if (body.data.gastBestellungAktiv !== undefined) update.gastBestellungAktiv = body.data.gastBestellungAktiv
 
     const [updated] = await opts.db.update(kassen).set(update).where(eq(kassen.id, params.data.id)).returning()
     if (!updated) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
