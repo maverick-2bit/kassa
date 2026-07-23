@@ -37,7 +37,13 @@ export function createSql(databaseUrl: string): ReturnType<typeof postgres> {
     idle_timeout:    20,   // Sekunden — ungenutzte Verbindungen freigeben
     connect_timeout: 10,   // Sekunden — bei Netzwerkproblemen nicht endlos blockieren
     max_lifetime:    60 * 30, // Sekunden — Verbindungen nach 30 min erneuern (gegen stale Connections)
-    onnotice: () => {}, // unterdrücke NOTICE-Logs
+    onnotice:        () => {}, // unterdrücke NOTICE-Logs
+    // Kein Schema-Array/Enum-Typ vorhanden → postgres.js muss die Array-Typ-OIDs
+    // NICHT abfragen. Das spart beim Verbindungsaufbau die interne Introspektions-
+    // Query („select b.oid, b.typarray from pg_catalog.pg_type …"), die sonst bei
+    // kurzlebigen Verbindungen mit sql.end() um die Wette läuft (unhandled
+    // CONNECTION_CLOSED). Unbedenklich, solange keine Array-/Enum-Spalten existieren.
+    fetch_types:     false,
   })
 }
 

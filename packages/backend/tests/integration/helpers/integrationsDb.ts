@@ -30,7 +30,11 @@ export interface IntegrationsDb {
 export async function erstelleIntegrationsDb(): Promise<IntegrationsDb> {
   const name = `kassa_test_${randomBytes(6).toString('hex')}`
 
-  const admin = postgres(BASIS_URL, { max: 1 })
+  // fetch_types:false überall (Schema hat keine Array-/Enum-Typen): verhindert die
+  // interne Array-Typ-Introspektions-Query von postgres.js, die bei kurzlebigen
+  // Verbindungen mit end() um die Wette läuft und als unhandled CONNECTION_CLOSED
+  // den Integrationstest-Lauf rot färbt (früherer Flake).
+  const admin = postgres(BASIS_URL, { max: 1, fetch_types: false })
   try {
     await admin.unsafe(`CREATE DATABASE ${name}`)
   } finally {
@@ -43,7 +47,7 @@ export async function erstelleIntegrationsDb(): Promise<IntegrationsDb> {
 
   await runMigrations(testUrl)
 
-  const sql = postgres(testUrl, { max: 5, onnotice: () => {} })
+  const sql = postgres(testUrl, { max: 5, onnotice: () => {}, fetch_types: false })
   const db  = drizzle(sql, { schema }) as Db
 
   return {
@@ -51,7 +55,7 @@ export async function erstelleIntegrationsDb(): Promise<IntegrationsDb> {
     url: testUrl,
     zerstoeren: async () => {
       await sql.end()
-      const aufraeumer = postgres(BASIS_URL, { max: 1 })
+      const aufraeumer = postgres(BASIS_URL, { max: 1, fetch_types: false })
       try {
         await aufraeumer.unsafe(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`)
       } finally {
