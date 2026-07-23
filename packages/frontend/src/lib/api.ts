@@ -1085,11 +1085,24 @@ export interface MandantStripeUpdate {
   /** whsec_… setzen; null/'' = löschen; weglassen = unverändert */
   webhookSecret?: string | null
 }
+/** Ergebnis des Verbindungstests gegen die Stripe-API. */
+export interface StripeTestErgebnis {
+  ok:          boolean
+  grund?:      'nicht_konfiguriert' | 'stripe_fehler'
+  fehler?:     string
+  /** true = eigene Mandant-Keys, false = globaler Env-Fallback */
+  eigene?:     boolean
+  /** Live-Modus (sk_live_…) statt Test-Modus */
+  livemodus?:  boolean
+  waehrungen?: string[]
+}
 export const stripeApi = {
   get:   (): Promise<MandantStripeStatus> =>
     request<MandantStripeStatus>('GET', '/api/mandanten/stripe'),
   patch: (input: MandantStripeUpdate): Promise<MandantStripeStatus> =>
     request<MandantStripeStatus>('PATCH', '/api/mandanten/stripe', input),
+  test:  (): Promise<StripeTestErgebnis> =>
+    request<StripeTestErgebnis>('POST', '/api/mandanten/stripe/test'),
 }
 
 // ---------------------------------------------------------------------------

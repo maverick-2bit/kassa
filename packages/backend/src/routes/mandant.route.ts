@@ -19,7 +19,7 @@ import type { Config } from '../config.js'
 import { mandanten } from '../db/schema.js'
 import { MandantModuleUpdateSchema, MandantStammdatenUpdateSchema } from '@kassa/shared'
 import { encryptPrivateKey } from '../crypto/master-key.js'
-import { globaleStripeKonfig } from '../services/stripe.service.js'
+import { globaleStripeKonfig, ladeStripeKonfig, testeStripeVerbindung } from '../services/stripe.service.js'
 
 export interface MandantRouteOptions { db: Db; config: Config }
 
@@ -221,5 +221,26 @@ export const mandantRoute: FastifyPluginAsync<MandantRouteOptions> = async (fast
 
     if (!row) return reply.status(404).send({ fehler: 'Mandant nicht gefunden' })
     return reply.send(stripeStatusDto(row, request.user.mandantId, opts.config))
+  })
+
+  // ---- POST /mandanten/stripe/test (Verbindung gegen Stripe prüfen) ----
+  fastify.post('/mandanten/stripe/test', guard, async (request, reply) => {
+    if (
+      request.user.rolle !== 'admin' &&
+      !request.user.berechtigungen.includes('einstellungen')
+    ) {
+      return reply.status(403).send({ fehler: 'Keine Berechtigung' })
+    }
+    // Wirksame Konfig (eigene Keys > Env-Fallback). HTTP bleibt 200 — das Testergebnis
+    // steht im Body, damit das Frontend nicht auf Status-Codes verzweigen muss.
+    const konfig = await ladeStripeKonfig(opts.db, request.user.mandantId, opts.config)
+    if (!konfig) return reply.send({ ok: false, grund: 'nicht_konfiguriert' })
+    try {
+      const info = await testeStripeVerbindung(konfig)
+      return reply.send({ ok: true, eigene: konfig.eigene, ...info })
+    } catch (err) {
+      request.log.warn({ err }, 'Stripe-Verbindungstest fehlgeschlagen')
+      return reply.send({ ok: false, grund: 'stripe_fehler', fehler: err instanceof Error ? err.message : 'Unbekannter Fehler' })
+    }
   })
 }
