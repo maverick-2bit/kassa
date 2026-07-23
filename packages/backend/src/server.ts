@@ -25,6 +25,7 @@ import { modifikatorRoute } from './routes/modifikator.route.js'
 import { preisregelRoute } from './routes/preisregel.route.js'
 import { seriennummerRoute } from './routes/seriennummer.route.js'
 import { lagerstandRoute } from './routes/lagerstand.route.js'
+import { inventurRoute } from './routes/inventur.route.js'
 import { sseRoute } from './routes/sse.route.js'
 import { bonierdruckerRoute } from './routes/bonierdrucker.route.js'
 import { druckerPoolRoute } from './routes/drucker-pool.route.js'
@@ -156,6 +157,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     await api.register(preisregelRoute,  { db:   deps.db })
     await api.register(seriennummerRoute, { db:  deps.db })
     await api.register(lagerstandRoute,     { db:   deps.db })
+    await api.register(inventurRoute,       { db:   deps.db })
     await api.register(bonierdruckerRoute,  { db:   deps.db })
     await api.register(druckerPoolRoute,    { db:   deps.db })
     await api.register(posConfigRoute,      { db:   deps.db })

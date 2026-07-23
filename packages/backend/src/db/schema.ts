@@ -1333,3 +1333,38 @@ export const gastBestellungen = pgTable('gast_bestellungen', {
 
 export type GastBestellungRow    = typeof gastBestellungen.$inferSelect
 export type NewGastBestellungRow = typeof gastBestellungen.$inferInsert
+
+// ---------------------------------------------------------------------------
+// Inventur (dokumentierte, datierte Bestandsaufnahme)
+// ---------------------------------------------------------------------------
+
+export const inventuren = pgTable('inventuren', {
+  id:              uuid('id').primaryKey().defaultRandom(),
+  mandantId:       uuid('mandant_id').notNull().references(() => mandanten.id),
+  bezeichnung:     varchar('bezeichnung', { length: 120 }).notNull(),
+  /** offen | abgeschlossen */
+  status:          varchar('status', { length: 20 }).notNull().default('offen'),
+  erstelltVon:     varchar('erstellt_von', { length: 120 }).notNull().default(''),
+  createdAt:       timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  abgeschlossenAm: timestamp('abgeschlossen_am', { withTimezone: true }),
+}, (t) => ({
+  mandantStatusIdx: index('inventuren_mandant_status_idx').on(t.mandantId, t.status),
+}))
+
+export const inventurPositionen = pgTable('inventur_positionen', {
+  id:          uuid('id').primaryKey().defaultRandom(),
+  inventurId:  uuid('inventur_id').notNull().references(() => inventuren.id, { onDelete: 'cascade' }),
+  artikelId:   uuid('artikel_id').notNull().references(() => artikel.id),
+  /** Snapshot der Artikel-Bezeichnung zum Zeitpunkt der Anlage */
+  bezeichnung: varchar('bezeichnung', { length: 200 }).notNull(),
+  /** Erwarteter Bestand (Snapshot bei Anlage) */
+  sollMenge:   integer('soll_menge').notNull(),
+  /** Gezählter Bestand (null = noch nicht gezählt) */
+  istMenge:    integer('ist_menge'),
+  createdAt:   timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  inventurArtikelIdx: uniqueIndex('inventur_positionen_inventur_artikel_idx').on(t.inventurId, t.artikelId),
+}))
+
+export type InventurRow             = typeof inventuren.$inferSelect
+export type InventurPositionRow     = typeof inventurPositionen.$inferSelect

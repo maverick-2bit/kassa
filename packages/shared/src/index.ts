@@ -254,6 +254,18 @@ export type {
   LagerstandBulkInput,
 } from './schemas/lagerstand.js'
 
+// Inventur (dokumentierte Bestandsaufnahme)
+export {
+  InventurStatusEnum,
+  InventurAnlageSchema,
+  InventurZaehlSchema,
+} from './schemas/inventur.js'
+export type {
+  InventurStatus,
+  InventurAnlage,
+  InventurZaehl,
+} from './schemas/inventur.js'
+
 // Bericht
 export {
   BerichtFilterSchema,
