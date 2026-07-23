@@ -57,6 +57,7 @@ import { oeffentlicherBelegRoute } from './routes/oeffentlicher-beleg.route.js'
 import { dienstplanRoute }       from './routes/dienstplan.route.js'
 import { selfcheckoutRoute }     from './routes/selfcheckout.route.js'
 import { registerTerminalRoutes } from './routes/terminal.route.js'
+import { registerStripeWebhook }  from './routes/stripe-webhook.route.js'
 import { sbBestellungRoute }     from './routes/sb-bestellung.route.js'
 
 export interface ServerDeps {
@@ -130,6 +131,9 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   // SB-Terminal (öffentlich): /api/terminal/* + GET /sse/abholung
   await registerTerminalRoutes(fastify, { deps: { db: deps.db, belegDeps: deps.belegDeps } })
 
+  // Stripe-Webhook (öffentlich, eigener Raw-Body-Parser) — außerhalb des /api-JSON-Bereichs
+  await registerStripeWebhook(fastify, { deps: { db: deps.db, belegDeps: deps.belegDeps, config: deps.config } })
+
   await fastify.register(async (api) => {
     // Offene Routen (kein Login nötig)
     await api.register(healthRoute,  { db:   deps.db })
@@ -170,7 +174,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     await api.register(finanzpruefungRoute,     { db: deps.db })
     await api.register(lieferantRoute,          { db: deps.db })
     await api.register(kdsRoute,                { db: deps.db })
-    await api.register(gastRoute,               { db: deps.db })
+    await api.register(gastRoute,               { db: deps.db, belegDeps: deps.belegDeps, config: deps.config })
     await api.register(emailRoute,              { db: deps.db, config: deps.config })
     await api.register(reservierungRoute,       { db: deps.db, config: deps.config })
     await api.register(buchungRoute,            { db: deps.db, config: deps.config })

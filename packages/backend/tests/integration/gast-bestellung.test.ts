@@ -183,4 +183,40 @@ describe('Gast-Bestellsystem (Integration, echtes PostgreSQL)', () => {
     })
     expect(doppelt.statusCode).toBe(400)
   })
+
+  // ── Phase 2: Checkout + Onlinezahlung (Demo-Pfad, kein Stripe konfiguriert) ───
+  const checkout = (tischNummer: string, positionen: { artikelId: string; menge: number }[]) =>
+    srv.fastify.inject({ method: 'POST', url: '/api/gast/checkout', payload: { kasseId, tischNummer, positionen } })
+
+  it('Checkout: 403 solange Gast-Bestellung für die Kasse nicht aktiv ist', async () => {
+    const res = await checkout('T9', [{ artikelId: colaId, menge: 1 }])
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('Checkout: nach Aktivierung finalisiert der Demo-Pfad sofort → RKSV-Beleg + Status bezahlt', async () => {
+    const patch = await srv.fastify.inject({
+      method: 'PATCH', url: `/api/kassen/${kasseId}/drucker`, headers: auth(),
+      payload: { gastBestellungAktiv: true },
+    })
+    expect(patch.statusCode).toBe(200)
+
+    // 2× Cola (420) = 840; ohne Stripe → Demo-Pfad finalisiert sofort (checkoutUrl = null)
+    const res = await checkout('Terrasse 3', [{ artikelId: colaId, menge: 2 }])
+    expect(res.statusCode).toBe(201)
+    const { bestellungId, checkoutUrl } = res.json()
+    expect(checkoutUrl).toBeNull()
+    expect(bestellungId).toBeTruthy()
+
+    const st = (await srv.fastify.inject({ method: 'GET', url: `/api/gast/bestellung/${bestellungId}` })).json()
+    expect(st.status).toBe('bezahlt')
+    expect(st.summeCent).toBe(840)
+    expect(st.belegId).toBeTruthy()
+    expect(st.beleg?.beleg?.belegNummer).toBeGreaterThan(0)
+    expect(st.beleg?.firmenname).toBe('Gast Test GmbH')
+  })
+
+  it('Checkout-Status einer unbekannten ID → 404', async () => {
+    const res = await srv.fastify.inject({ method: 'GET', url: '/api/gast/bestellung/00000000-0000-0000-0000-000000000000' })
+    expect(res.statusCode).toBe(404)
+  })
 })

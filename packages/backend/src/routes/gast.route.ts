@@ -2,18 +2,28 @@
  * Gast-Bestellsystem — öffentliche Routen (kein JWT nötig).
  *
  *   GET  /api/gast/karte?kasseId=<uuid>          Speisekarte laden
- *   POST /api/gast/bestellung                    Bestellung aufgeben
+ *   POST /api/gast/bestellung                    Bestellung aufgeben (unbezahlt, → Tab)
+ *   POST /api/gast/checkout                       Bestellung + Stripe-Checkout starten
+ *   GET  /api/gast/bestellung/:id                 Bestell-/Zahlungsstatus (+ Beleg)
  */
 
 import type { FastifyPluginAsync } from 'fastify'
 import { and, eq, asc, inArray } from 'drizzle-orm'
 import { z } from 'zod'
 import type { Db } from '../db/client.js'
+import type { Config } from '../config.js'
 import { artikel, kategorien, kassen, kassekategorieSichtbarkeit, tischTabs } from '../db/schema.js'
 import { emitKasseEvent } from '../sse/event-bus.js'
 import { berechneVerfuegbareMenge, ladeRezepteAngereichert } from '../services/bestandteil.service.js'
+import type { BelegServiceDeps } from '../services/beleg.service.js'
+import {
+  erstelleGastBestellung,
+  holeGastBestellungStatus,
+  GastBestellungError,
+  type GastServiceDeps,
+} from '../services/gast-bestellung.service.js'
 
-export interface GastRouteOptions { db: Db }
+export interface GastRouteOptions { db: Db; belegDeps: BelegServiceDeps; config: Config }
 
 const BestellPosition = z.object({
   artikelId: z.string().uuid(),
@@ -40,7 +50,7 @@ export const gastRoute: FastifyPluginAsync<GastRouteOptions> = async (fastify, o
 
       // Kasse ermitteln
       const [kasse] = await opts.db
-        .select({ id: kassen.id, mandantId: kassen.mandantId, bezeichnung: kassen.bezeichnung, kassenId: kassen.kassenId })
+        .select({ id: kassen.id, mandantId: kassen.mandantId, bezeichnung: kassen.bezeichnung, kassenId: kassen.kassenId, gastBestellungAktiv: kassen.gastBestellungAktiv })
         .from(kassen)
         .where(eq(kassen.id, kasseId))
         .limit(1)
@@ -101,6 +111,7 @@ export const gastRoute: FastifyPluginAsync<GastRouteOptions> = async (fastify, o
           id:          kasse.id,
           bezeichnung: kasse.bezeichnung ?? kasse.kassenId,
         },
+        gastBestellungAktiv: kasse.gastBestellungAktiv,
         kategorien: gefilterteKategorien,
         artikel:    verfuegbar,
       })
@@ -193,4 +204,36 @@ export const gastRoute: FastifyPluginAsync<GastRouteOptions> = async (fastify, o
       return reply.status(201).send({ erfolgreich: true })
     },
   )
+
+  // ── Bestellung + Stripe-Checkout starten ────────────────────────────────────
+  fastify.post('/gast/checkout', async (request, reply) => {
+    const b = BestellungBody.safeParse(request.body)
+    if (!b.success) return reply.status(400).send({ fehler: b.error.issues })
+    const gastDeps: GastServiceDeps = { db: opts.db, belegDeps: opts.belegDeps, config: opts.config }
+    try {
+      const res = await erstelleGastBestellung(
+        { kasseId: b.data.kasseId, tischNummer: b.data.tischNummer, positionen: b.data.positionen },
+        gastDeps,
+      )
+      return reply.status(201).send(res)
+    } catch (err) {
+      if (err instanceof GastBestellungError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      request.log.error(err)
+      return reply.status(500).send({ fehler: 'Bestellung fehlgeschlagen' })
+    }
+  })
+
+  // ── Bestell-/Zahlungsstatus (öffentlich, über die nicht erratbare Bestell-ID) ─
+  fastify.get<{ Params: { id: string } }>('/gast/bestellung/:id', async (request, reply) => {
+    const p = z.object({ id: z.string().uuid() }).safeParse(request.params)
+    if (!p.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
+    const gastDeps: GastServiceDeps = { db: opts.db, belegDeps: opts.belegDeps, config: opts.config }
+    try {
+      return reply.send(await holeGastBestellungStatus(p.data.id, gastDeps))
+    } catch (err) {
+      if (err instanceof GastBestellungError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      request.log.error(err)
+      return reply.status(500).send({ fehler: 'Status konnte nicht geladen werden' })
+    }
+  })
 }
