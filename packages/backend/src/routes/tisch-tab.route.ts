@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify'
+import { z } from 'zod'
 import {
   TischTabErstellenInputSchema,
   TischTabPositionenUpdateSchema,
@@ -21,6 +22,8 @@ import {
   splitteUndBezahleTab,
   verschmelzeTabs,
   verschiebePositionen,
+  rufeNaechstenGangAb,
+  schickePositionNach,
   TischTabError,
   type TischTabServiceDeps,
 } from '../services/tisch-tab.service.js'
@@ -165,6 +168,32 @@ export const tischTabRoute: FastifyPluginAsync<TischTabRouteOptions> = async (fa
       // Auto-Druck je Teilbeleg (fire-and-forget; No-Op wenn kein Drucker konfiguriert)
       for (const belegId of result.belegIds) tryDruckeBeleg(opts.deps.db, belegId, fastify.log)
       return reply.send(result)
+    } catch (err) {
+      if (err instanceof TischTabError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      throw err
+    }
+  })
+
+  // ── Gänge-Steuerung: nächsten Gang feuern ──────────────────────────────────
+  fastify.post('/tisch-tabs/:id/gang-abrufen', auth, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    try {
+      const result = await rufeNaechstenGangAb(id, request.user.mandantId, opts.deps)
+      return reply.send(result)
+    } catch (err) {
+      if (err instanceof TischTabError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      throw err
+    }
+  })
+
+  // ── Gänge-Steuerung: eine (gesendete) Position erneut schicken ──────────────
+  fastify.post('/tisch-tabs/:id/position-nachschicken', auth, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const parsed = z.object({ positionIndex: z.number().int().nonnegative() }).safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
+    try {
+      await schickePositionNach(id, parsed.data.positionIndex, request.user.mandantId, opts.deps)
+      return reply.status(204).send()
     } catch (err) {
       if (err instanceof TischTabError) return reply.status(err.httpStatus).send({ fehler: err.message })
       throw err

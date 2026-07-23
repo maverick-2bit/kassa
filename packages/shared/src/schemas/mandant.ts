@@ -44,6 +44,9 @@ export const MandantModuleSchema = z.object({
   modulReservierungenAktiv:  z.boolean(),
   modulZeiterfassungAktiv:   z.boolean(),
   modulSbTerminalAktiv:      z.boolean(),
+  modulGaengeAktiv:          z.boolean(),
+  /** Anzahl wählbarer Gänge (1..9), nur relevant bei modulGaengeAktiv */
+  gaengeAnzahl:              z.number().int().min(1).max(9),
 })
 export type MandantModule = z.infer<typeof MandantModuleSchema>
 

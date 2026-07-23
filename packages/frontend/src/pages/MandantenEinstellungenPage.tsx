@@ -170,5 +170,7 @@ function modulKey(modul: MandantModul): keyof MandantModule {
 }
 
 function getModulWert(data: MandantModule, modul: MandantModul): boolean {
-  return data[modulKey(modul)]
+  // modulKey liefert stets einen boolean-Schlüssel (modul*Aktiv); gaengeAnzahl (number)
+  // ist nie darunter — daher der sichere Cast trotz gemischter MandantModule-Werte.
+  return data[modulKey(modul)] as boolean
 }

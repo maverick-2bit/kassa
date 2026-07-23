@@ -18,6 +18,7 @@ import { artikel, kassen, modifikatoren, tabEreignisse, tischTabs } from '../db/
 import type { BelegServiceDeps } from './beleg.service.js'
 import { erstelleBarzahlungsbeleg } from './beleg.service.js'
 import { ladeRezepte, wendeBestandteilDeltasAn } from './bestandteil.service.js'
+import { bonierBestellung } from './bonier.service.js'
 
 export interface TischTabServiceDeps {
   db:        Db
@@ -749,4 +750,87 @@ export async function logBonierEreignis(
   db:        Db,
 ): Promise<void> {
   await logEreignis(tabId, mandantId, 'bonierung', details, db)
+}
+
+// ---------------------------------------------------------------------------
+// Gänge-Steuerung (Coursing) — nächsten Gang feuern / Position nachschicken
+// ---------------------------------------------------------------------------
+
+/** „nichts zu bonieren" (Artikel ohne Station/Drucker) schlucken — wie im Frontend. */
+async function bonierTolerant(
+  input: Parameters<typeof bonierBestellung>[0],
+  db:    Db,
+): Promise<void> {
+  try {
+    await bonierBestellung(input, { db })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : ''
+    if (!/nichts zu bonieren/i.test(msg)) throw err
+  }
+}
+
+/**
+ * Feuert den nächsten offenen Gang: kleinster `gang > 0` mit `gesendetAm == null`.
+ * Boniert nur diese Positionen (ohne Lagerabzug — der lief beim Buchen) und markiert
+ * sie als gesendet. Der Gang steht als Suffix im Tisch-Label auf dem Bon.
+ */
+export async function rufeNaechstenGangAb(
+  id: string, mandantId: string, deps: TischTabServiceDeps,
+): Promise<{ tab: TischTabResponse; gang: number }> {
+  const [tab] = await deps.db
+    .select().from(tischTabs)
+    .where(and(eq(tischTabs.id, id), eq(tischTabs.mandantId, mandantId))).limit(1)
+  if (!tab) throw new TischTabError(404, 'Tisch-Tab nicht gefunden')
+  if (tab.status !== 'offen') throw new TischTabError(409, 'Tisch-Tab ist nicht mehr offen')
+
+  const positionen = (tab.positionen as TabPosition[]) ?? []
+  const offeneGaenge = positionen.filter(p => (p.gang ?? 0) > 0 && !p.gesendetAm).map(p => p.gang!)
+  if (offeneGaenge.length === 0) throw new TischTabError(409, 'Kein offener Gang zum Abrufen')
+  const naechster = Math.min(...offeneGaenge)
+
+  const gangPositionen = positionen.filter(p => (p.gang ?? 0) === naechster && !p.gesendetAm)
+  await bonierTolerant({
+    kasseId:    tab.kasseId,
+    tabId:      tab.id,
+    tisch:      `${tab.tischNummer} · ${naechster}. Gang`.slice(0, 40),
+    kellner:    tab.kellner,
+    positionen: gangPositionen.map(p => ({ artikelId: p.artikelId, menge: p.menge, gang: naechster })),
+    ohneLagerabzug: true,
+  }, deps.db)
+
+  const jetzt = new Date().toISOString()
+  const neuePositionen = positionen.map(p =>
+    (p.gang ?? 0) === naechster && !p.gesendetAm ? { ...p, gesendetAm: jetzt } : p,
+  )
+  const [row] = await deps.db
+    .update(tischTabs)
+    .set({ positionen: neuePositionen, updatedAt: new Date() })
+    .where(eq(tischTabs.id, id)).returning()
+  await logEreignis(id, mandantId, 'gang_gefeuert', { gang: naechster, positionen: gangPositionen.length }, deps.db)
+  return { tab: toResponse(row!), gang: naechster }
+}
+
+/** Schickt genau eine Position erneut an Küche/Schank (Re-Print) — Status unverändert. */
+export async function schickePositionNach(
+  id: string, positionIndex: number, mandantId: string, deps: TischTabServiceDeps,
+): Promise<void> {
+  const [tab] = await deps.db
+    .select().from(tischTabs)
+    .where(and(eq(tischTabs.id, id), eq(tischTabs.mandantId, mandantId))).limit(1)
+  if (!tab) throw new TischTabError(404, 'Tisch-Tab nicht gefunden')
+  const positionen = (tab.positionen as TabPosition[]) ?? []
+  const p = positionen[positionIndex]
+  if (!p) throw new TischTabError(404, 'Position nicht gefunden')
+
+  const gang = p.gang ?? 0
+  const label = gang > 0 ? `${tab.tischNummer} · ${gang}. Gang ↻` : `${tab.tischNummer} · ↻`
+  await bonierTolerant({
+    kasseId:    tab.kasseId,
+    tabId:      tab.id,
+    tisch:      label.slice(0, 40),
+    kellner:    tab.kellner,
+    positionen: [{ artikelId: p.artikelId, menge: p.menge, gang }],
+    ohneLagerabzug: true,
+  }, deps.db)
+  await logEreignis(id, mandantId, 'gang_nachgeschickt', { bezeichnung: p.bezeichnung, gang }, deps.db)
 }

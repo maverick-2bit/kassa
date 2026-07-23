@@ -61,6 +61,10 @@ export const mandanten = pgTable('mandanten', {
   modulZeiterfassungAktiv:  boolean('modul_zeiterfassung_aktiv').notNull().default(false),
   /** SB-Terminal: Selbstbedienungs-Kiosk + Abholmonitor */
   modulSbTerminalAktiv:     boolean('modul_sb_terminal_aktiv').notNull().default(false),
+  /** Gänge-Steuerung: Kellner feuert Gänge einzeln (AUS = alles sofort) */
+  modulGaengeAktiv:         boolean('modul_gaenge_aktiv').notNull().default(false),
+  /** Anzahl wählbarer Gänge im Gang-Wähler (1..9) */
+  gaengeAnzahl:             integer('gaenge_anzahl').notNull().default(3),
 
   // Pro-Mandant-Stripe-Konto (Gast-Onlinezahlung). AES-256-GCM-verschlüsselt
   // (Muster crypto/master-key.ts). Leer → globale Env-Keys als Fallback.

@@ -14,6 +14,10 @@ export const TabPositionSchema = z.object({
   station:         z.string().optional(),
   /** Gewählte Modifikatoren (aufschlagCent bereits in preisBruttoCent eingerechnet) */
   modifikatoren:   z.array(ModifikatorAuswahlSchema).optional(),
+  /** Gänge-Steuerung: 0/undefiniert = Sofort, 1..N = Gang. Nur relevant bei aktivem Modul. */
+  gang:            z.number().int().min(0).max(9).optional(),
+  /** Zeitpunkt der Bonierung dieser Position (ISO). null/undefiniert = noch nicht gefeuert. */
+  gesendetAm:      z.string().nullable().optional(),
 })
 export type TabPosition = z.infer<typeof TabPositionSchema>
 
@@ -105,6 +109,8 @@ export const TabEreignisSchema = z.object({
     'gesplittet',
     'zusammengefuehrt',
     'positionen_verschoben',
+    'gang_gefeuert',
+    'gang_nachgeschickt',
   ]),
   details:   z.record(z.unknown()),
   createdAt: z.string(),

@@ -770,6 +770,8 @@ const EREIGNIS_CONFIG: Record<TabEreignis['typ'], { label: string; icon: string;
   gesplittet:              { label: 'Rechnung geteilt',      icon: '⊢',  color: 'text-purple-700 bg-purple-50 border-purple-200' },
   zusammengefuehrt:        { label: 'Gruppen zusammengeführt', icon: '⋈', color: 'text-purple-700 bg-purple-50 border-purple-200' },
   positionen_verschoben:   { label: 'Artikel umgebucht',     icon: '↔',  color: 'text-amber-700  bg-amber-50  border-amber-200'  },
+  gang_gefeuert:           { label: 'Gang abgerufen',        icon: '🔔', color: 'text-blue-700   bg-blue-50   border-blue-200'   },
+  gang_nachgeschickt:      { label: 'Position nachgeschickt', icon: '↻', color: 'text-blue-700   bg-blue-50   border-blue-200'   },
 }
 
 function EreignisDetails({ typ, details }: { typ: TabEreignis['typ']; details: Record<string, unknown> }) {

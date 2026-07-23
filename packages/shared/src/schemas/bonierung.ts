@@ -11,6 +11,8 @@ export const BonierungPositionSchema = z.object({
   artikelId: z.string().uuid(),
   menge:     z.number().int().positive(),
   details:   z.string().trim().max(120).optional(),
+  /** Gang-Nummer (Coursing) — nur zur Sortierung/Gruppierung auf dem Bon */
+  gang:      z.number().int().min(0).max(9).optional(),
 })
 
 export const BonierungInputSchema = z.object({
