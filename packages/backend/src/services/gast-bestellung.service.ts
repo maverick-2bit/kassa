@@ -108,15 +108,17 @@ export async function erstelleGastBestellung(
     return { bestellungId: row.id, checkoutUrl: null }
   }
 
-  // Stripe-Checkout-Session erzeugen; Rücksprung in die Gast-App über gastBasisUrl.
+  // Stripe-Checkout-Session erzeugen; Rücksprung in die Gast-App über gastBasisUrl
+  // (kasseId + tisch bleiben erhalten, damit der Gast danach erneut bestellen kann).
   const basis = kasse.gastBasisUrl ?? ''
   const sep = basis.includes('?') ? '&' : '?'
+  const params = `kasseId=${kasse.id}&tisch=${encodeURIComponent(input.tischNummer)}&bestellung=${row.id}`
   try {
     const session = await erstelleCheckoutSession({
       bestellungId: row.id,
       positionen:   positionen.map(p => ({ bezeichnung: p.bezeichnung, preisBruttoCent: p.preisBruttoCent, menge: p.menge })),
-      successUrl:   `${basis}${sep}bestellung=${row.id}`,
-      cancelUrl:    `${basis}${sep}bestellung=${row.id}&abbruch=1`,
+      successUrl:   `${basis}${sep}${params}`,
+      cancelUrl:    `${basis}${sep}${params}&abbruch=1`,
     }, deps.config)
     await deps.db.update(gastBestellungen).set({ stripeSessionId: session.id, updatedAt: new Date() }).where(eq(gastBestellungen.id, row.id))
     return { bestellungId: row.id, checkoutUrl: session.url }

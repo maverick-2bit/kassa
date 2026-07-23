@@ -574,6 +574,8 @@ export interface DruckerConfig {
   belegBasisUrl:     string | null
   /** Basis-URL der Gast-Bestell-App für den Tisch-QR (null = kein QR-Druck möglich) */
   gastBasisUrl:      string | null
+  /** Gast-Selbstbestellung mit Online-Zahlung (Stripe) freigeschaltet */
+  gastBestellungAktiv: boolean
 }
 
 export interface DruckerStatus {

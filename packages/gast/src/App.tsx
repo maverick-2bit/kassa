@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { QRCodeSVG } from 'qrcode.react'
 import { type Lang, TRANSLATIONS, detectLang } from './i18n'
 
 // ---------------------------------------------------------------------------
@@ -20,9 +21,10 @@ interface GastKategorie {
 }
 
 interface Karte {
-  kasse:      { id: string; bezeichnung: string }
-  kategorien: GastKategorie[]
-  artikel:    GastArtikel[]
+  kasse:               { id: string; bezeichnung: string }
+  gastBestellungAktiv?: boolean
+  kategorien:          GastKategorie[]
+  artikel:             GastArtikel[]
 }
 
 interface KorbItem {
@@ -30,7 +32,23 @@ interface KorbItem {
   menge:      number
 }
 
+interface BelegDto {
+  belegNummer:          number
+  belegDatum:           string
+  gesamtbetragCent:     number
+  maschinenlesbareCode: string
+  positionen:           { bezeichnung: string; menge: number; einzelpreisBreutto: number }[]
+}
+interface StatusDto {
+  id:        string
+  status:    'zahlung' | 'bezahlt' | 'abgebrochen'
+  summeCent: number
+  belegId:   string | null
+  beleg:     { firmenname: string; beleg: BelegDto } | null
+}
+
 type Phase = 'laden' | 'fehler' | 'karte' | 'bestaetigung' | 'danke'
+           | 'zahlung' | 'status' | 'abbruch' | 'beleg'
 
 // ---------------------------------------------------------------------------
 // Helfer
@@ -41,6 +59,8 @@ function getParams() {
   return {
     kasseId:     p.get('kasseId') ?? '',
     tischNummer: p.get('tisch')   ?? p.get('tischNummer') ?? '',
+    bestellung:  p.get('bestellung') ?? '',
+    abbruch:     p.get('abbruch') === '1',
   }
 }
 
@@ -65,7 +85,7 @@ function wechsleLang(lang: Lang) {
 // ---------------------------------------------------------------------------
 
 export default function App() {
-  const { kasseId, tischNummer } = getParams()
+  const { kasseId, tischNummer, bestellung, abbruch } = getParams()
   const [phase, setPhase]       = useState<Phase>('laden')
   const [fehler, setFehler]     = useState('')
   const [karte, setKarte]       = useState<Karte | null>(null)
@@ -73,14 +93,18 @@ export default function App() {
   const [aktivKat, setAktivKat] = useState<string | null>(null)
   const [senden, setSenden]     = useState(false)
   const [lang, setLang]         = useState<Lang>(detectLang)
+  const [demoBestellId, setDemoBestellId] = useState('')
+  const [bestellStatus, setBestellStatus] = useState<StatusDto | null>(null)
 
   const t = TRANSLATIONS[lang]
+  const aktiveBestellId = bestellung || demoBestellId
 
   function switchLang(l: Lang) {
     setLang(l)
     wechsleLang(l)
   }
 
+  // Menü laden (immer — auch bei Rückkehr von der Zahlung, damit „weitere Bestellung" geht)
   useEffect(() => {
     if (!kasseId) {
       setFehler(t.fehlerQr)
@@ -95,7 +119,10 @@ export default function App() {
       .then(data => {
         setKarte(data)
         setAktivKat(data.kategorien[0]?.id ?? null)
-        setPhase('karte')
+        // Rückkehr von Stripe? Sonst normale Speisekarte.
+        if (bestellung && abbruch) setPhase('abbruch')
+        else if (bestellung)       setPhase('status')
+        else                       setPhase('karte')
       })
       .catch(e => {
         setFehler(e instanceof Error ? e.message : t.fehlerLaden)
@@ -103,6 +130,26 @@ export default function App() {
       })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kasseId])
+
+  // Zahlungsstatus pollen, sobald wir im Status-Screen sind
+  useEffect(() => {
+    if (phase !== 'status' || !aktiveBestellId) return
+    let gestoppt = false
+    const poll = async () => {
+      try {
+        const r = await fetch(`/api/gast/bestellung/${aktiveBestellId}`)
+        if (r.ok) {
+          const st = await r.json() as StatusDto
+          if (st.status === 'bezahlt')     { setBestellStatus(st); setPhase('beleg'); return }
+          if (st.status === 'abgebrochen') { setPhase('abbruch'); return }
+        }
+      } catch { /* weiter versuchen */ }
+      if (!gestoppt) setTimeout(() => void poll(), 1200)
+    }
+    void poll()
+    return () => { gestoppt = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, aktiveBestellId])
 
   // Korb-Helfer
   function aendereMenge(artikel: GastArtikel, delta: number) {
@@ -128,23 +175,16 @@ export default function App() {
     [karte, aktivKat]
   )
 
-  async function bestellung() {
-    if (!kasseId || korb.length === 0) return
+  const positionenBody = () => korb.map(k => ({ artikelId: k.artikel.id, menge: k.menge }))
+
+  // Alt-Modus: unbezahlte Bestellung → Tab beim Personal
+  async function bestellungUnbezahlt() {
     setSenden(true)
     try {
       const res = await fetch('/api/gast/bestellung', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          kasseId,
-          tischNummer: tischNummer || 'Unbekannt',
-          positionen:  korb.map(k => ({
-            artikelId:       k.artikel.id,
-            bezeichnung:     k.artikel.bezeichnung,
-            menge:           k.menge,
-            preisBruttoCent: k.artikel.preisBruttoCent,
-          })),
-        }),
+        body: JSON.stringify({ kasseId, tischNummer: tischNummer || 'Unbekannt', positionen: positionenBody() }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       setPhase('danke')
@@ -153,6 +193,49 @@ export default function App() {
     } finally {
       setSenden(false)
     }
+  }
+
+  // Bezahl-Modus: Checkout starten → Stripe-Redirect (oder Demo → direkt Status)
+  async function bestellungBezahlen() {
+    setSenden(true)
+    try {
+      const res = await fetch('/api/gast/checkout', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kasseId, tischNummer: tischNummer || 'Unbekannt', positionen: positionenBody() }),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const { bestellungId, checkoutUrl } = await res.json() as { bestellungId: string; checkoutUrl: string | null }
+      if (checkoutUrl) {
+        setPhase('zahlung')
+        window.location.href = checkoutUrl   // → Stripe-Bezahlseite
+        return
+      }
+      // Demo-Pfad (kein Stripe): sofort finalisiert → Status pollen
+      setDemoBestellId(bestellungId)
+      setPhase('status')
+    } catch {
+      alert(t.fehlerSenden)
+    } finally {
+      setSenden(false)
+    }
+  }
+
+  function absenden() {
+    if (karte?.gastBestellungAktiv) void bestellungBezahlen()
+    else void bestellungUnbezahlt()
+  }
+
+  function neueBestellung() {
+    setKorb([])
+    setBestellStatus(null)
+    setDemoBestellId('')
+    // Bestell-/Abbruch-Parameter aus der URL entfernen
+    const url = new URL(window.location.href)
+    url.searchParams.delete('bestellung')
+    url.searchParams.delete('abbruch')
+    window.history.replaceState(null, '', url.toString())
+    setPhase('karte')
   }
 
   // ---------------------------------------------------------------------------
@@ -183,11 +266,20 @@ export default function App() {
   // Render
   // ---------------------------------------------------------------------------
 
-  if (phase === 'laden') return (
+  if (phase === 'laden' || phase === 'zahlung') return (
     <div className="min-h-screen bg-surface flex items-center justify-center">
       <div className="text-center space-y-3">
         <div className="w-10 h-10 border-4 border-brand-400 border-t-transparent rounded-full animate-spin mx-auto" />
-        <p className="text-ink-subtle text-sm">{t.laden}</p>
+        <p className="text-ink-subtle text-sm">{phase === 'zahlung' ? t.weiterZahlung : t.laden}</p>
+      </div>
+    </div>
+  )
+
+  if (phase === 'status') return (
+    <div className="min-h-screen bg-surface flex items-center justify-center p-6">
+      <div className="text-center space-y-4 max-w-sm">
+        <div className="w-12 h-12 border-4 border-brand-400 border-t-transparent rounded-full animate-spin mx-auto" />
+        <h1 className="text-xl font-bold text-ink">{t.zahlungVerarbeitung}</h1>
       </div>
     </div>
   )
@@ -203,6 +295,74 @@ export default function App() {
       </div>
     </div>
   )
+
+  if (phase === 'abbruch') return (
+    <div className="min-h-screen bg-surface flex items-center justify-center p-6">
+      <div className="text-center space-y-5 max-w-sm">
+        <div className="text-6xl">🚫</div>
+        <h1 className="text-xl font-bold text-ink">{t.zahlungAbgebrochen}</h1>
+        <p className="text-ink-subtle text-sm">{t.zahlungAbgebrochenText}</p>
+        <button
+          onClick={neueBestellung}
+          className="w-full py-3 rounded-2xl bg-brand-500 text-white font-bold text-sm hover:bg-brand-600 transition"
+        >
+          {t.zurueckZurKarte}
+        </button>
+        <LangSwitch className="justify-center" />
+      </div>
+    </div>
+  )
+
+  if (phase === 'beleg' && bestellStatus?.beleg) {
+    const b = bestellStatus.beleg.beleg
+    return (
+      <div className="min-h-screen bg-brand-50 flex flex-col items-center p-6">
+        <div className="max-w-sm w-full space-y-5 text-center">
+          <div className="text-6xl">✅</div>
+          <h1 className="text-2xl font-black text-ink">{t.belegTitel}</h1>
+          <p className="text-ink-muted text-sm">{t.belegFertig}</p>
+          {tischNummer && (
+            <div className="bg-brand-100 rounded-2xl px-6 py-2 inline-block">
+              <p className="text-xs text-brand-600 font-medium">{t.deinTisch}</p>
+              <p className="text-xl font-black text-brand-800">{tischNummer}</p>
+            </div>
+          )}
+
+          {/* Beleg */}
+          <div className="bg-panel rounded-2xl border border-line p-4 text-left space-y-2">
+            <p className="font-black text-ink text-center">{bestellStatus.beleg.firmenname}</p>
+            <div className="border-t border-line pt-2 space-y-1">
+              {b.positionen.map((p, i) => (
+                <div key={i} className="flex justify-between text-sm">
+                  <span className="text-ink">{p.menge}× {p.bezeichnung}</span>
+                  <span className="font-mono text-ink-muted">{formatPreis(p.einzelpreisBreutto * p.menge)}</span>
+                </div>
+              ))}
+            </div>
+            <div className="border-t border-line pt-2 flex justify-between items-center">
+              <span className="font-black text-ink">{t.gesamt}</span>
+              <span className="font-black text-brand-600 font-mono">{formatPreis(b.gesamtbetragCent)}</span>
+            </div>
+            <div className="flex justify-center pt-2">
+              <QRCodeSVG value={b.maschinenlesbareCode} size={168} />
+            </div>
+            <p className="text-center text-[11px] text-ink-subtle">{t.belegQrHinweis}</p>
+            <p className="text-center text-[11px] text-ink-subtle">
+              {t.belegNr} {b.belegNummer} · {new Date(b.belegDatum).toLocaleString()}
+            </p>
+          </div>
+
+          <button
+            onClick={neueBestellung}
+            className="w-full py-3 rounded-2xl border-2 border-brand-300 text-brand-700 font-bold text-sm hover:bg-brand-100 transition"
+          >
+            {t.weitereBestellung}
+          </button>
+          <LangSwitch className="justify-center" />
+        </div>
+      </div>
+    )
+  }
 
   if (phase === 'danke') return (
     <div className="min-h-screen bg-brand-50 flex items-center justify-center p-6">
@@ -270,11 +430,11 @@ export default function App() {
 
       <div className="p-4 bg-panel border-t border-line">
         <button
-          onClick={() => void bestellung()}
+          onClick={() => absenden()}
           disabled={senden}
           className="w-full py-4 rounded-2xl font-black text-lg text-white bg-brand-500 hover:bg-brand-600 active:scale-95 transition disabled:opacity-50"
         >
-          {senden ? t.wirdGesendet : t.jetztBestellen}
+          {senden ? t.wirdGesendet : (karte?.gastBestellungAktiv ? t.bestellenZahlen : t.jetztBestellen)}
         </button>
       </div>
     </div>
