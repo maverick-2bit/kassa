@@ -1133,6 +1133,9 @@ function StripeZahlungSektion() {
     onSuccess: () => { setSecretKey(''); setWebhookSecret(''); setFehler(''); qc.invalidateQueries({ queryKey: ['mandant-stripe'] }) },
   })
 
+  const testen = useMutation({ mutationFn: stripeApi.test })
+  const test = testen.data
+
   const nichtsEingegeben = !secretKey.trim() && !webhookSecret.trim()
   const hatKeys   = !!(status?.secretKeyGesetzt || status?.webhookSecretGesetzt)
   const webhookUrl = status ? `${window.location.origin}${status.webhookPfad}` : ''
@@ -1199,8 +1202,32 @@ function StripeZahlungSektion() {
               Keys entfernen
             </button>
           )}
+          <button
+            onClick={() => testen.mutate()}
+            disabled={testen.isPending}
+            className="rounded-lg border border-line-strong px-4 py-2 text-sm font-medium text-ink hover:bg-panel-2 disabled:opacity-50"
+          >
+            {testen.isPending ? 'Teste…' : 'Verbindung testen'}
+          </button>
           {speichern.isSuccess && <span className="text-sm text-emerald-600">Gespeichert ✓</span>}
         </div>
+
+        {/* Ergebnis des Verbindungstests */}
+        {test && (
+          <div className="text-sm">
+            {test.ok ? (
+              <span className="text-emerald-600">
+                ✓ Verbindung erfolgreich · {test.livemodus ? 'Live-Modus' : 'Test-Modus'}
+                {test.waehrungen && test.waehrungen.length > 0 ? ` · ${test.waehrungen.join(', ')}` : ''}
+                {test.eigene === false ? ' · globaler Fallback' : ''}
+              </span>
+            ) : test.grund === 'nicht_konfiguriert' ? (
+              <span className="text-amber-600">Keine Keys hinterlegt — zuerst Secret-Key speichern.</span>
+            ) : (
+              <span className="text-red-600">✗ Stripe lehnt die Verbindung ab: {test.fehler}</span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Webhook-URL zum Kopieren */}

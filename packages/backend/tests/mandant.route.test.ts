@@ -265,3 +265,25 @@ describe('PATCH /api/mandanten/stripe', () => {
     await srv.close()
   })
 })
+
+describe('POST /api/mandanten/stripe/test', () => {
+  it('ok:false grund=nicht_konfiguriert ohne Keys (kein Netzwerk-Call)', async () => {
+    const srv = await buildTestServer(mockDb({ selects: [[]] })) // kein Mandant-Key, Test-Config ohne Env-Keys
+    const res = await srv.fastify.inject({
+      method: 'POST', url: '/api/mandanten/stripe/test', headers: srv.authHeader(),
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toEqual({ ok: false, grund: 'nicht_konfiguriert' })
+    await srv.close()
+  })
+
+  it('403 als Kellner ohne Berechtigung', async () => {
+    const srv = await buildTestServer(mockDb())
+    const res = await srv.fastify.inject({
+      method: 'POST', url: '/api/mandanten/stripe/test',
+      headers: srv.authHeader({ rolle: 'kellner', berechtigungen: [] }),
+    })
+    expect(res.statusCode).toBe(403)
+    await srv.close()
+  })
+})

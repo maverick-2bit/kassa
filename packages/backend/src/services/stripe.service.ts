@@ -113,3 +113,25 @@ export async function erstelleCheckoutSession(input: CheckoutInput, konfig: Stri
 export function verifiziereWebhook(rawBody: Buffer, signature: string, konfig: StripeKonfig): Stripe.Event {
   return client(konfig).webhooks.constructEvent(rawBody, signature, konfig.webhookSecret)
 }
+
+export interface StripeVerbindungInfo {
+  /** Live-Modus (sk_live_…) statt Test-Modus (sk_test_…) */
+  livemodus:  boolean
+  /** Währungen mit Guthaben-Konto beim verbundenen Stripe-Account (z. B. ["EUR"]) */
+  waehrungen: string[]
+}
+
+/**
+ * Prüft die Stripe-Verbindung über einen leichten authentifizierten API-Call
+ * (balance.retrieve). Erfolg = der Secret-Key authentifiziert korrekt. Wirft bei
+ * ungültigem Key / Netzwerkfehler. (Das Webhook-Secret lässt sich nur über ein
+ * echtes Webhook-Ereignis prüfen.)
+ */
+export async function testeStripeVerbindung(konfig: StripeKonfig): Promise<StripeVerbindungInfo> {
+  const balance = await client(konfig).balance.retrieve()
+  const waehrungen = [...new Set(balance.available.map(b => b.currency.toUpperCase()))]
+  return {
+    livemodus:  balance.livemode,
+    waehrungen,
+  }
+}
