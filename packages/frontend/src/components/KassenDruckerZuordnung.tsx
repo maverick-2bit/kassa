@@ -139,6 +139,23 @@ function KasseKarte({ kasseId, titel, untertitel, pool, bonier, istGastro }: {
             </span>
           </label>
 
+          {/* Gast-Selbstbestellung mit Online-Zahlung */}
+          <label className="sm:col-span-2 flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4 rounded border-line-strong text-brand-600 focus:ring-brand-500"
+              checked={cfg?.gastBestellungAktiv ?? false}
+              disabled={patchDrucker.isPending}
+              onChange={(e) => patchDrucker.mutate({ gastBestellungAktiv: e.target.checked })}
+            />
+            <span>
+              <span className="text-xs font-medium text-ink">Gast-Selbstbestellung mit Online-Zahlung</span>
+              <span className="mt-0.5 block text-[11px] text-ink-subtle">
+                Gast bestellt über den Tisch-QR und zahlt online (Stripe). Voraussetzung: Stripe-Keys am Server konfiguriert.
+              </span>
+            </span>
+          </label>
+
           {/* Bondrucker (1) */}
           <label className="block">
             <span className="text-xs font-medium text-ink-muted">
