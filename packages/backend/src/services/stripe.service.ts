@@ -1,22 +1,59 @@
 /**
  * Stripe-Service — Online-Zahlung für die Gast-Selbstbestellung (Stripe Checkout).
  *
- * Ein globales Stripe-Konto über Env-Keys (wie SMTP): fehlen die Keys, ist die
- * Online-Zahlung deaktiviert (isStripeAktiv = false) und es läuft nur der Demo-Pfad.
- * Checkout ist eine gehostete Bezahlseite (Voll-Redirect) → kein Stripe.js im Frontend.
+ * Stripe-Konto **pro Mandant**: jeder Betrieb hinterlegt seine eigenen, verschlüsselten
+ * Keys (Muster crypto/master-key.ts). Sind für einen Mandanten keine Keys gesetzt, greifen
+ * die globalen Env-Keys (`STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET`) als Fallback; fehlen
+ * auch die, ist die Online-Zahlung aus (Demo-Pfad in Dev/Test). `ladeStripeKonfig` löst das
+ * auf. Checkout ist eine gehostete Bezahlseite (Voll-Redirect) → kein Stripe.js im Frontend.
  */
 
 import Stripe from 'stripe'
+import { eq } from 'drizzle-orm'
+import type { Db } from '../db/client.js'
 import type { Config } from '../config.js'
+import { mandanten } from '../db/schema.js'
+import { decryptPrivateKey } from '../crypto/master-key.js'
 
-/** Online-Zahlung nur möglich, wenn Secret- UND Webhook-Key gesetzt sind. */
-export function isStripeAktiv(config: Config): boolean {
-  return !!config.STRIPE_SECRET_KEY && !!config.STRIPE_WEBHOOK_SECRET
+/** Wirksame Stripe-Zugangsdaten (entweder Mandant-eigen oder globaler Env-Fallback). */
+export interface StripeKonfig {
+  secretKey:     string
+  webhookSecret: string
+  /** true = aus den Mandant-eigenen (verschlüsselten) Keys, false = globaler Env-Fallback */
+  eigene:        boolean
 }
 
-function client(config: Config): Stripe {
-  if (!config.STRIPE_SECRET_KEY) throw new Error('STRIPE_SECRET_KEY nicht gesetzt')
-  return new Stripe(config.STRIPE_SECRET_KEY)
+/** Globale Env-Keys als StripeKonfig, oder null wenn (eines davon) nicht gesetzt. */
+export function globaleStripeKonfig(config: Config): StripeKonfig | null {
+  if (config.STRIPE_SECRET_KEY && config.STRIPE_WEBHOOK_SECRET) {
+    return { secretKey: config.STRIPE_SECRET_KEY, webhookSecret: config.STRIPE_WEBHOOK_SECRET, eigene: false }
+  }
+  return null
+}
+
+/**
+ * Löst die wirksame Stripe-Konfiguration eines Mandanten auf:
+ * eigene (verschlüsselte) Keys haben Vorrang, sonst globale Env-Keys, sonst null.
+ * Beide eigenen Keys müssen gesetzt sein, damit sie greifen (sonst Fallback).
+ */
+export async function ladeStripeKonfig(db: Db, mandantId: string, config: Config): Promise<StripeKonfig | null> {
+  const [m] = await db
+    .select({ sec: mandanten.stripeSecretKeyEnc, wh: mandanten.stripeWebhookSecretEnc })
+    .from(mandanten)
+    .where(eq(mandanten.id, mandantId))
+    .limit(1)
+  if (m?.sec && m.wh) {
+    return {
+      secretKey:     decryptPrivateKey(m.sec, config.MASTER_PASSPHRASE).toString('utf8'),
+      webhookSecret: decryptPrivateKey(m.wh,  config.MASTER_PASSPHRASE).toString('utf8'),
+      eigene:        true,
+    }
+  }
+  return globaleStripeKonfig(config)
+}
+
+function client(konfig: StripeKonfig): Stripe {
+  return new Stripe(konfig.secretKey)
 }
 
 export interface CheckoutPosition {
@@ -40,8 +77,8 @@ export interface CheckoutInput {
  * line_items und der Bestell-ID in metadata (für den Webhook). Gibt id + URL zurück.
  * Ein Trinkgeld (> 0) wird als eigene „Trinkgeld"-Zeile mitberechnet.
  */
-export async function erstelleCheckoutSession(input: CheckoutInput, config: Config): Promise<{ id: string; url: string }> {
-  const stripe = client(config)
+export async function erstelleCheckoutSession(input: CheckoutInput, konfig: StripeKonfig): Promise<{ id: string; url: string }> {
+  const stripe = client(konfig)
   const lineItems = input.positionen.map(p => ({
     quantity: p.menge,
     price_data: {
@@ -73,7 +110,6 @@ export async function erstelleCheckoutSession(input: CheckoutInput, config: Conf
 }
 
 /** Verifiziert die Webhook-Signatur gegen den rohen Request-Body (wirft bei Fälschung). */
-export function verifiziereWebhook(rawBody: Buffer, signature: string, config: Config): Stripe.Event {
-  if (!config.STRIPE_WEBHOOK_SECRET) throw new Error('STRIPE_WEBHOOK_SECRET nicht gesetzt')
-  return client(config).webhooks.constructEvent(rawBody, signature, config.STRIPE_WEBHOOK_SECRET)
+export function verifiziereWebhook(rawBody: Buffer, signature: string, konfig: StripeKonfig): Stripe.Event {
+  return client(konfig).webhooks.constructEvent(rawBody, signature, konfig.webhookSecret)
 }

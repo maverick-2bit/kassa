@@ -62,6 +62,13 @@ export const mandanten = pgTable('mandanten', {
   /** SB-Terminal: Selbstbedienungs-Kiosk + Abholmonitor */
   modulSbTerminalAktiv:     boolean('modul_sb_terminal_aktiv').notNull().default(false),
 
+  // Pro-Mandant-Stripe-Konto (Gast-Onlinezahlung). AES-256-GCM-verschlüsselt
+  // (Muster crypto/master-key.ts). Leer → globale Env-Keys als Fallback.
+  /** Stripe Secret Key (sk_…), verschlüsselt */
+  stripeSecretKeyEnc:     text('stripe_secret_key_enc'),
+  /** Stripe Webhook Signing Secret (whsec_…), verschlüsselt */
+  stripeWebhookSecretEnc: text('stripe_webhook_secret_enc'),
+
   createdAt:    timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt:    timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
