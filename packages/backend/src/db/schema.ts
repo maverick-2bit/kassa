@@ -1309,6 +1309,8 @@ export const gastBestellungen = pgTable('gast_bestellungen', {
   tischNummer:           varchar('tisch_nummer', { length: 40 }).notNull(),
   positionen:            jsonb('positionen').notNull().$type<SbBestellungPosition[]>(),
   summeCent:             integer('summe_cent').notNull(),
+  /** Freiwilliges Trinkgeld (0%-USt-Belegposition); im Beleg mitverrechnet */
+  trinkgeldCent:         integer('trinkgeld_cent').notNull().default(0),
   /** zahlung | finalisiere | bezahlt | abgebrochen */
   status:                varchar('status', { length: 20 }).notNull().default('zahlung'),
   stripeSessionId:       varchar('stripe_session_id', { length: 255 }),

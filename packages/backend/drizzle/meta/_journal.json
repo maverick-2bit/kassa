@@ -225,6 +225,13 @@
       "when": 1784900000000,
       "tag": "0032_gast_bestellungen",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1785000000000,
+      "tag": "0033_gast_trinkgeld",
+      "breakpoints": true
     }
   ]
 }

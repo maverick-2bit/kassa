@@ -30,6 +30,10 @@ export const TRANSLATIONS = {
     belegFertig:      'Deine Bestellung wird zubereitet.',
     belegNr:          'Beleg-Nr.',
     belegQrHinweis:   'Amtlicher Beleg (RKSV)',
+    trinkgeld:        'Trinkgeld',
+    trinkgeldOptional:'Trinkgeld (optional)',
+    trinkgeldHinweis: 'Freiwillig — direkt ans Team.',
+    zwischensumme:    'Zwischensumme',
   },
   en: {
     laden:            'Loading menu…',
@@ -60,6 +64,10 @@ export const TRANSLATIONS = {
     belegFertig:      'Your order is being prepared.',
     belegNr:          'Receipt no.',
     belegQrHinweis:   'Official receipt (RKSV)',
+    trinkgeld:        'Tip',
+    trinkgeldOptional:'Tip (optional)',
+    trinkgeldHinweis: 'Optional — goes straight to the team.',
+    zwischensumme:    'Subtotal',
   },
   it: {
     laden:            'Caricamento menu…',
@@ -90,6 +98,10 @@ export const TRANSLATIONS = {
     belegFertig:      'Il tuo ordine è in preparazione.',
     belegNr:          'Ricevuta n.',
     belegQrHinweis:   'Scontrino ufficiale (RKSV)',
+    trinkgeld:        'Mancia',
+    trinkgeldOptional:'Mancia (facoltativa)',
+    trinkgeldHinweis: 'Facoltativa — va direttamente al team.',
+    zwischensumme:    'Subtotale',
   },
 } satisfies Record<Lang, Record<string, string | ((n: number) => string)>>
 

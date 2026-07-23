@@ -36,10 +36,15 @@ export interface GastServiceDeps {
 
 export interface GastBestellPosition { artikelId: string; menge: number }
 export interface GastBestellInput {
-  kasseId:     string
-  tischNummer: string
-  positionen:  GastBestellPosition[]
+  kasseId:       string
+  tischNummer:   string
+  positionen:    GastBestellPosition[]
+  /** Freiwilliges Trinkgeld (Cent), optional; als 0%-USt-Position auf dem Beleg */
+  trinkgeldCent?: number
 }
+
+/** Obergrenze fürs Trinkgeld (Defensive; die Route validiert bereits) */
+const TRINKGELD_MAX_CENT = 100_000
 
 /** Externer Status: der interne Claim-Zustand 'finalisiere' erscheint als 'zahlung'. */
 function externerStatus(status: string): 'zahlung' | 'bezahlt' | 'abgebrochen' {
@@ -92,12 +97,16 @@ export async function erstelleGastBestellung(
   const summeCent = positionen.reduce((s, p) => s + p.preisBruttoCent * p.menge, 0)
   if (summeCent <= 0) throw new GastBestellungError(400, 'Bestellsumme muss größer 0 sein')
 
+  // Trinkgeld defensiv begrenzen (Ganzzahl, ≥ 0, gedeckelt)
+  const trinkgeldCent = Math.min(TRINKGELD_MAX_CENT, Math.max(0, Math.trunc(input.trinkgeldCent ?? 0)))
+
   const [row] = await deps.db.insert(gastBestellungen).values({
     mandantId:   kasse.mandantId,
     kasseId:     kasse.id,
     tischNummer: input.tischNummer,
     positionen,
     summeCent,
+    trinkgeldCent,
     status:      'zahlung',
   }).returning()
   if (!row) throw new GastBestellungError(500, 'Bestellung konnte nicht angelegt werden')
@@ -117,6 +126,7 @@ export async function erstelleGastBestellung(
     const session = await erstelleCheckoutSession({
       bestellungId: row.id,
       positionen:   positionen.map(p => ({ bezeichnung: p.bezeichnung, preisBruttoCent: p.preisBruttoCent, menge: p.menge })),
+      trinkgeldCent,
       successUrl:   `${basis}${sep}${params}`,
       cancelUrl:    `${basis}${sep}${params}&abbruch=1`,
     }, deps.config)
@@ -186,14 +196,22 @@ export async function finalisiereGastBestellung(id: string, deps: GastServiceDep
   let belegId: string
   let belegNummer: number
   try {
-    const beleg = await erstelleBarzahlungsbeleg({
-      kasseId: claimed.kasseId,
-      positionen: claimed.positionen.map(p => ({
+    const trinkgeldCent = claimed.trinkgeldCent ?? 0
+    // Artikel-Positionen + optionale Trinkgeld-Position (0% USt → Beleg = gezahlter Betrag)
+    const belegPositionen = [
+      ...claimed.positionen.map(p => ({
         artikelId:              p.artikelId,
         menge:                  p.menge,
         einzelpreisBreuttoCent: p.preisBruttoCent,
       })),
-      zahlung: { barCent: 0, karteCent: claimed.summeCent, sonstigeCent: 0 },
+      ...(trinkgeldCent > 0
+        ? [{ bezeichnung: 'Trinkgeld', preisBruttoCent: trinkgeldCent, mwstSatz: 'null' as const, menge: 1 }]
+        : []),
+    ]
+    const beleg = await erstelleBarzahlungsbeleg({
+      kasseId: claimed.kasseId,
+      positionen: belegPositionen,
+      zahlung: { barCent: 0, karteCent: claimed.summeCent + trinkgeldCent, sonstigeCent: 0 },
     }, deps.belegDeps)
     belegId = beleg.id
     belegNummer = beleg.belegNummer

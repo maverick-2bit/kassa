@@ -215,6 +215,39 @@ describe('Gast-Bestellsystem (Integration, echtes PostgreSQL)', () => {
     expect(st.beleg?.firmenname).toBe('Gast Test GmbH')
   })
 
+  it('Checkout mit Trinkgeld: Beleg = Speisen + Trinkgeld, Trinkgeld als 0%-USt-Position', async () => {
+    // 1× Cola (420) + 150 Cent Trinkgeld → Beleg-Gesamt 570, Trinkgeld im 0%-Topf
+    const res = await srv.fastify.inject({
+      method: 'POST', url: '/api/gast/checkout',
+      payload: { kasseId, tischNummer: 'Terrasse 5', positionen: [{ artikelId: colaId, menge: 1 }], trinkgeldCent: 150 },
+    })
+    expect(res.statusCode).toBe(201)
+    const { bestellungId, checkoutUrl } = res.json()
+    expect(checkoutUrl).toBeNull()
+
+    const st = (await srv.fastify.inject({ method: 'GET', url: `/api/gast/bestellung/${bestellungId}` })).json()
+    expect(st.status).toBe('bezahlt')
+
+    const beleg = st.beleg.beleg
+    expect(beleg.gesamtbetragCent).toBe(570)          // 420 Speisen + 150 Trinkgeld
+    expect(beleg.betraege.null).toBe(150)             // Trinkgeld im 0%-USt-Topf
+    const trinkgeldPos = beleg.positionen.find((p: { bezeichnung: string }) => p.bezeichnung === 'Trinkgeld')
+    expect(trinkgeldPos).toBeDefined()
+    expect(trinkgeldPos.mwstSatz).toBe('null')
+    expect(trinkgeldPos.einzelpreisBreutto).toBe(150)
+  })
+
+  it('Checkout ohne Trinkgeld: kein 0%-Betrag, keine Trinkgeld-Position', async () => {
+    const res = await checkout('Terrasse 6', [{ artikelId: colaId, menge: 1 }])
+    expect(res.statusCode).toBe(201)
+    const { bestellungId } = res.json()
+    const st = (await srv.fastify.inject({ method: 'GET', url: `/api/gast/bestellung/${bestellungId}` })).json()
+    const beleg = st.beleg.beleg
+    expect(beleg.gesamtbetragCent).toBe(420)
+    expect(beleg.betraege.null).toBe(0)
+    expect(beleg.positionen.some((p: { bezeichnung: string }) => p.bezeichnung === 'Trinkgeld')).toBe(false)
+  })
+
   it('Checkout-Status einer unbekannten ID → 404', async () => {
     const res = await srv.fastify.inject({ method: 'GET', url: '/api/gast/bestellung/00000000-0000-0000-0000-000000000000' })
     expect(res.statusCode).toBe(404)
