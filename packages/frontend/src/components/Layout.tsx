@@ -72,6 +72,7 @@ function baueNavGruppen(): NavGruppe[] {
       wenn(b('artikel.verwalten'), '/artikel',      'Artikel'),
       wenn(b('artikel.verwalten'), '/wareneingang', 'Wareneingang'),
       wenn(b('artikel.verwalten'), '/lagerstand',   'Lagerstand'),
+      wenn(b('artikel.verwalten'), '/inventur',     'Inventur'),
       wenn(b('artikel.verwalten'), '/modifikatoren', 'Optionen'),
       wenn(b('artikel.verwalten'), '/preisregeln',  'Happy Hour'),
       wenn(b('artikel.verwalten'), '/bestellliste', 'Bestellliste'),

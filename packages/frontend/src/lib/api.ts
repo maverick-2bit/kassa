@@ -1106,6 +1106,61 @@ export const stripeApi = {
 }
 
 // ---------------------------------------------------------------------------
+// Inventur (dokumentierte Bestandsaufnahme)
+// ---------------------------------------------------------------------------
+
+export type InventurStatus = 'offen' | 'abgeschlossen'
+export interface InventurListeEintrag {
+  id:               string
+  bezeichnung:      string
+  status:           InventurStatus
+  erstelltVon:      string
+  createdAt:        string
+  abgeschlossenAm:  string | null
+  anzahlPositionen: number
+  anzahlGezaehlt:   number
+}
+export interface InventurPositionDto {
+  artikelId:   string
+  bezeichnung: string
+  sollMenge:   number
+  istMenge:    number | null
+  differenz:   number | null
+}
+export interface InventurDetail {
+  id:              string
+  bezeichnung:     string
+  status:          InventurStatus
+  erstelltVon:     string
+  createdAt:       string
+  abgeschlossenAm: string | null
+  positionen:      InventurPositionDto[]
+}
+export const inventurApi = {
+  list:   (): Promise<InventurListeEintrag[]> => request<InventurListeEintrag[]>('GET', '/api/inventuren'),
+  get:    (id: string): Promise<InventurDetail> => request<InventurDetail>('GET', `/api/inventuren/${id}`),
+  create: (bezeichnung?: string): Promise<{ id: string }> =>
+    request<{ id: string }>('POST', '/api/inventuren', bezeichnung ? { bezeichnung } : {}),
+  patchZaehlung: (id: string, positionen: { artikelId: string; istMenge: number | null }[]): Promise<void> =>
+    request<void>('PATCH', `/api/inventuren/${id}/zaehlung`, { positionen }),
+  abschliessen: (id: string): Promise<{ gebucht: number; ungezaehlt: number }> =>
+    request<{ gebucht: number; ungezaehlt: number }>('POST', `/api/inventuren/${id}/abschliessen`),
+  remove: (id: string): Promise<void> => request<void>('DELETE', `/api/inventuren/${id}`),
+  downloadProtokoll: async (id: string, dateiname: string): Promise<void> => {
+    const token = getToken()
+    const res = await fetch(`/api/inventuren/${id}/protokoll.csv`, { headers: { Authorization: token ? `Bearer ${token}` : '' } })
+    if (!res.ok) throw new ApiError(res.status, 'Download fehlgeschlagen')
+    const blob = await res.blob()
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download = dateiname
+    a.click()
+    URL.revokeObjectURL(url)
+  },
+}
+
+// ---------------------------------------------------------------------------
 // Kassen-Status (Zertifikats-Ablauf)
 // ---------------------------------------------------------------------------
 
