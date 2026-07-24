@@ -12,6 +12,7 @@ import { updateMandantModule } from '../lib/auth'
 // Reihenfolge + Icons der Module
 const MODULE_LISTE: { modul: MandantModul; icon: string }[] = [
   { modul: 'gastro',         icon: '🍽️' },
+  { modul: 'gaenge',         icon: '🍱' },
   { modul: 'reservierungen', icon: '📅' },
   { modul: 'angebote',       icon: '📄' },
   { modul: 'mergeport',      icon: '🛵' },
@@ -62,14 +63,31 @@ export function MandantenEinstellungenPage() {
       ) : moduleQuery.data ? (
         <div className="space-y-3">
           {MODULE_LISTE.map(({ modul, icon }) => (
-            <ModulKarte
-              key={modul}
-              modul={modul}
-              icon={icon}
-              aktiv={getModulWert(moduleQuery.data!, modul)}
-              onToggle={(v) => toggleModul(modul, v)}
-              speichertGerade={speichern.isPending}
-            />
+            <div key={modul} className="space-y-3">
+              <ModulKarte
+                modul={modul}
+                icon={icon}
+                aktiv={getModulWert(moduleQuery.data!, modul)}
+                onToggle={(v) => toggleModul(modul, v)}
+                speichertGerade={speichern.isPending}
+              />
+              {/* Gänge-Detail-Einstellung: Anzahl wählbarer Gänge (nur bei aktivem Modul) */}
+              {modul === 'gaenge' && getModulWert(moduleQuery.data!, modul) && (
+                <div className="ml-14 flex items-center gap-3 rounded-lg border border-line bg-panel-2 px-4 py-3">
+                  <label htmlFor="gaenge-anzahl" className="text-sm font-medium text-ink">Anzahl Gänge</label>
+                  <select
+                    id="gaenge-anzahl"
+                    value={moduleQuery.data!.gaengeAnzahl}
+                    disabled={speichern.isPending}
+                    onChange={(e) => speichern.mutate({ gaengeAnzahl: Number(e.target.value) })}
+                    className="rounded-md border border-line-strong px-3 py-1.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+                  >
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                  <span className="text-xs text-ink-subtle">Gang-Wähler am Tisch: „1. Gang" … „{moduleQuery.data!.gaengeAnzahl}. Gang"</span>
+                </div>
+              )}
+            </div>
           ))}
         </div>
       ) : null}
@@ -166,6 +184,7 @@ function modulKey(modul: MandantModul): keyof MandantModule {
   if (modul === 'mergeport')      return 'modulMergeportAktiv'
   if (modul === 'reservierungen') return 'modulReservierungenAktiv'
   if (modul === 'sbTerminal')     return 'modulSbTerminalAktiv'
+  if (modul === 'gaenge')         return 'modulGaengeAktiv'
   return 'modulZeiterfassungAktiv'
 }
 
