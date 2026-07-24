@@ -115,6 +115,8 @@ async function buildLoginResponse(
       modulReservierungenAktiv: mandanten.modulReservierungenAktiv,
       modulZeiterfassungAktiv:  mandanten.modulZeiterfassungAktiv,
       modulSbTerminalAktiv:     mandanten.modulSbTerminalAktiv,
+      modulGaengeAktiv:         mandanten.modulGaengeAktiv,
+      gaengeAnzahl:             mandanten.gaengeAnzahl,
     })
     .from(mandanten)
     .where(eq(mandanten.id, user.mandantId))

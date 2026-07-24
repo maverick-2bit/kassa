@@ -61,12 +61,20 @@ export function hasModul(modul: MandantModul): boolean {
   if (modul === 'reservierungen') return auth.mandant.modulReservierungenAktiv
   if (modul === 'zeiterfassung')  return auth.mandant.modulZeiterfassungAktiv
   if (modul === 'sbTerminal')     return auth.mandant.modulSbTerminalAktiv
+  // Ältere LocalStorage-Auths (vor v0.7.106) haben das Feld nicht → false = Modul aus
+  if (modul === 'gaenge')         return auth.mandant.modulGaengeAktiv ?? false
   return false
+}
+
+/** Anzahl wählbarer Gänge (1..9); Fallback 3 für ältere LocalStorage-Auths. */
+export function gaengeAnzahl(): number {
+  const auth = getAuth()
+  return auth?.mandant.gaengeAnzahl ?? 3
 }
 
 /** Aktualisiert die Modul-Flags im LocalStorage ohne Re-Login. */
 export function updateMandantModule(
-  updates: Partial<{ modulGastroAktiv: boolean; modulAngeboteAktiv: boolean; modulMergeportAktiv: boolean; modulReservierungenAktiv: boolean; modulZeiterfassungAktiv: boolean; modulSbTerminalAktiv: boolean }>,
+  updates: Partial<{ modulGastroAktiv: boolean; modulAngeboteAktiv: boolean; modulMergeportAktiv: boolean; modulReservierungenAktiv: boolean; modulZeiterfassungAktiv: boolean; modulSbTerminalAktiv: boolean; modulGaengeAktiv: boolean; gaengeAnzahl: number }>,
 ): void {
   const auth = getAuth()
   if (!auth) return

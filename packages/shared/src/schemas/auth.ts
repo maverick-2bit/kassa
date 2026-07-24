@@ -90,6 +90,9 @@ export const LoginResponseSchema = z.object({
     modulReservierungenAktiv: z.boolean(),
     modulZeiterfassungAktiv:  z.boolean(),
     modulSbTerminalAktiv:     z.boolean(),
+    modulGaengeAktiv:         z.boolean(),
+    /** Anzahl wählbarer Gänge (1..9) für den Gang-Wähler */
+    gaengeAnzahl:             z.number().int(),
   }),
   kassen: z.array(z.object({
     id:          z.string().uuid(),

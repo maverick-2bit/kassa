@@ -203,7 +203,9 @@ export function SetupForm({ onSubmit, loading = false, error }: Props) {
           subtitle="Welche Funktionen benötigst du? Kann jederzeit unter Einstellungen → Module geändert werden."
         />
         <div className="space-y-2">
-          {(['gastro', 'angebote', 'mergeport', 'reservierungen', 'zeiterfassung', 'sbTerminal'] as MandantModul[]).map((modul) => (
+          {/* Bewusst nur die Basis-Module — Detail-Module (z. B. Gänge-Steuerung) werden
+              später unter Einstellungen → Module je Kunde aktiviert. */}
+          {(['gastro', 'angebote', 'mergeport', 'reservierungen', 'zeiterfassung', 'sbTerminal'] as const).map((modul) => (
             <label
               key={modul}
               className={`flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition ${

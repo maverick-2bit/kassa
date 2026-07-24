@@ -16,6 +16,7 @@ import type {
 import { happyHourPreisCent, aktiverRabattProzent } from '@kassa/shared'
 import { artikelApi, belegApi, bonierApi, druckerApi, kategorieApi, modifikatorApi, posConfigApi, preisregelApi, tischTabApi, zvtApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
+import { hasModul, gaengeAnzahl } from '../lib/auth'
 import { formatPreis } from '../lib/format'
 import { warenkorbSummeCent, positionsPreisCent, rabattBetragCent } from '../lib/warenkorb'
 import {
@@ -46,6 +47,13 @@ interface KorbPosition {
   preisCent:        number
   /** Angewandter Happy-Hour-Rabatt in % (0 = keiner) — nur für die Anzeige */
   happyHourProzent: number
+  /** Gänge-Steuerung: 0 = Sofort, 1..N = Gang (beim Hinzufügen vom aktiven Gang geerbt) */
+  gang:             number
+}
+
+/** Anzeige-Label eines Gangs (0 = Sofort). */
+function gangLabel(g: number): string {
+  return g === 0 ? 'Sofort' : `${g}. Gang`
 }
 
 // ---------------------------------------------------------------------------
@@ -77,6 +85,11 @@ export function TischTabPage() {
   const [splitOffen, setSplitOffen]                 = useState(false)
   const [verlaufOffen, setVerlaufOffen]             = useState(false)
   const [barGebenOffen, setBarGebenOffen]           = useState(false)
+
+  // Gänge-Steuerung (Modul): aktiver Gang für neu gebuchte Artikel (0 = Sofort)
+  const gaengeAktiv = hasModul('gaenge')
+  const anzahlGaenge = gaengeAnzahl()
+  const [aktiverGang, setAktiverGang] = useState(0)
 
   const zvtCfg = useQuery({
     queryKey: ['zvt', identity.kasseId],
@@ -153,7 +166,9 @@ export function TischTabPage() {
     }
   }, [searchParams, tab, setSearchParams])
 
-  // Alle Positionen (bestehend + Warenkorb) für Gesamtanzeige und Bezahlen
+  // Alle Positionen (bestehend + Warenkorb) für Gesamtanzeige und Bezahlen.
+  // Mit Gänge-Modul: Zusammenfassen nur innerhalb desselben Gangs und nur mit noch
+  // NICHT gesendeten Positionen — gesendete bleiben eigene (durchgestrichene) Zeilen.
   const allePositionen: TabPosition[] = useMemo(() => {
     if (!tab) return []
     const merged = [...tab.positionen]
@@ -161,7 +176,8 @@ export function TischTabPage() {
       // Artikel ohne Modifikatoren: zu bestehender Position addieren
       if (k.modifikatoren.length === 0) {
         const idx = merged.findIndex(
-          p => p.artikelId === k.artikel.id && (!p.modifikatoren || p.modifikatoren.length === 0),
+          p => p.artikelId === k.artikel.id && (!p.modifikatoren || p.modifikatoren.length === 0)
+            && (!gaengeAktiv || ((p.gang ?? 0) === k.gang && !p.gesendetAm)),
         )
         if (idx >= 0) {
           const cur = merged[idx]!
@@ -180,10 +196,11 @@ export function TischTabPage() {
         menge:           k.menge,
         ...(k.artikel.station ? { station: k.artikel.station } : {}),
         ...(k.modifikatoren.length > 0 ? { modifikatoren: k.modifikatoren } : {}),
+        ...(gaengeAktiv ? { gang: k.gang } : {}),
       })
     }
     return merged
-  }, [tab, korb])
+  }, [tab, korb, gaengeAktiv])
 
   const korbSummeCent = useMemo(() => warenkorbSummeCent(korb), [korb])
 
@@ -208,15 +225,16 @@ export function TischTabPage() {
     const hhProzent = aktiverRabattProzent(regeln, a.id, a.kategorieId, new Date())
     const basisCent = happyHourPreisCent(a.preisBruttoCent, regeln, a.id, a.kategorieId, new Date())
     const preisCent = positionsPreisCent(basisCent, modifikatoren)
+    const gang = gaengeAktiv ? aktiverGang : 0
     setKorb(prev => {
-      // Ohne Modifikatoren: bestehende Zeile erhöhen
+      // Ohne Modifikatoren: bestehende Zeile erhöhen (nur im selben Gang)
       if (modifikatoren.length === 0) {
-        const ex = prev.find(p => p.artikel.id === a.id && p.modifikatoren.length === 0)
+        const ex = prev.find(p => p.artikel.id === a.id && p.modifikatoren.length === 0 && p.gang === gang)
         if (ex) return prev.map(p =>
-          p.artikel.id === a.id && p.modifikatoren.length === 0 ? { ...p, menge: p.menge + 1 } : p,
+          p.artikel.id === a.id && p.modifikatoren.length === 0 && p.gang === gang ? { ...p, menge: p.menge + 1 } : p,
         )
       }
-      return [...prev, { artikel: a, menge: 1, modifikatoren, preisCent, happyHourProzent: hhProzent }]
+      return [...prev, { artikel: a, menge: 1, modifikatoren, preisCent, happyHourProzent: hhProzent, gang }]
     })
   }
 
@@ -244,23 +262,33 @@ export function TischTabPage() {
   const parkenMutation = useMutation({
     mutationFn: async () => {
       let ergebnis: BonierungErgebnis | null = null
-      try {
-        ergebnis = await bonierApi.bonieren({
-          kasseId:    identity.kasseId,
-          tabId:      tabId!,
-          tisch:      tab?.tischNummer ?? '',
-          kellner:    tab?.kellner ?? '',
-          positionen: korb.map(p => ({ artikelId: p.artikel.id, menge: p.menge })),
-          // Nur drucken (KDS + Bonierdrucker) — der Lagerstand wird beim Speichern
-          // der Positionen (aktualisierePositionen) abgezogen, nicht hier.
-          ohneLagerabzug: true,
-        })
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        if (!/nichts zu bonieren/i.test(msg)) throw err  // echte Fehler weiterreichen
+      // Mit Gänge-Modul werden beim Parken nur die SOFORT-Artikel (Gang 0) boniert;
+      // Gang-Positionen warten auf „Gang abrufen". Ohne Modul: alles wie bisher.
+      const zuBonieren = gaengeAktiv ? korb.filter(p => p.gang === 0) : korb
+      if (zuBonieren.length > 0) {
+        try {
+          ergebnis = await bonierApi.bonieren({
+            kasseId:    identity.kasseId,
+            tabId:      tabId!,
+            tisch:      tab?.tischNummer ?? '',
+            kellner:    tab?.kellner ?? '',
+            positionen: zuBonieren.map(p => ({ artikelId: p.artikel.id, menge: p.menge })),
+            // Nur drucken (KDS + Bonierdrucker) — der Lagerstand wird beim Speichern
+            // der Positionen (aktualisierePositionen) abgezogen, nicht hier.
+            ohneLagerabzug: true,
+          })
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          if (!/nichts zu bonieren/i.test(msg)) throw err  // echte Fehler weiterreichen
+        }
       }
-      // Immer speichern (Parken bucht die Positionen auf den Tisch)
-      await tischTabApi.aktualisierePositionen(tabId!, allePositionen)
+      // Immer speichern (Parken bucht die Positionen auf den Tisch). Mit Gänge-Modul
+      // werden dabei die (jetzt bonierten) offenen Sofort-Positionen als gesendet markiert.
+      const jetzt = new Date().toISOString()
+      const zuSpeichern = gaengeAktiv
+        ? allePositionen.map(p => (p.gang ?? 0) === 0 && !p.gesendetAm ? { ...p, gesendetAm: jetzt } : p)
+        : allePositionen
+      await tischTabApi.aktualisierePositionen(tabId!, zuSpeichern)
       return ergebnis
     },
     onSuccess: () => {
@@ -297,7 +325,13 @@ export function TischTabPage() {
           const msg = err instanceof Error ? err.message : String(err)
           if (!/nichts zu bonieren/i.test(msg)) throw err
         }
-        await tischTabApi.aktualisierePositionen(tabId!, allePositionen)
+        // Beim Sofort-Kassieren wird ALLES boniert (der Tab schließt jetzt) —
+        // mit Gänge-Modul daher alle Positionen als gesendet markieren.
+        const jetzt = new Date().toISOString()
+        const zuSpeichern = gaengeAktiv
+          ? allePositionen.map(p => p.gesendetAm ? p : { ...p, gesendetAm: jetzt })
+          : allePositionen
+        await tischTabApi.aktualisierePositionen(tabId!, zuSpeichern)
       }
       const posRabatteArr = Object.entries(posRabatte)
         .map(([i, preis]) => ({ positionIndex: Number(i), einzelpreisBreuttoCent: preis }))
@@ -358,6 +392,61 @@ export function TischTabPage() {
     },
     onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
   })
+
+  // ── Gänge-Steuerung ────────────────────────────────────────────────────────
+
+  const gangAbrufenMutation = useMutation({
+    mutationFn: () => tischTabApi.gangAbrufen(tabId!),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tisch-tab', tabId] })
+      setFehler(null)
+    },
+    onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
+  })
+
+  const nachschickenMutation = useMutation({
+    mutationFn: (positionIndex: number) => tischTabApi.positionNachschicken(tabId!, positionIndex),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tisch-tab', tabId] })
+      setFehler(null)
+    },
+    onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
+  })
+
+  // Offene (ungesendete) Position in einen anderen Gang umhängen — verschmilzt
+  // automatisch mit einer offenen Position desselben Artikels im Ziel-Gang.
+  const gangAendernMutation = useMutation({
+    mutationFn: async ({ index, neuerGang }: { index: number; neuerGang: number }) => {
+      if (!tab) return
+      const pos = [...tab.positionen]
+      const p = pos[index]
+      if (!p || p.gesendetAm) return
+      const zielIdx = pos.findIndex((q, qi) =>
+        qi !== index && q.artikelId === p.artikelId && !q.gesendetAm
+        && (q.gang ?? 0) === neuerGang
+        && (!q.modifikatoren || q.modifikatoren.length === 0) && (!p.modifikatoren || p.modifikatoren.length === 0),
+      )
+      if (zielIdx >= 0) {
+        pos[zielIdx] = { ...pos[zielIdx]!, menge: pos[zielIdx]!.menge + p.menge }
+        pos.splice(index, 1)
+      } else {
+        pos[index] = { ...p, gang: neuerGang }
+      }
+      await tischTabApi.aktualisierePositionen(tabId!, pos)
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tisch-tab', tabId] })
+      setFehler(null)
+    },
+    onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
+  })
+
+  // Nächster abrufbarer Gang (kleinster offener gang>0) — steuert den Abruf-Button
+  const naechsterOffenerGang = useMemo(() => {
+    if (!gaengeAktiv || !tab) return null
+    const offene = tab.positionen.filter(p => (p.gang ?? 0) > 0 && !p.gesendetAm).map(p => p.gang!)
+    return offene.length > 0 ? Math.min(...offene) : null
+  }, [gaengeAktiv, tab])
 
   // ---------------------------------------------------------------------------
   // Handler
@@ -454,6 +543,25 @@ export function TischTabPage() {
                             flex flex-col lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)]">
           <div className="px-4 pt-4 pb-2 shrink-0">
             <h2 className="text-sm font-semibold text-ink">Artikel nachbestellen</h2>
+            {/* Gang-Wähler: neue Artikel erben den aktiven Gang (0 = Sofort) */}
+            {gaengeAktiv && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {[0, ...Array.from({ length: anzahlGaenge }, (_, i) => i + 1)].map(g => (
+                  <button
+                    key={g}
+                    type="button"
+                    onClick={() => setAktiverGang(g)}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                      aktiverGang === g
+                        ? 'bg-brand-600 text-white shadow-sm'
+                        : 'border border-line-strong bg-panel text-ink-muted hover:bg-panel-2'
+                    }`}
+                  >
+                    {gangLabel(g)}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <div className="flex-1 min-h-0 overflow-hidden px-4 pb-4">
             <ArtikelGrid
@@ -470,13 +578,24 @@ export function TischTabPage() {
         {/* Rechte Seite: Tab + Warenkorb */}
         <section className="bg-panel rounded-lg shadow-sm border border-line flex flex-col h-fit lg:sticky lg:top-20 max-h-[calc(100vh-6rem)]">
           {/* Bestehende Positionen */}
-          <div className="px-4 py-3 border-b border-line">
+          <div className="px-4 py-3 border-b border-line flex items-center justify-between gap-2">
             <h2 className="text-sm font-semibold text-ink">Laufende Bestellung</h2>
+            {/* Ein Tastendruck: nächsten offenen Gang an die Küche feuern */}
+            {gaengeAktiv && naechsterOffenerGang !== null && (
+              <button
+                type="button"
+                onClick={() => gangAbrufenMutation.mutate()}
+                disabled={gangAbrufenMutation.isPending}
+                className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-brand-700 disabled:opacity-50 shadow-sm"
+              >
+                {gangAbrufenMutation.isPending ? 'Wird gesendet…' : `🔔 ${naechsterOffenerGang}. Gang abrufen`}
+              </button>
+            )}
           </div>
           <div className="overflow-y-auto flex-1 px-4 py-3 max-h-[30vh]">
             {tab.positionen.length === 0 ? (
               <p className="text-xs text-ink-subtle text-center py-4">Noch keine Positionen.</p>
-            ) : (
+            ) : !gaengeAktiv ? (
               <ul className="space-y-1.5">
                 {tab.positionen.map((p, i) => (
                   <li key={i} className="flex justify-between text-sm">
@@ -489,6 +608,68 @@ export function TischTabPage() {
                   </li>
                 ))}
               </ul>
+            ) : (
+              /* Gänge-Modus: nach Gang gruppiert; gesendete durchgestrichen + nachschickbar */
+              (() => {
+                const indiziert = tab.positionen.map((p, i) => ({ p, i }))
+                const gaenge = [...new Set(indiziert.map(({ p }) => p.gang ?? 0))].sort((a, b) => a - b)
+                return (
+                  <div className="space-y-3">
+                    {gaenge.map(g => {
+                      const gruppe = indiziert.filter(({ p }) => (p.gang ?? 0) === g)
+                      const alleGesendet = gruppe.every(({ p }) => !!p.gesendetAm)
+                      return (
+                        <div key={g}>
+                          <div className="mb-1 flex items-center gap-2">
+                            <span className={`text-[11px] font-bold uppercase tracking-wide ${alleGesendet ? 'text-ink-subtle' : 'text-brand-700'}`}>
+                              {gangLabel(g)}
+                            </span>
+                            {alleGesendet && <span className="text-[10px] text-ink-subtle">✓ gesendet</span>}
+                          </div>
+                          <ul className="space-y-1.5">
+                            {gruppe.map(({ p, i }) => {
+                              const gesendet = !!p.gesendetAm
+                              return (
+                                <li key={i} className="flex items-center gap-2 text-sm">
+                                  <span className={`flex-1 ${gesendet ? 'text-ink-subtle line-through' : 'text-ink'}`}>
+                                    {p.menge}× {p.bezeichnung}
+                                  </span>
+                                  {gesendet ? (
+                                    /* Nochmal schicken (z. B. Bon verloren / Küche fragt nach) */
+                                    <button
+                                      type="button"
+                                      title="Nochmal an die Küche schicken"
+                                      onClick={() => nachschickenMutation.mutate(i)}
+                                      disabled={nachschickenMutation.isPending}
+                                      className="rounded border border-line-strong px-1.5 py-0.5 text-[11px] font-bold text-ink-muted hover:bg-panel-2 disabled:opacity-50"
+                                    >↻</button>
+                                  ) : (
+                                    /* Offene Position in einen anderen Gang umhängen */
+                                    <select
+                                      value={p.gang ?? 0}
+                                      title="Gang ändern"
+                                      onChange={(e) => gangAendernMutation.mutate({ index: i, neuerGang: Number(e.target.value) })}
+                                      disabled={gangAendernMutation.isPending}
+                                      className="rounded border border-line-strong bg-panel px-1 py-0.5 text-[11px] text-ink-muted focus:outline-none"
+                                    >
+                                      {[0, ...Array.from({ length: anzahlGaenge }, (_, n) => n + 1)].map(gg => (
+                                        <option key={gg} value={gg}>{gangLabel(gg)}</option>
+                                      ))}
+                                    </select>
+                                  )}
+                                  <span className={`font-mono ml-1 shrink-0 ${gesendet ? 'text-ink-subtle' : 'text-ink'}`}>
+                                    {formatPreis(p.preisBruttoCent * p.menge)}
+                                  </span>
+                                </li>
+                              )
+                            })}
+                          </ul>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })()
             )}
           </div>
 
@@ -504,6 +685,13 @@ export function TischTabPage() {
                     <li key={idx} className="flex items-center gap-2 text-sm">
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-ink truncate">{p.artikel.bezeichnung}</p>
+                        {gaengeAktiv && (
+                          <span className={`inline-block mr-1 text-[10px] font-bold rounded px-1 py-0.5 ${
+                            p.gang === 0 ? 'text-ink-muted bg-panel-2' : 'text-brand-700 bg-brand-50'
+                          }`}>
+                            {gangLabel(p.gang)}
+                          </span>
+                        )}
                         {p.happyHourProzent > 0 && (
                           <span className="inline-block text-[10px] font-bold text-amber-700 bg-amber-100 rounded px-1 py-0.5">
                             Happy Hour −{p.happyHourProzent}%

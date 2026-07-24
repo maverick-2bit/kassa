@@ -2414,4 +2414,93 @@ test('Digitaler Beleg (digital): Dialog zeigt Akzeptiert/Nicht-akzeptiert, Akzep
   await expect(page.getByText(/Beleg #\d+ erstellt/)).toHaveCount(0)
 })
 
+/**
+ * Gänge-Steuerung (Modul): Gang-Wähler am Tisch, Artikel erben den aktiven Gang,
+ * „Parken" hält Gang-Positionen zurück; „🔔 N. Gang abrufen" feuert Gang für Gang;
+ * gesendete Positionen sind durchgestrichen und einzeln nachschickbar (↻).
+ */
+test('Gänge-Steuerung: Gänge buchen, nacheinander abrufen, durchgestrichen + nachschicken', async ({ page, request }) => {
+  const login = await ensureAuth(request)
+  const token = login.token, mandantId = login.mandant.id, kasseId = login.kassen[0].id
+  const authHeader = { Authorization: `Bearer ${token}` }
+
+  // Modul aktivieren (3 Gänge)
+  await request.patch('/api/mandanten/module', {
+    headers: authHeader, data: { modulGaengeAktiv: true, gaengeAnzahl: 3 },
+  })
+
+  // Artikel seeden
+  const ts = Date.now()
+  const vorspeise = `Gang-Suppe ${ts}`
+  const hauptgang = `Gang-Steak ${ts}`
+  const kat = await (await request.post('/api/kategorien', {
+    headers: authHeader, data: { name: `Gang-Kat ${ts}`, farbe: 'rot', reihenfolge: 0 },
+  })).json()
+  await request.post('/api/artikel', {
+    headers: authHeader, data: { bezeichnung: vorspeise, preisBruttoCent: 450, mwstSatz: 'ermaessigt1', kategorieId: kat.id },
+  })
+  await request.post('/api/artikel', {
+    headers: authHeader, data: { bezeichnung: hauptgang, preisBruttoCent: 1890, mwstSatz: 'ermaessigt1', kategorieId: kat.id },
+  })
+
+  // Auth in den LocalStorage — Mandant mit aktivem Gänge-Modul (hasModul liest daraus)
+  await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
+    localStorage.setItem('kassa:token', d.token)
+    localStorage.setItem('kassa:auth', d.authJson)
+    localStorage.setItem('kassa:mandantId', d.mandantId)
+    localStorage.setItem('kassa:kasseId', d.kasseId)
+  }, {
+    token,
+    authJson: JSON.stringify({
+      user: login.user,
+      mandant: { ...login.mandant, modulGaengeAktiv: true, gaengeAnzahl: 3 },
+      kassen: login.kassen,
+    }),
+    mandantId,
+    kasseId,
+  })
+
+  // Tisch öffnen
+  const tisch = `GANG-${ts}`
+  await page.goto('/tische')
+  await page.getByRole('button', { name: '+ Neuer Tisch' }).click()
+  await page.getByPlaceholder(/Terrasse 3, Bar/).fill(tisch)
+  await page.getByRole('button', { name: 'Tisch öffnen' }).click()
+  await expect(page.getByRole('heading', { name: `Tisch ${tisch}` })).toBeVisible({ timeout: 10_000 })
+
+  // Gang-Wähler sichtbar (Sofort + 3 Gänge)
+  await expect(page.getByRole('button', { name: 'Sofort', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '3. Gang', exact: true })).toBeVisible()
+
+  // 1. Gang wählen → Vorspeise buchen; 2. Gang wählen → Hauptgang buchen
+  await page.getByRole('button', { name: '1. Gang', exact: true }).click()
+  await page.getByRole('button', { name: vorspeise }).first().click()
+  await page.getByRole('button', { name: '2. Gang', exact: true }).click()
+  await page.getByRole('button', { name: hauptgang }).first().click()
+  await page.getByRole('button', { name: 'Parken' }).click()
+
+  // Beide Gang-Gruppen sichtbar, „1. Gang abrufen" bereit, nichts durchgestrichen
+  await expect(page.getByRole('button', { name: /1\. Gang abrufen/ })).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByText(`1× ${vorspeise}`)).toBeVisible()
+  await expect(page.getByText(`1× ${vorspeise}`)).not.toHaveClass(/line-through/)
+
+  // Gang 1 abrufen → Vorspeise durchgestrichen + ↻ nachschickbar; Button zeigt Gang 2
+  await page.getByRole('button', { name: /1\. Gang abrufen/ }).click()
+  await expect(page.getByText(`1× ${vorspeise}`)).toHaveClass(/line-through/, { timeout: 10_000 })
+  await expect(page.getByText(`1× ${hauptgang}`)).not.toHaveClass(/line-through/)
+  await expect(page.getByRole('button', { name: /2\. Gang abrufen/ })).toBeVisible()
+
+  // Einzelne Position nochmal schicken (↻) — kein Fehler, Zustand unverändert
+  await page.getByRole('button', { name: '↻' }).first().click()
+  await expect(page.getByText(`1× ${vorspeise}`)).toHaveClass(/line-through/)
+
+  // Gang 2 abrufen → alles gesendet, kein Abruf-Button mehr
+  await page.getByRole('button', { name: /2\. Gang abrufen/ }).click()
+  await expect(page.getByText(`1× ${hauptgang}`)).toHaveClass(/line-through/, { timeout: 10_000 })
+  await expect(page.getByRole('button', { name: /Gang abrufen/ })).toHaveCount(0)
+
+  // Aufräumen: Modul wieder aus (andere Journeys unbeeinflusst)
+  await request.patch('/api/mandanten/module', { headers: authHeader, data: { modulGaengeAktiv: false } })
+})
+
 })

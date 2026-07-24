@@ -837,6 +837,12 @@ export const tischTabApi = {
     request<{ tab: TischTabResponse; belegIds: string[] }>('POST', `/api/tisch-tabs/${id}/splitten`, input),
   getVerlauf: (id: string) =>
     request<TabEreignis[]>('GET', `/api/tisch-tabs/${id}/verlauf`),
+  /** Gänge-Steuerung: nächsten offenen Gang an Küche/Schank feuern */
+  gangAbrufen: (id: string) =>
+    request<{ tab: TischTabResponse; gang: number }>('POST', `/api/tisch-tabs/${id}/gang-abrufen`),
+  /** Gänge-Steuerung: eine Position erneut schicken (Re-Print) */
+  positionNachschicken: (id: string, positionIndex: number) =>
+    request<void>('POST', `/api/tisch-tabs/${id}/position-nachschicken`, { positionIndex }),
 }
 
 // ---------------------------------------------------------------------------
