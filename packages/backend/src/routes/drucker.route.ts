@@ -14,7 +14,7 @@ import { desc, eq } from 'drizzle-orm'
 import { Buffer } from 'node:buffer'
 import { StationSchema, BelegModusEnum } from '@kassa/shared'
 import type { Db } from '../db/client.js'
-import { druckLog, kassen } from '../db/schema.js'
+import { drucker, druckLog, kassen } from '../db/schema.js'
 import { pruefeBelegGehoertZuMandant, pruefeKasseGehoertZuMandant } from '../auth/scope.js'
 import { waehleDruckerFuerKasse } from '../services/drucker-pool.service.js'
 import {
@@ -278,8 +278,10 @@ export const druckerRoute: FastifyPluginAsync<DruckerRouteOptions> = async (fast
   // Druckt je Tisch ein Etikett (große „Tisch <Nr>"-Zeile) auf den Bondrucker der
   // Kasse, optional mit Gast-Bestell-QR (nur wenn gastBasisUrl gesetzt ist).
   const TischEtikettInputSchema = z.object({
-    tische: z.array(z.string().trim().min(1).max(40)).min(1).max(50),
-    mitQr:  z.boolean().default(false),
+    tische:    z.array(z.string().trim().min(1).max(40)).min(1).max(50),
+    mitQr:     z.boolean().default(false),
+    /** Optional: gezielt einen Drucker aus der Bibliothek verwenden (statt Kassen-Bondrucker) */
+    druckerId: z.string().uuid().optional(),
   })
 
   fastify.post('/kassen/:id/tisch-etiketten', auth, async (request, reply) => {
@@ -294,7 +296,21 @@ export const druckerRoute: FastifyPluginAsync<DruckerRouteOptions> = async (fast
     const [kasse] = await opts.db.select().from(kassen).where(eq(kassen.id, params.data.id)).limit(1)
     if (!kasse) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
 
-    const config = druckerConfigVonKasse(kasse)
+    // Zieldrucker: explizit gewählter Bibliotheks-Drucker ODER der Kassen-Bondrucker.
+    // Beim expliziten Drucker gilt der Beleg-Modus der Kasse nicht (Etiketten ≠ Belege).
+    let config = null as ReturnType<typeof druckerConfigVonKasse>
+    if (body.data.druckerId) {
+      const [d] = await opts.db
+        .select()
+        .from(drucker)
+        .where(eq(drucker.id, body.data.druckerId))
+        .limit(1)
+      if (!d || d.mandantId !== request.user.mandantId) return reply.status(404).send({ fehler: 'Drucker nicht gefunden' })
+      if (!d.aktiv) return reply.status(409).send({ fehler: 'Drucker ist deaktiviert' })
+      config = { ip: d.ip, port: d.port, breite: d.breiteZeichen, timeoutMs: d.timeoutSek * 1000 }
+    } else {
+      config = druckerConfigVonKasse(kasse, { ignoreBelegModus: true })
+    }
     if (!config) return reply.status(409).send({ fehler: 'Drucker nicht konfiguriert oder deaktiviert' })
 
     // Eindeutige, getrimmte Tischliste (Reihenfolge bleibt)
