@@ -1273,7 +1273,18 @@ function GastQrCodeSektion() {
   const [kasseId, setKasseId]         = useState(kassen[0]?.id ?? '')
   const [gewaehlt, setGewaehlt]       = useState<Set<string>>(new Set())
   const [manuell, setManuell]         = useState('')
+  /** Zieldrucker für Thermo-Etiketten: 'kasse' = Kassen-Bondrucker, sonst Bibliotheks-Drucker-ID */
+  const [zielDrucker, setZielDrucker] = useState<string>('kasse')
+  const [druckMeldung, setDruckMeldung] = useState<{ ok: boolean; text: string } | null>(null)
   const gridRef                       = useRef<HTMLDivElement>(null)
+
+  // Drucker-Bibliothek + Kassen-Drucker-Konfig (gastBasisUrl entscheidet über QR am Etikett)
+  const poolQuery = useQuery({ queryKey: ['drucker-pool'], queryFn: () => druckerPoolApi.list() })
+  const kasseCfgQuery = useQuery({
+    queryKey: ['drucker', kasseId],
+    queryFn:  () => druckerApi.get(kasseId),
+    enabled:  !!kasseId,
+  })
 
   // Tischplan laden wenn Kasse gewählt
   const { data: bereiche } = useQuery({
@@ -1314,6 +1325,17 @@ function GastQrCodeSektion() {
     a.click()
     URL.revokeObjectURL(url)
   }
+
+  /** Thermo-Etiketten (riesige Nummer + QR darunter) auf Bondrucker/Bibliotheks-Drucker. */
+  const etikettenMutation = useMutation({
+    mutationFn: () => druckerApi.druckeTischEtiketten(kasseId, {
+      tische: gewaehlteTische,
+      mitQr:  true,   // Server druckt den QR nur, wenn die Gast-Bestell-Basis-URL gesetzt ist
+      ...(zielDrucker !== 'kasse' ? { druckerId: zielDrucker } : {}),
+    }),
+    onSuccess: (r) => setDruckMeldung({ ok: true, text: `${r.anzahl} Etikett(en) gedruckt` }),
+    onError:   (e) => setDruckMeldung({ ok: false, text: e instanceof Error ? e.message : 'Druck fehlgeschlagen' }),
+  })
 
   /** A4-Bogen: Druckfenster mit den LOKAL gerenderten QR-Karten (kein externer Dienst). */
   function a4BogenDrucken() {
@@ -1501,6 +1523,58 @@ function GastQrCodeSektion() {
           >
             🖨 A4-Bogen drucken
           </button>
+        </div>
+      )}
+
+      {/* Thermo-Etiketten auf den Bondrucker (riesige Nummer + QR darunter) */}
+      {gewaehlteTische.length > 0 && kasseId && (
+        <div className="border-t border-line pt-4 space-y-2">
+          <div>
+            <p className="text-sm font-medium text-ink">Thermo-Etiketten (Bondrucker)</p>
+            <p className="text-xs text-ink-muted mt-0.5">
+              Riesige Tischnummer + Gast-QR direkt auf Bon-Papier — Zieldrucker wählen:
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setZielDrucker('kasse')}
+              className={`px-3 py-1.5 rounded-full text-sm border transition ${
+                zielDrucker === 'kasse' ? 'bg-brand-600 text-white border-brand-600' : 'bg-panel border-line text-ink hover:bg-panel-2'
+              }`}
+            >
+              🖨 Kassen-Bondrucker
+            </button>
+            {(poolQuery.data ?? []).filter(d => d.aktiv).map(d => (
+              <button
+                key={d.id}
+                type="button"
+                onClick={() => setZielDrucker(d.id)}
+                className={`px-3 py-1.5 rounded-full text-sm border transition ${
+                  zielDrucker === d.id ? 'bg-brand-600 text-white border-brand-600' : 'bg-panel border-line text-ink hover:bg-panel-2'
+                }`}
+              >
+                🖨 {d.name}
+              </button>
+            ))}
+            <button
+              onClick={() => { setDruckMeldung(null); etikettenMutation.mutate() }}
+              disabled={etikettenMutation.isPending}
+              className="ml-auto px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 transition disabled:opacity-50"
+            >
+              {etikettenMutation.isPending ? 'Druckt…' : `🖨 ${gewaehlteTische.length} Etikett(en) drucken`}
+            </button>
+          </div>
+          {!kasseCfgQuery.data?.gastBasisUrl && (
+            <p className="text-[11px] text-amber-600">
+              ⚠ Ohne Gast-Bestell-Basis-URL (Einstellungen → Hardware) drucken die Etiketten OHNE QR-Code.
+            </p>
+          )}
+          {druckMeldung && (
+            <p className={`text-sm font-medium ${druckMeldung.ok ? 'text-green-600' : 'text-red-600'}`}>
+              {druckMeldung.ok ? '✓ ' : ''}{druckMeldung.text}
+            </p>
+          )}
         </div>
       )}
     </section>

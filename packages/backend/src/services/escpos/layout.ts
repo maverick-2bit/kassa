@@ -186,46 +186,27 @@ export function baueTischEtikett(tischNummer: string, opts: TischEtikettOptionen
   }
 
   const label = truncate(tischNummer, 20)
+  void dots
 
+  // Tischnummer RIESIG, zentriert (Standard-Modus; Größe dynamisch nach Länge).
+  // Bewusst KEIN Page Mode: das Nebeneinander-Layout (ESC L) wurde vom realen
+  // TM-T20IV nicht ausgeführt — gestapelt läuft über denselben bewährten Pfad
+  // wie der Beleg-QR und druckt zuverlässig.
+  const wMul = clamp(Math.floor(W / Math.max(1, label.length)), 1, 6)
+  const hMul = Math.min(wMul + 1, 8)
+  add(ep.align('center'))
+  add(ep.bold(true))
+  add(ep.textSize(wMul, hMul))
+  add(ep.textLine(label))
+  add(ep.textSize(1, 1))
+  add(ep.bold(false))
+
+  // Optionaler Gast-Bestell-QR direkt darunter (zentriert)
   if (opts.qrUrl) {
-    // Page Mode: Tischnummer RIESIG links, Gast-Bestell-QR rechts DANEBEN.
-    // Font A = 12 Punkte breit / 24 hoch; QR-Spalte rechts reserviert.
-    const qrSpalte  = Math.min(210, Math.floor(dots * 0.45))
-    const textPlatz = dots - qrSpalte - 8
-    const wMul  = clamp(Math.floor(textPlatz / (Math.max(1, label.length) * 12)), 1, 6)
-    const hMul  = Math.min(wMul + 1, 8)
-    const textH = 24 * hMul
-    const H     = Math.max(textH, 208)        // QR (~Version 5 @ Modul 4) + Ruhezone
-
-    add(ep.pageModeStart())
-    add(ep.pageDirection(0))
-    add(ep.pageArea(0, 0, dots, H))
-    // Nummer links, vertikal mittig
-    add(ep.posY(Math.max(0, Math.floor((H - textH) / 2))))
-    add(ep.posX(0))
-    add(ep.bold(true))
-    add(ep.textSize(wMul, hMul))
-    add(ep.encodeText(label))
-    add(ep.textSize(1, 1))
-    add(ep.bold(false))
-    // QR rechts daneben
-    add(ep.posY(0))
-    add(ep.posX(dots - qrSpalte))
-    add(ep.qrCode(opts.qrUrl, 4, 'M'))
-    add(ep.pagePrint())
-
+    add(ep.newline())
     add(ep.align('center'))
+    add(ep.qrCode(opts.qrUrl, qrSizeFuerBreite(W), 'M'))
     add(ep.textLine('Zum Bestellen scannen'))
-  } else {
-    // Ohne QR: Tischnummer riesig, zentriert (Standard-Modus)
-    const wMul = clamp(Math.floor(W / Math.max(1, label.length)), 1, 6)
-    const hMul = Math.min(wMul + 1, 8)
-    add(ep.align('center'))
-    add(ep.bold(true))
-    add(ep.textSize(wMul, hMul))
-    add(ep.textLine(label))
-    add(ep.textSize(1, 1))
-    add(ep.bold(false))
   }
 
   // Branding-Fußzeile

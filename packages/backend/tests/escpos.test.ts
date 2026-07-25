@@ -191,11 +191,13 @@ describe('baueTischEtikett()', () => {
     expect(bytes.includes(PAGE_MODE)).toBe(false)
   })
 
-  it('mit QR: Page Mode (Nummer + QR nebeneinander), Gast-URL, Hinweis + Branding', () => {
+  it('mit QR: riesige Nummer + QR darunter (Standard-Modus, KEIN Page Mode)', () => {
     const url = 'https://gast.example/?kasseId=abc&tisch=7'
     const bytes = baueTischEtikett('7', { breite: 42, qrUrl: url })
-    expect(bytes.includes(PAGE_MODE)).toBe(true)
-    expect(bytes.includes(PAGE_AREA)).toBe(true)
+    // Gestapeltes Layout: Page Mode wird vom realen TM-T20IV nicht ausgeführt
+    expect(bytes.includes(PAGE_MODE)).toBe(false)
+    expect(bytes.includes(PAGE_AREA)).toBe(false)
+    expect(bytes.includes(Buffer.from([0x1D, 0x21, 0x56]))).toBe(true)  // Nummer 6×7
     expect(bytes.includes(Buffer.from(url))).toBe(true)
     expect(bytes.includes(QR_PRINT)).toBe(true)
     expect(bytes.includes(Buffer.from('Zum Bestellen scannen'))).toBe(true)
