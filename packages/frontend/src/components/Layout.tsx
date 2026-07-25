@@ -57,7 +57,9 @@ function StatusZeile() {
   const kasse    = auth && identity ? auth.kassen.find(k => k.id === identity.kasseId) : null
   return (
     <span className="text-[11px] text-ink-subtle select-none">
-      Kassa v{__APP_VERSION__}
+      <Link to="/einstellungen?bereich=system" title="Aktualisierung & System" className="hover:text-ink hover:underline">
+        Kassa v{__APP_VERSION__}
+      </Link>
       {auth && <> · {auth.mandant.firmenname}</>}
       {kasse && <> · Kasse: <span className="font-mono">{kasse.bezeichnung || kasse.kassenId}</span></>}
     </span>
@@ -179,9 +181,14 @@ function Header() {
           <div className="flex items-center gap-3 shrink-0 h-8">
             <JahresbelegHeaderChip />
             <ThemeToggle />
-            <span className="hidden sm:inline text-[10px] font-mono text-white/50 select-none bg-white/10 px-1.5 py-0.5 rounded">
-              v{__APP_VERSION__}
-            </span>
+            {/* Klickbares Versions-Badge → Einstellungen → System (Aktualisierung) */}
+            <Link
+              to="/einstellungen?bereich=system"
+              title="Aktualisierung & System"
+              className="hidden sm:inline text-[10px] font-mono text-white/60 select-none bg-white/10 px-1.5 py-0.5 rounded hover:bg-white/20 hover:text-white transition"
+            >
+              ⟳ v{__APP_VERSION__}
+            </Link>
             <div className="text-right text-xs">
               <p className="font-medium text-white">{auth.user.name}</p>
               <p className="text-white/60">{auth.mandant.firmenname}</p>
