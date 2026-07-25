@@ -46,3 +46,13 @@ export function hasBerechtigung(b: Berechtigung): boolean {
   if (auth.user.rolle === 'admin') return true
   return auth.user.berechtigungen.includes(b)
 }
+
+/** Gänge-Steuerung aktiv? (ältere LocalStorage-Auths ohne Feld → aus) */
+export function gaengeAktiv(): boolean {
+  return getAuth()?.mandant.modulGaengeAktiv ?? false
+}
+
+/** Anzahl wählbarer Gänge (1..9); Fallback 3 für ältere LocalStorage-Auths. */
+export function gaengeAnzahl(): number {
+  return getAuth()?.mandant.gaengeAnzahl ?? 3
+}

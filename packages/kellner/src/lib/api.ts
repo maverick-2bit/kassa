@@ -102,6 +102,12 @@ export const tischTabApi = {
     request<TischTabResponse>('PUT', `/api/tisch-tabs/${id}/positionen`, { positionen }),
   bezahle: (id: string, input: TischTabBezahlenInput) =>
     request<{ tab: TischTabResponse; belegId: string }>('POST', `/api/tisch-tabs/${id}/bezahlen`, input),
+  /** Gänge-Steuerung: nächsten offenen Gang an Küche/Schank feuern */
+  gangAbrufen: (id: string) =>
+    request<{ tab: TischTabResponse; gang: number }>('POST', `/api/tisch-tabs/${id}/gang-abrufen`),
+  /** Gänge-Steuerung: eine Position erneut schicken (Re-Print) */
+  positionNachschicken: (id: string, positionIndex: number) =>
+    request<void>('POST', `/api/tisch-tabs/${id}/position-nachschicken`, { positionIndex }),
 }
 
 // ---------------------------------------------------------------------------

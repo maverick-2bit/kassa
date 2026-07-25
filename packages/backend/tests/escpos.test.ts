@@ -174,23 +174,33 @@ describe('baueBon()', () => {
 // ---------------------------------------------------------------------------
 
 describe('baueTischEtikett()', () => {
-  const QR_PRINT = Buffer.from([0x1D, 0x28, 0x6B, 3, 0, 49, 81, 48]) // GS ( k … Print
-  const CUT      = Buffer.from([0x1D, 0x56, 0x42, 0])                // GS V 66 0 (Teilschnitt)
+  const QR_PRINT   = Buffer.from([0x1D, 0x28, 0x6B, 3, 0, 49, 81, 48]) // GS ( k … Print
+  const CUT        = Buffer.from([0x1D, 0x56, 0x42, 0])                // GS V 66 0 (Teilschnitt)
+  const PAGE_MODE  = Buffer.from([0x1B, 0x4C])                         // ESC L
+  const PAGE_AREA  = Buffer.from([0x1B, 0x57])                         // ESC W …
+  const BRANDING   = Buffer.from('powered by s/e smarte events')
 
-  it('ohne QR: enthält „Tisch X", schneidet, kein QR-Befehl', () => {
+  it('ohne QR: riesige Nummer (GS ! 6x7), Branding, Schnitt — kein QR/Page Mode', () => {
     const bytes = baueTischEtikett('5', { breite: 42 })
-    expect(bytes.includes(Buffer.from('Tisch 5'))).toBe(true)
+    // Label „5" (1 Zeichen) → Breite 6× / Höhe 7× → GS ! 0x56
+    expect(bytes.includes(Buffer.from([0x1D, 0x21, 0x56]))).toBe(true)
+    expect(bytes.includes(Buffer.from('5'))).toBe(true)
+    expect(bytes.includes(BRANDING)).toBe(true)
     expect(bytes.includes(CUT)).toBe(true)
     expect(bytes.includes(QR_PRINT)).toBe(false)
+    expect(bytes.includes(PAGE_MODE)).toBe(false)
   })
 
-  it('mit QR: enthält die Gast-URL, den QR-Print-Befehl und den Hinweistext', () => {
+  it('mit QR: Page Mode (Nummer + QR nebeneinander), Gast-URL, Hinweis + Branding', () => {
     const url = 'https://gast.example/?kasseId=abc&tisch=7'
     const bytes = baueTischEtikett('7', { breite: 42, qrUrl: url })
-    expect(bytes.includes(Buffer.from('Tisch 7'))).toBe(true)
+    expect(bytes.includes(PAGE_MODE)).toBe(true)
+    expect(bytes.includes(PAGE_AREA)).toBe(true)
     expect(bytes.includes(Buffer.from(url))).toBe(true)
     expect(bytes.includes(QR_PRINT)).toBe(true)
     expect(bytes.includes(Buffer.from('Zum Bestellen scannen'))).toBe(true)
+    expect(bytes.includes(BRANDING)).toBe(true)
+    expect(bytes.includes(CUT)).toBe(true)
   })
 
   it('Firmenname erscheint (großgeschrieben) als Kopfzeile', () => {

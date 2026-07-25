@@ -3,6 +3,7 @@ import { NavLink, Outlet, useNavigate, useLocation, Link } from 'react-router-do
 import { getTheme, toggleTheme, type ThemeMode } from '../lib/theme'
 import { useQueries } from '@tanstack/react-query'
 import { clearAuth, getAuth, hasBerechtigung, hasModul } from '../lib/auth'
+import { getKasseIdentity } from '../lib/kasse'
 import { kasseApi } from '../lib/api'
 import { KdsToasts } from './KdsToasts'
 import { KdsNachrichten } from './KdsNachrichten'
@@ -36,13 +37,30 @@ export function Layout() {
         </ErrorBoundary>
       </main>
       <footer className="border-t border-line py-2 text-center">
-        <span className="text-[11px] text-ink-subtle select-none">
-          Kassa v{__APP_VERSION__}
-        </span>
+        <StatusZeile />
       </footer>
       <KdsToasts />
       <KdsNachrichten />
     </div>
+  )
+}
+
+/**
+ * Statuszeile am unteren Rand: Version · Mandant · aktive Kasse — damit bei
+ * mehreren Kassen sofort sichtbar ist, an welcher Kassa man gerade arbeitet.
+ * (Kassen-Identität wird wie überall nicht-reaktiv gelesen; der Kassenwechsel
+ * in den Einstellungen lädt die Seite ohnehin neu.)
+ */
+function StatusZeile() {
+  const auth     = getAuth()
+  const identity = getKasseIdentity()
+  const kasse    = auth && identity ? auth.kassen.find(k => k.id === identity.kasseId) : null
+  return (
+    <span className="text-[11px] text-ink-subtle select-none">
+      Kassa v{__APP_VERSION__}
+      {auth && <> · {auth.mandant.firmenname}</>}
+      {kasse && <> · Kasse: <span className="font-mono">{kasse.bezeichnung || kasse.kassenId}</span></>}
+    </span>
   )
 }
 
