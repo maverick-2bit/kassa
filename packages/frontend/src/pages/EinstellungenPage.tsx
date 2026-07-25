@@ -34,7 +34,7 @@ const BEREICHE: { key: Bereich; label: string; beschreibung: string }[] = [
   { key: 'rksv',     label: 'RKSV',           beschreibung: 'Datenexport und Signatureinrichtung' },
   { key: 'gastro',   label: 'Gastro',         beschreibung: 'Tischplan und Gast-Bestellsystem' },
   { key: 'terminal', label: 'SB-Terminal',    beschreibung: 'Bestellterminal-Sortiment und Geräte-Links' },
-  { key: 'system',   label: 'System',         beschreibung: 'Datenbank-Sicherung und Systeminfo' },
+  { key: 'system',   label: 'System',         beschreibung: 'Updates, Datenbank-Sicherung und Systeminfo' },
 ]
 
 export function EinstellungenPage() {
