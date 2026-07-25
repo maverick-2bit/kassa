@@ -143,8 +143,34 @@ async function ladeKopf(id: string, mandantId: string, db: Db) {
   return kopf
 }
 
+/**
+ * Hält eine OFFENE Inventur vollständig: Artikel, deren Lagerführung erst nach der
+ * Anlage aktiviert wurde, werden automatisch als neue Positionen ergänzt (Soll =
+ * aktueller Bestand). So zeigt die geöffnete Inventur immer ALLE lagergeführten
+ * Artikel — ohne dass man sie suchen oder die Inventur neu anlegen muss.
+ */
+async function ergaenzeNeueLagerArtikel(inventurId: string, mandantId: string, db: Db): Promise<void> {
+  const artikelRows = await db
+    .select({ id: artikel.id, bezeichnung: artikel.bezeichnung, lagerstandMenge: artikel.lagerstandMenge })
+    .from(artikel)
+    .where(and(eq(artikel.mandantId, mandantId), eq(artikel.aktiv, true), eq(artikel.lagerstandAktiv, true)))
+  if (artikelRows.length === 0) return
+
+  await db
+    .insert(inventurPositionen)
+    .values(artikelRows.map(a => ({
+      inventurId,
+      artikelId:   a.id,
+      bezeichnung: a.bezeichnung,
+      sollMenge:   a.lagerstandMenge ?? 0,
+      istMenge:    null,
+    })))
+    .onConflictDoNothing()   // bestehende Positionen (Unique inventurId+artikelId) unverändert
+}
+
 export async function holeInventur(id: string, mandantId: string, db: Db): Promise<InventurDetail> {
   const kopf = await ladeKopf(id, mandantId, db)
+  if (kopf.status === 'offen') await ergaenzeNeueLagerArtikel(id, mandantId, db)
   const positionen = await db
     .select()
     .from(inventurPositionen)

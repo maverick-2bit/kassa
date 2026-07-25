@@ -1354,27 +1354,37 @@ function GastQrCodeSektion() {
             </div>
           )}
 
-          {/* Tisch aus Tischplan */}
+          {/* Tisch aus Tischplan — antippbare Chips je Bereich (robuster als ein
+              natives Dropdown: keine grauen optgroup-Überschriften, touch-tauglich) */}
           {alleTische.length > 0 ? (
             <div>
               <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wide mb-1.5">
                 Tisch
               </label>
-              <select
-                value={tisch}
-                onChange={e => { setTisch(e.target.value); setManuell('') }}
-                className="w-full rounded-lg border border-line-strong px-3 py-2 text-sm focus:border-brand-500 outline-none"
-              >
-                <option value="">— Tisch wählen —</option>
-                {bereiche?.map(b => (
-                  <optgroup key={b.id} label={b.name}>
-                    {b.elemente.map(e => (
-                      <option key={e.id} value={e.bezeichnung}>{e.bezeichnung}</option>
-                    ))}
-                  </optgroup>
+              <div className="space-y-2">
+                {bereiche?.filter(b => b.elemente.length > 0).map(b => (
+                  <div key={b.id}>
+                    <p className="text-[11px] font-semibold text-ink-subtle mb-1">{b.name}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {b.elemente.map(e => (
+                        <button
+                          key={e.id}
+                          type="button"
+                          onClick={() => { setTisch(e.bezeichnung); setManuell('') }}
+                          className={`px-3 py-1.5 rounded-full text-sm border transition ${
+                            tisch === e.bezeichnung
+                              ? 'bg-brand-600 text-white border-brand-600'
+                              : 'bg-panel border-line text-ink hover:bg-panel-2'
+                          }`}
+                        >
+                          {e.bezeichnung}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 ))}
-              </select>
-              <p className="text-xs text-ink-subtle mt-1">oder manuell eingeben:</p>
+              </div>
+              <p className="text-xs text-ink-subtle mt-2">oder manuell eingeben:</p>
               <input
                 type="text"
                 value={manuellerTisch}
@@ -1382,6 +1392,10 @@ function GastQrCodeSektion() {
                 placeholder="z. B. Tisch 7"
                 className="mt-1 w-full rounded-lg border border-line-strong px-3 py-2 text-sm focus:border-brand-500 outline-none"
               />
+              <p className="mt-2 text-[11px] text-ink-subtle">
+                💡 Etiketten für den <strong>Bondrucker</strong> (große Nummer + QR) druckst du unter
+                <strong> Tische → „🖨 Tischnummern drucken"</strong> — hier entsteht nur der Bildschirm-QR zum Herunterladen.
+              </p>
             </div>
           ) : (
             <div>
