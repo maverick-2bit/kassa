@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { QRCodeSVG } from 'qrcode.react'
@@ -17,6 +17,7 @@ import { Input } from '../components/ui/Input'
 import { Button } from '../components/ui/Button'
 import { KartenzahlungModal } from '../components/KartenzahlungModal'
 import { TischplanEditor } from '../components/TischplanEditor'
+import { parseTischEingabe } from '../components/TischEtikettenModal'
 
 // ---------------------------------------------------------------------------
 // Bereichs-Navigation: gliedert die ~13 Sektionen in 6 Gruppen.
@@ -1270,9 +1271,9 @@ function GastQrCodeSektion() {
 
   const [basisUrl, setBasisUrl]       = useState(defaultBase)
   const [kasseId, setKasseId]         = useState(kassen[0]?.id ?? '')
-  const [tisch, setTisch]             = useState('')
-  const [manuellerTisch, setManuell]  = useState('')
-  const svgRef                        = useRef<HTMLDivElement>(null)
+  const [gewaehlt, setGewaehlt]       = useState<Set<string>>(new Set())
+  const [manuell, setManuell]         = useState('')
+  const gridRef                       = useRef<HTMLDivElement>(null)
 
   // Tischplan laden wenn Kasse gewählt
   const { data: bereiche } = useQuery({
@@ -1281,30 +1282,58 @@ function GastQrCodeSektion() {
     enabled:  !!kasseId,
   })
 
-  const alleTische = bereiche?.flatMap(b =>
-    b.elemente.map(e => ({ bezeichnung: e.bezeichnung, bereich: b.name }))
-  ) ?? []
+  // Bereiche mit bereinigten Tischnamen (für Gruppen-Chips + „alle je Bereich")
+  const bereichGruppen = (bereiche ?? [])
+    .map(b => ({
+      id:     b.id,
+      name:   b.name,
+      tische: [...new Set(b.elemente.map(e => e.bezeichnung.trim()).filter(Boolean))],
+    }))
+    .filter(b => b.tische.length > 0)
+  const planTische = [...new Set(bereichGruppen.flatMap(b => b.tische))]
 
-  const aktiverTisch = tisch || manuellerTisch
-  const gastUrl = aktiverTisch && kasseId
-    ? `${basisUrl}/gast?kasseId=${encodeURIComponent(kasseId)}&tisch=${encodeURIComponent(aktiverTisch)}`
-    : ''
+  // Auswahl = Chips + manuelle Eingabe (Bereiche „1-20", Komma-Liste), dedupliziert
+  const gewaehlteTische = useMemo(() => {
+    const s = new Set<string>(gewaehlt)
+    for (const t of parseTischEingabe(manuell)) s.add(t)
+    return [...s]
+  }, [gewaehlt, manuell])
 
-  function svgHerunterladen() {
-    if (!svgRef.current) return
-    const svg = svgRef.current.querySelector('svg')
+  const urlFuer = (t: string): string =>
+    `${basisUrl}/gast?kasseId=${encodeURIComponent(kasseId)}&tisch=${encodeURIComponent(t)}`
+
+  /** Einzelnen QR (SVG) aus der Karten-Vorschau herunterladen. */
+  function svgHerunterladen(t: string, karte: HTMLElement | null) {
+    const svg = karte?.querySelector('svg')
     if (!svg) return
     const blob = new Blob([svg.outerHTML], { type: 'image/svg+xml' })
     const url  = URL.createObjectURL(blob)
     const a    = document.createElement('a')
     a.href     = url
-    a.download = `qr-${aktiverTisch.replace(/\s+/g, '-').toLowerCase()}.svg`
+    a.download = `qr-${t.replace(/\s+/g, '-').toLowerCase()}.svg`
     a.click()
     URL.revokeObjectURL(url)
   }
 
-  function allesDrucken() {
-    window.print()
+  /** A4-Bogen: Druckfenster mit den LOKAL gerenderten QR-Karten (kein externer Dienst). */
+  function a4BogenDrucken() {
+    if (!gridRef.current) return
+    const win = window.open('', '_blank')
+    if (!win) return
+    win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Tisch-QR-Codes</title>
+      <style>
+        body{font-family:sans-serif;margin:0}
+        .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;padding:16px}
+        .karte{border:1px dashed #9ca3af;border-radius:12px;padding:16px;text-align:center;break-inside:avoid}
+        .karte .name{font-size:20px;font-weight:800;margin-top:8px;color:#111}
+        .karte .brand{font-size:9px;color:#9ca3af;margin-top:6px}
+        .karte button{display:none}
+        .karte .url{display:none}
+        @media print{@page{margin:12mm}}
+      </style></head><body><div class="grid">${gridRef.current.innerHTML}</div></body></html>`)
+    win.document.close()
+    win.focus()
+    win.print()
   }
 
   return (
@@ -1344,7 +1373,7 @@ function GastQrCodeSektion() {
               </label>
               <select
                 value={kasseId}
-                onChange={e => { setKasseId(e.target.value); setTisch('') }}
+                onChange={e => { setKasseId(e.target.value); setGewaehlt(new Set()) }}
                 className="w-full rounded-lg border border-line-strong px-3 py-2 text-sm focus:border-brand-500 outline-none"
               >
                 {kassen.map(k => (
@@ -1354,145 +1383,124 @@ function GastQrCodeSektion() {
             </div>
           )}
 
-          {/* Tisch aus Tischplan — antippbare Chips je Bereich (robuster als ein
-              natives Dropdown: keine grauen optgroup-Überschriften, touch-tauglich) */}
-          {alleTische.length > 0 ? (
-            <div>
-              <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wide mb-1.5">
-                Tisch
+          {/* Tischauswahl — Mehrfachauswahl per Chips, ganze Bereiche per „alle" */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wide">
+                Tische ({gewaehlteTische.length} gewählt)
               </label>
-              <div className="space-y-2">
-                {bereiche?.filter(b => b.elemente.length > 0).map(b => (
+              {planTische.length > 0 && (
+                <button
+                  type="button"
+                  className="text-xs text-brand-600 hover:underline"
+                  onClick={() => setGewaehlt(new Set(gewaehlt.size === planTische.length ? [] : planTische))}
+                >
+                  {gewaehlt.size === planTische.length ? 'Keine' : 'Alle Bereiche'}
+                </button>
+              )}
+            </div>
+            <div className="space-y-2">
+              {bereichGruppen.map(b => {
+                const alleGewaehlt = b.tische.every(t => gewaehlt.has(t))
+                return (
                   <div key={b.id}>
-                    <p className="text-[11px] font-semibold text-ink-subtle mb-1">{b.name}</p>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-[11px] font-semibold text-ink-subtle">{b.name}</span>
+                      <button
+                        type="button"
+                        className="text-[11px] text-brand-600 hover:underline"
+                        onClick={() => setGewaehlt(prev => {
+                          const s = new Set(prev)
+                          if (alleGewaehlt) b.tische.forEach(t => s.delete(t))
+                          else b.tische.forEach(t => s.add(t))
+                          return s
+                        })}
+                      >
+                        {alleGewaehlt ? 'keine' : 'alle'}
+                      </button>
+                    </div>
                     <div className="flex flex-wrap gap-1.5">
-                      {b.elemente.map(e => (
+                      {b.tische.map(t => (
                         <button
-                          key={e.id}
+                          key={t}
                           type="button"
-                          onClick={() => { setTisch(e.bezeichnung); setManuell('') }}
+                          onClick={() => setGewaehlt(prev => {
+                            const s = new Set(prev)
+                            if (s.has(t)) s.delete(t); else s.add(t)
+                            return s
+                          })}
                           className={`px-3 py-1.5 rounded-full text-sm border transition ${
-                            tisch === e.bezeichnung
+                            gewaehlt.has(t)
                               ? 'bg-brand-600 text-white border-brand-600'
                               : 'bg-panel border-line text-ink hover:bg-panel-2'
                           }`}
                         >
-                          {e.bezeichnung}
+                          {t}
                         </button>
                       ))}
                     </div>
                   </div>
-                ))}
-              </div>
-              <p className="text-xs text-ink-subtle mt-2">oder manuell eingeben:</p>
-              <input
-                type="text"
-                value={manuellerTisch}
-                onChange={e => { setManuell(e.target.value); setTisch('') }}
-                placeholder="z. B. Tisch 7"
-                className="mt-1 w-full rounded-lg border border-line-strong px-3 py-2 text-sm focus:border-brand-500 outline-none"
-              />
-              <p className="mt-2 text-[11px] text-ink-subtle">
-                💡 Etiketten für den <strong>Bondrucker</strong> (große Nummer + QR) druckst du unter
-                <strong> Tische → „🖨 Tischnummern drucken"</strong> — hier entsteht nur der Bildschirm-QR zum Herunterladen.
-              </p>
+                )
+              })}
             </div>
-          ) : (
-            <div>
-              <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wide mb-1.5">
-                Tischbezeichnung
-              </label>
-              <input
-                type="text"
-                value={manuellerTisch}
-                onChange={e => setManuell(e.target.value)}
-                placeholder="z. B. Tisch 7, Bar, Terrasse"
-                className="w-full rounded-lg border border-line-strong px-3 py-2 text-sm focus:border-brand-500 outline-none"
-              />
-            </div>
-          )}
+            <p className="text-xs text-ink-subtle mt-2">oder Nummern eingeben (Bereiche mit „-", mehrere mit Komma):</p>
+            <input
+              type="text"
+              value={manuell}
+              onChange={e => setManuell(e.target.value)}
+              placeholder="z. B. 1-20, Bar, Terrasse 3"
+              className="mt-1 w-full rounded-lg border border-line-strong px-3 py-2 text-sm focus:border-brand-500 outline-none"
+            />
+            <p className="mt-2 text-[11px] text-ink-subtle">
+              💡 Für den <strong>Bondrucker</strong> (Thermo-Etiketten, große Nummer + QR) nutzt du
+              <strong> Tische → „🖨 Tischnummern drucken"</strong> — dort ist der Zieldrucker wählbar.
+            </p>
+          </div>
         </div>
 
-        {/* QR-Code Vorschau */}
-        <div className="flex flex-col items-center justify-center gap-4 bg-panel-2 rounded-xl border border-line p-6">
-          {aktiverTisch && gastUrl ? (
-            <>
-              <div ref={svgRef} className="bg-panel p-4 rounded-xl shadow-sm border border-line">
-                <QRCodeSVG
-                  value={gastUrl}
-                  size={180}
-                  level="M"
-                  includeMargin={false}
-                />
-              </div>
-              <p className="text-sm font-bold text-ink text-center">{aktiverTisch}</p>
-              <p className="text-xs text-ink-subtle text-center break-all font-mono leading-relaxed max-w-full">
-                {gastUrl}
-              </p>
-              <div className="flex gap-2 w-full">
-                <button
-                  onClick={() => navigator.clipboard.writeText(gastUrl)}
-                  className="flex-1 py-2 rounded-lg border border-line-strong text-ink text-xs font-medium hover:bg-panel-2 transition"
-                >
-                  📋 URL kopieren
-                </button>
-                <button
-                  onClick={svgHerunterladen}
-                  className="flex-1 py-2 rounded-lg bg-brand-600 text-white text-xs font-medium hover:bg-brand-700 transition"
-                >
-                  ⬇ SVG laden
-                </button>
-              </div>
-            </>
+        {/* QR-Karten-Vorschau (alle gewählten Tische; QRs LOKAL gerendert) */}
+        <div className="bg-panel-2 rounded-xl border border-line p-4">
+          {gewaehlteTische.length > 0 && kasseId ? (
+            <div ref={gridRef} className="grid grid-cols-2 xl:grid-cols-3 gap-3">
+              {gewaehlteTische.map(t => (
+                <div key={t} className="karte bg-panel rounded-xl border border-line p-3 text-center" data-tisch={t}>
+                  <QRCodeSVG value={urlFuer(t)} size={120} level="M" includeMargin={false} className="mx-auto" />
+                  <p className="name text-sm font-bold text-ink mt-2 break-words">{t}</p>
+                  <p className="brand text-[9px] text-ink-subtle mt-1">powered by s/e smarte events</p>
+                  <p className="url text-[9px] text-ink-subtle break-all font-mono">{urlFuer(t)}</p>
+                  <button
+                    onClick={(ev) => svgHerunterladen(t, (ev.currentTarget as HTMLElement).closest('[data-tisch]'))}
+                    className="mt-1.5 text-[11px] font-medium text-brand-600 hover:underline"
+                  >
+                    ⬇ SVG
+                  </button>
+                </div>
+              ))}
+            </div>
           ) : (
-            <div className="text-center text-ink-subtle space-y-2">
+            <div className="text-center text-ink-subtle space-y-2 py-10">
               <div className="text-5xl opacity-30">▦</div>
-              <p className="text-sm">Tisch wählen um QR-Code zu generieren</p>
+              <p className="text-sm">Tische wählen (einzeln, je Bereich „alle" oder oben „Alle Bereiche")</p>
             </div>
           )}
         </div>
       </div>
 
-      {/* Alle Tische auf einmal drucken */}
-      {alleTische.length > 0 && basisUrl && kasseId && (
-        <div className="border-t border-line pt-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-ink">Alle Tische drucken</p>
-              <p className="text-xs text-ink-muted mt-0.5">{alleTische.length} Tische — öffnet Druckansicht mit allen QR-Codes</p>
-            </div>
-            <button
-              onClick={() => {
-                const html = `<!doctype html><html><head><meta charset="utf-8"><title>Tisch QR-Codes</title>
-                <style>
-                  body{font-family:sans-serif;margin:0}
-                  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;padding:16px}
-                  .karte{border:1px solid #e5e7eb;border-radius:12px;padding:16px;text-align:center;break-inside:avoid}
-                  .name{font-size:14px;font-weight:700;margin-top:8px;color:#111}
-                  .url{font-size:9px;color:#9ca3af;word-break:break-all;margin-top:4px}
-                  @media print{@page{margin:12mm}}
-                </style></head><body>
-                <div class="grid">
-                ${alleTische.map(t => {
-                  const url = `${basisUrl}/gast?kasseId=${encodeURIComponent(kasseId)}&tisch=${encodeURIComponent(t.bezeichnung)}`
-                  // Simple QR-Link via Google Charts API als Fallback (oder canvas in Prod)
-                  return `<div class="karte">
-                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(url)}" width="150" height="150" />
-                    <div class="name">${t.bezeichnung}</div>
-                    <div class="url">${t.bereich}</div>
-                  </div>`
-                }).join('')}
-                </div></body></html>`
-                const win = window.open('', '_blank')
-                win?.document.write(html)
-                win?.document.close()
-                win?.print()
-              }}
-              className="px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 transition"
-            >
-              🖨 Alle drucken
-            </button>
+      {/* A4-Bogen drucken (Browser-Druckdialog → A4-Drucker oder „Als PDF speichern") */}
+      {gewaehlteTische.length > 0 && basisUrl && kasseId && (
+        <div className="border-t border-line pt-4 flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-ink">A4-Bogen mit allen gewählten QR-Codes</p>
+            <p className="text-xs text-ink-muted mt-0.5">
+              {gewaehlteTische.length} Karte(n) — im Druckdialog A4-Drucker wählen oder „Als PDF speichern".
+            </p>
           </div>
+          <button
+            onClick={a4BogenDrucken}
+            className="px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 transition"
+          >
+            🖨 A4-Bogen drucken
+          </button>
         </div>
       )}
     </section>
