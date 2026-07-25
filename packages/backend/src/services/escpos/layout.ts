@@ -169,9 +169,11 @@ export interface TischEtikettOptionen {
  * damit mehrere Etiketten hintereinander als einzelne Bons herauskommen.
  */
 export function baueTischEtikett(tischNummer: string, opts: TischEtikettOptionen): Buffer {
-  const W = opts.breite
+  const W    = opts.breite
+  const dots = W >= 42 ? 576 : 384            // Druckbreite in Punkten (80 mm / 58 mm @ 203 dpi)
   const parts: Buffer[] = []
   const add = (b: Buffer): void => { parts.push(b) }
+  const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v))
 
   add(ep.init())
   add(ep.selectCodepage(19))      // CP858 (Deutsch + €)
@@ -183,20 +185,55 @@ export function baueTischEtikett(tischNummer: string, opts: TischEtikettOptionen
     add(ep.newline())
   }
 
-  // Große, fette Tischnummer
-  add(ep.font({ bold: true, doubleHeight: true, doubleWidth: true }))
-  add(ep.textLine(truncate(`Tisch ${tischNummer}`, Math.floor(W / 2))))
-  add(ep.font())
+  const label = truncate(tischNummer, 20)
 
-  // Optionaler Gast-Bestell-QR
   if (opts.qrUrl) {
-    add(ep.newline())
+    // Page Mode: Tischnummer RIESIG links, Gast-Bestell-QR rechts DANEBEN.
+    // Font A = 12 Punkte breit / 24 hoch; QR-Spalte rechts reserviert.
+    const qrSpalte  = Math.min(210, Math.floor(dots * 0.45))
+    const textPlatz = dots - qrSpalte - 8
+    const wMul  = clamp(Math.floor(textPlatz / (Math.max(1, label.length) * 12)), 1, 6)
+    const hMul  = Math.min(wMul + 1, 8)
+    const textH = 24 * hMul
+    const H     = Math.max(textH, 208)        // QR (~Version 5 @ Modul 4) + Ruhezone
+
+    add(ep.pageModeStart())
+    add(ep.pageDirection(0))
+    add(ep.pageArea(0, 0, dots, H))
+    // Nummer links, vertikal mittig
+    add(ep.posY(Math.max(0, Math.floor((H - textH) / 2))))
+    add(ep.posX(0))
+    add(ep.bold(true))
+    add(ep.textSize(wMul, hMul))
+    add(ep.encodeText(label))
+    add(ep.textSize(1, 1))
+    add(ep.bold(false))
+    // QR rechts daneben
+    add(ep.posY(0))
+    add(ep.posX(dots - qrSpalte))
+    add(ep.qrCode(opts.qrUrl, 4, 'M'))
+    add(ep.pagePrint())
+
     add(ep.align('center'))
-    add(ep.qrCode(opts.qrUrl, qrSizeFuerBreite(W), 'M'))
     add(ep.textLine('Zum Bestellen scannen'))
+  } else {
+    // Ohne QR: Tischnummer riesig, zentriert (Standard-Modus)
+    const wMul = clamp(Math.floor(W / Math.max(1, label.length)), 1, 6)
+    const hMul = Math.min(wMul + 1, 8)
+    add(ep.align('center'))
+    add(ep.bold(true))
+    add(ep.textSize(wMul, hMul))
+    add(ep.textLine(label))
+    add(ep.textSize(1, 1))
+    add(ep.bold(false))
   }
 
-  add(ep.newline(2))
+  // Branding-Fußzeile
+  add(ep.newline())
+  add(ep.align('center'))
+  add(ep.textLine('powered by s/e smarte events'))
+
+  add(ep.newline(4))
   add(ep.cut())
 
   return Buffer.concat(parts)

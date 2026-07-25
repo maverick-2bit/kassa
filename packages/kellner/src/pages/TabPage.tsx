@@ -4,10 +4,15 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { QRCodeSVG } from 'qrcode.react'
 import type { TabPosition } from '@kassa/shared'
 import { tischTabApi, bonierApi, druckerApi, oeffentlicherBelegApi, zvtApi } from '../lib/api'
-import { getAuth } from '../lib/auth'
+import { getAuth, gaengeAktiv as istGaengeAktiv, gaengeAnzahl } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
 import { KartenzahlungOverlay } from '../components/KartenzahlungOverlay'
+
+/** Anzeige-Label eines Gangs (0 = Sofort). */
+function gangLabel(g: number): string {
+  return g === 0 ? 'Sofort' : `${g}. Gang`
+}
 
 export function TabPage() {
   const { tabId }   = useParams<{ tabId: string }>()
@@ -18,6 +23,10 @@ export function TabPage() {
   const [bonierFehler, setBonierFehler] = useState<string | null>(null)
   const [bonierErfolg, setBonierErfolg] = useState(false)
 
+  // Gänge-Steuerung (Modul)
+  const gaenge = istGaengeAktiv()
+  const anzahl = gaengeAnzahl()
+
   const tabQuery = useQuery({
     queryKey:        ['tisch-tab', tabId],
     queryFn:         () => tischTabApi.get(tabId!),
@@ -26,18 +35,42 @@ export function TabPage() {
   })
 
   const bonierMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: async (): Promise<unknown> => {
       const tab = tabQuery.data!
-      return bonierApi.bonieren({
-        kasseId:    identity.kasseId,
-        tabId:      tab.id,
-        tisch:      tab.tischNummer,
-        kellner:    auth.user.name,
-        positionen: tab.positionen.map(p => ({
-          artikelId: p.artikelId,
-          menge:     p.menge,
-        })),
-      })
+      // ohneLagerabzug: der Lagerstand wurde bereits beim Hinzufügen der Positionen
+      // (aktualisierePositionen) abgezogen — sonst Doppel-Abzug beim Bonieren.
+      if (!gaenge) {
+        // Ohne Gänge-Modul: wie bisher alle Positionen senden
+        return bonierApi.bonieren({
+          kasseId:    identity.kasseId,
+          tabId:      tab.id,
+          tisch:      tab.tischNummer,
+          kellner:    auth.user.name,
+          positionen: tab.positionen.map(p => ({ artikelId: p.artikelId, menge: p.menge })),
+          ohneLagerabzug: true,
+        })
+      }
+      // Mit Gänge-Modul: nur offene SOFORT-Positionen senden + als gesendet markieren
+      const offen = tab.positionen.filter(p => (p.gang ?? 0) === 0 && !p.gesendetAm)
+      if (offen.length === 0) throw new Error('Keine offenen Sofort-Positionen')
+      try {
+        await bonierApi.bonieren({
+          kasseId:    identity.kasseId,
+          tabId:      tab.id,
+          tisch:      tab.tischNummer,
+          kellner:    auth.user.name,
+          positionen: offen.map(p => ({ artikelId: p.artikelId, menge: p.menge })),
+          ohneLagerabzug: true,
+        })
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        if (!/nichts zu bonieren/i.test(msg)) throw err
+      }
+      const jetzt = new Date().toISOString()
+      await tischTabApi.aktualisierePositionen(tab.id, tab.positionen.map(p =>
+        (p.gang ?? 0) === 0 && !p.gesendetAm ? { ...p, gesendetAm: jetzt } : p,
+      ))
+      return null
     },
     onSuccess: () => {
       setBonierErfolg(true)
@@ -45,6 +78,39 @@ export function TabPage() {
       setTimeout(() => setBonierErfolg(false), 3000)
     },
     onError: (err) => setBonierFehler(err instanceof Error ? err.message : 'Fehler beim Bonieren'),
+  })
+
+  // Gänge: nächsten offenen Gang feuern / Position nachschicken / Gang umhängen
+  const gangAbrufenMutation = useMutation({
+    mutationFn: () => tischTabApi.gangAbrufen(tabId!),
+    onSuccess: () => {
+      setBonierErfolg(true)
+      qc.invalidateQueries({ queryKey: ['tisch-tab', tabId] })
+      setTimeout(() => setBonierErfolg(false), 3000)
+    },
+    onError: (err) => setBonierFehler(err instanceof Error ? err.message : 'Fehler beim Gang-Abruf'),
+  })
+
+  const nachschickenMutation = useMutation({
+    mutationFn: (positionIndex: number) => tischTabApi.positionNachschicken(tabId!, positionIndex),
+    onSuccess: () => {
+      setBonierErfolg(true)
+      qc.invalidateQueries({ queryKey: ['tisch-tab', tabId] })
+      setTimeout(() => setBonierErfolg(false), 3000)
+    },
+    onError: (err) => setBonierFehler(err instanceof Error ? err.message : 'Fehler beim Nachschicken'),
+  })
+
+  const gangAendernMutation = useMutation({
+    mutationFn: async ({ indices, neuerGang }: { indices: number[]; neuerGang: number }) => {
+      const tab = tabQuery.data!
+      const idxSet = new Set(indices)
+      await tischTabApi.aktualisierePositionen(tab.id, tab.positionen.map((p, i) =>
+        idxSet.has(i) && !p.gesendetAm ? { ...p, gang: neuerGang } : p,
+      ))
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tisch-tab', tabId] }),
+    onError: (err) => setBonierFehler(err instanceof Error ? err.message : 'Fehler beim Gang-Wechsel'),
   })
 
   // ---- Kassieren (Bar) + digitaler Beleg ----
@@ -141,7 +207,9 @@ export function TabPage() {
 
   const tab = tabQuery.data
 
-  // Positionen gruppiert anzeigen (gleicher Artikel zusammenfassen)
+  // Positionen gruppiert anzeigen (gleicher Artikel zusammenfassen). Mit Gänge-Modul
+  // trennt der Schlüssel zusätzlich nach Gang + Gesendet-Status (gesendete Zeilen
+  // bleiben eigene, durchgestrichene Gruppen).
   interface GruppiertePos {
     key:             string
     artikelId:       string
@@ -150,10 +218,16 @@ export function TabPage() {
     menge:           number
     modifikatoren:   TabPosition['modifikatoren']
     indices:         number[]
+    gang:            number
+    gesendet:        boolean
   }
   const gruppen = tab.positionen.reduce<GruppiertePos[]>((acc, pos, idx) => {
-    const modKey = JSON.stringify(pos.modifikatoren ?? [])
-    const key    = `${pos.artikelId}__${modKey}`
+    const modKey   = JSON.stringify(pos.modifikatoren ?? [])
+    const gang     = pos.gang ?? 0
+    const gesendet = !!pos.gesendetAm
+    const key      = gaenge
+      ? `${pos.artikelId}__${modKey}__${gang}__${gesendet ? 'g' : 'o'}`
+      : `${pos.artikelId}__${modKey}`
     const existing = acc.find(g => g.key === key)
     if (existing) {
       existing.menge += pos.menge
@@ -167,10 +241,23 @@ export function TabPage() {
         menge:           pos.menge,
         modifikatoren:   pos.modifikatoren,
         indices:         [idx],
+        gang,
+        gesendet,
       })
     }
     return acc
   }, [])
+
+  // Gänge-Modus: Gruppen nach Gang bündeln (Sofort zuerst, dann 1..N)
+  const gangNummern = gaenge
+    ? [...new Set(gruppen.map(g => g.gang))].sort((a, b) => a - b)
+    : []
+  const naechsterOffenerGang = gaenge
+    ? (tab.positionen.filter(p => (p.gang ?? 0) > 0 && !p.gesendetAm).map(p => p.gang!).sort((a, b) => a - b)[0] ?? null)
+    : null
+  const offeneSofort = gaenge
+    ? tab.positionen.some(p => (p.gang ?? 0) === 0 && !p.gesendetAm)
+    : true
 
   return (
     <div className="min-h-screen bg-surface flex flex-col max-w-lg mx-auto">
@@ -206,7 +293,7 @@ export function TabPage() {
               Artikel hinzufügen
             </button>
           </div>
-        ) : (
+        ) : !gaenge ? (
           gruppen.map(g => (
             <div key={g.key} className="bg-panel rounded-2xl border border-line px-4 py-3 flex items-start gap-3">
               <div className="w-8 h-8 rounded-lg bg-brand-100 flex items-center justify-center text-brand-700 font-black text-sm shrink-0 mt-0.5">
@@ -233,6 +320,74 @@ export function TabPage() {
               </div>
             </div>
           ))
+        ) : (
+          /* Gänge-Modus: nach Gang gruppiert; gesendete durchgestrichen + nachschickbar */
+          gangNummern.map(gn => {
+            const imGang = gruppen.filter(g => g.gang === gn)
+            const alleGesendet = imGang.every(g => g.gesendet)
+            return (
+              <div key={gn} className="space-y-2">
+                <div className="flex items-center gap-2 pt-1">
+                  <span className={`text-[11px] font-black uppercase tracking-wide ${alleGesendet ? 'text-ink-subtle' : 'text-amber-600'}`}>
+                    {gangLabel(gn)}
+                  </span>
+                  {alleGesendet && <span className="text-[10px] text-ink-subtle">✓ gesendet</span>}
+                </div>
+                {imGang.map(g => (
+                  <div key={g.key} className={`bg-panel rounded-2xl border px-4 py-3 flex items-start gap-3 ${g.gesendet ? 'border-line opacity-70' : 'border-line'}`}>
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-sm shrink-0 mt-0.5 ${
+                      g.gesendet ? 'bg-panel-2 text-ink-subtle' : 'bg-brand-100 text-brand-700'
+                    }`}>
+                      {g.menge}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className={`font-semibold text-sm leading-tight ${g.gesendet ? 'text-ink-subtle line-through' : 'text-ink'}`}>
+                        {g.bezeichnung}
+                      </p>
+                      {(g.modifikatoren?.length ?? 0) > 0 && (
+                        <p className={`text-xs mt-0.5 ${g.gesendet ? 'text-ink-subtle line-through' : 'text-ink-subtle'}`}>
+                          {g.modifikatoren!.map(m => m.name).join(', ')}
+                        </p>
+                      )}
+                      {g.gesendet ? (
+                        /* Nochmal schicken — falls in der Küche etwas schiefging */
+                        <button
+                          onClick={() => { setBonierFehler(null); nachschickenMutation.mutate(g.indices[0]!) }}
+                          disabled={nachschickenMutation.isPending}
+                          className="mt-1.5 text-xs font-bold text-brand-600 disabled:opacity-50"
+                        >
+                          ↻ nochmal schicken
+                        </button>
+                      ) : (
+                        /* Offene Position in einen anderen Gang umhängen */
+                        <select
+                          value={g.gang}
+                          onChange={(e) => gangAendernMutation.mutate({ indices: g.indices, neuerGang: Number(e.target.value) })}
+                          disabled={gangAendernMutation.isPending}
+                          className="mt-1.5 rounded-lg border border-line-strong bg-panel px-2 py-1 text-xs text-ink-muted"
+                        >
+                          {[0, ...Array.from({ length: anzahl }, (_, n) => n + 1)].map(gg => (
+                            <option key={gg} value={gg}>{gangLabel(gg)}</option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className={`font-mono text-sm font-semibold ${g.gesendet ? 'text-ink-subtle line-through' : 'text-ink'}`}>
+                        {formatPreis(g.preisBruttoCent * g.menge)}
+                      </p>
+                      <button
+                        onClick={() => positionEntfernen(g.indices[g.indices.length - 1]!)}
+                        className="text-xs text-red-400 hover:text-red-600 mt-1"
+                      >
+                        −1
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
+          })
         )}
       </div>
 
@@ -251,13 +406,26 @@ export function TabPage() {
             <p className="text-brand-600 text-sm text-center font-bold">✓ Bon wurde gesendet</p>
           )}
 
-          <button
-            onClick={() => { setBonierFehler(null); bonierMutation.mutate() }}
-            disabled={bonierMutation.isPending}
-            className="w-full py-4 rounded-2xl bg-brand-600 text-white font-black text-lg active:scale-95 transition disabled:opacity-50"
-          >
-            {bonierMutation.isPending ? '⏳ Wird gesendet…' : '🍳 Bonieren'}
-          </button>
+          {/* Gänge-Modul: nächsten offenen Gang mit einem Tastendruck abrufen */}
+          {gaenge && naechsterOffenerGang !== null && (
+            <button
+              onClick={() => { setBonierFehler(null); gangAbrufenMutation.mutate() }}
+              disabled={gangAbrufenMutation.isPending}
+              className="w-full py-4 rounded-2xl bg-amber-500 text-white font-black text-lg active:scale-95 transition disabled:opacity-50"
+            >
+              {gangAbrufenMutation.isPending ? '⏳ Wird gesendet…' : `🔔 ${naechsterOffenerGang}. Gang abrufen`}
+            </button>
+          )}
+
+          {(!gaenge || offeneSofort) && (
+            <button
+              onClick={() => { setBonierFehler(null); bonierMutation.mutate() }}
+              disabled={bonierMutation.isPending}
+              className="w-full py-4 rounded-2xl bg-brand-600 text-white font-black text-lg active:scale-95 transition disabled:opacity-50"
+            >
+              {bonierMutation.isPending ? '⏳ Wird gesendet…' : gaenge ? '🍳 Sofort bonieren' : '🍳 Bonieren'}
+            </button>
+          )}
 
           <div className="flex gap-2">
             <button

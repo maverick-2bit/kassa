@@ -59,6 +59,51 @@ export function font(opts: FontOptions = {}): Buffer {
 }
 
 /** Fettdruck an/aus (alternativ zu font()) */
+/**
+ * Freie Zeichengröße (GS !): Breiten-/Höhen-Multiplikator je 1..8.
+ * Für sehr große Beschriftungen (z. B. Tischnummern-Etiketten) — ESC ! kann nur 2x.
+ */
+export function textSize(breite: number, hoehe: number): Buffer {
+  const w = Math.min(8, Math.max(1, Math.trunc(breite))) - 1
+  const h = Math.min(8, Math.max(1, Math.trunc(hoehe))) - 1
+  return Buffer.from([GS, 0x21, (w << 4) | h])
+}
+
+// ---------------------------------------------------------------------------
+// Page Mode (ESC L) — freie Positionierung, z. B. Text + QR nebeneinander
+// ---------------------------------------------------------------------------
+
+/** Page Mode betreten (ESC L). Danach Bereich/Position setzen, am Ende pagePrint(). */
+export function pageModeStart(): Buffer {
+  return Buffer.from([ESC, 0x4C])
+}
+
+/** Druckrichtung im Page Mode (ESC T): 0 = links→rechts (Standard). */
+export function pageDirection(n: 0 | 1 | 2 | 3 = 0): Buffer {
+  return Buffer.from([ESC, 0x54, n])
+}
+
+/** Druckbereich im Page Mode (ESC W): x/y-Ursprung + Breite/Höhe in Punkten (203 dpi). */
+export function pageArea(x: number, y: number, breite: number, hoehe: number): Buffer {
+  const lh = (v: number): [number, number] => [v & 0xFF, (v >> 8) & 0xFF]
+  return Buffer.from([ESC, 0x57, ...lh(x), ...lh(y), ...lh(breite), ...lh(hoehe)])
+}
+
+/** Absolute horizontale Position (ESC $) in Punkten. */
+export function posX(x: number): Buffer {
+  return Buffer.from([ESC, 0x24, x & 0xFF, (x >> 8) & 0xFF])
+}
+
+/** Absolute vertikale Position im Page Mode (GS $) in Punkten. */
+export function posY(y: number): Buffer {
+  return Buffer.from([GS, 0x24, y & 0xFF, (y >> 8) & 0xFF])
+}
+
+/** Seite drucken + Page Mode verlassen (FF). */
+export function pagePrint(): Buffer {
+  return Buffer.from([0x0C])
+}
+
 export function bold(on: boolean): Buffer {
   return Buffer.from([ESC, 0x45, on ? 1 : 0])
 }

@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
 import type { Artikel, ModifikatorGruppe, ModifikatorAuswahl } from '@kassa/shared'
 import { artikelApi, kategorieApi, modifikatorApi, tischTabApi } from '../lib/api'
-import { getAuth } from '../lib/auth'
+import { getAuth, gaengeAktiv as istGaengeAktiv, gaengeAnzahl } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
 
@@ -15,6 +15,13 @@ interface KorbItem {
   artikel:       Artikel
   menge:         number
   modifikatoren: ModifikatorAuswahl[]
+  /** Gänge-Steuerung: 0 = Sofort, 1..N = Gang (vom aktiven Gang geerbt) */
+  gang:          number
+}
+
+/** Anzeige-Label eines Gangs (0 = Sofort). */
+function gangLabel(g: number): string {
+  return g === 0 ? 'Sofort' : `${g}. Gang`
 }
 
 type Phase = 'artikel' | 'modifikatoren'
@@ -41,6 +48,11 @@ export function ArtikelWaehlenPage() {
   const [modMengen,        setModMengen]        = useState<ModMengenMap>(new Map())
   const [artikelMenge,     setArtikelMenge]     = useState(1)
   const [fehler,           setFehler]           = useState<string | null>(null)
+
+  // Gänge-Steuerung (Modul): aktiver Gang für neu gebuchte Artikel (0 = Sofort)
+  const gaenge      = istGaengeAktiv()
+  const anzahl      = gaengeAnzahl()
+  const [aktiverGang, setAktiverGang] = useState(0)
 
   const katQuery = useQuery({
     queryKey: ['kategorien'],
@@ -123,12 +135,14 @@ export function ArtikelWaehlenPage() {
   }
 
   function addToKorb(a: Artikel, menge: number, mods: ModifikatorAuswahl[]) {
+    const gang = gaenge ? aktiverGang : 0
     setKorb(prev => {
       const idx = prev.findIndex(k =>
         k.artikel.id === a.id &&
+        k.gang === gang &&
         JSON.stringify(k.modifikatoren) === JSON.stringify(mods)
       )
-      if (idx === -1) return [...prev, { artikel: a, menge, modifikatoren: mods }]
+      if (idx === -1) return [...prev, { artikel: a, menge, modifikatoren: mods, gang }]
       return prev.map((k, i) => i === idx ? { ...k, menge: k.menge + menge } : k)
     })
   }
@@ -218,6 +232,7 @@ export function ArtikelWaehlenPage() {
           menge:           k.menge,
           station:         k.artikel.station ?? undefined,
           modifikatoren:   k.modifikatoren.length > 0 ? k.modifikatoren : undefined,
+          ...(gaenge ? { gang: k.gang } : {}),
         })),
       ])
     },
@@ -409,6 +424,25 @@ export function ArtikelWaehlenPage() {
           <h1 className="font-black text-ink text-lg flex-1">Artikel wählen</h1>
           <span className="text-xs text-ink-subtle">{auth.user.name}</span>
         </div>
+
+        {/* Gang-Wähler: neu gebuchte Artikel erben den aktiven Gang (0 = Sofort) */}
+        {gaenge && (
+          <div className="mt-3 flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+            {[0, ...Array.from({ length: anzahl }, (_, i) => i + 1)].map(g => (
+              <button
+                key={g}
+                onClick={() => setAktiverGang(g)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-black whitespace-nowrap transition shrink-0 ${
+                  aktiverGang === g
+                    ? 'bg-amber-500 text-white shadow-sm'
+                    : 'border border-line-strong bg-panel text-ink-muted'
+                }`}
+              >
+                {gangLabel(g)}
+              </button>
+            ))}
+          </div>
+        )}
 
         {kategorien.length > 0 && (
           <div className="mt-3 flex gap-1 overflow-x-auto pb-1 scrollbar-none">
