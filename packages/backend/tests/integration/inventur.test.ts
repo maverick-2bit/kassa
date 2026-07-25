@@ -143,6 +143,29 @@ describe('Inventur (Integration, echtes PostgreSQL)', () => {
     expect(res.body).toContain('Artikel A')
   })
 
+  it('offene Inventur ergänzt nachträglich lagergeführte Artikel automatisch', async () => {
+    const { id } = (await srv.fastify.inject({ method: 'POST', url: '/api/inventuren', headers: auth(), payload: {} })).json()
+
+    // C bekommt ERST JETZT Lagerführung (war bei der Anlage nicht dabei)
+    await idb.db.update(artikel).set({ lagerstandAktiv: true, lagerstandMenge: 7 }).where(eq(artikel.id, cId))
+
+    const detail = (await srv.fastify.inject({ method: 'GET', url: `/api/inventuren/${id}`, headers: auth() })).json()
+    const posC = detail.positionen.find((p: { artikelId: string }) => p.artikelId === cId)
+    expect(posC).toBeDefined()            // automatisch ergänzt — ohne Suche/Neuanlage
+    expect(posC.sollMenge).toBe(7)
+    expect(posC.istMenge).toBeNull()
+
+    // Bestehende Positionen bleiben unverändert (kein Duplikat, Soll nicht überschrieben)
+    const idsA = detail.positionen.filter((p: { artikelId: string }) => p.artikelId === aId)
+    expect(idsA).toHaveLength(1)
+
+    // Abgeschlossene Inventur ergänzt NICHT mehr
+    await srv.fastify.inject({ method: 'POST', url: `/api/inventuren/${id}/abschliessen`, headers: auth() })
+    await idb.db.update(artikel).set({ lagerstandAktiv: false }).where(eq(artikel.id, cId))
+    const danach = (await srv.fastify.inject({ method: 'GET', url: `/api/inventuren/${id}`, headers: auth() })).json()
+    expect(danach.positionen.length).toBe(detail.positionen.length)
+  })
+
   it('ohne Berechtigung artikel.verwalten → 403', async () => {
     const res = await srv.fastify.inject({
       method: 'POST', url: '/api/inventuren',
