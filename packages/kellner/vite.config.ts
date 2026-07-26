@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { Agent } from 'node:http'
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
@@ -35,14 +36,21 @@ const killSwImDev = (): Plugin => ({
   },
 })
 
+// /api ans Backend weiterleiten (dev-server + preview). Explizit 127.0.0.1
+// statt localhost (Windows löst teils zu ::1 → ECONNREFUSED) und Keep-Alive-
+// Agent gegen teure Cold-Connects — Muster identisch zum Haupt-Frontend.
+const keepAliveAgent = new Agent({ keepAlive: true })
+const API_PROXY = {
+  '/api': { target: 'http://127.0.0.1:3000', changeOrigin: true, agent: keepAliveAgent },
+}
+
 export default defineConfig({
   plugins: [react(), tailwindcss(), killSwImDev()],
   define: {
     __APP_VERSION__: JSON.stringify(version),
   },
-  server: {
-    proxy: {
-      '/api': 'http://localhost:3000',
-    },
-  },
+  server:  { proxy: API_PROXY },
+  // preview braucht einen EIGENEN Proxy (server.proxy gilt dort nicht) —
+  // Voraussetzung für die Kellner-E2E gegen das gebaute Bundle (Port 5178).
+  preview: { port: 5178, proxy: API_PROXY },
 })
