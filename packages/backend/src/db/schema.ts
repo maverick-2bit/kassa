@@ -182,6 +182,10 @@ export const kassen = pgTable('kassen', {
 
   /** E-Mail-Adresse für automatische Tagesabschluss-Zusammenfassung (Feature 7) */
   abschlussEmail:        text('abschluss_email'),
+  /** Automatischer Tagesabschluss: Uhrzeit 'HH:MM' Wiener Zeit (null = aus). Uhrzeiten vor 12:00 schließen den VORTAG ab. */
+  autoAbschlussUhrzeit:  text('auto_abschluss_uhrzeit'),
+  /** Abschlusstag (YYYY-MM-DD), für den zuletzt automatisch abgeschlossen wurde — Idempotenz-Stempel des Auto-Abschluss-Crons */
+  letzterAutoAbschlussTag: text('letzter_auto_abschluss_tag'),
   /** Self-Checkout via QR — Gäste können offene Rechnung einsehen und Zahlung anfordern */
   selfCheckoutAktiv:     boolean('self_checkout_aktiv').notNull().default(false),
 

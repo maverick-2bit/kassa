@@ -1536,10 +1536,13 @@ export const selfcheckoutApi = {
 // ---------------------------------------------------------------------------
 
 export const kasseErweiterungApi = {
-  getAbschlussEmail: (kasseId: string): Promise<{ abschlussEmail: string | null }> =>
+  getAbschluss: (kasseId: string): Promise<{ abschlussEmail: string | null; autoAbschlussUhrzeit: string | null }> =>
     request('GET', `/api/kassen/${kasseId}/abschluss-email`),
-  setAbschlussEmail: (kasseId: string, abschlussEmail: string | null): Promise<{ abschlussEmail: string | null }> =>
-    request('PATCH', `/api/kassen/${kasseId}/abschluss-email`, { abschlussEmail }),
+  setAbschluss: (
+    kasseId: string,
+    patch: { abschlussEmail?: string | null; autoAbschlussUhrzeit?: string | null },
+  ): Promise<{ abschlussEmail: string | null; autoAbschlussUhrzeit: string | null }> =>
+    request('PATCH', `/api/kassen/${kasseId}/abschluss-email`, patch),
   getSelfCheckout: (kasseId: string): Promise<{ selfCheckoutAktiv: boolean; selfCheckoutUrl: string }> =>
     request('GET', `/api/kassen/${kasseId}/self-checkout`),
   setSelfCheckout: (kasseId: string, aktiv: boolean): Promise<{ selfCheckoutAktiv: boolean }> =>
