@@ -2,6 +2,8 @@ import { spawn }      from 'node:child_process'
 import { createWriteStream } from 'node:fs'
 import { mkdir, stat, readFile, unlink } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
+import { createGzip } from 'node:zlib'
+import { pipeline } from 'node:stream/promises'
 import { asc, desc, eq } from 'drizzle-orm'
 import type { Db }       from '../db/client.js'
 import { dbSicherungen } from '../db/schema.js'
@@ -35,26 +37,22 @@ export async function erstelleDbSicherung(
     const dump = spawn('pg_dump', ['--no-password', urlSansPw], {
       env: { ...process.env, ...(password ? { PGPASSWORD: password } : {}) },
     })
-    const gzip = spawn('gzip', ['-c'])
+    // Kompression in-process (node:zlib) statt externem gzip-Binary — das
+    // fehlte auf Windows außerhalb von Git-Bash ("spawn gzip ENOENT").
+    const gzip = createGzip()
     const out  = createWriteStream(dateipfad)
-
-    dump.stdout.pipe(gzip.stdin)
-    gzip.stdout.pipe(out)
 
     let stderrBuf = ''
     dump.stderr.on('data', (d: Buffer) => { stderrBuf += d.toString() })
-    gzip.stderr.on('data', (d: Buffer) => { stderrBuf += d.toString() })
 
-    const onError = (e: Error) => { out.destroy(); rej(e) }
-    dump.on('error', onError)
-    gzip.on('error', onError)
-    out.on('error', rej)
+    // pg_dump selbst nicht startbar (z. B. Binary fehlt)
+    dump.on('error', (e: Error) => { out.destroy(); gzip.destroy(); rej(e) })
 
     let dumpCode: number | null = null
-    let outFinished = false
+    let pipeFertig = false
 
     function trySettle() {
-      if (dumpCode === null || !outFinished) return
+      if (dumpCode === null || !pipeFertig) return
       if (stderrBuf.trim()) fehler = stderrBuf.trim().slice(0, 500)
       if (dumpCode !== 0) {
         rej(new Error(`pg_dump fehlgeschlagen (exit ${dumpCode}): ${fehler ?? ''}`.trimEnd()))
@@ -64,7 +62,10 @@ export async function erstelleDbSicherung(
     }
 
     dump.on('close', (code) => { dumpCode = code ?? 1; trySettle() })
-    out.on('finish', () => { outFinished = true; trySettle() })
+    // pipeline verwaltet Backpressure + Stream-Fehler und schließt out sauber
+    pipeline(dump.stdout, gzip, out)
+      .then(() => { pipeFertig = true; trySettle() })
+      .catch((e: Error) => rej(e))
   })
   } catch (e) {
     // Fehler festhalten aber weiter ausführen, um den Eintrag in der DB zu schreiben

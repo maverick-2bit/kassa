@@ -18,15 +18,15 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: pnpm einrichten
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 9.15.0
 
       - name: Node.js einrichten
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -65,7 +65,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # Für den Backup-Restore-Drill (pg_dump/psql müssen zum 17er-Server passen).
       # Best-Effort: schlägt die PGDG-Installation fehl, überspringt sich der
@@ -79,12 +79,12 @@ jobs:
           sudo apt-get install -y -qq postgresql-client-17
 
       - name: pnpm einrichten
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 9.15.0
 
       - name: Node.js einrichten
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -107,15 +107,15 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: pnpm einrichten
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 9.15.0
 
       - name: Node.js einrichten
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -170,15 +170,15 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: pnpm einrichten
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 9.15.0
 
       - name: Node.js einrichten
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -210,7 +210,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Minimal-.env (Basis-Interpolation; Dev-Override setzt die echten Werte)
         run: |
@@ -257,20 +257,20 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Docker Buildx einrichten
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Bei GHCR anmelden
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Backend-Image bauen
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context:    .
           file:       packages/backend/Dockerfile
@@ -280,7 +280,7 @@ jobs:
           cache-to:   type=gha,mode=max
 
       - name: Frontend-Image bauen
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context:    .
           file:       packages/frontend/Dockerfile
@@ -290,7 +290,7 @@ jobs:
           cache-to:   type=gha,mode=max
 
       - name: KDS-Image bauen
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context:    .
           file:       packages/kds/Dockerfile
@@ -300,7 +300,7 @@ jobs:
           cache-to:   type=gha,mode=max
 
       - name: Kundendisplay-Image bauen
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context:    .
           file:       packages/kundendisplay/Dockerfile
@@ -310,7 +310,7 @@ jobs:
           cache-to:   type=gha,mode=max
 
       - name: Gast-Image bauen
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context:    .
           file:       packages/gast/Dockerfile
@@ -320,7 +320,7 @@ jobs:
           cache-to:   type=gha,mode=max
 
       - name: Kellner-Image bauen
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context:    .
           file:       packages/kellner/Dockerfile
