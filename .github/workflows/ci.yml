@@ -114,8 +114,28 @@ jobs:
 
       # Schlägt nur bei high/critical fehl; moderate/low werden gemeldet, brechen
       # den Build aber nicht (sonst Dauer-Rot durch Advisories ohne Fix).
+      # Resilienz: Liefert die npm-Registry eine kaputte Antwort („… is not valid
+      # JSON" — Registry-Störung, kein Sicherheitsbefund), wird 2× erneut versucht
+      # und danach nur GEWARNT statt fehlgeschlagen. Echte Befunde bleiben rot.
       - name: Produktions-Abhängigkeiten auditieren
-        run: pnpm audit --prod --audit-level high
+        shell: bash
+        run: |
+          set +e
+          for versuch in 1 2 3; do
+            out=$(pnpm audit --prod --audit-level high 2>&1)
+            code=$?
+            echo "$out"
+            if [ $code -eq 0 ]; then exit 0; fi
+            if echo "$out" | grep -q "is not valid JSON"; then
+              echo "Registry-Antwort defekt (Versuch $versuch/3) — warte 20s…"
+              sleep 20
+              continue
+            fi
+            # Echter Audit-Befund (oder anderer Fehler) → rot
+            exit $code
+          done
+          echo "::warning::npm-Registry-Audit-Endpoint liefert keine gültige Antwort — Audit diesmal ohne Ergebnis übersprungen (KEIN Befund, aber auch keine Entwarnung)."
+          exit 0
 
   # ── End-to-End (Playwright, echtes PostgreSQL, FinanzOnline gestubt) ──────────
   e2e:
