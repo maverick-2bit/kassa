@@ -67,6 +67,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Für den Backup-Restore-Drill (pg_dump/psql müssen zum 17er-Server passen).
+      # Best-Effort: schlägt die PGDG-Installation fehl, überspringt sich der
+      # Drill-Test selbst (describe.skipIf) — die übrige Suite bleibt unberührt.
+      - name: PostgreSQL-17-Client (Backup-Restore-Drill)
+        continue-on-error: true
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y -qq postgresql-client-17
+
       - name: pnpm einrichten
         uses: pnpm/action-setup@v4
         with:
