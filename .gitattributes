@@ -8,3 +8,5 @@ ops/Kassa-Setup.command text eol=lf
 # Compose-Dateien LF erzwingen (Inline-Shell in Services darf kein CRLF tragen).
 docker-compose*.yml text eol=lf
 *.cmd -text
+# ESC/POS-Golden-Master: Byte-genau — niemals EOL-konvertieren
+packages/backend/tests/fixtures/escpos-golden/* -text
