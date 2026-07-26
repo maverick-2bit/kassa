@@ -60,5 +60,14 @@ export default defineConfig({
       reuseExistingServer: false,
       timeout: 120_000,
     },
+    {
+      // Kellner-App (mobile-first) fuer die Kellner-Journey — eigener Preview
+      // auf 5178 mit /api-Proxy (siehe kellner/vite.config.ts).
+      command: 'npx vite build && npx vite preview --port 5178 --strictPort --host 127.0.0.1',
+      cwd: resolve(here, '../kellner'),
+      url: 'http://127.0.0.1:5178',
+      reuseExistingServer: false,
+      timeout: 120_000,
+    },
   ],
 })
