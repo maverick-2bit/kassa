@@ -260,6 +260,13 @@
       "when": 1785400000000,
       "tag": "0037_auto_abschluss",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1785500000000,
+      "tag": "0038_kds_erledigt_at",
+      "breakpoints": true
     }
   ]
 }

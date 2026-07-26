@@ -131,7 +131,7 @@ export async function kdsBonErledigt(db: Db, bonId: string, mandantId: string): 
 
   await db
     .update(kdsBons)
-    .set({ status: 'erledigt' })
+    .set({ status: 'erledigt', erledigtAt: new Date() })
     .where(eq(kdsBons.id, bonId))
 
   // Push an alle Displays dieser Station
@@ -184,6 +184,7 @@ export async function kdsBonTeilbon(
     .set({
       positionen: aktualisiert,
       status:     alleErledigt ? 'erledigt' : 'offen',
+      erledigtAt: alleErledigt ? new Date() : null,
     })
     .where(eq(kdsBons.id, bonId))
     .returning()

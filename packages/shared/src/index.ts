@@ -289,6 +289,11 @@ export {
   KassenVergleichFilterSchema,
   KassenVergleichZeileSchema,
   KassenVergleichResponseSchema,
+  KuechenBerichtFilterSchema,
+  KuechenBerichtStationZeileSchema,
+  KuechenBerichtArtikelZeileSchema,
+  KuechenBerichtStundenZeileSchema,
+  KuechenBerichtResponseSchema,
 } from './schemas/bericht.js'
 export type {
   BerichtFilter,
@@ -311,6 +316,11 @@ export type {
   KassenVergleichFilter,
   KassenVergleichZeile,
   KassenVergleichResponse,
+  KuechenBerichtFilter,
+  KuechenBerichtStationZeile,
+  KuechenBerichtArtikelZeile,
+  KuechenBerichtStundenZeile,
+  KuechenBerichtResponse,
 } from './schemas/bericht.js'
 
 // Tagesabschluss

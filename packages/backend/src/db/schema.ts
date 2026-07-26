@@ -1040,6 +1040,8 @@ export const kdsBons = pgTable('kds_bons', {
   /** 4-stellige SB-Bestellnummer für den Badge am KDS (denormalisiert) */
   sbBestellNummer: varchar('sb_bestell_nummer', { length: 10 }),
   erstelltAt: timestamp('erstellt_at', { withTimezone: true }).notNull().defaultNow(),
+  /** Zeitpunkt der (vollständigen) Erledigung — Basis der Küchen-Durchlaufzeiten */
+  erledigtAt: timestamp('erledigt_at', { withTimezone: true }),
 }, (t) => ({
   mandantStationIdx: index('kds_bons_mandant_station_idx').on(t.mandantId, t.station, t.status),
   sbBestellungIdx:   index('kds_bons_sb_bestellung_idx').on(t.sbBestellungId),
