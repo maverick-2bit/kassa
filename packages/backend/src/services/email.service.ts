@@ -215,6 +215,10 @@ export interface TagesabschlussEmailDaten {
   anzahlBarzahlungsbelege: number
   anzahlStornobelege:      number
   mwst: Array<{ satz: string; nettoCent: number; steuerCent: number; bruttoCent: number }>
+  /** Beim Versand noch offene Tische — werden am Folgetag abgerechnet (Auto-Abschluss) */
+  offeneTische?:           number
+  /** true = vom Auto-Abschluss-Cron versendet (Betreff-Kennzeichnung) */
+  automatisch?:            boolean
 }
 
 export async function sendeTagesabschlussEmail(
@@ -304,6 +308,10 @@ export async function sendeTagesabschlussEmail(
         <p style="margin:4px 0 0;font-size:12px;color:#6b7280">Stornos</p>
       </div>
     </div>
+    ${(daten.offeneTische ?? 0) > 0 ? `
+    <div style="padding:12px 28px;background:#fffbeb;border-top:1px solid #fde68a">
+      <p style="margin:0;font-size:13px;color:#92400e">⚠ ${daten.offeneTische} offene${daten.offeneTische === 1 ? 'r' : ''} Tisch${daten.offeneTische === 1 ? '' : 'e'} zum Abschlusszeitpunkt — die Beträge erscheinen im Abschluss des Abrechnungstags.</p>
+    </div>` : ''}
   </div>
 </body>
 </html>`
@@ -311,8 +319,8 @@ export async function sendeTagesabschlussEmail(
   await transporter.sendMail({
     from,
     to:      empfaenger,
-    subject: `Tagesabschluss ${daten.datum} — ${daten.firmenname}`,
+    subject: `Tagesabschluss ${daten.datum} — ${daten.firmenname}${daten.automatisch ? ' (automatisch)' : ''}`,
     html,
-    text:    `Tagesabschluss ${daten.datum}\n${daten.firmenname} / Kasse ${daten.kassenId}\n\nNetto-Umsatz: ${fmt(daten.nettoUmsatzCent)}\nBar: ${fmt(daten.barCent)}\nKarte: ${fmt(daten.karteCent)}\nBelege: ${daten.anzahlBarzahlungsbelege}\nStornos: ${daten.anzahlStornobelege}\n`,
+    text:    `Tagesabschluss ${daten.datum}\n${daten.firmenname} / Kasse ${daten.kassenId}\n\nNetto-Umsatz: ${fmt(daten.nettoUmsatzCent)}\nBar: ${fmt(daten.barCent)}\nKarte: ${fmt(daten.karteCent)}\nBelege: ${daten.anzahlBarzahlungsbelege}\nStornos: ${daten.anzahlStornobelege}\n${(daten.offeneTische ?? 0) > 0 ? `Offene Tische: ${daten.offeneTische}\n` : ''}`,
   })
 }

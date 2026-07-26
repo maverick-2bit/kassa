@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { QRCodeSVG } from 'qrcode.react'
 import { ALLE_STATIONEN, STATION_LABELS, type Station, type ZvtConfig, type WeitereKasseInput, type PosKonfig, type Artikel, type Kategorie, type SeeTyp } from '@kassa/shared'
-import { druckerApi, druckerPoolApi, kdsApi, seeApi, zvtApi, downloadDepExport, healthApi, monitoringApi, mandantApi, stripeApi, kasseApi, kategorieApi, artikelApi, posConfigApi, tischplanApi, dbBackupApi, belegApi, systemApi, type DruckerConfig, type KdsConfig, type DbSicherungRow, type MonitoringStatus } from '../lib/api'
+import { druckerApi, druckerPoolApi, kdsApi, seeApi, zvtApi, downloadDepExport, healthApi, monitoringApi, mandantApi, stripeApi, kasseApi, kasseErweiterungApi, kategorieApi, artikelApi, posConfigApi, tischplanApi, dbBackupApi, belegApi, systemApi, type DruckerConfig, type KdsConfig, type DbSicherungRow, type MonitoringStatus } from '../lib/api'
 import type { DruckerPool, DruckerPoolInput } from '@kassa/shared'
 import { Modal } from '../components/ui/Modal'
 import { BonierdruckerBibliothek } from '../components/BonierdruckerBibliothek'
@@ -74,6 +74,7 @@ export function EinstellungenPage() {
           <KassenVerwaltungSektion />
           <WarengruppenVerteilungSektion />
           <KasseBezeichnungSektion />
+          <AutoAbschlussSektion />
         </>
       )}
       {bereich === 'beleg' && (
@@ -599,6 +600,119 @@ function KasseBezeichnungSektion() {
           onClick={() => { setMeldung(null); speichern.mutate() }}
           loading={speichern.isPending}
           disabled={!wert.trim() || wert.trim() === (kasseInfo?.bezeichnung ?? kasseInfo?.kassenId ?? '')}
+        >
+          Speichern
+        </Button>
+      </div>
+    </section>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Automatischer Tagesabschluss (Uhrzeit + E-Mail-Zusammenfassung je Kasse)
+// ---------------------------------------------------------------------------
+
+function AutoAbschlussSektion() {
+  const identity    = getKasseIdentity()!
+  const queryClient = useQueryClient()
+  const [email, setEmail]     = useState('')
+  const [aktiv, setAktiv]     = useState(false)
+  const [uhrzeit, setUhrzeit] = useState('04:00')
+  const [meldung, setMeldung] = useState<{ typ: 'ok' | 'fehler'; text: string } | null>(null)
+
+  const abfrage = useQuery({
+    queryKey: ['kasse-abschluss', identity.kasseId],
+    queryFn:  () => kasseErweiterungApi.getAbschluss(identity.kasseId),
+  })
+
+  useEffect(() => {
+    if (!abfrage.data) return
+    setEmail(abfrage.data.abschlussEmail ?? '')
+    setAktiv(abfrage.data.autoAbschlussUhrzeit != null)
+    if (abfrage.data.autoAbschlussUhrzeit) setUhrzeit(abfrage.data.autoAbschlussUhrzeit)
+  }, [abfrage.data])
+
+  const speichern = useMutation({
+    mutationFn: () => kasseErweiterungApi.setAbschluss(identity.kasseId, {
+      abschlussEmail:       email.trim() === '' ? null : email.trim(),
+      autoAbschlussUhrzeit: aktiv ? uhrzeit : null,
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['kasse-abschluss', identity.kasseId] })
+      setMeldung({ typ: 'ok', text: 'Tagesabschluss-Einstellungen gespeichert' })
+    },
+    onError: (err) => setMeldung({ typ: 'fehler', text: err instanceof Error ? err.message : String(err) }),
+  })
+
+  const vortag = aktiv && uhrzeit < '12:00'
+
+  return (
+    <section className="rounded-lg bg-panel shadow-sm border border-line p-6 space-y-4">
+      <div>
+        <h2 className="text-base font-semibold text-ink">Automatischer Tagesabschluss</h2>
+        <p className="text-sm text-ink-muted mt-0.5">
+          Versendet die Tagesabschluss-Zusammenfassung (Z-Bon) dieser Kasse zur eingestellten
+          Uhrzeit automatisch per E-Mail. Es wird nichts gedruckt; Tage ohne Belege werden
+          übersprungen. Offene Tische verhindern den Abschluss nicht — sie werden in der
+          E-Mail vermerkt.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Field label="E-Mail-Empfänger" hint="Leer = keine Zusammenfassung (weder manuell noch automatisch)">
+          <Input
+            type="text"
+            inputMode="email"
+            value={email}
+            onChange={e => { setEmail(e.target.value); setMeldung(null) }}
+            placeholder="z. B. chef@betrieb.at"
+          />
+        </Field>
+        <Field
+          label="Automatisch abschließen"
+          hint={vortag ? `Um ${uhrzeit} Uhr wird der VORTAG abgeschlossen (Uhrzeiten vor 12:00).` : aktiv ? `Um ${uhrzeit} Uhr wird der laufende Tag abgeschlossen.` : 'Aus — Abschluss nur manuell über die Belege-Seite.'}
+        >
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => { setAktiv(a => !a); setMeldung(null) }}
+              className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition ${aktiv ? 'bg-brand-600' : 'bg-panel-2 border border-line'}`}
+              aria-pressed={aktiv}
+              aria-label="Automatischen Tagesabschluss umschalten"
+            >
+              <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transform transition ${aktiv ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
+            <Input
+              type="time"
+              value={uhrzeit}
+              onChange={e => { if (e.target.value) setUhrzeit(e.target.value); setMeldung(null) }}
+              disabled={!aktiv}
+              className="w-32"
+            />
+          </div>
+        </Field>
+      </div>
+
+      {aktiv && email.trim() === '' && (
+        <div className="rounded-md p-3 text-sm bg-amber-50 border border-amber-200 text-amber-800">
+          Ohne E-Mail-Empfänger wird der automatische Abschluss zwar vermerkt, aber es
+          erreicht dich keine Zusammenfassung.
+        </div>
+      )}
+
+      {meldung && (
+        <div className={`rounded-md p-3 text-sm ${
+          meldung.typ === 'ok'
+            ? 'bg-green-50 border border-green-200 text-green-700'
+            : 'bg-red-50 border border-red-200 text-red-700'
+        }`}>{meldung.text}</div>
+      )}
+
+      <div className="pt-2 border-t border-line">
+        <Button
+          onClick={() => { setMeldung(null); speichern.mutate() }}
+          loading={speichern.isPending}
+          disabled={abfrage.isLoading}
         >
           Speichern
         </Button>

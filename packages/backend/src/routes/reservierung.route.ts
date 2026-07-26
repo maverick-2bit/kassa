@@ -221,14 +221,14 @@ export const reservierungRoute: FastifyPluginAsync<ReservierungRouteOptions> = a
     if (!p.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
 
     const [kasse] = await opts.db
-      .select({ abschlussEmail: kassen.abschlussEmail })
+      .select({ abschlussEmail: kassen.abschlussEmail, autoAbschlussUhrzeit: kassen.autoAbschlussUhrzeit })
       .from(kassen)
       .where(and(eq(kassen.id, p.data.kasseId), eq(kassen.mandantId, request.user.mandantId)))
       .limit(1)
 
     if (!kasse) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
 
-    return reply.send({ abschlussEmail: kasse.abschlussEmail })
+    return reply.send({ abschlussEmail: kasse.abschlussEmail, autoAbschlussUhrzeit: kasse.autoAbschlussUhrzeit })
   })
 
   // ---- PATCH /kassen/:kasseId/abschluss-email ----
@@ -236,17 +236,26 @@ export const reservierungRoute: FastifyPluginAsync<ReservierungRouteOptions> = a
     const p = KasseParam.safeParse(request.params)
     if (!p.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
 
-    const body = z.object({ abschlussEmail: z.string().email().nullable() }).safeParse(request.body)
+    const body = z.object({
+      abschlussEmail:       z.string().email().nullable().optional(),
+      /** 'HH:MM' Wiener Zeit; null = Auto-Abschluss aus. Vor 12:00 = Vortag. */
+      autoAbschlussUhrzeit: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Uhrzeit als HH:MM').nullable().optional(),
+    }).safeParse(request.body)
     if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
 
     const [updated] = await opts.db
       .update(kassen)
-      .set({ abschlussEmail: body.data.abschlussEmail, updatedAt: new Date() })
+      .set({
+        ...(body.data.abschlussEmail       !== undefined && { abschlussEmail:       body.data.abschlussEmail }),
+        // Uhrzeit-Änderung setzt den Idempotenz-Stempel zurück (neue Uhrzeit = frischer Zyklus)
+        ...(body.data.autoAbschlussUhrzeit !== undefined && { autoAbschlussUhrzeit: body.data.autoAbschlussUhrzeit, letzterAutoAbschlussTag: null }),
+        updatedAt: new Date(),
+      })
       .where(and(eq(kassen.id, p.data.kasseId), eq(kassen.mandantId, request.user.mandantId)))
-      .returning({ abschlussEmail: kassen.abschlussEmail })
+      .returning({ abschlussEmail: kassen.abschlussEmail, autoAbschlussUhrzeit: kassen.autoAbschlussUhrzeit })
 
     if (!updated) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
 
-    return reply.send({ abschlussEmail: updated.abschlussEmail })
+    return reply.send({ abschlussEmail: updated.abschlussEmail, autoAbschlussUhrzeit: updated.autoAbschlussUhrzeit })
   })
 }

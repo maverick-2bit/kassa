@@ -9,6 +9,7 @@ import { runMigrations } from './db/migrate.js'
 import { buildServer } from './server.js'
 import { starteDepSicherungsCron } from './services/dep-sicherung.cron.js'
 import { starteDbBackupCron }      from './services/db-backup.cron.js'
+import { starteAutoAbschlussCron } from './services/auto-abschluss.cron.js'
 import { erstelleStubFinanzOnlineClient } from './services/finanz-online.stub.js'
 
 async function main(): Promise<void> {
@@ -50,8 +51,9 @@ async function main(): Promise<void> {
     dbBackupRetention: config.DB_BACKUP_RETENTION,
   })
 
-  const stopDepCron = starteDepSicherungsCron(db, config.DEP_BACKUP_DIR, server.log)
-  const stopDbCron  = starteDbBackupCron(db, config.DATABASE_URL, config.DB_BACKUP_DIR, config.DB_BACKUP_RETENTION, server.log)
+  const stopDepCron  = starteDepSicherungsCron(db, config.DEP_BACKUP_DIR, server.log)
+  const stopDbCron   = starteDbBackupCron(db, config.DATABASE_URL, config.DB_BACKUP_DIR, config.DB_BACKUP_RETENTION, server.log)
+  const stopAutoCron = starteAutoAbschlussCron(db, config, server.log)
 
   // Letzte Auffanglinie für verirrte Fehler — protokollieren statt stillem Absturz
   process.on('unhandledRejection', (reason) => {
@@ -80,6 +82,7 @@ async function main(): Promise<void> {
     try {
       stopDepCron()
       stopDbCron()
+      stopAutoCron()
       await server.close()   // keine neuen Requests, laufende abwarten
       await sql.end({ timeout: 5 }) // DB-Pool drainen
       server.log.info('Sauber heruntergefahren.')
