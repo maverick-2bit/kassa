@@ -170,10 +170,14 @@ export function derZuP1363(derSig: Buffer): Buffer {
   const sLen = derSig[offset++] as number
   const s    = derSig.subarray(offset, offset + sLen)
 
-  // Führende Null-Bytes (ASN.1 Vorzeichen) entfernen, auf 32 Byte padden
+  // ASN.1-INTEGER sind minimal kodiert: 33 Byte = 0x00-Vorzeichen-Padding
+  // (strippen), < 32 Byte = führende Null-Bytes weggelassen (rechtsbündig
+  // einsetzen — ein negativer subarray-Index würde stattdessen vom Ende zählen).
   const result = Buffer.alloc(64, 0)
-  r.subarray(r.length - 32).copy(result, 0)
-  s.subarray(s.length - 32).copy(result, 32)
+  const rTrim = r.length > 32 ? r.subarray(r.length - 32) : r
+  const sTrim = s.length > 32 ? s.subarray(s.length - 32) : s
+  rTrim.copy(result, 32 - rTrim.length)
+  sTrim.copy(result, 64 - sTrim.length)
   return result
 }
 
