@@ -110,6 +110,7 @@ export function EinstellungenPage() {
       {bereich === 'system' && (
         <>
           <AktualisierungSektion />
+          <DruckerStatusSektion />
           <DbBackupSektion />
           <SystemInfoSektion />
         </>
@@ -604,6 +605,123 @@ function KasseBezeichnungSektion() {
           Speichern
         </Button>
       </div>
+    </section>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Drucker-Status + Keep-Alive (Einstellungen → System)
+// ---------------------------------------------------------------------------
+
+function DruckerStatusSektion() {
+  const queryClient = useQueryClient()
+  const [intervall, setIntervall] = useState<string>('')
+  const [meldung, setMeldung]     = useState<{ typ: 'ok' | 'fehler'; text: string } | null>(null)
+
+  const status = useQuery({
+    queryKey:        ['monitoring-status'],
+    queryFn:         () => monitoringApi.get(),
+    refetchInterval: 30_000,
+  })
+
+  useEffect(() => {
+    if (status.data && intervall === '') {
+      setIntervall(String(status.data.druckerKeepAlive.intervallSekunden))
+    }
+  }, [status.data, intervall])
+
+  const speichern = useMutation({
+    mutationFn: () => monitoringApi.setKeepAlive(Math.max(0, parseInt(intervall, 10) || 0)),
+    onSuccess:  (d) => {
+      setMeldung({ typ: 'ok', text: d.intervallSekunden === 0 ? 'Keep-Alive ausgeschaltet' : `Keep-Alive alle ${d.intervallSekunden} s aktiv` })
+      queryClient.invalidateQueries({ queryKey: ['monitoring-status'] })
+    },
+    onError: (err) => setMeldung({ typ: 'fehler', text: err instanceof Error ? err.message : String(err) }),
+  })
+
+  const pruefen = useMutation({
+    mutationFn: () => monitoringApi.pruefeDrucker(),
+    onSuccess:  () => queryClient.invalidateQueries({ queryKey: ['monitoring-status'] }),
+    onError: (err) => setMeldung({ typ: 'fehler', text: err instanceof Error ? err.message : String(err) }),
+  })
+
+  const drucker = status.data?.druckerKeepAlive.drucker ?? []
+
+  return (
+    <section className="rounded-lg bg-panel shadow-sm border border-line p-6 space-y-4">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-base font-semibold text-ink">Drucker-Status & Keep-Alive</h2>
+          <p className="text-sm text-ink-muted mt-0.5">
+            Pingt alle aktiven Drucker zyklisch an (Statusabfrage, druckt nichts) — verhindert,
+            dass Bondrucker in den Energiespar-/Schlafmodus wechseln, und zeigt ihre Erreichbarkeit.
+          </p>
+        </div>
+        <Button variant="secondary" onClick={() => pruefen.mutate()} loading={pruefen.isPending}>
+          Jetzt prüfen
+        </Button>
+      </div>
+
+      <div className="flex items-end gap-3">
+        <Field label="Intervall (Sekunden)" hint="0 = aus · empfohlen 60">
+          <Input
+            type="number" min={0} max={3600} value={intervall}
+            onChange={e => { setIntervall(e.target.value); setMeldung(null) }}
+            className="w-32"
+          />
+        </Field>
+        <Button onClick={() => { setMeldung(null); speichern.mutate() }} loading={speichern.isPending}>
+          Speichern
+        </Button>
+      </div>
+
+      {meldung && (
+        <div className={`rounded-md p-3 text-sm ${
+          meldung.typ === 'ok'
+            ? 'bg-green-50 border border-green-200 text-green-700'
+            : 'bg-red-50 border border-red-200 text-red-700'
+        }`}>{meldung.text}</div>
+      )}
+
+      {drucker.length === 0 ? (
+        <p className="text-sm text-ink-muted border-t border-line pt-3">
+          Noch kein Ping-Ergebnis — Keep-Alive aus, kein Drucker angelegt oder erster Lauf steht aus.
+        </p>
+      ) : (
+        <div className="border-t border-line pt-3 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs text-ink-muted uppercase tracking-wide">
+                <th className="py-2 pr-4">Drucker</th>
+                <th className="py-2 pr-4">Adresse</th>
+                <th className="py-2 pr-4">Status</th>
+                <th className="py-2 pr-4">Antwortzeit</th>
+                <th className="py-2">Zuletzt geprüft</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {drucker.map(d => (
+                <tr key={`${d.ip}:${d.port}`}>
+                  <td className="py-2 pr-4 font-medium text-ink">
+                    {d.name}
+                    <span className="ml-2 text-xs text-ink-subtle">{d.quelle === 'beleg' ? 'Beleg' : 'Bonier'}</span>
+                  </td>
+                  <td className="py-2 pr-4 font-mono text-xs text-ink-muted">{d.ip}:{d.port}</td>
+                  <td className="py-2 pr-4">
+                    <span className={`inline-flex items-center gap-1.5 text-xs font-semibold ${d.ok ? 'text-green-600' : 'text-red-600'}`}>
+                      <span className={`w-2 h-2 rounded-full ${d.ok ? 'bg-green-500' : 'bg-red-500'}`} />
+                      {d.ok ? (d.statusByte ? 'Online' : 'Erreichbar') : 'Nicht erreichbar'}
+                    </span>
+                    {d.fehler && <p className="text-xs text-red-500 mt-0.5">{d.fehler}</p>}
+                  </td>
+                  <td className="py-2 pr-4 font-mono text-xs text-ink-muted">{d.dauerMs} ms</td>
+                  <td className="py-2 text-xs text-ink-muted">{new Date(d.geprueftAm).toLocaleTimeString('de-AT')}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </section>
   )
 }
