@@ -73,6 +73,9 @@ export const mandanten = pgTable('mandanten', {
   /** Stripe Webhook Signing Secret (whsec_…), verschlüsselt */
   stripeWebhookSecretEnc: text('stripe_webhook_secret_enc'),
 
+  /** Drucker-Keep-Alive-Intervall in Sekunden (0 = aus) — hält Bondrucker aus dem Schlafmodus */
+  druckerKeepAliveSekunden: integer('drucker_keep_alive_sekunden').notNull().default(60),
+
   createdAt:    timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt:    timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({

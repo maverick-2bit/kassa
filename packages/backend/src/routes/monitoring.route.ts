@@ -1,8 +1,11 @@
 import type { FastifyPluginAsync } from 'fastify'
-import { sql } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
+import { z } from 'zod'
 import os from 'node:os'
 import type { Db } from '../db/client.js'
+import { mandanten } from '../db/schema.js'
 import { holeBackupStatus } from '../services/monitoring.service.js'
+import { fuehreKeepAliveDurch, holeDruckerKeepAliveStatus } from '../services/drucker-keepalive.service.js'
 
 export interface MonitoringRouteOptions {
   db: Db
@@ -83,10 +86,21 @@ export const monitoringRoute: FastifyPluginAsync<MonitoringRouteOptions> = async
     // Backup-Frische (DB-Dump + DEP-Archiv)
     const backups = await holeBackupStatus(opts.db, opts.dbBackupMaxStunden, opts.depBackupMaxStunden)
 
+    // Drucker-Keep-Alive: letzter Ping-Status + konfiguriertes Intervall
+    const [mandant] = await opts.db
+      .select({ intervall: mandanten.druckerKeepAliveSekunden })
+      .from(mandanten)
+      .where(eq(mandanten.id, request.user.mandantId))
+      .limit(1)
+
     return reply.send({
       timestamp:  new Date().toISOString(),
       uptimeSek,
       version,
+      druckerKeepAlive: {
+        intervallSekunden: mandant?.intervall ?? 0,
+        drucker:           holeDruckerKeepAliveStatus(request.user.mandantId),
+      },
       nodeVersion: process.version,
       platform:   `${process.platform}/${process.arch}`,
       db: {
@@ -111,5 +125,39 @@ export const monitoringRoute: FastifyPluginAsync<MonitoringRouteOptions> = async
         totalMemMb: toMb(totalMem),
       },
     })
+  })
+
+  // ── Drucker-Keep-Alive: Intervall einstellen + sofortiger Prüf-Lauf ────────
+
+  fastify.patch('/api/admin/monitoring/keep-alive', {
+    onRequest: [fastify.authenticate],
+  }, async (request, reply) => {
+    if (request.user.rolle !== 'admin') {
+      return reply.status(403).send({ fehler: 'Kein Zugriff' })
+    }
+    const body = z.object({
+      intervallSekunden: z.number().int().min(0).max(3600),
+    }).safeParse(request.body)
+    if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
+
+    await opts.db
+      .update(mandanten)
+      .set({ druckerKeepAliveSekunden: body.data.intervallSekunden, updatedAt: new Date() })
+      .where(eq(mandanten.id, request.user.mandantId))
+
+    return reply.send({ intervallSekunden: body.data.intervallSekunden })
+  })
+
+  fastify.post('/api/admin/monitoring/keep-alive/pruefen', {
+    onRequest: [fastify.authenticate],
+  }, async (request, reply) => {
+    if (request.user.rolle !== 'admin') {
+      return reply.status(403).send({ fehler: 'Kein Zugriff' })
+    }
+    const ergebnis = await fuehreKeepAliveDurch(opts.db, Date.now(), {
+      nurMandantId: request.user.mandantId,
+      force:        true,
+    })
+    return reply.send({ drucker: ergebnis.get(request.user.mandantId) ?? [] })
   })
 }

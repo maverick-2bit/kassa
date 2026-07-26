@@ -1242,12 +1242,28 @@ export const healthApi = {
 // Monitoring (admin)
 // ---------------------------------------------------------------------------
 
+export interface DruckerPingStatus {
+  quelle:     'beleg' | 'bonier'
+  name:       string
+  ip:         string
+  port:       number
+  ok:         boolean
+  statusByte: boolean
+  dauerMs:    number
+  fehler:     string | null
+  geprueftAm: string
+}
+
 export interface MonitoringStatus {
   timestamp:   string
   uptimeSek:   number
   version:     string
   nodeVersion: string
   platform:    string
+  druckerKeepAlive: {
+    intervallSekunden: number
+    drucker:           DruckerPingStatus[]
+  }
   db: {
     ok:       boolean
     latenzMs: number | null
@@ -1273,6 +1289,10 @@ export interface MonitoringStatus {
 export const monitoringApi = {
   get: (): Promise<MonitoringStatus> =>
     request<MonitoringStatus>('GET', '/api/admin/monitoring'),
+  setKeepAlive: (intervallSekunden: number): Promise<{ intervallSekunden: number }> =>
+    request('PATCH', '/api/admin/monitoring/keep-alive', { intervallSekunden }),
+  pruefeDrucker: (): Promise<{ drucker: DruckerPingStatus[] }> =>
+    request('POST', '/api/admin/monitoring/keep-alive/pruefen'),
 }
 
 // ---------------------------------------------------------------------------
