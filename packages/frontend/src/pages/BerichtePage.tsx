@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback } from 'react'
 import { useQuery, useQueries } from '@tanstack/react-query'
-import type { ArtikelBerichtResponse, BerichtGesamt, BerichtGruppierung, BerichtResponse, KassenVergleichResponse, KassenVergleichZeile, KellnerBerichtResponse, KellnerBerichtZeile, StundenBerichtResponse, StundenBerichtZeile, WarengruppeBerichtResponse } from '@kassa/shared'
+import type { ArtikelBerichtResponse, BerichtGesamt, BerichtGruppierung, BerichtResponse, KassenVergleichResponse, KassenVergleichZeile, KellnerBerichtResponse, KellnerBerichtZeile, KuechenBerichtResponse, Station, StundenBerichtResponse, StundenBerichtZeile, WarengruppeBerichtResponse } from '@kassa/shared'
+import { STATION_LABELS } from '@kassa/shared'
 import { berichtApi } from '../lib/api'
 import { getAuth } from '../lib/auth'
 import { formatPreis } from '../lib/format'
@@ -96,7 +97,7 @@ function standardGruppierung(preset: ZeitraumPreset): BerichtGruppierung {
 // Haupt-Komponente
 // ---------------------------------------------------------------------------
 
-type BerichtTab = 'gesamtumsatz' | 'umsatz' | 'zahlungsart' | 'warengruppe' | 'artikel' | 'stunden' | 'wochentag' | 'kellner' | 'vergleich' | 'kassen'
+type BerichtTab = 'gesamtumsatz' | 'umsatz' | 'zahlungsart' | 'warengruppe' | 'artikel' | 'stunden' | 'wochentag' | 'kellner' | 'kueche' | 'vergleich' | 'kassen'
 
 const TABS: [BerichtTab, string][] = [
   ['gesamtumsatz', 'Übersicht'],
@@ -107,6 +108,7 @@ const TABS: [BerichtTab, string][] = [
   ['stunden',      'Tageszeit'],
   ['wochentag',    'Wochentag'],
   ['kellner',      'Kellner'],
+  ['kueche',       'Küche'],
   ['vergleich',    'Vergleich'],
   ['kassen',       'Kassen'],
 ]
@@ -146,6 +148,7 @@ export function BerichtePage() {
       {aktTab === 'stunden'      && <StundenBericht />}
       {aktTab === 'wochentag'    && <WochentagBericht />}
       {aktTab === 'kellner'      && <KellnerBericht />}
+      {aktTab === 'kueche'       && <KuechenBericht />}
       {aktTab === 'vergleich'    && <VergleichBericht />}
       {aktTab === 'kassen'       && <KassenVergleichBericht />}
     </div>
@@ -2094,6 +2097,175 @@ function KassenVergleichTabelle({ data }: { data: KassenVergleichResponse }) {
           </table>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Küchen-Bericht: KDS-Durchlaufzeiten je Station/Artikel + Stoßzeiten
+// ---------------------------------------------------------------------------
+
+function KuechenBericht() {
+  const [preset, setPreset] = useState<ZeitraumPreset>('woche')
+  const [von,    setVon]    = useState(() => berechneZeitraum('woche', heute()).von)
+  const [bis,    setBis]    = useState(() => berechneZeitraum('woche', heute()).bis)
+  const [geladenerFilter, setGeladenerFilter] = useState<{ von: string; bis: string } | null>(null)
+
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: ['bericht-kueche', geladenerFilter],
+    queryFn:  () => berichtApi.kueche(geladenerFilter!),
+    enabled:  geladenerFilter !== null,
+  })
+
+  function waehlePreset(p: ZeitraumPreset) {
+    setPreset(p)
+    if (p !== 'individuell') {
+      const { von: v, bis: b } = berechneZeitraum(p, heute())
+      setVon(v); setBis(b)
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="rounded-lg bg-panel shadow-sm border border-line p-4 space-y-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wide mb-2">Zeitraum</label>
+            <div className="space-y-1">
+              {ZEITRAUM_OPTIONEN.map(opt => (
+                <button key={opt.key} type="button" onClick={() => waehlePreset(opt.key)}
+                  className={`w-full text-left px-3 py-1.5 rounded text-sm transition ${preset === opt.key ? 'bg-brand-50 text-brand-700 font-medium' : 'text-ink hover:bg-panel-2'}`}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wide mb-2">Datum</label>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-ink-muted w-6">Von</span>
+                <input type="date" value={von} max={bis} onChange={e => { setVon(e.target.value); setPreset('individuell') }}
+                  className="flex-1 rounded border border-line-strong px-2 py-1.5 text-sm focus:border-brand-500 outline-none" />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-ink-muted w-6">Bis</span>
+                <input type="date" value={bis} min={von} max={heute()} onChange={e => { setBis(e.target.value); setPreset('individuell') }}
+                  className="flex-1 rounded border border-line-strong px-2 py-1.5 text-sm focus:border-brand-500 outline-none" />
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="pt-2 border-t border-line flex justify-end">
+          <Button onClick={() => setGeladenerFilter({ von, bis })} loading={isLoading}>Bericht laden</Button>
+        </div>
+      </div>
+
+      {isError && (
+        <div className="rounded-md p-3 text-sm bg-red-50 border border-red-200 text-red-700">
+          {error instanceof Error ? error.message : 'Bericht konnte nicht geladen werden'}
+        </div>
+      )}
+
+      {data && <KuechenBerichtAnzeige data={data} />}
+    </div>
+  )
+}
+
+function KuechenBerichtAnzeige({ data }: { data: KuechenBerichtResponse }) {
+  if (data.gesamtBons === 0 && data.offeneBons === 0) {
+    return <p className="text-sm text-ink-muted">Keine KDS-Bons in diesem Zeitraum. (Die Durchlaufzeit wird seit v0.7.117 beim Erledigen erfasst — ältere Bons erscheinen hier nicht.)</p>
+  }
+
+  const maxStunde  = Math.max(...data.stunden.map(s => s.anzahlBons), 1)
+  const fmtMin     = (m: number) => `${m.toFixed(1).replace('.', ',')} min`
+  const stationName = (s: string) => (STATION_LABELS as Record<string, string>)[s as Station] ?? s
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {([
+          { label: 'Erledigte Bons',   wert: String(data.gesamtBons) },
+          { label: 'Ø Zubereitung',    wert: data.gesamtBons > 0 ? fmtMin(data.avgMinutenGesamt) : '—' },
+          { label: 'Stationen',        wert: String(data.stationen.length) },
+          { label: 'Noch offene Bons', wert: String(data.offeneBons) },
+        ] as const).map(k => (
+          <div key={k.label} className="rounded-lg border border-line bg-panel p-4">
+            <p className="text-xs text-ink-muted">{k.label}</p>
+            <p className="mt-1 text-xl font-bold text-ink">{k.wert}</p>
+          </div>
+        ))}
+      </div>
+
+      {data.stationen.length > 0 && (
+        <div className="rounded-lg border border-line bg-panel overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-line bg-panel-2">
+                <th className="px-4 py-3 text-left font-semibold text-ink">Station</th>
+                <th className="px-4 py-3 text-right font-semibold text-ink">Bons</th>
+                <th className="px-4 py-3 text-right font-semibold text-ink">Ø Dauer</th>
+                <th className="px-4 py-3 text-right font-semibold text-ink">Median</th>
+                <th className="px-4 py-3 text-right font-semibold text-ink">Längste</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {data.stationen.map(z => (
+                <tr key={z.station} className="hover:bg-panel-2">
+                  <td className="px-4 py-3 font-medium text-ink">{stationName(z.station)}</td>
+                  <td className="px-4 py-3 text-right font-mono text-ink">{z.anzahlBons}</td>
+                  <td className="px-4 py-3 text-right font-mono font-semibold text-ink">{fmtMin(z.avgMinuten)}</td>
+                  <td className="px-4 py-3 text-right font-mono text-ink">{fmtMin(z.medianMinuten)}</td>
+                  <td className="px-4 py-3 text-right font-mono text-ink-muted">{fmtMin(z.maxMinuten)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {data.topArtikel.length > 0 && (
+        <div className="rounded-lg border border-line bg-panel overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-line bg-panel-2">
+                <th className="px-4 py-3 text-left font-semibold text-ink">Artikel (Top 15)</th>
+                <th className="px-4 py-3 text-right font-semibold text-ink">Anzahl</th>
+                <th className="px-4 py-3 text-right font-semibold text-ink">Ø Bon-Dauer</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {data.topArtikel.map(z => (
+                <tr key={z.bezeichnung} className="hover:bg-panel-2">
+                  <td className="px-4 py-3 font-medium text-ink">{z.bezeichnung}</td>
+                  <td className="px-4 py-3 text-right font-mono text-ink">{z.anzahl}</td>
+                  <td className="px-4 py-3 text-right font-mono text-ink">{fmtMin(z.avgMinuten)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="px-4 py-2 text-xs text-ink-subtle border-t border-line">
+            Ø Bon-Dauer = Durchschnitt der Bons, auf denen der Artikel stand (Bons werden als Ganzes erledigt).
+          </p>
+        </div>
+      )}
+
+      {data.stunden.length > 0 && (
+        <div className="rounded-lg border border-line bg-panel p-4">
+          <h3 className="text-sm font-semibold text-ink mb-3">Bons nach Tageszeit</h3>
+          <div className="space-y-1">
+            {data.stunden.map(s => (
+              <div key={s.stunde} className="flex items-center gap-2">
+                <span className="text-xs font-mono text-ink-muted w-12">{String(s.stunde).padStart(2, '0')}:00</span>
+                <div className="flex-1 h-3 rounded-full bg-panel-2 overflow-hidden">
+                  <div className="h-full rounded-full bg-brand-500" style={{ width: `${Math.round(s.anzahlBons / maxStunde * 100)}%` }} />
+                </div>
+                <span className="text-xs font-mono text-ink w-8 text-right">{s.anzahlBons}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

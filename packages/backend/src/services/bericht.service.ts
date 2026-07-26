@@ -19,6 +19,8 @@ import {
   type BuchungsjournalFilter,
   type KassenVergleichFilter,
   type KassenVergleichResponse,
+  type KuechenBerichtFilter,
+  type KuechenBerichtResponse,
   type KellnerBerichtFilter,
   type KellnerBerichtResponse,
   type MwStSatz,
@@ -28,7 +30,7 @@ import {
   type WarengruppeBerichtResponse,
 } from '@kassa/shared'
 import type { Db } from '../db/client.js'
-import { belege, kassen, tischTabs } from '../db/schema.js'
+import { belege, kassen, kdsBons, tischTabs } from '../db/schema.js'
 
 const MWST_SAETZE: Record<MwStSatz, number> = {
   normal:      20,
@@ -618,4 +620,105 @@ export async function holeKassenVergleich(
   }
 
   return { von: filter.von, bis: filter.bis, zeilen, gesamt }
+}
+
+// ---------------------------------------------------------------------------
+// Küchen-Bericht: KDS-Durchlaufzeiten (erstellt → erledigt) je Station/Artikel
+// ---------------------------------------------------------------------------
+
+export async function holeKuechenBericht(
+  filter:    KuechenBerichtFilter,
+  mandantId: string,
+  deps:      BerichtServiceDeps,
+): Promise<KuechenBerichtResponse> {
+  if (filter.von > filter.bis) {
+    throw new BerichtError(400, '"von" muss vor oder gleich "bis" liegen')
+  }
+
+  // Gemeinsamer Zeitraum-Filter: Bon-Erstellung am Wiener Kalendertag
+  const zeitraum = sql`(erstellt_at AT TIME ZONE 'Europe/Vienna')::date
+        BETWEEN ${filter.von}::date AND ${filter.bis}::date`
+
+  type StationRow = {
+    station: string; anzahl: string; avg_min: string; median_min: string; max_min: string
+  }
+  const stationRows = await deps.db.execute<StationRow>(sql`
+    SELECT
+      station,
+      COUNT(*)::int                                                                          AS anzahl,
+      (AVG(EXTRACT(EPOCH FROM (erledigt_at - erstellt_at))) / 60)::numeric(10,1)             AS avg_min,
+      (PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (erledigt_at - erstellt_at))) / 60)::numeric(10,1) AS median_min,
+      (MAX(EXTRACT(EPOCH FROM (erledigt_at - erstellt_at))) / 60)::numeric(10,1)             AS max_min
+    FROM kds_bons
+    WHERE mandant_id = ${mandantId}
+      AND status = 'erledigt' AND erledigt_at IS NOT NULL
+      AND ${zeitraum}
+    GROUP BY station
+    ORDER BY anzahl DESC
+  `)
+
+  type ArtikelRow = { bezeichnung: string; anzahl: string; avg_min: string }
+  const artikelRows = await deps.db.execute<ArtikelRow>(sql`
+    SELECT
+      pos->>'bezeichnung'                                                        AS bezeichnung,
+      SUM(COALESCE((pos->>'menge')::int, 1))::int                                AS anzahl,
+      (AVG(EXTRACT(EPOCH FROM (erledigt_at - erstellt_at))) / 60)::numeric(10,1) AS avg_min
+    FROM kds_bons, jsonb_array_elements(positionen) AS pos
+    WHERE mandant_id = ${mandantId}
+      AND status = 'erledigt' AND erledigt_at IS NOT NULL
+      AND ${zeitraum}
+    GROUP BY pos->>'bezeichnung'
+    ORDER BY anzahl DESC, bezeichnung
+    LIMIT 15
+  `)
+
+  type StundenRow = { stunde: string; anzahl: string }
+  const stundenRows = await deps.db.execute<StundenRow>(sql`
+    SELECT
+      EXTRACT(HOUR FROM (erstellt_at AT TIME ZONE 'Europe/Vienna'))::int AS stunde,
+      COUNT(*)::int                                                      AS anzahl
+    FROM kds_bons
+    WHERE mandant_id = ${mandantId}
+      AND ${zeitraum}
+    GROUP BY stunde
+    ORDER BY stunde
+  `)
+
+  type OffenRow = { anzahl: string }
+  const offenRows = await deps.db.execute<OffenRow>(sql`
+    SELECT COUNT(*)::int AS anzahl
+    FROM kds_bons
+    WHERE mandant_id = ${mandantId} AND status = 'offen' AND ${zeitraum}
+  `)
+
+  const stationen = [...stationRows].map(r => ({
+    station:       r.station,
+    anzahlBons:    parseInt(r.anzahl, 10),
+    avgMinuten:    parseFloat(r.avg_min),
+    medianMinuten: parseFloat(r.median_min),
+    maxMinuten:    parseFloat(r.max_min),
+  }))
+
+  const gesamtBons = stationen.reduce((s, z) => s + z.anzahlBons, 0)
+  const avgMinutenGesamt = gesamtBons > 0
+    ? Math.round(stationen.reduce((s, z) => s + z.avgMinuten * z.anzahlBons, 0) / gesamtBons * 10) / 10
+    : 0
+
+  return {
+    von: filter.von,
+    bis: filter.bis,
+    gesamtBons,
+    avgMinutenGesamt,
+    offeneBons: parseInt([...offenRows][0]?.anzahl ?? '0', 10),
+    stationen,
+    topArtikel: [...artikelRows].map(r => ({
+      bezeichnung: r.bezeichnung,
+      anzahl:      parseInt(r.anzahl, 10),
+      avgMinuten:  parseFloat(r.avg_min),
+    })),
+    stunden: [...stundenRows].map(r => ({
+      stunde:     parseInt(r.stunde, 10),
+      anzahlBons: parseInt(r.anzahl, 10),
+    })),
+  }
 }

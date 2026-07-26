@@ -212,3 +212,49 @@ export const BuchungsjournalFilterSchema = z.object({
   bis:      z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Ungültiges Datum (YYYY-MM-DD)'),
 })
 export type BuchungsjournalFilter = z.infer<typeof BuchungsjournalFilterSchema>
+
+// ---------------------------------------------------------------------------
+// Küchen-Bericht (KDS-Durchlaufzeiten je Station/Artikel + Stoßzeiten)
+// ---------------------------------------------------------------------------
+
+export const KuechenBerichtFilterSchema = z.object({
+  von: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Ungültiges Datum (YYYY-MM-DD)'),
+  bis: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Ungültiges Datum (YYYY-MM-DD)'),
+})
+export type KuechenBerichtFilter = z.infer<typeof KuechenBerichtFilterSchema>
+
+export const KuechenBerichtStationZeileSchema = z.object({
+  station:       z.string(),
+  anzahlBons:    z.number().int(),
+  avgMinuten:    z.number(),
+  medianMinuten: z.number(),
+  maxMinuten:    z.number(),
+})
+export type KuechenBerichtStationZeile = z.infer<typeof KuechenBerichtStationZeileSchema>
+
+export const KuechenBerichtArtikelZeileSchema = z.object({
+  bezeichnung: z.string(),
+  anzahl:      z.number().int(),
+  /** Ø der Durchlaufzeit der Bons, auf denen der Artikel stand (Näherung) */
+  avgMinuten:  z.number(),
+})
+export type KuechenBerichtArtikelZeile = z.infer<typeof KuechenBerichtArtikelZeileSchema>
+
+export const KuechenBerichtStundenZeileSchema = z.object({
+  stunde:     z.number().int(),
+  anzahlBons: z.number().int(),
+})
+export type KuechenBerichtStundenZeile = z.infer<typeof KuechenBerichtStundenZeileSchema>
+
+export const KuechenBerichtResponseSchema = z.object({
+  von:              z.string(),
+  bis:              z.string(),
+  gesamtBons:       z.number().int(),
+  avgMinutenGesamt: z.number(),
+  /** Noch offene (nicht erledigte) Bons im Zeitraum — Vollständigkeits-Hinweis */
+  offeneBons:       z.number().int(),
+  stationen:        z.array(KuechenBerichtStationZeileSchema),
+  topArtikel:       z.array(KuechenBerichtArtikelZeileSchema),
+  stunden:          z.array(KuechenBerichtStundenZeileSchema),
+})
+export type KuechenBerichtResponse = z.infer<typeof KuechenBerichtResponseSchema>

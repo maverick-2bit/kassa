@@ -58,6 +58,7 @@ import type {
   StundenBerichtResponse,
   KellnerBerichtResponse,
   KassenVergleichResponse,
+  KuechenBerichtResponse,
   BarzahlungsbelegInput,
   BerichtFilter,
   BerichtResponse,
@@ -747,6 +748,12 @@ export const berichtApi = {
     p.set('von', filter.von)
     p.set('bis', filter.bis)
     return request<KassenVergleichResponse>('GET', `/api/berichte/kassen-vergleich?${p.toString()}`)
+  },
+  kueche: (filter: { von: string; bis: string }): Promise<KuechenBerichtResponse> => {
+    const p = new URLSearchParams()
+    p.set('von', filter.von)
+    p.set('bis', filter.bis)
+    return request<KuechenBerichtResponse>('GET', `/api/berichte/kueche?${p.toString()}`)
   },
   buchungsjournalDownload: async (filter: { von: string; bis: string; kasseIds?: string[] }): Promise<void> => {
     const p = new URLSearchParams()
