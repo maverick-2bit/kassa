@@ -24,7 +24,13 @@ function addTage(datum: Date, tage: number): Date {
 }
 
 function toYMD(datum: Date): string {
-  return datum.toISOString().slice(0, 10)
+  // LOKALES Kalenderdatum — NICHT toISOString() (UTC!): das verschob in UTC+2 alle
+  // Wochen-Keys um einen Tag und warf sonntags angelegte Schichten aus dem
+  // Abfragefenster (Mo-Woche wurde als So–Sa abgefragt).
+  const j = datum.getFullYear()
+  const m = String(datum.getMonth() + 1).padStart(2, '0')
+  const t = String(datum.getDate()).padStart(2, '0')
+  return `${j}-${m}-${t}`
 }
 
 function formatZeit(von: string, bis: string) {
@@ -245,7 +251,7 @@ function SchichtFormModal({ kasseId, initial, defaultDatum, onClose, onSaved, on
     queryFn:  () => userApi.list(),
   })
 
-  const heute = new Date().toISOString().slice(0, 10)
+  const heute = toYMD(new Date())   // lokales Datum (toISOString wäre UTC → Vortag vor 2 Uhr früh)
   const [userId,        setUserId]        = useState(initial?.userId ?? users[0]?.id ?? '')
   const [datum,         setDatum]         = useState(initial?.datum ?? defaultDatum ?? heute)
   const [beginnGeplant, setBeginnGeplant] = useState(initial?.beginnGeplant ?? '09:00')

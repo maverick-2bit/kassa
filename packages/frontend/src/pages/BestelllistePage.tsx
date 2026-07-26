@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import type { Artikel, Lieferant } from '@kassa/shared'
 import { artikelApi, lieferantApi } from '../lib/api'
 import { getAuth } from '../lib/auth'
-import { formatPreis } from '../lib/format'
+import { formatPreis, heuteLokalYMD } from '../lib/format'
 
 // ---------------------------------------------------------------------------
 // Status-Helfer (gleiche Logik wie LagerstandPage)
@@ -49,7 +49,7 @@ function exportiereCsv(zeilen: BestellZeile[], lieferantenMap: Map<string, strin
   const url  = URL.createObjectURL(blob)
   const a    = document.createElement('a')
   a.href     = url
-  a.download  = `Bestellliste-${new Date().toISOString().slice(0, 10)}.csv`
+  a.download  = `Bestellliste-${heuteLokalYMD()}.csv`
   document.body.appendChild(a)
   a.click()
   document.body.removeChild(a)

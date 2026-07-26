@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { getAuth } from '../lib/auth'
 import { downloadBmdExport } from '../lib/api'
+import { heuteLokalYMD } from '../lib/format'
 
-const heute = new Date().toISOString().slice(0, 10)
+const heute = heuteLokalYMD()
 const jahresBeginn = new Date().getFullYear() + '-01-01'
 
 export function ExportPage() {
