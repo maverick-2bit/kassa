@@ -180,8 +180,11 @@ describe('baueTischEtikett()', () => {
   const PAGE_AREA  = Buffer.from([0x1B, 0x57])                         // ESC W …
   const BRANDING   = Buffer.from('powered by s/e smarte events')
 
-  it('ohne QR: riesige Nummer (GS ! 6x7), Branding, Schnitt — kein QR/Page Mode', () => {
+  it('ohne QR: „Tisch"-Überschrift (2×2) + riesige Nummer (GS ! 6x7), Branding, Schnitt — kein QR/Page Mode', () => {
     const bytes = baueTischEtikett('5', { breite: 42 })
+    // „Tisch"-Überschrift in 2×2 → GS ! 0x11
+    expect(bytes.includes(Buffer.from([0x1D, 0x21, 0x11]))).toBe(true)
+    expect(bytes.includes(Buffer.from('Tisch'))).toBe(true)
     // Label „5" (1 Zeichen) → Breite 6× / Höhe 7× → GS ! 0x56
     expect(bytes.includes(Buffer.from([0x1D, 0x21, 0x56]))).toBe(true)
     expect(bytes.includes(Buffer.from('5'))).toBe(true)

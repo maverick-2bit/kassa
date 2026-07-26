@@ -1337,6 +1337,18 @@ function GastQrCodeSektion() {
     onError:   (e) => setDruckMeldung({ ok: false, text: e instanceof Error ? e.message : 'Druck fehlgeschlagen' }),
   })
 
+  /** Test-Etikett: druckt IMMER mit QR (Demo-URL, falls keine Gast-Basis-URL gesetzt). */
+  const testEtikettMutation = useMutation({
+    mutationFn: () => druckerApi.druckeTischEtiketten(kasseId, {
+      tische: ['TEST'],
+      mitQr:  true,
+      testQr: true,
+      ...(zielDrucker !== 'kasse' ? { druckerId: zielDrucker } : {}),
+    }),
+    onSuccess: () => setDruckMeldung({ ok: true, text: 'Test-Etikett gedruckt (QR ggf. mit Demo-URL)' }),
+    onError:   (e) => setDruckMeldung({ ok: false, text: e instanceof Error ? e.message : 'Testdruck fehlgeschlagen' }),
+  })
+
   /** A4-Bogen: Druckfenster mit den LOKAL gerenderten QR-Karten (kein externer Dienst). */
   function a4BogenDrucken() {
     if (!gridRef.current) return
@@ -1527,7 +1539,7 @@ function GastQrCodeSektion() {
       )}
 
       {/* Thermo-Etiketten auf den Bondrucker (riesige Nummer + QR darunter) */}
-      {gewaehlteTische.length > 0 && kasseId && (
+      {kasseId && (
         <div className="border-t border-line pt-4 space-y-2">
           <div>
             <p className="text-sm font-medium text-ink">Thermo-Etiketten (Bondrucker)</p>
@@ -1557,13 +1569,23 @@ function GastQrCodeSektion() {
                 🖨 {d.name}
               </button>
             ))}
-            <button
-              onClick={() => { setDruckMeldung(null); etikettenMutation.mutate() }}
-              disabled={etikettenMutation.isPending}
-              className="ml-auto px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 transition disabled:opacity-50"
-            >
-              {etikettenMutation.isPending ? 'Druckt…' : `🖨 ${gewaehlteTische.length} Etikett(en) drucken`}
-            </button>
+            <div className="ml-auto flex items-center gap-2">
+              {/* Test-Etikett: prüft das Layout auch OHNE eingerichtete Gast-URL (Demo-QR) */}
+              <button
+                onClick={() => { setDruckMeldung(null); testEtikettMutation.mutate() }}
+                disabled={testEtikettMutation.isPending}
+                className="px-3 py-2 rounded-lg border border-line-strong text-ink text-sm font-medium hover:bg-panel-2 transition disabled:opacity-50"
+              >
+                {testEtikettMutation.isPending ? 'Druckt…' : '🧪 Test-Etikett'}
+              </button>
+              <button
+                onClick={() => { setDruckMeldung(null); etikettenMutation.mutate() }}
+                disabled={etikettenMutation.isPending || gewaehlteTische.length === 0}
+                className="px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 transition disabled:opacity-50"
+              >
+                {etikettenMutation.isPending ? 'Druckt…' : `🖨 ${gewaehlteTische.length} Etikett(en) drucken`}
+              </button>
+            </div>
           </div>
           {!kasseCfgQuery.data?.gastBasisUrl && (
             <p className="text-[11px] text-amber-600">

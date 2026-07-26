@@ -7,9 +7,10 @@ import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { buchungApi } from '../lib/api'
+import { heuteLokalYMD } from '../lib/format'
 
 function heuteISO(): string {
-  return new Date().toISOString().slice(0, 10)
+  return heuteLokalYMD()   // LOKAL — toISOString wäre UTC (Vortag vor 2 Uhr früh)
 }
 
 export function OnlineBuchungPage() {

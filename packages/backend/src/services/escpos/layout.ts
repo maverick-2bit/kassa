@@ -188,14 +188,18 @@ export function baueTischEtikett(tischNummer: string, opts: TischEtikettOptionen
   const label = truncate(tischNummer, 20)
   void dots
 
+  // „Tisch"-Überschrift — deutlich kleiner als die Nummer, aber gut lesbar (2×2)
+  add(ep.align('center'))
+  add(ep.bold(true))
+  add(ep.textSize(2, 2))
+  add(ep.textLine('Tisch'))
+
   // Tischnummer RIESIG, zentriert (Standard-Modus; Größe dynamisch nach Länge).
   // Bewusst KEIN Page Mode: das Nebeneinander-Layout (ESC L) wurde vom realen
   // TM-T20IV nicht ausgeführt — gestapelt läuft über denselben bewährten Pfad
   // wie der Beleg-QR und druckt zuverlässig.
   const wMul = clamp(Math.floor(W / Math.max(1, label.length)), 1, 6)
   const hMul = Math.min(wMul + 1, 8)
-  add(ep.align('center'))
-  add(ep.bold(true))
   add(ep.textSize(wMul, hMul))
   add(ep.textLine(label))
   add(ep.textSize(1, 1))

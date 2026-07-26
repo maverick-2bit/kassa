@@ -13,12 +13,13 @@ import { zeiterfassungApi, userApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { Button } from '../components/ui/Button'
 import { Modal } from '../components/ui/Modal'
+import { heuteLokalYMD } from '../lib/format'
 
 // ---------------------------------------------------------------------------
 // Hilfsfunktionen
 // ---------------------------------------------------------------------------
 
-function heuteISO() { return new Date().toISOString().slice(0, 10) }
+function heuteISO() { return heuteLokalYMD() }   // LOKAL — toISOString wäre UTC (Vortag vor 2 Uhr)
 
 function formatDauer(minuten: number | null): string {
   if (minuten === null) return '—'

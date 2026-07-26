@@ -282,6 +282,9 @@ export const druckerRoute: FastifyPluginAsync<DruckerRouteOptions> = async (fast
     mitQr:     z.boolean().default(false),
     /** Optional: gezielt einen Drucker aus der Bibliothek verwenden (statt Kassen-Bondrucker) */
     druckerId: z.string().uuid().optional(),
+    /** Test-Etikett: druckt den QR auch OHNE konfigurierte Gast-Basis-URL (Demo-URL) —
+     *  damit sich das Etikett-Layout vor der Einrichtung prüfen lässt. */
+    testQr:    z.boolean().default(false),
   })
 
   fastify.post('/kassen/:id/tisch-etiketten', auth, async (request, reply) => {
@@ -317,12 +320,14 @@ export const druckerRoute: FastifyPluginAsync<DruckerRouteOptions> = async (fast
     const tische = [...new Set(body.data.tische.map(t => t.trim()).filter(Boolean))]
     if (tische.length === 0) return reply.status(400).send({ fehler: 'Keine gültigen Tische angegeben' })
 
-    // QR nur wenn gewünscht UND eine Gast-Basis-URL konfiguriert ist
-    const mitQr = body.data.mitQr && !!kasse.gastBasisUrl
+    // QR wenn gewünscht + Gast-Basis-URL konfiguriert; beim Test-Etikett ersatzweise
+    // mit Demo-URL, damit das Layout auch VOR der Einrichtung prüfbar ist.
+    const qrBasis = kasse.gastBasisUrl ?? (body.data.testQr ? 'https://demo.kassa.example/gast' : null)
+    const mitQr   = (body.data.mitQr || body.data.testQr) && !!qrBasis
     const bytes = Buffer.concat(tische.map(tisch => baueTischEtikett(tisch, {
       breite: config.breite,
       ...(mitQr
-        ? { qrUrl: `${kasse.gastBasisUrl}?kasseId=${kasse.id}&tisch=${encodeURIComponent(tisch)}` }
+        ? { qrUrl: `${qrBasis}?kasseId=${kasse.id}&tisch=${encodeURIComponent(tisch)}` }
         : {}),
     })))
 

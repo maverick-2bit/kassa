@@ -23,7 +23,7 @@ import { GUTSCHEIN_STATUS_LABELS, MWST_LABELS, STATION_LABELS, happyHourPreisCen
 import { angebotApi, artikelApi, belegApi, bonierApi, druckerApi, gutscheinApi, kategorieApi, lieferscheinApi, modifikatorApi, offenerPostenApi, posConfigApi, preisregelApi, tischTabApi, zvtApi, displayApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { getAuth, hasBerechtigung } from '../lib/auth'
-import { formatPreis } from '../lib/format'
+import { formatPreis, heuteLokalYMD } from '../lib/format'
 import {
   positionsPreisCent,
   warenkorbSummeCent,
@@ -1598,7 +1598,7 @@ function GutscheinEinloesenModal({ summeNachRabattCent, onApply, onClose }: Guts
   const einloesungCents = Math.round(parseFloat(einloesungEuro.replace(',', '.')) * 100) || 0
 
   const isAbgelaufen = gefunden?.gueltigBis
-    ? gefunden.gueltigBis < new Date().toISOString().slice(0, 10)
+    ? gefunden.gueltigBis < heuteLokalYMD()   // LOKAL — UTC-Datum verlängerte nachts abgelaufene Gutscheine
     : false
 
   const einloesbar = gefunden

@@ -123,14 +123,17 @@ function KasseKarte({ kasseId, titel, untertitel, pool, bonier, istGastro }: {
           <label className="block sm:col-span-2">
             <span className="text-xs font-medium text-ink-muted">Gast-Bestell-Basis-URL (für Tisch-QR)</span>
             <input
-              type="url"
+              type="text"
               inputMode="url"
-              placeholder="https://bestellen.example.at"
+              placeholder="z. B. 192.168.1.10:8082 oder https://bestellen.example.at"
               defaultValue={cfg?.gastBasisUrl ?? ''}
               disabled={patchDrucker.isPending}
               className="mt-1 block w-full rounded-md border border-line-strong px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500/40"
               onBlur={(e) => {
-                const v = e.target.value.trim()
+                // fehlendes Schema automatisch ergänzen („192.168.1.10:8082" → „http://…")
+                let v = e.target.value.trim()
+                if (v && !/^https?:\/\//i.test(v)) v = `http://${v}`
+                e.target.value = v
                 if (v !== (cfg?.gastBasisUrl ?? '')) patchDrucker.mutate({ gastBasisUrl: v || null })
               }}
             />

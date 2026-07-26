@@ -16,13 +16,14 @@ import { getKasseIdentity } from '../lib/kasse'
 import { Button } from '../components/ui/Button'
 import { Modal } from '../components/ui/Modal'
 import { useKasseEvents } from '../lib/sse'
+import { heuteLokalYMD } from '../lib/format'
 
 // ---------------------------------------------------------------------------
 // Hilfsfunktionen
 // ---------------------------------------------------------------------------
 
 function heuteISO(): string {
-  return new Date().toISOString().slice(0, 10)
+  return heuteLokalYMD()   // LOKAL — toISOString wäre UTC (Vortag vor 2 Uhr früh)
 }
 
 function addTage(datum: string, tage: number): string {
