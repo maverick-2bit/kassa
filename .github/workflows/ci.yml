@@ -77,6 +77,10 @@ jobs:
           sudo apt-get install -y -qq postgresql-common
           sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
           sudo apt-get install -y -qq postgresql-client-17
+          # /usr/bin/pg_dump ist der Debian-Wrapper und zeigt auf den
+          # vorinstallierten 16er-Client — 17er-Binaries direkt in den PATH,
+          # sonst überspringen sich Restore-Drill + db-backup-Test.
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
 
       - name: pnpm einrichten
         uses: pnpm/action-setup@v6
