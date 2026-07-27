@@ -2871,27 +2871,32 @@ function SystemInfoSektion() {
         <div className="space-y-3 border-t border-line pt-4">
           <p className="text-xs font-semibold text-ink-muted uppercase tracking-wide">Prozess-Speicher</p>
 
-          {/* Heap-Balken */}
+          {/* Heap-Balken — Auslastung gegen das ECHTE V8-Limit (max-old-space).
+              heapTotal ist nur der reservierte Heap und liegt konstruktionsbedingt
+              immer knapp über heapUsed (90–98 % dort wären Dauer-Fehlalarm). */}
           <div className="space-y-1">
             <div className="flex justify-between text-xs text-ink-muted">
               <span>Heap-Nutzung</span>
               <span className="font-mono">
-                {m.memory.heapUsedMb} / {m.memory.heapTotalMb} MB
+                {m.memory.heapUsedMb} MB von {m.memory.heapLimitMb >= 1024
+                  ? `${(m.memory.heapLimitMb / 1024).toFixed(1)} GB`
+                  : `${m.memory.heapLimitMb} MB`} Limit
                 <span className="text-ink-subtle ml-1">
-                  ({Math.round(m.memory.heapUsedMb / m.memory.heapTotalMb * 100)} %)
+                  ({Math.max(1, Math.round(m.memory.heapUsedMb / m.memory.heapLimitMb * 100))} %
+                  {' '}· reserviert {m.memory.heapTotalMb} MB)
                 </span>
               </span>
             </div>
             <div className="h-2 w-full rounded-full bg-panel-2 overflow-hidden">
               <div
                 className={`h-full rounded-full transition-all ${
-                  m.memory.heapUsedMb / m.memory.heapTotalMb > 0.85
+                  m.memory.heapUsedMb / m.memory.heapLimitMb > 0.85
                     ? 'bg-red-500'
-                    : m.memory.heapUsedMb / m.memory.heapTotalMb > 0.65
+                    : m.memory.heapUsedMb / m.memory.heapLimitMb > 0.65
                     ? 'bg-amber-400'
                     : 'bg-brand-500'
                 }`}
-                style={{ width: `${Math.min(100, m.memory.heapUsedMb / m.memory.heapTotalMb * 100)}%` }}
+                style={{ width: `${Math.min(100, Math.max(1, m.memory.heapUsedMb / m.memory.heapLimitMb * 100))}%` }}
               />
             </div>
           </div>

@@ -1294,6 +1294,7 @@ export interface MonitoringStatus {
   memory: {
     heapUsedMb:  number
     heapTotalMb: number
+    heapLimitMb: number
     rssMb:       number
     externalMb:  number
   }
