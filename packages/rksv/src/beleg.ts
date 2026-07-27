@@ -28,7 +28,7 @@ import type {
 } from './types.js'
 import { verschluesselUmsatzzaehler } from './crypto/aes-icm.js'
 import { verkettungswertStartbeleg, verkettungswertFolgebeleg } from './crypto/chain.js'
-import { signiereRoh, verifiziere, zertifikatSN as ladeZertifikatSN } from './see.js'
+import { signiereRoh, verifiziere, verifiziereDerCodiert, zertifikatSN as ladeZertifikatSN } from './see.js'
 
 // ---------------------------------------------------------------------------
 // Umsatzzähler-State
@@ -392,6 +392,30 @@ export function verifiziereBelegSignatur(beleg: VerifizierbarerBeleg, zertifikat
     beleg.sigVorbeleg,
   )
   return verifiziere(
+    jwsSigningInput(codeOhneSig),
+    Buffer.from(beleg.signaturwert, 'base64'),
+    zertifikatDER,
+  )
+}
+
+/**
+ * Zweitprüfung für Alt-Belege aus der Zeit vor dem P1363-Fix: Der gespeicherte
+ * Signaturwert ist dort DER-codiert (ASN.1) statt roh (r ‖ s, 64 Byte). Liefert
+ * true, wenn die Signatur in DIESEM Altformat kryptographisch korrekt ist —
+ * der Beleg ist dann integer, nur die Codierung entsprach nicht der RKSV-Norm.
+ */
+export function verifiziereBelegSignaturAltDer(beleg: VerifizierbarerBeleg, zertifikatDER: Buffer): boolean {
+  const codeOhneSig = baueMaschinenlesbareCodeOhneSig(
+    beleg.zdaId,
+    beleg.kassenId,
+    beleg.belegNummer,
+    beleg.datumUhrzeit,
+    beleg.betraege,
+    beleg.umsatzzaehlerVerschluesselt,
+    beleg.zertifikatSN,
+    beleg.sigVorbeleg,
+  )
+  return verifiziereDerCodiert(
     jwsSigningInput(codeOhneSig),
     Buffer.from(beleg.signaturwert, 'base64'),
     zertifikatDER,

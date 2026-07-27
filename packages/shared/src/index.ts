@@ -266,6 +266,18 @@ export type {
   InventurZaehl,
 } from './schemas/inventur.js'
 
+// RKSV-Signatur-Selbsttest
+export {
+  SelbsttestStatusEnum,
+  SelbsttestBelegDetailSchema,
+  SignaturSelbsttestErgebnisSchema,
+} from './schemas/rksv-selbsttest.js'
+export type {
+  SelbsttestStatus,
+  SelbsttestBelegDetail,
+  SignaturSelbsttestErgebnis,
+} from './schemas/rksv-selbsttest.js'
+
 // Bericht
 export {
   BerichtFilterSchema,

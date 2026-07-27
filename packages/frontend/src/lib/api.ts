@@ -129,6 +129,7 @@ import type {
   DruckerPool,
   DruckerPoolInput,
   DruckerPoolUpdate,
+  SignaturSelbsttestErgebnis,
 } from '@kassa/shared'
 import { getToken, handleUnauthorized } from './auth.js'
 
@@ -1149,6 +1150,25 @@ export interface InventurDetail {
   abgeschlossenAm: string | null
   positionen:      InventurPositionDto[]
 }
+export const rksvSelbsttestApi = {
+  ausfuehren: (kasseId: string): Promise<SignaturSelbsttestErgebnis> =>
+    request<SignaturSelbsttestErgebnis>('GET', `/api/rksv/signatur-selbsttest?kasseId=${encodeURIComponent(kasseId)}`),
+  downloadCsv: async (kasseId: string, dateiname: string): Promise<void> => {
+    const token = getToken()
+    const res = await fetch(`/api/rksv/signatur-selbsttest.csv?kasseId=${encodeURIComponent(kasseId)}`, {
+      headers: { Authorization: token ? `Bearer ${token}` : '' },
+    })
+    if (!res.ok) throw new ApiError(res.status, 'Download fehlgeschlagen')
+    const blob = await res.blob()
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download = dateiname
+    a.click()
+    URL.revokeObjectURL(url)
+  },
+}
+
 export const inventurApi = {
   list:   (): Promise<InventurListeEintrag[]> => request<InventurListeEintrag[]>('GET', '/api/inventuren'),
   get:    (id: string): Promise<InventurDetail> => request<InventurDetail>('GET', `/api/inventuren/${id}`),
