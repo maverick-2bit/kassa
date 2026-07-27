@@ -111,7 +111,44 @@ if (-not $OhneDocker) {
 
   if (-not (Docker-Laeuft)) {
 
-    # 1a. Noch gar nicht installiert → automatisch installieren
+    # 1a. Voraussetzungen: Docker Desktop (WSL2-Backend) braucht CPU-Virtualisierung
+    #     (BIOS) und WSL2 — fehlt eines, würde der Start unten minutenlang warten und
+    #     dann mit irreführender Meldung abbrechen. Deshalb hier prüfen, auch wenn
+    #     Docker Desktop selbst schon installiert ist.
+    $virtOk = $true
+    try {
+      $virtOk = [bool](Get-CimInstance Win32_ComputerSystem).HypervisorPresent -or
+                [bool](Get-CimInstance Win32_Processor | Select-Object -First 1).VirtualizationFirmwareEnabled
+    } catch { }   # Prüfung nicht möglich → nicht blockieren
+    if (-not $virtOk) {
+      Fehler 'CPU-Virtualisierung ist im BIOS/UEFI deaktiviert — Docker Desktop kann so nicht starten.'
+      Hinweis 'Einmalig im BIOS aktivieren:'
+      Hinweis '  1. PC neu starten und ins BIOS/UEFI gehen (beim Einschalten F2, F1, F10 oder Entf drücken)'
+      Hinweis '  2. Einstellung einschalten:  AMD-PC: "SVM Mode"    Intel-PC: "Intel VT-x" / "Virtualization Technology"'
+      Hinweis '     (meist unter "Advanced", "CPU Configuration" oder "Security")'
+      Hinweis '  3. Speichern und beenden (meist F10) — Windows startet normal'
+    }
+
+    $wslOk = $false
+    try { wsl.exe --status *> $null; if ($LASTEXITCODE -eq 0) { $wslOk = $true } } catch { }
+    if (-not $wslOk) {
+      Schritt 'Aktiviere WSL2 (Windows-Subsystem — Voraussetzung für Docker Desktop, einmalig)'
+      wsl.exe --install --no-distribution
+      if ($LASTEXITCODE -ne 0) {
+        Fehler 'WSL2-Installation fehlgeschlagen — Internetverbindung prüfen und Kassa-Setup.cmd erneut ausführen.'
+        exit 1
+      }
+      Ok 'WSL2 installiert — wird mit dem nächsten Neustart aktiv'
+    }
+
+    if (-not $virtOk -or -not $wslOk) {
+      Write-Host ''
+      Hinweis '>>> NEUSTART ERFORDERLICH. Danach Kassa-Setup.cmd erneut doppelklicken — <<<'
+      Hinweis '>>> die Installation läuft dann automatisch weiter.                       <<<'
+      if (-not $virtOk) { exit 1 } else { exit 0 }
+    }
+
+    # 1b. Noch gar nicht installiert → automatisch installieren
     if (-not (Test-Path $desktopExe)) {
       Hinweis 'Docker Desktop ist nicht installiert.'
       $antwort = 'j'
@@ -119,19 +156,6 @@ if (-not $OhneDocker) {
       if ($antwort -match '^[nN]') {
         Hinweis 'Abgebrochen. Manuelle Installation:  winget install -e --id Docker.DockerDesktop'
         exit 1
-      }
-
-      # WSL2 ist Voraussetzung — fehlt es, aktiviert Windows es nur mit Neustart.
-      $wslOk = $false
-      try { wsl.exe --status *> $null; if ($LASTEXITCODE -eq 0) { $wslOk = $true } } catch { }
-      if (-not $wslOk) {
-        Schritt 'Aktiviere WSL2 (Windows-Subsystem — einmalig nötig)'
-        wsl.exe --install --no-distribution
-        Write-Host ''
-        Hinweis '>>> NEUSTART ERFORDERLICH (einmalig, wegen Windows-Funktion WSL2). <<<'
-        Hinweis 'Nach dem Neustart einfach Kassa-Setup.cmd ERNEUT doppelklicken —'
-        Hinweis 'die Installation läuft dann automatisch weiter.'
-        exit 0
       }
 
       Schritt 'Installiere Docker Desktop (Download ~500 MB — bitte warten)'
@@ -145,11 +169,12 @@ if (-not $OhneDocker) {
       Ok 'Docker Desktop installiert (Lizenz akzeptiert)'
     }
 
-    # 1b. Installiert, aber Engine läuft nicht → Autostart setzen + jetzt starten
+    # 1c. Installiert, aber Engine läuft nicht → Autostart setzen + jetzt starten
     Aktiviere-DockerAutostart
     if (-not (Starte-DockerDesktop 360)) {
       Fehler 'Docker Desktop wurde gestartet, ist aber nach 6 Minuten noch nicht bereit.'
-      Hinweis 'Bitte warten, bis das Docker-Symbol unten rechts "running" zeigt,'
+      Hinweis 'Zeigt das Docker-Desktop-Fenster eine Fehlermeldung? Dann diese beachten.'
+      Hinweis 'Sonst warten, bis das Docker-Symbol unten rechts "running" zeigt,'
       Hinweis 'und Kassa-Setup.cmd dann erneut doppelklicken.'
       exit 1
     }
