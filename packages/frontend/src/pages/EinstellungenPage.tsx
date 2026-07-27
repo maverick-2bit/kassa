@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { QRCodeSVG } from 'qrcode.react'
 import { ALLE_STATIONEN, STATION_LABELS, type Station, type ZvtConfig, type WeitereKasseInput, type PosKonfig, type Artikel, type Kategorie, type SeeTyp } from '@kassa/shared'
-import { druckerApi, druckerPoolApi, kdsApi, seeApi, zvtApi, downloadDepExport, healthApi, monitoringApi, mandantApi, stripeApi, kasseApi, kasseErweiterungApi, kategorieApi, artikelApi, posConfigApi, tischplanApi, dbBackupApi, belegApi, systemApi, type DruckerConfig, type KdsConfig, type DbSicherungRow, type MonitoringStatus } from '../lib/api'
+import { druckerApi, druckerPoolApi, kdsApi, seeApi, zvtApi, downloadDepExport, healthApi, monitoringApi, mandantApi, stripeApi, kasseApi, kasseErweiterungApi, kategorieApi, artikelApi, posConfigApi, tischplanApi, dbBackupApi, belegApi, systemApi, rksvSelbsttestApi, type DruckerConfig, type KdsConfig, type DbSicherungRow, type MonitoringStatus } from '../lib/api'
 import type { DruckerPool, DruckerPoolInput } from '@kassa/shared'
 import { Modal } from '../components/ui/Modal'
 import { BonierdruckerBibliothek } from '../components/BonierdruckerBibliothek'
@@ -92,6 +92,7 @@ export function EinstellungenPage() {
           <SeeEinheitSektion />
           <RksvExportSektion />
           <SeeAusfallSektion />
+          <SignaturSelbsttestSektion />
         </>
       )}
       {bereich === 'gastro' && (
@@ -1185,6 +1186,141 @@ function RksvExportSektion() {
 // ---------------------------------------------------------------------------
 // SEE-Ausfall (Signatureinrichtung)
 // ---------------------------------------------------------------------------
+
+function SignaturSelbsttestSektion() {
+  const identity = getKasseIdentity()!
+  const [fehler, setFehler] = useState<string | null>(null)
+
+  const test = useMutation({
+    mutationFn: () => rksvSelbsttestApi.ausfuehren(identity.kasseId),
+    onMutate:   () => setFehler(null),
+    onError:    (err) => setFehler(err instanceof Error ? err.message : String(err)),
+  })
+  const e = test.data
+
+  const statusBadge = (status: string) => {
+    const cfg: Record<string, { label: string; cls: string }> = {
+      ausfall:       { label: 'SEE-Ausfall (erwartet)', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+      der_altformat: { label: 'Altformat DER (integer)', cls: 'bg-sky-50 text-sky-700 border-sky-200' },
+      ungueltig:     { label: 'UNGÜLTIG', cls: 'bg-red-50 text-red-700 border-red-200' },
+    }
+    const c = cfg[status] ?? { label: status, cls: 'bg-panel-2 text-ink-muted border-line' }
+    return <span className={`inline-block rounded border px-1.5 py-0.5 text-xs font-medium ${c.cls}`}>{c.label}</span>
+  }
+
+  const kachel = (wert: number, label: string, warnAb?: number, warnCls = 'border-red-200 bg-red-50 text-red-700') => (
+    <div className={`rounded-md border p-3 text-center ${
+      warnAb !== undefined && wert >= warnAb ? warnCls : 'border-line bg-panel-2 text-ink'
+    }`}>
+      <div className="text-xl font-semibold">{wert}</div>
+      <div className="text-xs text-ink-muted mt-0.5">{label}</div>
+    </div>
+  )
+
+  return (
+    <section className="rounded-lg border border-line bg-panel p-5">
+      <h2 className="text-base font-semibold text-ink mb-1">Signatur-Selbsttest</h2>
+      <p className="text-sm text-ink-muted mb-4">
+        Verifiziert alle gespeicherten Belege dieser Kasse gegen das SEE-Zertifikat und prüft
+        Signaturkette sowie Belegnummern — z. B. vor einer Abgabenprüfung. Reine Prüfung, es wird
+        nichts verändert.
+      </p>
+
+      <div className="flex flex-wrap gap-2 mb-4">
+        <Button onClick={() => test.mutate()} loading={test.isPending}>
+          Selbsttest starten
+        </Button>
+        {e && e.details.length > 0 && (
+          <Button
+            variant="secondary"
+            onClick={() => rksvSelbsttestApi.downloadCsv(identity.kasseId, `signatur-selbsttest_${e.kassenId}.csv`)}
+          >
+            ⬇ CSV-Protokoll
+          </Button>
+        )}
+      </div>
+
+      {fehler && (
+        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700 mb-4">{fehler}</div>
+      )}
+
+      {e && (
+        <>
+          <div className={`rounded-md border p-3 text-sm mb-4 ${
+            e.ungueltig > 0 || !e.ketteOk || !e.nummernLueckenlos
+              ? 'border-red-200 bg-red-50 text-red-700'
+              : e.derAltformat > 0
+                ? 'border-sky-200 bg-sky-50 text-sky-700'
+                : 'border-green-200 bg-green-50 text-green-700'
+          }`}>
+            {e.ungueltig > 0 ? (
+              <><strong>{e.ungueltig} Beleg{e.ungueltig === 1 ? '' : 'e'} mit ungültiger Signatur.</strong> Bitte
+              die Liste unten prüfen — mögliche Ursache: nachträgliche Veränderung oder Datendefekt.</>
+            ) : !e.ketteOk || !e.nummernLueckenlos ? (
+              <><strong>Kettenprüfung auffällig.</strong> Signaturen der einzelnen Belege sind in Ordnung,
+              aber {!e.ketteOk && 'die Verkettung ist unterbrochen'}{!e.ketteOk && !e.nummernLueckenlos && ' und '}
+              {!e.nummernLueckenlos && 'die Belegnummern haben Lücken'}.</>
+            ) : e.derAltformat > 0 ? (
+              <><strong>{e.derAltformat} Alt-Beleg{e.derAltformat === 1 ? '' : 'e'} im DER-Format</strong> (vor
+              dem Signaturformat-Fix erstellt): kryptographisch korrekt signiert und unverändert — nur die
+              Signatur-Codierung entsprach nicht der Norm. Mit dem CSV-Protokoll dokumentierbar.</>
+            ) : (
+              <><strong>Alles in Ordnung</strong> — alle {e.gueltig} signierten Belege verifizieren korrekt.</>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-4">
+            {kachel(e.geprueft, 'Geprüft')}
+            {kachel(e.gueltig, 'Gültig')}
+            {kachel(e.ausfall, 'SEE-Ausfall', 1, 'border-amber-200 bg-amber-50 text-amber-700')}
+            {kachel(e.derAltformat, 'Altformat DER', 1, 'border-sky-200 bg-sky-50 text-sky-700')}
+            {kachel(e.ungueltig, 'Ungültig', 1)}
+          </div>
+
+          <div className="flex flex-wrap gap-4 text-sm mb-4">
+            <span className={e.ketteOk ? 'text-green-700' : 'text-red-700'}>
+              {e.ketteOk ? '✓ Signaturkette geschlossen' : '✗ Signaturkette unterbrochen'}
+            </span>
+            <span className={e.nummernLueckenlos ? 'text-green-700' : 'text-red-700'}>
+              {e.nummernLueckenlos ? '✓ Belegnummern lückenlos' : '✗ Belegnummern mit Lücken'}
+            </span>
+            <span className="text-ink-subtle">Dauer: {e.dauerMs} ms</span>
+          </div>
+
+          {e.details.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs uppercase text-ink-subtle border-b border-line">
+                    <th className="py-2 pr-3">Beleg-Nr.</th>
+                    <th className="py-2 pr-3">Datum</th>
+                    <th className="py-2 pr-3">Typ</th>
+                    <th className="py-2">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {e.details.map(d => (
+                    <tr key={d.belegNummer} className="border-b border-line/60">
+                      <td className="py-1.5 pr-3 font-mono">{d.belegNummer}</td>
+                      <td className="py-1.5 pr-3">{new Date(d.belegDatum).toLocaleString('de-AT', { dateStyle: 'short', timeStyle: 'short' })}</td>
+                      <td className="py-1.5 pr-3">{d.belegTyp}</td>
+                      <td className="py-1.5">{statusBadge(d.status)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {e.detailsGekappt && (
+                <p className="mt-2 text-xs text-ink-subtle">
+                  Anzeige auf 500 Einträge gekappt — das CSV-Protokoll enthält alle.
+                </p>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  )
+}
 
 function SeeAusfallSektion() {
   const identity    = getKasseIdentity()!

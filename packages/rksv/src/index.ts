@@ -40,7 +40,7 @@ export { generiereAesSchluessel, berechneIV, verschluesselUmsatzzaehler, entschl
 export { verkettungswertStartbeleg, verkettungswertFolgebeleg, pruefeKette } from './crypto/chain.js'
 
 // SEE
-export { generateSEE, ladeSeInfo, signiereRoh, verifiziere, zertifikatSN } from './see.js'
+export { generateSEE, ladeSeInfo, signiereRoh, verifiziere, verifiziereDerCodiert, zertifikatSN, derZuP1363, p1363ZuDer } from './see.js'
 
 // Signatureinheiten (Software / A-Trust HSM)
 export {
@@ -62,6 +62,7 @@ export {
   erstelleStartbeleg,
   erstelleNullbeleg,
   verifiziereBelegSignatur,
+  verifiziereBelegSignaturAltDer,
   verifiziereQrCode,
   jwsSigningInput,
   qrCodeZuJwsCompact,

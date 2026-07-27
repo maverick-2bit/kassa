@@ -138,6 +138,23 @@ export function verifiziere(daten: string, signaturP1363: Buffer, zertifikatDER:
   }
 }
 
+/**
+ * Verifiziert eine Signatur, die bereits DER-codiert vorliegt (ASN.1-SEQUENCE
+ * aus r und s). Alt-Belege, die vor dem P1363-Fix signiert wurden, tragen
+ * dieses Format im Signaturwert — der Selbsttest erkennt sie damit als
+ * „kryptographisch korrekt, aber altes Codierungsformat".
+ */
+export function verifiziereDerCodiert(daten: string, signaturDER: Buffer, zertifikatDER: Buffer): boolean {
+  try {
+    const pubKey = new X509Certificate(zertifikatDER).publicKey
+    const verify = createVerify('SHA256')
+    verify.update(daten, 'utf8')
+    return verify.verify(pubKey, signaturDER)
+  } catch {
+    return false
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Zertifikats-Seriennummer
 // ---------------------------------------------------------------------------
