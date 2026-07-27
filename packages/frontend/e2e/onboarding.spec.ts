@@ -435,10 +435,10 @@ test('Tisch-Split: Rechnung auf 2 Zahler teilen schließt den Tab mit 2 Bons', a
   await splitZeile.getByRole('button').filter({ hasText: '−' }).first().click()  // Zahler 1: 2 → 1
   await splitZeile.getByRole('button').filter({ hasText: '+' }).nth(1).click()   // Zahler 2: 0 → 1
 
-  // Beide Zahler bar mit exakt ihrem Subtotal (je € 2,50) — Quick-Buttons
-  const barQuick = page.getByRole('button', { name: 'Bar = € 2,50' })
-  await barQuick.first().click()
-  await barQuick.nth(1).click()
+  // Beide Zahler bar per Ein-Klick-Zahlart-Button (v0.7.131: Buttons statt Cent-Felder)
+  const barButtons = page.getByRole('button', { name: '💶 Bar' })
+  await barButtons.first().click()
+  await barButtons.nth(1).click()
 
   // Abschicken: 2 Bons entstehen, der Tab schließt, zurück zur Tischübersicht
   await page.getByRole('button', { name: '2 Bons erstellen' }).click()
