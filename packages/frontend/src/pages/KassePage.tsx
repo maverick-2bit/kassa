@@ -20,7 +20,7 @@ import type {
   TischTabResponse,
 } from '@kassa/shared'
 import { GUTSCHEIN_STATUS_LABELS, MWST_LABELS, STATION_LABELS, happyHourPreisCent, aktiverRabattProzent } from '@kassa/shared'
-import { angebotApi, artikelApi, belegApi, bonierApi, druckerApi, gutscheinApi, kategorieApi, lieferscheinApi, modifikatorApi, offenerPostenApi, posConfigApi, preisregelApi, tischTabApi, zvtApi, displayApi } from '../lib/api'
+import { angebotApi, artikelApi, belegApi, bonierApi, druckerApi, emailApi, gutscheinApi, kategorieApi, lieferscheinApi, modifikatorApi, offenerPostenApi, posConfigApi, preisregelApi, tischTabApi, zvtApi, displayApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { getAuth, hasBerechtigung } from '../lib/auth'
 import { formatPreis, heuteLokalYMD } from '../lib/format'
@@ -30,7 +30,8 @@ import {
   rabattBetragCent,
   preisNachPositionsRabattCent,
 } from '../lib/warenkorb'
-import { druckeAngebot, druckeGutschein, druckeLiferschein } from '../lib/rechnung'
+import { druckeAngebot, druckeGutschein, druckeLiferschein, druckeRechnung } from '../lib/rechnung'
+import { AusgabeDialog } from '../components/AusgabeDialog'
 import { Button } from '../components/ui/Button'
 import { Modal } from '../components/ui/Modal'
 import { Input } from '../components/ui/Input'
@@ -114,8 +115,10 @@ export function KassePage() {
   const [tisch, setTisch] = useState<string>('1')
   const [kellner, setKellner] = useState<string>('Service')
   const [letzterBon, setLetzterBon] = useState<BelegResponse | null>(null)
-  // Kurze Bestätigung nach „Bon erstellen" (kein Dialog im Druck-Modus)
-  const [belegBestaetigung, setBelegBestaetigung] = useState<string | null>(null)
+  // Kurze Bestätigung nach „Bon erstellen" (kein Dialog im Druck-Modus). Hält den
+  // Beleg fest, damit die Options-Schaltfläche „Andere Ausgabe" ihn noch kennt.
+  const [bestaetigterBeleg, setBestaetigterBeleg] = useState<BelegResponse | null>(null)
+  const [ausgabeDialogOffen, setAusgabeDialogOffen] = useState(false)
   // „Ausgabe wählen" (früher Alternativdruck): Verkauf ohne Auto-Druck → Auswahl-Dialog.
   const [ausgabeWaehlen, setAusgabeWaehlen] = useState(false)
   const alternativRef = useRef(false)
@@ -363,14 +366,16 @@ export function KassePage() {
         () => displayApi.push(identity.kasseId, { typ: 'leer' }).catch(() => {}),
         modus === 'digital' || modus === 'beides' ? 20_000 : 5000,
       )
-      // Dialog nur bei „Alternativdruck" (kein Autodruck) ODER im Digital-Beleg-Modus
-      // (dort IST der Bildschirm-Beleg die Ausgabe). Sonst still + kurze Bestätigung.
-      const zeigeDialog = !!variables.keinAutodruck || modus === 'digital' || modus === 'beides'
+      // Dialog nur bei bewusst gewählter Ausgabe (kein Autodruck) ODER im REINEN
+      // Digital-Modus — dort IST der Bildschirm-Beleg die Ausgabe. Im Modus
+      // „beides" wird ohnehin gedruckt UND der Foto-Beleg steht 20 s am
+      // Kundendisplay; ein Dialog am Kassenbildschirm hält den Ablauf nur auf.
+      const zeigeDialog = !!variables.keinAutodruck || modus === 'digital'
       if (zeigeDialog) {
         setLetzterBon(beleg)
       } else {
-        setBelegBestaetigung(`Beleg #${beleg.belegNummer} erstellt`)
-        setTimeout(() => setBelegBestaetigung(null), 4000)
+        setBestaetigterBeleg(beleg)
+        setTimeout(() => setBestaetigterBeleg(null), 8000)
       }
       reset()
       void queryClient.invalidateQueries({ queryKey: ['belege'] })
@@ -550,12 +555,29 @@ export function KassePage() {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-4">
-      {/* Beleg-erstellt-Bestätigung (Druck-Modus: kein Dialog, nur kurze Rückmeldung) */}
-      {belegBestaetigung && (
+      {/* Beleg-erstellt-Bestätigung (Druck-Modus: kein Dialog, nur kurze Rückmeldung
+          + Options-Schaltfläche für einen anderen Ausgabeweg) */}
+      {bestaetigterBeleg && (
         <div className="mb-3 bg-green-50 border border-green-300 text-green-800
                         rounded-lg px-4 py-3 flex items-center gap-3 text-sm font-medium">
           <span className="text-lg">✅</span>
-          <span>{belegBestaetigung}</span>
+          <span>Beleg #{bestaetigterBeleg.belegNummer} erstellt</span>
+          <button
+            type="button"
+            onClick={() => setAusgabeDialogOffen(true)}
+            className="ml-auto rounded-md border border-green-400 bg-white/70 px-2.5 py-1
+                       text-xs font-semibold text-green-800 hover:bg-white"
+          >
+            Andere Ausgabe …
+          </button>
+          <button
+            type="button"
+            onClick={() => setBestaetigterBeleg(null)}
+            className="text-green-700 hover:text-green-900 px-1"
+            aria-label="Ausblenden"
+          >
+            ×
+          </button>
         </div>
       )}
       {/* Offline-Beleg-gespeichert Toast */}
@@ -1010,6 +1032,29 @@ export function KassePage() {
       >
         {letzterBon && <BonAnzeige beleg={letzterBon} belegModus={druckerCfg.data?.belegModus} onAkzeptiert={schliesseBon} />}
       </Modal>
+
+      {/* Einheitlicher Ausgabe-Dialog — nur auf Klick, nie automatisch */}
+      <AusgabeDialog
+        open={ausgabeDialogOffen}
+        onClose={() => setAusgabeDialogOffen(false)}
+        titel={bestaetigterBeleg ? `Beleg #${bestaetigterBeleg.belegNummer} ausgeben` : 'Ausgabe wählen'}
+        beschreibung="Der Beleg wurde bereits auf dem Standarddrucker ausgegeben."
+        onAusgabe={async (ziel) => {
+          const b = bestaetigterBeleg
+          if (!b) return
+          const auth = getAuth()
+          switch (ziel.art) {
+            case 'bon':     await druckerApi.reprint(b.id); break
+            case 'drucker': await druckerApi.reprint(b.id, { druckerId: ziel.druckerId }); break
+            case 'mail':    await emailApi.sendBeleg(b.id, ziel.empfaenger); break
+            case 'a4':
+              if (auth) druckeRechnung(b, { firmenname: auth.mandant.firmenname, uid: auth.mandant.uid })
+              break
+            case 'keine':   break
+          }
+          setBestaetigterBeleg(null)
+        }}
+      />
 
       {/* Erfolgs-Modal Angebot */}
       <Modal

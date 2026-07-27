@@ -605,7 +605,7 @@ export const druckerApi = {
     request<{ erfolgreich: boolean }>('POST', `/api/kassen/${kasseId}/drucker/test`),
   druckeTischEtiketten: (kasseId: string, input: { tische: string[]; mitQr: boolean; druckerId?: string; testQr?: boolean }) =>
     request<{ erfolgreich: boolean; anzahl: number }>('POST', `/api/kassen/${kasseId}/tisch-etiketten`, input),
-  reprint:    (belegId: string, opts?: { ausweich?: boolean }) =>
+  reprint:    (belegId: string, opts?: { ausweich?: boolean; druckerId?: string }) =>
     request<{ erfolgreich: boolean }>('POST', `/api/belege/${belegId}/drucken`, opts ?? {}),
   status:     (kasseId: string) =>
     request<DruckerStatus>('GET', `/api/kassen/${kasseId}/drucker/status`),
