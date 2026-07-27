@@ -12,6 +12,7 @@ import { druckerApi, emailApi } from '../lib/api'
 import { formatPreis, formatDatum } from '../lib/format'
 import { druckeRechnung } from '../lib/rechnung'
 import { getAuth } from '../lib/auth'
+import { AusgabeDialog } from './AusgabeDialog'
 
 interface Props {
   beleg:            BelegResponse
@@ -24,29 +25,16 @@ interface Props {
 }
 
 export function BonAnzeige({ beleg, codeAufgeklappt = false, belegModus, onAkzeptiert }: Props) {
-  const [druckStatus, setDruckStatus] = useState<{ typ: 'ok' | 'fehler'; text: string } | null>(null)
-  const [emailOffen,  setEmailOffen]  = useState(false)
-  const [emailAdresse, setEmailAdresse] = useState('')
+  const [druckStatus,  setDruckStatus]  = useState<{ typ: 'ok' | 'fehler'; text: string } | null>(null)
+  const [ausgabeOffen, setAusgabeOffen] = useState(false)
 
   const istDigital = belegModus === 'digital' && beleg.belegTyp === 'Barzahlungsbeleg'
-
-  const druckMutation = useMutation({
-    mutationFn: () => druckerApi.reprint(beleg.id),
-    onSuccess:  () => setDruckStatus({ typ: 'ok', text: 'Druckauftrag gesendet' }),
-    onError:    (err) => setDruckStatus({ typ: 'fehler', text: err instanceof Error ? err.message : String(err) }),
-  })
 
   // „Nicht akzeptiert" → Rechnung auf den Kassa-Bondrucker drucken (Ausweich, erzwungen)
   const nichtAkzeptiertMutation = useMutation({
     mutationFn: () => druckerApi.reprint(beleg.id, { ausweich: true }),
     onSuccess:  () => onAkzeptiert?.(),
     onError:    (err) => setDruckStatus({ typ: 'fehler', text: `Ausweich-Druck fehlgeschlagen: ${err instanceof Error ? err.message : String(err)}` }),
-  })
-
-  const emailMutation = useMutation({
-    mutationFn: () => emailApi.sendBeleg(beleg.id, emailAdresse.trim()),
-    onSuccess:  () => { setDruckStatus({ typ: 'ok', text: `E-Mail an ${emailAdresse.trim()} gesendet` }); setEmailOffen(false); setEmailAdresse('') },
-    onError:    (err) => setDruckStatus({ typ: 'fehler', text: err instanceof Error ? err.message : String(err) }),
   })
   const steuerEintraege = (
     [
@@ -204,73 +192,45 @@ export function BonAnzeige({ beleg, codeAufgeklappt = false, belegModus, onAkzep
             </p>
           )}
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          {beleg.belegTyp === 'Barzahlungsbeleg' && (
-            <button
-              type="button"
-              onClick={() => {
-                const auth = getAuth()
-                if (auth) druckeRechnung(beleg, { firmenname: auth.mandant.firmenname, uid: auth.mandant.uid })
-              }}
-              className="inline-flex items-center gap-1.5 rounded-md border border-brand-300 bg-brand-50 px-3 py-1.5 text-sm font-medium text-brand-700 hover:bg-brand-100"
-            >
-              <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd"/>
-              </svg>
-              Rechnung / PDF
-            </button>
-          )}
-          {/* „Bon drucken" nicht im Digital-Modus (dort läuft der Druck über „Nicht akzeptiert") */}
-          {!istDigital && (
-            <button
-              type="button"
-              onClick={() => { setDruckStatus(null); druckMutation.mutate() }}
-              disabled={druckMutation.isPending}
-              className="inline-flex items-center gap-1.5 rounded-md border border-line-strong bg-panel px-3 py-1.5 text-sm font-medium text-ink hover:bg-panel-2 disabled:opacity-50"
-            >
-              <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M5 4v3H4a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h1v2a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-2h1a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-1V4a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2zm8 0H7v3h6V4zm0 8H7v4h6v-4z" clipRule="evenodd"/>
-              </svg>
-              {druckMutation.isPending ? 'Drucke…' : 'Bon drucken'}
-            </button>
-          )}
-          {/* E-Mail-Button */}
-          {!emailOffen ? (
-            <button
-              type="button"
-              onClick={() => { setDruckStatus(null); setEmailOffen(true) }}
-              className="inline-flex items-center gap-1.5 rounded-md border border-line-strong bg-panel px-3 py-1.5 text-sm font-medium text-ink hover:bg-panel-2"
-            >
-              <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z"/>
-                <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z"/>
-              </svg>
-              Per E-Mail
-            </button>
-          ) : (
-            <div className="flex items-center gap-1.5">
-              <input
-                autoFocus
-                type="email"
-                value={emailAdresse}
-                onChange={e => setEmailAdresse(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter' && emailAdresse.includes('@')) emailMutation.mutate() }}
-                placeholder="email@example.com"
-                className="rounded-md border border-line-strong px-2.5 py-1.5 text-sm w-44 focus:outline-none focus:ring-1 focus:ring-brand-400"
-              />
-              <button
-                type="button"
-                onClick={() => emailMutation.mutate()}
-                disabled={emailMutation.isPending || !emailAdresse.includes('@')}
-                className="rounded-md bg-brand-600 px-2.5 py-1.5 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
-              >
-                {emailMutation.isPending ? '…' : 'Senden'}
-              </button>
-              <button type="button" onClick={() => setEmailOffen(false)} className="text-ink-subtle hover:text-ink-muted px-1">✕</button>
-            </div>
-          )}
-        </div>
+        {/* EIN Weg für alle Ausgaben — identisch zu Rechnung, Lieferschein,
+            Gutschein, Inventur … (siehe AusgabeDialog). */}
+        <button
+          type="button"
+          onClick={() => { setDruckStatus(null); setAusgabeOffen(true) }}
+          className="inline-flex items-center gap-1.5 rounded-md border border-line-strong bg-panel px-3 py-1.5 text-sm font-medium text-ink hover:bg-panel-2"
+        >
+          <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M5 4v3H4a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h1v2a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-2h1a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-1V4a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2zm8 0H7v3h6V4zm0 8H7v4h6v-4z" clipRule="evenodd"/>
+          </svg>
+          Ausgabe wählen …
+        </button>
       </div>
+
+      <AusgabeDialog
+        open={ausgabeOffen}
+        onClose={() => setAusgabeOffen(false)}
+        titel={`Beleg #${beleg.belegNummer} ausgeben`}
+        wege={{
+          // Im Digital-Modus läuft der Papierweg bewusst über „Nicht akzeptiert"
+          bon: !istDigital,
+          a4:  beleg.belegTyp === 'Barzahlungsbeleg',
+          weitereDrucker: !istDigital,
+          mail: true,
+          ohne: true,
+        }}
+        onAusgabe={async (ziel) => {
+          const auth = getAuth()
+          switch (ziel.art) {
+            case 'bon':     await druckerApi.reprint(beleg.id); setDruckStatus({ typ: 'ok', text: 'Druckauftrag gesendet' }); break
+            case 'drucker': await druckerApi.reprint(beleg.id, { druckerId: ziel.druckerId }); setDruckStatus({ typ: 'ok', text: `Gesendet an ${ziel.name}` }); break
+            case 'mail':    await emailApi.sendBeleg(beleg.id, ziel.empfaenger); setDruckStatus({ typ: 'ok', text: `E-Mail an ${ziel.empfaenger} gesendet` }); break
+            case 'a4':
+              if (auth) druckeRechnung(beleg, { firmenname: auth.mandant.firmenname, uid: auth.mandant.uid })
+              break
+            case 'keine':   break
+          }
+        }}
+      />
 
       {/* RKSV-Code */}
       <details className="text-xs" open={codeAufgeklappt}>

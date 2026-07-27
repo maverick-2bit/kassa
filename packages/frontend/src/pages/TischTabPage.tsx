@@ -348,10 +348,11 @@ export function TischTabPage() {
       qc.invalidateQueries({ queryKey: ['belege'] })
       // Im Druck-Modus druckt der Server den Beleg bereits automatisch
       // (tisch-tab.route → tryDruckeBeleg) — kein Auswahl-Dialog nötig, direkt
-      // zurück zur Tischübersicht. Nur bei digitalem Beleg (digital/beides) den
-      // Bon-Dialog mit RKSV-QR zum Abfotografieren für den Gast öffnen.
+      // zurück zur Tischübersicht. Nur im REINEN Digital-Modus den Bon-Dialog mit
+      // RKSV-QR zum Abfotografieren öffnen; bei „beides" wird ohnehin gedruckt
+      // und der Foto-Beleg steht am Kundendisplay.
       const belegModus = druckerCfg.data?.belegModus
-      if (belegModus === 'digital' || belegModus === 'beides') {
+      if (belegModus === 'digital') {
         const beleg = await belegApi.list(identity.kasseId, 1).then(l => l[0] ?? null)
         if (beleg && beleg.id === belegId) { setLetzterBon(beleg); return }
       }

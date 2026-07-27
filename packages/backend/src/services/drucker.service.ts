@@ -18,7 +18,7 @@ import { eq } from 'drizzle-orm'
 import type { BelegResponse, MwStSatz } from '@kassa/shared'
 import type { BelegPosition } from '@kassa/rksv'
 import type { Db } from '../db/client.js'
-import { belege, druckLog, kassen, mandanten } from '../db/schema.js'
+import { belege, drucker, druckLog, kassen, mandanten } from '../db/schema.js'
 import { baueBon, type DruckerKontext, type MandantInfo } from './escpos/layout.js'
 
 export interface DruckerConfig {
@@ -223,14 +223,29 @@ export function druckerConfigVonKasse(kasse: {
 // High-Level: Beleg drucken (DB-Lookup + Bon-Aufbau + Senden + Log)
 // ---------------------------------------------------------------------------
 
-export async function druckeBeleg(db: Db, belegId: string, opts?: { ignoreModus?: boolean }): Promise<void> {
+export async function druckeBeleg(
+  db:      Db,
+  belegId: string,
+  opts?:   { ignoreModus?: boolean; druckerId?: string },
+): Promise<void> {
   const [beleg] = await db.select().from(belege).where(eq(belege.id, belegId)).limit(1)
   if (!beleg) throw new DruckerError(404, 'Beleg nicht gefunden')
 
   const [kasse] = await db.select().from(kassen).where(eq(kassen.id, beleg.kasseId)).limit(1)
   if (!kasse) throw new DruckerError(404, 'Kasse nicht gefunden')
 
-  const druckerConfig = druckerConfigVonKasse(kasse, { ignoreBelegModus: opts?.ignoreModus ?? false })
+  // Zieldrucker: explizit gewählter Bibliotheks-Drucker (Ausgabe-Dialog) ODER der
+  // Kassen-Bondrucker. Beim expliziten Drucker gilt der Beleg-Modus nicht — der
+  // Kassier hat den Weg bewusst gewählt.
+  let druckerConfig: DruckerConfig | null
+  if (opts?.druckerId) {
+    const [d] = await db.select().from(drucker).where(eq(drucker.id, opts.druckerId)).limit(1)
+    if (!d || d.mandantId !== beleg.mandantId) throw new DruckerError(404, 'Drucker nicht gefunden')
+    if (!d.aktiv) throw new DruckerError(409, 'Drucker ist deaktiviert')
+    druckerConfig = { ip: d.ip, port: d.port, breite: d.breiteZeichen, timeoutMs: d.timeoutSek * 1000 }
+  } else {
+    druckerConfig = druckerConfigVonKasse(kasse, { ignoreBelegModus: opts?.ignoreModus ?? false })
+  }
   if (!druckerConfig) throw new DruckerError(409, 'Drucker nicht konfiguriert oder deaktiviert')
 
   const [mandant] = await db.select().from(mandanten).where(eq(mandanten.id, beleg.mandantId)).limit(1)
