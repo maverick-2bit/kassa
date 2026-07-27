@@ -34,6 +34,7 @@ import { BonAnzeige } from '../components/BonAnzeige'
 import { KartenzahlungModal } from '../components/KartenzahlungModal'
 import { RabattModal } from '../components/RabattModal'
 import { BarRueckgeldModal } from '../components/BarRueckgeldModal'
+import { BarKarteSplitModal } from '../components/BarKarteSplitModal'
 import { ArtikelGrid } from '../components/ArtikelGrid'
 
 // ---------------------------------------------------------------------------
@@ -1257,6 +1258,10 @@ function SplitModal({ open, tab, loading, fehler, onSubmit, onClose }: SplitModa
   const updateKarte = (zahlerId: number, val: string) =>
     setZahler(prev => prev.map(z => z.id === zahlerId ? { ...z, karte: val.replace(/[^0-9]/g, '') } : z))
 
+  // „Bar + Karte" für einen Zahler: Ziffernblock-Modal (BarKarteSplitModal)
+  const [mischZahler, setMischZahler] = useState<number | null>(null)
+  const mischZahlerObj = zahler.find(z => z.id === mischZahler) ?? null
+
   // Validation (reine Logik in lib/tischtab)
   const { positionsfehler, zahlungsfehler, zahlerMitPositionen: zahlungenMitPositionen, kannSubmit } =
     splitValidierung(tab.positionen, zahler, formatPreis)
@@ -1352,37 +1357,58 @@ function SplitModal({ open, tab, loading, fehler, onSubmit, onClose }: SplitModa
                   <span className="text-sm font-semibold text-ink">Zahler {i + 1}</span>
                   <span className="text-sm font-bold text-ink">{formatPreis(subtotal)}</span>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <label className="block">
-                    <span className="text-xs text-ink-muted">Bar (Cent)</span>
-                    <Input
-                      inputMode="numeric"
-                      placeholder="0"
-                      value={z.barInput}
-                      onChange={(e) => updateBar(z.id, e.target.value)}
-                      className="mt-0.5 text-sm"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-xs text-ink-muted">Karte (Cent)</span>
-                    <Input
-                      inputMode="numeric"
-                      placeholder="0"
-                      value={z.karte}
-                      onChange={(e) => updateKarte(z.id, e.target.value)}
-                      className="mt-0.5 text-sm"
-                    />
-                  </label>
+                {/* Zahlart wie bei der normalen Zahlung: Ein-Klick Bar oder Karte
+                    auf den Zahler-Betrag; „Gemischt" öffnet den Ziffernblock
+                    (Bar-Anteil tippen, Rest läuft auf Karte). Keine Cent-Felder. */}
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { updateBar(z.id, String(subtotal)); updateKarte(z.id, '') }}
+                    className={`rounded-lg border px-3 py-2.5 text-sm font-semibold transition ${
+                      bar === subtotal && karte === 0
+                        ? 'border-green-500 bg-green-50 text-green-800'
+                        : 'border-line-strong bg-panel text-ink hover:bg-panel-2'
+                    }`}
+                  >
+                    💶 Bar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { updateKarte(z.id, String(subtotal)); updateBar(z.id, '') }}
+                    className={`rounded-lg border px-3 py-2.5 text-sm font-semibold transition ${
+                      karte === subtotal && bar === 0
+                        ? 'border-sky-500 bg-sky-50 text-sky-800'
+                        : 'border-line-strong bg-panel text-ink hover:bg-panel-2'
+                    }`}
+                  >
+                    💳 Karte
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMischZahler(z.id)}
+                    className={`rounded-lg border px-3 py-2.5 text-sm font-semibold transition ${
+                      bar > 0 && karte > 0
+                        ? 'border-brand-500 bg-brand-50 text-brand-800'
+                        : 'border-line-strong bg-panel text-ink hover:bg-panel-2'
+                    }`}
+                  >
+                    Bar + Karte
+                  </button>
                 </div>
-                <div className="flex gap-2 text-xs">
-                  <button type="button" onClick={() => { updateBar(z.id, String(subtotal)); updateKarte(z.id, '') }} className="text-brand-600 hover:underline">Bar = {formatPreis(subtotal)}</button>
-                  <span className="text-ink-subtle">·</span>
-                  <button type="button" onClick={() => { updateKarte(z.id, String(subtotal)); updateBar(z.id, '') }} className="text-brand-600 hover:underline">Karte = {formatPreis(subtotal)}</button>
-                </div>
-                {diff !== 0 && (
+                {(bar > 0 || karte > 0) && diff === 0 && (
+                  <p className="text-xs text-ink-muted">
+                    {bar > 0 && karte > 0
+                      ? <>Gemischt: Bar {formatPreis(bar)} · Karte {formatPreis(karte)}</>
+                      : bar > 0 ? <>Zahlt bar</> : <>Zahlt mit Karte</>}
+                  </p>
+                )}
+                {diff !== 0 && (bar > 0 || karte > 0) && (
                   <p className="text-xs text-red-600">
                     {diff > 0 ? `Noch ${formatPreis(diff)} offen` : `${formatPreis(-diff)} zu viel eingegeben`}
                   </p>
+                )}
+                {bar === 0 && karte === 0 && (
+                  <p className="text-xs text-ink-subtle">Zahlart wählen</p>
                 )}
               </div>
             )
@@ -1412,6 +1438,20 @@ function SplitModal({ open, tab, loading, fehler, onSubmit, onClose }: SplitModa
           </Button>
         </div>
       </div>
+
+      {/* Gemischte Zahlung eines Zahlers: Bar-Anteil per Ziffernblock, Rest → Karte */}
+      <BarKarteSplitModal
+        open={mischZahler !== null}
+        summeCent={mischZahlerObj ? zahlerSubtotalCent(tab.positionen, mischZahlerObj.mengen) : 0}
+        onClose={() => setMischZahler(null)}
+        onSubmit={(barCentBeleg, karteCentBeleg) => {
+          if (mischZahler !== null) {
+            updateBar(mischZahler, String(barCentBeleg))
+            updateKarte(mischZahler, karteCentBeleg > 0 ? String(karteCentBeleg) : '')
+          }
+          setMischZahler(null)
+        }}
+      />
     </Modal>
   )
 }
