@@ -12,8 +12,11 @@
 
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify'
 import { z } from 'zod'
+import { eq } from 'drizzle-orm'
 import { InventurAnlageSchema, InventurZaehlSchema } from '@kassa/shared'
 import type { Db } from '../db/client.js'
+import type { Config } from '../config.js'
+import { druckLog, mandanten } from '../db/schema.js'
 import {
   erstelleInventur,
   listeInventuren,
@@ -24,8 +27,11 @@ import {
   inventurProtokollCsv,
   InventurError,
 } from '../services/inventur.service.js'
+import { resolveZielDrucker, sendBytes, DruckerError } from '../services/drucker.service.js'
+import { baueInventurBon } from '../services/escpos/layout.js'
+import { isEmailAktiv, sendeInventurEmail } from '../services/email.service.js'
 
-export interface InventurRouteOptions { db: Db }
+export interface InventurRouteOptions { db: Db; config: Config }
 
 const IdParam = z.object({ id: z.string().uuid() })
 
@@ -122,4 +128,94 @@ export const inventurRoute: FastifyPluginAsync<InventurRouteOptions> = async (fa
       throw err
     }
   })
+
+  /** POST /inventuren/:id/drucken — kompaktes Protokoll (nur Abweichungen) am Bondrucker */
+  fastify.post('/inventuren/:id/drucken', auth, async (request, reply) => {
+    if (!darfVerwalten(request)) return reply.status(403).send({ fehler: 'Keine Berechtigung' })
+    const p = IdParam.safeParse(request.params)
+    if (!p.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
+    const body = z.object({
+      kasseId:   z.string().uuid(),
+      druckerId: z.string().uuid().optional(),
+    }).safeParse(request.body)
+    if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
+
+    try {
+      const detail = await holeInventur(p.data.id, request.user.mandantId, db)
+      const config = await resolveZielDrucker(db, request.user.mandantId, body.data.kasseId, body.data.druckerId)
+      const gezaehlt = detail.positionen.filter(x => x.istMenge !== null)
+      const bytes = baueInventurBon({
+        breite:      config.breite,
+        ...(await firmennameVon(db, request.user.mandantId)),
+        bezeichnung: detail.bezeichnung,
+        datum:       (detail.abgeschlossenAm ?? new Date()).toISOString(),
+        erstelltVon: detail.erstelltVon,
+        ...(detail.status === 'offen' ? { zwischenstand: true } : {}),
+        abweichungen: gezaehlt
+          .filter(x => (x.differenz ?? 0) !== 0)
+          .map(x => ({ bezeichnung: x.bezeichnung, sollMenge: x.sollMenge, istMenge: x.istMenge! })),
+        gesamtPositionen: detail.positionen.length,
+        gezaehlt:         gezaehlt.length,
+      })
+      try {
+        await sendBytes(bytes, config)
+        await db.insert(druckLog).values({
+          mandantId: request.user.mandantId, kasseId: body.data.kasseId,
+          druckerIp: config.ip, druckerTyp: 'inventur', erfolg: true,
+        })
+      } catch (druckFehler) {
+        const meldung = druckFehler instanceof Error ? druckFehler.message : String(druckFehler)
+        await db.insert(druckLog).values({
+          mandantId: request.user.mandantId, kasseId: body.data.kasseId,
+          druckerIp: config.ip, druckerTyp: 'inventur', erfolg: false, fehlerText: meldung,
+        })
+        return reply.status(502).send({ fehler: `Druck fehlgeschlagen: ${meldung}` })
+      }
+      return reply.send({ erfolgreich: true })
+    } catch (err) {
+      if (err instanceof InventurError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      if (err instanceof DruckerError)  return reply.status(err.httpStatus).send({ fehler: err.message })
+      return reply.status(502).send({ fehler: `Druck fehlgeschlagen: ${err instanceof Error ? err.message : String(err)}` })
+    }
+  })
+
+  /** POST /inventuren/:id/email — Zusammenfassung + CSV-Anhang */
+  fastify.post('/inventuren/:id/email', auth, async (request, reply) => {
+    if (!darfVerwalten(request)) return reply.status(403).send({ fehler: 'Keine Berechtigung' })
+    const p = IdParam.safeParse(request.params)
+    if (!p.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
+    const body = z.object({ empfaenger: z.string().trim().email() }).safeParse(request.body)
+    if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
+    if (!isEmailAktiv(opts.config)) {
+      return reply.status(409).send({ fehler: 'E-Mail-Versand ist nicht konfiguriert (SMTP-Einstellungen fehlen)' })
+    }
+
+    try {
+      const detail = await holeInventur(p.data.id, request.user.mandantId, db)
+      const { dateiname, csv } = await inventurProtokollCsv(p.data.id, request.user.mandantId, db)
+      const gezaehlt = detail.positionen.filter(x => x.istMenge !== null)
+      await sendeInventurEmail(body.data.empfaenger, {
+        firmenname:       (await firmennameVon(db, request.user.mandantId)).firmenname ?? '',
+        bezeichnung:      detail.bezeichnung,
+        datum:            (detail.abgeschlossenAm ?? new Date()).toISOString(),
+        erstelltVon:      detail.erstelltVon,
+        gesamtPositionen: detail.positionen.length,
+        gezaehlt:         gezaehlt.length,
+        abweichungen:     gezaehlt.filter(x => (x.differenz ?? 0) !== 0).length,
+        zwischenstand:    detail.status === 'offen',
+        csvDateiname:     dateiname,
+        csvInhalt:        csv,
+      }, opts.config)
+      return reply.send({ erfolgreich: true })
+    } catch (err) {
+      if (err instanceof InventurError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      return reply.status(502).send({ fehler: `E-Mail fehlgeschlagen: ${err instanceof Error ? err.message : String(err)}` })
+    }
+  })
+}
+
+async function firmennameVon(db: Db, mandantId: string): Promise<{ firmenname?: string }> {
+  const [m] = await db.select({ firmenname: mandanten.firmenname }).from(mandanten)
+    .where(eq(mandanten.id, mandantId)).limit(1)
+  return m?.firmenname ? { firmenname: m.firmenname } : {}
 }

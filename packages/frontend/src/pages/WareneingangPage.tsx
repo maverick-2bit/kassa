@@ -20,6 +20,9 @@ import { artikelApi, kategorieApi, lagerstandApi, modifikatorApi } from '../lib/
 import { getKasseIdentity } from '../lib/kasse'
 import { Button } from '../components/ui/Button'
 import { SeriennummernModal } from '../components/SeriennummernModal'
+import { AusgabeDialog } from '../components/AusgabeDialog'
+import { getAuth } from '../lib/auth'
+import { druckeWareneingang } from '../lib/rechnung'
 
 // ---------------------------------------------------------------------------
 // Typen
@@ -175,6 +178,11 @@ export function WareneingangPage() {
   // ---------------------------------------------------------------------------
   // Mutation
   // ---------------------------------------------------------------------------
+  // Zuletzt gebuchte Positionen (mit Bezeichnung) — Grundlage für die Ausgabe.
+  // Wareneingänge haben keine Historie, deshalb hier im State festhalten.
+  const [letzteBuchung, setLetzteBuchung] = useState<{ bezeichnung: string; menge: number }[]>([])
+  const [ausgabeOffen,  setAusgabeOffen]  = useState(false)
+
   const save = useMutation({
     mutationFn: (input: LagerstandBulkInput) => lagerstandApi.bulk(input),
     onSuccess: () => {
@@ -182,7 +190,7 @@ export function WareneingangPage() {
       qc.invalidateQueries({ queryKey: ['modifikator-gruppen'] })
       setEingaben({})
       setGespeichert(true)
-      setTimeout(() => setGespeichert(false), 3000)
+      setTimeout(() => setGespeichert(false), 8000)
     },
   })
 
@@ -198,6 +206,14 @@ export function WareneingangPage() {
       .filter(e => !isNaN(e.menge) && e.menge >= 0)
 
     if (artEintraege.length + varEintraege.length === 0) return
+
+    // Positionsliste für die Ausgabe merken, BEVOR die Eingaben geleert werden
+    const artById = new Map(artZeilen.map(z => [z.id, z.bezeichnung]))
+    const varById = new Map(varZeilen.map(z => [z.id, z.bezeichnung]))
+    setLetzteBuchung([
+      ...artEintraege.map(e => ({ bezeichnung: artById.get(e.id) ?? 'Artikel', menge: e.menge })),
+      ...varEintraege.map(e => ({ bezeichnung: varById.get(e.id) ?? 'Variante', menge: e.menge })),
+    ])
 
     save.mutate({
       modus:         modus === 'inventur' ? 'absolut' : 'wareneingang',
@@ -384,7 +400,18 @@ export function WareneingangPage() {
 
           <div className="flex items-center gap-3">
             {gespeichert && (
-              <span className="text-sm text-green-600 font-medium">✓ Gespeichert</span>
+              <>
+                <span className="text-sm text-green-600 font-medium">✓ Gespeichert</span>
+                {modus === 'wareneingang' && letzteBuchung.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setAusgabeOffen(true)}
+                    className="rounded-md border border-green-400 bg-green-50 px-2.5 py-1 text-xs font-semibold text-green-800 hover:bg-green-100"
+                  >
+                    🖨 Ausgabe …
+                  </button>
+                )}
+              </>
             )}
             {save.isError && (
               <span className="text-sm text-red-600">Fehler beim Speichern</span>
@@ -411,6 +438,32 @@ export function WareneingangPage() {
           onClose={() => setSerialModal(null)}
         />
       )}
+
+      <AusgabeDialog
+        open={ausgabeOffen}
+        onClose={() => setAusgabeOffen(false)}
+        titel="Wareneingang ausgeben"
+        beschreibung={`${letzteBuchung.length} Position${letzteBuchung.length === 1 ? '' : 'en'} der letzten Buchung`}
+        onAusgabe={async (ziel) => {
+          const auth = getAuth()
+          switch (ziel.art) {
+            case 'bon':
+              await lagerstandApi.wareneingangAusgabe({ kasseId: identity.kasseId, positionen: letzteBuchung })
+              break
+            case 'drucker':
+              await lagerstandApi.wareneingangAusgabe({ kasseId: identity.kasseId, druckerId: ziel.druckerId, positionen: letzteBuchung })
+              break
+            case 'mail':
+              await lagerstandApi.wareneingangEmail({ empfaenger: ziel.empfaenger, positionen: letzteBuchung })
+              break
+            case 'a4':
+              if (auth) druckeWareneingang({ positionen: letzteBuchung }, { firmenname: auth.mandant.firmenname, uid: auth.mandant.uid })
+              break
+            case 'keine':
+              break
+          }
+        }}
+      />
     </div>
   )
 }

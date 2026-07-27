@@ -223,6 +223,31 @@ export function druckerConfigVonKasse(kasse: {
 // High-Level: Beleg drucken (DB-Lookup + Bon-Aufbau + Senden + Log)
 // ---------------------------------------------------------------------------
 
+/**
+ * Zieldrucker für Dokument-Ausgaben (Ausgabe-Dialog) auflösen:
+ * explizit gewählter Bibliotheks-Drucker ODER der Kassen-Bondrucker (der
+ * Beleg-Modus zählt bei bewusster Wahl nicht — Dokumente ≠ Belege).
+ * Wirft DruckerError 404/409 mit sprechender Meldung.
+ */
+export async function resolveZielDrucker(
+  db:        Db,
+  mandantId: string,
+  kasseId:   string,
+  druckerId?: string,
+): Promise<DruckerConfig> {
+  if (druckerId) {
+    const [d] = await db.select().from(drucker).where(eq(drucker.id, druckerId)).limit(1)
+    if (!d || d.mandantId !== mandantId) throw new DruckerError(404, 'Drucker nicht gefunden')
+    if (!d.aktiv) throw new DruckerError(409, 'Drucker ist deaktiviert')
+    return { ip: d.ip, port: d.port, breite: d.breiteZeichen, timeoutMs: d.timeoutSek * 1000 }
+  }
+  const [kasse] = await db.select().from(kassen).where(eq(kassen.id, kasseId)).limit(1)
+  if (!kasse || kasse.mandantId !== mandantId) throw new DruckerError(404, 'Kasse nicht gefunden')
+  const config = druckerConfigVonKasse(kasse, { ignoreBelegModus: true })
+  if (!config) throw new DruckerError(409, 'Drucker nicht konfiguriert oder deaktiviert')
+  return config
+}
+
 export async function druckeBeleg(
   db:      Db,
   belegId: string,
