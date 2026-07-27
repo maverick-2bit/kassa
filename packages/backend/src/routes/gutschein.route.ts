@@ -1,6 +1,9 @@
 import type { FastifyPluginAsync } from 'fastify'
+import { z } from 'zod'
+import { eq } from 'drizzle-orm'
 import { GutscheinInputSchema, GutscheinEinloesenSchema, type GutscheinStatus } from '@kassa/shared'
 import type { Db } from '../db/client.js'
+import { drucker, druckLog, kassen, mandanten } from '../db/schema.js'
 import {
   listeGutscheine,
   listeGutscheinBuchungen,
@@ -11,6 +14,8 @@ import {
   storniereGutschein,
   GutscheinError,
 } from '../services/gutschein.service.js'
+import { sendBytes, druckerConfigVonKasse } from '../services/drucker.service.js'
+import { baueGutscheinBon } from '../services/escpos/layout.js'
 
 export interface GutscheinRouteOptions { db: Db }
 
@@ -92,6 +97,83 @@ export const gutscheinRoute: FastifyPluginAsync<GutscheinRouteOptions> = async (
     } catch (err) {
       if (err instanceof GutscheinError) return reply.status(err.httpStatus).send({ fehler: err.message })
       throw err
+    }
+  })
+
+  // ── Gutschein als ESC/POS-Bon drucken ──────────────────────────────────────
+  // Zieldrucker: Kassen-Bondrucker der angegebenen Kasse (Beleg-Modus zählt hier
+  // nicht — Gutschein ≠ Beleg, Muster Tisch-Etiketten) ODER ein Bibliotheks-Drucker.
+  const GutscheinDruckSchema = z.object({
+    kasseId:   z.string().uuid(),
+    druckerId: z.string().uuid().optional(),
+  })
+
+  fastify.post('/gutscheine/:id/drucken', auth, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const body = GutscheinDruckSchema.safeParse(request.body ?? {})
+    if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
+
+    let gs
+    try {
+      gs = await holeGutscheinById(opts.db, id, request.user.mandantId)
+    } catch (err) {
+      if (err instanceof GutscheinError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      throw err
+    }
+
+    const [kasse] = await opts.db.select().from(kassen).where(eq(kassen.id, body.data.kasseId)).limit(1)
+    if (!kasse || kasse.mandantId !== request.user.mandantId)
+      return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
+
+    let config = null as ReturnType<typeof druckerConfigVonKasse>
+    if (body.data.druckerId) {
+      const [d] = await opts.db.select().from(drucker).where(eq(drucker.id, body.data.druckerId)).limit(1)
+      if (!d || d.mandantId !== request.user.mandantId) return reply.status(404).send({ fehler: 'Drucker nicht gefunden' })
+      if (!d.aktiv) return reply.status(409).send({ fehler: 'Drucker ist deaktiviert' })
+      config = { ip: d.ip, port: d.port, breite: d.breiteZeichen, timeoutMs: d.timeoutSek * 1000 }
+    } else {
+      config = druckerConfigVonKasse(kasse, { ignoreBelegModus: true })
+    }
+    if (!config) return reply.status(409).send({ fehler: 'Drucker nicht konfiguriert oder deaktiviert' })
+
+    const [mandant] = await opts.db
+      .select({ firmenname: mandanten.firmenname })
+      .from(mandanten)
+      .where(eq(mandanten.id, request.user.mandantId))
+      .limit(1)
+
+    const bytes = baueGutscheinBon({
+      breite:     config.breite,
+      ...(mandant?.firmenname ? { firmenname: mandant.firmenname } : {}),
+      code:       gs.code,
+      nummer:     gs.nummer,
+      datum:      typeof gs.datum === 'string' ? gs.datum : new Date(gs.datum).toISOString(),
+      betragCent: gs.betragCent,
+      restCent:   gs.restCent,
+      gueltigBis: gs.gueltigBis ?? null,
+    })
+
+    try {
+      await sendBytes(bytes, config)
+      await opts.db.insert(druckLog).values({
+        mandantId:  request.user.mandantId,
+        kasseId:    kasse.id,
+        druckerIp:  config.ip,
+        druckerTyp: 'gutschein',
+        erfolg:     true,
+      })
+      return reply.send({ erfolgreich: true })
+    } catch (err) {
+      const meldung = err instanceof Error ? err.message : String(err)
+      await opts.db.insert(druckLog).values({
+        mandantId:  request.user.mandantId,
+        kasseId:    kasse.id,
+        druckerIp:  config.ip,
+        druckerTyp: 'gutschein',
+        erfolg:     false,
+        fehlerText: meldung,
+      })
+      return reply.status(502).send({ fehler: `Druck fehlgeschlagen: ${meldung}` })
     }
   })
 }

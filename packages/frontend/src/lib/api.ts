@@ -1016,6 +1016,9 @@ export const gutscheinApi = {
     request<GutscheinResponse>('POST', `/api/gutscheine/${id}/stornieren`),
   buchungen:  (id: string): Promise<GutscheinBuchungResponse[]> =>
     request<GutscheinBuchungResponse[]>('GET', `/api/gutscheine/${id}/buchungen`),
+  drucken:    (id: string, kasseId: string, druckerId?: string): Promise<{ erfolgreich: boolean }> =>
+    request<{ erfolgreich: boolean }>('POST', `/api/gutscheine/${id}/drucken`,
+      { kasseId, ...(druckerId ? { druckerId } : {}) }),
 }
 
 export const offenerPostenApi = {
