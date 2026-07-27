@@ -32,6 +32,7 @@ import {
 } from '../lib/warenkorb'
 import { druckeAngebot, druckeGutschein, druckeLiferschein, druckeRechnung } from '../lib/rechnung'
 import { AusgabeDialog } from '../components/AusgabeDialog'
+import { MengeNumpadModal } from '../components/MengeNumpadModal'
 import { Button } from '../components/ui/Button'
 import { Modal } from '../components/ui/Modal'
 import { Input } from '../components/ui/Input'
@@ -306,6 +307,15 @@ export function KassePage() {
   const removeArtikel = (idx: number) => {
     setKorb((prev) => prev.filter((_, i) => i !== idx))
   }
+
+  /** Menge absolut setzen (Ziffernblock); 0 = Position entfernen */
+  const setMengeAbsolut = (idx: number, menge: number) => {
+    setKorb((prev) =>
+      prev.flatMap((p, i) => (i !== idx ? [p] : menge <= 0 ? [] : [{ ...p, menge }])),
+    )
+  }
+  // Ziffernblock-Ziel (Warenkorb-Index) + „alles verwerfen"-Rückfrage
+  const [numpadIdx, setNumpadIdx] = useState<number | null>(null)
 
   const reset = () => {
     setKorb([])
@@ -698,6 +708,19 @@ export function KassePage() {
 
           {/* Warenkorb-Positionen */}
           <div className="flex-1 overflow-y-auto px-4 py-3 min-h-[10rem] max-h-[40vh]">
+            {korb.length > 0 && (
+              <div className="flex justify-end mb-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (confirm('Gesamten Warenkorb verwerfen?')) { setKorb([]); setRabatt(null) }
+                  }}
+                  className="text-xs text-red-500 hover:text-red-700 hover:underline font-medium"
+                >
+                  🗑 Alles verwerfen
+                </button>
+              </div>
+            )}
             {korb.length === 0 ? (
               <p className="text-sm text-ink-subtle text-center py-8">Leer</p>
             ) : (
@@ -734,7 +757,15 @@ export function KassePage() {
                       </div>
                       <div className="flex items-center gap-1">
                         <MengeButton onClick={() => updateMenge(idx, -1)}>−</MengeButton>
-                        <span className="w-6 text-center font-medium">{p.menge}</span>
+                        {/* Klick auf die Zahl = Ziffernblock zur direkten Mengeneingabe */}
+                        <button
+                          type="button"
+                          onClick={() => setNumpadIdx(idx)}
+                          className="w-7 text-center font-medium rounded border border-transparent hover:border-line-strong hover:bg-panel-2"
+                          title="Menge eingeben"
+                        >
+                          {p.menge}
+                        </button>
                         <MengeButton onClick={() => updateMenge(idx, +1)}>+</MengeButton>
                       </div>
                       <span className="w-20 text-right font-mono">
@@ -768,8 +799,9 @@ export function KassePage() {
                         onClick={() => removeArtikel(idx)}
                         className="text-ink-subtle hover:text-red-500 px-1"
                         aria-label="Entfernen"
+                        title="Position entfernen"
                       >
-                        ×
+                        🗑
                       </button>
                     </li>
                   )
@@ -1032,6 +1064,18 @@ export function KassePage() {
       >
         {letzterBon && <BonAnzeige beleg={letzterBon} belegModus={druckerCfg.data?.belegModus} onAkzeptiert={schliesseBon} />}
       </Modal>
+
+      {/* Ziffernblock: Menge einer Warenkorb-Position direkt eingeben */}
+      <MengeNumpadModal
+        open={numpadIdx !== null}
+        titel={numpadIdx !== null && korb[numpadIdx]
+          ? `Menge: ${korb[numpadIdx].typ === 'frei' ? korb[numpadIdx].bezeichnung : korb[numpadIdx].artikel.bezeichnung}`
+          : 'Menge'}
+        startMenge={numpadIdx !== null ? (korb[numpadIdx]?.menge ?? 1) : 1}
+        nullErlaubt
+        onClose={() => setNumpadIdx(null)}
+        onSubmit={(menge) => { if (numpadIdx !== null) setMengeAbsolut(numpadIdx, menge); setNumpadIdx(null) }}
+      />
 
       {/* Einheitlicher Ausgabe-Dialog — nur auf Klick, nie automatisch */}
       <AusgabeDialog

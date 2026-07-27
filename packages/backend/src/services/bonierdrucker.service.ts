@@ -114,7 +114,7 @@ export interface BonierdruckZeile {
 }
 
 /** Baut den ESC/POS-Buffer für einen Bonierbon zusammen. */
-function baueBonierbon(tischNummer: string, kellner: string, zeilen: BonierdruckZeile[]): Buffer {
+function baueBonierbon(tischNummer: string, kellner: string, zeilen: BonierdruckZeile[], storno = false): Buffer {
   const ESC = 0x1b
   const parts: Buffer[] = []
   const add = (data: number[] | Buffer | string) => {
@@ -124,6 +124,13 @@ function baueBonierbon(tischNummer: string, kellner: string, zeilen: Bonierdruck
 
   add([ESC, 0x40])
   add([ESC, 0x61, 0x01])
+  if (storno) {
+    // Unübersehbar: invertiert (weiß auf schwarz) + fett/doppelhoch
+    add([0x1d, 0x42, 0x01])           // GS B 1 — invertierte Darstellung
+    add([ESC, 0x21, 0x18])
+    add('*** STORNO ***\n')
+    add([0x1d, 0x42, 0x00])
+  }
   // Tischnummer fett + doppelte Höhe (0x08 fett + 0x10 doppelhoch = 0x18) — gut
   // sichtbar in der Küche, welcher Tisch die Bestellung ist.
   add([ESC, 0x21, 0x18])
@@ -139,6 +146,13 @@ function baueBonierbon(tischNummer: string, kellner: string, zeilen: Bonierdruck
     add(`${z.menge}x ${z.bezeichnung}\n`)
   }
   add([ESC, 0x21, 0x00])
+  if (storno) {
+    add([ESC, 0x61, 0x01])
+    add([ESC, 0x21, 0x08])
+    add('NICHT ZUBEREITEN\n')
+    add([ESC, 0x21, 0x00])
+    add([ESC, 0x61, 0x00])
+  }
   add('--------------------------------\n')
   add(ep.cut())   // Vorschub (4 Zeilen) + Schnitt — sonst bleibt der Bon im Gerät stecken
   return Buffer.concat(parts)
@@ -202,6 +216,7 @@ export function druckeBonierbonDirekt(
   tischNummer: string,
   kellner:     string,
   zeilen:      BonierdruckZeile[],
+  storno = false,
 ): Promise<void> {
-  return sendTcp(ip, port, baueBonierbon(tischNummer, kellner, zeilen))
+  return sendTcp(ip, port, baueBonierbon(tischNummer, kellner, zeilen, storno))
 }

@@ -14,7 +14,7 @@ import type {
   TischTabResponse,
 } from '@kassa/shared'
 import type { Db } from '../db/client.js'
-import { artikel, kassen, modifikatoren, tabEreignisse, tischTabs } from '../db/schema.js'
+import { artikel, auditLogs, kassen, modifikatoren, tabEreignisse, tischTabs } from '../db/schema.js'
 import type { BelegServiceDeps } from './beleg.service.js'
 import { erstelleBarzahlungsbeleg } from './beleg.service.js'
 import { ladeRezepte, wendeBestandteilDeltasAn } from './bestandteil.service.js'
@@ -282,6 +282,8 @@ export async function aktualisierePositionen(
   positionen: TabPosition[],
   mandantId: string,
   deps: TischTabServiceDeps,
+  /** Für Storno-Bon + Audit: wer korrigiert (Kellner-App/Kasse) und warum */
+  kontext?: { userId?: string | null; userName?: string; grund?: string },
 ): Promise<TischTabResponse> {
   const [existing] = await deps.db
     .select({ id: tischTabs.id, status: tischTabs.status, positionen: tischTabs.positionen })
@@ -306,13 +308,14 @@ export async function aktualisierePositionen(
 
   // Storno-Erkennung: welche Positionen wurden reduziert oder entfernt?
   const neueMap = new Map(positionen.map(p => [p.artikelId, p]))
-  const stornoItems: Array<{ bezeichnung: string; menge: number; preisBruttoCent: number }> = []
+  const stornoItems: Array<{ artikelId: string; bezeichnung: string; menge: number; preisBruttoCent: number }> = []
 
   for (const alt of altePositionen) {
     const neu = neueMap.get(alt.artikelId)
     const neuMenge = neu?.menge ?? 0
     if (neuMenge < alt.menge) {
       stornoItems.push({
+        artikelId:       alt.artikelId,
         bezeichnung:     alt.bezeichnung,
         menge:           alt.menge - neuMenge,
         preisBruttoCent: alt.preisBruttoCent,
@@ -321,7 +324,12 @@ export async function aktualisierePositionen(
   }
 
   if (stornoItems.length > 0) {
-    await logEreignis(id, mandantId, 'storno', { positionen: stornoItems }, deps.db)
+    await logEreignis(id, mandantId, 'storno', {
+      positionen: stornoItems,
+      ...(kontext?.userName ? { durch: kontext.userName } : {}),
+      ...(kontext?.grund    ? { grund: kontext.grund } : {}),
+    }, deps.db)
+    await verarbeiteStorno(row, stornoItems, mandantId, deps, kontext)
   }
 
   await logEreignis(id, mandantId, 'positionen_aktualisiert', {
@@ -331,6 +339,99 @@ export async function aktualisierePositionen(
       preisBruttoCent: p.preisBruttoCent,
     })),
   }, deps.db)
+
+  return toResponse(row)
+}
+
+/**
+ * Gemeinsame Storno-Nacharbeit: Audit-Eintrag + Storno-Bon an die betroffenen
+ * Stationen/Bonierdrucker. Der Bon läuft best-effort — ein Druckerausfall darf
+ * den Storno selbst nie blockieren (er ist bereits persistiert).
+ */
+async function verarbeiteStorno(
+  tab: { id: string; kasseId: string; tischNummer: string; kellner: string },
+  stornoItems: Array<{ artikelId: string; bezeichnung: string; menge: number; preisBruttoCent: number }>,
+  mandantId: string,
+  deps: TischTabServiceDeps,
+  kontext?: { userId?: string | null; userName?: string; grund?: string },
+): Promise<void> {
+  await deps.db.insert(auditLogs).values({
+    mandantId,
+    userId: kontext?.userId ?? null,
+    aktion: 'tab.position_storno',
+    details: {
+      tabId:       tab.id,
+      tisch:       tab.tischNummer,
+      positionen:  stornoItems.map(s => ({ bezeichnung: s.bezeichnung, menge: s.menge, preisBruttoCent: s.preisBruttoCent })),
+      ...(kontext?.userName ? { durch: kontext.userName } : {}),
+      ...(kontext?.grund    ? { grund: kontext.grund } : {}),
+    },
+  })
+
+  try {
+    // Dynamischer Import — bonier.service importiert seinerseits aus diesem
+    // Modul (logBonierEreignis); ein statischer Import wäre zirkulär.
+    const { bonierBestellung } = await import('./bonier.service.js')
+    await bonierBestellung({
+      kasseId: tab.kasseId,
+      tisch:   tab.tischNummer,
+      kellner: kontext?.userName ?? tab.kellner,
+      positionen: stornoItems.map(s => ({ artikelId: s.artikelId, menge: s.menge })),
+      // ohneLagerabzug: der Storno-Bon ist reine Küchen-Info — die Rückbuchung
+      // des Lagerstands macht bereits aktualisiereStockDeltas.
+    }, { db: deps.db }, { storno: true, ohneLagerabzug: true })
+  } catch (err) {
+    // 400 = kein Artikel mit Station/Drucker (nichts zu melden) — alles andere nur loggen
+    console.error('Storno-Bon nicht zustellbar:', err instanceof Error ? err.message : err)
+  }
+}
+
+/**
+ * Gesamten offenen Tab verwerfen: alle Positionen stornieren (inkl. Storno-Bon
+ * an die Küche), Tab schließen. Der Tab verschwindet aus der offenen Liste.
+ */
+export async function verwerfeTab(
+  id: string,
+  mandantId: string,
+  deps: TischTabServiceDeps,
+  kontext?: { userId?: string | null; userName?: string; grund?: string },
+): Promise<TischTabResponse> {
+  const [existing] = await deps.db
+    .select()
+    .from(tischTabs)
+    .where(and(eq(tischTabs.id, id), eq(tischTabs.mandantId, mandantId)))
+    .limit(1)
+  if (!existing) throw new TischTabError(404, 'Tisch-Tab nicht gefunden')
+  if (existing.status !== 'offen') throw new TischTabError(409, 'Tisch-Tab ist nicht mehr offen')
+
+  const positionen = (existing.positionen as TabPosition[]) ?? []
+
+  const [row] = await deps.db
+    .update(tischTabs)
+    .set({ status: 'verworfen', geschlossenAm: new Date(), updatedAt: new Date() })
+    .where(eq(tischTabs.id, id))
+    .returning()
+  if (!row) throw new TischTabError(500, 'Verwerfen fehlgeschlagen')
+
+  // Lagerstand zurückbuchen (verworfene Positionen wurden nie verkauft)
+  await aktualisiereStockDeltas(positionen, [], deps.db)
+
+  const stornoItems = positionen.map(p => ({
+    artikelId:       p.artikelId,
+    bezeichnung:     p.bezeichnung,
+    menge:           p.menge,
+    preisBruttoCent: p.preisBruttoCent,
+  }))
+
+  await logEreignis(id, mandantId, 'verworfen', {
+    positionen: stornoItems,
+    ...(kontext?.userName ? { durch: kontext.userName } : {}),
+    ...(kontext?.grund    ? { grund: kontext.grund } : {}),
+  }, deps.db)
+
+  if (stornoItems.length > 0) {
+    await verarbeiteStorno(row, stornoItems, mandantId, deps, kontext)
+  }
 
   return toResponse(row)
 }

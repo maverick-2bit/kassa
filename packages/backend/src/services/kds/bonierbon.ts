@@ -27,6 +27,8 @@ export interface BonierbonInput {
   tisch:       string
   bereich?:    string | undefined
   kellner:     string
+  /** Storno-Bon: markiert die Positionen als NICHT zuzubereiten */
+  storno?:     boolean | undefined
   positionen: Array<{
     menge:       number
     bezeichnung: string
@@ -56,6 +58,9 @@ export function baueBonierbon(input: BonierbonInput): string {
     : `T${input.tisch}`
 
   const lines: string[] = [
+    // Storno-Bons unmissverständlich markieren — die Station soll sofort sehen,
+    // dass diese Positionen NICHT (mehr) zuzubereiten sind.
+    ...(input.storno ? ['*** STORNO ***'] : []),
     // Asello-typische Ausrichtung mit Spaces
     `Nummer          Bonierbon       ${input.bonNummer}`,
     `${uhrzeit}                        ${datum}`,
@@ -67,6 +72,7 @@ export function baueBonierbon(input: BonierbonInput): string {
         ? `${p.menge} ${p.bezeichnung} - ${p.details}`
         : `${p.menge} ${p.bezeichnung}`,
     ),
+    ...(input.storno ? ['*** NICHT ZUBEREITEN ***'] : []),
     'Bonierbon - Keine Rechnung!',
   ]
 
