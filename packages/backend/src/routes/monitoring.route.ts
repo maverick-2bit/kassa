@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from 'fastify'
 import { eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import os from 'node:os'
+import v8 from 'node:v8'
 import type { Db } from '../db/client.js'
 import { mandanten } from '../db/schema.js'
 import { holeBackupStatus } from '../services/monitoring.service.js'
@@ -111,6 +112,10 @@ export const monitoringRoute: FastifyPluginAsync<MonitoringRouteOptions> = async
       memory: {
         heapUsedMb:  toMb(mem.heapUsed),
         heapTotalMb: toMb(mem.heapTotal),
+        // Das ECHTE V8-Limit (max-old-space) — heapTotal ist nur der aktuell
+        // reservierte Heap und liegt konstruktionsbedingt knapp über heapUsed
+        // (90–98 % „Auslastung" dort sind normal und kein Warnsignal).
+        heapLimitMb: toMb(v8.getHeapStatistics().heap_size_limit),
         rssMb:       toMb(mem.rss),
         externalMb:  toMb(mem.external),
       },
