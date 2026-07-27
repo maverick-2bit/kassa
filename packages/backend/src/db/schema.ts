@@ -1071,7 +1071,7 @@ export const druckLog = pgTable('druck_log', {
   mandantId:   uuid('mandant_id').notNull().references(() => mandanten.id, { onDelete: 'cascade' }),
   kasseId:     uuid('kasse_id').references(() => kassen.id, { onDelete: 'set null' }),
   druckerIp:   varchar('drucker_ip', { length: 64 }).notNull(),
-  /** 'bon' | 'bonierbon' | 'test' */
+  /** 'bon' | 'bonierbon' | 'test' | 'tisch-etikett' | 'gutschein' | 'inventur' | 'wareneingang' */
   druckerTyp:  varchar('drucker_typ', { length: 20 }).notNull(),
   belegId:     uuid('beleg_id'),
   erfolg:      boolean('erfolg').notNull(),

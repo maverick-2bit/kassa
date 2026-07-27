@@ -932,6 +932,10 @@ export type { Modifikator, ModifikatorGruppe }
 export const lagerstandApi = {
   bulk: (input: LagerstandBulkInput) =>
     request<void>('POST', '/api/lagerstand/bulk', input),
+  wareneingangAusgabe: (input: { kasseId: string; druckerId?: string; lieferant?: string; positionen: { bezeichnung: string; menge: number }[] }) =>
+    request<{ erfolgreich: boolean }>('POST', '/api/lagerstand/wareneingang-ausgabe', input),
+  wareneingangEmail: (input: { empfaenger: string; lieferant?: string; positionen: { bezeichnung: string; menge: number }[] }) =>
+    request<{ erfolgreich: boolean }>('POST', '/api/lagerstand/wareneingang-email', input),
 }
 
 export const seriennummerApi = {
@@ -1184,6 +1188,11 @@ export const inventurApi = {
   abschliessen: (id: string): Promise<{ gebucht: number; ungezaehlt: number }> =>
     request<{ gebucht: number; ungezaehlt: number }>('POST', `/api/inventuren/${id}/abschliessen`),
   remove: (id: string): Promise<void> => request<void>('DELETE', `/api/inventuren/${id}`),
+  drucken: (id: string, kasseId: string, druckerId?: string): Promise<{ erfolgreich: boolean }> =>
+    request<{ erfolgreich: boolean }>('POST', `/api/inventuren/${id}/drucken`,
+      { kasseId, ...(druckerId ? { druckerId } : {}) }),
+  email: (id: string, empfaenger: string): Promise<{ erfolgreich: boolean }> =>
+    request<{ erfolgreich: boolean }>('POST', `/api/inventuren/${id}/email`, { empfaenger }),
   downloadProtokoll: async (id: string, dateiname: string): Promise<void> => {
     const token = getToken()
     const res = await fetch(`/api/inventuren/${id}/protokoll.csv`, { headers: { Authorization: token ? `Bearer ${token}` : '' } })

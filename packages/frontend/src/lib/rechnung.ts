@@ -665,3 +665,76 @@ export function druckeGutschein(gs: GutscheinResponse, mandant: MandantInfo): vo
   win.document.write(html)
   win.document.close()
 }
+
+// ---------------------------------------------------------------------------
+// Inventur-Protokoll + Wareneingang als A4-Druckfenster
+// ---------------------------------------------------------------------------
+
+export interface InventurDruckDaten {
+  bezeichnung:     string
+  status:          string
+  erstelltVon:     string
+  abgeschlossenAm: string | null
+  positionen:      Array<{ bezeichnung: string; sollMenge: number; istMenge: number | null; differenz: number | null }>
+}
+
+export function druckeInventur(inv: InventurDruckDaten, mandant: MandantInfo): void {
+  const datum = new Date(inv.abgeschlossenAm ?? Date.now()).toLocaleString('de-AT', { dateStyle: 'medium', timeStyle: 'short' })
+  const zeilen = inv.positionen.map(p => {
+    const diff = p.differenz ?? 0
+    const farbe = diff === 0 ? '#111' : diff > 0 ? '#15803d' : '#b91c1c'
+    return `<tr>
+      <td>${p.bezeichnung}</td>
+      <td class="r">${p.sollMenge}</td>
+      <td class="r">${p.istMenge ?? '–'}</td>
+      <td class="r" style="color:${farbe};font-weight:600">${p.istMenge === null ? '–' : (diff > 0 ? '+' : '') + diff}</td>
+    </tr>`
+  }).join('')
+  const html = `<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><title>Inventur — ${inv.bezeichnung}</title>
+  <style>
+    body{font-family:Arial,sans-serif;margin:2rem;color:#111}
+    h1{font-size:1.3rem;margin:0 0 .2rem} .sub{color:#555;font-size:.85rem;margin:0 0 1.2rem}
+    table{width:100%;border-collapse:collapse;font-size:.85rem}
+    th,td{padding:.35rem .5rem;border-bottom:1px solid #ddd;text-align:left} .r{text-align:right}
+    thead th{background:#f5f5f5;text-transform:uppercase;font-size:.7rem;color:#555}
+    @media print{ body{margin:0} }
+  </style></head><body onload="print()">
+  <h1>Inventur-Protokoll — ${inv.bezeichnung}${inv.status === 'offen' ? ' (Zwischenstand)' : ''}</h1>
+  <p class="sub">${mandant.firmenname} · ${datum} · erfasst von ${inv.erstelltVon}</p>
+  <table><thead><tr><th>Artikel</th><th class="r">Soll</th><th class="r">Ist</th><th class="r">Differenz</th></tr></thead>
+  <tbody>${zeilen}</tbody></table>
+  </body></html>`
+  const win = window.open('', '_blank', 'width=900,height=1200')
+  if (!win) { alert('Bitte Pop-ups für diese Seite erlauben.'); return }
+  win.document.write(html)
+  win.document.close()
+}
+
+export interface WareneingangDruckDaten {
+  lieferant?: string
+  positionen: Array<{ bezeichnung: string; menge: number }>
+}
+
+export function druckeWareneingang(we: WareneingangDruckDaten, mandant: MandantInfo): void {
+  const datum  = new Date().toLocaleString('de-AT', { dateStyle: 'medium', timeStyle: 'short' })
+  const zeilen = we.positionen.map(p =>
+    `<tr><td>${p.bezeichnung}</td><td class="r" style="font-weight:600">+${p.menge}</td></tr>`).join('')
+  const html = `<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><title>Wareneingang</title>
+  <style>
+    body{font-family:Arial,sans-serif;margin:2rem;color:#111}
+    h1{font-size:1.3rem;margin:0 0 .2rem} .sub{color:#555;font-size:.85rem;margin:0 0 1.2rem}
+    table{width:100%;border-collapse:collapse;font-size:.85rem}
+    th,td{padding:.35rem .5rem;border-bottom:1px solid #ddd;text-align:left} .r{text-align:right}
+    thead th{background:#f5f5f5;text-transform:uppercase;font-size:.7rem;color:#555}
+    @media print{ body{margin:0} }
+  </style></head><body onload="print()">
+  <h1>Wareneingang${we.lieferant ? ' — ' + we.lieferant : ''}</h1>
+  <p class="sub">${mandant.firmenname} · ${datum}</p>
+  <table><thead><tr><th>Artikel</th><th class="r">Menge</th></tr></thead>
+  <tbody>${zeilen}</tbody></table>
+  </body></html>`
+  const win = window.open('', '_blank', 'width=900,height=1200')
+  if (!win) { alert('Bitte Pop-ups für diese Seite erlauben.'); return }
+  win.document.write(html)
+  win.document.close()
+}

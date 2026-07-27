@@ -21,7 +21,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { BelegResponse, Tagesabschluss } from '@kassa/shared'
-import { baueBon, baueGutscheinBon, baueTischEtikett, baueZBon } from '../src/services/escpos/layout.js'
+import { baueBon, baueGutscheinBon, baueInventurBon, baueTischEtikett, baueWareneingangBon, baueZBon } from '../src/services/escpos/layout.js'
 import { baueBonierbon } from '../src/services/kds/bonierbon.js'
 
 const GOLDEN_DIR = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'escpos-golden')
@@ -129,6 +129,47 @@ describe('ESC/POS Golden-Master', () => {
       datum: '2026-05-20T14:30:00Z',
       betragCent: 5000, restCent: 5000,
       gueltigBis: '2027-05-20',
+    }))
+  })
+
+  it('Inventur-Bon 42 (nur Abweichungen)', () => {
+    pruefeGolden('inventur-42.bin', baueInventurBon({
+      breite: 42, firmenname: 'Golden GmbH',
+      bezeichnung: 'Inventur 2026-05-20',
+      datum: '2026-05-20T14:30:00Z',
+      erstelltVon: 'Chef',
+      abweichungen: [
+        { bezeichnung: 'Bier vom Fass', sollMenge: 40, istMenge: 37 },
+        { bezeichnung: 'Wiener Schnitzel', sollMenge: 12, istMenge: 14 },
+      ],
+      gesamtPositionen: 25,
+      gezaehlt: 25,
+    }))
+  })
+
+  it('Inventur-Bon 32 (Zwischenstand ohne Abweichung)', () => {
+    pruefeGolden('inventur-zwischenstand-32.bin', baueInventurBon({
+      breite: 32,
+      bezeichnung: 'Zähltag',
+      datum: '2026-05-20T14:30:00Z',
+      erstelltVon: 'Service',
+      zwischenstand: true,
+      abweichungen: [],
+      gesamtPositionen: 8,
+      gezaehlt: 3,
+    }))
+  })
+
+  it('Wareneingangs-Bon 42 (mit Lieferant)', () => {
+    pruefeGolden('wareneingang-42.bin', baueWareneingangBon({
+      breite: 42, firmenname: 'Golden GmbH',
+      lieferant: 'Getränke Müller',
+      datum: '2026-05-20T14:30:00Z',
+      erfasstVon: 'Lager',
+      positionen: [
+        { bezeichnung: 'Bier vom Fass', menge: 24 },
+        { bezeichnung: 'Almdudler', menge: 12 },
+      ],
     }))
   })
 

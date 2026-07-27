@@ -1,6 +1,10 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { inventurApi, type InventurDetail, type InventurListeEintrag } from '../lib/api'
+import { AusgabeDialog } from '../components/AusgabeDialog'
+import { getKasseIdentity } from '../lib/kasse'
+import { getAuth } from '../lib/auth'
+import { druckeInventur } from '../lib/rechnung'
 
 // ---------------------------------------------------------------------------
 // Inventur — Liste + Detail (Zählung / Protokoll)
@@ -135,6 +139,9 @@ function InventurDetailView({ id, onBack }: { id: string; onBack: () => void }) 
     onError: (e: unknown) => alert(e instanceof Error ? e.message : 'Speichern fehlgeschlagen'),
   })
 
+  // Einheitlicher Ausgabe-Dialog (Bon · A4 · weitere Drucker · Mail · ohne)
+  const [ausgabeOffen, setAusgabeOffen] = useState(false)
+
   const abschliessen = useMutation({
     mutationFn: async () => { await speichern.mutateAsync(); return inventurApi.abschliessen(id) },
     onSuccess: (r) => {
@@ -168,6 +175,10 @@ function InventurDetailView({ id, onBack }: { id: string; onBack: () => void }) 
             onClick={() => void inventurApi.downloadProtokoll(id, `${inv.bezeichnung.replace(/\s+/g, '-')}.csv`)}
             className="rounded-lg border border-line-strong px-3 py-2 text-sm font-medium text-ink hover:bg-panel-2"
           >CSV</button>
+          <button
+            onClick={() => setAusgabeOffen(true)}
+            className="rounded-lg border border-line-strong px-3 py-2 text-sm font-medium text-ink hover:bg-panel-2"
+          >🖨 Ausgabe</button>
           {offen && (
             <>
               <button
@@ -242,6 +253,37 @@ function InventurDetailView({ id, onBack }: { id: string; onBack: () => void }) 
           </tbody>
         </table>
       </div>
+
+      <AusgabeDialog
+        open={ausgabeOffen}
+        onClose={() => setAusgabeOffen(false)}
+        titel={`Inventur „${inv.bezeichnung}" ausgeben`}
+        beschreibung={offen
+          ? 'Zwischenstand — der Bon listet nur die Abweichungen, das Vollprotokoll gibt es als CSV/A4.'
+          : 'Der Bon listet nur die Abweichungen, das Vollprotokoll gibt es als CSV/A4.'}
+        onAusgabe={async (ziel) => {
+          const identity = getKasseIdentity()
+          const auth     = getAuth()
+          switch (ziel.art) {
+            case 'bon':
+              if (!identity) throw new Error('Keine aktive Kasse — Bondruck braucht die Kassen-Zuordnung')
+              await inventurApi.drucken(id, identity.kasseId)
+              break
+            case 'drucker':
+              if (!identity) throw new Error('Keine aktive Kasse — Druck braucht die Kassen-Zuordnung')
+              await inventurApi.drucken(id, identity.kasseId, ziel.druckerId)
+              break
+            case 'mail':
+              await inventurApi.email(id, ziel.empfaenger)
+              break
+            case 'a4':
+              if (auth) druckeInventur(inv, { firmenname: auth.mandant.firmenname, uid: auth.mandant.uid })
+              break
+            case 'keine':
+              break
+          }
+        }}
+      />
     </div>
   )
 }

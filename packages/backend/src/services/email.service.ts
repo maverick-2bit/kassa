@@ -324,3 +324,134 @@ export async function sendeTagesabschlussEmail(
     text:    `Tagesabschluss ${daten.datum}\n${daten.firmenname} / Kasse ${daten.kassenId}\n\nNetto-Umsatz: ${fmt(daten.nettoUmsatzCent)}\nBar: ${fmt(daten.barCent)}\nKarte: ${fmt(daten.karteCent)}\nBelege: ${daten.anzahlBarzahlungsbelege}\nStornos: ${daten.anzahlStornobelege}\n${(daten.offeneTische ?? 0) > 0 ? `Offene Tische: ${daten.offeneTische}\n` : ''}`,
   })
 }
+
+// ---------------------------------------------------------------------------
+// Inventur-Protokoll per E-Mail (Zusammenfassung + CSV-Anhang)
+// ---------------------------------------------------------------------------
+
+export interface InventurEmailDaten {
+  firmenname:       string
+  bezeichnung:      string
+  datum:            string   // ISO
+  erstelltVon:      string
+  gesamtPositionen: number
+  gezaehlt:         number
+  abweichungen:     number
+  zwischenstand:    boolean
+  csvDateiname:     string
+  csvInhalt:        string
+}
+
+export async function sendeInventurEmail(
+  empfaenger: string,
+  daten:      InventurEmailDaten,
+  config:     Config,
+): Promise<void> {
+  const transporter = erstelleTransporter(config)
+  const from        = config.SMTP_FROM ?? config.SMTP_USER!
+  const datum       = new Date(daten.datum).toLocaleDateString('de-AT', {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  })
+
+  const html = `<!DOCTYPE html>
+<html lang="de"><head><meta charset="utf-8"><title>Inventur</title></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,sans-serif">
+  <div style="max-width:520px;margin:32px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08)">
+    <div style="background:#1d4ed8;padding:24px 28px">
+      <h1 style="margin:0;color:#fff;font-size:20px">Inventur${daten.zwischenstand ? ' (Zwischenstand)' : ''}</h1>
+      <p style="margin:4px 0 0;color:#bfdbfe;font-size:13px">${daten.bezeichnung} · ${datum}</p>
+    </div>
+    <div style="padding:20px 28px">
+      <p style="margin:0 0 4px;font-size:13px;color:#6b7280">${daten.firmenname} · erfasst von ${daten.erstelltVon}</p>
+    </div>
+    <div style="display:flex;padding:0 28px 20px;gap:12px">
+      <div style="flex:1;background:#f9fafb;border-radius:8px;padding:12px;text-align:center">
+        <p style="margin:0;font-size:24px;font-weight:800;color:#111827">${daten.gesamtPositionen}</p>
+        <p style="margin:4px 0 0;font-size:12px;color:#6b7280">Positionen</p>
+      </div>
+      <div style="flex:1;background:#f9fafb;border-radius:8px;padding:12px;text-align:center">
+        <p style="margin:0;font-size:24px;font-weight:800;color:#111827">${daten.gezaehlt}</p>
+        <p style="margin:4px 0 0;font-size:12px;color:#6b7280">Gezählt</p>
+      </div>
+      <div style="flex:1;background:#f9fafb;border-radius:8px;padding:12px;text-align:center">
+        <p style="margin:0;font-size:24px;font-weight:800;color:${daten.abweichungen > 0 ? '#ef4444' : '#16a34a'}">${daten.abweichungen}</p>
+        <p style="margin:4px 0 0;font-size:12px;color:#6b7280">Abweichungen</p>
+      </div>
+    </div>
+    <div style="padding:12px 28px 24px">
+      <p style="margin:0;font-size:12px;color:#6b7280">Das vollständige Protokoll liegt als CSV bei.</p>
+    </div>
+  </div>
+</body></html>`
+
+  await transporter.sendMail({
+    from,
+    to:      empfaenger,
+    subject: `Inventur-Protokoll: ${daten.bezeichnung} — ${daten.firmenname}`,
+    html,
+    text: `Inventur ${daten.bezeichnung} (${datum})\n${daten.firmenname}\nPositionen: ${daten.gesamtPositionen} · Gezählt: ${daten.gezaehlt} · Abweichungen: ${daten.abweichungen}\nVollständiges Protokoll im CSV-Anhang.`,
+    attachments: [{ filename: daten.csvDateiname, content: '﻿' + daten.csvInhalt, contentType: 'text/csv; charset=utf-8' }],
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Wareneingang per E-Mail (Positions-Tabelle)
+// ---------------------------------------------------------------------------
+
+export interface WareneingangEmailDaten {
+  firmenname: string
+  lieferant?: string | undefined
+  datum:      string   // ISO
+  erfasstVon: string
+  positionen: Array<{ bezeichnung: string; menge: number }>
+}
+
+export async function sendeWareneingangEmail(
+  empfaenger: string,
+  daten:      WareneingangEmailDaten,
+  config:     Config,
+): Promise<void> {
+  const transporter = erstelleTransporter(config)
+  const from        = config.SMTP_FROM ?? config.SMTP_USER!
+  const datum       = new Date(daten.datum).toLocaleDateString('de-AT', {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  })
+
+  const zeilen = daten.positionen.map(p => `
+      <tr>
+        <td style="padding:6px 12px;border-bottom:1px solid #e5e7eb">${p.bezeichnung}</td>
+        <td style="padding:6px 12px;border-bottom:1px solid #e5e7eb;text-align:right;font-family:monospace;font-weight:600">+${p.menge}</td>
+      </tr>`).join('')
+
+  const html = `<!DOCTYPE html>
+<html lang="de"><head><meta charset="utf-8"><title>Wareneingang</title></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,sans-serif">
+  <div style="max-width:520px;margin:32px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08)">
+    <div style="background:#1d4ed8;padding:24px 28px">
+      <h1 style="margin:0;color:#fff;font-size:20px">Wareneingang</h1>
+      <p style="margin:4px 0 0;color:#bfdbfe;font-size:13px">${daten.lieferant ? daten.lieferant + ' · ' : ''}${datum}</p>
+    </div>
+    <div style="padding:20px 28px 8px">
+      <p style="margin:0;font-size:13px;color:#6b7280">${daten.firmenname} · erfasst von ${daten.erfasstVon}</p>
+    </div>
+    <table style="width:100%;border-collapse:collapse">
+      <thead><tr style="background:#f9fafb">
+        <th style="padding:8px 12px;text-align:left;font-size:12px;color:#6b7280;font-weight:600;text-transform:uppercase">Artikel</th>
+        <th style="padding:8px 12px;text-align:right;font-size:12px;color:#6b7280;font-weight:600;text-transform:uppercase">Menge</th>
+      </tr></thead>
+      <tbody>${zeilen}</tbody>
+    </table>
+    <div style="padding:16px 28px 24px">
+      <p style="margin:0;font-size:12px;color:#6b7280">${daten.positionen.length} Position${daten.positionen.length === 1 ? '' : 'en'} — Lagerstände wurden entsprechend erhöht.</p>
+    </div>
+  </div>
+</body></html>`
+
+  await transporter.sendMail({
+    from,
+    to:      empfaenger,
+    subject: `Wareneingang${daten.lieferant ? ' ' + daten.lieferant : ''} — ${daten.firmenname}`,
+    html,
+    text: `Wareneingang (${datum})${daten.lieferant ? '\nLieferant: ' + daten.lieferant : ''}\n${daten.firmenname}\n\n${daten.positionen.map(p => `+${p.menge} ${p.bezeichnung}`).join('\n')}`,
+  })
+}

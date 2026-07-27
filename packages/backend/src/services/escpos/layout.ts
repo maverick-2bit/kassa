@@ -493,6 +493,125 @@ function qrSizeFuerBreite(breite: number): number {
 }
 
 // ---------------------------------------------------------------------------
+// Inventur-Protokoll (kompakt: nur Abweichungen — Vollprotokoll gibt es als CSV/A4)
+// ---------------------------------------------------------------------------
+
+export interface InventurBonOptionen {
+  breite:      number
+  firmenname?: string
+  bezeichnung: string
+  /** ISO-Zeitpunkt (Abschluss bzw. Druckzeitpunkt bei Zwischenstand) */
+  datum:       string
+  erstelltVon: string
+  zwischenstand?: boolean
+  /** NUR Positionen mit Abweichung (Aufrufer filtert) */
+  abweichungen: Array<{ bezeichnung: string; sollMenge: number; istMenge: number }>
+  gesamtPositionen: number
+  gezaehlt:         number
+}
+
+export function baueInventurBon(opts: InventurBonOptionen): Buffer {
+  const W = opts.breite
+  const parts: Buffer[] = []
+  const add = (b: Buffer): void => { parts.push(b) }
+
+  add(ep.init())
+  add(ep.selectCodepage(19))
+  add(ep.selectInternational(2))
+
+  add(ep.align('center'))
+  if (opts.firmenname) { add(ep.textLine(truncate(opts.firmenname, W))) }
+  add(ep.bold(true))
+  add(ep.textSize(2, 2))
+  add(ep.textLine('INVENTUR'))
+  add(ep.textSize(1, 1))
+  add(ep.bold(false))
+  add(ep.textLine(truncate(opts.bezeichnung, W)))
+  if (opts.zwischenstand) add(ep.textLine('(Zwischenstand)'))
+  add(ep.textLine(`${formatDatum(opts.datum)} · ${truncate(opts.erstelltVon, 20)}`))
+  add(trennlinie(W))
+
+  add(ep.align('left'))
+  if (opts.abweichungen.length === 0) {
+    add(ep.textLine('Keine Abweichungen — Bestand stimmt.'))
+  } else {
+    add(ep.bold(true))
+    add(ep.textLine('Abweichungen:'))
+    add(ep.bold(false))
+    for (const a of opts.abweichungen) {
+      const diff = a.istMenge - a.sollMenge
+      add(ep.textLine(truncate(a.bezeichnung, W)))
+      add(ep.textLine(zweispaltig(
+        `  Soll ${formatMenge(a.sollMenge)} · Ist ${formatMenge(a.istMenge)}`,
+        `${diff > 0 ? '+' : ''}${formatMenge(diff)}`,
+        W,
+      )))
+    }
+  }
+  add(trennlinie(W))
+  add(ep.textLine(zweispaltig('Positionen', String(opts.gesamtPositionen), W)))
+  add(ep.textLine(zweispaltig('Gezählt', String(opts.gezaehlt), W)))
+  add(ep.textLine(zweispaltig('Abweichungen', String(opts.abweichungen.length), W)))
+  add(ep.newline())
+  add(ep.align('center'))
+  add(ep.textLine('Vollprotokoll: CSV/A4-Export'))
+  add(ep.textLine('powered by s/e smarte events'))
+
+  add(ep.newline(4))
+  add(ep.cut())
+  return Buffer.concat(parts)
+}
+
+// ---------------------------------------------------------------------------
+// Wareneingangs-Bon
+// ---------------------------------------------------------------------------
+
+export interface WareneingangBonOptionen {
+  breite:      number
+  firmenname?: string
+  lieferant?:  string
+  /** ISO-Zeitpunkt der Erfassung */
+  datum:       string
+  erfasstVon:  string
+  positionen:  Array<{ bezeichnung: string; menge: number }>
+}
+
+export function baueWareneingangBon(opts: WareneingangBonOptionen): Buffer {
+  const W = opts.breite
+  const parts: Buffer[] = []
+  const add = (b: Buffer): void => { parts.push(b) }
+
+  add(ep.init())
+  add(ep.selectCodepage(19))
+  add(ep.selectInternational(2))
+
+  add(ep.align('center'))
+  if (opts.firmenname) { add(ep.textLine(truncate(opts.firmenname, W))) }
+  add(ep.bold(true))
+  add(ep.textSize(2, 2))
+  add(ep.textLine('WARENEINGANG'))
+  add(ep.textSize(1, 1))
+  add(ep.bold(false))
+  if (opts.lieferant) add(ep.textLine(`Lieferant: ${truncate(opts.lieferant, W - 11)}`))
+  add(ep.textLine(`${formatDatum(opts.datum)} · ${truncate(opts.erfasstVon, 20)}`))
+  add(trennlinie(W))
+
+  add(ep.align('left'))
+  for (const p of opts.positionen) {
+    add(ep.textLine(zweispaltig(truncate(p.bezeichnung, W - 8), `+${formatMenge(p.menge)}`, W)))
+  }
+  add(trennlinie(W))
+  add(ep.textLine(zweispaltig('Positionen', String(opts.positionen.length), W)))
+  add(ep.newline())
+  add(ep.align('center'))
+  add(ep.textLine('powered by s/e smarte events'))
+
+  add(ep.newline(4))
+  add(ep.cut())
+  return Buffer.concat(parts)
+}
+
+// ---------------------------------------------------------------------------
 // Kassensturz-Bon
 // ---------------------------------------------------------------------------
 
