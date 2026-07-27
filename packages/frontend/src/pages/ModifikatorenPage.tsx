@@ -8,7 +8,7 @@
  *  - Lagerstand pro Option setzen
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
   Artikel,
@@ -21,7 +21,7 @@ import type {
 } from '@kassa/shared'
 import { artikelApi, modifikatorApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
-import { formatPreis } from '../lib/format'
+import { formatPreis, parseEuroToCent } from '../lib/format'
 import { Modal } from '../components/ui/Modal'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
@@ -244,7 +244,7 @@ export function ModifikatorenPage() {
                     loescheGruppe.mutate(gewählteGruppe.id)
                   }
                 }}
-                onNeueMod={() => { setEditingMod(null); setModModalOpen(true) }}
+                onInlineAnlegen={(input) => erstelleMod.mutateAsync({ gruppeId: gewählteGruppe.id, input })}
                 onModBearbeiten={(mod) => { setEditingMod(mod); setModModalOpen(true) }}
                 onModDeaktivieren={(mod) => aktualisiereMod.mutate({ id: mod.id, input: { aktiv: !mod.aktiv } })}
                 onModLoeschen={(mod) => {
@@ -324,7 +324,7 @@ export function ModifikatorenPage() {
 function GruppeDetail({
   gruppe, alleArtikel, zuweisungen,
   onGruppeBearbeiten, onGruppeDeaktivieren, onGruppeLoeschen,
-  onNeueMod, onModBearbeiten, onModDeaktivieren, onModLoeschen,
+  onInlineAnlegen, onModBearbeiten, onModDeaktivieren, onModLoeschen,
   onBestandSetzen, onZuweisungOeffnen,
 }: {
   gruppe:               ModifikatorGruppe
@@ -333,7 +333,7 @@ function GruppeDetail({
   onGruppeBearbeiten:   () => void
   onGruppeDeaktivieren: () => void
   onGruppeLoeschen:     () => void
-  onNeueMod:            () => void
+  onInlineAnlegen:      (input: ModifikatorErstellen) => Promise<unknown>
   onModBearbeiten:      (m: Modifikator) => void
   onModDeaktivieren:    (m: Modifikator) => void
   onModLoeschen:        (m: Modifikator) => void
@@ -386,12 +386,15 @@ function GruppeDetail({
       <div>
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold text-ink">Optionen</h3>
-          <Button onClick={onNeueMod}>+ Option hinzufügen</Button>
         </div>
+
+        {/* Direkte Anlage ohne Dialog: Name · Aufpreis · Lagerstand · ⏎ — nach dem
+            Anlegen springt der Fokus zurück auf den Namen für die nächste Option. */}
+        <OptionInlineAnlage onAnlegen={onInlineAnlegen} />
 
         {gruppe.modifikatoren.length === 0 ? (
           <div className="rounded-xl border-2 border-dashed border-line py-8 text-center">
-            <p className="text-sm text-ink-subtle">Noch keine Optionen. Füge die erste Option hinzu.</p>
+            <p className="text-sm text-ink-subtle">Noch keine Optionen — oben direkt eintippen und mit ⏎ anlegen.</p>
           </div>
         ) : (
           <div className="rounded-xl border border-line overflow-hidden divide-y divide-line">
@@ -452,6 +455,87 @@ function GruppeDetail({
 // ---------------------------------------------------------------------------
 // Modifikator-Zeile
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Inline-Anlage: Option · Aufpreis · Lagerstand in einer Zeile, ⏎ legt an
+// ---------------------------------------------------------------------------
+
+function OptionInlineAnlage({ onAnlegen }: { onAnlegen: (input: ModifikatorErstellen) => Promise<unknown> }) {
+  const [name,       setName]       = useState('')
+  const [aufpreis,   setAufpreis]   = useState('')
+  const [lagerstand, setLagerstand] = useState('')
+  const [laeuft,     setLaeuft]     = useState(false)
+  const [fehler,     setFehler]     = useState<string | null>(null)
+  const nameRef = useRef<HTMLInputElement>(null)
+
+  const anlegen = async () => {
+    const n = name.trim()
+    if (!n || laeuft) return
+    const cent = aufpreis.trim() === '' ? 0 : parseEuroToCent(aufpreis)
+    if (cent === null) { setFehler('Aufpreis nicht lesbar — z. B. 1,50'); return }
+    const bestand = lagerstand.trim() === '' ? null : parseInt(lagerstand, 10)
+    if (bestand !== null && (!Number.isFinite(bestand) || bestand < 0)) {
+      setFehler('Lagerstand muss eine Zahl ≥ 0 sein'); return
+    }
+    setLaeuft(true)
+    setFehler(null)
+    try {
+      await onAnlegen({ name: n, aufschlagCent: cent, reihenfolge: 0, lagerstandMenge: bestand })
+      setName(''); setAufpreis(''); setLagerstand('')
+      nameRef.current?.focus()
+    } catch (err) {
+      setFehler(err instanceof Error ? err.message : String(err))
+    } finally {
+      setLaeuft(false)
+    }
+  }
+
+  const beiEnter = (e: React.KeyboardEvent) => { if (e.key === 'Enter') void anlegen() }
+
+  return (
+    <div className="mb-3">
+      <div className="flex items-end gap-2 rounded-xl border border-line bg-panel-2 p-3">
+        <label className="flex-1 min-w-0">
+          <span className="block text-xs text-ink-muted mb-1">Neue Option</span>
+          <input
+            ref={nameRef}
+            value={name}
+            onChange={e => { setName(e.target.value); setFehler(null) }}
+            onKeyDown={beiEnter}
+            placeholder="z. B. Pommes"
+            className="w-full rounded-md border border-line-strong px-2.5 py-1.5 text-sm"
+          />
+        </label>
+        <label className="w-24">
+          <span className="block text-xs text-ink-muted mb-1">Aufpreis €</span>
+          <input
+            value={aufpreis}
+            onChange={e => { setAufpreis(e.target.value); setFehler(null) }}
+            onKeyDown={beiEnter}
+            placeholder="0,00"
+            inputMode="decimal"
+            className="w-full rounded-md border border-line-strong px-2.5 py-1.5 text-sm text-right font-mono"
+          />
+        </label>
+        <label className="w-24">
+          <span className="block text-xs text-ink-muted mb-1">Lagerstand</span>
+          <input
+            value={lagerstand}
+            onChange={e => { setLagerstand(e.target.value); setFehler(null) }}
+            onKeyDown={beiEnter}
+            placeholder="∞"
+            inputMode="numeric"
+            className="w-full rounded-md border border-line-strong px-2.5 py-1.5 text-sm text-right font-mono"
+          />
+        </label>
+        <Button onClick={() => void anlegen()} loading={laeuft} disabled={!name.trim()}>
+          +
+        </Button>
+      </div>
+      {fehler && <p className="mt-1 text-xs text-red-600">{fehler}</p>}
+    </div>
+  )
+}
 
 function ModifikatorZeile({
   mod, index,
