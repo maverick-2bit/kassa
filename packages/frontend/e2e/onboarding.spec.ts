@@ -1609,15 +1609,19 @@ test('Dienstplan: Schicht über das Modal eintragen erscheint im Wochenkalender'
   await page.goto('/dienstplan')
   await expect(page.getByRole('heading', { name: 'Dienstplan' })).toBeVisible({ timeout: 10_000 })
 
-  // Schicht über das Modal eintragen (Datum-Default heute, Beginn/Ende 09:00–17:00)
+  // Schicht über das Modal eintragen (Datum-Default heute, Beginn/Ende 09:00–17:00).
+  // BEWUSST OHNE selectOption: Der Mitarbeiter ist bereits vorausgewählt, der
+  // Bediener tippt nur „Speichern". Genau dieser Pfad war kaputt — die Liste kommt
+  // asynchron, der State blieb leer und es kam „Bitte alle Pflichtfelder ausfüllen",
+  // obwohl das Feld sichtbar gefüllt war. Ein selectOption hier würde den Bug maskieren.
   await page.getByRole('button', { name: 'Schicht eintragen' }).click()
   await expect(page.getByText('Neue Schicht')).toBeVisible()
-  await page.getByRole('combobox').selectOption({ label: mitarbeiter })
+  await expect(page.getByRole('combobox').first()).not.toHaveValue('')
   await page.getByRole('button', { name: /Speichern/ }).click()
 
-  // Schicht-Karte erscheint im Wochenkalender (Mitarbeiter + geplante Zeit)
+  // Kein Validierungs-Fehler, Schicht-Karte erscheint im Wochenkalender
+  await expect(page.getByText('Bitte alle Pflichtfelder ausfüllen')).toHaveCount(0)
   await expect(page.getByText(/09:00.*17:00/)).toBeVisible({ timeout: 10_000 })
-  await expect(page.getByText(mitarbeiter).first()).toBeVisible()
 })
 
 /**

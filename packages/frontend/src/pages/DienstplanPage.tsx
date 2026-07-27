@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { DienstplanSchichtResponse, DienstplanStatus } from '@kassa/shared'
 import { DIENSTPLAN_STATUS_LABELS } from '@kassa/shared'
@@ -262,6 +262,16 @@ function SchichtFormModal({ kasseId, initial, defaultDatum, onClose, onSaved, on
   const [loading,       setLoading]       = useState(false)
   const [fehler,        setFehler]        = useState('')
 
+  // Die Mitarbeiterliste kommt asynchron — beim ersten Render ist sie leer, der
+  // useState-Startwert bleibt also ''. Das Select zeigte dann (mangels passender
+  // Option) den ersten Namen an, während der State leer blieb → „Bitte alle
+  // Pflichtfelder ausfüllen", obwohl sichtbar alles gefüllt war. Sobald die Liste
+  // da ist, den ersten aktiven Mitarbeiter nachziehen.
+  const aktiveUsers = users.filter(u => u.aktiv)
+  useEffect(() => {
+    if (!userId && aktiveUsers.length > 0) setUserId(aktiveUsers[0]!.id)
+  }, [userId, aktiveUsers])
+
   const handleSpeichern = async () => {
     if (!userId || !datum || !beginnGeplant || !endeGeplant) {
       setFehler('Bitte alle Pflichtfelder ausfüllen')
@@ -305,7 +315,8 @@ function SchichtFormModal({ kasseId, initial, defaultDatum, onClose, onSaved, on
               onChange={e => setUserId(e.target.value)}
               className="mt-1 w-full rounded-md border border-line-strong px-3 py-2 text-sm"
             >
-              {users.filter(u => u.aktiv).map(u => (
+              {aktiveUsers.length === 0 && <option value="">Keine aktiven Mitarbeiter</option>}
+              {aktiveUsers.map(u => (
                 <option key={u.id} value={u.id}>{u.name}</option>
               ))}
             </select>
