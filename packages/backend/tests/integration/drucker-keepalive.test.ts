@@ -172,5 +172,18 @@ describe('Drucker-Keep-Alive (Integration, echtes PostgreSQL)', () => {
       payload: { intervallSekunden: -5 },
     })
     expect(invalid.statusCode).toBe(400)
+
+    // Obergrenze 600 s (10 min) — längere Pausen ließen Drucker wieder einschlafen
+    const zuLang = await srv.fastify.inject({
+      method: 'PATCH', url: '/api/admin/monitoring/keep-alive', headers: auth(),
+      payload: { intervallSekunden: 601 },
+    })
+    expect(zuLang.statusCode).toBe(400)
+
+    const maxOk = await srv.fastify.inject({
+      method: 'PATCH', url: '/api/admin/monitoring/keep-alive', headers: auth(),
+      payload: { intervallSekunden: 600 },
+    })
+    expect(maxOk.statusCode).toBe(200)
   })
 })

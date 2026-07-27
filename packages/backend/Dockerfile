@@ -64,7 +64,7 @@ COPY --from=builder /app/packages/backend/package.json ./package.json
 # Verzeichnisse IM IMAGE initialisiert Docker die dort gemounteten Named Volumes
 # (db_backups/dep_backups) als root:root — der als 'node' laufende Backend-Prozess
 # könnte dann seine pg_dump-DB-Backups nicht schreiben (Permission denied).
-RUN mkdir -p /data/db-backups /data/dep-backups && chown -R node:node /data
+RUN mkdir -p /data/db-backups /data/dep-backups /control && chown -R node:node /data /control
 
 # Nicht als root laufen
 USER node

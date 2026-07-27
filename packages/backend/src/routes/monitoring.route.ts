@@ -136,7 +136,9 @@ export const monitoringRoute: FastifyPluginAsync<MonitoringRouteOptions> = async
       return reply.status(403).send({ fehler: 'Kein Zugriff' })
     }
     const body = z.object({
-      intervallSekunden: z.number().int().min(0).max(3600),
+      // 0 = aus; nach oben auf 10 min gedeckelt — längere Pausen lassen Bondrucker
+      // wieder in den Schlafmodus fallen und machen das Keep-Alive sinnlos.
+      intervallSekunden: z.number().int().min(0).max(600),
     }).safeParse(request.body)
     if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
 

@@ -25,6 +25,12 @@ TARURL="https://github.com/${REPO}/archive/refs/heads/${BRANCH}.tar.gz"
 APP_SERVICES="postgres backend frontend kundendisplay kds gast kellner terminal abholmonitor backup"
 
 mkdir -p "$CONTROL"
+# Das Backend (USER node, UID 1000) muss hier die request-Datei anlegen können.
+# Der Mountpoint eines frischen Named Volumes gehört sonst root → EACCES beim
+# „Jetzt aktualisieren". Der Updater läuft als root und heilt die Rechte bei
+# jedem Start — auch für bestehende Installationen.
+chown 1000:1000 "$CONTROL" 2>/dev/null || true
+chmod 775 "$CONTROL" 2>/dev/null || true
 
 # Werkzeuge sicherstellen (Basis-Image docker:cli = Alpine)
 ensure() { command -v "$1" >/dev/null 2>&1 || apk add --no-cache "$2" >/dev/null 2>&1 || true; }
