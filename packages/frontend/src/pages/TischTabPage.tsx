@@ -35,6 +35,7 @@ import { KartenzahlungModal } from '../components/KartenzahlungModal'
 import { RabattModal } from '../components/RabattModal'
 import { BarRueckgeldModal } from '../components/BarRueckgeldModal'
 import { BarKarteSplitModal } from '../components/BarKarteSplitModal'
+import { MengeNumpadModal } from '../components/MengeNumpadModal'
 import { ArtikelGrid } from '../components/ArtikelGrid'
 
 // ---------------------------------------------------------------------------
@@ -362,6 +363,34 @@ export function TischTabPage() {
     onError: (err) => { setZahlartLaeuft(null); setFehler(err instanceof Error ? err.message : String(err)) },
   })
 
+  // Positions-Korrektur (−/+/Numpad/🗑): Server erkennt Reduktionen als Storno
+  // und schickt Storno-Bons an die Stationen + schreibt das Audit-Protokoll.
+  const [korrekturNumpad, setKorrekturNumpad] = useState<number | null>(null)
+  const korrekturMutation = useMutation({
+    mutationFn: (positionen: TabPosition[]) => tischTabApi.aktualisierePositionen(tabId!, positionen),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tisch-tab', tabId] })
+      qc.invalidateQueries({ queryKey: ['tisch-tabs'] })
+      setFehler(null)
+    },
+    onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
+  })
+  const korrigiereMenge = (idx: number, neueMenge: number) => {
+    if (!tab || korrekturMutation.isPending) return
+    const neu = tab.positionen.flatMap((p, i) =>
+      i !== idx ? [p] : neueMenge <= 0 ? [] : [{ ...p, menge: neueMenge }])
+    korrekturMutation.mutate(neu)
+  }
+
+  const verwerfenMutation = useMutation({
+    mutationFn: () => tischTabApi.verwerfe(tabId!),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tisch-tabs'] })
+      navigate('/tische')
+    },
+    onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
+  })
+
   const umbenennenMutation = useMutation({
     mutationFn: (kellner: string) => tischTabApi.umbennene(tabId!, kellner),
     onSuccess: () => {
@@ -600,11 +629,33 @@ export function TischTabPage() {
             ) : !gaengeAktiv ? (
               <ul className="space-y-1.5">
                 {tab.positionen.map((p, i) => (
-                  <li key={i} className="flex justify-between text-sm">
-                    <span className="text-ink flex-1">
-                      {p.menge}× {p.bezeichnung}
+                  <li key={i} className="flex items-center gap-1.5 text-sm">
+                    <span className="text-ink flex-1 min-w-0 truncate">
+                      {p.bezeichnung}
                     </span>
-                    <span className="font-mono text-ink ml-2 shrink-0">
+                    {/* Korrektur: − / Menge (Ziffernblock) / + / 🗑 — Storno-Bon
+                        an die Küche + Protokoll laufen serverseitig automatisch */}
+                    <MengeButton onClick={() => korrigiereMenge(i, p.menge - 1)}>−</MengeButton>
+                    <button
+                      type="button"
+                      onClick={() => setKorrekturNumpad(i)}
+                      className="w-7 text-center font-medium rounded border border-transparent hover:border-line-strong hover:bg-panel-2"
+                      title="Menge eingeben"
+                    >
+                      {p.menge}
+                    </button>
+                    <MengeButton onClick={() => korrigiereMenge(i, p.menge + 1)}>+</MengeButton>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (confirm(`${p.menge}× ${p.bezeichnung} stornieren?`)) korrigiereMenge(i, 0)
+                      }}
+                      className="text-ink-subtle hover:text-red-500 px-0.5"
+                      title="Position stornieren"
+                    >
+                      🗑
+                    </button>
+                    <span className="font-mono text-ink ml-1 shrink-0 w-16 text-right">
                       {formatPreis(p.preisBruttoCent * p.menge)}
                     </span>
                   </li>
@@ -659,6 +710,18 @@ export function TischTabPage() {
                                       ))}
                                     </select>
                                   )}
+                                  {/* Storno auch im Gänge-Modus — der Server schickt den Storno-Bon */}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (confirm(`${p.menge}× ${p.bezeichnung} stornieren?`)) korrigiereMenge(i, 0)
+                                    }}
+                                    disabled={korrekturMutation.isPending}
+                                    className="text-ink-subtle hover:text-red-500 px-0.5 disabled:opacity-50"
+                                    title="Position stornieren"
+                                  >
+                                    🗑
+                                  </button>
                                   <span className={`font-mono ml-1 shrink-0 ${gesendet ? 'text-ink-subtle' : 'text-ink'}`}>
                                     {formatPreis(p.preisBruttoCent * p.menge)}
                                   </span>
@@ -823,6 +886,18 @@ export function TischTabPage() {
               >
                 ⊢ Rechnung teilen
               </Button>
+              <Button
+                variant="danger"
+                onClick={() => {
+                  if (confirm(`Tisch ${tab.tischNummer} komplett verwerfen? Alle ${tab.positionen.length} Positionen werden storniert (Storno-Bon an die Küche).`)) {
+                    verwerfenMutation.mutate()
+                  }
+                }}
+                loading={verwerfenMutation.isPending}
+                className="flex-1 text-xs"
+              >
+                🗑 Verwerfen
+              </Button>
             </div>
             <div className="flex gap-2">
               <Button
@@ -908,6 +983,21 @@ export function TischTabPage() {
         fehler={fehler}
         onSubmit={(input) => { setFehler(null); splitMutation.mutate(input) }}
         onClose={() => { setSplitOffen(false); setFehler(null) }}
+      />
+
+      {/* Ziffernblock: Menge einer Tab-Position direkt setzen (0 = Storno) */}
+      <MengeNumpadModal
+        open={korrekturNumpad !== null}
+        titel={korrekturNumpad !== null && tab?.positionen[korrekturNumpad]
+          ? `Menge: ${tab.positionen[korrekturNumpad].bezeichnung}`
+          : 'Menge'}
+        startMenge={korrekturNumpad !== null ? (tab?.positionen[korrekturNumpad]?.menge ?? 1) : 1}
+        nullErlaubt
+        onClose={() => setKorrekturNumpad(null)}
+        onSubmit={(menge) => {
+          if (korrekturNumpad !== null) korrigiereMenge(korrekturNumpad, menge)
+          setKorrekturNumpad(null)
+        }}
       />
 
       {/* Kartenzahlung (ZVT) — vor Beleg-Erstellung */}

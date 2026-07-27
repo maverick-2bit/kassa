@@ -831,6 +831,8 @@ export const tischTabApi = {
     request<TischTabResponse>('GET', `/api/tisch-tabs/${id}`),
   aktualisierePositionen: (id: string, positionen: TabPosition[]) =>
     request<TischTabResponse>('PUT', `/api/tisch-tabs/${id}/positionen`, { positionen }),
+  verwerfe: (id: string, grund?: string) =>
+    request<TischTabResponse>('POST', `/api/tisch-tabs/${id}/verwerfen`, grund ? { grund } : {}),
   bezahle: (id: string, input: TischTabBezahlenInput) =>
     request<{ tab: TischTabResponse; belegId: string }>('POST', `/api/tisch-tabs/${id}/bezahlen`, input),
   umbennene: (id: string, kellner: string) =>

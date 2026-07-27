@@ -708,7 +708,7 @@ export const tischTabs = pgTable('tisch_tabs', {
   kellner:      varchar('kellner', { length: 100 }).notNull().default('Service'),
   /** Akkumulierte Positionen als JSON-Array [{artikelId, bezeichnung, preisBruttoCent, menge, station?}] */
   positionen:   jsonb('positionen').notNull(),
-  /** offen | bezahlt */
+  /** offen | bezahlt | zusammengefuehrt | verworfen */
   status:       varchar('status', { length: 20 }).notNull().default('offen'),
   geoffnetAm:   timestamp('geoffnet_am', { withTimezone: true }).notNull().defaultNow(),
   geschlossenAm: timestamp('geschlossen_am', { withTimezone: true }),

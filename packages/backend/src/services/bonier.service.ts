@@ -46,6 +46,12 @@ export interface BonierOptionen {
    */
   sb?: { bestellungId: string; bestellNummer: string }
   /**
+   * Storno-Bon: dieselben Routing-Wege (Stationen/Bonierdrucker), aber die Bons
+   * sind unübersehbar als STORNO markiert — Küche/Schank wissen sofort, dass
+   * diese Positionen NICHT (mehr) zuzubereiten sind.
+   */
+  storno?: boolean
+  /**
    * Nur drucken (KDS + Bonierdrucker), KEIN Lagerabzug. Für Tisch-Bonierungen
    * (Parken/Sofort-Kassieren): dort ist der Lagerstand die alleinige Sache von
    * aktualisiereStockDeltas (Positionsänderung) — sonst Doppel-Abzug.
@@ -206,6 +212,7 @@ export async function bonierBestellung(
       tisch:   tischLabel,
       ...(input.bereich && { bereich: input.bereich }),
       kellner: input.kellner,
+      ...(optionen.storno ? { storno: true } : {}),
       positionen,
     })
     const ziel: KdsZiel = { ip, port: kdsPort }
@@ -233,7 +240,7 @@ export async function bonierBestellung(
       preisLabel:  '',
     }))
     try {
-      await druckeBonierbonDirekt(drucker.ip, drucker.port, tischLabel, input.kellner, zeilen)
+      await druckeBonierbonDirekt(drucker.ip, drucker.port, tischLabel, input.kellner, zeilen, optionen.storno === true)
       druckerErgebnisse.push({
         druckerId:   drucker.id,
         name:        drucker.name,
@@ -348,8 +355,10 @@ export async function bonierBestellung(
         tisch:      tischLabel,
         ...(input.bereich ? { bereich: input.bereich } : {}),
         kellner:    input.kellner,
+        // Browser-KDS kennt kein Storno-Feld — das Präfix macht den Bon am
+        // Display unmissverständlich (ESC/POS-Bons haben den STORNO-Kopf).
         positionen: positionen.map(p => ({
-          bezeichnung: p.bezeichnung,
+          bezeichnung: optionen.storno ? `✕ STORNO: ${p.bezeichnung}` : p.bezeichnung,
           menge:       p.menge,
           ...(p.details ? { details: p.details } : {}),
         })),

@@ -422,9 +422,12 @@ test('Tisch-Split: Rechnung auf 2 Zahler teilen schließt den Tab mit 2 Bons', a
   await page.getByRole('button', { name: 'Kaffee' }).first().click()
 
   // Parken bucht auf den Tisch (Artikel ohne KDS/Bonierdrucker → „nichts zu
-  // bonieren" wird geschluckt, gespeichert wird trotzdem)
+  // bonieren" wird geschluckt, gespeichert wird trotzdem).
+  // Seit v0.7.132 zeigt die Positionszeile Menge und Bezeichnung getrennt
+  // (±/Numpad/🗑 dazwischen) — auf beide einzeln prüfen.
   await page.getByRole('button', { name: 'Parken' }).click()
-  await expect(page.getByText('2× Kaffee')).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByRole('listitem').getByText('Kaffee', { exact: true })).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByTitle('Menge eingeben').first()).toHaveText('2')
 
   // ---- Rechnung teilen: Zahler 1 startet mit allem → 1× zu Zahler 2 schieben ----
   await page.getByRole('button', { name: 'Rechnung teilen' }).click()

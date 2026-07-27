@@ -16,6 +16,7 @@ import {
   getTab,
   getTabVerlauf,
   aktualisierePositionen,
+  verwerfeTab,
   bezahleTab,
   umbenneneTab,
   umbucheTab,
@@ -71,7 +72,29 @@ export const tischTabRoute: FastifyPluginAsync<TischTabRouteOptions> = async (fa
     const parsed = TischTabPositionenUpdateSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     try {
-      const tab = await aktualisierePositionen(id, parsed.data.positionen, request.user.mandantId, opts.deps)
+      const tab = await aktualisierePositionen(id, parsed.data.positionen, request.user.mandantId, opts.deps, {
+        userId:   (request.user as { id?: string }).id ?? null,
+        userName: request.user.name,
+      })
+      return reply.send(tab)
+    } catch (err) {
+      if (err instanceof TischTabError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      throw err
+    }
+  })
+
+  /** Gesamten offenen Tab verwerfen — Kellner-Berechtigung genügt (bewusste
+   *  Entscheidung); Storno-Bon an die Stationen + Audit-Protokoll laufen im Service. */
+  fastify.post('/tisch-tabs/:id/verwerfen', auth, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const body = z.object({ grund: z.string().trim().max(200).optional() }).safeParse(request.body ?? {})
+    if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
+    try {
+      const tab = await verwerfeTab(id, request.user.mandantId, opts.deps, {
+        userId:   (request.user as { id?: string }).id ?? null,
+        userName: request.user.name,
+        ...(body.data.grund ? { grund: body.data.grund } : {}),
+      })
       return reply.send(tab)
     } catch (err) {
       if (err instanceof TischTabError) return reply.status(err.httpStatus).send({ fehler: err.message })
