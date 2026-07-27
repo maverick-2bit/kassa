@@ -21,7 +21,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { BelegResponse, Tagesabschluss } from '@kassa/shared'
-import { baueBon, baueTischEtikett, baueZBon } from '../src/services/escpos/layout.js'
+import { baueBon, baueGutscheinBon, baueTischEtikett, baueZBon } from '../src/services/escpos/layout.js'
 import { baueBonierbon } from '../src/services/kds/bonierbon.js'
 
 const GOLDEN_DIR = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'escpos-golden')
@@ -119,6 +119,26 @@ describe('ESC/POS Golden-Master', () => {
     pruefeGolden('etikett-mit-qr-42.bin', baueTischEtikett('7', {
       breite: 42, firmenname: 'Golden GmbH',
       qrUrl: 'http://192.168.1.10:8082/gast?kasseId=abc&tisch=7',
+    }))
+  })
+
+  it('Gutschein-Bon 42 (frisch — Wert riesig, Code + QR)', () => {
+    pruefeGolden('gutschein-42.bin', baueGutscheinBon({
+      breite: 42, firmenname: 'Golden GmbH',
+      code: 'GS-A3B7-X2Y9', nummer: 12,
+      datum: '2026-05-20T14:30:00Z',
+      betragCent: 5000, restCent: 5000,
+      gueltigBis: '2027-05-20',
+    }))
+  })
+
+  it('Gutschein-Bon 32 (teileingelöst — Restwert-Zeile)', () => {
+    pruefeGolden('gutschein-teil-32.bin', baueGutscheinBon({
+      breite: 32,
+      code: 'GS-TT99-K1L2', nummer: 13,
+      datum: '2026-05-20T14:30:00Z',
+      betragCent: 10000, restCent: 2550,
+      gueltigBis: null,
     }))
   })
 

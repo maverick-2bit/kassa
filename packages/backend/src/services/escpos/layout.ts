@@ -225,6 +225,102 @@ export function baueTischEtikett(tischNummer: string, opts: TischEtikettOptionen
 }
 
 // ---------------------------------------------------------------------------
+// Gutschein-Bon
+// ---------------------------------------------------------------------------
+
+export interface GutscheinBonOptionen {
+  breite:      number   // Zeichen pro Zeile (42 = 80 mm, 32 = 58 mm)
+  firmenname?: string
+  code:        string   // z. B. "GS-A3B7-X2Y9"
+  nummer:      number
+  /** ISO-Zeitpunkt der Ausstellung */
+  datum:       string
+  betragCent:  number
+  /** aktueller Restwert; bei frischen Gutscheinen == betragCent */
+  restCent:    number
+  /** optionales Ablaufdatum (YYYY-MM-DD) */
+  gueltigBis?: string | null
+}
+
+/**
+ * Gutschein als ESC/POS-Bon: Wert riesig, Code fett + als QR (Inhalt = purer
+ * Code — Scanner/Kamera tippen ihn direkt ins Einlöse-Feld). Gestapeltes
+ * Standard-Modus-Layout (kein Page Mode — TM-T20IV-Merksatz).
+ */
+export function baueGutscheinBon(opts: GutscheinBonOptionen): Buffer {
+  const W = opts.breite
+  const parts: Buffer[] = []
+  const add = (b: Buffer): void => { parts.push(b) }
+  const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v))
+
+  add(ep.init())
+  add(ep.selectCodepage(19))      // CP858 (Deutsch + €)
+  add(ep.selectInternational(2))  // Deutsch
+
+  add(ep.align('center'))
+  if (opts.firmenname) {
+    add(ep.bold(true))
+    add(ep.textLine(truncate(opts.firmenname, W)))
+    add(ep.bold(false))
+    add(ep.newline())
+  }
+
+  add(ep.bold(true))
+  add(ep.textSize(2, 2))
+  add(ep.textLine('GUTSCHEIN'))
+  add(ep.textSize(1, 1))
+  add(ep.bold(false))
+  add(ep.newline())
+
+  // Wert RIESIG (dynamische Größe nach Textlänge, wie beim Tisch-Etikett)
+  const wert = formatCent(opts.betragCent)
+  const wMul = clamp(Math.floor(W / Math.max(1, wert.length)), 1, 4)
+  add(ep.bold(true))
+  add(ep.textSize(wMul, Math.min(wMul + 1, 6)))
+  add(ep.textLine(wert))
+  add(ep.textSize(1, 1))
+  add(ep.bold(false))
+
+  // Teileingelöst: Restwert deutlich ausweisen
+  if (opts.restCent !== opts.betragCent) {
+    add(ep.newline())
+    add(ep.bold(true))
+    add(ep.textLine(`Restwert: ${formatCent(opts.restCent)}`))
+    add(ep.bold(false))
+  }
+
+  // Code fett + doppelt groß (sofern er in die Zeile passt)
+  add(ep.newline())
+  const code = truncate(opts.code, W)
+  const cMul = clamp(Math.floor(W / Math.max(1, code.length)), 1, 2)
+  add(ep.bold(true))
+  add(ep.textSize(cMul, cMul))
+  add(ep.textLine(code))
+  add(ep.textSize(1, 1))
+  add(ep.bold(false))
+
+  // QR mit dem puren Code — an der Kasse abscannbar
+  add(ep.newline())
+  add(ep.qrCode(opts.code, qrSizeFuerBreite(W), 'M'))
+  add(ep.textLine('Zum Einloesen scannen'))
+
+  add(ep.newline())
+  add(ep.textLine(`Nr. ${opts.nummer} · ${formatDatum(opts.datum)}`))
+  if (opts.gueltigBis) {
+    add(ep.textLine(`Gültig bis ${formatDatumNur(opts.gueltigBis)}`))
+  }
+
+  // Branding-Fußzeile
+  add(ep.newline())
+  add(ep.textLine('powered by s/e smarte events'))
+
+  add(ep.newline(4))
+  add(ep.cut())
+
+  return Buffer.concat(parts)
+}
+
+// ---------------------------------------------------------------------------
 // Z-Bon (Tagesabschluss)
 // ---------------------------------------------------------------------------
 

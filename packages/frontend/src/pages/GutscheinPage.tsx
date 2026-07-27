@@ -11,6 +11,7 @@ import {
 } from '@kassa/shared'
 import { gutscheinApi } from '../lib/api'
 import { getAuth } from '../lib/auth'
+import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
 import { druckeGutschein } from '../lib/rechnung'
 import { Button } from '../components/ui/Button'
@@ -173,9 +174,12 @@ function NeuerGutscheinModal({ onSubmit, loading, fehler, onClose }: NeuerGutsch
 interface GutscheinDetailModalProps {
   gs:      GutscheinResponse
   onClose: () => void
+  /** ESC/POS-Druck am Bondrucker (zentrale Mutation der Seite) */
+  onBonDruck:    (id: string) => void
+  bonDruckLaeuft: boolean
 }
 
-function GutscheinDetailModal({ gs, onClose }: GutscheinDetailModalProps) {
+function GutscheinDetailModal({ gs, onClose, onBonDruck, bonDruckLaeuft }: GutscheinDetailModalProps) {
   const auth = getAuth()
   const { data: buchungen = [], isLoading } = useQuery({
     queryKey: ['gutschein-buchungen', gs.id],
@@ -272,12 +276,20 @@ function GutscheinDetailModal({ gs, onClose }: GutscheinDetailModalProps) {
       <div className="flex gap-2 pt-1">
         <Button
           variant="secondary"
+          onClick={() => onBonDruck(gs.id)}
+          loading={bonDruckLaeuft}
+          className="flex-1"
+        >
+          🖨 Bon
+        </Button>
+        <Button
+          variant="secondary"
           onClick={() => {
             if (auth) druckeGutschein(gs, { firmenname: auth.mandant.firmenname, uid: auth.mandant.uid })
           }}
           className="flex-1"
         >
-          Drucken
+          A4
         </Button>
         <Button variant="secondary" onClick={onClose} className="flex-1">Schließen</Button>
       </div>
@@ -305,14 +317,30 @@ export function GutscheinPage() {
     queryFn:  () => gutscheinApi.list(statusFilter === 'alle' ? {} : { status: statusFilter }),
   })
 
+  const bonDruckMutation = useMutation({
+    mutationFn: (id: string) => {
+      const identity = getKasseIdentity()
+      if (!identity) throw new Error('Keine aktive Kasse — Bon-Druck braucht die Kassen-Zuordnung')
+      return gutscheinApi.drucken(id, identity.kasseId)
+    },
+    onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
+  })
+
   const erstelleMutation = useMutation({
     mutationFn: gutscheinApi.create,
-    onSuccess: (gs) => {
+    onSuccess: async (gs) => {
       setNeuerOffen(false)
       setFehler(null)
       void queryClient.invalidateQueries({ queryKey: ['gutscheine'] })
-      // Sofort drucken
-      if (auth) druckeGutschein(gs, { firmenname: auth.mandant.firmenname, uid: auth.mandant.uid })
+      // Sofort drucken: zuerst am Bondrucker; ist keiner konfiguriert (oder keine
+      // Kasse zugeordnet), wie bisher das A4-Druckfenster öffnen.
+      try {
+        const identity = getKasseIdentity()
+        if (!identity) throw new Error('keine Kasse')
+        await gutscheinApi.drucken(gs.id, identity.kasseId)
+      } catch {
+        if (auth) druckeGutschein(gs, { firmenname: auth.mandant.firmenname, uid: auth.mandant.uid })
+      }
     },
     onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
   })
@@ -450,12 +478,20 @@ export function GutscheinPage() {
                     <div className="flex items-center gap-2 justify-end">
                       <button
                         type="button"
+                        onClick={() => bonDruckMutation.mutate(gs.id)}
+                        disabled={bonDruckMutation.isPending}
+                        className="text-xs text-brand-600 hover:underline disabled:opacity-50"
+                      >
+                        🖨 Bon
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => {
                           if (auth) druckeGutschein(gs, { firmenname: auth.mandant.firmenname, uid: auth.mandant.uid })
                         }}
                         className="text-xs text-brand-600 hover:underline"
                       >
-                        Drucken
+                        A4
                       </button>
                       {gs.status !== 'eingeloest' && gs.status !== 'storniert' && (
                         <button
@@ -493,7 +529,8 @@ export function GutscheinPage() {
           title={`Gutschein ${infoGs.code}`}
           size="lg"
         >
-          <GutscheinDetailModal gs={infoGs} onClose={() => setInfoGs(null)} />
+          <GutscheinDetailModal gs={infoGs} onClose={() => setInfoGs(null)}
+            onBonDruck={(id) => bonDruckMutation.mutate(id)} bonDruckLaeuft={bonDruckMutation.isPending} />
         </Modal>
       )}
 
@@ -531,7 +568,8 @@ export function GutscheinPage() {
           title={`Gutschein ${detailGs.code} erstellt`}
           size="lg"
         >
-          <GutscheinDetailModal gs={detailGs} onClose={() => setDetailGs(null)} />
+          <GutscheinDetailModal gs={detailGs} onClose={() => setDetailGs(null)}
+            onBonDruck={(id) => bonDruckMutation.mutate(id)} bonDruckLaeuft={bonDruckMutation.isPending} />
         </Modal>
       )}
     </div>
