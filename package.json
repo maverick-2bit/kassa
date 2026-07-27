@@ -1,7 +1,7 @@
 {
   "name": "kassa",
   "private": true,
-  "version": "0.7.123",
+  "version": "0.7.124",
   "scripts": {
     "build": "turbo build",
     "test": "turbo test",
