@@ -632,7 +632,7 @@ function DruckerStatusSektion() {
   }, [status.data, intervall])
 
   const speichern = useMutation({
-    mutationFn: () => monitoringApi.setKeepAlive(Math.max(0, parseInt(intervall, 10) || 0)),
+    mutationFn: () => monitoringApi.setKeepAlive(Math.min(600, Math.max(0, parseInt(intervall, 10) || 0))),
     onSuccess:  (d) => {
       setMeldung({ typ: 'ok', text: d.intervallSekunden === 0 ? 'Keep-Alive ausgeschaltet' : `Keep-Alive alle ${d.intervallSekunden} s aktiv` })
       queryClient.invalidateQueries({ queryKey: ['monitoring-status'] })
@@ -664,9 +664,9 @@ function DruckerStatusSektion() {
       </div>
 
       <div className="flex items-end gap-3">
-        <Field label="Intervall (Sekunden)" hint="0 = aus · empfohlen 60">
+        <Field label="Intervall (Sekunden)" hint="0 = aus · 1–600 (z. B. 300 = alle 5 min)">
           <Input
-            type="number" min={0} max={3600} value={intervall}
+            type="number" min={0} max={600} value={intervall}
             onChange={e => { setIntervall(e.target.value); setMeldung(null) }}
             className="w-32"
           />
