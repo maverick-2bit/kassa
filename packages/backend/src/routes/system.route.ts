@@ -103,6 +103,15 @@ export const systemRoute: FastifyPluginAsync = async (fastify) => {
     try {
       await writeFile(join(CONTROL_DIR, 'request'), `${new Date().toISOString()}\n`, 'utf8')
     } catch (err) {
+      const code = (err as NodeJS.ErrnoException)?.code
+      if (code === 'EACCES' || code === 'EPERM') {
+        return reply.status(500).send({
+          fehler:
+            'Update konnte nicht angefordert werden: kein Schreibrecht am Update-Volume (EACCES). ' +
+            'Auf dem Kassen-PC einmal ausführen: docker compose -p kassa exec updater chown -R 1000:1000 /control ' +
+            '— ab v0.7.124 repariert der Update-Dienst die Berechtigung bei jedem Start selbst.',
+        })
+      }
       return reply.status(500).send({
         fehler: 'Update konnte nicht angefordert werden: ' + (err instanceof Error ? err.message : String(err)),
       })
