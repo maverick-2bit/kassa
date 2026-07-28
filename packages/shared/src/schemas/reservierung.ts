@@ -31,6 +31,8 @@ export const ReservierungInputSchema = z.object({
   email:          z.string().email().optional(),
   notiz:          z.string().max(500).optional(),
   tischLabel:     z.string().max(50).optional(),
+  /** Echte Bindung an einen Tisch des Tischplans (Kollisionsprüfung) */
+  tischId:        z.string().uuid().nullable().optional(),
 })
 export type ReservierungInput = z.infer<typeof ReservierungInputSchema>
 
@@ -44,6 +46,8 @@ export const ReservierungUpdateSchema = z.object({
   email:          z.string().email().optional(),
   notiz:          z.string().max(500).optional(),
   tischLabel:     z.string().max(50).optional(),
+  /** Echte Bindung an einen Tisch des Tischplans (Kollisionsprüfung) */
+  tischId:        z.string().uuid().nullable().optional(),
   status:         ReservierungStatusSchema.optional(),
 })
 export type ReservierungUpdate = z.infer<typeof ReservierungUpdateSchema>
@@ -60,6 +64,7 @@ export const ReservierungResponseSchema = z.object({
   email:          z.string().optional(),
   notiz:          z.string().optional(),
   tischLabel:     z.string().optional(),
+  tischId:        z.string().uuid().optional(),
   status:         ReservierungStatusSchema,
   quelle:         ReservierungQuelleSchema,
   onlineToken:    z.string().uuid().optional(),
@@ -85,5 +90,7 @@ export const OnlineBuchungInputSchema = z.object({
   telefon:        z.string().max(30).optional(),
   email:          z.string().email().optional(),
   notiz:          z.string().max(500).optional(),
+  /** Vom Gast gewählter Tisch — muss online freigegeben und frei sein */
+  tischId:        z.string().uuid().optional(),
 })
 export type OnlineBuchungInput = z.infer<typeof OnlineBuchungInputSchema>

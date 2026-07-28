@@ -21,8 +21,10 @@ import { ReservierungInputSchema, ReservierungUpdateSchema } from '@kassa/shared
 import {
   erstelleReservierung,
   listeReservierungen,
+  listeTischVerfuegbarkeit,
   aktualisiereReservierung,
   loescheReservierung,
+  ReservierungError,
 } from '../services/reservierung.service.js'
 import { pruefeKasseGehoertZuMandant } from '../auth/scope.js'
 import {
@@ -64,6 +66,27 @@ export const reservierungRoute: FastifyPluginAsync<ReservierungRouteOptions> = a
     return reply.send(liste)
   })
 
+  // ---- GET /reservierungen/tische — Verfügbarkeit im Zeitraum ----
+  fastify.get('/reservierungen/tische', guard, async (request, reply) => {
+    const q = z.object({
+      kasseId:  z.string().uuid(),
+      datum:    z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      zeitVon:  z.string().regex(/^\d{2}:\d{2}$/),
+      dauer:    z.coerce.number().int().min(15).max(720).default(90),
+      ausserId: z.string().uuid().optional(),
+    }).safeParse(request.query)
+    if (!q.success) return reply.status(400).send({ fehler: q.error.issues })
+
+    const ok = await pruefeKasseGehoertZuMandant(opts.db, q.data.kasseId, request.user.mandantId)
+    if (!ok) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
+
+    return reply.send(await listeTischVerfuegbarkeit(
+      opts.db, request.user.mandantId, q.data.kasseId,
+      q.data.datum, q.data.zeitVon, q.data.dauer,
+      { ...(q.data.ausserId ? { ausserId: q.data.ausserId } : {}) },
+    ))
+  })
+
   // ---- POST /reservierungen ----
   fastify.post('/reservierungen', guard, async (request, reply) => {
     const body = ReservierungInputSchema.safeParse(request.body)
@@ -73,6 +96,7 @@ export const reservierungRoute: FastifyPluginAsync<ReservierungRouteOptions> = a
       const res = await erstelleReservierung(opts.db, request.user.mandantId, body.data)
       return reply.status(201).send(res)
     } catch (err) {
+      if (err instanceof ReservierungError) return reply.status(err.httpStatus).send({ fehler: err.message })
       return reply.status(404).send({ fehler: err instanceof Error ? err.message : 'Fehler' })
     }
   })
@@ -110,6 +134,7 @@ export const reservierungRoute: FastifyPluginAsync<ReservierungRouteOptions> = a
 
       return reply.send(res)
     } catch (err) {
+      if (err instanceof ReservierungError) return reply.status(err.httpStatus).send({ fehler: err.message })
       return reply.status(404).send({ fehler: err instanceof Error ? err.message : 'Fehler' })
     }
   })

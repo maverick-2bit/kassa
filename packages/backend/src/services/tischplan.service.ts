@@ -60,6 +60,8 @@ export async function listeBereiche(
         y:           e.y,
         breite:      e.breite,
         hoehe:       e.hoehe,
+        onlineReservierbar: e.onlineReservierbar,
+        plaetze:     e.plaetze,
       })),
   }))
 }
@@ -148,6 +150,8 @@ export async function erstelleElement(
       y:           input.y,
       breite:      input.breite,
       hoehe:       input.hoehe,
+      onlineReservierbar: input.onlineReservierbar,
+      plaetze:     input.plaetze,
     })
     .returning()
   const el = elRows[0]!
@@ -157,6 +161,7 @@ export async function erstelleElement(
     form:  el.form  as 'rechteck' | 'rund',
     farbe: el.farbe as TischplanBereich['elemente'][number]['farbe'],
     x: el.x, y: el.y, breite: el.breite, hoehe: el.hoehe,
+    onlineReservierbar: el.onlineReservierbar, plaetze: el.plaetze,
   }
 }
 

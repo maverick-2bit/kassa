@@ -1,6 +1,6 @@
-import { and, desc, eq, gte, lte } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, lte, ne } from 'drizzle-orm'
 import type { Db } from '../db/client.js'
-import { kassen, mandanten, reservierungen } from '../db/schema.js'
+import { kassen, mandanten, reservierungen, tischplanBereiche, tischplanElemente } from '../db/schema.js'
 import { emitKasseEvent } from '../sse/event-bus.js'
 import type {
   ReservierungInput,
@@ -9,6 +9,91 @@ import type {
   ReservierungUpdate,
   OnlineBuchungInfo,
 } from '@kassa/shared'
+
+/** Fehler mit HTTP-Status — die Route mappt ihn direkt durch. */
+export class ReservierungError extends Error {
+  constructor(public httpStatus: number, message: string) {
+    super(message)
+    this.name = 'ReservierungError'
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Kollisionsprüfung: derselbe Tisch darf sich zeitlich nicht überschneiden
+// ---------------------------------------------------------------------------
+
+/** "HH:MM" → Minuten seit Mitternacht */
+function minuten(hhmm: string): number {
+  const [h, m] = hhmm.split(':')
+  return Number(h) * 60 + Number(m)
+}
+
+/** Stati, die einen Tisch NICHT blockieren (abgesagt bzw. Gast kam nie) */
+const FREIGEBENDE_STATI = ['storniert', 'nicht_erschienen'] as const
+
+/**
+ * Wirft 409, wenn der Tisch im gewünschten Zeitraum schon belegt ist.
+ * Überschneidung = [von, von+dauer) der beiden Reservierungen überlappen sich.
+ * `ausserId` schließt die eigene Reservierung beim Bearbeiten aus.
+ */
+export async function pruefeTischFrei(
+  db:        Db,
+  mandantId: string,
+  tischId:   string,
+  datum:     string,
+  zeitVon:   string,
+  dauer:     number,
+  ausserId?: string,
+): Promise<void> {
+  const bedingungen = [
+    eq(reservierungen.mandantId, mandantId),
+    eq(reservierungen.tischId, tischId),
+    eq(reservierungen.datum, datum),
+  ]
+  if (ausserId) bedingungen.push(ne(reservierungen.id, ausserId))
+
+  const belegungen = await db
+    .select({
+      id:      reservierungen.id,
+      zeitVon: reservierungen.zeitVon,
+      dauer:   reservierungen.dauer,
+      name:    reservierungen.name,
+      status:  reservierungen.status,
+    })
+    .from(reservierungen)
+    .where(and(...bedingungen))
+
+  const start = minuten(zeitVon)
+  const ende  = start + dauer
+
+  for (const b of belegungen) {
+    if ((FREIGEBENDE_STATI as readonly string[]).includes(b.status)) continue
+    const bStart = minuten(b.zeitVon)
+    const bEnde  = bStart + b.dauer
+    if (start < bEnde && bStart < ende) {
+      throw new ReservierungError(
+        409,
+        `Tisch ist zu dieser Zeit bereits reserviert (${b.zeitVon}–${String(Math.floor(bEnde / 60)).padStart(2, '0')}:${String(bEnde % 60).padStart(2, '0')}, ${b.name}).`,
+      )
+    }
+  }
+}
+
+/** Tisch gehört zum Mandanten? Liefert Bezeichnung + Online-Freigabe. */
+async function ladeTisch(db: Db, mandantId: string, tischId: string) {
+  const [t] = await db
+    .select({
+      id:                 tischplanElemente.id,
+      bezeichnung:        tischplanElemente.bezeichnung,
+      onlineReservierbar: tischplanElemente.onlineReservierbar,
+      plaetze:            tischplanElemente.plaetze,
+    })
+    .from(tischplanElemente)
+    .where(and(eq(tischplanElemente.id, tischId), eq(tischplanElemente.mandantId, mandantId)))
+    .limit(1)
+  if (!t) throw new ReservierungError(404, 'Tisch nicht gefunden')
+  return t
+}
 
 // ---------------------------------------------------------------------------
 // CRUD
@@ -25,7 +110,20 @@ export async function erstelleReservierung(
     .from(kassen)
     .where(and(eq(kassen.id, input.kasseId), eq(kassen.mandantId, mandantId)))
     .limit(1)
-  if (!kasse) throw new Error('Kasse nicht gefunden')
+  if (!kasse) throw new ReservierungError(404, 'Kasse nicht gefunden')
+
+  const dauer = input.dauer ?? 90
+
+  // Echte Tischbindung: Tisch validieren, Online-Freigabe und Doppelbelegung prüfen
+  let tischBezeichnung: string | null = null
+  if (input.tischId) {
+    const tisch = await ladeTisch(db, mandantId, input.tischId)
+    if (quelle === 'online' && !tisch.onlineReservierbar) {
+      throw new ReservierungError(409, 'Dieser Tisch ist nicht für Online-Reservierungen freigegeben.')
+    }
+    await pruefeTischFrei(db, mandantId, input.tischId, input.datum, input.zeitVon, dauer)
+    tischBezeichnung = tisch.bezeichnung
+  }
 
   const status = quelle === 'online' ? 'wartend' : 'bestaetigt'
 
@@ -36,7 +134,7 @@ export async function erstelleReservierung(
       kasseId:        input.kasseId,
       datum:          input.datum,
       zeitVon:        input.zeitVon,
-      dauer:          input.dauer ?? 90,
+      dauer,
       personenAnzahl: input.personenAnzahl,
       name:           input.name,
       status,
@@ -44,11 +142,13 @@ export async function erstelleReservierung(
       ...(input.telefon   && { telefon:   input.telefon   }),
       ...(input.email     && { email:     input.email     }),
       ...(input.notiz     && { notiz:     input.notiz     }),
-      ...(input.tischLabel && { tischLabel: input.tischLabel }),
+      ...(input.tischId   && { tischId:   input.tischId }),
+      // Label mitschreiben: bleibt lesbar, auch wenn der Tisch später entfällt
+      ...((input.tischLabel ?? tischBezeichnung) && { tischLabel: input.tischLabel ?? tischBezeichnung }),
     })
     .returning()
 
-  if (!row) throw new Error('Reservierung konnte nicht gespeichert werden')
+  if (!row) throw new ReservierungError(500, 'Reservierung konnte nicht gespeichert werden')
 
   if (quelle === 'online') {
     emitKasseEvent(mandantId, {
@@ -96,6 +196,30 @@ export async function aktualisiereReservierung(
   mandantId: string,
   input:     ReservierungUpdate,
 ): Promise<ReservierungResponse> {
+  // Für die Kollisionsprüfung den Ist-Zustand kennen — geänderte Felder
+  // überschreiben ihn, unveränderte bleiben maßgeblich.
+  const [vorher] = await db
+    .select()
+    .from(reservierungen)
+    .where(and(eq(reservierungen.id, id), eq(reservierungen.mandantId, mandantId)))
+    .limit(1)
+  if (!vorher) throw new ReservierungError(404, 'Reservierung nicht gefunden')
+
+  const zielTischId = input.tischId !== undefined ? input.tischId : vorher.tischId
+  let tischBezeichnung: string | null = null
+  if (zielTischId) {
+    const tisch = await ladeTisch(db, mandantId, zielTischId)
+    tischBezeichnung = tisch.bezeichnung
+    const zielDatum   = input.datum   ?? vorher.datum
+    const zielZeitVon = input.zeitVon ?? vorher.zeitVon
+    const zielDauer   = input.dauer   ?? vorher.dauer
+    const zielStatus  = input.status  ?? vorher.status
+    // Storniert/nicht erschienen belegt keinen Tisch → keine Prüfung nötig
+    if (!(FREIGEBENDE_STATI as readonly string[]).includes(zielStatus)) {
+      await pruefeTischFrei(db, mandantId, zielTischId, zielDatum, zielZeitVon, zielDauer, id)
+    }
+  }
+
   const [row] = await db
     .update(reservierungen)
     .set({
@@ -108,6 +232,8 @@ export async function aktualisiereReservierung(
       ...( input.email          !== undefined && { email:          input.email          }),
       ...( input.notiz          !== undefined && { notiz:          input.notiz          }),
       ...( input.tischLabel     !== undefined && { tischLabel:     input.tischLabel     }),
+      ...( input.tischId        !== undefined && { tischId:        input.tischId,
+                                                   ...(tischBezeichnung ? { tischLabel: tischBezeichnung } : {}) }),
       ...( input.status         !== undefined && { status:         input.status         }),
       updatedAt: new Date(),
     })
@@ -236,7 +362,98 @@ function toDto(row: typeof reservierungen.$inferSelect): ReservierungResponse {
     ...(row.email     && { email:      row.email     }),
     ...(row.notiz     && { notiz:      row.notiz     }),
     ...(row.tischLabel && { tischLabel: row.tischLabel }),
+    ...(row.tischId    && { tischId:    row.tischId }),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   }
+}
+
+// ---------------------------------------------------------------------------
+// Freie Tische zu einem Zeitpunkt (interne Auswahl + Online-Buchung)
+// ---------------------------------------------------------------------------
+
+export interface TischVerfuegbarkeit {
+  id:                 string
+  bezeichnung:        string
+  bereichName:        string
+  plaetze:            number
+  onlineReservierbar: boolean
+  frei:               boolean
+  /** Wenn belegt: durch wen/wann (nur intern angezeigt) */
+  belegtDurch?:       string
+}
+
+/**
+ * Tische einer Kasse mit Verfügbarkeit im gewünschten Zeitraum.
+ * `nurOnline` liefert ausschließlich online freigegebene Tische (Gast-Formular),
+ * `minPlaetze` filtert zu kleine Tische (0 Plätze = unbekannt, bleibt drin).
+ */
+export async function listeTischVerfuegbarkeit(
+  db:        Db,
+  mandantId: string,
+  kasseId:   string,
+  datum:     string,
+  zeitVon:   string,
+  dauer:     number,
+  opts: { nurOnline?: boolean; minPlaetze?: number; ausserId?: string } = {},
+): Promise<TischVerfuegbarkeit[]> {
+  const tische = await db
+    .select({
+      id:                 tischplanElemente.id,
+      bezeichnung:        tischplanElemente.bezeichnung,
+      plaetze:            tischplanElemente.plaetze,
+      onlineReservierbar: tischplanElemente.onlineReservierbar,
+      bereichName:        tischplanBereiche.name,
+    })
+    .from(tischplanElemente)
+    .innerJoin(tischplanBereiche, eq(tischplanElemente.bereichId, tischplanBereiche.id))
+    .where(and(
+      eq(tischplanElemente.mandantId, mandantId),
+      eq(tischplanElemente.kasseId, kasseId),
+      ...(opts.nurOnline ? [eq(tischplanElemente.onlineReservierbar, true)] : []),
+    ))
+    .orderBy(tischplanBereiche.reihenfolge, tischplanElemente.bezeichnung)
+
+  if (tische.length === 0) return []
+
+  // Alle Belegungen des Tages in EINER Abfrage (statt pro Tisch)
+  const belegungen = await db
+    .select({
+      tischId: reservierungen.tischId,
+      zeitVon: reservierungen.zeitVon,
+      dauer:   reservierungen.dauer,
+      name:    reservierungen.name,
+      status:  reservierungen.status,
+      id:      reservierungen.id,
+    })
+    .from(reservierungen)
+    .where(and(
+      eq(reservierungen.mandantId, mandantId),
+      eq(reservierungen.datum, datum),
+      inArray(reservierungen.tischId, tische.map(t => t.id)),
+    ))
+
+  const start = minuten(zeitVon)
+  const ende  = start + dauer
+
+  return tische
+    .filter(t => opts.minPlaetze === undefined || t.plaetze === 0 || t.plaetze >= opts.minPlaetze)
+    .map(t => {
+      const kollision = belegungen.find(b => {
+        if (b.tischId !== t.id) return false
+        if (b.id === opts.ausserId) return false
+        if ((FREIGEBENDE_STATI as readonly string[]).includes(b.status)) return false
+        const bStart = minuten(b.zeitVon)
+        return start < bStart + b.dauer && bStart < ende
+      })
+      return {
+        id:                 t.id,
+        bezeichnung:        t.bezeichnung,
+        bereichName:        t.bereichName,
+        plaetze:            t.plaetze,
+        onlineReservierbar: t.onlineReservierbar,
+        frei:               !kollision,
+        ...(kollision ? { belegtDurch: `${kollision.zeitVon} · ${kollision.name}` } : {}),
+      }
+    })
 }

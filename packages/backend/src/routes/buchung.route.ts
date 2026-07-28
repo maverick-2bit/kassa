@@ -16,11 +16,15 @@ import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import type { Db } from '../db/client.js'
 import type { Config } from '../config.js'
+import { eq } from 'drizzle-orm'
+import { kassen } from '../db/schema.js'
 import { OnlineBuchungInputSchema } from '@kassa/shared'
 import {
   ladeOnlineBuchungInfo,
   erstelleOnlineReservierung,
+  listeTischVerfuegbarkeit,
   storniereViaToken,
+  ReservierungError,
 } from '../services/reservierung.service.js'
 import {
   isEmailAktiv,
@@ -41,6 +45,43 @@ export const buchungRoute: FastifyPluginAsync<BuchungRouteOptions> = async (fast
     try {
       const info = await ladeOnlineBuchungInfo(opts.db, p.data.kasseId)
       return reply.send(info)
+    } catch (err) {
+      return reply.status(404).send({ fehler: err instanceof Error ? err.message : 'Fehler' })
+    }
+  })
+
+  // ---- GET /buchung/:kasseId/tische — freie, online freigegebene Tische ----
+  // Öffentlich (wie das Buchungsformular selbst): liefert NUR freigegebene und
+  // im Zeitraum freie Tische, ohne Namen fremder Gäste.
+  fastify.get('/buchung/:kasseId/tische', async (request, reply) => {
+    const p = KasseParam.safeParse(request.params)
+    if (!p.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
+
+    const q = z.object({
+      datum:    z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      zeitVon:  z.string().regex(/^\d{2}:\d{2}$/),
+      dauer:    z.coerce.number().int().min(15).max(720).default(90),
+      personen: z.coerce.number().int().min(1).max(100).optional(),
+    }).safeParse(request.query)
+    if (!q.success) return reply.status(400).send({ fehler: q.error.issues })
+
+    try {
+      // Prüft zugleich, ob die Online-Buchung für diese Kasse aktiv ist
+      await ladeOnlineBuchungInfo(opts.db, p.data.kasseId)
+      const [kasse] = await opts.db
+        .select({ mandantId: kassen.mandantId })
+        .from(kassen).where(eq(kassen.id, p.data.kasseId)).limit(1)
+      if (!kasse) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
+
+      const alle = await listeTischVerfuegbarkeit(
+        opts.db, kasse.mandantId, p.data.kasseId,
+        q.data.datum, q.data.zeitVon, q.data.dauer,
+        { nurOnline: true, ...(q.data.personen ? { minPlaetze: q.data.personen } : {}) },
+      )
+      // Nach außen nur freie Tische und ohne Belegt-Details
+      return reply.send(alle.filter(t => t.frei).map(t => ({
+        id: t.id, bezeichnung: t.bezeichnung, bereichName: t.bereichName, plaetze: t.plaetze,
+      })))
     } catch (err) {
       return reply.status(404).send({ fehler: err instanceof Error ? err.message : 'Fehler' })
     }
@@ -87,6 +128,8 @@ export const buchungRoute: FastifyPluginAsync<BuchungRouteOptions> = async (fast
         onlineToken: res.onlineToken,
       })
     } catch (err) {
+      // Doppelbelegung / nicht freigegebener Tisch kommen als ReservierungError
+      if (err instanceof ReservierungError) return reply.status(err.httpStatus).send({ fehler: err.message })
       const msg    = err instanceof Error ? err.message : 'Fehler'
       const status = msg.includes('nicht gefunden') ? 404
         : msg.includes('nicht aktiviert') ? 403

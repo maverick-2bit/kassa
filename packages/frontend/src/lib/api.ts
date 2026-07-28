@@ -1418,6 +1418,16 @@ export const emailApi = {
 // Tischreservierungen
 // ---------------------------------------------------------------------------
 
+export interface TischVerfuegbarkeit {
+  id:                 string
+  bezeichnung:        string
+  bereichName:        string
+  plaetze:            number
+  onlineReservierbar: boolean
+  frei:               boolean
+  belegtDurch?:       string
+}
+
 export const reservierungApi = {
   list: (opts: { kasseId?: string; datumVon?: string; datumBis?: string; limit?: number } = {}): Promise<ReservierungResponse[]> => {
     const p = new URLSearchParams()
@@ -1433,6 +1443,14 @@ export const reservierungApi = {
     request<ReservierungResponse>('PATCH', `/api/reservierungen/${id}`, input),
   loeschen: (id: string): Promise<void> =>
     request<void>('DELETE', `/api/reservierungen/${id}`),
+  /** Tische mit Verfügbarkeit im gewünschten Zeitraum (frei/belegt + durch wen) */
+  tischVerfuegbarkeit: (opts: { kasseId: string; datum: string; zeitVon: string; dauer: number; ausserId?: string }): Promise<TischVerfuegbarkeit[]> => {
+    const p = new URLSearchParams({
+      kasseId: opts.kasseId, datum: opts.datum, zeitVon: opts.zeitVon, dauer: String(opts.dauer),
+    })
+    if (opts.ausserId) p.set('ausserId', opts.ausserId)
+    return request<TischVerfuegbarkeit[]>('GET', `/api/reservierungen/tische?${p.toString()}`)
+  },
   getOnlineBuchung: (kasseId: string): Promise<{ onlineBuchungAktiv: boolean; buchungUrl: string }> =>
     request('GET', `/api/kassen/${kasseId}/online-buchung`),
   setOnlineBuchung: (kasseId: string, aktiv: boolean): Promise<{ onlineBuchungAktiv: boolean; buchungUrl: string }> =>
