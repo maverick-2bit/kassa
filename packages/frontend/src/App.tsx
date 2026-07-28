@@ -38,6 +38,7 @@ const MandantenEinstellungenPage = lazyPage(() => import('./pages/MandantenEinst
 const DashboardPage             = lazyPage(() => import('./pages/DashboardPage'), 'DashboardPage')
 const KundenPage                = lazyPage(() => import('./pages/KundenPage'), 'KundenPage')
 const AngebotePage              = lazyPage(() => import('./pages/AngebotePage'), 'AngebotePage')
+const BelegArchivPage           = lazyPage(() => import('./pages/BelegArchivPage'), 'BelegArchivPage')
 const KassensturzPage           = lazyPage(() => import('./pages/KassensturzPage'), 'KassensturzPage')
 const BonierdruckerPage         = lazyPage(() => import('./pages/BonierdruckerPage'), 'BonierdruckerPage')
 const KassenbuchPage            = lazyPage(() => import('./pages/KassenbuchPage'), 'KassenbuchPage')
@@ -117,6 +118,7 @@ function AppRoutes() {
           <Route path="/berichte"       element={<Require b="belege.lesen"                 ><BerichtePage /></Require>} />
           <Route path="/kunden"         element={<Require b="kunden.verwalten"             ><KundenPage /></Require>} />
           <Route path="/angebote"       element={<Require b="kasse"            m="angebote"><AngebotePage /></Require>} />
+          <Route path="/beleg-archiv"   element={<Require b="kasse"            m="angebote"><BelegArchivPage /></Require>} />
           <Route path="/offene-posten"  element={<Require b="kunden.verwalten"             ><OffenePostenPage /></Require>} />
           <Route path="/gutscheine"     element={<Require b="kasse"                        ><GutscheinPage /></Require>} />
           <Route path="/sb-bestellungen" element={<Require b="kasse"          m="sbTerminal"><SbBestellungenPage /></Require>} />
