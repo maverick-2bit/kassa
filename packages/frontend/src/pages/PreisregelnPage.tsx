@@ -1,8 +1,9 @@
 /**
- * PreisregelnPage — Verwaltung der Happy-Hour- / Zeitpreis-Regeln.
- * Eine Regel senkt den Preis um X % in einem Zeitfenster an bestimmten
- * Wochentagen, optional nur für bestimmte Warengruppen. Die Anwendung passiert
- * automatisch an der Kasse (siehe lib happyHourPreisCent).
+ * PreisregelnPage — Verwaltung der Aktionen (zeitgesteuerte Preise).
+ * Eine Aktion senkt den Preis in einem Zeitfenster an bestimmten Wochentagen —
+ * per Prozentsatz ODER mit einem fixen Aktionspreis je Artikel (z. B. „alle
+ * Pizzen 7,50"). Die Anwendung passiert automatisch an der Kasse und beim
+ * Bonieren (siehe aktionsPreisCent in @kassa/shared).
  */
 
 import { useState } from 'react'
@@ -14,6 +15,7 @@ import { getKasseIdentity } from '../lib/kasse'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
+import { formatPreis, parseEuroToCent } from '../lib/format'
 
 const WOCHENTAGE = [1, 2, 3, 4, 5, 6, 7]
 
@@ -45,17 +47,19 @@ export function PreisregelnPage() {
     <div className="mx-auto max-w-3xl px-4 py-6 space-y-5">
       <header className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold text-ink">Happy Hour / Zeitpreise</h1>
+          <h1 className="text-2xl font-bold text-ink">Aktionen</h1>
           <p className="mt-1 text-sm text-ink-muted">
-            Zeitgesteuerte Rabatte, die beim Kassieren und Bonieren automatisch greifen.
+            Zeitgesteuerte Preise, die beim Kassieren und Bonieren automatisch greifen —
+            als Prozent-Rabatt oder mit fixem Aktionspreis je Artikel.
           </p>
         </div>
-        <Button onClick={() => { setEditTarget(null); setFormOffen(true) }}>+ Neue Regel</Button>
+        <Button onClick={() => { setEditTarget(null); setFormOffen(true) }}>+ Neue Aktion</Button>
       </header>
 
       {regeln.length === 0 ? (
         <div className="rounded-lg border border-dashed border-line-strong p-10 text-center text-sm text-ink-subtle">
-          Noch keine Preisregeln. Lege eine an, z. B. „Happy Hour Mo–Fr 17–19 Uhr, −20 % auf Getränke".
+          Noch keine Aktionen. Lege eine an, z. B. „Happy Hour Mo–Fr 17–19 Uhr, −20 % auf Getränke"
+          oder „Pizza-Dienstag: alle Standardpizzen 7,50".
         </div>
       ) : (
         <div className="space-y-3">
@@ -68,9 +72,16 @@ export function PreisregelnPage() {
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="font-semibold text-ink">{r.name}</p>
-                    <span className="text-xs font-bold text-brand-700 bg-brand-50 rounded px-1.5 py-0.5">
-                      −{r.rabattProzent}%
-                    </span>
+                    {r.rabattProzent > 0 && (
+                      <span className="text-xs font-bold text-brand-700 bg-brand-50 rounded px-1.5 py-0.5">
+                        −{r.rabattProzent}%
+                      </span>
+                    )}
+                    {(r.artikelPreise?.length ?? 0) > 0 && (
+                      <span className="text-xs font-bold text-emerald-700 bg-emerald-50 rounded px-1.5 py-0.5">
+                        {r.artikelPreise.length} Aktionspreis{r.artikelPreise.length === 1 ? '' : 'e'}
+                      </span>
+                    )}
                     {!r.aktiv && <span className="text-xs text-ink-subtle">inaktiv</span>}
                   </div>
                   <p className="mt-1 text-xs text-ink-muted">
@@ -98,7 +109,7 @@ export function PreisregelnPage() {
                     size="sm"
                     variant="secondary"
                     className="text-red-600"
-                    onClick={() => { if (confirm('Regel löschen?')) loeschen.mutate(r.id) }}
+                    onClick={() => { if (confirm('Aktion löschen?')) loeschen.mutate(r.id) }}
                   >
                     Löschen
                   </Button>
@@ -112,7 +123,7 @@ export function PreisregelnPage() {
       <Modal
         open={formOffen}
         onClose={() => { setFormOffen(false); setEditTarget(null) }}
-        title={editTarget ? 'Regel bearbeiten' : 'Neue Preisregel'}
+        title={editTarget ? 'Aktion bearbeiten' : 'Neue Aktion'}
       >
         <PreisregelForm
           {...(editTarget ? { initial: editTarget } : {})}
@@ -156,14 +167,32 @@ function PreisregelForm({
   const [artikelIds,   setArtikelIds]   = useState<string[]>(initial?.artikelIds ?? [])
   const [artikelSuche, setArtikelSuche] = useState('')
   const [fehler,       setFehler]       = useState<string | null>(null)
+  // Aktionspreise als Euro-Text je Artikel (leer = kein fixer Preis)
+  const [artikelPreise, setArtikelPreise] = useState<Record<string, string>>(() => {
+    const start: Record<string, string> = {}
+    for (const p of initial?.artikelPreise ?? []) start[p.artikelId] = (p.preisCent / 100).toFixed(2).replace('.', ',')
+    return start
+  })
+  const [kachelKategorie, setKachelKategorie] = useState<string>('alle')
+  const [sammelPreis,     setSammelPreis]     = useState('')
 
   const rabattZahl    = parseInt(rabatt) || 0
   const zeitfensterOk = zeitfenster.length > 0 && zeitfenster.every(zf => zf.von && zf.bis)
   const tageOk        = wochentage.length > 0 || datumTage.length > 0
-  const kannSpeichern = name.trim().length > 0 && tageOk && zeitfensterOk && rabattZahl >= 1 && rabattZahl <= 100
+  const anzahlMitPreis = Object.values(artikelPreise).filter(v => v.trim() !== '').length
+  // Entweder Prozent-Rabatt ODER mindestens ein Aktionspreis (wie im Schema)
+  const kannSpeichern = name.trim().length > 0 && tageOk && zeitfensterOk
+    && rabattZahl >= 0 && rabattZahl <= 100
+    && (rabattZahl > 0 || anzahlMitPreis > 0)
 
   const speichern = useMutation({
     mutationFn: () => {
+      // Aktionspreise: nur befüllte, lesbare Beträge übernehmen
+      const preise = Object.entries(artikelPreise).flatMap(([artikelId, text]) => {
+        if (!text.trim()) return []
+        const cent = parseEuroToCent(text)
+        return cent === null ? [] : [{ artikelId, preisCent: cent }]
+      })
       const input: PreisregelInput = {
         name:          name.trim(),
         aktiv,
@@ -173,6 +202,7 @@ function PreisregelForm({
         gueltigVon:    gueltigVon || null,
         gueltigBis:    gueltigBis || null,
         rabattProzent: rabattZahl,
+        artikelPreise: preise,
         kategorieIds,
         artikelIds,
       }
@@ -182,18 +212,55 @@ function PreisregelForm({
     onError:   (err) => setFehler(err instanceof Error ? err.message : String(err)),
   })
 
+  /** Aktionspreis eines Artikels setzen; wählt ihn zugleich aus */
+  const setzeArtikelPreis = (artikelId: string, text: string) => {
+    setArtikelPreise(prev => ({ ...prev, [artikelId]: text }))
+    if (text.trim() && !artikelIds.includes(artikelId)) setArtikelIds(prev => [...prev, artikelId])
+  }
+
+  /** „alle auswählen" / „abwählen" für die gerade sichtbaren Kacheln */
+  const alleSichtbarenWaehlen = (waehlen: boolean) => {
+    const ids = gefilterteArtikel.map(a => a.id)
+    if (!waehlen) {
+      setArtikelPreise(p => { const n = { ...p }; for (const id of ids) delete n[id]; return n })
+    }
+    setArtikelIds(prev => waehlen
+      ? [...new Set([...prev, ...ids])]
+      : prev.filter(id => !ids.includes(id)))
+  }
+
+  /** Einen Preis auf alle gewählten Artikel anwenden (z. B. „alle Pizzen 7,50") */
+  const sammelPreisSetzen = () => {
+    if (!sammelPreis.trim()) return
+    if (parseEuroToCent(sammelPreis) === null) { setFehler('Preis nicht lesbar — z. B. 7,50'); return }
+    setFehler(null)
+    setArtikelPreise(prev => {
+      const neu = { ...prev }
+      for (const id of artikelIds) neu[id] = sammelPreis
+      return neu
+    })
+  }
+
   const toggleTag = (t: number) => setWochentage(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])
   const toggleKat = (id: string) => setKategorieIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
-  const toggleArt = (id: string) => setArtikelIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  // Abwählen nimmt den Aktionspreis mit — sonst bliebe eine tote Angabe stehen,
+  // die ohnehin nicht greift (der Artikel wäre nicht im Geltungsbereich).
+  const toggleArt = (id: string) => setArtikelIds(prev => {
+    if (!prev.includes(id)) return [...prev, id]
+    setArtikelPreise(p => { const n = { ...p }; delete n[id]; return n })
+    return prev.filter(x => x !== id)
+  })
   const addDatum    = () => { const d = neuesDatum.trim(); if (d && !datumTage.includes(d)) setDatumTage(prev => [...prev, d]); setNeuesDatum('') }
   const removeDatum = (d: string) => setDatumTage(prev => prev.filter(x => x !== d))
   const addFenster    = () => setZeitfenster(prev => [...prev, { von: '12:00', bis: '14:00' }])
   const updateFenster = (i: number, feld: 'von' | 'bis', wert: string) => setZeitfenster(prev => prev.map((zf, idx) => idx === i ? { ...zf, [feld]: wert } : zf))
   const removeFenster = (i: number) => setZeitfenster(prev => prev.filter((_, idx) => idx !== i))
 
-  const gefilterteArtikel = artikelSuche.trim()
-    ? artikel.filter(a => a.bezeichnung.toLowerCase().includes(artikelSuche.trim().toLowerCase()))
-    : artikel
+  const gefilterteArtikel = artikel.filter(a => {
+    if (kachelKategorie !== 'alle' && a.kategorieId !== kachelKategorie) return false
+    const q = artikelSuche.trim().toLowerCase()
+    return !q || a.bezeichnung.toLowerCase().includes(q)
+  })
 
   return (
     <form
@@ -276,8 +343,9 @@ function PreisregelForm({
           <Input type="date" value={gueltigBis} onChange={(e) => setGueltigBis(e.target.value)} />
         </div>
         <div>
-          <label className="block text-xs font-medium text-ink-muted mb-1">Rabatt (%) *</label>
-          <Input type="number" min={1} max={100} value={rabatt} onChange={(e) => setRabatt(e.target.value)} />
+          <label className="block text-xs font-medium text-ink-muted mb-1">Rabatt (%)</label>
+          <Input type="number" min={0} max={100} value={rabatt} onChange={(e) => setRabatt(e.target.value)} />
+          <p className="mt-0.5 text-[11px] text-ink-subtle">0 = nur Aktionspreise</p>
         </div>
       </div>
 
@@ -303,44 +371,119 @@ function PreisregelForm({
         )}
       </div>
 
+      {/* Artikel-Kacheln wie an der Kasse: anklicken wählt aus, Aktionspreis
+          direkt in der Kachel; Sammel-Setzen über die Leiste darüber. */}
       <div>
-        <div className="flex items-center justify-between mb-1">
-          <label className="block text-xs font-medium text-ink-muted">Einzel-Artikel</label>
-          {artikelIds.length > 0 && <span className="text-xs text-brand-700">{artikelIds.length} gewählt</span>}
+        <div className="flex items-center justify-between mb-1 flex-wrap gap-1">
+          <label className="block text-xs font-medium text-ink-muted">Artikel &amp; Aktionspreise</label>
+          <span className="text-xs text-brand-700">
+            {artikelIds.length > 0 && <>{artikelIds.length} gewählt</>}
+            {anzahlMitPreis > 0 && <> · {anzahlMitPreis} mit Aktionspreis</>}
+          </span>
         </div>
+
         <Input
           value={artikelSuche}
           onChange={(e) => setArtikelSuche(e.target.value)}
           placeholder="Artikel suchen …"
           className="mb-1.5"
         />
+
+        {/* Sammel-Aktionen: ganze Warengruppe wählen/abwählen + ein Preis für alle */}
+        <div className="mb-2 flex flex-wrap items-center gap-1.5 rounded-md border border-line bg-panel-2 p-2">
+          <select
+            value={kachelKategorie}
+            onChange={(e) => setKachelKategorie(e.target.value)}
+            className="rounded-md border border-line-strong bg-panel px-2 py-1 text-xs text-ink"
+          >
+            <option value="alle">Alle Warengruppen</option>
+            {kategorien.map(k => <option key={k.id} value={k.id}>{k.name}</option>)}
+          </select>
+          <button type="button" onClick={() => alleSichtbarenWaehlen(true)}
+            className="rounded-md border border-line-strong px-2 py-1 text-xs font-medium text-ink hover:border-brand-400">
+            alle auswählen
+          </button>
+          <button type="button" onClick={() => alleSichtbarenWaehlen(false)}
+            className="rounded-md border border-line-strong px-2 py-1 text-xs font-medium text-ink hover:border-brand-400">
+            abwählen
+          </button>
+          <span className="mx-1 h-4 w-px bg-line" />
+          <Input
+            value={sammelPreis}
+            onChange={(e) => setSammelPreis(e.target.value)}
+            placeholder="z. B. 7,50"
+            inputMode="decimal"
+            className="w-24 text-right font-mono"
+          />
+          <button
+            type="button"
+            onClick={sammelPreisSetzen}
+            disabled={artikelIds.length === 0 || !sammelPreis.trim()}
+            className="rounded-md bg-brand-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+          >
+            Preis für {artikelIds.length || '…'} Gewählte
+          </button>
+          {anzahlMitPreis > 0 && (
+            <button type="button" onClick={() => setArtikelPreise({})}
+              className="rounded-md px-2 py-1 text-xs text-red-600 hover:underline">
+              Aktionspreise löschen
+            </button>
+          )}
+        </div>
+
         {gefilterteArtikel.length === 0 ? (
           <p className="text-xs text-ink-subtle">Kein Artikel gefunden.</p>
         ) : (
-          <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto">
-            {gefilterteArtikel.slice(0, 60).map(a => (
-              <button
-                key={a.id}
-                type="button"
-                onClick={() => toggleArt(a.id)}
-                className={`px-2.5 py-1 rounded-md border text-xs font-medium transition ${
-                  artikelIds.includes(a.id) ? 'bg-brand-600 border-brand-600 text-white' : 'border-line-strong text-ink hover:border-brand-400'
-                }`}
-              >
-                {a.bezeichnung}
-              </button>
-            ))}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-64 overflow-y-auto p-0.5">
+            {gefilterteArtikel.slice(0, 120).map(a => {
+              const gewaehlt = artikelIds.includes(a.id)
+              const preis    = artikelPreise[a.id] ?? ''
+              return (
+                <div
+                  key={a.id}
+                  className={`rounded-md border p-1.5 transition ${
+                    gewaehlt ? 'border-brand-500 bg-brand-50' : 'border-line bg-panel'
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => toggleArt(a.id)}
+                    className="block w-full text-left"
+                    title={gewaehlt ? 'Abwählen' : 'Auswählen'}
+                  >
+                    <span className={`block text-xs font-medium leading-tight line-clamp-2 min-h-[2rem] ${
+                      gewaehlt ? 'text-brand-900' : 'text-ink'
+                    }`}>
+                      {a.bezeichnung}
+                    </span>
+                    <span className="block text-[10px] text-ink-subtle">
+                      {formatPreis(a.preisBruttoCent)}
+                    </span>
+                  </button>
+                  <input
+                    value={preis}
+                    onChange={(e) => setzeArtikelPreis(a.id, e.target.value)}
+                    placeholder="Aktionspreis"
+                    inputMode="decimal"
+                    className={`mt-1 w-full rounded border px-1.5 py-0.5 text-xs text-right font-mono ${
+                      preis ? 'border-brand-400 bg-white text-brand-800 font-semibold' : 'border-line bg-panel-2'
+                    }`}
+                  />
+                </div>
+              )
+            })}
           </div>
         )}
       </div>
 
       <p className="text-xs text-ink-subtle">
-        Warengruppen und Einzel-Artikel leer = die Regel gilt für <strong>alle Artikel</strong>.
+        Ohne Warengruppen- und Artikelauswahl gilt die Regel für <strong>alle Artikel</strong>.
+        Ein Aktionspreis schlägt den Prozent-Rabatt; ohne Aktionspreis greift der Prozentsatz.
       </p>
 
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" checked={aktiv} onChange={(e) => setAktiv(e.target.checked)} className="accent-brand-600" />
-        <span className="text-ink">Regel aktiv</span>
+        <span className="text-ink">Aktion aktiv</span>
       </label>
 
       {fehler && <div className="rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700">{fehler}</div>}

@@ -6,6 +6,9 @@ import {
   datumISO,
   regelGiltJetzt,
   aktiverRabattProzent,
+  aktiverFixpreisCent,
+  aktiveAktion,
+  aktionsPreisCent,
   happyHourPreisCent,
   type Preisregel,
 } from './preisregel.js'
@@ -20,6 +23,7 @@ const mkRegel = (over: Partial<Preisregel> = {}): Preisregel => ({
   gueltigVon:    null,
   gueltigBis:    null,
   rabattProzent: 20,
+  artikelPreise: [],
   kategorieIds:  [],
   artikelIds:    [],
   createdAt:     '',
@@ -106,4 +110,39 @@ describe('happyHourPreisCent / aktiverRabattProzent', () => {
   it('kein Rabatt außerhalb', () => expect(happyHourPreisCent(500, [mkRegel()], 'a1', null, mo16)).toBe(500))
   it('größter passender Rabatt gewinnt', () =>
     expect(aktiverRabattProzent([mkRegel({ rabattProzent: 10 }), mkRegel({ rabattProzent: 30 })], 'a1', null, mo18)).toBe(30))
+})
+
+describe('Aktionspreise (fixer Preis je Artikel)', () => {
+  const mitFixpreis = (preisCent: number, artikelId = 'a1', over: Partial<Preisregel> = {}) =>
+    mkRegel({ rabattProzent: 0, artikelPreise: [{ artikelId, preisCent }], ...over })
+
+  it('fixer Preis ersetzt den Basispreis', () =>
+    expect(aktionsPreisCent(950, [mitFixpreis(750)], 'a1', null, mo18)).toBe(750))
+
+  it('gilt nur für den hinterlegten Artikel', () =>
+    expect(aktionsPreisCent(950, [mitFixpreis(750, 'a1')], 'a2', null, mo18)).toBe(950))
+
+  it('außerhalb des Zeitfensters bleibt der Basispreis', () =>
+    expect(aktionsPreisCent(950, [mitFixpreis(750)], 'a1', null, mo16)).toBe(950))
+
+  it('niedrigster Fixpreis gewinnt', () =>
+    expect(aktiverFixpreisCent([mitFixpreis(800), mitFixpreis(700)], 'a1', null, mo18)).toBe(700))
+
+  it('Fixpreis schlägt den Prozent-Rabatt (auch wenn Prozent günstiger wäre)', () =>
+    expect(aktionsPreisCent(1000, [
+      mitFixpreis(900),
+      mkRegel({ rabattProzent: 50 }),
+    ], 'a1', null, mo18)).toBe(900))
+
+  it('ohne Fixpreis greift weiterhin der Prozentsatz', () =>
+    expect(aktionsPreisCent(1000, [mitFixpreis(900, 'a9'), mkRegel({ rabattProzent: 25 })], 'a1', null, mo18)).toBe(750))
+
+  it('aktiveAktion meldet den Typ für die Kassen-Badge', () => {
+    expect(aktiveAktion([mitFixpreis(750)], 'a1', null, mo18)).toEqual({ typ: 'fix', preisCent: 750 })
+    expect(aktiveAktion([mkRegel({ rabattProzent: 15 })], 'a1', null, mo18)).toEqual({ typ: 'prozent', prozent: 15 })
+    expect(aktiveAktion([mkRegel()], 'a1', null, mo16)).toBeNull()
+  })
+
+  it('happyHourPreisCent bleibt als Alias kompatibel', () =>
+    expect(happyHourPreisCent(1000, [mkRegel({ rabattProzent: 20 })], 'a1', null, mo18)).toBe(800))
 })

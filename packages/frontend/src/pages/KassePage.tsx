@@ -19,7 +19,8 @@ import type {
   TischTabErstellenInput,
   TischTabResponse,
 } from '@kassa/shared'
-import { GUTSCHEIN_STATUS_LABELS, MWST_LABELS, STATION_LABELS, happyHourPreisCent, aktiverRabattProzent } from '@kassa/shared'
+import { GUTSCHEIN_STATUS_LABELS, MWST_LABELS, STATION_LABELS, aktionsPreisCent, aktiverRabattProzent, aktiveAktion } from '@kassa/shared'
+import type { AktiveAktion } from '@kassa/shared'
 import { angebotApi, artikelApi, belegApi, bonierApi, druckerApi, emailApi, gutscheinApi, kategorieApi, lieferscheinApi, modifikatorApi, offenerPostenApi, posConfigApi, preisregelApi, tischTabApi, zvtApi, displayApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { getAuth, hasBerechtigung } from '../lib/auth'
@@ -239,6 +240,25 @@ export function KassePage() {
     return m
   }, [korb])
 
+  // artikelId → gerade laufende Aktion (Badge + Aktionspreis auf der Kachel).
+  // Minuten-genau: greift beim Start/Ende eines Zeitfensters ohne Neuladen.
+  const [aktionsMinute, setAktionsMinute] = useState(() => Math.floor(Date.now() / 60_000))
+  useEffect(() => {
+    const t = setInterval(() => setAktionsMinute(Math.floor(Date.now() / 60_000)), 30_000)
+    return () => clearInterval(t)
+  }, [])
+  const aktionenProArtikel = useMemo(() => {
+    const regeln = preisregelnQuery.data ?? []
+    const jetzt  = new Date()
+    const m = new Map<string, AktiveAktion>()
+    if (regeln.length === 0) return m
+    for (const a of artikelQuery.data ?? []) {
+      const akt = aktiveAktion(regeln, a.id, a.kategorieId, jetzt)
+      if (akt !== null) m.set(a.id, akt)
+    }
+    return m
+  }, [preisregelnQuery.data, artikelQuery.data, aktionsMinute])
+
   const summeNachRabattCent = summeCent - rabattCent
 
   // Gutschein-Abzug ----------------------------------------------------------
@@ -251,10 +271,11 @@ export function KassePage() {
 
   const addArtikel = (a: Artikel, modifikatoren: ModifikatorAuswahl[]) => {
     setFehler(null)
-    // Happy Hour: den Artikel-Basispreis ggf. rabattieren, Modifikatoren zum vollen Preis dazu
+    // Aktionen: den Artikel-Basispreis ggf. senken (Fixpreis oder Prozent),
+    // Modifikatoren kommen zum vollen Preis dazu
     const regeln    = preisregelnQuery.data ?? []
     const hhProzent = aktiverRabattProzent(regeln, a.id, a.kategorieId, new Date())
-    const basisCent = happyHourPreisCent(a.preisBruttoCent, regeln, a.id, a.kategorieId, new Date())
+    const basisCent = aktionsPreisCent(a.preisBruttoCent, regeln, a.id, a.kategorieId, new Date())
     const preisCent = positionsPreisCent(basisCent, modifikatoren)
     setKorb((prev) => {
       if (modifikatoren.length === 0) {
@@ -687,6 +708,7 @@ export function KassePage() {
               artikelbilderAktiv={posConfigQuery.data?.artikelbilderAktiv ?? true}
               initialKategorieId={initialKategorieId}
               mengenProArtikel={mengenProArtikel}
+              aktionen={aktionenProArtikel}
             />
           </div>
         </section>

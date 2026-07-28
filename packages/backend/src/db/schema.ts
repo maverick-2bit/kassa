@@ -1240,7 +1240,10 @@ export const preisregeln = pgTable('preisregeln', {
   /** Aktionszeitraum (optional, YYYY-MM-DD) */
   gueltigVon:    varchar('gueltig_von', { length: 10 }),
   gueltigBis:    varchar('gueltig_bis', { length: 10 }),
+  /** Prozent-Abschlag; 0 = kein Prozentrabatt (dann greifen die Aktionspreise) */
   rabattProzent: integer('rabatt_prozent').notNull(),
+  /** Fixe Aktionspreise je Artikel [{artikelId, preisCent}] — schlagen den Prozentsatz */
+  artikelPreise: jsonb('artikel_preise').notNull().default([]),
   /** Betroffene Kategorie-IDs als JSON-Array */
   kategorieIds:  jsonb('kategorie_ids').notNull().default([]),
   /** Betroffene Einzel-Artikel-IDs als JSON-Array (kategorie_ids UND artikel_ids leer = alle Artikel) */

@@ -1,7 +1,7 @@
 /**
  * Preisregel-Service (Happy Hour / zeitgesteuerte Aktionspreise) — mandant-scoped CRUD.
  * Die eigentliche Preisanwendung passiert im Frontend beim Kassieren/Bonieren
- * (happyHourPreisCent aus @kassa/shared); hier werden nur die Regeln verwaltet.
+ * (aktionsPreisCent aus @kassa/shared); hier werden nur die Regeln verwaltet.
  */
 
 import { eq } from 'drizzle-orm'
@@ -20,6 +20,7 @@ function toResponse(row: typeof preisregeln.$inferSelect): Preisregel {
     gueltigVon:    row.gueltigVon,
     gueltigBis:    row.gueltigBis,
     rabattProzent: row.rabattProzent,
+    artikelPreise: (row.artikelPreise as { artikelId: string; preisCent: number }[]) ?? [],
     kategorieIds:  (row.kategorieIds as string[]) ?? [],
     artikelIds:    (row.artikelIds as string[]) ?? [],
     createdAt:     row.createdAt.toISOString(),
@@ -49,6 +50,7 @@ export async function erstellePreisregel(db: Db, mandantId: string, input: Preis
       gueltigVon:    input.gueltigVon,
       gueltigBis:    input.gueltigBis,
       rabattProzent: input.rabattProzent,
+      artikelPreise: input.artikelPreise,
       kategorieIds:  input.kategorieIds,
       artikelIds:    input.artikelIds,
     })
@@ -71,6 +73,7 @@ export async function aktualisierePreisregel(
   if (input.gueltigVon    !== undefined) updates.gueltigVon    = input.gueltigVon
   if (input.gueltigBis    !== undefined) updates.gueltigBis    = input.gueltigBis
   if (input.rabattProzent !== undefined) updates.rabattProzent = input.rabattProzent
+  if (input.artikelPreise !== undefined) updates.artikelPreise = input.artikelPreise
   if (input.kategorieIds  !== undefined) updates.kategorieIds  = input.kategorieIds
   if (input.artikelIds    !== undefined) updates.artikelIds    = input.artikelIds
 
