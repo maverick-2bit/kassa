@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { AngebotResponse, AngebotStatus, AngebotUpdate, LiferscheinResponse, LiferscheinStatus } from '@kassa/shared'
+import type { AngebotResponse, AngebotStatus, AngebotUpdate, LiferscheinResponse, LiferscheinStatus, SammelrechnungResponse } from '@kassa/shared'
 import { ANGEBOT_STATUS_LABELS, LIEFERSCHEIN_STATUS_LABELS } from '@kassa/shared'
 import { angebotApi, artikelApi, lieferscheinApi } from '../lib/api'
 import { getAuth } from '../lib/auth'
@@ -9,6 +9,7 @@ import { formatPreis } from '../lib/format'
 import { Button } from '../components/ui/Button'
 import { Modal } from '../components/ui/Modal'
 import { SerialAuswahlModal, type SerialPos } from '../components/SerialAuswahlModal'
+import { AusgabeDialog } from '../components/AusgabeDialog'
 import { druckeAngebot, druckeLiferschein, druckeSammelrechnung } from '../lib/rechnung'
 import { sammelrechnungApi } from '../lib/api'
 
@@ -77,6 +78,13 @@ function AngebotDetailModal({ angebot, onClose, onUpdate, updating }: AngebotDet
     .filter(({ p }) => !!p.artikelId && serialArtikelIds.has(p.artikelId))
     .map(({ p, i }) => ({ positionIndex: i, bezeichnung: p.bezeichnung, menge: p.menge, artikelId: p.artikelId! }))
 
+  // Ausgabe-Ziel des einheitlichen Dialogs (Lieferschein ODER Rechnung)
+  const [ausgabe, setAusgabe] = useState<
+    | { art: 'lieferschein'; ls: LiferscheinResponse }
+    | { art: 'rechnung';     sr: SammelrechnungResponse }
+    | null
+  >(null)
+
   const lieferscheinMutation = useMutation({
     mutationFn: (serialZuweisungen?: { positionIndex: number; seriennummern: string[] }[]) =>
       lieferscheinApi.create({ angebotId: angebot.id, ...(serialZuweisungen ? { serialZuweisungen } : {}) }),
@@ -84,8 +92,8 @@ function AngebotDetailModal({ angebot, onClose, onUpdate, updating }: AngebotDet
       qc.invalidateQueries({ queryKey: ['lieferscheine', 'angebot', angebot.id] })
       qc.invalidateQueries({ queryKey: ['seriennummern'] })
       setSerialModalOffen(false)
-      if (!auth) return
-      druckeLiferschein(ls, { firmenname: auth.mandant.firmenname, uid: auth.mandant.uid })
+      // Kein Zwangsdruck mehr: der Kassier wählt drucken / Mail / ohne Druck weiter
+      setAusgabe({ art: 'lieferschein', ls })
     },
   })
 
@@ -93,8 +101,7 @@ function AngebotDetailModal({ angebot, onClose, onUpdate, updating }: AngebotDet
     mutationFn: (ids: string[]) => sammelrechnungApi.create({ lieferscheinIds: ids }),
     onSuccess: (sr) => {
       qc.invalidateQueries({ queryKey: ['lieferscheine', 'angebot', angebot.id] })
-      if (!auth) return
-      druckeSammelrechnung(sr, { firmenname: auth.mandant.firmenname, uid: auth.mandant.uid })
+      setAusgabe({ art: 'rechnung', sr })
     },
   })
 
@@ -215,7 +222,7 @@ function AngebotDetailModal({ angebot, onClose, onUpdate, updating }: AngebotDet
             loading={lieferscheinMutation.isPending}
             className="text-xs px-2 py-1 h-auto"
           >
-            + Neuer Lieferschein
+            → In Lieferschein übernehmen
           </Button>
         </div>
 
@@ -249,10 +256,10 @@ function AngebotDetailModal({ angebot, onClose, onUpdate, updating }: AngebotDet
                     <td className="px-3 py-2 text-right">
                       <button
                         type="button"
-                        onClick={() => auth && druckeLiferschein(ls, { firmenname: auth.mandant.firmenname, uid: auth.mandant.uid })}
+                        onClick={() => setAusgabe({ art: 'lieferschein', ls })}
                         className="text-xs text-brand-600 hover:underline"
                       >
-                        Drucken
+                        Ausgabe …
                       </button>
                     </td>
                   </tr>
@@ -283,6 +290,44 @@ function AngebotDetailModal({ angebot, onClose, onUpdate, updating }: AngebotDet
           Schließen
         </Button>
       </div>
+
+      {/* Einheitlicher Ausgabe-Dialog für Lieferschein und Rechnung */}
+      <AusgabeDialog
+        open={ausgabe !== null}
+        onClose={() => setAusgabe(null)}
+        titel={ausgabe?.art === 'rechnung'
+          ? `Rechnung SR-${String(ausgabe.sr.nummer).padStart(4, '0')} ausgeben`
+          : ausgabe?.art === 'lieferschein'
+            ? `Lieferschein L-${String(ausgabe.ls.nummer).padStart(4, '0')} ausgeben`
+            : 'Ausgabe wählen'}
+        beschreibung={ausgabe?.art === 'lieferschein'
+          ? 'Der Bon zeigt Mengen und Seriennummern (ohne Preise) mit Unterschriftsfeld.'
+          : 'Der Bon zeigt Positionen mit Preisen, USt-Aufteilung und Gesamtbetrag.'}
+        {...(ausgabe?.art === 'rechnung' && ausgabe.sr.kunde?.email
+          ? { mailVorschlag: ausgabe.sr.kunde.email }
+          : ausgabe?.art === 'lieferschein' && ausgabe.ls.kunde?.email
+            ? { mailVorschlag: ausgabe.ls.kunde.email }
+            : {})}
+        onAusgabe={async (ziel) => {
+          if (!ausgabe) return
+          const istLs = ausgabe.art === 'lieferschein'
+          const id    = istLs ? ausgabe.ls.id : ausgabe.sr.id
+          const api   = istLs ? lieferscheinApi : sammelrechnungApi
+          switch (ziel.art) {
+            case 'bon':     await api.drucken(id, identity.kasseId); break
+            case 'drucker': await api.drucken(id, identity.kasseId, ziel.druckerId); break
+            case 'mail':    await api.email(id, ziel.empfaenger); break
+            case 'a4':
+              if (auth) {
+                const m = { firmenname: auth.mandant.firmenname, uid: auth.mandant.uid }
+                if (istLs) druckeLiferschein(ausgabe.ls, m)
+                else       druckeSammelrechnung(ausgabe.sr, m)
+              }
+              break
+            case 'keine': break
+          }
+        }}
+      />
 
       <SerialAuswahlModal
         positionen={serialPositionen}

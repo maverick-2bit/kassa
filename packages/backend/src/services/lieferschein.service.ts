@@ -339,3 +339,78 @@ export async function erstelleSammelrechnung(
     createdAt:        srRow.createdAt.toISOString(),
   }
 }
+
+// ---------------------------------------------------------------------------
+// Sammelrechnungen lesen (Archiv + Ausgabe)
+// ---------------------------------------------------------------------------
+
+/** Baut die Response einer gespeicherten Sammelrechnung inkl. ihrer Lieferscheine. */
+async function srZuDto(
+  db:  Db,
+  row: typeof sammelrechnungen.$inferSelect,
+  mandantId: string,
+): Promise<SammelrechnungResponse> {
+  const ids = (row.lieferscheinIds as string[]) ?? []
+  const lsRows = ids.length === 0 ? [] : await db
+    .select({
+      id:            lieferscheine.id,
+      mandantId:     lieferscheine.mandantId,
+      kasseId:       lieferscheine.kasseId,
+      angebotId:     lieferscheine.angebotId,
+      angebotNummer: angebote.nummer,
+      nummer:        lieferscheine.nummer,
+      datum:         lieferscheine.datum,
+      status:        lieferscheine.status,
+      notiz:         lieferscheine.notiz,
+      positionen:    lieferscheine.positionen,
+      kundeId:       lieferscheine.kundeId,
+      kundeSnapshot: lieferscheine.kundeSnapshot,
+      createdAt:     lieferscheine.createdAt,
+      updatedAt:     lieferscheine.updatedAt,
+    })
+    .from(lieferscheine)
+    .innerJoin(angebote, eq(lieferscheine.angebotId, angebote.id))
+    .where(and(eq(lieferscheine.mandantId, mandantId), inArray(lieferscheine.id, ids)))
+
+  return {
+    id:               row.id,
+    nummer:           row.nummer,
+    datum:            row.datum.toISOString(),
+    ...(row.kundeSnapshot ? { kunde: row.kundeSnapshot as KundeSnapshot } : {}),
+    lieferscheine:    [...lsRows].sort((a, b) => a.nummer - b.nummer).map(toDto),
+    gesamtbetragCent: row.gesamtbetragCent,
+    createdAt:        row.createdAt.toISOString(),
+  }
+}
+
+export async function listeSammelrechnungen(
+  db:        Db,
+  mandantId: string,
+  opts: { kundeId?: string; limit?: number } = {},
+): Promise<SammelrechnungResponse[]> {
+  const bedingungen = [eq(sammelrechnungen.mandantId, mandantId)]
+  if (opts.kundeId) bedingungen.push(eq(sammelrechnungen.kundeId, opts.kundeId))
+
+  const rows = await db
+    .select()
+    .from(sammelrechnungen)
+    .where(and(...bedingungen))
+    .orderBy(desc(sammelrechnungen.datum))
+    .limit(opts.limit ?? 200)
+
+  return Promise.all(rows.map(r => srZuDto(db, r, mandantId)))
+}
+
+export async function holeSammelrechnung(
+  db:        Db,
+  id:        string,
+  mandantId: string,
+): Promise<SammelrechnungResponse> {
+  const [row] = await db
+    .select()
+    .from(sammelrechnungen)
+    .where(and(eq(sammelrechnungen.id, id), eq(sammelrechnungen.mandantId, mandantId)))
+    .limit(1)
+  if (!row) throw new LiferscheinError(404, 'Sammelrechnung nicht gefunden')
+  return srZuDto(db, row, mandantId)
+}

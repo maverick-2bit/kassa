@@ -21,7 +21,10 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { BelegResponse, Tagesabschluss } from '@kassa/shared'
-import { baueBon, baueGutscheinBon, baueInventurBon, baueTischEtikett, baueWareneingangBon, baueZBon } from '../src/services/escpos/layout.js'
+import {
+  baueBon, baueGutscheinBon, baueInventurBon, baueLieferscheinBon,
+  baueRechnungBon, baueTischEtikett, baueWareneingangBon, baueZBon,
+} from '../src/services/escpos/layout.js'
 import { baueBonierbon } from '../src/services/kds/bonierbon.js'
 
 const GOLDEN_DIR = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'escpos-golden')
@@ -129,6 +132,33 @@ describe('ESC/POS Golden-Master', () => {
       datum: '2026-05-20T14:30:00Z',
       betragCent: 5000, restCent: 5000,
       gueltigBis: '2027-05-20',
+    }))
+  })
+
+  it('Lieferschein-Bon 42 (Mengen + Seriennummern, ohne Preise)', () => {
+    pruefeGolden('lieferschein-42.bin', baueLieferscheinBon({
+      breite: 42, firmenname: 'Golden GmbH', uid: 'ATU12345678',
+      nummer: 7, datum: '2026-05-20T14:30:00Z', angebotNummer: 3,
+      kunde: { bezeichnung: 'Muster GmbH', strasse: 'Hauptstr. 1', plz: '8010', ort: 'Graz', uid: 'ATU87654321' },
+      positionen: [
+        { bezeichnung: 'Kaffeemaschine', menge: 2, einzelpreisBreutto: 49900, mwstSatz: 'normal', seriennummern: ['SN-001', 'SN-002'] },
+        { bezeichnung: 'Filterpapier',   menge: 10, einzelpreisBreutto: 450, mwstSatz: 'normal' },
+      ],
+      notiz: 'Lieferung an die Rampe',
+    }))
+  })
+
+  it('Rechnungs-Bon 42 (Preise + USt-Aufteilung)', () => {
+    pruefeGolden('rechnung-42.bin', baueRechnungBon({
+      breite: 42, firmenname: 'Golden GmbH', uid: 'ATU12345678',
+      nummer: 12, datum: '2026-05-20T14:30:00Z',
+      kunde: { bezeichnung: 'Muster GmbH', plz: '8010', ort: 'Graz' },
+      positionen: [
+        { bezeichnung: 'Kaffeemaschine', menge: 2,  einzelpreisBreutto: 49900, mwstSatz: 'normal' },
+        { bezeichnung: 'Kaffeebohnen',   menge: 5,  einzelpreisBreutto: 1200,  mwstSatz: 'ermaessigt1' },
+      ],
+      lieferscheinNummern: [7, 8],
+      gesamtbetragCent: 105800,
     }))
   })
 

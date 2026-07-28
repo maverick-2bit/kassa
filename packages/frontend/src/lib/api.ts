@@ -996,11 +996,29 @@ export const lieferscheinApi = {
     request<LiferscheinResponse>('POST', '/api/lieferscheine', input),
   update: (id: string, input: LiferscheinUpdate): Promise<LiferscheinResponse> =>
     request<LiferscheinResponse>('PATCH', `/api/lieferscheine/${id}`, input),
+  drucken: (id: string, kasseId: string, druckerId?: string): Promise<{ erfolgreich: boolean }> =>
+    request<{ erfolgreich: boolean }>('POST', `/api/lieferscheine/${id}/drucken`,
+      { kasseId, ...(druckerId ? { druckerId } : {}) }),
+  email: (id: string, empfaenger: string): Promise<{ erfolgreich: boolean }> =>
+    request<{ erfolgreich: boolean }>('POST', `/api/lieferscheine/${id}/email`, { empfaenger }),
 }
 
 export const sammelrechnungApi = {
+  list: (opts: { kundeId?: string; limit?: number } = {}): Promise<SammelrechnungResponse[]> => {
+    const p = new URLSearchParams()
+    if (opts.kundeId) p.set('kundeId', opts.kundeId)
+    if (opts.limit)   p.set('limit',   String(opts.limit))
+    return request<SammelrechnungResponse[]>('GET', `/api/sammelrechnungen?${p.toString()}`)
+  },
+  get: (id: string): Promise<SammelrechnungResponse> =>
+    request<SammelrechnungResponse>('GET', `/api/sammelrechnungen/${id}`),
   create: (input: SammelrechnungInput): Promise<SammelrechnungResponse> =>
     request<SammelrechnungResponse>('POST', '/api/sammelrechnungen', input),
+  drucken: (id: string, kasseId: string, druckerId?: string): Promise<{ erfolgreich: boolean }> =>
+    request<{ erfolgreich: boolean }>('POST', `/api/sammelrechnungen/${id}/drucken`,
+      { kasseId, ...(druckerId ? { druckerId } : {}) }),
+  email: (id: string, empfaenger: string): Promise<{ erfolgreich: boolean }> =>
+    request<{ erfolgreich: boolean }>('POST', `/api/sammelrechnungen/${id}/email`, { empfaenger }),
 }
 
 export const gutscheinApi = {
