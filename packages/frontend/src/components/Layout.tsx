@@ -86,6 +86,7 @@ function baueNavGruppen(): NavGruppe[] {
       wenn(b('kasse') && m('mergeport'),        '/lieferungen',    'Lieferungen'),
       wenn(b('kasse') && m('reservierungen'),   '/reservierungen', 'Reservierungen'),
       wenn(b('kasse') && m('angebote'),         '/angebote',       'Angebote'),
+      wenn(b('kasse') && m('angebote'),         '/beleg-archiv',   'Beleg-Archiv'),
       wenn(b('kasse') && m('sbTerminal'),       '/sb-bestellungen', 'SB-Bestellungen'),
     ]),
     gruppe('Artikel & Lager', [
