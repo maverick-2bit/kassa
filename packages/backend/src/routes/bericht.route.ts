@@ -40,6 +40,10 @@ export const berichtRoute: FastifyPluginAsync<BerichtRouteOptions> = async (fast
       bis:               raw['bis'],
       nurZielrechnungen: raw['nurZielrechnungen'] === 'true',
       gruppierung:       raw['gruppierung'],
+      // Uhrzeit-Filter nur mitgeben, wenn beide Grenzen da sind
+      ...(raw['zeitVon'] && raw['zeitBis']
+        ? { zeitVon: raw['zeitVon'], zeitBis: raw['zeitBis'] }
+        : {}),
     })
     if (!parsed.success) {
       return reply.status(400).send({ fehler: parsed.error.issues })

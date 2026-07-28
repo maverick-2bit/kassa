@@ -712,6 +712,11 @@ export const berichtApi = {
     p.set('bis', filter.bis)
     p.set('gruppierung', filter.gruppierung ?? 'tag')
     if (filter.nurZielrechnungen) p.set('nurZielrechnungen', 'true')
+    // Uhrzeit-Fenster wirkt nur als Paar (z. B. 22:00–02:00 für die Nachtstunden)
+    if (filter.zeitVon && filter.zeitBis) {
+      p.set('zeitVon', filter.zeitVon)
+      p.set('zeitBis', filter.zeitBis)
+    }
     for (const id of filter.kasseIds ?? []) p.append('kasseIds', id)
     return request<BerichtResponse>('GET', `/api/berichte/umsatz?${p.toString()}`)
   },

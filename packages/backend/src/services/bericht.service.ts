@@ -30,7 +30,7 @@ import {
   type WarengruppeBerichtResponse,
 } from '@kassa/shared'
 import type { Db } from '../db/client.js'
-import { belege, kassen, kdsBons, tischTabs } from '../db/schema.js'
+import { belege, kassen, kdsBons, offenePosten, tischTabs } from '../db/schema.js'
 
 const MWST_SAETZE: Record<MwStSatz, number> = {
   normal:      20,
@@ -83,12 +83,33 @@ export async function holeUmsatzbericht(
     sql`(${belege.belegDatum} at time zone 'Europe/Vienna')::date
         between ${filter.von}::date and ${filter.bis}::date`,
   ]
+  // Zielrechnung = Verkauf auf offenen Posten. Bewusst NICHT über
+  // summeSonstigeCent, denn dort landen auch Gutschein-Einlösungen.
+  const zielBelegIds = new Set(
+    (await deps.db
+      .select({ belegId: offenePosten.belegId })
+      .from(offenePosten)
+      .where(eq(offenePosten.mandantId, mandantId))
+    ).flatMap(r => (r.belegId ? [r.belegId] : [])),
+  )
   if (filter.nurZielrechnungen) {
-    whereKlauses.push(ne(belege.summeSonstigeCent, 0))
+    whereKlauses.push(zielBelegIds.size > 0
+      ? inArray(belege.id, [...zielBelegIds])
+      : sql`false`)
+  }
+
+  // Uhrzeit-Filter (Wiener Ortszeit). von <= bis: normales Fenster;
+  // von > bis: über Mitternacht (z. B. 22:00–02:00 Nachtbetrieb).
+  if (filter.zeitVon && filter.zeitBis) {
+    const zeitAusdruck = sql`(${belege.belegDatum} at time zone 'Europe/Vienna')::time`
+    whereKlauses.push(filter.zeitVon <= filter.zeitBis
+      ? sql`${zeitAusdruck} >= ${filter.zeitVon}::time AND ${zeitAusdruck} < ${filter.zeitBis}::time`
+      : sql`${zeitAusdruck} >= ${filter.zeitVon}::time OR  ${zeitAusdruck} < ${filter.zeitBis}::time`)
   }
 
   const rows = await deps.db
     .select({
+      id:                    belege.id,
       belegTyp:              belege.belegTyp,
       belegDatum:            belege.belegDatum,
       summeBarCent:          belege.summeBarCent,
@@ -126,6 +147,8 @@ export async function holeUmsatzbericht(
         barCent:       0,
         karteCent:     0,
         sonstigCent:   0,
+        zielCent:              0,
+        anzahlZielrechnungen:  0,
       }
       periodeMap.set(periode, zeile)
     }
@@ -136,6 +159,10 @@ export async function holeUmsatzbericht(
     zeile.barCent     += row.summeBarCent
     zeile.karteCent   += row.summeKarteCent
     zeile.sonstigCent += row.summeSonstigeCent
+    if (zielBelegIds.has(row.id)) {
+      zeile.zielCent += umsatz
+      zeile.anzahlZielrechnungen++
+    }
 
     mwstGesamt.normal      += row.betragNormalCent
     mwstGesamt.ermaessigt1 += row.betragErmaessigt1Cent
@@ -155,6 +182,8 @@ export async function holeUmsatzbericht(
     barCent:       zeilen.reduce((s, z) => s + z.barCent, 0),
     karteCent:     zeilen.reduce((s, z) => s + z.karteCent, 0),
     sonstigCent:   zeilen.reduce((s, z) => s + z.sonstigCent, 0),
+    zielCent:              zeilen.reduce((s, z) => s + z.zielCent, 0),
+    anzahlZielrechnungen:  zeilen.reduce((s, z) => s + z.anzahlZielrechnungen, 0),
     mwst: (Object.keys(mwstGesamt) as MwStSatz[])
       .filter(k => mwstGesamt[k] !== 0)
       .map(k => {
@@ -328,6 +357,8 @@ export async function holeKellnerBericht(
     barCent:       zeilen.reduce((s, z) => s + z.barCent,       0),
     karteCent:     zeilen.reduce((s, z) => s + z.karteCent,     0),
     sonstigCent:   zeilen.reduce((s, z) => s + z.sonstigCent,   0),
+    zielCent:              0,
+    anzahlZielrechnungen:  0,
     mwst:          [],
   }
 
@@ -539,6 +570,8 @@ export async function holeStundenbericht(
     barCent:       zeilen.reduce((s, z) => s + z.barCent,       0),
     karteCent:     zeilen.reduce((s, z) => s + z.karteCent,     0),
     sonstigCent:   zeilen.reduce((s, z) => s + z.sonstigCent,   0),
+    zielCent:              0,
+    anzahlZielrechnungen:  0,
     mwst:          [],   // Stunden-Bericht ohne USt-Aufteilung
   }
 
@@ -616,6 +649,8 @@ export async function holeKassenVergleich(
     barCent:       zeilen.reduce((s, z) => s + z.barCent,       0),
     karteCent:     zeilen.reduce((s, z) => s + z.karteCent,     0),
     sonstigCent:   zeilen.reduce((s, z) => s + z.sonstigCent,   0),
+    zielCent:              0,
+    anzahlZielrechnungen:  0,
     mwst:          [],
   }
 
