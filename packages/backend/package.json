@@ -18,7 +18,8 @@
     "db:migrate:run": "tsx --env-file=.env src/db/migrate-cli.ts",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "lasttest": "tsx --expose-gc --env-file=.env scripts/lasttest.ts"
+    "lasttest": "tsx --expose-gc --env-file=.env scripts/lasttest.ts",
+    "vergleiche-bericht": "tsx --env-file=.env scripts/vergleiche-bericht.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.0",

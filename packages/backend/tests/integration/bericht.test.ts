@@ -8,6 +8,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
+import { sql } from 'drizzle-orm'
 import type { BerichtResponse, ArtikelBerichtResponse, KassenVergleichResponse, BelegResponse } from '@kassa/shared'
 import type { FinanzOnlineClient } from '@kassa/rksv'
 import { buildTestServer, type TestServer } from '../helpers/testServer.js'
@@ -253,5 +254,49 @@ describe('Berichte (Integration, echtes PostgreSQL)', () => {
     })
     expect(nurZiel.json().gesamt.anzahlBelege).toBe(1)
     expect(nurZiel.json().gesamt.umsatzCent).toBe(5000)
+  })
+
+  // -------------------------------------------------------------------------
+  // Tagesgrenzen des Datumsfilters (v0.7.141)
+  // -------------------------------------------------------------------------
+
+  it('Datumsfilter trifft die Wiener Tagesgrenzen exakt — auch am Zeitumstellungstag', async () => {
+    // Der Filter vergleicht seit v0.7.141 die Spalte direkt gegen berechnete
+    // Zeitpunkte (>= Tagesbeginn, < Folgetagsbeginn), statt sie mit
+    // „AT TIME ZONE ...::date" umzurechnen — nur so kann Postgres den Index
+    // nutzen. Diese Umstellung darf die Grenzen keinen Deut verschieben:
+    // 00:00:00 gehört noch zum Tag, der Folgetag um 00:00:00 nicht mehr.
+    // Als Datum bewusst der 30.03.2025 — an dem Tag springt Wien um 02:00 auf
+    // Sommerzeit, der Tag hat also nur 23 Stunden.
+    const beleg = (await srv.fastify.inject({
+      method: 'POST', url: '/api/belege/barzahlung', headers: auth(),
+      payload: barzahlung('Randfall', 100, 'normal', 'bar'),
+    })).json() as BelegResponse
+
+    const setzeBelegDatum = (wienerZeitpunkt: string) => idb.db.execute(sql`
+      UPDATE belege
+         SET beleg_datum = ${wienerZeitpunkt}::timestamp AT TIME ZONE 'Europe/Vienna'
+       WHERE id = ${beleg.id}::uuid`)
+
+    const belegeAm = async (tag: string) =>
+      (await umsatz(tag, tag)).json().gesamt.anzahlBelege as number
+
+    // Erste Sekunde des Tages zählt noch zum 30.03.
+    await setzeBelegDatum('2025-03-30 00:00:00')
+    expect(await belegeAm('2025-03-30')).toBe(1)
+    expect(await belegeAm('2025-03-29')).toBe(0)
+
+    // Letzte Sekunde ebenso — und schlägt nicht in den Folgetag durch.
+    await setzeBelegDatum('2025-03-30 23:59:59')
+    expect(await belegeAm('2025-03-30')).toBe(1)
+    expect(await belegeAm('2025-03-31')).toBe(0)
+
+    // Mitternacht des Folgetags gehört bereits zum 31.03.
+    await setzeBelegDatum('2025-03-31 00:00:00')
+    expect(await belegeAm('2025-03-30')).toBe(0)
+    expect(await belegeAm('2025-03-31')).toBe(1)
+
+    // Mehrtägiger Zeitraum schließt beide Randtage ein.
+    expect((await umsatz('2025-03-29', '2025-03-31')).json().gesamt.anzahlBelege).toBe(1)
   })
 })
