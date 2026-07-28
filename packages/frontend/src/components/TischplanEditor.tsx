@@ -98,6 +98,8 @@ export function TischplanEditor() {
         y:           5,
         breite:      12,
         hoehe:       10,
+        onlineReservierbar: false,
+        plaetze:     0,
       }),
     onSuccess: (el) => { invalidate(); setSelectedElId(el.id) },
     onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
@@ -457,6 +459,31 @@ function ElementPanel({
             />
           ))}
         </div>
+      </div>
+
+      {/* Reservierung: Sitzplätze + Online-Freigabe je Tisch */}
+      <div className="space-y-1.5 rounded-md border border-line bg-panel-2 p-2">
+        <label className="block">
+          <span className="text-xs font-medium text-ink-muted">Sitzplätze</span>
+          <Input
+            type="number" min="0" max="50"
+            value={el.plaetze ?? 0}
+            onChange={(e) => onUpdate({ plaetze: Number(e.target.value) })}
+            className="mt-0.5 h-8 text-sm"
+          />
+        </label>
+        <label className="flex items-start gap-1.5 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={el.onlineReservierbar ?? false}
+            onChange={(e) => onUpdate({ onlineReservierbar: e.target.checked })}
+            className="mt-0.5 h-3.5 w-3.5 rounded border-line-strong text-brand-600"
+          />
+          <span className="text-[11px] leading-tight text-ink">
+            Online reservierbar
+            <span className="block text-ink-subtle">Gäste dürfen diesen Tisch selbst buchen</span>
+          </span>
+        </label>
       </div>
 
       <div className="grid grid-cols-2 gap-1.5">

@@ -827,6 +827,10 @@ export const tischplanElemente = pgTable('tischplan_elemente', {
   y:           real('y').notNull().default(10),
   breite:      real('breite').notNull().default(10),
   hoehe:       real('hoehe').notNull().default(8),
+  /** Dürfen Gäste diesen Tisch online reservieren? */
+  onlineReservierbar: boolean('online_reservierbar').notNull().default(false),
+  /** Sitzplätze (0 = unbekannt) — filtert die Online-Vorschläge nach Personenzahl */
+  plaetze:     integer('plaetze').notNull().default(0),
   createdAt:   timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
   bereichIdx: index('tischplan_elemente_bereich_idx').on(t.bereichId),
@@ -1123,7 +1127,10 @@ export const reservierungen = pgTable('reservierungen', {
   telefon:        text('telefon'),
   email:          text('email'),
   notiz:          text('notiz'),
+  /** Freitext-Fallback (Altbestand); für neue Reservierungen zählt tischId */
   tischLabel:     text('tisch_label'),
+  /** Echte Bindung an einen Tisch des Tischplans — Grundlage der Kollisionsprüfung */
+  tischId:        uuid('tisch_id').references(() => tischplanElemente.id, { onDelete: 'set null' }),
 
   /** wartend | bestaetigt | erschienen | nicht_erschienen | storniert */
   status:         varchar('status', { length: 20 }).notNull().default('bestaetigt'),

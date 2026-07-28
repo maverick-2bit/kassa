@@ -36,6 +36,10 @@ export const TischplanElementSchema = z.object({
   y:           z.number(),
   breite:      z.number(),
   hoehe:       z.number(),
+  /** Dürfen Gäste diesen Tisch online reservieren? */
+  onlineReservierbar: z.boolean(),
+  /** Sitzplätze (0 = unbekannt) — filtert Online-Vorschläge nach Personenzahl */
+  plaetze:     z.number().int(),
 })
 export type TischplanElement = z.infer<typeof TischplanElementSchema>
 
@@ -49,6 +53,8 @@ export const TischplanElementErstellenSchema = z.object({
   y:           z.number().min(0).max(95).default(10),
   breite:      z.number().min(4).max(40).default(10),
   hoehe:       z.number().min(4).max(40).default(8),
+  onlineReservierbar: z.boolean().default(false),
+  plaetze:     z.number().int().min(0).max(50).default(0),
 })
 export type TischplanElementErstellen = z.infer<typeof TischplanElementErstellenSchema>
 
@@ -60,6 +66,8 @@ export const TischplanElementAktualisierenSchema = z.object({
   y:           z.number().min(0).max(95).optional(),
   breite:      z.number().min(4).max(40).optional(),
   hoehe:       z.number().min(4).max(40).optional(),
+  onlineReservierbar: z.boolean().optional(),
+  plaetze:     z.number().int().min(0).max(50).optional(),
 })
 export type TischplanElementAktualisieren = z.infer<typeof TischplanElementAktualisierenSchema>
 

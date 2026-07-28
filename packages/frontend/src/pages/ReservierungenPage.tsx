@@ -175,8 +175,21 @@ export function ReservierungenPage() {
                         onClick={() => setDetail(r)}
                         className={`w-full text-left rounded border px-2 py-1.5 text-xs hover:opacity-80 transition ${STATUS_FARBE[r.status]}`}
                       >
-                        <p className="font-semibold truncate">{r.zeitVon} – {r.name}</p>
-                        <p className="text-[10px] opacity-75">{r.personenAnzahl} Pers.{r.tischLabel ? ` · ${r.tischLabel}` : ''}</p>
+                        {/* Tisch prominent: eigene Zeile mit Chip, nicht als Beiwerk */}
+                        <div className="flex items-center gap-1 mb-0.5">
+                          {r.tischLabel ? (
+                            <span className="shrink-0 rounded bg-ink/10 px-1.5 py-0.5 text-[11px] font-bold leading-none">
+                              {r.tischLabel}
+                            </span>
+                          ) : (
+                            <span className="shrink-0 rounded border border-dashed border-current/40 px-1.5 py-0.5 text-[10px] leading-none opacity-60">
+                              kein Tisch
+                            </span>
+                          )}
+                          <span className="text-[11px] font-semibold">{r.zeitVon}</span>
+                        </div>
+                        <p className="font-semibold truncate leading-tight">{r.name}</p>
+                        <p className="text-[10px] opacity-75">{r.personenAnzahl} Pers.</p>
                       </button>
                     ))
                   )}
@@ -340,8 +353,19 @@ function ReservierungForm({
   const [telefon,        setTelefon]        = useState(initial?.telefon        ?? '')
   const [email,          setEmail]          = useState(initial?.email          ?? '')
   const [notiz,          setNotiz]          = useState(initial?.notiz          ?? '')
-  const [tischLabel,     setTischLabel]     = useState(initial?.tischLabel     ?? '')
+  const [tischId,        setTischId]        = useState<string>(initial?.tischId ?? '')
   const [fehler,         setFehler]         = useState<string | null>(null)
+
+  // Tisch-Verfügbarkeit für den gewählten Zeitraum — zeigt sofort, was frei ist
+  const verfuegbarkeit = useQuery({
+    queryKey: ['tisch-verfuegbarkeit', kasseId, datum, zeitVon, dauer, initial?.id],
+    queryFn:  () => reservierungApi.tischVerfuegbarkeit({
+      kasseId, datum, zeitVon, dauer: parseInt(dauer) || 90,
+      ...(initial?.id ? { ausserId: initial.id } : {}),
+    }),
+    enabled: !!datum && !!zeitVon,
+  })
+  const tische = verfuegbarkeit.data ?? []
 
   const speichernMut = useMutation({
     mutationFn: () => {
@@ -354,8 +378,8 @@ function ReservierungForm({
         name,
         ...(telefon    && { telefon    }),
         ...(email      && { email      }),
-        ...(notiz      && { notiz      }),
-        ...(tischLabel && { tischLabel }),
+        ...(notiz   && { notiz   }),
+        ...(tischId && { tischId }),
       } satisfies ReservierungInput
 
       if (initial) {
@@ -366,8 +390,8 @@ function ReservierungForm({
           name,
           ...(telefon    !== undefined && { telefon:    telefon    || undefined }),
           ...(email      !== undefined && { email:      email      || undefined }),
-          ...(notiz      !== undefined && { notiz:      notiz      || undefined }),
-          ...(tischLabel !== undefined && { tischLabel: tischLabel || undefined }),
+          ...(notiz   !== undefined && { notiz:   notiz || undefined }),
+          tischId: tischId || null,
         }
         return reservierungApi.aktualisieren(initial.id, update)
       }
@@ -425,9 +449,24 @@ function ReservierungForm({
         </div>
         <div>
           <label className="block text-xs font-medium text-ink-muted mb-1">Tisch</label>
-          <input type="text" value={tischLabel} onChange={e => setTischLabel(e.target.value)}
-            placeholder="z. B. Tisch 5"
-            className="w-full border border-line-strong rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+          <select
+            value={tischId}
+            onChange={e => setTischId(e.target.value)}
+            className="w-full border border-line-strong rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+          >
+            <option value="">— kein fixer Tisch —</option>
+            {tische.map(t => (
+              <option key={t.id} value={t.id} disabled={!t.frei && t.id !== initial?.tischId}>
+                {t.bereichName} · {t.bezeichnung}
+                {t.plaetze > 0 ? ` (${t.plaetze} Pl.)` : ''}
+                {t.frei ? '' : ` — belegt: ${t.belegtDurch ?? 'ja'}`}
+              </option>
+            ))}
+          </select>
+          {verfuegbarkeit.isLoading && <p className="mt-0.5 text-[11px] text-ink-subtle">Verfügbarkeit wird geprüft …</p>}
+          {!verfuegbarkeit.isLoading && tische.length === 0 && (
+            <p className="mt-0.5 text-[11px] text-ink-subtle">Keine Tische im Tischplan angelegt.</p>
+          )}
         </div>
       </div>
 
