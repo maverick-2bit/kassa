@@ -168,13 +168,20 @@ function UmsatzBericht() {
   const [gruppierung, setGruppierung] = useState<BerichtGruppierung>('woche')
   const [kasseIds, setKasseIds]   = useState<string[]>([])
   const [nurZiel, setNurZiel]     = useState(false)
+  const [zeitVon, setZeitVon]     = useState('')
+  const [zeitBis, setZeitBis]     = useState('')
   const [geladenerFilter, setGeladenerFilter] = useState<{
     kasseIds:          string[]
     von:               string
     bis:               string
     nurZielrechnungen: boolean
     gruppierung:       BerichtGruppierung
+    zeitVon?:          string
+    zeitBis?:          string
   } | null>(null)
+
+  /** Uhrzeit-Fenster zählt nur, wenn beide Felder gefüllt sind */
+  const zeitFilterAktiv = zeitVon !== '' && zeitBis !== ''
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['bericht-umsatz', geladenerFilter],
@@ -183,7 +190,10 @@ function UmsatzBericht() {
   })
 
   function ladeBericht() {
-    setGeladenerFilter({ kasseIds, von, bis, nurZielrechnungen: nurZiel, gruppierung })
+    setGeladenerFilter({
+      kasseIds, von, bis, nurZielrechnungen: nurZiel, gruppierung,
+      ...(zeitFilterAktiv ? { zeitVon, zeitBis } : {}),
+    })
   }
 
   function waehlePreset(p: ZeitraumPreset) {
@@ -308,6 +318,41 @@ function UmsatzBericht() {
                 </div>
               </div>
             )}
+            <div>
+              <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wide mb-2">Uhrzeit</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="time"
+                  value={zeitVon}
+                  onChange={(e) => setZeitVon(e.target.value)}
+                  className="flex-1 rounded border border-line-strong px-2 py-1.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+                />
+                <span className="text-xs text-ink-muted">bis</span>
+                <input
+                  type="time"
+                  value={zeitBis}
+                  onChange={(e) => setZeitBis(e.target.value)}
+                  className="flex-1 rounded border border-line-strong px-2 py-1.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+                />
+                {(zeitVon || zeitBis) && (
+                  <button
+                    type="button"
+                    onClick={() => { setZeitVon(''); setZeitBis('') }}
+                    title="Uhrzeit-Filter zurücksetzen"
+                    className="text-ink-muted hover:text-ink text-sm px-1"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+              <p className="mt-1 text-[11px] text-ink-muted">
+                {zeitFilterAktiv
+                  ? (zeitVon <= zeitBis
+                      ? `Nur Belege von ${zeitVon} bis ${zeitBis} Uhr`
+                      : `Nur Belege von ${zeitVon} bis ${zeitBis} Uhr (über Mitternacht)`)
+                  : 'Beide Felder füllen, um nach Tageszeit zu filtern'}
+              </p>
+            </div>
             <div>
               <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wide mb-2">Filter</label>
               <label className="flex items-center gap-2 text-sm cursor-pointer">
@@ -479,7 +524,9 @@ function ArtikelBerichtTabelle({ data }: { data: ArtikelBerichtResponse }) {
         <h2 className="text-sm font-semibold text-ink">
           {data.zeilen.length} Artikel ({formatDatumAnzeige(data.von)} – {formatDatumAnzeige(data.bis)})
         </h2>
-        <CsvExportButton onClick={() => {
+        <ExportButtons
+          dateiBasis={`bericht-artikel_${data.von}_${data.bis}`}
+          zeilen={() => {
           const kopfzeile = ['Rang', 'Artikel', 'Menge', 'Umsatz (€)', 'Anteil (%)']
           const datenzeilen = data.zeilen.map((z, i) => [
             String(i + 1),
@@ -489,8 +536,9 @@ function ArtikelBerichtTabelle({ data }: { data: ArtikelBerichtResponse }) {
             gesamtUmsatz !== 0 ? String(Math.round(Math.abs(z.umsatzCent / gesamtUmsatz) * 100)) : '0',
           ])
           const fusszeile = ['', 'Gesamt', String(gesamtMenge), centZuEuro(gesamtUmsatz), '100']
-          csvHerunterladen(`bericht-artikel_${data.von}_${data.bis}.csv`, [kopfzeile, ...datenzeilen, fusszeile])
-        }} />
+            return [kopfzeile, ...datenzeilen, fusszeile]
+          }}
+        />
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -547,6 +595,34 @@ function BerichtErgebnis({ data, gruppierung }: { data: BerichtResponse; gruppie
 
   const g = data.gesamt
 
+  /** Export-Zeilen (CSV und Excel teilen sich dieselbe Struktur) */
+  const umsatzExportZeilen = (): string[][] => {
+    const kopf = ['Periode', 'Belege', 'Stornos', 'Umsatz (€)', 'Bar (€)', 'Karte (€)', 'Sonstige (€)', 'Zielrechnungen (€)', 'Ziel-Belege']
+    const daten = data.zeilen.map(z => [
+      z.periode,
+      String(z.anzahlBelege),
+      String(z.anzahlStornos),
+      centZuEuro(z.umsatzCent),
+      centZuEuro(z.barCent),
+      centZuEuro(z.karteCent),
+      centZuEuro(z.sonstigCent),
+      centZuEuro(z.zielCent),
+      String(z.anzahlZielrechnungen),
+    ])
+    const fuss = [
+      'Gesamt',
+      String(g.anzahlBelege),
+      String(g.anzahlStornos),
+      centZuEuro(g.umsatzCent),
+      centZuEuro(g.barCent),
+      centZuEuro(g.karteCent),
+      centZuEuro(g.sonstigCent),
+      centZuEuro(g.zielCent),
+      String(g.anzahlZielrechnungen),
+    ]
+    return [kopf, ...daten, fuss]
+  }
+
   return (
     <div className="space-y-4">
       {/* Kennzahlen-Kacheln */}
@@ -560,6 +636,13 @@ function BerichtErgebnis({ data, gruppierung }: { data: BerichtResponse; gruppie
         <Kachel label="Bar"      wert={formatPreis(g.barCent)}      sub={pct(g.barCent,      g.umsatzCent)} />
         <Kachel label="Karte"    wert={formatPreis(g.karteCent)}    sub={pct(g.karteCent,    g.umsatzCent)} />
         <Kachel label="Sonstige" wert={formatPreis(g.sonstigCent)}  sub={pct(g.sonstigCent,  g.umsatzCent)} />
+        <Kachel
+          label="davon Zielrechnungen"
+          wert={formatPreis(g.zielCent)}
+          sub={g.anzahlZielrechnungen > 0
+            ? `${g.anzahlZielrechnungen} Beleg${g.anzahlZielrechnungen === 1 ? '' : 'e'} · ${pct(g.zielCent, g.umsatzCent)}`
+            : 'keine'}
+        />
       </div>
 
       {/* Balkendiagramm */}
@@ -572,28 +655,10 @@ function BerichtErgebnis({ data, gruppierung }: { data: BerichtResponse; gruppie
             {data.zeilen.length} {gruppierung === 'tag' ? 'Tage' : gruppierung === 'woche' ? 'Wochen' : 'Monate'}
             {' '}({formatDatumAnzeige(data.von)} – {formatDatumAnzeige(data.bis)})
           </h2>
-          <CsvExportButton onClick={() => {
-            const kopfzeile = ['Periode', 'Belege', 'Stornos', 'Umsatz (€)', 'Bar (€)', 'Karte (€)', 'Sonstige (€)']
-            const datenzeilen = data.zeilen.map(z => [
-              z.periode,
-              String(z.anzahlBelege),
-              String(z.anzahlStornos),
-              centZuEuro(z.umsatzCent),
-              centZuEuro(z.barCent),
-              centZuEuro(z.karteCent),
-              centZuEuro(z.sonstigCent),
-            ])
-            const fusszeile = [
-              'Gesamt',
-              String(g.anzahlBelege),
-              String(g.anzahlStornos),
-              centZuEuro(g.umsatzCent),
-              centZuEuro(g.barCent),
-              centZuEuro(g.karteCent),
-              centZuEuro(g.sonstigCent),
-            ]
-            csvHerunterladen(`bericht-umsatz_${data.von}_${data.bis}.csv`, [kopfzeile, ...datenzeilen, fusszeile])
-          }} />
+          <ExportButtons
+            dateiBasis={`bericht-umsatz_${data.von}_${data.bis}`}
+            zeilen={umsatzExportZeilen}
+          />
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -607,6 +672,9 @@ function BerichtErgebnis({ data, gruppierung }: { data: BerichtResponse; gruppie
                 <th className="px-4 py-2 font-semibold text-right">Karte</th>
                 {g.sonstigCent !== 0 && (
                   <th className="px-4 py-2 font-semibold text-right">Sonstig</th>
+                )}
+                {g.zielCent !== 0 && (
+                  <th className="px-4 py-2 font-semibold text-right">Ziel</th>
                 )}
               </tr>
             </thead>
@@ -630,6 +698,11 @@ function BerichtErgebnis({ data, gruppierung }: { data: BerichtResponse; gruppie
                   {g.sonstigCent !== 0 && (
                     <td className="px-4 py-2 text-right font-mono text-ink">
                       {z.sonstigCent !== 0 ? formatPreis(z.sonstigCent) : '—'}
+                    </td>
+                  )}
+                  {g.zielCent !== 0 && (
+                    <td className="px-4 py-2 text-right font-mono text-ink" title={`${z.anzahlZielrechnungen} Zielrechnung(en)`}>
+                      {z.zielCent !== 0 ? formatPreis(z.zielCent) : '—'}
                     </td>
                   )}
                 </tr>
@@ -656,6 +729,11 @@ function BerichtErgebnis({ data, gruppierung }: { data: BerichtResponse; gruppie
                     {formatPreis(g.sonstigCent)}
                   </td>
                 )}
+                {g.zielCent !== 0 && (
+                  <td className="px-4 py-2 text-right font-mono text-ink">
+                    {formatPreis(g.zielCent)}
+                  </td>
+                )}
               </tr>
             </tfoot>
           </table>
@@ -667,7 +745,9 @@ function BerichtErgebnis({ data, gruppierung }: { data: BerichtResponse; gruppie
         <div className="rounded-lg bg-panel shadow-sm border border-line overflow-hidden">
           <div className="px-4 py-3 bg-panel-2 border-b border-line flex items-center justify-between">
             <h2 className="text-sm font-semibold text-ink">USt-Aufteilung</h2>
-            <CsvExportButton onClick={() => {
+            <ExportButtons
+              dateiBasis={`bericht-ust_${data.von}_${data.bis}`}
+              zeilen={() => {
               const kopfzeile = ['Steuersatz', 'Brutto (€)', 'Netto (€)', 'USt (€)']
               const datenzeilen = g.mwst.map(z => [
                 z.label,
@@ -675,8 +755,9 @@ function BerichtErgebnis({ data, gruppierung }: { data: BerichtResponse; gruppie
                 centZuEuro(z.nettoCent),
                 centZuEuro(z.ustCent),
               ])
-              csvHerunterladen(`bericht-ust_${data.von}_${data.bis}.csv`, [kopfzeile, ...datenzeilen])
-            }} />
+                return [kopfzeile, ...datenzeilen]
+              }}
+            />
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -782,15 +863,59 @@ function csvHerunterladen(dateiname: string, zeilen: string[][]): void {
   URL.revokeObjectURL(url)
 }
 
-function CsvExportButton({ onClick }: { onClick: () => void }) {
+/**
+ * Echte .xlsx-Datei aus denselben Zeilen wie der CSV-Export. xlsx wird dynamisch
+ * geladen (~1 MB), damit die Bibliothek nicht im Initial-Bundle landet.
+ * Beträge kommen als ZAHL in die Datei (nicht als Text) — sonst kann Excel
+ * nicht damit rechnen; das ist der eigentliche Vorteil gegenüber CSV.
+ */
+async function excelHerunterladen(dateiname: string, zeilen: string[][], blattName = 'Bericht'): Promise<void> {
+  const XLSX = await import('xlsx')
+  const daten = zeilen.map((zeile, idx) => idx === 0 ? zeile : zeile.map(zelle => {
+    // "1.234,56" → 1234.56 (deutsches Format aus centZuEuro)
+    const zahl = /^-?[\d.]+,\d{2}$/.test(zelle)
+      ? Number(zelle.replace(/\./g, '').replace(',', '.'))
+      : /^-?\d+$/.test(zelle) ? Number(zelle) : null
+    return zahl === null || Number.isNaN(zahl) ? zelle : zahl
+  }))
+  const ws = XLSX.utils.aoa_to_sheet(daten)
+  // Spaltenbreiten grob an den Inhalten ausrichten
+  ws['!cols'] = (zeilen[0] ?? []).map((_, i) => ({
+    wch: Math.min(28, Math.max(10, ...zeilen.map(z => (z[i] ?? '').length + 2))),
+  }))
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, blattName)
+  XLSX.writeFile(wb, dateiname)
+}
+
+function ExportButtons({ dateiBasis, zeilen }: {
+  /** Dateiname ohne Endung — CSV und Excel hängen sie selbst an */
+  dateiBasis: string
+  zeilen: () => string[][]
+}) {
+  const [laeuft, setLaeuft] = useState(false)
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="text-xs font-medium text-brand-600 hover:text-brand-700 hover:underline"
-    >
-      CSV exportieren
-    </button>
+    <div className="flex items-center gap-3">
+      <button
+        type="button"
+        onClick={() => csvHerunterladen(`${dateiBasis}.csv`, zeilen())}
+        className="text-xs font-medium text-brand-600 hover:text-brand-700 hover:underline"
+      >
+        CSV exportieren
+      </button>
+      <button
+        type="button"
+        disabled={laeuft}
+        onClick={async () => {
+          setLaeuft(true)
+          try { await excelHerunterladen(`${dateiBasis}.xlsx`, zeilen()) }
+          finally { setLaeuft(false) }
+        }}
+        className="text-xs font-medium text-emerald-700 hover:text-emerald-800 hover:underline disabled:opacity-50"
+      >
+        {laeuft ? 'Excel wird erzeugt …' : 'Excel exportieren'}
+      </button>
+    </div>
   )
 }
 
@@ -952,7 +1077,9 @@ function GesamtumsatzErgebnis({ data, von, bis }: { data: BerichtGesamt; von: st
         <div className="rounded-lg bg-panel shadow-sm border border-line overflow-hidden">
           <div className="px-4 py-3 bg-panel-2 border-b border-line flex items-center justify-between">
             <h2 className="text-sm font-semibold text-ink">USt-Aufteilung</h2>
-            <CsvExportButton onClick={() => {
+            <ExportButtons
+              dateiBasis={`bericht-ust_${von}_${bis}`}
+              zeilen={() => {
               const kopfzeile = ['Steuersatz', 'Brutto (€)', 'Netto (€)', 'USt (€)', 'Anteil (%)']
               const datenzeilen = data.mwst.map(z => [
                 z.label,
@@ -961,8 +1088,9 @@ function GesamtumsatzErgebnis({ data, von, bis }: { data: BerichtGesamt; von: st
                 centZuEuro(z.ustCent),
                 data.umsatzCent !== 0 ? String(Math.round(Math.abs(z.bruttoCent / data.umsatzCent) * 100)) : '0',
               ])
-              csvHerunterladen(`bericht-ust_${von}_${bis}.csv`, [kopfzeile, ...datenzeilen])
-            }} />
+                return [kopfzeile, ...datenzeilen]
+              }}
+            />
           </div>
           <table className="w-full text-sm">
             <thead className="text-left text-xs uppercase tracking-wide text-ink-muted">
@@ -1053,7 +1181,9 @@ function ZahlungsartErgebnis({ data }: { data: BerichtResponse }) {
       <div className="rounded-lg bg-panel shadow-sm border border-line overflow-hidden">
         <div className="px-4 py-3 bg-panel-2 border-b border-line flex items-center justify-between">
           <h2 className="text-sm font-semibold text-ink">Verlauf ({formatDatumAnzeige(data.von)} – {formatDatumAnzeige(data.bis)})</h2>
-          <CsvExportButton onClick={() => {
+          <ExportButtons
+            dateiBasis={`bericht-zahlungsart_${data.von}_${data.bis}`}
+            zeilen={() => {
             const kopfzeile = ['Periode', 'Bar (€)', 'Karte (€)', 'Sonstige (€)', 'Gesamt (€)']
             const datenzeilen = data.zeilen.map(z => [
               z.periode,
@@ -1069,8 +1199,9 @@ function ZahlungsartErgebnis({ data }: { data: BerichtResponse }) {
               centZuEuro(g.sonstigCent),
               centZuEuro(g.umsatzCent),
             ]
-            csvHerunterladen(`bericht-zahlungsart_${data.von}_${data.bis}.csv`, [kopfzeile, ...datenzeilen, fusszeile])
-          }} />
+              return [kopfzeile, ...datenzeilen, fusszeile]
+            }}
+          />
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -1197,7 +1328,9 @@ function StundenDiagramm({ data }: { data: StundenBerichtResponse }) {
           <h2 className="text-sm font-semibold text-ink">
             Umsatz nach Tageszeit ({formatDatumAnzeige(data.von)} – {formatDatumAnzeige(data.bis)})
           </h2>
-          <CsvExportButton onClick={() => {
+          <ExportButtons
+            dateiBasis={`bericht-stunden_${data.von}_${data.bis}`}
+            zeilen={() => {
             const kopfzeile = ['Stunde', 'Belege', 'Umsatz (€)', 'Bar (€)', 'Karte (€)']
             const datenzeilen = data.zeilen.map(z => [
               `${z.stunde}:00`,
@@ -1206,8 +1339,9 @@ function StundenDiagramm({ data }: { data: StundenBerichtResponse }) {
               centZuEuro(z.barCent),
               centZuEuro(z.karteCent),
             ])
-            csvHerunterladen(`bericht-stunden_${data.von}_${data.bis}.csv`, [kopfzeile, ...datenzeilen])
-          }} />
+              return [kopfzeile, ...datenzeilen]
+            }}
+          />
         </div>
         <div className="px-4 py-4 space-y-1.5">
           {angezeigteZeilen.map(z => {
@@ -1657,7 +1791,9 @@ function VergleichErgebnis({
       <div className="rounded-lg bg-panel shadow-sm border border-line overflow-hidden">
         <div className="px-4 py-3 bg-panel-2 border-b border-line flex items-center justify-between">
           <h2 className="text-sm font-semibold text-ink">Kennzahlen im Vergleich</h2>
-          <CsvExportButton onClick={() => {
+          <ExportButtons
+            dateiBasis={`bericht-vergleich_${akt.von}_vs_${vor.von}`}
+            zeilen={() => {
             const kopfzeile = ['Kennzahl', aktLabel, vorLabel, 'Differenz', 'Veränderung (%)']
             const rows: string[][] = [
               ['Umsatz (€)',   centZuEuro(a.umsatzCent), centZuEuro(v.umsatzCent), centZuEuro(delta),         deltaPct !== null ? `${deltaPct}` : ''],
@@ -1665,8 +1801,9 @@ function VergleichErgebnis({
               ['Karte (€)',    centZuEuro(a.karteCent),  centZuEuro(v.karteCent),  centZuEuro(deltaKarteCent), ''],
               ['Belege',       String(a.anzahlBelege),   String(v.anzahlBelege),   String(deltaBelege),        ''],
             ]
-            csvHerunterladen(`bericht-vergleich_${akt.von}_vs_${vor.von}.csv`, [kopfzeile, ...rows])
-          }} />
+              return [kopfzeile, ...rows]
+            }}
+          />
         </div>
         <table className="w-full text-sm">
           <thead className="bg-panel-2 text-xs uppercase tracking-wide text-ink-muted border-b border-line">
@@ -1726,7 +1863,9 @@ function WarengruppeTabelle({ data }: { data: WarengruppeBerichtResponse }) {
         <h2 className="text-sm font-semibold text-ink">
           {data.zeilen.length} Warengruppen ({formatDatumAnzeige(data.von)} – {formatDatumAnzeige(data.bis)})
         </h2>
-        <CsvExportButton onClick={() => {
+        <ExportButtons
+          dateiBasis={`bericht-warengruppe_${data.von}_${data.bis}`}
+          zeilen={() => {
           const kopfzeile = ['Warengruppe', 'Menge', 'Umsatz (€)', 'Anteil (%)']
           const datenzeilen = data.zeilen.map(z => [
             z.kategorieName,
@@ -1740,8 +1879,9 @@ function WarengruppeTabelle({ data }: { data: WarengruppeBerichtResponse }) {
             centZuEuro(gesamtUmsatz),
             '100',
           ]
-          csvHerunterladen(`bericht-warengruppe_${data.von}_${data.bis}.csv`, [kopfzeile, ...datenzeilen, fusszeile])
-        }} />
+            return [kopfzeile, ...datenzeilen, fusszeile]
+          }}
+        />
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -2017,7 +2157,9 @@ function KassenVergleichTabelle({ data }: { data: KassenVergleichResponse }) {
           <h2 className="text-sm font-semibold text-ink">
             {data.zeilen.length} Kassen ({formatDatumAnzeige(data.von)} – {formatDatumAnzeige(data.bis)})
           </h2>
-          <CsvExportButton onClick={() => {
+          <ExportButtons
+            dateiBasis={`bericht-kassen_${data.von}_${data.bis}`}
+            zeilen={() => {
             const kopfzeile = ['Kasse', 'Kassen-ID', 'Belege', 'Stornos', 'Umsatz (€)', 'Bar (€)', 'Karte (€)', 'Sonstige (€)', 'Ø Bon (€)', 'Anteil (%)']
             const datenzeilen = data.zeilen.map(z => [
               z.bezeichnung ?? z.kassenId,
@@ -2032,8 +2174,9 @@ function KassenVergleichTabelle({ data }: { data: KassenVergleichResponse }) {
               g.umsatzCent !== 0 ? String(Math.round(Math.abs(z.umsatzCent / g.umsatzCent) * 100)) : '0',
             ])
             const fusszeile = ['Gesamt', '', String(g.anzahlBelege), String(g.anzahlStornos), centZuEuro(g.umsatzCent), centZuEuro(g.barCent), centZuEuro(g.karteCent), centZuEuro(g.sonstigCent), '', '100']
-            csvHerunterladen(`bericht-kassen_${data.von}_${data.bis}.csv`, [kopfzeile, ...datenzeilen, fusszeile])
-          }} />
+              return [kopfzeile, ...datenzeilen, fusszeile]
+            }}
+          />
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -2479,7 +2622,9 @@ function WochentagBericht() {
           <div className="rounded-lg bg-panel shadow-sm border border-line overflow-hidden">
             <div className="px-4 py-3 bg-panel-2 border-b border-line flex items-center justify-between">
               <h2 className="text-sm font-semibold text-ink">Ø Umsatz pro Wochentag</h2>
-              <CsvExportButton onClick={() => {
+              <ExportButtons
+                dateiBasis={`wochentag_${datumVon}_${datumBis}`}
+                zeilen={() => {
                 const kopfzeile = ['Wochentag', 'Anz. Tage', 'Ø Umsatz (€)', 'Gesamt (€)', 'Ø Belege']
                 const datenzeilen = zeilen.map(z => [
                   WOCHENTAG_NAMEN[z.tag]!,
@@ -2488,8 +2633,9 @@ function WochentagBericht() {
                   centZuEuro(z.umsatzSumCent),
                   z.tage > 0 ? (z.belegeSumme / z.tage).toFixed(1) : '0',
                 ])
-                csvHerunterladen(`wochentag_${datumVon}_${datumBis}.csv`, [kopfzeile, ...datenzeilen])
-              }} />
+                  return [kopfzeile, ...datenzeilen]
+                }}
+              />
             </div>
             <div className="px-4 py-4 space-y-2">
               {zeilen.map(z => {

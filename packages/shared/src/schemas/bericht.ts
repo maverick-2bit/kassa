@@ -15,8 +15,12 @@ export const BerichtFilterSchema = z.object({
   von:               z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Ungültiges Datum (YYYY-MM-DD)'),
   /** Enddatum YYYY-MM-DD (Wiener Ortszeit, inklusiv) */
   bis:               z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Ungültiges Datum (YYYY-MM-DD)'),
-  /** Nur Belege mit Sonstig-Zahlung > 0 (Zielrechnungen) anzeigen */
+  /** Nur Zielrechnungen (Verkauf auf offenen Posten) anzeigen */
   nurZielrechnungen: z.boolean().default(false),
+  /** Optionaler Uhrzeit-Filter (Wiener Ortszeit, HH:MM). Über Mitternacht erlaubt:
+   *  zeitVon 22:00 / zeitBis 02:00 liefert die Nachtstunden. */
+  zeitVon:           z.string().regex(/^\d{2}:\d{2}$/).optional(),
+  zeitBis:           z.string().regex(/^\d{2}:\d{2}$/).optional(),
   /** Zeitliche Gruppierung der Tabelle */
   gruppierung:       BerichtGruppierungSchema.default('tag'),
 })
@@ -35,6 +39,9 @@ export const BerichtZeileSchema = z.object({
   barCent:      z.number().int(),
   karteCent:    z.number().int(),
   sonstigCent:  z.number().int(),
+  /** Umsatz aus Zielrechnungen (Verkauf auf offenen Posten) — Teilmenge des Umsatzes */
+  zielCent:            z.number().int(),
+  anzahlZielrechnungen: z.number().int(),
 })
 export type BerichtZeile = z.infer<typeof BerichtZeileSchema>
 
@@ -45,6 +52,8 @@ export const BerichtGesamtSchema = z.object({
   barCent:       z.number().int(),
   karteCent:     z.number().int(),
   sonstigCent:   z.number().int(),
+  zielCent:            z.number().int(),
+  anzahlZielrechnungen: z.number().int(),
   mwst:          z.array(MwStZeileSchema),
 })
 export type BerichtGesamt = z.infer<typeof BerichtGesamtSchema>

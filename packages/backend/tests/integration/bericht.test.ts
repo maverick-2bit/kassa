@@ -150,4 +150,84 @@ describe('Berichte (Integration, echtes PostgreSQL)', () => {
     const res = await umsatz(heuteWien(), heuteWien(), '11111111-1111-1111-1111-111111111111')
     expect(res.statusCode).toBe(404)
   })
+
+  // -------------------------------------------------------------------------
+  // Uhrzeit-Filter + Zielrechnungen (v0.7.138)
+  // -------------------------------------------------------------------------
+
+  it('Uhrzeit-Filter grenzt auf ein Tagesfenster ein', async () => {
+    const heute = heuteWien()
+
+    // Volles Fenster enthält alle Belege des Tages
+    const ganz = await srv.fastify.inject({
+      method: 'GET', headers: auth(),
+      url: `/api/berichte/umsatz?kasseIds=${kasseId}&von=${heute}&bis=${heute}&zeitVon=00:00&zeitBis=23:59`,
+    })
+    expect(ganz.statusCode).toBe(200)
+    expect(ganz.json().gesamt.anzahlBelege).toBeGreaterThan(0)
+
+    // Fenster in der Vergangenheit (die Testbelege entstanden gerade eben)
+    const leer = await srv.fastify.inject({
+      method: 'GET', headers: auth(),
+      url: `/api/berichte/umsatz?kasseIds=${kasseId}&von=${heute}&bis=${heute}&zeitVon=00:00&zeitBis=00:01`,
+    })
+    expect(leer.statusCode).toBe(200)
+    expect(leer.json().gesamt.anzahlBelege).toBe(0)
+    expect(leer.json().gesamt.umsatzCent).toBe(0)
+  })
+
+  it('Uhrzeit-Filter über Mitternacht (22:00–02:00) ist erlaubt', async () => {
+    const heute = heuteWien()
+    const res = await srv.fastify.inject({
+      method: 'GET', headers: auth(),
+      url: `/api/berichte/umsatz?kasseIds=${kasseId}&von=${heute}&bis=${heute}&zeitVon=22:00&zeitBis=02:00`,
+    })
+    expect(res.statusCode).toBe(200)   // kein 400 — Nachtfenster wird akzeptiert
+  })
+
+  it('Zielrechnungen werden getrennt ausgewiesen (nicht über Sonstig-Zahlung)', async () => {
+    const heute = heuteWien()
+
+    // Basis: bisher keine Zielrechnung
+    const vorher = (await umsatz(heute, heute)).json()
+    expect(vorher.gesamt.anzahlZielrechnungen).toBe(0)
+    expect(vorher.gesamt.zielCent).toBe(0)
+
+    // Kunde + Verkauf auf offenen Posten (Zielrechnung)
+    const kunde = (await srv.fastify.inject({
+      method: 'POST', url: '/api/kunden', headers: auth(),
+      payload: { firma: 'Ziel-Kunde GmbH', kreditAktiv: true },
+    })).json()
+
+    const beleg = (await srv.fastify.inject({
+      method: 'POST', url: '/api/belege/barzahlung', headers: auth(),
+      payload: {
+        kasseId,
+        positionen: [{ bezeichnung: 'Auf Rechnung', preisBruttoCent: 5000, mwstSatz: 'normal', menge: 1 }],
+        zahlung: { barCent: 0, karteCent: 0, sonstigeCent: 5000 },
+      },
+    })).json()
+
+    const op = await srv.fastify.inject({
+      method: 'POST', url: '/api/offene-posten', headers: auth(),
+      payload: { kundeId: kunde.id, belegId: beleg.id, betragCent: 5000 },
+    })
+    expect(op.statusCode).toBe(201)
+
+    const nachher = (await umsatz(heute, heute)).json()
+    expect(nachher.gesamt.anzahlZielrechnungen).toBe(1)
+    expect(nachher.gesamt.zielCent).toBe(5000)
+    // Zielumsatz ist Teilmenge des Gesamtumsatzes, nicht zusätzlich
+    expect(nachher.gesamt.umsatzCent).toBe(vorher.gesamt.umsatzCent + 5000)
+    // Auch je Periodenzeile sichtbar
+    expect(nachher.zeilen.some((z: { zielCent: number }) => z.zielCent === 5000)).toBe(true)
+
+    // Filter „nur Zielrechnungen" liefert genau diesen einen Beleg
+    const nurZiel = await srv.fastify.inject({
+      method: 'GET', headers: auth(),
+      url: `/api/berichte/umsatz?kasseIds=${kasseId}&von=${heute}&bis=${heute}&nurZielrechnungen=true`,
+    })
+    expect(nurZiel.json().gesamt.anzahlBelege).toBe(1)
+    expect(nurZiel.json().gesamt.umsatzCent).toBe(5000)
+  })
 })
