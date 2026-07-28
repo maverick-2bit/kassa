@@ -687,10 +687,16 @@ export {
   datumISO,
   regelGiltJetzt,
   aktiverRabattProzent,
+  aktiverFixpreisCent,
+  aktiveAktion,
+  aktionsPreisCent,
   happyHourPreisCent,
+  ArtikelPreisSchema,
 } from './schemas/preisregel.js'
 export type {
   Zeitfenster,
+  ArtikelPreis,
+  AktiveAktion,
   PreisregelInput,
   PreisregelUpdate,
   Preisregel,

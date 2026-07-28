@@ -2075,9 +2075,9 @@ test('Happy Hour pro Artikel: Regel wirkt nur auf den gewählten Artikel', async
 
   // Verwaltungsseite: Regel + der gewählte Artikel im Geltungsbereich
   await page.goto('/preisregeln')
-  await expect(page.getByRole('heading', { name: 'Happy Hour / Zeitpreise' })).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByRole('heading', { name: 'Aktionen' })).toBeVisible({ timeout: 10_000 })
   await expect(page.getByText(name)).toBeVisible()
-  await expect(page.getByText(cola)).toBeVisible()
+  await expect(page.getByText(cola).first()).toBeVisible()
 
   // Kasse: Regeln laden lassen, dann beide Artikel hinzufügen
   await Promise.all([

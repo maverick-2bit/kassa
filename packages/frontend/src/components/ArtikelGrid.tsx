@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { Artikel, Kategorie, KategorieFarbe, ModifikatorAuswahl, ModifikatorGruppe } from '@kassa/shared'
+import type { AktiveAktion, Artikel, Kategorie, KategorieFarbe, ModifikatorAuswahl, ModifikatorGruppe } from '@kassa/shared'
 import { formatPreis } from '../lib/format'
 import { ModifikatorModal } from './ModifikatorModal'
 import { Input } from './ui/Input'
@@ -84,6 +84,8 @@ interface Props {
   initialKategorieId?:  string | null
   /** Optional: artikelId → Menge im Warenkorb (zeigt ein Mengen-Badge auf der Kachel) */
   mengenProArtikel?:    Map<string, number>
+  /** Optional: gerade laufende Aktionen je Artikel — zeigt Badge + Aktionspreis */
+  aktionen?:            Map<string, AktiveAktion>
 }
 
 // ---------------------------------------------------------------------------
@@ -93,7 +95,7 @@ interface Props {
 // Sentinel für den Favoriten-Tab
 const FAVORITEN_TAB_ID = '__favoriten__'
 
-export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClick, loading, sichtbareKategorieIds, artikelbilderAktiv = true, initialKategorieId = null, mengenProArtikel }: Props) {
+export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClick, loading, sichtbareKategorieIds, artikelbilderAktiv = true, initialKategorieId = null, mengenProArtikel, aktionen }: Props) {
   // Kategorie-ID → Farbe, für den Akzentstreifen je Artikel (auch im „Alle"-Tab).
   const farbeProKategorie = useMemo(
     () => new Map(kategorien.map(k => [k.id, k.farbe] as const)),
@@ -296,6 +298,10 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
                 : verfuegbar
               const zeigeBestand  = !istAusverkauft && restBestand !== null && restBestand > 0
               const mengeImKorb   = mengenProArtikel?.get(a.id) ?? 0
+              const aktion        = aktionen?.get(a.id) ?? null
+              const aktionsPreis  = aktion === null ? null
+                : aktion.typ === 'fix' ? aktion.preisCent
+                : Math.round(a.preisBruttoCent * (100 - aktion.prozent) / 100)
 
               const handleClick = () => {
                 if (istAusverkauft) return
@@ -350,9 +356,18 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
                       {a.bezeichnung}
                     </p>
                     <div className="mt-1 flex items-center justify-between gap-1 flex-wrap">
-                      <p className="text-xs font-semibold text-brand-600">
-                        {formatPreis(a.preisBruttoCent)}
-                      </p>
+                      {aktionsPreis !== null ? (
+                        <p className="text-xs font-semibold text-amber-700 flex items-baseline gap-1">
+                          <span className="line-through text-ink-subtle font-normal">
+                            {formatPreis(a.preisBruttoCent)}
+                          </span>
+                          <span>{formatPreis(aktionsPreis)}</span>
+                        </p>
+                      ) : (
+                        <p className="text-xs font-semibold text-brand-600">
+                          {formatPreis(a.preisBruttoCent)}
+                        </p>
+                      )}
                       <div className="flex items-center gap-1.5">
                         {istAusverkauft && (
                           <span className="text-[10px] bg-red-100 text-red-600 rounded-full px-1.5 py-0.5 font-medium leading-none">
@@ -362,6 +377,12 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
                         {zeigeBestand && (
                           <span className="text-[10px] bg-amber-100 text-amber-700 rounded-full px-1.5 py-0.5 font-medium leading-none">
                             noch {restBestand}
+                          </span>
+                        )}
+                        {!istAusverkauft && aktion !== null && (
+                          <span className="text-[10px] bg-amber-100 text-amber-800 rounded-full px-1.5 py-0.5 font-bold leading-none"
+                                title="Aktionspreis aktiv">
+                            {aktion.typ === 'prozent' ? `★ −${aktion.prozent}%` : '★ Aktion'}
                           </span>
                         )}
                         {!istAusverkauft && hatMods && (

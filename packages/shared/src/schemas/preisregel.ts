@@ -1,13 +1,17 @@
 import { z } from 'zod'
 
 // ---------------------------------------------------------------------------
-// Preisregeln — zeitgesteuerte Aktionspreise (Happy Hour)
+// Preisregeln — zeitgesteuerte Aktionen („Aktionen", früher Happy Hour)
 //
-// Eine Regel senkt den Preis um einen Prozentsatz, wenn JETZT innerhalb eines
-// ihrer Zeitfenster liegt UND der Tag passt (Wochentag ODER konkretes Datum)
-// UND — falls gesetzt — innerhalb des Aktionszeitraums (gueltigVon..gueltigBis).
-// Optional nur für bestimmte Warengruppen und/oder Einzel-Artikel.
-// Wochentage: 1 = Montag … 7 = Sonntag (ISO-8601).
+// Eine Regel greift, wenn JETZT innerhalb eines ihrer Zeitfenster liegt UND der
+// Tag passt (Wochentag ODER konkretes Datum) UND — falls gesetzt — innerhalb des
+// Aktionszeitraums (gueltigVon..gueltigBis). Optional nur für bestimmte
+// Warengruppen und/oder Einzel-Artikel. Wochentage: 1 = Montag … 7 = Sonntag.
+//
+// Zwei Arten der Preissenkung, kombinierbar:
+//   • rabattProzent  — prozentualer Abschlag auf den Basispreis
+//   • artikelPreise  — fixer AKTIONSPREIS je Artikel (z. B. „alle Pizzen 7,50")
+// Der fixe Preis ist die speziellere Angabe und schlägt den Prozentsatz.
 // ---------------------------------------------------------------------------
 
 export const WochentagSchema = z.number().int().min(1).max(7)
@@ -22,6 +26,13 @@ const DatumSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Datum im Format YYY
 export const ZeitfensterSchema = z.object({ von: ZeitSchema, bis: ZeitSchema })
 export type Zeitfenster = z.infer<typeof ZeitfensterSchema>
 
+/** Fixer Aktionspreis für genau einen Artikel */
+export const ArtikelPreisSchema = z.object({
+  artikelId: z.string().uuid(),
+  preisCent: z.number().int().nonnegative(),
+})
+export type ArtikelPreis = z.infer<typeof ArtikelPreisSchema>
+
 const PreisregelBaseSchema = z.object({
   name:          z.string().trim().min(1).max(80),
   aktiv:         z.boolean().default(true),
@@ -34,7 +45,10 @@ const PreisregelBaseSchema = z.object({
   /** Aktionszeitraum (optional): Regel gilt nur zwischen diesen Daten (inklusive) */
   gueltigVon:    DatumSchema.nullable().default(null),
   gueltigBis:    DatumSchema.nullable().default(null),
-  rabattProzent: z.number().int().min(1).max(100),
+  /** Prozentualer Abschlag; 0 = kein Prozentrabatt (dann müssen Aktionspreise gesetzt sein) */
+  rabattProzent: z.number().int().min(0).max(100),
+  /** Fixe Aktionspreise je Artikel — schlagen den Prozentsatz */
+  artikelPreise: z.array(ArtikelPreisSchema).max(500).default([]),
   /** Betroffene Warengruppen (leer = keine Einschränkung über Warengruppen) */
   kategorieIds:  z.array(z.string().uuid()).max(200).default([]),
   /** Betroffene Einzel-Artikel (leer = keine Einschränkung über Artikel).
@@ -42,10 +56,15 @@ const PreisregelBaseSchema = z.object({
   artikelIds:    z.array(z.string().uuid()).max(500).default([]),
 })
 
-export const PreisregelInputSchema = PreisregelBaseSchema.refine(
-  d => d.wochentage.length > 0 || d.datumTage.length > 0,
-  { message: 'Mindestens ein Wochentag oder ein konkretes Datum erforderlich', path: ['wochentage'] },
-)
+export const PreisregelInputSchema = PreisregelBaseSchema
+  .refine(
+    d => d.wochentage.length > 0 || d.datumTage.length > 0,
+    { message: 'Mindestens ein Wochentag oder ein konkretes Datum erforderlich', path: ['wochentage'] },
+  )
+  .refine(
+    d => d.rabattProzent > 0 || d.artikelPreise.length > 0,
+    { message: 'Entweder einen Prozent-Rabatt oder mindestens einen Aktionspreis angeben', path: ['rabattProzent'] },
+  )
 export type PreisregelInput = z.infer<typeof PreisregelInputSchema>
 
 export const PreisregelUpdateSchema = PreisregelBaseSchema.partial()
@@ -61,6 +80,7 @@ export const PreisregelSchema = z.object({
   gueltigVon:    z.string().nullable(),
   gueltigBis:    z.string().nullable(),
   rabattProzent: z.number().int(),
+  artikelPreise: z.array(ArtikelPreisSchema),
   kategorieIds:  z.array(z.string().uuid()),
   artikelIds:    z.array(z.string().uuid()),
   createdAt:     z.string(),
@@ -156,15 +176,60 @@ export function aktiverRabattProzent(
   return max
 }
 
-/** Wendet den aktuell gültigen Happy-Hour-Rabatt auf einen Basispreis an (kaufmännisch gerundet). */
-export function happyHourPreisCent(
+/**
+ * Niedrigster gerade gültiger FIXER Aktionspreis für einen Artikel
+ * (null = keine Regel setzt einen festen Preis).
+ */
+export function aktiverFixpreisCent(
+  regeln: Preisregel[],
+  artikelId: string,
+  kategorieId: string | null,
+  jetzt: Date = new Date(),
+): number | null {
+  let min: number | null = null
+  for (const r of regeln) {
+    if (!regelGiltJetzt(r, artikelId, kategorieId, jetzt)) continue
+    const treffer = (r.artikelPreise ?? []).find(p => p.artikelId === artikelId)
+    if (treffer && (min === null || treffer.preisCent < min)) min = treffer.preisCent
+  }
+  return min
+}
+
+/** Was gilt gerade für diesen Artikel? (für Badges an der Kasse) */
+export type AktiveAktion =
+  | { typ: 'fix';     preisCent: number }
+  | { typ: 'prozent'; prozent: number }
+  | null
+
+export function aktiveAktion(
+  regeln: Preisregel[],
+  artikelId: string,
+  kategorieId: string | null,
+  jetzt: Date = new Date(),
+): AktiveAktion {
+  // Fixpreis ist die speziellere Angabe und gewinnt gegen den Prozentsatz
+  const fix = aktiverFixpreisCent(regeln, artikelId, kategorieId, jetzt)
+  if (fix !== null) return { typ: 'fix', preisCent: fix }
+  const prozent = aktiverRabattProzent(regeln, artikelId, kategorieId, jetzt)
+  return prozent > 0 ? { typ: 'prozent', prozent } : null
+}
+
+/**
+ * Aktuell gültiger Verkaufspreis eines Artikels: fixer Aktionspreis, sonst
+ * Prozent-Abschlag auf den Basispreis (kaufmännisch gerundet), sonst Basispreis.
+ */
+export function aktionsPreisCent(
   basisPreisCent: number,
   regeln: Preisregel[],
   artikelId: string,
   kategorieId: string | null,
   jetzt: Date = new Date(),
 ): number {
-  const prozent = aktiverRabattProzent(regeln, artikelId, kategorieId, jetzt)
-  if (prozent === 0) return basisPreisCent
-  return Math.round(basisPreisCent * (100 - prozent) / 100)
+  const aktion = aktiveAktion(regeln, artikelId, kategorieId, jetzt)
+  if (aktion === null)        return basisPreisCent
+  if (aktion.typ === 'fix')   return aktion.preisCent
+  return Math.round(basisPreisCent * (100 - aktion.prozent) / 100)
 }
+
+/** @deprecated Alter Name aus der „Happy Hour"-Zeit — nutze aktionsPreisCent. */
+export const happyHourPreisCent = aktionsPreisCent
