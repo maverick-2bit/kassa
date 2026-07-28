@@ -102,9 +102,12 @@ export async function holeUmsatzbericht(
   // von > bis: über Mitternacht (z. B. 22:00–02:00 Nachtbetrieb).
   if (filter.zeitVon && filter.zeitBis) {
     const zeitAusdruck = sql`(${belege.belegDatum} at time zone 'Europe/Vienna')::time`
+    // Die äußeren Klammern sind Pflicht: and() verknüpft die Fragmente nur mit
+    // " and ", ohne sie einzeln zu klammern. Ohne Klammern würde das OR aus der
+    // Verknüpfung ausbrechen und Mandanten- wie Datumsfilter aushebeln.
     whereKlauses.push(filter.zeitVon <= filter.zeitBis
-      ? sql`${zeitAusdruck} >= ${filter.zeitVon}::time AND ${zeitAusdruck} < ${filter.zeitBis}::time`
-      : sql`${zeitAusdruck} >= ${filter.zeitVon}::time OR  ${zeitAusdruck} < ${filter.zeitBis}::time`)
+      ? sql`(${zeitAusdruck} >= ${filter.zeitVon}::time AND ${zeitAusdruck} < ${filter.zeitBis}::time)`
+      : sql`(${zeitAusdruck} >= ${filter.zeitVon}::time OR  ${zeitAusdruck} < ${filter.zeitBis}::time)`)
   }
 
   const rows = await deps.db

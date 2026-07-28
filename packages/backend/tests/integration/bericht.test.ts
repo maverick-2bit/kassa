@@ -185,6 +185,30 @@ describe('Berichte (Integration, echtes PostgreSQL)', () => {
     expect(res.statusCode).toBe(200)   // kein 400 — Nachtfenster wird akzeptiert
   })
 
+  it('Uhrzeit-Filter über Mitternacht hebt den Datumsfilter NICHT auf', async () => {
+    // Regression: das OR des Nachtfensters muss geklammert sein. Ungeklammert
+    // wird aus „(Mandant AND Kasse AND Datum) AND (a OR b)" ein
+    // „(Mandant AND Kasse AND Datum) OR a OR b" — dann tauchen Belege fremder
+    // Tage (und fremder Mandanten) im Bericht auf.
+    const gestern = new Date(Date.now() - 86_400_000)
+      .toLocaleDateString('sv-SE', { timeZone: 'Europe/Vienna' })
+
+    // Zwei Nachtfenster, die praktisch den ganzen Tag abdecken. Ihre „toten
+    // Minuten" (23:58–23:59 bzw. 12:00–12:01) überschneiden sich nicht, damit
+    // der Test unabhängig von der Uhrzeit des Testlaufs greift.
+    for (const [zeitVon, zeitBis] of [['23:59', '23:58'], ['12:01', '12:00']]) {
+      const res = await srv.fastify.inject({
+        method: 'GET', headers: auth(),
+        url: `/api/berichte/umsatz?kasseIds=${kasseId}&von=${gestern}&bis=${gestern}&zeitVon=${zeitVon}&zeitBis=${zeitBis}`,
+      })
+      expect(res.statusCode).toBe(200)
+      // Gestern wurde nichts gebucht — die heutigen Belege dürfen nicht durchschlagen
+      expect(res.json().gesamt.anzahlBelege).toBe(0)
+      expect(res.json().gesamt.umsatzCent).toBe(0)
+      expect(res.json().zeilen).toEqual([])
+    }
+  })
+
   it('Zielrechnungen werden getrennt ausgewiesen (nicht über Sonstig-Zahlung)', async () => {
     const heute = heuteWien()
 
