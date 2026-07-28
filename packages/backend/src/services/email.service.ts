@@ -455,3 +455,80 @@ export async function sendeWareneingangEmail(
     text: `Wareneingang (${datum})${daten.lieferant ? '\nLieferant: ' + daten.lieferant : ''}\n${daten.firmenname}\n\n${daten.positionen.map(p => `+${p.menge} ${p.bezeichnung}`).join('\n')}`,
   })
 }
+
+// ---------------------------------------------------------------------------
+// Belegzweig: Lieferschein / Rechnung per E-Mail
+// ---------------------------------------------------------------------------
+
+export interface BelegzweigEmailDaten {
+  art:        'lieferschein' | 'rechnung'
+  firmenname: string
+  nummer:     number
+  datum:      string   // ISO
+  kundeName?: string | undefined
+  positionen: Array<{ bezeichnung: string; menge: number; einzelpreisBreutto: number }>
+  gesamtbetragCent?: number | undefined
+}
+
+export async function sendeBelegzweigEmail(
+  empfaenger: string,
+  daten:      BelegzweigEmailDaten,
+  config:     Config,
+): Promise<void> {
+  const transporter = erstelleTransporter(config)
+  const from        = config.SMTP_FROM ?? config.SMTP_USER!
+  const istRechnung = daten.art === 'rechnung'
+  const titel       = istRechnung ? 'Rechnung' : 'Lieferschein'
+  const kuerzel     = `${istRechnung ? 'SR' : 'L'}-${String(daten.nummer).padStart(4, '0')}`
+  const datum       = new Date(daten.datum).toLocaleDateString('de-AT', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+  })
+  const fmt = (c: number) => (c / 100).toFixed(2).replace('.', ',') + ' €'
+
+  const zeilen = daten.positionen.map(p => `
+      <tr>
+        <td style="padding:6px 12px;border-bottom:1px solid #e5e7eb">${p.menge}× ${p.bezeichnung}</td>
+        ${istRechnung ? `
+        <td style="padding:6px 12px;border-bottom:1px solid #e5e7eb;text-align:right;font-family:monospace">${fmt(p.einzelpreisBreutto)}</td>
+        <td style="padding:6px 12px;border-bottom:1px solid #e5e7eb;text-align:right;font-family:monospace;font-weight:600">${fmt(p.einzelpreisBreutto * p.menge)}</td>` : ''}
+      </tr>`).join('')
+
+  const html = `<!DOCTYPE html>
+<html lang="de"><head><meta charset="utf-8"><title>${titel} ${kuerzel}</title></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,sans-serif">
+  <div style="max-width:520px;margin:32px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08)">
+    <div style="background:#1d4ed8;padding:24px 28px">
+      <h1 style="margin:0;color:#fff;font-size:20px">${titel} ${kuerzel}</h1>
+      <p style="margin:4px 0 0;color:#bfdbfe;font-size:13px">${datum}</p>
+    </div>
+    <div style="padding:20px 28px 8px">
+      <p style="margin:0;font-size:13px;color:#6b7280">${daten.firmenname}${daten.kundeName ? ` · für ${daten.kundeName}` : ''}</p>
+    </div>
+    <table style="width:100%;border-collapse:collapse">
+      <thead><tr style="background:#f9fafb">
+        <th style="padding:8px 12px;text-align:left;font-size:12px;color:#6b7280;font-weight:600;text-transform:uppercase">Position</th>
+        ${istRechnung ? `
+        <th style="padding:8px 12px;text-align:right;font-size:12px;color:#6b7280;font-weight:600;text-transform:uppercase">Preis</th>
+        <th style="padding:8px 12px;text-align:right;font-size:12px;color:#6b7280;font-weight:600;text-transform:uppercase">Gesamt</th>` : ''}
+      </tr></thead>
+      <tbody>${zeilen}</tbody>
+    </table>
+    ${istRechnung && daten.gesamtbetragCent !== undefined ? `
+    <div style="padding:16px 28px;border-top:2px solid #111827;display:flex;justify-content:space-between">
+      <span style="font-size:16px;font-weight:700;color:#111827">Summe</span>
+      <span style="font-size:16px;font-weight:700;color:#111827;font-family:monospace">${fmt(daten.gesamtbetragCent)}</span>
+    </div>` : `
+    <div style="padding:16px 28px">
+      <p style="margin:0;font-size:12px;color:#6b7280">${daten.positionen.length} Position${daten.positionen.length === 1 ? '' : 'en'} — die Abrechnung erfolgt über die Rechnung.</p>
+    </div>`}
+  </div>
+</body></html>`
+
+  await transporter.sendMail({
+    from,
+    to:      empfaenger,
+    subject: `${titel} ${kuerzel} — ${daten.firmenname}`,
+    html,
+    text: `${titel} ${kuerzel} (${datum})\n${daten.firmenname}\n\n${daten.positionen.map(p => `${p.menge}x ${p.bezeichnung}${istRechnung ? ` — ${fmt(p.einzelpreisBreutto * p.menge)}` : ''}`).join('\n')}${istRechnung && daten.gesamtbetragCent !== undefined ? `\n\nSumme: ${fmt(daten.gesamtbetragCent)}` : ''}`,
+  })
+}

@@ -493,6 +493,216 @@ function qrSizeFuerBreite(breite: number): number {
 }
 
 // ---------------------------------------------------------------------------
+// Belegzweig: Lieferschein- und Rechnungs-Bon
+// ---------------------------------------------------------------------------
+
+export interface BelegzweigPosition {
+  bezeichnung:        string
+  menge:              number
+  einzelpreisBreutto: number
+  mwstSatz:           MwStSatz
+  seriennummern?:     string[] | undefined
+}
+
+export interface KundeBlock {
+  bezeichnung: string
+  strasse?:    string | undefined
+  plz?:        string | undefined
+  ort?:        string | undefined
+  uid?:        string | undefined
+}
+
+function kundeZeilen(add: (b: Buffer) => void, kunde: KundeBlock | undefined, W: number): void {
+  if (!kunde) return
+  add(ep.textLine(truncate(kunde.bezeichnung, W)))
+  if (kunde.strasse) add(ep.textLine(truncate(kunde.strasse, W)))
+  const ortZeile = [kunde.plz, kunde.ort].filter(Boolean).join(' ')
+  if (ortZeile) add(ep.textLine(truncate(ortZeile, W)))
+  if (kunde.uid) add(ep.textLine(`UID: ${truncate(kunde.uid, W - 5)}`))
+}
+
+/** Positionszeilen mit Menge, Bezeichnung, Zeilensumme + optionalen Seriennummern */
+function positionsZeilen(
+  add: (b: Buffer) => void,
+  positionen: BelegzweigPosition[],
+  W: number,
+  mitPreisen: boolean,
+): void {
+  for (const p of positionen) {
+    const menge = formatMenge(p.menge)
+    if (mitPreisen) {
+      add(ep.textLine(truncate(`${menge}x ${p.bezeichnung}`, W)))
+      add(ep.textLine(zweispaltig(
+        `   à ${formatCent(p.einzelpreisBreutto)}`,
+        formatCent(p.einzelpreisBreutto * p.menge),
+        W,
+      )))
+    } else {
+      add(ep.textLine(zweispaltig(truncate(p.bezeichnung, W - 6), `${menge} St`, W)))
+    }
+    for (const sn of p.seriennummern ?? []) {
+      add(ep.textLine(truncate(`   SN: ${sn}`, W)))
+    }
+  }
+}
+
+export interface LieferscheinBonOptionen {
+  breite:      number
+  firmenname?: string
+  uid?:        string
+  nummer:      number
+  /** ISO-Zeitpunkt */
+  datum:       string
+  angebotNummer?: number | undefined
+  kunde?:      KundeBlock | undefined
+  positionen:  BelegzweigPosition[]
+  notiz?:      string | undefined
+}
+
+/**
+ * Lieferschein als Bon: Mengen + Seriennummern im Vordergrund, KEINE Preise
+ * (Lieferschein ist ein Warenbegleitpapier — abgerechnet wird über die Rechnung).
+ */
+export function baueLieferscheinBon(opts: LieferscheinBonOptionen): Buffer {
+  const W = opts.breite
+  const parts: Buffer[] = []
+  const add = (b: Buffer): void => { parts.push(b) }
+
+  add(ep.init())
+  add(ep.selectCodepage(19))
+  add(ep.selectInternational(2))
+
+  add(ep.align('center'))
+  if (opts.firmenname) add(ep.textLine(truncate(opts.firmenname, W)))
+  if (opts.uid)        add(ep.textLine(`UID: ${opts.uid}`))
+  add(ep.newline())
+  add(ep.bold(true))
+  add(ep.textSize(2, 2))
+  add(ep.textLine('LIEFERSCHEIN'))
+  add(ep.textSize(1, 1))
+  add(ep.textLine(`L-${String(opts.nummer).padStart(4, '0')}`))
+  add(ep.bold(false))
+  add(ep.textLine(formatDatum(opts.datum)))
+  if (opts.angebotNummer !== undefined) {
+    add(ep.textLine(`zu Angebot A-${String(opts.angebotNummer).padStart(4, '0')}`))
+  }
+  add(trennlinie(W))
+
+  add(ep.align('left'))
+  if (opts.kunde) {
+    kundeZeilen(add, opts.kunde, W)
+    add(trennlinie(W))
+  }
+
+  positionsZeilen(add, opts.positionen, W, false)
+  add(trennlinie(W))
+  add(ep.textLine(zweispaltig('Positionen', String(opts.positionen.length), W)))
+
+  if (opts.notiz) {
+    add(ep.newline())
+    add(ep.textLine(truncate(opts.notiz, W)))
+  }
+
+  add(ep.newline())
+  add(ep.align('center'))
+  add(ep.textLine('Ware erhalten:'))
+  add(ep.newline(2))
+  add(ep.textLine('_'.repeat(Math.min(W - 4, 28))))
+  add(ep.textLine('Datum, Unterschrift'))
+  add(ep.newline())
+  add(ep.textLine('powered by s/e smarte events'))
+
+  add(ep.newline(4))
+  add(ep.cut())
+  return Buffer.concat(parts)
+}
+
+export interface RechnungBonOptionen {
+  breite:      number
+  firmenname?: string
+  uid?:        string
+  nummer:      number
+  /** ISO-Zeitpunkt */
+  datum:       string
+  kunde?:      KundeBlock | undefined
+  /** Positionen aller enthaltenen Lieferscheine, zusammengeführt */
+  positionen:  BelegzweigPosition[]
+  /** Enthaltene Lieferschein-Nummern (Referenzblock) */
+  lieferscheinNummern: number[]
+  gesamtbetragCent: number
+}
+
+/**
+ * Sammelrechnung als Bon: Positionen mit Preisen, USt-Aufteilung, Gesamtbetrag.
+ * Hinweis: KEIN RKSV-Beleg (das ist der Barzahlungsbeleg der Kasse) — dies ist
+ * die Ausgangsrechnung des Angebot→Lieferschein→Rechnung-Zweigs.
+ */
+export function baueRechnungBon(opts: RechnungBonOptionen): Buffer {
+  const W = opts.breite
+  const parts: Buffer[] = []
+  const add = (b: Buffer): void => { parts.push(b) }
+
+  add(ep.init())
+  add(ep.selectCodepage(19))
+  add(ep.selectInternational(2))
+
+  add(ep.align('center'))
+  if (opts.firmenname) add(ep.textLine(truncate(opts.firmenname, W)))
+  if (opts.uid)        add(ep.textLine(`UID: ${opts.uid}`))
+  add(ep.newline())
+  add(ep.bold(true))
+  add(ep.textSize(2, 2))
+  add(ep.textLine('RECHNUNG'))
+  add(ep.textSize(1, 1))
+  add(ep.textLine(`SR-${String(opts.nummer).padStart(4, '0')}`))
+  add(ep.bold(false))
+  add(ep.textLine(formatDatum(opts.datum)))
+  add(trennlinie(W))
+
+  add(ep.align('left'))
+  if (opts.kunde) {
+    kundeZeilen(add, opts.kunde, W)
+    add(trennlinie(W))
+  }
+
+  positionsZeilen(add, opts.positionen, W, true)
+  add(trennlinie(W))
+
+  // USt-Aufteilung aus den Positionen
+  const proSatz = new Map<MwStSatz, number>()
+  for (const p of opts.positionen) {
+    proSatz.set(p.mwstSatz, (proSatz.get(p.mwstSatz) ?? 0) + p.einzelpreisBreutto * p.menge)
+  }
+  for (const [satz, brutto] of proSatz) {
+    const prozent = MWST_SAETZE[satz]
+    const netto   = Math.round(brutto / (1 + prozent / 100))
+    add(ep.textLine(`${MWST_LABELS[satz]}: Netto ${formatCent(netto)} USt ${formatCent(brutto - netto)}`))
+  }
+
+  add(ep.newline())
+  add(ep.bold(true))
+  add(ep.textSize(2, 2))
+  add(ep.textLine(zweispaltig('SUMME', formatCent(opts.gesamtbetragCent), Math.floor(W / 2))))
+  add(ep.textSize(1, 1))
+  add(ep.bold(false))
+
+  if (opts.lieferscheinNummern.length > 0) {
+    add(ep.newline())
+    add(ep.textLine('Enthaltene Lieferscheine:'))
+    add(ep.textLine(truncate(
+      opts.lieferscheinNummern.map(n => `L-${String(n).padStart(4, '0')}`).join(', '), W * 2)))
+  }
+
+  add(ep.newline())
+  add(ep.align('center'))
+  add(ep.textLine('powered by s/e smarte events'))
+
+  add(ep.newline(4))
+  add(ep.cut())
+  return Buffer.concat(parts)
+}
+
+// ---------------------------------------------------------------------------
 // Inventur-Protokoll (kompakt: nur Abweichungen — Vollprotokoll gibt es als CSV/A4)
 // ---------------------------------------------------------------------------
 

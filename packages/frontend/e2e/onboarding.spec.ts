@@ -1274,12 +1274,17 @@ test('Angebot: Liste, Status-Wechsel, Lieferschein und Sammelrechnung durch die 
   // Bestätigungsbutton verschwindet, sobald neuerStatus == angebot.status → Status übernommen
   await expect(dialog.getByRole('button', { name: /Status auf/ })).toHaveCount(0)
 
-  // Lieferschein erzeugen → Zeile L-XXXX erscheint in der Lieferschein-Tabelle
-  await dialog.getByRole('button', { name: '+ Neuer Lieferschein' }).click()
+  // Lieferschein erzeugen → seit v0.7.134 öffnet der einheitliche Ausgabe-Dialog
+  // (kein Zwangsdruck mehr); „Ohne Druck fortfahren" führt den Ablauf weiter.
+  await dialog.getByRole('button', { name: '→ In Lieferschein übernehmen' }).click()
+  await expect(page.getByText(/Lieferschein L-\d{4} ausgeben/)).toBeVisible({ timeout: 10_000 })
+  await page.getByRole('button', { name: 'Ohne Druck fortfahren' }).click()
   await expect(dialog.getByText(/L-\d{4}/)).toBeVisible()
 
   // Sammelrechnung aus dem offenen Lieferschein → LS wird abgeschlossen, Button verschwindet
   await dialog.getByRole('button', { name: /Sammelrechnung aus/ }).click()
+  await expect(page.getByText(/Rechnung SR-\d{4} ausgeben/)).toBeVisible({ timeout: 10_000 })
+  await page.getByRole('button', { name: 'Ohne Druck fortfahren' }).click()
   await expect(dialog.getByText('Abgeschlossen')).toBeVisible()
   await expect(dialog.getByRole('button', { name: /Sammelrechnung aus/ })).toHaveCount(0)
 
@@ -2198,14 +2203,15 @@ test('Seriennummern: Lieferschein weist Serials zu und markiert sie als verkauft
     page.waitForResponse(r => r.url().includes('/api/artikel') && r.request().method() === 'GET'),
     page.locator('tr', { hasText: nr }).click(),
   ])
-  // „+ Neuer Lieferschein" → Serial-Auswahl-Modal
-  await page.getByRole('button', { name: '+ Neuer Lieferschein' }).click()
+  // „In Lieferschein übernehmen" → Serial-Auswahl-Modal
+  await page.getByRole('button', { name: '→ In Lieferschein übernehmen' }).click()
   await expect(page.getByText('Seriennummern für den Lieferschein wählen')).toBeVisible({ timeout: 10_000 })
 
-  // Beide Seriennummern wählen → Lieferschein erstellen
+  // Beide Seriennummern wählen → Lieferschein erstellen → Ausgabe-Dialog wegklicken
   await page.getByRole('button', { name: sn1 }).click()
   await page.getByRole('button', { name: sn2 }).click()
   await page.getByRole('button', { name: 'Lieferschein erstellen' }).click()
+  await page.getByRole('button', { name: 'Ohne Druck fortfahren' }).click()
 
   // Beide Serials sind jetzt verkauft und am Lieferschein hinterlegt
   await expect.poll(async () => {
