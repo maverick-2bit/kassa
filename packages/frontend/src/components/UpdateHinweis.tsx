@@ -15,8 +15,36 @@ import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { systemApi } from '../lib/api'
 
+/**
+ * Holt das neue Bundle wirklich — ein blosses reload() genügt nicht.
+ *
+ * Der alte Service Worker beantwortet die Navigation aus seinem Cache und
+ * liefert damit endlos dasselbe Bundle. Darum erst die versionierten
+ * kassa-*-Caches leeren und die Registrierung entfernen; die nächste Ladung
+ * geht dann am SW vorbei ans Netz, das neue Bundle registriert sich selbst neu.
+ *
+ * Die Offline-Warteschlange liegt in IndexedDB und bleibt dabei unberührt.
+ */
+async function aktualisieren(setLaeuft: (v: boolean) => void): Promise<void> {
+  setLaeuft(true)
+  try {
+    if ('caches' in window) {
+      const keys = await caches.keys()
+      await Promise.all(keys.filter(k => k.startsWith('kassa-')).map(k => caches.delete(k)))
+    }
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations()
+      await Promise.all(regs.map(r => r.unregister()))
+    }
+  } catch {
+    /* Aufräumen darf den Reload nicht verhindern */
+  }
+  window.location.reload()
+}
+
 export function UpdateHinweis() {
   const [updateBereit, setUpdateBereit] = useState(false)
+  const [laeuft, setLaeuft]             = useState(false)
 
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return
@@ -53,10 +81,11 @@ export function UpdateHinweis() {
       </span>
       <button
         type="button"
-        onClick={() => window.location.reload()}
-        className="rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-brand-700"
+        disabled={laeuft}
+        onClick={() => { void aktualisieren(setLaeuft) }}
+        className="rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
       >
-        Jetzt aktualisieren
+        {laeuft ? 'Wird geladen…' : 'Jetzt aktualisieren'}
       </button>
     </div>
   )
