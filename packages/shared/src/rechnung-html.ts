@@ -215,9 +215,22 @@ export function generiereBaseCss(): string {
     display: flex;
     gap: 10mm;
     margin-top: 4mm;
+    align-items: flex-start;
+  }
+  /* Das Flex-Item ist der Wrapper um die Steuertabelle, nicht die Tabelle selbst.
+     Ohne dieses flex:1 wächst er nicht, und der Summenblock klebt links an der
+     Steuertabelle statt am rechten Rand. Die Tabelle darin behält ihre
+     natürliche Breite. */
+  .abschluss > :first-child:not(.gesamt-box) {
+    flex: 1;
+    min-width: 0;
+  }
+  /* Zweiter Anker: schiebt den Summenblock auch dann nach rechts, wenn die
+     Steuertabelle ganz entfällt (nur ein Steuersatz). */
+  .abschluss > .gesamt-box {
+    margin-left: auto;
   }
   .steuer-tabelle {
-    flex: 1;
     border-collapse: collapse;
     font-size: 9pt;
   }

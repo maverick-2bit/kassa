@@ -155,7 +155,21 @@ self.addEventListener('fetch', function(event) {
     return
   }
 
-  // App-Shell → Cache-First
+  // Navigationen (index.html) → Network-First.
+  //
+  // WICHTIG, nicht Cache-First: index.html verweist auf die gehashten Bundle-
+  // Dateien. Käme sie aus dem Cache, liefe nach einem Update ewig das alte
+  // Bundle. Und weil die SW-Registrierungs-URL /sw.js?v=<version> aus genau
+  // diesem alten Bundle stammt, fragt der Browser immer wieder dieselbe URL an,
+  // bekommt „unverändert" und installiert nie einen neuen SW — die Kassa käme
+  // aus eigener Kraft nie wieder aus dem alten Stand heraus.
+  if (request.mode === 'navigate') {
+    event.respondWith(networkFirst(request, STATIC_CACHE))
+    return
+  }
+
+  // Übrige Shell-Dateien (gehashte Assets, Icons) → Cache-First.
+  // Die sind unveränderlich: neue Version ⇒ neuer Dateiname.
   if (request.method === 'GET') {
     event.respondWith(cacheFirst(request))
     return

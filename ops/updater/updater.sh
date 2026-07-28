@@ -77,9 +77,33 @@ run_update() {
   # shellcheck disable=SC2086 — Wortauftrennung der Service-Liste ist gewollt
   if docker compose -p kassa --project-directory "$WORKSPACE" -f "$WORKSPACE/docker-compose.yml" \
        up -d --build $APP_SERVICES; then
-    v="$(grep -m1 '"version"' "$WORKSPACE/package.json" 2>/dev/null | sed -E 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/')"
-    [ -n "$v" ] && vjson="\"$v\"" || vjson=null
-    status fertig "Update abgeschlossen" null "$vjson"
+    ziel="$(grep -m1 '"version"' "$WORKSPACE/package.json" 2>/dev/null | sed -E 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/')"
+
+    # Nicht die Quell-Version als Erfolg melden, sondern die, die danach WIRKLICH
+    # läuft. Sonst meldet die Kassa „fertig — v0.7.139", obwohl der Container gar
+    # nicht ersetzt wurde, und der Benutzer lädt endlos neu ohne Wirkung.
+    status laeuft "Neustart wird abgewartet" null null
+    laeuft_version=""
+    i=0
+    while [ $i -lt 60 ]; do
+      laeuft_version="$(docker compose -p kassa --project-directory "$WORKSPACE" \
+        -f "$WORKSPACE/docker-compose.yml" exec -T backend \
+        node -p "require('/app/package.json').version" 2>/dev/null | tr -d '\r\n')"
+      [ -n "$laeuft_version" ] && break
+      i=$((i + 1))
+      sleep 2
+    done
+
+    if [ -z "$laeuft_version" ]; then
+      status fehler "Backend meldet sich nach dem Neustart nicht" \
+        '"Backend nach Update nicht erreichbar — docker compose logs backend"' null
+    elif [ -n "$ziel" ] && [ "$laeuft_version" != "$ziel" ]; then
+      status fehler "Neuer Stand wurde nicht übernommen (läuft weiter auf v$laeuft_version)" \
+        "\"Quellstand v$ziel geladen, aber der Backend-Container läuft weiter auf v$laeuft_version — Images wurden nicht ersetzt.\"" \
+        "\"$laeuft_version\""
+    else
+      status fertig "Update abgeschlossen" null "\"$laeuft_version\""
+    fi
   else
     status fehler "Build fehlgeschlagen — Logs prüfen (docker compose logs)" '"docker compose up --build"' null
   fi
