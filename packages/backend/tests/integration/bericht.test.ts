@@ -256,6 +256,37 @@ describe('Berichte (Integration, echtes PostgreSQL)', () => {
     expect(nurZiel.json().gesamt.umsatzCent).toBe(5000)
   })
 
+  it('Buchungsjournal-CSV liefert je Beleg eine Zeile mit Wiener Datum', async () => {
+    // Bisher ungetestet, geht aber an den Steuerberater (DATEV/BMD). Seit
+    // v0.7.142 formatiert ein wiederverwendeter Intl-Formatter das Datum
+    // statt toLocaleDateString je Zeile — Ausgabe muss identisch bleiben.
+    const heute = heuteWien()
+    const res = await srv.fastify.inject({
+      method: 'GET', headers: auth(),
+      url: `/api/berichte/buchungsjournal?kasseIds=${kasseId}&von=${heute}&bis=${heute}`,
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.headers['content-type']).toContain('text/csv')
+
+    const zeilen = res.body.replace(/^﻿/, '').split('\r\n')
+    expect(zeilen[0]).toBe(
+      'Datum;Belegnummer;Belegtyp;KassenID;Brutto;USt20%_Basis;USt20%;USt10%_Basis;USt10%;' +
+      'USt13%_Basis;USt13%;Steuerfrei;Bar;Karte;Sonstige',
+    )
+    // Kopf + je Beleg/Storno eine Zeile
+    expect(zeilen.length - 1).toBe(Number(res.headers['x-anzahl-belege']))
+    expect(zeilen.length).toBeGreaterThan(1)
+
+    const erwartetesDatum = new Date().toLocaleDateString('de-AT', { timeZone: 'Europe/Vienna' })
+    for (const zeile of zeilen.slice(1)) {
+      expect(zeile.split(';')[0]).toBe(erwartetesDatum)
+    }
+
+    // Beträge im deutschen Format mit zwei Nachkommastellen
+    const ersteZeile = zeilen[1]!.split(';')
+    expect(ersteZeile[4]).toMatch(/^-?\d+,\d{2}$/)
+  })
+
   // -------------------------------------------------------------------------
   // Tagesgrenzen des Datumsfilters (v0.7.141)
   // -------------------------------------------------------------------------
