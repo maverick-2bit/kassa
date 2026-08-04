@@ -7,6 +7,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
+import { sql } from 'drizzle-orm'
 import type { BelegResponse, Tagesabschluss } from '@kassa/shared'
 import type { FinanzOnlineClient } from '@kassa/rksv'
 import { buildTestServer, type TestServer } from '../helpers/testServer.js'
@@ -144,6 +145,43 @@ describe('Tagesabschluss / Z-Bon (Integration, echtes PostgreSQL)', () => {
     expect(body.anzahlStornobelege).toBe(0)
     expect(body.nettoUmsatzCent).toBe(0)
     expect(body.mwst).toEqual([])
+  })
+
+  it('schneidet den Tag exakt an der Wiener Mitternacht — auch am 25-Stunden-Tag', async () => {
+    // Der Z-Bon ist fiskalisch das Tagesergebnis: ein Beleg um 23:59:59 gehört
+    // auf den Abschluss DIESES Tages, einer um 00:00:00 auf den des nächsten.
+    // Seit v0.7.142 vergleicht der Filter die Spalte direkt gegen berechnete
+    // Zeitpunkte (index-tauglich) statt sie umzurechnen — die Grenze darf sich
+    // dadurch nicht verschieben. Als Datum der 26.10.2025: an dem Tag geht Wien
+    // zurück auf Winterzeit, der Tag hat 25 Stunden.
+    const beleg = (await srv.fastify.inject({
+      method: 'POST', url: '/api/belege/barzahlung', headers: auth(),
+      payload: barzahlung(kasseId, 333, 'normal', 'bar'),
+    })).json() as BelegResponse
+
+    const setzeBelegDatum = (wienerZeitpunkt: string) => idb.db.execute(sql`
+      UPDATE belege
+         SET beleg_datum = ${wienerZeitpunkt}::timestamp AT TIME ZONE 'Europe/Vienna'
+       WHERE id = ${beleg.id}::uuid`)
+
+    const belegeAm = async (tag: string) =>
+      ((await ta(tag)).json() as Tagesabschluss).anzahlBarzahlungsbelege
+
+    await setzeBelegDatum('2025-10-26 00:00:00')
+    expect(await belegeAm('2025-10-26')).toBe(1)
+    expect(await belegeAm('2025-10-25')).toBe(0)
+
+    await setzeBelegDatum('2025-10-26 23:59:59')
+    expect(await belegeAm('2025-10-26')).toBe(1)
+    expect(await belegeAm('2025-10-27')).toBe(0)
+
+    await setzeBelegDatum('2025-10-27 00:00:00')
+    expect(await belegeAm('2025-10-26')).toBe(0)
+    expect(await belegeAm('2025-10-27')).toBe(1)
+
+    // Der Betrag landet vollständig auf dem Abschluss des richtigen Tages
+    const abschluss = (await ta('2025-10-27')).json() as Tagesabschluss
+    expect(abschluss.barCent).toBe(333)
   })
 
   it('liefert 404 für eine fremde Kasse', async () => {

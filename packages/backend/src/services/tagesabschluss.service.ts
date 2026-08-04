@@ -8,9 +8,10 @@
  * damit Sommer-/Winterzeit korrekt berücksichtigt wird.
  */
 
-import { and, eq, inArray, sql, sum } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import { MWST_LABELS, type MwStSatz, type Tagesabschluss } from '@kassa/shared'
 import type { Db } from '../db/client.js'
+import { tagesBereich } from '../db/datum.js'
 import { belege } from '../db/schema.js'
 import { pruefeKasseGehoertZuMandant } from '../auth/scope.js'
 
@@ -47,8 +48,10 @@ export async function holeTagesabschluss(
   const gehoert = await pruefeKasseGehoertZuMandant(deps.db, kasseId, mandantId)
   if (!gehoert) throw new TagesabschlussError(404, 'Kasse nicht gefunden')
 
-  // Alle Barzahlungs- und Stornobelege des Tages laden
-  // DATE(...) AT TIME ZONE 'Europe/Vienna' → korrekte Tagesgrenze für Wien
+  // Alle Barzahlungs- und Stornobelege des Tages laden. Bewusst als Zeilen und
+  // nicht als SQL-Aggregat wie im Umsatzbericht: die Menge ist hier durch den
+  // einen Tag natürlich begrenzt, und der Z-Bon soll so direkt wie möglich aus
+  // den Belegen entstehen. Entscheidend ist der index-taugliche Datumsfilter.
   const rows = await deps.db
     .select()
     .from(belege)
@@ -56,7 +59,7 @@ export async function holeTagesabschluss(
       and(
         eq(belege.kasseId, kasseId),
         inArray(belege.belegTyp, ['Barzahlungsbeleg', 'Stornobeleg']),
-        sql`(${belege.belegDatum} at time zone 'Europe/Vienna')::date = ${datum}::date`,
+        tagesBereich(sql`${belege.belegDatum}`, datum),
       ),
     )
 

@@ -114,7 +114,14 @@ describe('BMD-Export (Integration, echtes PostgreSQL)', () => {
     expect(zeilen).toHaveLength(1)
 
     // Spalten: Datum;Nr;Text;Brutto;Steuercode;Netto;MwSt;Konto;Gegenkonto
-    const [, , text, brutto, steuercode, netto, mwst, konto, gegenkonto] = zeilen[0]!
+    const [datum, , text, brutto, steuercode, netto, mwst, konto, gegenkonto] = zeilen[0]!
+    // Das Datumsformat ist Teil des Buchhaltungs-Exports: TT.MM.JJJJ, Wiener
+    // Kalendertag. Seit v0.7.142 formatiert ein wiederverwendeter Intl-Formatter
+    // statt toLocaleDateString je Zeile — die Ausgabe muss gleich bleiben.
+    expect(datum).toMatch(/^\d{2}\.\d{2}\.\d{4}$/)
+    expect(datum).toBe(new Date().toLocaleDateString('de-AT', {
+      day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/Vienna',
+    }))
     expect(text).toBe('Kassenbon #2')            // #1 = Startbeleg
     expect(brutto).toBe('12,00')
     expect(netto).toBe('10,00')                  // 1200 / 1.2
