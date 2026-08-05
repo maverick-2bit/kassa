@@ -5,6 +5,8 @@ import type {
   Artikel,
   BelegResponse,
   BonierungErgebnis,
+  BonierungInput,
+  BonierZielFehler,
   ModifikatorAuswahl,
   ModifikatorGruppe,
   RabattInput,
@@ -13,7 +15,7 @@ import type {
   TischTabSplittenInput,
   TischTabResponse,
 } from '@kassa/shared'
-import { aktionsPreisCent, aktiverRabattProzent, aktiveAktion } from '@kassa/shared'
+import { aktionsPreisCent, aktiverRabattProzent, aktiveAktion, bonierFehlschlaege } from '@kassa/shared'
 import type { AktiveAktion } from '@kassa/shared'
 import { artikelApi, belegApi, bonierApi, druckerApi, kategorieApi, modifikatorApi, posConfigApi, preisregelApi, tischTabApi, zvtApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
@@ -73,6 +75,15 @@ export function TischTabPage() {
   const [korb, setKorb]                             = useState<KorbPosition[]>([])
   const [letzterBon, setLetzterBon]                 = useState<BelegResponse | null>(null)
   const [geparkt, setGeparkt]                       = useState(false)
+  /**
+   * Ziele, die den Küchenbon NICHT bekommen haben, samt der Bonierung zum
+   * Nachsenden. Bleibt stehen, bis der Bon durch ist oder weggeklickt wird —
+   * eine Bestellung, die nicht in der Küche ankommt, darf nicht nach 3 Sekunden
+   * verschwinden wie die grüne Bestätigung.
+   */
+  const [bonierFehler, setBonierFehler]             = useState<
+    { ziele: BonierZielFehler[]; nachsenden: BonierungInput } | null
+  >(null)
   const [rabatt, setRabatt]                         = useState<RabattInput | null>(null)
   const [rabattOffen, setRabattOffen]               = useState(false)
   const [posRabatteOffen, setPosRabatteOffen]       = useState(false)
@@ -280,24 +291,51 @@ export function TischTabPage() {
   // Parken = Positionen auf den Tisch buchen. Boniert Küche/Drucker, wo Artikel
   // zugeordnet sind; Artikel OHNE KDS-Station/Bonierdrucker werden trotzdem
   // gespeichert (das „nichts zu bonieren" des Servers wird geschluckt).
+  /**
+   * Bonierergebnis bewerten. Liefert true, wenn ein Ziel den Bon NICHT bekommen
+   * hat — dann steht die rote Meldung, bis nachgesendet oder weggeklickt wurde.
+   */
+  const meldeBonierFehler = (
+    ergebnis: BonierungErgebnis | null,
+    gesendet: BonierungInput | null,
+  ): boolean => {
+    const ziele = ergebnis ? bonierFehlschlaege(ergebnis) : []
+    if (ziele.length === 0 || !gesendet) {
+      setBonierFehler(null)
+      return false
+    }
+    setBonierFehler({ ziele, nachsenden: gesendet })
+    return true
+  }
+
+  const nachsendenMutation = useMutation({
+    mutationFn: (input: BonierungInput) => bonierApi.bonieren(input),
+    // Erneut bewerten: klappt es jetzt, verschwindet die Meldung; klappt nur ein
+    // Teil, bleibt sie mit den verbliebenen Zielen stehen.
+    onSuccess: (ergebnis, input) => { meldeBonierFehler(ergebnis, input) },
+    onError:   (err) => setFehler(err instanceof Error ? err.message : String(err)),
+  })
+
   const parkenMutation = useMutation({
     mutationFn: async () => {
       let ergebnis: BonierungErgebnis | null = null
+      let gesendet: BonierungInput | null = null
       // Mit Gänge-Modul werden beim Parken nur die SOFORT-Artikel (Gang 0) boniert;
       // Gang-Positionen warten auf „Gang abrufen". Ohne Modul: alles wie bisher.
       const zuBonieren = gaengeAktiv ? korb.filter(p => p.gang === 0) : korb
       if (zuBonieren.length > 0) {
+        gesendet = {
+          kasseId:    identity.kasseId,
+          tabId:      tabId!,
+          tisch:      tab?.tischNummer ?? '',
+          kellner:    tab?.kellner ?? '',
+          positionen: zuBonieren.map(p => ({ artikelId: p.artikel.id, menge: p.menge })),
+          // Nur drucken (KDS + Bonierdrucker) — der Lagerstand wird beim Speichern
+          // der Positionen (aktualisierePositionen) abgezogen, nicht hier.
+          ohneLagerabzug: true,
+        }
         try {
-          ergebnis = await bonierApi.bonieren({
-            kasseId:    identity.kasseId,
-            tabId:      tabId!,
-            tisch:      tab?.tischNummer ?? '',
-            kellner:    tab?.kellner ?? '',
-            positionen: zuBonieren.map(p => ({ artikelId: p.artikel.id, menge: p.menge })),
-            // Nur drucken (KDS + Bonierdrucker) — der Lagerstand wird beim Speichern
-            // der Positionen (aktualisierePositionen) abgezogen, nicht hier.
-            ohneLagerabzug: true,
-          })
+          ergebnis = await bonierApi.bonieren(gesendet)
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
           if (!/nichts zu bonieren/i.test(msg)) throw err  // echte Fehler weiterreichen
@@ -310,17 +348,21 @@ export function TischTabPage() {
         ? allePositionen.map(p => (p.gang ?? 0) === 0 && !p.gesendetAm ? { ...p, gesendetAm: jetzt } : p)
         : allePositionen
       await tischTabApi.aktualisierePositionen(tabId!, zuSpeichern)
-      return ergebnis
+      return { ergebnis, gesendet }
     },
-    onSuccess: () => {
+    onSuccess: ({ ergebnis, gesendet }) => {
       // Parken bucht auf den Tisch + druckt den Küchenzettel still. Kein „AE1…"-Modal —
-      // nur eine kurze Bestätigung.
+      // nur eine kurze Bestätigung. ABER: wenn ein Ziel den Bon nicht bekommen hat,
+      // muss das sichtbar werden — sonst steht die Bestellung am Tisch und in der
+      // Küche kommt nie etwas an.
       qc.invalidateQueries({ queryKey: ['tisch-tab', tabId] })
       qc.invalidateQueries({ queryKey: ['artikel', identity.mandantId] })
       setKorb([])
       setFehler(null)
-      setGeparkt(true)
-      setTimeout(() => setGeparkt(false), 3000)
+      if (!meldeBonierFehler(ergebnis, gesendet)) {
+        setGeparkt(true)
+        setTimeout(() => setGeparkt(false), 3000)
+      }
     },
     onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
   })
@@ -333,15 +375,18 @@ export function TischTabPage() {
         // hergerichtet + an den Tisch geliefert werden kann. Nur drucken, KEIN
         // Lagerabzug (den macht aktualisierePositionen). „nichts zu bonieren"
         // (Artikel ohne KDS/Bonierdrucker) wird geschluckt.
+        const gesendet: BonierungInput = {
+          kasseId:    identity.kasseId,
+          tabId:      tabId!,
+          tisch:      tab?.tischNummer ?? '',
+          kellner:    tab?.kellner ?? '',
+          positionen: korb.map(p => ({ artikelId: p.artikel.id, menge: p.menge })),
+          ohneLagerabzug: true,
+        }
         try {
-          await bonierApi.bonieren({
-            kasseId:    identity.kasseId,
-            tabId:      tabId!,
-            tisch:      tab?.tischNummer ?? '',
-            kellner:    tab?.kellner ?? '',
-            positionen: korb.map(p => ({ artikelId: p.artikel.id, menge: p.menge })),
-            ohneLagerabzug: true,
-          })
+          // Auch hier gilt: nicht zugestellte Ziele melden. Der Gast zahlt gerade,
+          // die Küche muss die Bestellung trotzdem bekommen.
+          meldeBonierFehler(await bonierApi.bonieren(gesendet), gesendet)
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
           if (!/nichts zu bonieren/i.test(msg)) throw err
@@ -822,6 +867,46 @@ export function TischTabPage() {
             {geparkt && (
               <div className="rounded border border-green-200 bg-green-50 p-2 text-center text-xs font-semibold text-green-800">
                 ✓ Geparkt — auf den Tisch gebucht
+              </div>
+            )}
+
+            {/* Küchenbon nicht zugestellt — bleibt stehen, bis nachgesendet oder
+                weggeklickt. Die Positionen sind gebucht, nur der Bon fehlt. */}
+            {bonierFehler && (
+              <div className="rounded border-2 border-red-400 bg-red-50 p-3 space-y-2">
+                <p className="text-xs font-bold text-red-800">
+                  ⚠ Bon NICHT angekommen — bitte prüfen
+                </p>
+                <ul className="space-y-1 text-xs text-red-700">
+                  {bonierFehler.ziele.map((z, i) => (
+                    <li key={`${z.ziel}-${i}`}>
+                      <span className="font-semibold">{z.ziel}</span>
+                      {z.istBackup && ' (Zweitdrucker)'}
+                      {z.ip && ` · ${z.ip}`}
+                      <span className="block text-red-600">{z.fehler}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-xs text-red-700">
+                  Die Artikel sind am Tisch gebucht. Nachsenden oder in der Küche Bescheid geben.
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="secondary"
+                    className="flex-1 text-xs"
+                    loading={nachsendenMutation.isPending}
+                    onClick={() => nachsendenMutation.mutate(bonierFehler.nachsenden)}
+                  >
+                    Nochmal senden
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    className="text-xs"
+                    onClick={() => setBonierFehler(null)}
+                  >
+                    Verstanden
+                  </Button>
+                </div>
               </div>
             )}
 

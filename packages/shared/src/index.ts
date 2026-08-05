@@ -156,10 +156,12 @@ export {
   BonierungInputSchema,
   BonierungErgebnisSchema,
   BonierungPositionSchema,
+  bonierFehlschlaege,
 } from './schemas/bonierung.js'
 export type {
   BonierungInput,
   BonierungErgebnis,
+  BonierZielFehler,
 } from './schemas/bonierung.js'
 
 // ZVT-Kartenterminal

@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
 import { QRCodeSVG } from 'qrcode.react'
-import type { TabPosition } from '@kassa/shared'
+import type { BonierungErgebnis, BonierungInput, BonierZielFehler, TabPosition } from '@kassa/shared'
+import { bonierFehlschlaege } from '@kassa/shared'
 import { tischTabApi, bonierApi, druckerApi, oeffentlicherBelegApi, zvtApi } from '../lib/api'
 import { getAuth, gaengeAktiv as istGaengeAktiv, gaengeAnzahl } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
@@ -22,6 +23,14 @@ export function TabPage() {
   const auth        = getAuth()!
   const [bonierFehler, setBonierFehler] = useState<string | null>(null)
   const [bonierErfolg, setBonierErfolg] = useState(false)
+  /**
+   * Ziele, die den Bon nicht bekommen haben, samt Bonierung zum Nachsenden.
+   * Verschwindet NICHT von selbst — die grüne Bestätigung tat das bisher auch
+   * dann, wenn in der Küche nichts angekommen ist.
+   */
+  const [nichtZugestellt, setNichtZugestellt] = useState<
+    { ziele: BonierZielFehler[]; nachsenden: BonierungInput } | null
+  >(null)
 
   // Gänge-Steuerung (Modul)
   const gaenge = istGaengeAktiv()
@@ -34,34 +43,60 @@ export function TabPage() {
     enabled:         !!tabId,
   })
 
+  /**
+   * Bonierergebnis bewerten. true = ein Ziel hat den Bon nicht bekommen; dann
+   * bleibt die rote Meldung stehen statt der grünen Bestätigung.
+   */
+  const meldeBonierFehler = (
+    ergebnis: BonierungErgebnis | null,
+    gesendet: BonierungInput | null,
+  ): boolean => {
+    const ziele = ergebnis ? bonierFehlschlaege(ergebnis) : []
+    if (ziele.length === 0 || !gesendet) {
+      setNichtZugestellt(null)
+      return false
+    }
+    setNichtZugestellt({ ziele, nachsenden: gesendet })
+    return true
+  }
+
+  const nachsendenMutation = useMutation({
+    mutationFn: (input: BonierungInput) => bonierApi.bonieren(input),
+    onSuccess:  (ergebnis, input) => { meldeBonierFehler(ergebnis, input) },
+    onError:    (err) => setBonierFehler(err instanceof Error ? err.message : 'Fehler beim Nachsenden'),
+  })
+
   const bonierMutation = useMutation({
-    mutationFn: async (): Promise<unknown> => {
+    mutationFn: async (): Promise<{ ergebnis: BonierungErgebnis | null; gesendet: BonierungInput }> => {
       const tab = tabQuery.data!
       // ohneLagerabzug: der Lagerstand wurde bereits beim Hinzufügen der Positionen
       // (aktualisierePositionen) abgezogen — sonst Doppel-Abzug beim Bonieren.
       if (!gaenge) {
         // Ohne Gänge-Modul: wie bisher alle Positionen senden
-        return bonierApi.bonieren({
+        const gesendet: BonierungInput = {
           kasseId:    identity.kasseId,
           tabId:      tab.id,
           tisch:      tab.tischNummer,
           kellner:    auth.user.name,
           positionen: tab.positionen.map(p => ({ artikelId: p.artikelId, menge: p.menge })),
           ohneLagerabzug: true,
-        })
+        }
+        return { ergebnis: await bonierApi.bonieren(gesendet), gesendet }
       }
       // Mit Gänge-Modul: nur offene SOFORT-Positionen senden + als gesendet markieren
       const offen = tab.positionen.filter(p => (p.gang ?? 0) === 0 && !p.gesendetAm)
       if (offen.length === 0) throw new Error('Keine offenen Sofort-Positionen')
+      const gesendet: BonierungInput = {
+        kasseId:    identity.kasseId,
+        tabId:      tab.id,
+        tisch:      tab.tischNummer,
+        kellner:    auth.user.name,
+        positionen: offen.map(p => ({ artikelId: p.artikelId, menge: p.menge })),
+        ohneLagerabzug: true,
+      }
+      let ergebnis: BonierungErgebnis | null = null
       try {
-        await bonierApi.bonieren({
-          kasseId:    identity.kasseId,
-          tabId:      tab.id,
-          tisch:      tab.tischNummer,
-          kellner:    auth.user.name,
-          positionen: offen.map(p => ({ artikelId: p.artikelId, menge: p.menge })),
-          ohneLagerabzug: true,
-        })
+        ergebnis = await bonierApi.bonieren(gesendet)
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         if (!/nichts zu bonieren/i.test(msg)) throw err
@@ -70,11 +105,12 @@ export function TabPage() {
       await tischTabApi.aktualisierePositionen(tab.id, tab.positionen.map(p =>
         (p.gang ?? 0) === 0 && !p.gesendetAm ? { ...p, gesendetAm: jetzt } : p,
       ))
-      return null
+      return { ergebnis, gesendet }
     },
-    onSuccess: () => {
-      setBonierErfolg(true)
+    onSuccess: ({ ergebnis, gesendet }) => {
       qc.invalidateQueries({ queryKey: ['tisch-tab', tabId] })
+      if (meldeBonierFehler(ergebnis, gesendet)) return
+      setBonierErfolg(true)
       setTimeout(() => setBonierErfolg(false), 3000)
     },
     onError: (err) => setBonierFehler(err instanceof Error ? err.message : 'Fehler beim Bonieren'),
@@ -404,6 +440,40 @@ export function TabPage() {
           )}
           {bonierErfolg && (
             <p className="text-brand-600 text-sm text-center font-bold">✓ Bon wurde gesendet</p>
+          )}
+
+          {/* Bon nicht zugestellt: bleibt stehen, bis nachgesendet oder bestätigt.
+              Die Positionen sind gebucht — nur der Ausdruck fehlt. */}
+          {nichtZugestellt && (
+            <div className="rounded-lg border-2 border-red-500 bg-red-50 p-3 space-y-2">
+              <p className="text-sm font-bold text-red-800">⚠ Bon NICHT angekommen</p>
+              <ul className="space-y-1 text-xs text-red-700">
+                {nichtZugestellt.ziele.map((z, i) => (
+                  <li key={`${z.ziel}-${i}`}>
+                    <span className="font-semibold">{z.ziel}</span>
+                    {z.istBackup && ' (Zweitdrucker)'}
+                    <span className="block text-red-600">{z.fehler}</span>
+                  </li>
+                ))}
+              </ul>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="flex-1 rounded-lg bg-red-600 py-3 text-sm font-bold text-white active:bg-red-700 disabled:opacity-50"
+                  disabled={nachsendenMutation.isPending}
+                  onClick={() => nachsendenMutation.mutate(nichtZugestellt.nachsenden)}
+                >
+                  {nachsendenMutation.isPending ? 'Sende …' : 'Nochmal senden'}
+                </button>
+                <button
+                  type="button"
+                  className="rounded-lg border border-red-300 px-4 py-3 text-sm font-bold text-red-700"
+                  onClick={() => setNichtZugestellt(null)}
+                >
+                  OK
+                </button>
+              </div>
+            </div>
           )}
 
           {/* Gänge-Modul: nächsten offenen Gang mit einem Tastendruck abrufen */}

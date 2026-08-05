@@ -177,10 +177,16 @@ describe('POST /api/bestellung/bonieren', () => {
   })
 
   /**
-   * Happy-Path: Backup-Drucker vorhanden, aber offline (TCP schlägt fehl).
-   * Der Bon gilt als gesendet (200), Druckfehler werden im Ergebnis vermerkt.
+   * Einziger Drucker offline (TCP schlägt fehl) → 207, nicht 200.
+   *
+   * Bis v0.7.142 stand hier 200 mit der Begründung „stationen ist leer →
+   * every() = true". Das war die Mechanik, nicht die Absicht: der Bon hat
+   * niemanden erreicht. Die Kasse zeigte trotzdem grün, die Bestellung stand
+   * am Tisch und in der Küche kam nie etwas an. Der Bon wird weiterhin
+   * ERSTELLT (bonNummer) — nur zugestellt wurde er nicht, und das sagt der
+   * Status jetzt auch.
    */
-  it('200 mit Backup-Drucker auch wenn Drucker offline', async () => {
+  it('207 wenn der einzige (Backup-)Drucker offline ist', async () => {
     const srv = await buildTestServer(mockDb({
       selects: [
         [{ id: KASSE_ID }],          // pruefeKasseGehoertZuMandant
@@ -194,8 +200,7 @@ describe('POST /api/bestellung/bonieren', () => {
       headers: srv.authHeader(),
       payload: gueltigeBestellung(),
     })
-    // stationen ist leer → every() = true → 200
-    expect(res.statusCode).toBe(200)
+    expect(res.statusCode).toBe(207)
     const body = res.json()
     expect(body.bonNummer).toBeDefined()
     expect(body.stationen).toEqual([])
@@ -205,7 +210,7 @@ describe('POST /api/bestellung/bonieren', () => {
     await srv.close()
   }, 8_000)
 
-  it('200 ohne Tisch (Direktverkauf an der Schank)', async () => {
+  it('erzeugt auch ohne Tisch einen Bon (Direktverkauf an der Schank)', async () => {
     const srv = await buildTestServer(mockDb({
       selects: [
         [{ id: KASSE_ID }],
@@ -220,7 +225,9 @@ describe('POST /api/bestellung/bonieren', () => {
       headers: srv.authHeader(),
       payload: ohneTisch,   // kein Tisch → provisorischer Schank-Bon
     })
-    expect(res.statusCode).toBe(200)
+    // 207, weil der Testdrucker offline ist — hier geht es nur darum, dass der
+    // Bon ohne Tischangabe überhaupt zustande kommt.
+    expect(res.statusCode).toBe(207)
     expect(res.json().bonNummer).toBeDefined()
     await srv.close()
   }, 8_000)
