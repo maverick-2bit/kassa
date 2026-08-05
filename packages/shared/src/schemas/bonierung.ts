@@ -5,7 +5,7 @@
  */
 
 import { z } from 'zod'
-import { StationSchema } from './station.js'
+import { StationSchema, STATION_LABELS } from './station.js'
 
 export const BonierungPositionSchema = z.object({
   artikelId: z.string().uuid(),
@@ -54,3 +54,52 @@ export const BonierungErgebnisSchema = z.object({
   })).default([]),
 })
 export type BonierungErgebnis = z.infer<typeof BonierungErgebnisSchema>
+
+/** Ein Ziel (KDS-Station oder Bonierdrucker), das den Bon NICHT bekommen hat. */
+export interface BonierZielFehler {
+  /** Anzeigename: Stations-Label bzw. Druckername */
+  ziel:      string
+  ip:        string
+  fehler:    string
+  /** Zweitdrucker (bekommt eine Kopie aller Positionen) statt Hauptziel */
+  istBackup: boolean
+}
+
+/**
+ * Ziele, die den Bonierbon nicht erhalten haben.
+ *
+ * Einzige Quelle für die Frage „ist der Küchenbon angekommen?" — Backend
+ * (HTTP-Status), Kassen-Oberfläche und Kellner-App bewerten damit dasselbe.
+ * Vorher prüfte der Server nur die KDS-Stationen: ein toter Bonierdrucker,
+ * also der Drucker in der Küche, lieferte glatte 200.
+ *
+ * Zweitdrucker bekommen eine Kopie ALLER Positionen (nicht erst, wenn der
+ * Hauptdrucker ausfällt) — ein stummer Zweitdrucker ist deshalb ebenfalls ein
+ * echter Fehlschlag, nur ein weniger dringender. `istBackup` macht das für die
+ * Anzeige unterscheidbar.
+ */
+export function bonierFehlschlaege(ergebnis: BonierungErgebnis): BonierZielFehler[] {
+  const fehlend: BonierZielFehler[] = []
+
+  for (const s of ergebnis.stationen) {
+    if (s.erfolgreich) continue
+    fehlend.push({
+      ziel:      STATION_LABELS[s.station] ?? s.station,
+      ip:        s.ip,
+      fehler:    s.fehler ?? 'unbekannter Fehler',
+      istBackup: false,
+    })
+  }
+
+  for (const d of ergebnis.drucker) {
+    if (d.erfolgreich) continue
+    fehlend.push({
+      ziel:      d.name,
+      ip:        d.ip,
+      fehler:    d.fehler ?? 'unbekannter Fehler',
+      istBackup: d.istBackup,
+    })
+  }
+
+  return fehlend
+}

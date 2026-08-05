@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify'
-import { BonierungInputSchema } from '@kassa/shared'
+import { BonierungInputSchema, bonierFehlschlaege } from '@kassa/shared'
 import {
   bonierBestellung,
   BonierError,
@@ -25,8 +25,11 @@ export const bonierRoute: FastifyPluginAsync<BonierRouteOptions> = async (fastif
       const ergebnis = await bonierBestellung(parsed.data, opts.deps, {
         ...(parsed.data.ohneLagerabzug && { ohneLagerabzug: true }),
       })
-      const erfolg = ergebnis.stationen.every((s) => s.erfolgreich)
-      return reply.status(erfolg ? 200 : 207).send(ergebnis)
+      // 207 sobald IRGENDEIN Ziel den Bon nicht bekommen hat — Stationen wie
+      // Bonierdrucker. Bis v0.7.142 wurden nur die Stationen geprüft, ein toter
+      // Küchendrucker meldete also 200 (siehe bonierFehlschlaege).
+      const fehlend = bonierFehlschlaege(ergebnis)
+      return reply.status(fehlend.length === 0 ? 200 : 207).send(ergebnis)
     } catch (err) {
       if (err instanceof BonierError) {
         return reply.status(err.httpStatus).send({ fehler: err.message })

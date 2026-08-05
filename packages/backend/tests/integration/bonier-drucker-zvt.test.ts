@@ -106,6 +106,36 @@ describe('Bonieren + Drucker/ZVT-Config (Integration, echtes PostgreSQL)', () =>
       expect(pizza?.lagerstandMenge).toBe(8)
     })
 
+    it('207 wenn der Bonierdrucker den Bon nicht bekommt (nicht 200)', async () => {
+      // Regression: bis v0.7.142 prüfte die Route NUR die KDS-Stationen. Ein
+      // toter Drucker in der Küche lieferte glatte 200 — die Kasse zeigte grün,
+      // die Bestellung stand am Tisch und in der Küche kam nie etwas an.
+      const drucker = await srv.fastify.inject({
+        method: 'POST', url: '/api/bonierdrucker', headers: auth(),
+        // 127.0.0.1:9 ist zu — gibt sofort ECONNREFUSED statt in einen Timeout zu laufen.
+        payload: { name: 'Toter Küchendrucker', ip: '127.0.0.1', port: 9 },
+      })
+      expect(drucker.statusCode).toBe(201)
+
+      const schnitzelId = await neuerArtikel({
+        bezeichnung: 'Schnitzel', preisBruttoCent: 1490,
+        bonierdruckerId: drucker.json().id,
+      })
+
+      const res = await srv.fastify.inject({
+        method: 'POST', url: '/api/bestellung/bonieren', headers: auth(),
+        payload: { kasseId, tisch: 'Tisch 7', kellner: 'Cem', positionen: [{ artikelId: schnitzelId, menge: 1 }] },
+      })
+
+      expect(res.statusCode).toBe(207)
+      const ergebnis = res.json()
+      expect(ergebnis.bonNummer).toBeTruthy()          // Bon existiert, nur zugestellt wurde er nicht
+      expect(ergebnis.drucker).toHaveLength(1)
+      expect(ergebnis.drucker[0].erfolgreich).toBe(false)
+      expect(ergebnis.drucker[0].name).toBe('Toter Küchendrucker')
+      expect(ergebnis.drucker[0].fehler).toBeTruthy()  // Grund steht drin, damit ihn die Kasse anzeigen kann
+    })
+
     it('400 wenn kein Artikel bonierbar ist (keine Station/kein Drucker)', async () => {
       const wasserId = await neuerArtikel({ bezeichnung: 'Wasser ohne Station', preisBruttoCent: 200 })
       const res = await srv.fastify.inject({
