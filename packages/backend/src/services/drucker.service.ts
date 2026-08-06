@@ -14,7 +14,7 @@
 
 import { Socket } from 'node:net'
 import { Buffer } from 'node:buffer'
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import type { BelegResponse, MwStSatz } from '@kassa/shared'
 import type { BelegPosition } from '@kassa/rksv'
 import type { Db } from '../db/client.js'
@@ -340,6 +340,80 @@ export function tryDruckeBeleg(
       logger.error({ retryErr, belegId }, 'Retry-Vorbereitung fehlgeschlagen')
     }
   })
+}
+
+// ---------------------------------------------------------------------------
+// Offene Druckprobleme
+// ---------------------------------------------------------------------------
+
+export interface DruckProblem {
+  belegId:         string
+  belegNummer:     number
+  belegTyp:        string
+  summeCent:       number
+  fehlerText:      string | null
+  druckerIp:       string
+  zuletztVersucht: string   // ISO
+}
+
+/**
+ * Belege, deren Bon nicht aus dem Drucker kam und die seither nicht
+ * nachgedruckt wurden.
+ *
+ * Der Autodruck läuft bewusst fire-and-forget mit Retry (2 s, 10 s, 30 s) — der
+ * Beleg ist signiert und persistiert, eine Druckpanne darf den Verkauf nicht
+ * blockieren. Scheitern aber ALLE Versuche, stand das bisher nur im Druck-Log,
+ * das im Betrieb niemand ansieht: die Kassa meldete Erfolg, der Gast bekam
+ * keinen Beleg. Bei leerem Papier betrifft das jeden weiteren Verkauf.
+ *
+ * Bewertet wird je Beleg der JÜNGSTE Log-Eintrag. Damit verschwindet ein
+ * Problem automatisch, sobald ein Retry oder ein manueller Nachdruck geklappt
+ * hat — es braucht kein eigenes „erledigt"-Feld.
+ */
+export async function holeOffeneDruckprobleme(
+  db:        Db,
+  mandantId: string,
+  kasseId:   string,
+  stunden = 24,
+): Promise<DruckProblem[]> {
+  const rows = await db.execute<{
+    beleg_id: string; beleg_nummer: number; beleg_typ: string
+    summe_cent: number; fehler_text: string | null
+    drucker_ip: string; erstellt_at: Date
+  }>(sql`
+    SELECT letzter.beleg_id,
+           b.beleg_nummer,
+           b.beleg_typ,
+           (b.summe_bar_cent + b.summe_karte_cent + b.summe_sonstige_cent) AS summe_cent,
+           letzter.fehler_text,
+           letzter.drucker_ip,
+           letzter.erstellt_at
+      FROM (
+        SELECT DISTINCT ON (dl.beleg_id)
+               dl.beleg_id, dl.erfolg, dl.fehler_text, dl.drucker_ip, dl.erstellt_at
+          FROM druck_log dl
+         WHERE dl.mandant_id  = ${mandantId}::uuid
+           AND dl.kasse_id    = ${kasseId}::uuid
+           AND dl.drucker_typ = 'bon'
+           AND dl.beleg_id IS NOT NULL
+           AND dl.erstellt_at > now() - make_interval(hours => ${stunden})
+         ORDER BY dl.beleg_id, dl.erstellt_at DESC
+      ) AS letzter
+      JOIN belege b ON b.id = letzter.beleg_id
+     WHERE letzter.erfolg = false
+     ORDER BY letzter.erstellt_at DESC
+     LIMIT 20
+  `)
+
+  return rows.map(r => ({
+    belegId:         r.beleg_id,
+    belegNummer:     Number(r.beleg_nummer),
+    belegTyp:        r.beleg_typ,
+    summeCent:       Number(r.summe_cent),
+    fehlerText:      r.fehler_text,
+    druckerIp:       r.drucker_ip,
+    zuletztVersucht: new Date(r.erstellt_at).toISOString(),
+  }))
 }
 
 // ---------------------------------------------------------------------------

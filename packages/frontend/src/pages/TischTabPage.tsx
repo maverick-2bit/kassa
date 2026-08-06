@@ -21,6 +21,7 @@ import { artikelApi, belegApi, bonierApi, druckerApi, kategorieApi, modifikatorA
 import { getKasseIdentity } from '../lib/kasse'
 import { hasModul, gaengeAnzahl } from '../lib/auth'
 import { formatPreis } from '../lib/format'
+import { DruckproblemeBanner } from '../components/DruckproblemeBanner'
 import { warenkorbSummeCent, positionsPreisCent, rabattBetragCent } from '../lib/warenkorb'
 import {
   summeMitPosRabattenCent,
@@ -593,6 +594,11 @@ export function TischTabPage() {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-4">
+      {/* Belege, deren Bon nicht gedruckt wurde — auch am Tisch wird kassiert. */}
+      <div className="mb-3 empty:mb-0">
+        <DruckproblemeBanner kasseId={identity.kasseId} />
+      </div>
+
       {/* Kopfzeile */}
       <div className="mb-4 flex items-center gap-3">
         <button
