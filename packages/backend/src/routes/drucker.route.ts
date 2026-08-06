@@ -4,6 +4,7 @@
  *   PATCH /api/kassen/:id/drucker         Drucker-Konfiguration ändern
  *   GET   /api/kassen/:id/drucker/status  Online-Status (TCP-Check)
  *   GET   /api/kassen/:id/drucker/log     Letzte 50 Druckversuche
+ *   GET   /api/kassen/:id/druckprobleme   Belege, deren Bon nicht gedruckt wurde
  *   POST  /api/belege/:id/drucken         Bon manuell drucken
  *   POST  /api/kassen/:id/drucker/test    Testdruck
  */
@@ -19,6 +20,7 @@ import { pruefeBelegGehoertZuMandant, pruefeKasseGehoertZuMandant } from '../aut
 import { waehleDruckerFuerKasse } from '../services/drucker-pool.service.js'
 import {
   druckeBeleg,
+  holeOffeneDruckprobleme,
   sendBytes,
   druckerConfigVonKasse,
   aktualisiereStatus,
@@ -159,6 +161,19 @@ export const druckerRoute: FastifyPluginAsync<DruckerRouteOptions> = async (fast
       fehlerText:  e.fehlerText,
       erstelltAt:  e.erstelltAt.toISOString(),
     })))
+  })
+
+  // ── GET /kassen/:id/druckprobleme ───────────────────────────────────────────
+  // Belege, deren Bon nicht aus dem Drucker kam. Die Kasse fragt das zyklisch ab
+  // und zeigt es an — sonst bleibt ein leeres Papierfach unbemerkt.
+  fastify.get('/kassen/:id/druckprobleme', auth, async (request, reply) => {
+    const params = IdParamSchema.safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
+    if (!(await pruefeKasseGehoertZuMandant(opts.db, params.data.id, request.user.mandantId)))
+      return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
+
+    const probleme = await holeOffeneDruckprobleme(opts.db, request.user.mandantId, params.data.id)
+    return reply.send(probleme)
   })
 
   // ── POST /belege/:id/drucken (Reprint) ──────────────────────────────────────

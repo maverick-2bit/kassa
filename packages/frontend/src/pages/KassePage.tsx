@@ -38,6 +38,7 @@ import { Button } from '../components/ui/Button'
 import { Modal } from '../components/ui/Modal'
 import { Input } from '../components/ui/Input'
 import { BonAnzeige } from '../components/BonAnzeige'
+import { DruckproblemeBanner } from '../components/DruckproblemeBanner'
 import { KartenzahlungModal } from '../components/KartenzahlungModal'
 import { SerialAuswahlModal, type SerialPos } from '../components/SerialAuswahlModal'
 import { RabattModal } from '../components/RabattModal'
@@ -586,6 +587,13 @@ export function KassePage() {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-4">
+      {/* Belege, deren Bon nicht gedruckt wurde — steht ganz oben und bleibt,
+          bis nachgedruckt ist. Die grüne Bestätigung darunter sagt nur, dass der
+          Beleg ERSTELLT wurde; ob er aus dem Drucker kam, weiß erst diese Leiste. */}
+      <div className="mb-3 empty:mb-0">
+        <DruckproblemeBanner kasseId={identity.kasseId} />
+      </div>
+
       {/* Beleg-erstellt-Bestätigung (Druck-Modus: kein Dialog, nur kurze Rückmeldung
           + Options-Schaltfläche für einen anderen Ausgabeweg) */}
       {bestaetigterBeleg && (

@@ -611,6 +611,19 @@ export const druckerApi = {
     request<DruckerStatus>('GET', `/api/kassen/${kasseId}/drucker/status`),
   log:        (kasseId: string) =>
     request<DruckLogEintrag[]>('GET', `/api/kassen/${kasseId}/drucker/log`),
+  druckprobleme: (kasseId: string) =>
+    request<DruckProblem[]>('GET', `/api/kassen/${kasseId}/druckprobleme`),
+}
+
+/** Beleg, dessen Bon nicht aus dem Drucker kam (und seither nicht nachgedruckt wurde). */
+export interface DruckProblem {
+  belegId:         string
+  belegNummer:     number
+  belegTyp:        string
+  summeCent:       number
+  fehlerText:      string | null
+  druckerIp:       string
+  zuletztVersucht: string
 }
 
 // ---------------------------------------------------------------------------
