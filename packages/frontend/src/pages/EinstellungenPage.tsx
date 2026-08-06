@@ -2901,6 +2901,45 @@ function SystemInfoSektion() {
             </div>
           </div>
 
+          {/* Plattenplatz — Datenbank, DB-Dumps und DEP-Archive teilen sich die
+              Platte. Läuft sie voll, bleibt Postgres stehen UND die Sicherung
+              kann nicht mehr schreiben; deshalb hier prominent mit Schwellen. */}
+          {m.speicher.gesamtGb !== null && m.speicher.freiGb !== null && (
+            <div className="space-y-1">
+              <div className="flex justify-between text-xs text-ink-muted">
+                <span>Plattenplatz</span>
+                <span className="font-mono">
+                  {m.speicher.freiGb} GB frei von {m.speicher.gesamtGb} GB
+                  <span className="text-ink-subtle ml-1">({m.speicher.freiProzent} %)</span>
+                </span>
+              </div>
+              <div className="h-2 w-full rounded-full bg-panel-2 overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${
+                    m.speicher.zustand === 'kritisch' ? 'bg-red-500'
+                    : m.speicher.zustand === 'knapp'  ? 'bg-amber-400'
+                    : 'bg-brand-500'
+                  }`}
+                  style={{ width: `${Math.min(100, Math.max(1, 100 - (m.speicher.freiProzent ?? 0)))}%` }}
+                />
+              </div>
+              {m.speicher.zustand !== 'ok' && (
+                <p className={`text-xs font-semibold ${
+                  m.speicher.zustand === 'kritisch' ? 'text-red-600' : 'text-amber-600'
+                }`}>
+                  {m.speicher.zustand === 'kritisch'
+                    ? '⚠ Platte fast voll — Datenbank und Sicherungen können ausfallen. Jetzt Platz schaffen.'
+                    : 'Platz wird knapp — Sicherungen und alte Exporte prüfen.'}
+                </p>
+              )}
+            </div>
+          )}
+          {m.speicher.zustand === 'unbekannt' && (
+            <p className="text-xs text-ink-subtle">
+              Plattenplatz konnte nicht ermittelt werden ({m.speicher.pfad}).
+            </p>
+          )}
+
           {/* System-Speicher */}
           {m.system.totalMemMb > 0 && (
             <div className="space-y-1">

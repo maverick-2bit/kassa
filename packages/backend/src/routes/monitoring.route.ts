@@ -5,7 +5,7 @@ import os from 'node:os'
 import v8 from 'node:v8'
 import type { Db } from '../db/client.js'
 import { mandanten } from '../db/schema.js'
-import { holeBackupStatus } from '../services/monitoring.service.js'
+import { holeBackupStatus, holeSpeicherStatus } from '../services/monitoring.service.js'
 import { fuehreKeepAliveDurch, holeDruckerKeepAliveStatus } from '../services/drucker-keepalive.service.js'
 
 export interface MonitoringRouteOptions {
@@ -14,6 +14,8 @@ export interface MonitoringRouteOptions {
   monitoringToken?: string | undefined
   dbBackupMaxStunden:  number
   depBackupMaxStunden: number
+  /** Sicherungsverzeichnis — Messpunkt für den freien Plattenplatz. */
+  dbBackupDir: string
 }
 
 const START_TIME = Date.now()
@@ -38,8 +40,12 @@ export const monitoringRoute: FastifyPluginAsync<MonitoringRouteOptions> = async
     let dbOk = false
     try { await opts.db.execute(sql`SELECT 1`); dbOk = true } catch { /* DB weg */ }
 
-    const backups = await holeBackupStatus(opts.db, opts.dbBackupMaxStunden, opts.depBackupMaxStunden)
-    const gesund  = dbOk && backups.gesund
+    const backups  = await holeBackupStatus(opts.db, opts.dbBackupMaxStunden, opts.depBackupMaxStunden)
+    const speicher = await holeSpeicherStatus(opts.dbBackupDir)
+    // Nur 'kritisch' degradiert: bei 'knapp' soll gewarnt, aber nicht Alarm
+    // ausgelöst werden. 'unbekannt' (Messung fehlgeschlagen) zählt als gesund —
+    // ein kaputter Messpunkt ist kein Ausfall.
+    const gesund   = dbOk && backups.gesund && speicher.zustand !== 'kritisch'
 
     return reply.status(gesund ? 200 : 503).send({
       status:    gesund ? 'ok' : 'degraded',
@@ -49,6 +55,7 @@ export const monitoringRoute: FastifyPluginAsync<MonitoringRouteOptions> = async
         db:        dbOk ? 'ok' : 'unreachable',
         dbBackup:  backups.dbBackup,
         depBackup: backups.depBackup,
+        speicher,
       },
     })
   })
@@ -87,6 +94,9 @@ export const monitoringRoute: FastifyPluginAsync<MonitoringRouteOptions> = async
     // Backup-Frische (DB-Dump + DEP-Archiv)
     const backups = await holeBackupStatus(opts.db, opts.dbBackupMaxStunden, opts.depBackupMaxStunden)
 
+    // Plattenplatz — Datenbank, Dumps und DEP-Archive teilen sich die Platte
+    const speicher = await holeSpeicherStatus(opts.dbBackupDir)
+
     // Drucker-Keep-Alive: letzter Ping-Status + konfiguriertes Intervall
     const [mandant] = await opts.db
       .select({ intervall: mandanten.druckerKeepAliveSekunden })
@@ -109,6 +119,7 @@ export const monitoringRoute: FastifyPluginAsync<MonitoringRouteOptions> = async
         latenzMs: dbLatenzMs,
       },
       backups,
+      speicher,
       memory: {
         heapUsedMb:  toMb(mem.heapUsed),
         heapTotalMb: toMb(mem.heapTotal),
