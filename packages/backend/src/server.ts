@@ -196,6 +196,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     monitoringToken:     deps.config.MONITORING_TOKEN,
     dbBackupMaxStunden:  deps.config.DB_BACKUP_MAX_AGE_STUNDEN,
     depBackupMaxStunden: deps.config.DEP_BACKUP_MAX_AGE_STUNDEN,
+    dbBackupDir:         deps.dbBackupDir,
   })
 
   // Globaler Fehler-Handler — fängt alle unbehandelten Fehler ab

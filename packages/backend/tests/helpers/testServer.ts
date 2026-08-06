@@ -50,6 +50,9 @@ export async function buildTestServer(db: Db, opts: BuildTestServerOptions = {})
       DEP_BACKUP_MAX_AGE_STUNDEN: 26,
     },
     db,
+    // Messpunkt für den Plattenplatz — im Test das Arbeitsverzeichnis, damit
+    // wirklich gemessen wird statt in den „unbekannt"-Zweig zu fallen.
+    dbBackupDir: process.cwd(),
     setupDeps: {
       db,
       masterPassphrase: TEST_MASTER,

@@ -136,4 +136,25 @@ describe('Monitoring-Status (Integration, echtes PostgreSQL)', () => {
     expect(b.backups.dbBackup).toBeDefined()
     expect(b.backups.depBackup).toBeDefined()
   })
+
+  it('meldet den Plattenplatz in beiden Endpoints', async () => {
+    // Volle Platte = Postgres steht UND die Sicherung schreibt nicht mehr.
+    // Bis v0.7.143 war das der einzige Ausfall ohne jede Anzeige.
+    const admin = (await srv.fastify.inject({
+      method: 'GET', url: '/api/admin/monitoring', headers: auth(),
+    })).json()
+    expect(admin.speicher).toBeDefined()
+    expect(admin.speicher.pfad).toBeTruthy()
+    // Auf dem Test-Rechner ist Platz — gemessen wird echt, also darf hier nichts
+    // „unbekannt" sein.
+    expect(admin.speicher.zustand).toBe('ok')
+    expect(admin.speicher.gesamtGb).toBeGreaterThan(0)
+    expect(admin.speicher.freiProzent).toBeGreaterThan(10)
+
+    // Auch der externe (token-geschützte) Endpoint führt den Wert mit, damit ein
+    // Uptime-Monitor anschlägt, bevor die Platte wirklich voll ist.
+    await resetSicherungen()
+    const extern = (await status()).json()
+    expect(extern.checks.speicher.zustand).toBe('ok')
+  })
 })

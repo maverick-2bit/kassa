@@ -1325,6 +1325,13 @@ export interface MonitoringStatus {
     ok:       boolean
     latenzMs: number | null
   }
+  speicher: {
+    pfad:        string
+    gesamtGb:    number | null
+    freiGb:      number | null
+    freiProzent: number | null
+    zustand:     'ok' | 'knapp' | 'kritisch' | 'unbekannt'
+  }
   memory: {
     heapUsedMb:  number
     heapTotalMb: number
