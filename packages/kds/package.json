@@ -1,6 +1,6 @@
 {
   "name": "@kassa/kds",
-  "version": "0.7.144",
+  "version": "0.7.145",
   "private": true,
   "type": "module",
   "scripts": {
