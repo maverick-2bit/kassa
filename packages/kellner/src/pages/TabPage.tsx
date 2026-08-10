@@ -9,6 +9,7 @@ import { getAuth, gaengeAktiv as istGaengeAktiv, gaengeAnzahl } from '../lib/aut
 import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
 import { KartenzahlungOverlay } from '../components/KartenzahlungOverlay'
+import { DruckproblemeBanner } from '../components/DruckproblemeBanner'
 
 /** Anzeige-Label eines Gangs (0 = Sofort). */
 function gangLabel(g: number): string {
@@ -318,6 +319,10 @@ export function TabPage() {
 
       {/* Positionen */}
       <div className="flex-1 p-4 space-y-2 pb-36">
+        {/* Nicht gedruckte Belege — der Kellner kassiert hier, also muss er es
+            hier erfahren und nicht erst am Haupt-POS. */}
+        <DruckproblemeBanner />
+
         {gruppen.length === 0 ? (
           <div className="text-center py-16 space-y-2">
             <p className="text-4xl">🍽</p>

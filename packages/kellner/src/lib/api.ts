@@ -119,12 +119,27 @@ export interface DruckerConfig {
   belegBasisUrl: string | null
 }
 
+/** Beleg, dessen Bon nicht aus dem Drucker kam (und seither nicht nachgedruckt wurde). */
+export interface DruckProblem {
+  belegId:         string
+  belegNummer:     number
+  belegTyp:        string
+  summeCent:       number
+  fehlerText:      string | null
+  druckerIp:       string
+  zuletztVersucht: string
+}
+
 export const druckerApi = {
   get: (kasseId: string) =>
     request<DruckerConfig>('GET', `/api/kassen/${kasseId}/drucker`),
   /** „Nicht akzeptiert" → Rechnung auf den Kassa-Bondrucker erzwingen */
   druckenAusweich: (belegId: string) =>
     request<{ erfolgreich: boolean }>('POST', `/api/belege/${belegId}/drucken`, { ausweich: true }),
+  druckprobleme: (kasseId: string) =>
+    request<DruckProblem[]>('GET', `/api/kassen/${kasseId}/druckprobleme`),
+  nachdrucken: (belegId: string) =>
+    request<{ erfolgreich: boolean }>('POST', `/api/belege/${belegId}/drucken`, {}),
 }
 
 /** Öffentliche Beleg-Route (LAN-intern) — Datenquelle für den Foto-Beleg am Handy-Bildschirm */
