@@ -30,6 +30,12 @@ export const BonierungInputSchema = z.object({
    * bereits ab; ohne dieses Flag käme es zum Doppel-Abzug.
    */
   ohneLagerabzug: z.boolean().optional(),
+  /**
+   * Korrekturbon statt Bestellbon: invertierter „*** STORNO *** / NICHT
+   * ZUBEREITEN"-Kopf. Wird gebraucht, um einen nicht zugestellten Storno-Bon
+   * gezielt nachzusenden.
+   */
+  storno:         z.boolean().optional(),
 })
 export type BonierungInput = z.infer<typeof BonierungInputSchema>
 

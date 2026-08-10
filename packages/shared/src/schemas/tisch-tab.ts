@@ -34,6 +34,12 @@ export type TischTabErstellenInput = z.infer<typeof TischTabErstellenInputSchema
 
 export const TischTabPositionenUpdateSchema = z.object({
   positionen: z.array(TabPositionSchema),
+  /**
+   * PIN eines Freigabeberechtigten — nur nötig, wenn das Update Positionen
+   * über der Storno-Freigabeschwelle reduziert/entfernt (gleiche Schwelle wie
+   * beim Beleg-Storno).
+   */
+  freigabePin: z.string().trim().min(4).max(12).optional(),
 })
 export type TischTabPositionenUpdate = z.infer<typeof TischTabPositionenUpdateSchema>
 

@@ -24,6 +24,7 @@ export const bonierRoute: FastifyPluginAsync<BonierRouteOptions> = async (fastif
     try {
       const ergebnis = await bonierBestellung(parsed.data, opts.deps, {
         ...(parsed.data.ohneLagerabzug && { ohneLagerabzug: true }),
+        ...(parsed.data.storno && { storno: true }),
       })
       // 207 sobald IRGENDEIN Ziel den Bon nicht bekommen hat — Stationen wie
       // Bonierdrucker. Bis v0.7.142 wurden nur die Stationen geprüft, ein toter

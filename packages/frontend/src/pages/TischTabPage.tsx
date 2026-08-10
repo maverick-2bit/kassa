@@ -17,7 +17,7 @@ import type {
 } from '@kassa/shared'
 import { aktionsPreisCent, aktiverRabattProzent, aktiveAktion, bonierFehlschlaege } from '@kassa/shared'
 import type { AktiveAktion } from '@kassa/shared'
-import { artikelApi, belegApi, bonierApi, druckerApi, kategorieApi, modifikatorApi, posConfigApi, preisregelApi, tischTabApi, zvtApi } from '../lib/api'
+import { artikelApi, belegApi, bonierApi, druckerApi, kategorieApi, modifikatorApi, posConfigApi, preisregelApi, tischTabApi, zvtApi, ApiError, type TabPositionenAntwort } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { hasModul, gaengeAnzahl } from '../lib/auth'
 import { formatPreis } from '../lib/format'
@@ -309,6 +309,27 @@ export function TischTabPage() {
     return true
   }
 
+  /**
+   * Korrekturbon nach einem Positions-Storno: Das Backend sendet ihn
+   * automatisch an Küche/Schank — kommt er NICHT an, steht dort weiter das
+   * stornierte Gericht auf der Liste. Dann dieselbe Leiste wie beim Bonieren.
+   */
+  const meldeStornoBonFehler = (antwort: TabPositionenAntwort): void => {
+    if (!antwort.stornoBon) { setBonierFehler(null); return }
+    setBonierFehler({
+      ziele: antwort.stornoBon.fehler,
+      nachsenden: {
+        kasseId:    identity.kasseId,
+        tabId:      tabId!,
+        tisch:      antwort.tischNummer,
+        kellner:    antwort.kellner,
+        positionen: antwort.stornoBon.positionen,
+        ohneLagerabzug: true,
+        storno:     true,   // Korrekturbon, kein Bestellbon
+      },
+    })
+  }
+
   const nachsendenMutation = useMutation({
     mutationFn: (input: BonierungInput) => bonierApi.bonieren(input),
     // Erneut bewerten: klappt es jetzt, verschwindet die Meldung; klappt nur ein
@@ -431,29 +452,56 @@ export function TischTabPage() {
   // Positions-Korrektur (−/+/Numpad/🗑): Server erkennt Reduktionen als Storno
   // und schickt Storno-Bons an die Stationen + schreibt das Audit-Protokoll.
   const [korrekturNumpad, setKorrekturNumpad] = useState<number | null>(null)
+  /**
+   * PIN-Nachfrage der Storno-Freigabe: hält den abgelehnten Vorgang fest, damit
+   * er nach der PIN-Eingabe unverändert wiederholt werden kann.
+   */
+  const [freigabeAnfrage, setFreigabeAnfrage] = useState<
+    { art: 'korrektur'; positionen: TabPosition[] } | { art: 'verwerfen' } | null
+  >(null)
+  const [freigabePinEingabe, setFreigabePinEingabe] = useState('')
+
   const korrekturMutation = useMutation({
-    mutationFn: (positionen: TabPosition[]) => tischTabApi.aktualisierePositionen(tabId!, positionen),
-    onSuccess: () => {
+    mutationFn: ({ positionen, freigabePin }: { positionen: TabPosition[]; freigabePin?: string }) =>
+      tischTabApi.aktualisierePositionen(tabId!, positionen, freigabePin),
+    onSuccess: (antwort) => {
       qc.invalidateQueries({ queryKey: ['tisch-tab', tabId] })
       qc.invalidateQueries({ queryKey: ['tisch-tabs'] })
       setFehler(null)
+      setFreigabeAnfrage(null)
+      setFreigabePinEingabe('')
+      meldeStornoBonFehler(antwort)
     },
-    onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
+    onError: (err, variables) => {
+      if (err instanceof ApiError && err.code === 'freigabe_erforderlich') {
+        setFreigabeAnfrage({ art: 'korrektur', positionen: variables.positionen })
+        setFreigabePinEingabe('')
+        return
+      }
+      setFehler(err instanceof Error ? err.message : String(err))
+    },
   })
   const korrigiereMenge = (idx: number, neueMenge: number) => {
     if (!tab || korrekturMutation.isPending) return
     const neu = tab.positionen.flatMap((p, i) =>
       i !== idx ? [p] : neueMenge <= 0 ? [] : [{ ...p, menge: neueMenge }])
-    korrekturMutation.mutate(neu)
+    korrekturMutation.mutate({ positionen: neu })
   }
 
   const verwerfenMutation = useMutation({
-    mutationFn: () => tischTabApi.verwerfe(tabId!),
+    mutationFn: ({ freigabePin }: { freigabePin?: string }) => tischTabApi.verwerfe(tabId!, undefined, freigabePin),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tisch-tabs'] })
       navigate('/tische')
     },
-    onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
+    onError: (err) => {
+      if (err instanceof ApiError && err.code === 'freigabe_erforderlich') {
+        setFreigabeAnfrage({ art: 'verwerfen' })
+        setFreigabePinEingabe('')
+        return
+      }
+      setFehler(err instanceof Error ? err.message : String(err))
+    },
   })
 
   const umbenennenMutation = useMutation({
@@ -876,6 +924,56 @@ export function TischTabPage() {
               </div>
             )}
 
+            {/* Storno-Freigabe: der Vorgang liegt über der Schwelle und wartet
+                auf den PIN eines Berechtigten. */}
+            {freigabeAnfrage && (
+              <div className="rounded border-2 border-amber-400 bg-amber-50 p-3 space-y-2">
+                <p className="text-xs font-bold text-amber-900">
+                  Freigabe erforderlich — {freigabeAnfrage.art === 'verwerfen'
+                    ? 'Tisch verwerfen liegt über der Storno-Schwelle'
+                    : 'Storno liegt über der Schwelle'}
+                </p>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  autoFocus
+                  value={freigabePinEingabe}
+                  onChange={(e) => setFreigabePinEingabe(e.target.value.replace(/\D/g, ''))}
+                  maxLength={12}
+                  placeholder="PIN eines Berechtigten"
+                  className="w-full rounded border border-amber-300 px-3 py-2 text-sm tracking-widest
+                             focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none"
+                />
+                <p className="text-xs text-amber-800">
+                  Der eigene Kellner-PIN genügt nicht — es braucht das Recht „Storno freigeben".
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="secondary"
+                    className="flex-1 text-xs"
+                    disabled={freigabePinEingabe.length < 4}
+                    loading={korrekturMutation.isPending || verwerfenMutation.isPending}
+                    onClick={() => {
+                      if (freigabeAnfrage.art === 'korrektur') {
+                        korrekturMutation.mutate({ positionen: freigabeAnfrage.positionen, freigabePin: freigabePinEingabe })
+                      } else {
+                        verwerfenMutation.mutate({ freigabePin: freigabePinEingabe })
+                      }
+                    }}
+                  >
+                    Freigeben
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    className="text-xs"
+                    onClick={() => { setFreigabeAnfrage(null); setFreigabePinEingabe('') }}
+                  >
+                    Abbrechen
+                  </Button>
+                </div>
+              </div>
+            )}
+
             {/* Küchenbon nicht zugestellt — bleibt stehen, bis nachgesendet oder
                 weggeklickt. Die Positionen sind gebucht, nur der Bon fehlt. */}
             {bonierFehler && (
@@ -1001,7 +1099,7 @@ export function TischTabPage() {
                 variant="danger"
                 onClick={() => {
                   if (confirm(`Tisch ${tab.tischNummer} komplett verwerfen? Alle ${tab.positionen.length} Positionen werden storniert (Storno-Bon an die Küche).`)) {
-                    verwerfenMutation.mutate()
+                    verwerfenMutation.mutate({})
                   }
                 }}
                 loading={verwerfenMutation.isPending}
