@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { BelegResponse, Kunde } from '@kassa/shared'
-import { belegApi, druckerApi, kundeApi, kasseApi, type JahresbelegStatus } from '../lib/api'
+import { belegApi, druckerApi, kundeApi, kasseApi, ApiError, type JahresbelegStatus } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { hasBerechtigung } from '../lib/auth'
 import { formatPreis, formatDatum } from '../lib/format'
@@ -16,6 +16,13 @@ export function BelegePage() {
   const [ausgewaehlt, setAusgewaehlt] = useState<BelegResponse | null>(null)
   const [stornoKandidat, setStornoKandidat] = useState<BelegResponse | null>(null)
   const [stornoGrund, setStornoGrund] = useState('')
+  /**
+   * Freigabe-PIN. Das Feld erscheint erst, wenn das Backend den Storno mit
+   * „freigabe_erforderlich" abgelehnt hat — im Normalfall (Schwelle aus oder
+   * Betrag darunter) sieht der Kassier davon nichts.
+   */
+  const [freigabePin, setFreigabePin] = useState('')
+  const [freigabeNoetig, setFreigabeNoetig] = useState(false)
   const [aktionsfehler, setAktionsfehler] = useState<string | null>(null)
   const [neuErzeugt, setNeuErzeugt] = useState<BelegResponse | null>(null)
 
@@ -52,10 +59,19 @@ export function BelegePage() {
       setNeuErzeugt(beleg)
       setStornoKandidat(null)
       setStornoGrund('')
+      setFreigabePin('')
+      setFreigabeNoetig(false)
       setAktionsfehler(null)
       invalidate()
     },
-    onError: (err) => setAktionsfehler(err instanceof Error ? err.message : String(err)),
+    onError: (err) => {
+      // Über der Freigabeschwelle: PIN-Feld einblenden statt nur zu meckern.
+      if (err instanceof ApiError && err.code === 'freigabe_erforderlich') {
+        setFreigabeNoetig(true)
+        setFreigabePin('')
+      }
+      setAktionsfehler(err instanceof Error ? err.message : String(err))
+    },
   })
 
   const nullbelegMutation = useMutation({
@@ -334,20 +350,50 @@ export function BelegePage() {
                 className="w-full rounded-md border border-line-strong px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
               />
             </div>
+            {freigabeNoetig && (
+              <div className="rounded-md border border-amber-300 bg-amber-50 p-3 space-y-2">
+                <label className="block text-sm font-medium text-amber-900">
+                  Freigabe erforderlich — PIN eines Berechtigten
+                </label>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  autoFocus
+                  value={freigabePin}
+                  onChange={(e) => setFreigabePin(e.target.value.replace(/\D/g, ''))}
+                  maxLength={12}
+                  placeholder="••••"
+                  className="w-full rounded-md border border-amber-300 px-3 py-2 text-sm tracking-widest
+                             focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none"
+                />
+                <p className="text-xs text-amber-800">
+                  Dieser Betrag liegt über der eingestellten Freigabeschwelle. Der PIN muss von
+                  jemandem mit Freigabe-Recht kommen — der eigene Kellner-PIN genügt nicht.
+                </p>
+              </div>
+            )}
             {aktionsfehler && (
               <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
                 {aktionsfehler}
               </div>
             )}
             <div className="flex justify-end gap-2 pt-2 border-t border-line">
-              <Button variant="secondary" onClick={() => { setStornoKandidat(null); setStornoGrund('') }}>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setStornoKandidat(null); setStornoGrund('')
+                  setFreigabePin(''); setFreigabeNoetig(false); setAktionsfehler(null)
+                }}
+              >
                 Abbrechen
               </Button>
               <Button
+                disabled={freigabeNoetig && freigabePin.length < 4}
                 onClick={() => stornoMutation.mutate({
                   kasseId:        identity.kasseId,
                   verweisBelegId: stornoKandidat.id,
                   ...(stornoGrund.trim() && { grund: stornoGrund.trim() }),
+                  ...(freigabePin && { freigabePin }),
                 })}
                 loading={stornoMutation.isPending}
               >

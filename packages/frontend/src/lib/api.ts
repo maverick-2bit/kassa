@@ -106,6 +106,8 @@ import type {
   MandantModuleUpdate,
   MandantStammdaten,
   MandantStammdatenUpdate,
+  MandantFreigaben,
+  MandantFreigabenUpdate,
   KasseBezeichnungUpdate,
   KasseListeItem,
   WeitereKasseInput,
@@ -137,8 +139,17 @@ import { getToken, handleUnauthorized } from './auth.js'
 // Generischer Fetcher
 // ---------------------------------------------------------------------------
 
-class ApiError extends Error {
-  constructor(public status: number, message: string) {
+export class ApiError extends Error {
+  constructor(
+    public status: number,
+    message: string,
+    /**
+     * Maschinenlesbarer Fehlercode aus dem Body, falls die Route einen liefert
+     * (z. B. 'freigabe_erforderlich') — daran erkennt die Oberfläche, dass sie
+     * nachfragen muss, statt nur eine rote Meldung anzuzeigen.
+     */
+    public code?: string,
+  ) {
     super(message)
   }
 }
@@ -170,7 +181,8 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     const message = typeof fehler === 'string'
       ? fehler
       : Array.isArray(fehler) ? JSON.stringify(fehler) : `HTTP ${res.status}`
-    throw new ApiError(res.status, message)
+    const code = (data as { code?: unknown })?.code
+    throw new ApiError(res.status, message, typeof code === 'string' ? code : undefined)
   }
   return data as T
 }
@@ -1124,6 +1136,10 @@ export const mandantApi = {
     request<MandantStammdaten>('GET', '/api/mandanten/stammdaten'),
   patchStammdaten: (input: MandantStammdatenUpdate): Promise<MandantStammdaten> =>
     request<MandantStammdaten>('PATCH', '/api/mandanten/stammdaten', input),
+  getFreigaben: (): Promise<MandantFreigaben> =>
+    request<MandantFreigaben>('GET', '/api/mandanten/freigaben'),
+  patchFreigaben: (input: MandantFreigabenUpdate): Promise<MandantFreigaben> =>
+    request<MandantFreigaben>('PATCH', '/api/mandanten/freigaben', input),
 }
 
 // ---------------------------------------------------------------------------
@@ -1672,4 +1688,3 @@ export const kasseErweiterungApi = {
     request('PATCH', `/api/kassen/${kasseId}/self-checkout`, { aktiv }),
 }
 
-export { ApiError }

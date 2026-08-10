@@ -26,6 +26,8 @@ export {
   MandantModuleUpdateSchema,
   MandantStammdatenSchema,
   MandantStammdatenUpdateSchema,
+  MandantFreigabenSchema,
+  MandantFreigabenUpdateSchema,
   KasseBezeichnungUpdateSchema,
 } from './schemas/mandant.js'
 export type {
@@ -34,6 +36,8 @@ export type {
   MandantModuleUpdate,
   MandantStammdaten,
   MandantStammdatenUpdate,
+  MandantFreigaben,
+  MandantFreigabenUpdate,
   KasseBezeichnungUpdate,
 } from './schemas/mandant.js'
 

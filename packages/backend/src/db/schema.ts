@@ -71,6 +71,12 @@ export const mandanten = pgTable('mandanten', {
    */
   umruestMinuten:           integer('umruest_minuten').notNull().default(0),
 
+  /**
+   * Ab diesem Belegbetrag muss ein Storno freigegeben werden (PIN eines
+   * Berechtigten). 0 = aus — dann darf jeder mit Storno-Recht alles stornieren.
+   */
+  stornoFreigabeAbCent:     integer('storno_freigabe_ab_cent').notNull().default(0),
+
   // Pro-Mandant-Stripe-Konto (Gast-Onlinezahlung). AES-256-GCM-verschlüsselt
   // (Muster crypto/master-key.ts). Leer → globale Env-Keys als Fallback.
   /** Stripe Secret Key (sk_…), verschlüsselt */

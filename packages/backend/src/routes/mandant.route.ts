@@ -17,7 +17,11 @@ import { z } from 'zod'
 import type { Db } from '../db/client.js'
 import type { Config } from '../config.js'
 import { mandanten } from '../db/schema.js'
-import { MandantModuleUpdateSchema, MandantStammdatenUpdateSchema } from '@kassa/shared'
+import {
+  MandantFreigabenUpdateSchema,
+  MandantModuleUpdateSchema,
+  MandantStammdatenUpdateSchema,
+} from '@kassa/shared'
 import { encryptPrivateKey } from '../crypto/master-key.js'
 import { globaleStripeKonfig, ladeStripeKonfig, testeStripeVerbindung } from '../services/stripe.service.js'
 
@@ -127,6 +131,45 @@ export const mandantRoute: FastifyPluginAsync<MandantRouteOptions> = async (fast
         gaengeAnzahl:             mandanten.gaengeAnzahl,
         umruestMinuten:           mandanten.umruestMinuten,
       })
+
+    if (!row) return reply.status(404).send({ fehler: 'Mandant nicht gefunden' })
+    return reply.send(row)
+  })
+
+  // ---- GET /mandanten/freigaben ----
+  fastify.get('/mandanten/freigaben', guard, async (request, reply) => {
+    const [row] = await opts.db
+      .select({ stornoFreigabeAbCent: mandanten.stornoFreigabeAbCent })
+      .from(mandanten)
+      .where(eq(mandanten.id, request.user.mandantId))
+      .limit(1)
+
+    if (!row) return reply.status(404).send({ fehler: 'Mandant nicht gefunden' })
+    return reply.send(row)
+  })
+
+  // ---- PATCH /mandanten/freigaben ----
+  // Wer die Schwelle setzen darf, muss mehr können als stornieren — sonst hebt
+  // sich die Kontrolle selbst auf.
+  fastify.patch('/mandanten/freigaben', guard, async (request, reply) => {
+    if (
+      request.user.rolle !== 'admin' &&
+      !request.user.berechtigungen.includes('einstellungen')
+    ) {
+      return reply.status(403).send({ fehler: 'Keine Berechtigung' })
+    }
+
+    const body = MandantFreigabenUpdateSchema.safeParse(request.body)
+    if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
+    if (body.data.stornoFreigabeAbCent === undefined) {
+      return reply.status(400).send({ fehler: 'Keine Änderungen angegeben' })
+    }
+
+    const [row] = await opts.db
+      .update(mandanten)
+      .set({ stornoFreigabeAbCent: body.data.stornoFreigabeAbCent, updatedAt: new Date() })
+      .where(eq(mandanten.id, request.user.mandantId))
+      .returning({ stornoFreigabeAbCent: mandanten.stornoFreigabeAbCent })
 
     if (!row) return reply.status(404).send({ fehler: 'Mandant nicht gefunden' })
     return reply.send(row)
