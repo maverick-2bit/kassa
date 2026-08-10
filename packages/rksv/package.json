@@ -1,6 +1,6 @@
 {
   "name": "@kassa/rksv",
-  "version": "0.7.149",
+  "version": "0.7.150",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
