@@ -88,6 +88,11 @@ export const StornobelegInputSchema = z.object({
   verweisBelegId: z.string().uuid(),
   /** Optional: Grund (für interne Dokumentation, nicht im Bon-QR-Code) */
   grund:          z.string().trim().max(200).optional(),
+  /**
+   * PIN eines Freigabeberechtigten — nur nötig, wenn der Belegbetrag über der
+   * eingestellten Freigabeschwelle liegt (Einstellungen → Freigaben).
+   */
+  freigabePin:    z.string().trim().min(4).max(12).optional(),
 })
 export type StornobelegInput = z.infer<typeof StornobelegInputSchema>
 

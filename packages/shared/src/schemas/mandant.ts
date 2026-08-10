@@ -63,6 +63,25 @@ export const MandantModuleUpdateSchema = MandantModuleSchema.partial()
 export type MandantModuleUpdate = z.infer<typeof MandantModuleUpdateSchema>
 
 // ---------------------------------------------------------------------------
+// Freigaben — Vier-Augen-Prinzip für heikle Vorgänge
+// ---------------------------------------------------------------------------
+
+export const MandantFreigabenSchema = z.object({
+  /**
+   * Ab diesem Belegbetrag (brutto, in Cent) muss ein Storno freigegeben werden.
+   * 0 = aus: jeder mit Storno-Recht darf jeden Beleg stornieren.
+   *
+   * Der Storno bleibt eine Kellner-Funktion — die Freigabe verlangt nur, dass
+   * jemand mit der Berechtigung „freigabe" (oder ein Admin) seinen PIN eingibt.
+   */
+  stornoFreigabeAbCent: z.number().int().min(0).max(10_000_00),
+})
+export type MandantFreigaben = z.infer<typeof MandantFreigabenSchema>
+
+export const MandantFreigabenUpdateSchema = MandantFreigabenSchema.partial()
+export type MandantFreigabenUpdate = z.infer<typeof MandantFreigabenUpdateSchema>
+
+// ---------------------------------------------------------------------------
 // Mandant-Stammdaten (Firmeninfo + Belegtext)
 // ---------------------------------------------------------------------------
 

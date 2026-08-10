@@ -295,6 +295,13 @@
       "when": 1786032000000,
       "tag": "0042_umruestzeit",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1786035600000,
+      "tag": "0043_storno_freigabe",
+      "breakpoints": true
     }
   ]
 }

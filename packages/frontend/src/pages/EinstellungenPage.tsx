@@ -75,6 +75,7 @@ export function EinstellungenPage() {
           <WarengruppenVerteilungSektion />
           <KasseBezeichnungSektion />
           <AutoAbschlussSektion />
+          <FreigabenSektion />
         </>
       )}
       {bereich === 'beleg' && (
@@ -730,6 +731,94 @@ function DruckerStatusSektion() {
 // ---------------------------------------------------------------------------
 // Automatischer Tagesabschluss (Uhrzeit + E-Mail-Zusammenfassung je Kasse)
 // ---------------------------------------------------------------------------
+
+/**
+ * Freigabeschwelle für Storno.
+ *
+ * Storno-Missbrauch ist der klassische Schwundkanal im Gastro-Betrieb. Ab dem
+ * eingestellten Betrag verlangt die Kassa den PIN eines Berechtigten — geprüft
+ * wird im Backend, nicht hier.
+ */
+function FreigabenSektion() {
+  const queryClient = useQueryClient()
+  const [euro, setEuro] = useState('0')
+  const [meldung, setMeldung] = useState<{ typ: 'ok' | 'fehler'; text: string } | null>(null)
+
+  const abfrage = useQuery({
+    queryKey: ['mandant-freigaben'],
+    queryFn:  () => mandantApi.getFreigaben(),
+  })
+
+  useEffect(() => {
+    if (!abfrage.data) return
+    setEuro((abfrage.data.stornoFreigabeAbCent / 100).toFixed(2).replace('.', ','))
+  }, [abfrage.data])
+
+  const speichern = useMutation({
+    mutationFn: () => {
+      const cent = Math.round(Number(euro.replace(',', '.')) * 100)
+      if (!Number.isFinite(cent) || cent < 0) throw new Error('Bitte einen gültigen Betrag eingeben')
+      return mandantApi.patchFreigaben({ stornoFreigabeAbCent: cent })
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['mandant-freigaben'] })
+      setMeldung({ typ: 'ok', text: 'Freigabeschwelle gespeichert' })
+    },
+    onError: (err) => setMeldung({ typ: 'fehler', text: err instanceof Error ? err.message : String(err) }),
+  })
+
+  const aktuellCent = abfrage.data?.stornoFreigabeAbCent ?? 0
+
+  return (
+    <section className="rounded-lg bg-panel shadow-sm border border-line p-6 space-y-4">
+      <div>
+        <h2 className="text-base font-semibold text-ink">Freigaben</h2>
+        <p className="text-sm text-ink-muted mt-0.5">
+          Ab welchem Betrag ein Storno von einem Berechtigten per PIN freigegeben werden muss.
+          Der Storno bleibt Kellner-Funktion — es muss nur jemand mit dem Recht
+          „Storno freigeben" seinen PIN dazugeben.
+        </p>
+      </div>
+
+      <div className="flex flex-wrap items-end gap-3">
+        <div>
+          <label htmlFor="storno-schwelle" className="block text-sm font-medium text-ink mb-1">
+            Storno-Freigabe ab
+          </label>
+          <div className="flex items-center gap-2">
+            <input
+              id="storno-schwelle"
+              type="text"
+              inputMode="decimal"
+              value={euro}
+              onChange={(e) => setEuro(e.target.value)}
+              className="w-32 rounded-md border border-line-strong px-3 py-2 text-sm text-right font-mono
+                         focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+            />
+            <span className="text-sm text-ink-muted">€</span>
+          </div>
+        </div>
+        <Button onClick={() => speichern.mutate()} loading={speichern.isPending}>
+          Speichern
+        </Button>
+      </div>
+
+      <p className="text-xs text-ink-subtle">
+        {aktuellCent === 0
+          ? 'Aktuell aus — jeder mit Storno-Recht darf jeden Beleg stornieren.'
+          : `Aktuell aktiv: Storno ab ${(aktuellCent / 100).toFixed(2).replace('.', ',')} € braucht eine Freigabe.`}
+        {' '}Das Recht „Storno freigeben" vergibst du je Benutzer unter Personal; Administratoren
+        haben es immer.
+      </p>
+
+      {meldung && (
+        <p className={`text-sm ${meldung.typ === 'ok' ? 'text-brand-600' : 'text-red-600'}`}>
+          {meldung.text}
+        </p>
+      )}
+    </section>
+  )
+}
 
 function AutoAbschlussSektion() {
   const identity    = getKasseIdentity()!

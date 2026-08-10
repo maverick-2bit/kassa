@@ -26,6 +26,7 @@ export const BerechtigungSchema = z.enum([
   'user.verwalten',      // Benutzer anlegen/bearbeiten (Admin)
   'kunden.verwalten',    // Kundenstamm (CRM) einsehen und bearbeiten
   'kasse.kredit',        // Kreditverkauf (Auf Kredit buchen) verwenden
+  'freigabe',            // Storno über der Freigabeschwelle per PIN freigeben
 ])
 export type Berechtigung = z.infer<typeof BerechtigungSchema>
 
@@ -41,6 +42,7 @@ export const BERECHTIGUNG_LABELS: Record<Berechtigung, string> = {
   'user.verwalten':    'Benutzer verwalten',
   'kunden.verwalten':  'Kunden (CRM)',
   'kasse.kredit':      'Kreditverkauf (Auf Kredit buchen)',
+  'freigabe':          'Storno freigeben (Chef-PIN)',
 }
 
 // ---------------------------------------------------------------------------

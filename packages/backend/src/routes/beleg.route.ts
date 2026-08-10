@@ -41,7 +41,13 @@ import { baueZBon, baueKassensturzBon } from '../services/escpos/layout.js'
 import { listeKassenbuchBuchungen } from '../services/kassenbuch.service.js'
 import { pruefeKasseGehoertZuMandant } from '../auth/scope.js'
 import { and, eq, inArray } from 'drizzle-orm'
-import { artikel, kassen, kategorien, mandanten } from '../db/schema.js'
+import { artikel, belege, kassen, kategorien, mandanten } from '../db/schema.js'
+import {
+  pruefeStornoFreigabe,
+  FreigabeError,
+  type Freigeber,
+} from '../services/freigabe.service.js'
+import { logAudit, getClientIp } from '../services/audit.service.js'
 import type { Config } from '../config.js'
 import { isEmailAktiv, sendeTagesabschlussEmail } from '../services/email.service.js'
 
@@ -197,7 +203,58 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
     const parsed = StornobelegInputSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     if (!(await pruefeKasseScope(request, reply, opts.deps, parsed.data.kasseId))) return
-    return fuehreAus(fastify, reply, opts.deps, () => erstelleStornobeleg(parsed.data, opts.deps))
+
+    // Freigabe-Schwelle: gegen den Betrag des zu stornierenden Belegs prüfen,
+    // BEVOR signiert wird. Der Storno selbst bleibt Kellner-Funktion — es muss
+    // nur jemand mit Freigabe-Recht seinen PIN dazugeben.
+    const [verweis] = await opts.deps.db
+      .select({
+        bar:      belege.summeBarCent,
+        karte:    belege.summeKarteCent,
+        sonstige: belege.summeSonstigeCent,
+      })
+      .from(belege)
+      .where(and(
+        eq(belege.id, parsed.data.verweisBelegId),
+        eq(belege.mandantId, request.user.mandantId),
+      ))
+      .limit(1)
+    // Kein Treffer → der Beleg-Service liefert gleich die passende 404/400.
+    let freigeber: Freigeber | null = null
+    if (verweis) {
+      const betragCent = verweis.bar + verweis.karte + verweis.sonstige
+      try {
+        freigeber = await pruefeStornoFreigabe(
+          opts.deps.db, request.user.mandantId, betragCent, parsed.data.freigabePin,
+        )
+      } catch (err) {
+        if (err instanceof FreigabeError) {
+          return reply.status(err.httpStatus).send({ fehler: err.message, code: err.code, abCent: err.abCent })
+        }
+        throw err
+      }
+    }
+
+    const ergebnis = await fuehreAus(fastify, reply, opts.deps, () => erstelleStornobeleg(parsed.data, opts.deps))
+
+    // Nur protokollieren, wenn wirklich freigegeben wurde — sonst bläht sich das
+    // Audit mit Selbstverständlichkeiten auf.
+    if (freigeber && reply.statusCode < 400) {
+      await logAudit(opts.deps.db, {
+        mandantId: request.user.mandantId,
+        userId:    request.user.sub,
+        aktion:    'storno.freigegeben',
+        details:   {
+          verweisBelegId: parsed.data.verweisBelegId,
+          freigeberId:    freigeber.userId,
+          freigeberName:  freigeber.name,
+          ...(parsed.data.grund ? { grund: parsed.data.grund } : {}),
+        },
+        ipAdresse: getClientIp(request as Parameters<typeof getClientIp>[0]),
+        userAgent: (request.headers['user-agent'] as string | undefined) ?? null,
+      }, fastify.log)
+    }
+    return ergebnis
   })
 
   fastify.post('/belege/nullbeleg', guard, async (request, reply) => {
