@@ -51,6 +51,11 @@ export const MandantModuleSchema = z.object({
   modulGaengeAktiv:          z.boolean(),
   /** Anzahl wählbarer Gänge (1..9), nur relevant bei modulGaengeAktiv */
   gaengeAnzahl:              z.number().int().min(1).max(9),
+  /**
+   * Umrüstzeit in Minuten fürs Neueindecken: blockiert den Tisch nach dem Ende
+   * einer Reservierung zusätzlich. 0 = aus. In 10er-Schritten wählbar.
+   */
+  umruestMinuten:            z.number().int().min(0).max(120).multipleOf(10),
 })
 export type MandantModule = z.infer<typeof MandantModuleSchema>
 

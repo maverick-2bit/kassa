@@ -87,6 +87,30 @@ export function MandantenEinstellungenPage() {
                   <span className="text-xs text-ink-subtle">Gang-Wähler am Tisch: „1. Gang" … „{moduleQuery.data!.gaengeAnzahl}. Gang"</span>
                 </div>
               )}
+              {/* Reservierungs-Detail: Umrüstzeit fürs Neueindecken. Blockiert den
+                  Tisch über das Reservierungsende hinaus — der Gast sieht davon
+                  nichts, es ist reine Betriebsplanung. */}
+              {modul === 'reservierungen' && getModulWert(moduleQuery.data!, modul) && (
+                <div className="ml-14 flex flex-wrap items-center gap-3 rounded-lg border border-line bg-panel-2 px-4 py-3">
+                  <label htmlFor="umruest-minuten" className="text-sm font-medium text-ink">Umrüstzeit</label>
+                  <select
+                    id="umruest-minuten"
+                    value={moduleQuery.data!.umruestMinuten ?? 0}
+                    disabled={speichern.isPending}
+                    onChange={(e) => speichern.mutate({ umruestMinuten: Number(e.target.value) })}
+                    className="rounded-md border border-line-strong px-3 py-1.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+                  >
+                    {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120].map(n => (
+                      <option key={n} value={n}>{n === 0 ? 'keine' : `${n} Min.`}</option>
+                    ))}
+                  </select>
+                  <span className="text-xs text-ink-subtle">
+                    {(moduleQuery.data!.umruestMinuten ?? 0) === 0
+                      ? 'Der Tisch ist direkt nach dem Reservierungsende wieder buchbar.'
+                      : `Nach jeder Reservierung bleibt der Tisch ${moduleQuery.data!.umruestMinuten} Min. länger blockiert (Neueindecken).`}
+                  </span>
+                </div>
+              )}
             </div>
           ))}
         </div>

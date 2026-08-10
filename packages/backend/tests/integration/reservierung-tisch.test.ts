@@ -32,6 +32,7 @@ describe('Reservierung: Tischbindung + Doppelbelegung (Integration)', () => {
   let kasseId: string
   let tischA: string   // online freigegeben, 4 Plätze
   let tischB: string   // NICHT online freigegeben, 2 Plätze
+  let mandantId: string
 
   const auth = () => ({ authorization: `Bearer ${token}` })
 
@@ -61,7 +62,7 @@ describe('Reservierung: Tischbindung + Doppelbelegung (Integration)', () => {
     })).json()
     token   = login.token
     kasseId = login.kassen[0].id
-    const mandantId = login.mandant.id
+    mandantId = login.mandant.id
 
     // Modul + Online-Buchung aktivieren
     await idb.db.update(mandanten).set({ modulReservierungenAktiv: true }).where(eq(mandanten.id, mandantId))
@@ -252,5 +253,118 @@ describe('Reservierung: Tischbindung + Doppelbelegung (Integration)', () => {
       url: `/api/buchung/${kasseId}/tische?datum=2026-08-25&zeitVon=18:00&dauer=90&personen=6`,
     })
     expect(grosseGruppe.json()).toEqual([])
+  })
+
+  // -------------------------------------------------------------------------
+  // Umrüstzeit fürs Neueindecken (v0.7.146)
+  // -------------------------------------------------------------------------
+
+  describe('Umrüstzeit', () => {
+    const TAG = '2026-09-10'
+
+    async function setzeUmruest(minuten: number) {
+      await idb.db.update(mandanten).set({ umruestMinuten: minuten }).where(eq(mandanten.id, mandantId))
+    }
+
+    const verfuegbarkeit = (zeitVon: string, dauer: number) =>
+      srv.fastify.inject({
+        method: 'GET', headers: auth(),
+        url: `/api/reservierungen/tische?kasseId=${kasseId}&datum=${TAG}&zeitVon=${zeitVon}&dauer=${dauer}`,
+      })
+
+    beforeAll(async () => {
+      // Basis: 18:00–19:30 auf Tisch A
+      const res = await reservieren({
+        kasseId, datum: TAG, zeitVon: '18:00', dauer: 90,
+        personenAnzahl: 2, name: 'Basis', tischId: tischA,
+      })
+      expect(res.statusCode).toBe(201)
+    })
+
+    afterAll(() => setzeUmruest(0))
+
+    it('ohne Umrüstzeit ist der Tisch direkt im Anschluss buchbar', async () => {
+      await setzeUmruest(0)
+      const res = await reservieren({
+        kasseId, datum: TAG, zeitVon: '19:30', dauer: 60,
+        personenAnzahl: 2, name: 'Direkt danach', tischId: tischA,
+      })
+      expect(res.statusCode).toBe(201)
+      // wieder entfernen, damit die folgenden Fälle auf der Basis aufsetzen
+      await srv.fastify.inject({
+        method: 'DELETE', url: `/api/reservierungen/${res.json().id}`, headers: auth(),
+      })
+    })
+
+    it('mit 30 Min. Umrüstzeit ist derselbe Anschluss-Termin belegt', async () => {
+      await setzeUmruest(30)
+      const res = await reservieren({
+        kasseId, datum: TAG, zeitVon: '19:30', dauer: 60,
+        personenAnzahl: 2, name: 'Zu früh', tischId: tischA,
+      })
+      expect(res.statusCode).toBe(409)
+      // Die gebuchte Zeit UND die Umrüstzeit müssen in der Meldung stehen,
+      // sonst wirkt die Absage willkürlich.
+      expect(res.json().fehler).toContain('18:00–19:30')
+      expect(res.json().fehler).toContain('30 Min. Umrüstzeit')
+    })
+
+    it('nach Ablauf der Umrüstzeit ist der Tisch wieder frei', async () => {
+      await setzeUmruest(30)
+      const res = await reservieren({
+        kasseId, datum: TAG, zeitVon: '20:00', dauer: 60,
+        personenAnzahl: 2, name: 'Genau passend', tischId: tischA,
+      })
+      expect(res.statusCode).toBe(201)
+      await srv.fastify.inject({
+        method: 'DELETE', url: `/api/reservierungen/${res.json().id}`, headers: auth(),
+      })
+    })
+
+    it('gilt auch VOR der Reservierung — die Umrüstzeit hängt an beiden', async () => {
+      await setzeUmruest(30)
+      // 16:15–17:45 endet 15 Min. vor der Basis um 18:00 → zu wenig zum Eindecken
+      const zuKnapp = await reservieren({
+        kasseId, datum: TAG, zeitVon: '16:15', dauer: 90,
+        personenAnzahl: 2, name: 'Davor zu knapp', tischId: tischA,
+      })
+      expect(zuKnapp.statusCode).toBe(409)
+
+      // 16:00–17:30 lässt exakt 30 Min. → passt
+      const passt = await reservieren({
+        kasseId, datum: TAG, zeitVon: '16:00', dauer: 90,
+        personenAnzahl: 2, name: 'Davor passend', tischId: tischA,
+      })
+      expect(passt.statusCode).toBe(201)
+      await srv.fastify.inject({
+        method: 'DELETE', url: `/api/reservierungen/${passt.json().id}`, headers: auth(),
+      })
+    })
+
+    it('Verfügbarkeitsliste und Speichern sind sich einig', async () => {
+      // Der teuerste Fehler wäre: Auswahl zeigt „frei", Speichern antwortet 409.
+      await setzeUmruest(30)
+      const belegt = (await verfuegbarkeit('19:30', 60)).json() as Array<{ id: string; frei: boolean; belegtDurch?: string }>
+      expect(belegt.find(t => t.id === tischA)!.frei).toBe(false)
+      expect(belegt.find(t => t.id === tischA)!.belegtDurch).toContain('Basis')
+
+      const frei = (await verfuegbarkeit('20:00', 60)).json() as Array<{ id: string; frei: boolean }>
+      expect(frei.find(t => t.id === tischA)!.frei).toBe(true)
+
+      // Und ohne Umrüstzeit ist 19:30 sofort wieder frei
+      await setzeUmruest(0)
+      const ohne = (await verfuegbarkeit('19:30', 60)).json() as Array<{ id: string; frei: boolean }>
+      expect(ohne.find(t => t.id === tischA)!.frei).toBe(true)
+    })
+
+    it('wirkt auch bei der Online-Buchung durch den Gast', async () => {
+      await setzeUmruest(30)
+      const online = await srv.fastify.inject({
+        method: 'GET',
+        url: `/api/buchung/${kasseId}/tische?datum=${TAG}&zeitVon=19:30&dauer=60&personen=2`,
+      })
+      // T1 ist der einzige online freigegebene Tisch — und in der Umrüstzeit weg
+      expect(online.json()).toEqual([])
+    })
   })
 })

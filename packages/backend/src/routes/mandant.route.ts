@@ -63,6 +63,7 @@ export const mandantRoute: FastifyPluginAsync<MandantRouteOptions> = async (fast
         modulSbTerminalAktiv:     mandanten.modulSbTerminalAktiv,
         modulGaengeAktiv:         mandanten.modulGaengeAktiv,
         gaengeAnzahl:             mandanten.gaengeAnzahl,
+        umruestMinuten:           mandanten.umruestMinuten,
       })
       .from(mandanten)
       .where(eq(mandanten.id, request.user.mandantId))
@@ -94,6 +95,7 @@ export const mandantRoute: FastifyPluginAsync<MandantRouteOptions> = async (fast
       modulSbTerminalAktiv:     boolean
       modulGaengeAktiv:         boolean
       gaengeAnzahl:             number
+      umruestMinuten:           number
     }> = {}
 
     if (body.data.modulGastroAktiv         !== undefined) updates.modulGastroAktiv         = body.data.modulGastroAktiv
@@ -104,6 +106,7 @@ export const mandantRoute: FastifyPluginAsync<MandantRouteOptions> = async (fast
     if (body.data.modulSbTerminalAktiv     !== undefined) updates.modulSbTerminalAktiv     = body.data.modulSbTerminalAktiv
     if (body.data.modulGaengeAktiv         !== undefined) updates.modulGaengeAktiv         = body.data.modulGaengeAktiv
     if (body.data.gaengeAnzahl             !== undefined) updates.gaengeAnzahl             = body.data.gaengeAnzahl
+    if (body.data.umruestMinuten           !== undefined) updates.umruestMinuten           = body.data.umruestMinuten
 
     if (Object.keys(updates).length === 0) {
       return reply.status(400).send({ fehler: 'Keine Änderungen angegeben' })
@@ -122,6 +125,7 @@ export const mandantRoute: FastifyPluginAsync<MandantRouteOptions> = async (fast
         modulSbTerminalAktiv:     mandanten.modulSbTerminalAktiv,
         modulGaengeAktiv:         mandanten.modulGaengeAktiv,
         gaengeAnzahl:             mandanten.gaengeAnzahl,
+        umruestMinuten:           mandanten.umruestMinuten,
       })
 
     if (!row) return reply.status(404).send({ fehler: 'Mandant nicht gefunden' })

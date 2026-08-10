@@ -32,8 +32,37 @@ function minuten(hhmm: string): number {
 const FREIGEBENDE_STATI = ['storniert', 'nicht_erschienen'] as const
 
 /**
+ * Umrüstzeit des Mandanten: Minuten fürs Neueindecken, die ein Tisch nach dem
+ * Ende einer Reservierung zusätzlich blockiert bleibt. 0 = aus.
+ */
+async function holeUmruestMinuten(db: Db, mandantId: string): Promise<number> {
+  const [m] = await db
+    .select({ minuten: mandanten.umruestMinuten })
+    .from(mandanten)
+    .where(eq(mandanten.id, mandantId))
+    .limit(1)
+  return m?.minuten ?? 0
+}
+
+/**
+ * Überschneiden sich zwei Belegungen?
+ *
+ * Die Umrüstzeit hängt an BEIDEN Reservierungen, nicht nur an der bestehenden:
+ * gebucht wird [von, von+dauer), belegt ist [von, von+dauer+umruest). Damit muss
+ * zwischen zwei Reservierungen am selben Tisch mindestens die Umrüstzeit liegen
+ * — egal, welche zuerst angelegt wurde. Der Gast sieht weiterhin nur seine
+ * eigene Zeit; die Umrüstzeit ist reine Betriebsplanung.
+ */
+function ueberschneidet(
+  aStart: number, aDauer: number,
+  bStart: number, bDauer: number,
+  umruest: number,
+): boolean {
+  return aStart < bStart + bDauer + umruest && bStart < aStart + aDauer + umruest
+}
+
+/**
  * Wirft 409, wenn der Tisch im gewünschten Zeitraum schon belegt ist.
- * Überschneidung = [von, von+dauer) der beiden Reservierungen überlappen sich.
  * `ausserId` schließt die eigene Reservierung beim Bearbeiten aus.
  */
 export async function pruefeTischFrei(
@@ -63,20 +92,28 @@ export async function pruefeTischFrei(
     .from(reservierungen)
     .where(and(...bedingungen))
 
-  const start = minuten(zeitVon)
-  const ende  = start + dauer
+  const umruest = await holeUmruestMinuten(db, mandantId)
+  const start   = minuten(zeitVon)
 
   for (const b of belegungen) {
     if ((FREIGEBENDE_STATI as readonly string[]).includes(b.status)) continue
     const bStart = minuten(b.zeitVon)
-    const bEnde  = bStart + b.dauer
-    if (start < bEnde && bStart < ende) {
+    if (ueberschneidet(start, dauer, bStart, b.dauer, umruest)) {
+      const bEnde = bStart + b.dauer
+      // Die gebuchte Zeit nennen, die Umrüstzeit separat — sonst wundert sich
+      // der Kellner, warum 19:30 belegt ist, obwohl die Reservierung 19:00 endet.
+      const zusatz = umruest > 0 ? ` + ${umruest} Min. Umrüstzeit` : ''
       throw new ReservierungError(
         409,
-        `Tisch ist zu dieser Zeit bereits reserviert (${b.zeitVon}–${String(Math.floor(bEnde / 60)).padStart(2, '0')}:${String(bEnde % 60).padStart(2, '0')}, ${b.name}).`,
+        `Tisch ist zu dieser Zeit bereits reserviert (${b.zeitVon}–${hhmm(bEnde)}${zusatz}, ${b.name}).`,
       )
     }
   }
+}
+
+/** Minuten seit Mitternacht → "HH:MM" */
+function hhmm(m: number): string {
+  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
 }
 
 /** Tisch gehört zum Mandanten? Liefert Bezeichnung + Online-Freigabe. */
@@ -433,8 +470,8 @@ export async function listeTischVerfuegbarkeit(
       inArray(reservierungen.tischId, tische.map(t => t.id)),
     ))
 
-  const start = minuten(zeitVon)
-  const ende  = start + dauer
+  const umruest = await holeUmruestMinuten(db, mandantId)
+  const start   = minuten(zeitVon)
 
   return tische
     .filter(t => opts.minPlaetze === undefined || t.plaetze === 0 || t.plaetze >= opts.minPlaetze)
@@ -443,8 +480,9 @@ export async function listeTischVerfuegbarkeit(
         if (b.tischId !== t.id) return false
         if (b.id === opts.ausserId) return false
         if ((FREIGEBENDE_STATI as readonly string[]).includes(b.status)) return false
-        const bStart = minuten(b.zeitVon)
-        return start < bStart + b.dauer && bStart < ende
+        // Gleiche Regel wie pruefeTischFrei — sonst zeigt die Auswahl einen
+        // Tisch als frei an, den das Speichern dann mit 409 ablehnt.
+        return ueberschneidet(start, dauer, minuten(b.zeitVon), b.dauer, umruest)
       })
       return {
         id:                 t.id,

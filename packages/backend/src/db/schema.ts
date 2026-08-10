@@ -65,6 +65,11 @@ export const mandanten = pgTable('mandanten', {
   modulGaengeAktiv:         boolean('modul_gaenge_aktiv').notNull().default(false),
   /** Anzahl wählbarer Gänge im Gang-Wähler (1..9) */
   gaengeAnzahl:             integer('gaenge_anzahl').notNull().default(3),
+  /**
+   * Umrüstzeit in Minuten: so lange bleibt ein Tisch nach dem Ende einer
+   * Reservierung zusätzlich blockiert (Neueindecken). 0 = aus.
+   */
+  umruestMinuten:           integer('umruest_minuten').notNull().default(0),
 
   // Pro-Mandant-Stripe-Konto (Gast-Onlinezahlung). AES-256-GCM-verschlüsselt
   // (Muster crypto/master-key.ts). Leer → globale Env-Keys als Fallback.
