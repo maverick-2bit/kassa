@@ -5,6 +5,7 @@ import { tischTabApi } from '../lib/api'
 import { getAuth, clearAuth } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
+import { DruckproblemeBanner } from '../components/DruckproblemeBanner'
 
 export function TischePage() {
   const navigate    = useNavigate()
@@ -68,6 +69,10 @@ export function TischePage() {
 
       {/* Inhalt */}
       <div className="flex-1 p-4 space-y-3">
+        {/* Nicht gedruckte Belege — auch hier sichtbar, damit es auffällt,
+            wenn der Kellner nach dem Kassieren zur Übersicht zurückkehrt. */}
+        <DruckproblemeBanner />
+
         {tabsQuery.isLoading && (
           <div className="flex justify-center py-12">
             <div className="w-8 h-8 border-4 border-brand-500 border-t-transparent rounded-full animate-spin" />
