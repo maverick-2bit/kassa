@@ -7,6 +7,7 @@ import type {
   TabPosition,
   BonierungInput,
   BonierungErgebnis,
+  BonierZielFehler,
   ModifikatorGruppe,
   TischTabBezahlenInput,
   ZvtConfig,
@@ -18,6 +19,17 @@ import { clearKasseIdentity } from './kasse'
 
 let onUnauthorized: (() => void) | null = null
 export function setOnUnauthorized(fn: () => void) { onUnauthorized = fn }
+
+export class ApiError extends Error {
+  constructor(
+    public status: number,
+    message: string,
+    /** Maschinenlesbarer Fehlercode, z. B. 'freigabe_erforderlich'. */
+    public code?: string,
+  ) {
+    super(message)
+  }
+}
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const token = getToken()
@@ -42,8 +54,13 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   if (!res.ok) {
     const text = await res.text().catch(() => '')
     let msg = `HTTP ${res.status}`
-    try { msg = (JSON.parse(text) as { fehler?: string }).fehler ?? msg } catch { /* ignore */ }
-    throw new Error(msg)
+    let code: string | undefined
+    try {
+      const body = JSON.parse(text) as { fehler?: string; code?: string }
+      msg  = body.fehler ?? msg
+      code = body.code
+    } catch { /* ignore */ }
+    throw new ApiError(res.status, msg, code)
   }
   return res.json() as Promise<T>
 }
@@ -98,8 +115,9 @@ export const tischTabApi = {
     request<TischTabResponse>('GET', `/api/tisch-tabs/${id}`),
   erstelle: (input: TischTabErstellenInput) =>
     request<TischTabResponse>('POST', '/api/tisch-tabs', input),
-  aktualisierePositionen: (id: string, positionen: TabPosition[]) =>
-    request<TischTabResponse>('PUT', `/api/tisch-tabs/${id}/positionen`, { positionen }),
+  aktualisierePositionen: (id: string, positionen: TabPosition[], freigabePin?: string) =>
+    request<TabPositionenAntwort>('PUT', `/api/tisch-tabs/${id}/positionen`,
+      { positionen, ...(freigabePin ? { freigabePin } : {}) }),
   bezahle: (id: string, input: TischTabBezahlenInput) =>
     request<{ tab: TischTabResponse; belegId: string }>('POST', `/api/tisch-tabs/${id}/bezahlen`, input),
   /** Gänge-Steuerung: nächsten offenen Gang an die Küche/Schank feuern */
@@ -117,6 +135,18 @@ export const tischTabApi = {
 export interface DruckerConfig {
   belegModus:    'drucken' | 'digital' | 'beides'
   belegBasisUrl: string | null
+}
+
+/**
+ * Antwort des Positions-Updates. `stornoBon` steht NUR drin, wenn der
+ * Korrekturbon nach einem Storno ein Ziel nicht erreicht hat — dann bereitet die
+ * Station sonst weiter zu, ohne es zu wissen.
+ */
+export interface TabPositionenAntwort extends TischTabResponse {
+  stornoBon?: {
+    fehler:     BonierZielFehler[]
+    positionen: Array<{ artikelId: string; menge: number }>
+  }
 }
 
 /** Beleg, dessen Bon nicht aus dem Drucker kam (und seither nicht nachgedruckt wurde). */

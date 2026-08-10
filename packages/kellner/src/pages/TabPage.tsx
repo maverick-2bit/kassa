@@ -4,7 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { QRCodeSVG } from 'qrcode.react'
 import type { BonierungErgebnis, BonierungInput, BonierZielFehler, TabPosition } from '@kassa/shared'
 import { bonierFehlschlaege } from '@kassa/shared'
-import { tischTabApi, bonierApi, druckerApi, oeffentlicherBelegApi, zvtApi } from '../lib/api'
+import { tischTabApi, bonierApi, druckerApi, oeffentlicherBelegApi, zvtApi, ApiError } from '../lib/api'
 import { getAuth, gaengeAktiv as istGaengeAktiv, gaengeAnzahl } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
@@ -216,12 +216,45 @@ export function TabPage() {
     onError:    (err) => setAusweichFehler(err instanceof Error ? err.message : 'Ausweich-Druck fehlgeschlagen'),
   })
 
-  function positionEntfernen(idx: number) {
+  /** Positions-Storno wartet auf den PIN eines Freigabeberechtigten. */
+  const [freigabeAnfrage, setFreigabeAnfrage] = useState<{ positionen: TabPosition[] } | null>(null)
+  const [freigabePinEingabe, setFreigabePinEingabe] = useState('')
+
+  function positionEntfernen(idx: number, freigabePin?: string) {
     const tab = tabQuery.data!
-    const neuePositionen = tab.positionen.filter((_, i) => i !== idx)
-    tischTabApi.aktualisierePositionen(tab.id, neuePositionen)
-      .then(() => qc.invalidateQueries({ queryKey: ['tisch-tab', tabId] }))
-      .catch(() => {/* ignore */})
+    const neuePositionen = freigabeAnfrage && freigabePin
+      ? freigabeAnfrage.positionen
+      : tab.positionen.filter((_, i) => i !== idx)
+    tischTabApi.aktualisierePositionen(tab.id, neuePositionen, freigabePin)
+      .then((antwort) => {
+        setFreigabeAnfrage(null)
+        setFreigabePinEingabe('')
+        qc.invalidateQueries({ queryKey: ['tisch-tab', tabId] })
+        // Das Backend schickt automatisch einen Korrekturbon an Küche/Schank.
+        // Erreicht er sein Ziel nicht, steht dort weiter das stornierte Gericht
+        // auf der Liste — das muss der Kellner am Tisch erfahren.
+        if (!antwort.stornoBon) return
+        setNichtZugestellt({
+          ziele: antwort.stornoBon.fehler,
+          nachsenden: {
+            kasseId:    identity.kasseId,
+            tabId:      tab.id,
+            tisch:      tab.tischNummer,
+            kellner:    auth.user.name,
+            positionen: antwort.stornoBon.positionen,
+            ohneLagerabzug: true,
+            storno:     true,
+          },
+        })
+      })
+      .catch((err) => {
+        if (err instanceof ApiError && err.code === 'freigabe_erforderlich') {
+          setFreigabeAnfrage({ positionen: neuePositionen })
+          setFreigabePinEingabe('')
+          return
+        }
+        setBonierFehler(err instanceof Error ? err.message : 'Position konnte nicht entfernt werden')
+      })
   }
 
   if (tabQuery.isLoading) return (
@@ -445,6 +478,43 @@ export function TabPage() {
           )}
           {bonierErfolg && (
             <p className="text-brand-600 text-sm text-center font-bold">✓ Bon wurde gesendet</p>
+          )}
+
+          {/* Storno-Freigabe: Positions-Storno über der Schwelle — PIN abfragen */}
+          {freigabeAnfrage && (
+            <div className="rounded-lg border-2 border-amber-400 bg-amber-50 p-3 space-y-2">
+              <p className="text-sm font-bold text-amber-900">Freigabe erforderlich</p>
+              <input
+                type="password"
+                inputMode="numeric"
+                autoFocus
+                value={freigabePinEingabe}
+                onChange={(e) => setFreigabePinEingabe(e.target.value.replace(/\D/g, ''))}
+                maxLength={12}
+                placeholder="PIN eines Berechtigten"
+                className="w-full rounded-lg border border-amber-300 px-3 py-3 text-sm tracking-widest outline-none"
+              />
+              <p className="text-xs text-amber-800">
+                Der Storno liegt über der Schwelle — der eigene PIN genügt nicht.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="flex-1 rounded-lg bg-amber-600 py-3 text-sm font-bold text-white active:bg-amber-700 disabled:opacity-50"
+                  disabled={freigabePinEingabe.length < 4}
+                  onClick={() => positionEntfernen(-1, freigabePinEingabe)}
+                >
+                  Freigeben
+                </button>
+                <button
+                  type="button"
+                  className="rounded-lg border border-amber-300 px-4 py-3 text-sm font-bold text-amber-700"
+                  onClick={() => { setFreigabeAnfrage(null); setFreigabePinEingabe('') }}
+                >
+                  Abbrechen
+                </button>
+              </div>
+            </div>
           )}
 
           {/* Bon nicht zugestellt: bleibt stehen, bis nachgesendet oder bestätigt.

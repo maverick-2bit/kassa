@@ -153,11 +153,100 @@ describe('Storno-Freigabe (Integration, echtes PostgreSQL)', () => {
     const res = await storniere(beleg.id, CHEF_PIN)
     expect(res.statusCode).toBe(201)
 
-    const eintraege = await idb.db.select().from(auditLogs).where(eq(auditLogs.aktion, 'storno.freigegeben'))
-    expect(eintraege.length).toBeGreaterThanOrEqual(1)
-    const details = eintraege.at(-1)!.details as Record<string, unknown>
-    expect(details['verweisBelegId']).toBe(beleg.id)
-    expect(details['freigeberName']).toBe('SF Admin')
+    // Das Audit läuft bewusst NACH dem Senden der Antwort (nicht blockierend) —
+    // deshalb hier auf den Eintrag warten statt sofort abzufragen.
+    await vi.waitFor(async () => {
+      const eintraege = await idb.db.select().from(auditLogs).where(eq(auditLogs.aktion, 'storno.freigegeben'))
+      expect(eintraege.length).toBeGreaterThanOrEqual(1)
+      const details = eintraege.at(-1)!.details as Record<string, unknown>
+      expect(details['verweisBelegId']).toBe(beleg.id)
+      expect(details['freigeberName']).toBe('SF Admin')
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // Positions-Storno am offenen Tisch (v0.7.150)
+  // -------------------------------------------------------------------------
+
+  describe('Positions-Storno am Tisch', () => {
+    async function tischMit(betragCent: number, tisch: string): Promise<{ tabId: string; positionen: unknown[] }> {
+      const tab = (await srv.fastify.inject({
+        method: 'POST', url: '/api/tisch-tabs', headers: auth(),
+        payload: { kasseId, tischNummer: tisch, kellner: 'Karl' },
+      })).json()
+      const positionen = [{ artikelId: crypto.randomUUID(), bezeichnung: 'Menü', preisBruttoCent: betragCent, menge: 1 }]
+      const put = await srv.fastify.inject({
+        method: 'PUT', url: `/api/tisch-tabs/${tab.id}/positionen`, headers: auth(),
+        payload: { positionen },
+      })
+      expect(put.statusCode).toBe(200)
+      return { tabId: tab.id, positionen }
+    }
+
+    it('Reduzieren über der Schwelle: 403 ohne PIN, 200 mit Chef-PIN — nichts geht verloren', async () => {
+      await setzeSchwelle(5000)
+      const { tabId } = await tischMit(8000, 'F1')
+
+      // Position entfernen (Storno 80 €) ohne PIN → abgelehnt, Tab UNVERÄNDERT
+      const ohne = await srv.fastify.inject({
+        method: 'PUT', url: `/api/tisch-tabs/${tabId}/positionen`, headers: auth(),
+        payload: { positionen: [] },
+      })
+      expect(ohne.statusCode).toBe(403)
+      expect(ohne.json().code).toBe('freigabe_erforderlich')
+
+      const danach = (await srv.fastify.inject({
+        method: 'GET', url: `/api/tisch-tabs/${tabId}`, headers: auth(),
+      })).json()
+      expect(danach.positionen).toHaveLength(1)   // Ablehnung hat NICHTS geschrieben
+
+      // Mit Chef-PIN geht es durch
+      const mit = await srv.fastify.inject({
+        method: 'PUT', url: `/api/tisch-tabs/${tabId}/positionen`, headers: auth(),
+        payload: { positionen: [], freigabePin: CHEF_PIN },
+      })
+      expect(mit.statusCode).toBe(200)
+    })
+
+    it('unter der Schwelle bleibt die Korrektur PIN-frei', async () => {
+      await setzeSchwelle(5000)
+      const { tabId } = await tischMit(3000, 'F2')
+      const res = await srv.fastify.inject({
+        method: 'PUT', url: `/api/tisch-tabs/${tabId}/positionen`, headers: auth(),
+        payload: { positionen: [] },
+      })
+      expect(res.statusCode).toBe(200)
+    })
+
+    it('Hinzufügen ist nie freigabepflichtig — nur Reduzieren', async () => {
+      await setzeSchwelle(100)   // absurd niedrig: JEDER Storno wäre pflichtig
+      const { tabId, positionen } = await tischMit(9000, 'F3')
+      const mehr = await srv.fastify.inject({
+        method: 'PUT', url: `/api/tisch-tabs/${tabId}/positionen`, headers: auth(),
+        payload: { positionen: [...positionen, { artikelId: crypto.randomUUID(), bezeichnung: 'Noch eins', preisBruttoCent: 9000, menge: 1 }] },
+      })
+      expect(mehr.statusCode).toBe(200)
+    })
+
+    it('Verwerfen des ganzen Tabs unterliegt derselben Schwelle', async () => {
+      // Sonst würde man die Positions-Freigabe umgehen, indem man statt der
+      // Position einfach den ganzen Tab verwirft.
+      await setzeSchwelle(5000)
+      const { tabId } = await tischMit(7000, 'F4')
+
+      const ohne = await srv.fastify.inject({
+        method: 'POST', url: `/api/tisch-tabs/${tabId}/verwerfen`, headers: auth(), payload: {},
+      })
+      expect(ohne.statusCode).toBe(403)
+      expect(ohne.json().code).toBe('freigabe_erforderlich')
+
+      const mit = await srv.fastify.inject({
+        method: 'POST', url: `/api/tisch-tabs/${tabId}/verwerfen`, headers: auth(),
+        payload: { freigabePin: CHEF_PIN, grund: 'Test' },
+      })
+      expect(mit.statusCode).toBe(200)
+      expect(mit.json().status).toBe('verworfen')
+    })
   })
 
   it('die Schwelle darf nur mit Einstellungs-Recht gesetzt werden', async () => {

@@ -29,6 +29,7 @@ import {
   type TischTabServiceDeps,
 } from '../services/tisch-tab.service.js'
 import { tryDruckeBeleg } from '../services/drucker.service.js'
+import { FreigabeError } from '../services/freigabe.service.js'
 
 export interface TischTabRouteOptions {
   deps: TischTabServiceDeps
@@ -72,12 +73,19 @@ export const tischTabRoute: FastifyPluginAsync<TischTabRouteOptions> = async (fa
     const parsed = TischTabPositionenUpdateSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     try {
-      const tab = await aktualisierePositionen(id, parsed.data.positionen, request.user.mandantId, opts.deps, {
-        userId:   (request.user as { id?: string }).id ?? null,
-        userName: request.user.name,
-      })
-      return reply.send(tab)
+      const { tab, stornoBon } = await aktualisierePositionen(
+        id, parsed.data.positionen, request.user.mandantId, opts.deps, {
+          userId:   (request.user as { id?: string }).id ?? null,
+          userName: request.user.name,
+          ...(parsed.data.freigabePin ? { freigabePin: parsed.data.freigabePin } : {}),
+        },
+      )
+      // stornoBon nur mitschicken, wenn der Korrekturbon NICHT zugestellt wurde —
+      // die Oberfläche zeigt dann dieselbe Leiste wie beim normalen Bonieren.
+      return reply.send(stornoBon ? { ...tab, stornoBon } : tab)
     } catch (err) {
+      if (err instanceof FreigabeError)
+        return reply.status(err.httpStatus).send({ fehler: err.message, code: err.code, abCent: err.abCent })
       if (err instanceof TischTabError) return reply.status(err.httpStatus).send({ fehler: err.message })
       throw err
     }
@@ -87,16 +95,22 @@ export const tischTabRoute: FastifyPluginAsync<TischTabRouteOptions> = async (fa
    *  Entscheidung); Storno-Bon an die Stationen + Audit-Protokoll laufen im Service. */
   fastify.post('/tisch-tabs/:id/verwerfen', auth, async (request, reply) => {
     const { id } = request.params as { id: string }
-    const body = z.object({ grund: z.string().trim().max(200).optional() }).safeParse(request.body ?? {})
+    const body = z.object({
+      grund:       z.string().trim().max(200).optional(),
+      freigabePin: z.string().trim().min(4).max(12).optional(),
+    }).safeParse(request.body ?? {})
     if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
     try {
       const tab = await verwerfeTab(id, request.user.mandantId, opts.deps, {
         userId:   (request.user as { id?: string }).id ?? null,
         userName: request.user.name,
         ...(body.data.grund ? { grund: body.data.grund } : {}),
+        ...(body.data.freigabePin ? { freigabePin: body.data.freigabePin } : {}),
       })
       return reply.send(tab)
     } catch (err) {
+      if (err instanceof FreigabeError)
+        return reply.status(err.httpStatus).send({ fehler: err.message, code: err.code, abCent: err.abCent })
       if (err instanceof TischTabError) return reply.status(err.httpStatus).send({ fehler: err.message })
       throw err
     }

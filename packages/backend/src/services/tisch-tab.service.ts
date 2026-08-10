@@ -12,17 +12,26 @@ import type {
   TischTabZusammenfuehrenInput,
   TischTabVerschiebenInput,
   TischTabResponse,
+  BonierZielFehler,
 } from '@kassa/shared'
+import { bonierFehlschlaege } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import { artikel, auditLogs, kassen, modifikatoren, tabEreignisse, tischTabs } from '../db/schema.js'
 import type { BelegServiceDeps } from './beleg.service.js'
 import { erstelleBarzahlungsbeleg } from './beleg.service.js'
 import { ladeRezepte, wendeBestandteilDeltasAn } from './bestandteil.service.js'
 import { bonierBestellung } from './bonier.service.js'
+import { pruefeStornoFreigabe } from './freigabe.service.js'
 
 export interface TischTabServiceDeps {
   db:        Db
   belegDeps: BelegServiceDeps
+}
+
+/** Nicht zugestellter Korrekturbon samt der Positionen zum Nachsenden. */
+export interface StornoBonErgebnis {
+  fehler:     BonierZielFehler[]
+  positionen: Array<{ artikelId: string; menge: number }>
 }
 
 export class TischTabError extends Error {
@@ -283,8 +292,8 @@ export async function aktualisierePositionen(
   mandantId: string,
   deps: TischTabServiceDeps,
   /** Für Storno-Bon + Audit: wer korrigiert (Kellner-App/Kasse) und warum */
-  kontext?: { userId?: string | null; userName?: string; grund?: string },
-): Promise<TischTabResponse> {
+  kontext?: { userId?: string | null; userName?: string; grund?: string; freigabePin?: string },
+): Promise<{ tab: TischTabResponse; stornoBon: StornoBonErgebnis | null }> {
   const [existing] = await deps.db
     .select({ id: tischTabs.id, status: tischTabs.status, positionen: tischTabs.positionen })
     .from(tischTabs)
@@ -296,17 +305,9 @@ export async function aktualisierePositionen(
   // altePositionen VOR dem Update sichern
   const altePositionen = (existing.positionen as TabPosition[]) ?? []
 
-  const [row] = await deps.db
-    .update(tischTabs)
-    .set({ positionen, updatedAt: new Date() })
-    .where(eq(tischTabs.id, id))
-    .returning()
-  if (!row) throw new TischTabError(500, 'Update fehlgeschlagen')
-
-  // Lagerstand automatisch anpassen
-  await aktualisiereStockDeltas(altePositionen, positionen, deps.db)
-
-  // Storno-Erkennung: welche Positionen wurden reduziert oder entfernt?
+  // Storno-Erkennung VOR dem Update: welche Positionen werden reduziert oder
+  // entfernt? Muss vorher passieren, weil die Freigabe-Prüfung den Vorgang
+  // ablehnen können muss, ohne dass schon etwas geschrieben wurde.
   const neueMap = new Map(positionen.map(p => [p.artikelId, p]))
   const stornoItems: Array<{ artikelId: string; bezeichnung: string; menge: number; preisBruttoCent: number }> = []
 
@@ -323,13 +324,32 @@ export async function aktualisierePositionen(
     }
   }
 
+  // Freigabe-Schwelle: gleicher Mechanismus wie beim Beleg-Storno. Bewertet
+  // wird der Wert des STORNIERTEN Teils — nicht der Tab-Summe. Wirft 403 mit
+  // 'freigabe_erforderlich', bevor irgendetwas persistiert ist.
+  if (stornoItems.length > 0) {
+    const stornoWertCent = stornoItems.reduce((s, i) => s + i.menge * i.preisBruttoCent, 0)
+    await pruefeStornoFreigabe(deps.db, mandantId, stornoWertCent, kontext?.freigabePin)
+  }
+
+  const [row] = await deps.db
+    .update(tischTabs)
+    .set({ positionen, updatedAt: new Date() })
+    .where(eq(tischTabs.id, id))
+    .returning()
+  if (!row) throw new TischTabError(500, 'Update fehlgeschlagen')
+
+  // Lagerstand automatisch anpassen
+  await aktualisiereStockDeltas(altePositionen, positionen, deps.db)
+
+  let stornoBon: StornoBonErgebnis | null = null
   if (stornoItems.length > 0) {
     await logEreignis(id, mandantId, 'storno', {
       positionen: stornoItems,
       ...(kontext?.userName ? { durch: kontext.userName } : {}),
       ...(kontext?.grund    ? { grund: kontext.grund } : {}),
     }, deps.db)
-    await verarbeiteStorno(row, stornoItems, mandantId, deps, kontext)
+    stornoBon = await verarbeiteStorno(row, stornoItems, mandantId, deps, kontext)
   }
 
   await logEreignis(id, mandantId, 'positionen_aktualisiert', {
@@ -340,13 +360,17 @@ export async function aktualisierePositionen(
     })),
   }, deps.db)
 
-  return toResponse(row)
+  return { tab: toResponse(row), stornoBon }
 }
 
 /**
  * Gemeinsame Storno-Nacharbeit: Audit-Eintrag + Storno-Bon an die betroffenen
  * Stationen/Bonierdrucker. Der Bon läuft best-effort — ein Druckerausfall darf
  * den Storno selbst nie blockieren (er ist bereits persistiert).
+ *
+ * @returns die nicht erreichten Ziele samt der stornierten Positionen (damit die
+ *          Oberfläche gezielt nachsenden kann), oder null wenn alles zugestellt
+ *          wurde bzw. es nichts zuzustellen gab.
  */
 async function verarbeiteStorno(
   tab: { id: string; kasseId: string; tischNummer: string; kellner: string },
@@ -354,7 +378,7 @@ async function verarbeiteStorno(
   mandantId: string,
   deps: TischTabServiceDeps,
   kontext?: { userId?: string | null; userName?: string; grund?: string },
-): Promise<void> {
+): Promise<StornoBonErgebnis | null> {
   await deps.db.insert(auditLogs).values({
     mandantId,
     userId: kontext?.userId ?? null,
@@ -368,21 +392,36 @@ async function verarbeiteStorno(
     },
   })
 
+  const positionen = stornoItems.map(s => ({ artikelId: s.artikelId, menge: s.menge }))
+
   try {
     // Dynamischer Import — bonier.service importiert seinerseits aus diesem
     // Modul (logBonierEreignis); ein statischer Import wäre zirkulär.
     const { bonierBestellung } = await import('./bonier.service.js')
-    await bonierBestellung({
+    const ergebnis = await bonierBestellung({
       kasseId: tab.kasseId,
       tisch:   tab.tischNummer,
       kellner: kontext?.userName ?? tab.kellner,
-      positionen: stornoItems.map(s => ({ artikelId: s.artikelId, menge: s.menge })),
+      positionen,
       // ohneLagerabzug: der Storno-Bon ist reine Küchen-Info — die Rückbuchung
       // des Lagerstands macht bereits aktualisiereStockDeltas.
     }, { db: deps.db }, { storno: true, ohneLagerabzug: true })
+
+    // Der Korrekturbon ist der ganze Sinn der Übung: an der Station steht sonst
+    // weiter das stornierte Gericht auf der Liste und wird zubereitet. Kommt er
+    // nicht an, muss es der Kellner erfahren — bis v0.7.149 verschwand das
+    // Ergebnis hier stillschweigend.
+    const fehler = bonierFehlschlaege(ergebnis)
+    return fehler.length > 0 ? { fehler, positionen } : null
   } catch (err) {
-    // 400 = kein Artikel mit Station/Drucker (nichts zu melden) — alles andere nur loggen
-    console.error('Storno-Bon nicht zustellbar:', err instanceof Error ? err.message : err)
+    const msg = err instanceof Error ? err.message : String(err)
+    // „nichts zu bonieren" = kein Artikel hat Station oder Drucker. Dann gibt es
+    // auch nichts zu melden — kein Fehlerfall.
+    if (/nichts zu bonieren/i.test(msg)) return null
+    return {
+      fehler: [{ ziel: 'Küche/Schank', ip: '', fehler: msg, istBackup: false }],
+      positionen,
+    }
   }
 }
 
@@ -394,7 +433,7 @@ export async function verwerfeTab(
   id: string,
   mandantId: string,
   deps: TischTabServiceDeps,
-  kontext?: { userId?: string | null; userName?: string; grund?: string },
+  kontext?: { userId?: string | null; userName?: string; grund?: string; freigabePin?: string },
 ): Promise<TischTabResponse> {
   const [existing] = await deps.db
     .select()
@@ -405,6 +444,12 @@ export async function verwerfeTab(
   if (existing.status !== 'offen') throw new TischTabError(409, 'Tisch-Tab ist nicht mehr offen')
 
   const positionen = (existing.positionen as TabPosition[]) ?? []
+
+  // Verwerfen = Storno ALLER Positionen. Ohne diese Prüfung würde die
+  // Freigabeschwelle des Positions-Stornos umgangen, indem man statt der
+  // Position einfach den ganzen Tab verwirft.
+  const gesamtCent = positionen.reduce((s, p) => s + p.menge * p.preisBruttoCent, 0)
+  await pruefeStornoFreigabe(deps.db, mandantId, gesamtCent, kontext?.freigabePin)
 
   const [row] = await deps.db
     .update(tischTabs)

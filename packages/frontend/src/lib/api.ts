@@ -93,6 +93,7 @@ import type {
   TischTabErstellenInput,
   TischTabSplittenInput,
   TischTabResponse,
+  BonierZielFehler,
   User,
   UserCreateInput,
   UserUpdateInput,
@@ -859,10 +860,12 @@ export const tischTabApi = {
     request<TischTabResponse>('POST', '/api/tisch-tabs', input),
   get: (id: string) =>
     request<TischTabResponse>('GET', `/api/tisch-tabs/${id}`),
-  aktualisierePositionen: (id: string, positionen: TabPosition[]) =>
-    request<TischTabResponse>('PUT', `/api/tisch-tabs/${id}/positionen`, { positionen }),
-  verwerfe: (id: string, grund?: string) =>
-    request<TischTabResponse>('POST', `/api/tisch-tabs/${id}/verwerfen`, grund ? { grund } : {}),
+  aktualisierePositionen: (id: string, positionen: TabPosition[], freigabePin?: string) =>
+    request<TabPositionenAntwort>('PUT', `/api/tisch-tabs/${id}/positionen`,
+      { positionen, ...(freigabePin ? { freigabePin } : {}) }),
+  verwerfe: (id: string, grund?: string, freigabePin?: string) =>
+    request<TischTabResponse>('POST', `/api/tisch-tabs/${id}/verwerfen`,
+      { ...(grund ? { grund } : {}), ...(freigabePin ? { freigabePin } : {}) }),
   bezahle: (id: string, input: TischTabBezahlenInput) =>
     request<{ tab: TischTabResponse; belegId: string }>('POST', `/api/tisch-tabs/${id}/bezahlen`, input),
   umbennene: (id: string, kellner: string) =>
@@ -1125,6 +1128,18 @@ export const lieferApi = {
     request<{ erfolgreich: boolean }>('POST', `/api/lieferbestellungen/${id}/drucken`),
   webhookUrls: (kasseId: string): Promise<{ webhookSecret: string; urls: { lieferando: string; mergeport: string; custom: string } }> =>
     request('GET', `/api/kassen/${kasseId}/webhook-url`),
+}
+
+/**
+ * Antwort des Positions-Updates. `stornoBon` steht NUR drin, wenn beim Storno
+ * einer Position der Korrekturbon ein Ziel nicht erreicht hat — dann muss der
+ * Kellner es erfahren, sonst bereitet die Station weiter zu.
+ */
+export interface TabPositionenAntwort extends TischTabResponse {
+  stornoBon?: {
+    fehler:     BonierZielFehler[]
+    positionen: Array<{ artikelId: string; menge: number }>
+  }
 }
 
 export const mandantApi = {

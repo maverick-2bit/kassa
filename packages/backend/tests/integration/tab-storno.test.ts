@@ -170,6 +170,47 @@ describe('Tab-Storno + Verwerfen (Integration, echtes PostgreSQL)', () => {
     expect(nachher!.m).toBe((vorher!.m ?? 0) + 2)
   })
 
+  it('zugestellter Storno-Bon: Antwort trägt KEIN stornoBon-Feld', async () => {
+    const tabId = await erstelleTabMit(2, 'T4')
+    const put = await srv.fastify.inject({
+      method: 'PUT', url: `/api/tisch-tabs/${tabId}/positionen`, headers: auth(),
+      payload: { positionen: [{ artikelId: schnitzelId, bezeichnung: 'Schnitzel', preisBruttoCent: 1450, menge: 1 }] },
+    })
+    expect(put.statusCode).toBe(200)
+    // Fake-Drucker läuft → alles zugestellt → die Oberfläche soll NICHT warnen
+    expect(put.json().stornoBon).toBeUndefined()
+  })
+
+  it('toter Drucker: Antwort meldet den nicht zugestellten Korrekturbon', async () => {
+    // Bis v0.7.149 verschwand dieses Ergebnis in console.error — Papier leer
+    // hieß: die Station bereitet das stornierte Gericht weiter zu, niemand
+    // erfährt es. Jetzt trägt die Antwort Ziel, Grund und die Positionen zum
+    // Nachsenden.
+    const tabId = await erstelleTabMit(3, 'T5')
+
+    // Drucker „fällt aus": Port auf einen geschlossenen umbiegen
+    const port = (fakeDrucker.address() as net.AddressInfo).port
+    await idb.db.update(bonierdrucker).set({ port: 9 }).where(eq(bonierdrucker.port, port))
+    try {
+      const put = await srv.fastify.inject({
+        method: 'PUT', url: `/api/tisch-tabs/${tabId}/positionen`, headers: auth(),
+        payload: { positionen: [{ artikelId: schnitzelId, bezeichnung: 'Schnitzel', preisBruttoCent: 1450, menge: 1 }] },
+      })
+      // Der Storno selbst geht durch — der Ausfall des Bons blockiert ihn nicht
+      expect(put.statusCode).toBe(200)
+
+      const stornoBon = put.json().stornoBon
+      expect(stornoBon).toBeDefined()
+      expect(stornoBon.fehler).toHaveLength(1)
+      expect(stornoBon.fehler[0].ziel).toBe('Küche (Fake)')
+      expect(stornoBon.fehler[0].fehler).toBeTruthy()
+      // Positionen zum gezielten Nachsenden (2 Stück storniert)
+      expect(stornoBon.positionen).toEqual([{ artikelId: schnitzelId, menge: 2 }])
+    } finally {
+      await idb.db.update(bonierdrucker).set({ port }).where(eq(bonierdrucker.port, 9))
+    }
+  })
+
   it('Verwerfen eines bezahlten Tabs → 409', async () => {
     const tabId = await erstelleTabMit(1, 'T3')
     const bez = await srv.fastify.inject({
