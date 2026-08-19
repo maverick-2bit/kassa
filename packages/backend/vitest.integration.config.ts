@@ -18,6 +18,14 @@ export default defineConfig({
     testTimeout: 30_000,
     hookTimeout: 60_000,
     /**
+     * Worker deckeln: Mit dem Default (ein Fork je CPU-Thread, hier 16) stirbt
+     * unter RAM-Druck gelegentlich ein Worker („Worker exited unexpectedly",
+     * zuletzt regelmäßig bei nebenlaeufigkeit.test.ts mit seinen 50 parallelen
+     * Signierungen) — die Datei wird rot, obwohl kein Test fehlschlägt. Die
+     * Suite ist ohnehin DB-gebunden; 8 Worker sind praktisch gleich schnell.
+     */
+    poolOptions: { forks: { minForks: 1, maxForks: 4 } },
+    /**
      * Zusätzlich zum Konsolen-Report immer eine Ergebnisdatei schreiben.
      *
      * Anlass: ein Lauf war 243/246 (drei Tests einer Datei rot), die drei

@@ -25,7 +25,7 @@ import { pruefeKette, verifiziereBelegSignatur, type FinanzOnlineClient, type Ve
 import { schema, type Db } from '../../src/db/client.js'
 import { belege, kassen } from '../../src/db/schema.js'
 import { buildTestServer, type TestServer } from '../helpers/testServer.js'
-import { erstelleIntegrationsDb, type IntegrationsDb } from './helpers/integrationsDb.js'
+import { dropDatenbankSicher, erstelleIntegrationsDb, type IntegrationsDb } from './helpers/integrationsDb.js'
 
 const BASIS_URL =
   process.env.TEST_DATABASE_URL ?? 'postgresql://kassa:kassa@localhost:5432/kassa'
@@ -135,12 +135,8 @@ describe.skipIf(!CLIENT_OK)('Backup-Restore-Drill (pg_dump → frische DB → we
     await restoreSrv?.close()
     await srv?.close()
     await restoreSql?.end()
-    const admin = postgres(BASIS_URL, { max: 1, fetch_types: false })
-    try {
-      await admin.unsafe(`DROP DATABASE IF EXISTS ${restoreName} WITH (FORCE)`)
-    } finally {
-      await admin.end()
-    }
+    // Retry-fester DROP — Autovacuum-Kollision, siehe dropDatenbankSicher
+    await dropDatenbankSicher(restoreName)
     await idb?.zerstoeren()
     rmSync(dumpDir, { recursive: true, force: true })
   })

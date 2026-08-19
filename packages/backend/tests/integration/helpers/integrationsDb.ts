@@ -55,12 +55,43 @@ export async function erstelleIntegrationsDb(): Promise<IntegrationsDb> {
     url: testUrl,
     zerstoeren: async () => {
       await sql.end()
-      const aufraeumer = postgres(BASIS_URL, { max: 1, fetch_types: false })
+      await dropDatenbankSicher(name)
+    },
+  }
+}
+
+/**
+ * DROP DATABASE mit Retry — DER Phantom-Flake der Suite.
+ *
+ * `WITH (FORCE)` beendet alle Verbindungen zur Ziel-DB. Läuft dort gerade
+ * Autovacuum, gehört dessen Verbindung dem Superuser — die kassa-Rolle darf
+ * sie nicht beenden: „keine Berechtigung, um Prozess zu beenden". Der DROP
+ * warf dann als unbehandelte Ablehnung, die Datei wurde rot (bei durchweg
+ * grünen Tests, wandernd zwischen Dateien, nur unter Last — Autovacuum braucht
+ * Schreibaktivität) und die Test-DB blieb als Leiche liegen.
+ *
+ * Autovacuum auf einer Wegwerf-DB ist in Millisekunden fertig → kurz warten
+ * und erneut versuchen. Scheitert es endgültig, wird gewarnt statt geworfen:
+ * eine liegengebliebene Test-DB ist lästig, ein roter Lauf ohne echten Fehler
+ * ist schlimmer.
+ */
+export async function dropDatenbankSicher(name: string): Promise<void> {
+  const aufraeumer = postgres(BASIS_URL, { max: 1, fetch_types: false })
+  try {
+    for (let versuch = 1; ; versuch++) {
       try {
         await aufraeumer.unsafe(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`)
-      } finally {
-        await aufraeumer.end()
+        return
+      } catch (err) {
+        if (versuch >= 5) {
+          console.warn(`Test-DB ${name} konnte nicht gelöscht werden (bleibt liegen):`,
+            err instanceof Error ? err.message : err)
+          return
+        }
+        await new Promise(r => setTimeout(r, 200 * versuch))
       }
-    },
+    }
+  } finally {
+    await aufraeumer.end()
   }
 }
