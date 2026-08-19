@@ -53,6 +53,11 @@ export async function buildTestServer(db: Db, opts: BuildTestServerOptions = {})
     // Messpunkt für den Plattenplatz — im Test das Arbeitsverzeichnis, damit
     // wirklich gemessen wird statt in den „unbekannt"-Zweig zu fallen.
     dbBackupDir: process.cwd(),
+    // Hermetische Plattenplatz-Messung: Tests dürfen nicht rot werden, weil die
+    // ECHTE Platte des Entwickler-Rechners vollläuft (so geschehen: Hyper-V-VM
+    // → 0,1 GB frei → drei Monitoring-Tests kippten ohne Bug). 300 von 500 GB
+    // frei = deterministisch „ok".
+    statfsFn: async () => ({ bsize: 1, blocks: 500 * 1024 ** 3, bavail: 300 * 1024 ** 3 }),
     setupDeps: {
       db,
       masterPassphrase: TEST_MASTER,

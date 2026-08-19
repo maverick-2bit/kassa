@@ -1,10 +1,10 @@
 import { useRef, useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { LoginInputSchema, type LoginInput, type Startseite } from '@kassa/shared'
-import { authApi, posConfigApi } from '../lib/api'
+import { authApi, posConfigApi, setupApi } from '../lib/api'
 import { setAuth } from '../lib/auth'
 import { getKasseIdentity, setKasseIdentity } from '../lib/kasse'
 import { Field } from '../components/ui/Field'
@@ -35,6 +35,19 @@ export function LoginPage() {
   // PIN-Login setzt eine bereits gewählte Kasse voraus.
   const [tab, setTab] = useState<Tab>(() => (getKasseIdentity() ? 'pin' : 'passwort'))
 
+  // Frische Installation erkennen: solange es keine Benutzer gibt, führt ein
+  // Login-Formular nur in die Irre — Zugangsdaten anderer Installationen
+  // funktionieren hier nicht, und genau das wird sonst als „kaputt" gemeldet.
+  // Bei Fehlern (Backend noch nicht erreichbar) im Zweifel das normale Login
+  // zeigen — die Statusabfrage darf die Anmeldung nie blockieren.
+  const setupStatus = useQuery({
+    queryKey:  ['setup-status'],
+    queryFn:   setupApi.status,
+    staleTime: 60_000,
+    retry:     false,
+  })
+  const frisch = setupStatus.data?.eingerichtet === false
+
   return (
     <div className="min-h-screen flex items-center justify-center px-4 bg-panel-2">
       <div className="w-full max-w-md">
@@ -44,8 +57,25 @@ export function LoginPage() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M3 3h18v4H3zM3 11h18v10H3zM7 15h2M7 18h2"/>
             </svg>
           </div>
-          <h1 className="text-2xl font-bold text-ink">Anmeldung</h1>
+          <h1 className="text-2xl font-bold text-ink">{frisch ? 'Willkommen' : 'Anmeldung'}</h1>
         </header>
+
+        {frisch && (
+          <div className="mb-4 rounded-xl border-2 border-brand-300 bg-brand-50 p-5 text-center space-y-3">
+            <p className="text-sm font-semibold text-ink">
+              Diese Kassa ist noch nicht eingerichtet.
+            </p>
+            <p className="text-xs text-ink-muted">
+              Es gibt hier noch keine Benutzer — Zugangsdaten von einer anderen
+              Installation funktionieren nicht. Zuerst die Ersteinrichtung
+              durchführen; die dabei vergebenen Admin-Zugangsdaten gelten dann
+              für dieses Gerät.
+            </p>
+            <Button className="w-full" onClick={() => { window.location.href = '/setup' }}>
+              Jetzt Kasse einrichten →
+            </Button>
+          </div>
+        )}
 
         {/* Tab-Umschalter */}
         <div className="flex rounded-lg border border-line bg-panel-2 p-1 mb-4">

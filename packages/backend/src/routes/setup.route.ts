@@ -12,12 +12,26 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { SetupInputSchema, type SetupResponse } from '@kassa/shared'
 import { fuehreSetupDurch, type SetupServiceDeps } from '../services/setup.service.js'
+import { users } from '../db/schema.js'
 
 export interface SetupRoutePluginOptions {
   deps: SetupServiceDeps
 }
 
 export const setupRoute: FastifyPluginAsync<SetupRoutePluginOptions> = async (fastify, opts) => {
+  // Öffentlich: Ist diese Installation schon eingerichtet (gibt es Benutzer)?
+  //
+  // Anlass: Auf einem frisch installierten Gerät erscheint sofort die
+  // Login-Seite — und wer Zugangsdaten einer ANDEREN Installation kennt,
+  // versucht sie dort und hält die Kassa für kaputt. Die Login-Seite fragt
+  // diesen Status ab und führt stattdessen deutlich zur Ersteinrichtung.
+  //
+  // Bewusst nur ein Boolean: verrät einem Unangemeldeten nichts außer dem,
+  // was die Setup-Seite ohnehin zeigt.
+  fastify.get('/setup/status', async (_request, reply) => {
+    const [erster] = await opts.deps.db.select({ id: users.id }).from(users).limit(1)
+    return reply.send({ eingerichtet: erster !== undefined })
+  })
   fastify.post('/setup', async (request, reply) => {
     // Eingabe-Validierung via Zod (zusätzlich zu der innerhalb von kasseAutomatischEinrichten)
     const parsed = SetupInputSchema.safeParse(request.body)

@@ -413,6 +413,12 @@ export async function postSetup(input: SetupInput): Promise<SetupResponse> {
   return (await res.json()) as SetupResponse
 }
 
+/** Öffentlich: gibt es auf dieser Installation schon Benutzer? */
+export const setupApi = {
+  status: (): Promise<{ eingerichtet: boolean }> =>
+    request<{ eingerichtet: boolean }>('GET', '/api/setup/status'),
+}
+
 // ---------------------------------------------------------------------------
 // Auth
 // ---------------------------------------------------------------------------
