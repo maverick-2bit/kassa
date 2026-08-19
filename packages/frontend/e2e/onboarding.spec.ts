@@ -47,6 +47,18 @@ test('Onboarding: Setup-Formular richtet Kasse ein und signiert den Startbeleg',
     { timeout: 35_000, intervals: [500, 1000, 2000, 3000] },
   ).toBe(200)
 
+  // Frische Installation: die Login-Seite muss sichtbar zur Ersteinrichtung
+  // führen statt ein nutzloses Login-Formular anzubieten (Mac-Befund: fremde
+  // Zugangsdaten probiert → „Login kaputt" gemeldet). Nur beim ersten Lauf
+  // prüfbar — nach einem Datei-Retry ist die Kasse schon eingerichtet.
+  const setupStatus = await (await page.request.get('/api/setup/status')).json()
+  if (setupStatus.eingerichtet === false) {
+    await page.goto('/')
+    await expect(page.getByText('Diese Kassa ist noch nicht eingerichtet.')).toBeVisible()
+    await page.getByRole('button', { name: 'Jetzt Kasse einrichten →' }).click()
+    await expect(page.getByRole('heading', { name: 'Kasse einrichten' })).toBeVisible()
+  }
+
   await page.goto('/setup')
 
   await expect(page.getByRole('heading', { name: 'Kasse einrichten' })).toBeVisible()
