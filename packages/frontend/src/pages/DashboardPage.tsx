@@ -13,7 +13,7 @@
 import { useQuery, useQueries } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import type { ArtikelBerichtResponse, BerichtGesamt, Artikel } from '@kassa/shared'
-import { berichtApi, kasseApi, tischTabApi, artikelApi, offenerPostenApi, kdsApi } from '../lib/api'
+import { berichtApi, kasseApi, tischTabApi, artikelApi, offenerPostenApi, kdsApi, systemApi } from '../lib/api'
 import { getAuth, hasBerechtigung, hasModul } from '../lib/auth'
 import { formatPreis } from '../lib/format'
 
@@ -75,11 +75,14 @@ export function DashboardPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 sm:py-8 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-ink">Dashboard</h1>
-        <p className="mt-1 text-sm text-ink-muted">
-          Tagesübersicht — {formatDatumAnzeige(datum)}
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-ink">Dashboard</h1>
+          <p className="mt-1 text-sm text-ink-muted">
+            Tagesübersicht — {formatDatumAnzeige(datum)}
+          </p>
+        </div>
+        <ServerAdresse />
       </div>
 
       {/* Quick-Actions */}
@@ -139,6 +142,41 @@ export function DashboardPage() {
       {/* Stundenaufriss für heute */}
       <StundenVerlauf datum={datum} />
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Server-Adresse (für Geräte im selben Netz)
+// ---------------------------------------------------------------------------
+
+/**
+ * Zeigt die LAN-Adresse des Servers direkt am Dashboard — die Frage „Wo finde
+ * ich die Server-IP?" soll niemand mehr im Terminal beantworten müssen.
+ * Verlinkt auf Einstellungen → Geräte (QR-Codes je App).
+ */
+function ServerAdresse() {
+  const netzwerk = useQuery({
+    queryKey:  ['system-netzwerk'],
+    queryFn:   systemApi.netzwerk,
+    staleTime: 5 * 60_000,
+    retry:     false,
+  })
+
+  // Zugriff über die LAN-IP im Browser? Dann ist der Host selbst die Antwort.
+  const host = window.location.hostname
+  const ip   = host !== 'localhost' ? host : netzwerk.data?.ips[0]
+  if (!ip) return null
+
+  return (
+    <Link
+      to="/einstellungen?bereich=geraete"
+      className="rounded-lg border border-line bg-panel px-3 py-2 text-right hover:border-brand-300 transition-colors"
+      title="Geräte verbinden (QR-Codes)"
+    >
+      <p className="text-xs text-ink-subtle">Server-Adresse</p>
+      <p className="font-mono text-sm font-semibold text-ink">{ip}</p>
+      <p className="text-xs text-brand-600">Geräte verbinden →</p>
+    </Link>
   )
 }
 
