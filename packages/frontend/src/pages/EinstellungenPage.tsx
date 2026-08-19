@@ -25,10 +25,11 @@ import { parseTischEingabe } from '../components/TischEtikettenModal'
 // Seiten-Reload beim Kassen-Wechsel und ist direkt verlinkbar.
 // ---------------------------------------------------------------------------
 
-type Bereich = 'kassen' | 'beleg' | 'hardware' | 'rksv' | 'gastro' | 'terminal' | 'system'
+type Bereich = 'kassen' | 'beleg' | 'hardware' | 'geraete' | 'rksv' | 'gastro' | 'terminal' | 'system'
 
 const BEREICHE: { key: Bereich; label: string; beschreibung: string }[] = [
   { key: 'kassen',   label: 'Kassen',         beschreibung: 'Kassen verwalten, wechseln, Warengruppen verteilen' },
+  { key: 'geraete',  label: 'Geräte',         beschreibung: 'Handys und Displays verbinden — QR scannen, fertig' },
   { key: 'beleg',    label: 'Beleg & Layout', beschreibung: 'Kopf-/Fußtext, Steuertabelle, QR — mit Live-Vorschau' },
   { key: 'hardware', label: 'Hardware',       beschreibung: 'Bondrucker, Küchen-Display, Kartenterminal' },
   { key: 'rksv',     label: 'RKSV',           beschreibung: 'Datenexport und Signatureinrichtung' },
@@ -80,6 +81,9 @@ export function EinstellungenPage() {
       )}
       {bereich === 'beleg' && (
         <RechnungslayoutSektion />
+      )}
+      {bereich === 'geraete' && (
+        <GeraeteSektion />
       )}
       {bereich === 'hardware' && (
         <>
@@ -3311,6 +3315,123 @@ function TerminalArtikelZeile({
 }
 
 // ---------------------------------------------------------------------------
+// Geräte verbinden: QR-Codes für Handys & Displays
+// ---------------------------------------------------------------------------
+
+/**
+ * Ein QR-Scan statt IP-Tipperei: Für jedes Geräte-Frontend ein QR-Code mit der
+ * fertigen URL plus die Home-Bildschirm-Anleitung. Auf dem Handy/Display läuft
+ * NICHTS außer dem Browser — der Server bedient beliebig viele Geräte über
+ * dieselbe Adresse, unterschieden wird per Login.
+ */
+function GeraeteSektion() {
+  const istDev = window.location.hostname === 'localhost'
+
+  // localhost taugt nicht für QR-Codes (das Handy würde sich selbst aufrufen) —
+  // dann die LAN-IP des Servers vom Backend erfragen und vorschlagen.
+  const netzwerk = useQuery({
+    queryKey: ['system-netzwerk'],
+    queryFn:  systemApi.netzwerk,
+    staleTime: 5 * 60_000,
+  })
+  const [host, setHost] = useState(window.location.hostname)
+  useEffect(() => {
+    if (host === 'localhost' && netzwerk.data?.ips[0]) setHost(netzwerk.data.ips[0])
+  }, [netzwerk.data, host])
+
+  // Label | Dev-Port (Vite) | Prod-Port (Docker) | Hinweis
+  const APPS: { label: string; dev: number; prod: number; hinweis: string; modul?: 'sbTerminal' }[] = [
+    { label: 'Kellner-App',   dev: 5178, prod: 8083, hinweis: 'Handy des Kellners — PIN-Login' },
+    { label: 'KDS Küche/Schank', dev: 5175, prod: 8080, hinweis: 'Küchen-/Schank-Bildschirm' },
+    { label: 'Kundendisplay', dev: 5176, prod: 8081, hinweis: 'Display Richtung Gast' },
+    { label: 'Gast-Bestellung', dev: 5177, prod: 8082, hinweis: 'QR am Tisch (siehe Tischnummern-Druck)' },
+    { label: 'SB-Terminal',   dev: 5179, prod: 8084, hinweis: 'Selbstbedienungs-Kiosk', modul: 'sbTerminal' },
+    { label: 'Abholmonitor',  dev: 5180, prod: 8085, hinweis: 'Wandbildschirm Abholung', modul: 'sbTerminal' },
+  ]
+  const sichtbar = APPS.filter(a => !a.modul || hasModul(a.modul))
+  const urlFuer  = (a: (typeof APPS)[number]) =>
+    `${window.location.protocol}//${host}:${istDev ? a.dev : a.prod}`
+
+  const [kopiert, setKopiert] = useState<string | null>(null)
+  const kopieren = (url: string) => {
+    void navigator.clipboard.writeText(url)
+    setKopiert(url)
+    setTimeout(() => setKopiert(k => (k === url ? null : k)), 1500)
+  }
+
+  return (
+    <>
+      <section className="rounded-xl border border-line bg-panel p-6 space-y-5">
+        <div>
+          <h2 className="text-lg font-semibold text-ink">Geräte verbinden</h2>
+          <p className="mt-1 text-sm text-ink-muted">
+            Auf Handys und Displays wird nichts installiert — jedes Gerät öffnet einfach
+            seine Adresse im Browser (gleiches WLAN). QR-Code mit der Handy-Kamera
+            scannen, Seite öffnen, fertig. Alle Geräte einer App nutzen dieselbe
+            Adresse; unterschieden wird über den Login.
+          </p>
+        </div>
+
+        <div className="max-w-xs">
+          <Field label="Server-Adresse (für die QR-Codes)">
+            <Input value={host} onChange={e => setHost(e.target.value.trim())} />
+          </Field>
+          {host === 'localhost' && (
+            <p className="mt-1 text-xs text-amber-600">
+              „localhost" funktioniert nur auf diesem Rechner — für Handys die
+              Netzwerk-IP des Servers eintragen{netzwerk.data?.ips.length ? ` (z. B. ${netzwerk.data.ips.join(', ')})` : ''}.
+            </p>
+          )}
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {sichtbar.map(a => {
+            const url = urlFuer(a)
+            return (
+              <div key={a.label} className="rounded-lg border border-line p-4 text-center space-y-2">
+                <p className="text-sm font-semibold text-ink">{a.label}</p>
+                <QRCodeSVG value={url} size={132} level="M" className="mx-auto" />
+                <p className="text-xs text-ink-subtle">{a.hinweis}</p>
+                <button
+                  type="button"
+                  onClick={() => kopieren(url)}
+                  className="block w-full truncate rounded bg-panel-2 px-2 py-1 font-mono text-xs text-ink hover:bg-brand-50"
+                  title="Klicken zum Kopieren"
+                >
+                  {kopiert === url ? 'Kopiert ✓' : url}
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-line bg-panel p-6 space-y-3">
+        <h2 className="text-base font-semibold text-ink">Wie eine App aufs Handy?</h2>
+        <p className="text-sm text-ink-muted">
+          Nach dem Scannen die Seite zum Home-Bildschirm hinzufügen — dann startet sie
+          vollbild mit eigenem Symbol, wie eine installierte App:
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2 text-sm">
+          <div className="rounded-lg bg-panel-2 p-3">
+            <p className="font-semibold text-ink mb-1">Android (Chrome)</p>
+            <p className="text-ink-muted">Menü ⋮ oben rechts → „Zum Startbildschirm hinzufügen"</p>
+          </div>
+          <div className="rounded-lg bg-panel-2 p-3">
+            <p className="font-semibold text-ink mb-1">iPhone/iPad (Safari)</p>
+            <p className="text-ink-muted">Teilen-Symbol → „Zum Home-Bildschirm"</p>
+          </div>
+        </div>
+        <p className="text-xs text-ink-subtle">
+          Voraussetzung: Das Gerät ist im selben Netzwerk wie der Kassen-Rechner, und der
+          Rechner läuft. Docker oder eine Installation braucht es auf dem Gerät nicht.
+        </p>
+      </section>
+    </>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // SB-Terminal: Geräte-URLs (Bestellterminal + Abholmonitor je Kasse)
 // ---------------------------------------------------------------------------
 
@@ -3322,8 +3443,11 @@ function TerminalUrlsSektion() {
   const basis  = (port: number, prodPort: number) =>
     `${window.location.protocol}//${window.location.hostname}:${istDev ? port : prodPort}`
 
-  const [terminalBasis, setTerminalBasis] = useState(() => basis(5179, 8083))
-  const [monitorBasis,  setMonitorBasis]  = useState(() => basis(5180, 8084))
+  // Prod-Ports laut docker-compose: Terminal 8084, Abholmonitor 8085 — die
+  // früheren Defaults (8083/8084) stammten von VOR der Kellner-App, die 8083
+  // inzwischen belegt.
+  const [terminalBasis, setTerminalBasis] = useState(() => basis(5179, 8084))
+  const [monitorBasis,  setMonitorBasis]  = useState(() => basis(5180, 8085))
   const [kopiert, setKopiert] = useState<string | null>(null)
 
   const kopieren = (url: string, key: string) => {

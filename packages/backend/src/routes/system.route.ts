@@ -92,6 +92,27 @@ export const systemRoute: FastifyPluginAsync = async (fastify) => {
     }
   })
 
+  // LAN-Adressen des Servers — für die Geräte-Seite (QR-Codes für Handys &
+  // Displays). Am Kassen-Rechner selbst heißt der Browser-Host oft nur
+  // „localhost"; ein QR mit localhost wäre für jedes andere Gerät wertlos.
+  fastify.get('/system/netzwerk', guard, async () => {
+    const os = await import('node:os')
+    const ips: string[] = []
+    for (const [name, schnittstellen] of Object.entries(os.networkInterfaces())) {
+      // Virtuelle Adapter aussortieren (Docker-Bridge, WSL/Hyper-V-Switch,
+      // VirtualBox) — deren Adressen erreicht vom Handy aus niemand. Erkennung
+      // über den Interface-NAMEN, nicht über den Adressbereich: 172.16/12 kann
+      // auch ein echtes Firmen-LAN sein.
+      if (/vethernet|wsl|docker|virtualbox|vmware|hyper-v|loopback/i.test(name)) continue
+      for (const s of schnittstellen ?? []) {
+        if (s.family === 'IPv4' && !s.internal && !s.address.startsWith('172.17.')) {
+          ips.push(s.address)
+        }
+      }
+    }
+    return { ips }
+  })
+
   fastify.post('/system/update', adminOnly, async (_request, reply) => {
     if (!(await updaterLaeuft())) {
       return reply.status(409).send({

@@ -42,6 +42,24 @@ describe('Setup-Status (Integration, echtes PostgreSQL)', () => {
     expect(res.json()).toEqual({ eingerichtet: false })
   })
 
+  it('Netzwerk-Endpoint verlangt Auth und liefert nur echte LAN-IPv4s', async () => {
+    // Ohne Token: 401 — die LAN-Topologie geht Unangemeldete nichts an.
+    expect((await srv.fastify.inject({ method: 'GET', url: '/api/system/netzwerk' })).statusCode).toBe(401)
+
+    const res = await srv.fastify.inject({
+      method: 'GET', url: '/api/system/netzwerk',
+      headers: { authorization: `Bearer ${srv.signTestToken()}` },
+    })
+    expect(res.statusCode).toBe(200)
+    const { ips } = res.json() as { ips: string[] }
+    expect(Array.isArray(ips)).toBe(true)
+    for (const ip of ips) {
+      expect(ip).toMatch(/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/)
+      expect(ip).not.toBe('127.0.0.1')               // internal gefiltert
+      expect(ip.startsWith('172.17.')).toBe(false)   // Docker-Bridge gefiltert
+    }
+  })
+
   it('meldet nach dem Setup eingerichtet', async () => {
     const setup = await srv.fastify.inject({
       method: 'POST', url: '/api/setup',
