@@ -89,7 +89,11 @@ export function UserVerwaltungPage() {
                       <span className="ml-1.5 text-xs text-ink-subtle">(du)</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-ink-muted">{u.email}</td>
+                  <td className="px-4 py-3 text-ink-muted">
+                    {u.email.endsWith('@pin.kellner.lokal')
+                      ? <span className="text-ink-subtle italic">nur PIN-Zugang</span>
+                      : u.email}
+                  </td>
                   <td className="px-4 py-3">
                     <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
                       u.rolle === 'admin'
@@ -233,6 +237,13 @@ function UserFormular({
   const [email,     setEmail]     = useState(initialUser?.email ?? '')
   const [passwort,  setPasswort]  = useState('')
   const [rolle,     setRolle]     = useState<'admin' | 'kellner'>(initialUser?.rolle ?? 'kellner')
+  /**
+   * Eventpersonal: Kellner ohne E-Mail/Passwort anlegen — Zugang läuft dann
+   * ausschließlich über den PIN am Handy. Für Aushilfen, die eine Saison oder
+   * einen Abend bleiben, ist ein E-Mail-Konto je Person praxisfremd.
+   */
+  const [nurPin, setNurPin] = useState(istNeu)
+  const [pin,    setPin]    = useState('')
   const [berechtigungen, setBerechtigungen] = useState<Berechtigung[]>(
     initialUser?.rolle === 'admin' ? [] : (initialUser?.berechtigungen ?? []),
   )
@@ -248,8 +259,15 @@ function UserFormular({
     setKassenIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
   }
 
+  const pinOnly = istNeu && nurPin && rolle === 'kellner'
+
   const submit = () => {
     if (!name.trim()) return
+    if (pinOnly) {
+      if (!/^\d{4}$/.test(pin)) return
+      onSubmit({ name, rolle: 'kellner', berechtigungen, kassenIds, pin } as UserCreateInput)
+      return
+    }
     if (istNeu && !email.trim()) return
     if (istNeu && passwort.length < 8) return
 
@@ -270,18 +288,46 @@ function UserFormular({
           <span className="text-xs font-medium text-ink-muted">Name *</span>
           <Input value={name} onChange={e => setName(e.target.value)} className="mt-0.5" autoFocus />
         </label>
-        <label className="block">
-          <span className="text-xs font-medium text-ink-muted">E-Mail {istNeu ? '*' : ''}</span>
-          <Input type="email" value={email} onChange={e => setEmail(e.target.value)} className="mt-0.5" />
-        </label>
+        {!pinOnly && (
+          <label className="block">
+            <span className="text-xs font-medium text-ink-muted">E-Mail {istNeu ? '*' : ''}</span>
+            <Input type="email" value={email} onChange={e => setEmail(e.target.value)} className="mt-0.5" />
+          </label>
+        )}
       </div>
 
-      <label className="block">
-        <span className="text-xs font-medium text-ink-muted">
-          Passwort {istNeu ? '* (min. 8 Zeichen)' : '(leer lassen = unverändert)'}
-        </span>
-        <Input type="password" value={passwort} onChange={e => setPasswort(e.target.value)} className="mt-0.5" />
-      </label>
+      {istNeu && rolle === 'kellner' && (
+        <label className="flex items-center gap-2 text-sm text-ink">
+          <input
+            type="checkbox"
+            checked={nurPin}
+            onChange={e => setNurPin(e.target.checked)}
+            className="h-4 w-4 rounded border-line-strong"
+          />
+          Nur PIN-Zugang (Eventpersonal) — keine E-Mail nötig, Anmeldung nur per PIN am Handy
+        </label>
+      )}
+
+      {pinOnly ? (
+        <label className="block">
+          <span className="text-xs font-medium text-ink-muted">PIN * (4 Ziffern — damit meldet sich {name.trim() || 'die Person'} an)</span>
+          <Input
+            type="text"
+            inputMode="numeric"
+            value={pin}
+            onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+            className="mt-0.5 w-32 text-center tracking-widest font-mono"
+            placeholder="z. B. 4711"
+          />
+        </label>
+      ) : (
+        <label className="block">
+          <span className="text-xs font-medium text-ink-muted">
+            Passwort {istNeu ? '* (min. 8 Zeichen)' : '(leer lassen = unverändert)'}
+          </span>
+          <Input type="password" value={passwort} onChange={e => setPasswort(e.target.value)} className="mt-0.5" />
+        </label>
+      )}
 
       {istNeu && (
         <label className="block">

@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs'
+import { randomBytes } from 'node:crypto'
 import { and, eq, isNotNull, ne } from 'drizzle-orm'
 import type { Berechtigung, User as PublicUser, UserCreateInput, UserUpdateInput } from '@kassa/shared'
 import type { Db } from '../db/client.js'
@@ -59,16 +60,24 @@ export async function createUser(
   mandantId: string,
   deps: UserServiceDeps,
 ): Promise<PublicUser> {
+  // PIN-only-Kellner (Eventpersonal): ohne E-Mail/Passwort bekommt das Konto
+  // eine nicht erratbare interne Platzhalter-Adresse und ein Zufallspasswort —
+  // der E-Mail-Login ist damit faktisch unmöglich, der Zugang läuft NUR über
+  // den PIN am Handy. Platzhalter statt nullable-Spalte: die E-Mail ist überall
+  // NOT NULL + eindeutig verdrahtet, und ihr Wert ist für den Betrieb unsichtbar.
+  const email = (input.email ?? `${randomBytes(9).toString('hex')}@pin.kellner.lokal`).toLowerCase()
+  const passwort = input.passwort ?? randomBytes(24).toString('hex')
+
   const existing = await deps.db
     .select({ id: users.id })
     .from(users)
-    .where(eq(users.email, input.email.toLowerCase()))
+    .where(eq(users.email, email))
     .limit(1)
   if (existing[0]) throw new UserError(409, 'E-Mail bereits vergeben')
 
   if (input.pin) await pruefePinEindeutig(deps.db, input.pin, mandantId)
 
-  const passwordHash = await hashPassword(input.passwort)
+  const passwordHash = await hashPassword(passwort)
   const pinHash      = input.pin ? await bcrypt.hash(input.pin, BCRYPT_COST) : null
 
   const berechtigungen: Berechtigung[] = input.rolle === 'admin' ? [] : input.berechtigungen
@@ -77,7 +86,7 @@ export async function createUser(
     .insert(users)
     .values({
       mandantId,
-      email:          input.email.toLowerCase(),
+      email,
       passwordHash,
       pinHash,
       name:           input.name,

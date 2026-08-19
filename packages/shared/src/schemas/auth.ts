@@ -111,12 +111,29 @@ export type LoginResponse = z.infer<typeof LoginResponseSchema>
 
 export const UserCreateInputSchema = z.object({
   name:           z.string().trim().min(1).max(100),
-  email:          z.string().email('Ungültige E-Mail-Adresse'),
-  passwort:       z.string().min(8, 'Passwort muss mindestens 8 Zeichen lang sein'),
+  /**
+   * E-Mail + Passwort sind für Kellner OPTIONAL: Eventpersonal loggt sich nur
+   * per PIN am Handy ein — ein E-Mail-Konto je Aushilfe wäre praxisfremd.
+   * Ohne E-Mail/Passwort ist ein PIN Pflicht (sonst wäre das Konto unbenutzbar)
+   * und die Rolle muss kellner sein (Admins brauchen den vollen Zugang).
+   */
+  email:          z.string().email('Ungültige E-Mail-Adresse').optional(),
+  passwort:       z.string().min(8, 'Passwort muss mindestens 8 Zeichen lang sein').optional(),
   rolle:          RolleSchema,
   berechtigungen: z.array(BerechtigungSchema),
   kassenIds:      z.array(z.string().uuid()),
   pin:            z.string().length(4).regex(/^\d{4}$/).optional(),
+}).superRefine((u, ctx) => {
+  const hatZugang = !!u.email && !!u.passwort
+  if (!hatZugang && (u.email || u.passwort)) {
+    ctx.addIssue({ code: 'custom', path: ['email'], message: 'E-Mail und Passwort nur gemeinsam angeben' })
+  }
+  if (!hatZugang && !u.pin) {
+    ctx.addIssue({ code: 'custom', path: ['pin'], message: 'Ohne E-Mail/Passwort ist ein PIN erforderlich' })
+  }
+  if (!hatZugang && u.rolle !== 'kellner') {
+    ctx.addIssue({ code: 'custom', path: ['rolle'], message: 'Administratoren brauchen E-Mail und Passwort' })
+  }
 })
 export type UserCreateInput = z.infer<typeof UserCreateInputSchema>
 
