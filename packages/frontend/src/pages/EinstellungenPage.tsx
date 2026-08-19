@@ -11,6 +11,7 @@ import { KassenDruckerZuordnung } from '../components/KassenDruckerZuordnung'
 import { DruckerStatusLed } from '../components/DruckerStatusLed'
 import { formatAusfallDauer } from '../components/SeeStatusBanner'
 import { getKasseIdentity, setKasseIdentity } from '../lib/kasse'
+import { useServerHost, merkeServerHost } from '../lib/serverHost'
 import { getAuth, hasModul, updateKasseBezeichnung, addKasse, removeKasse } from '../lib/auth'
 import { Field } from '../components/ui/Field'
 import { Input } from '../components/ui/Input'
@@ -3362,32 +3363,37 @@ function TerminalArtikelZeile({
  * dieselbe Adresse, unterschieden wird per Login.
  */
 function GeraeteSektion() {
-  const istDev = window.location.hostname === 'localhost'
+  const istDev   = window.location.hostname === 'localhost'
+  const identity = getKasseIdentity()!
 
-  // localhost taugt nicht für QR-Codes (das Handy würde sich selbst aufrufen) —
-  // dann die LAN-IP des Servers vom Backend erfragen und vorschlagen.
-  const netzwerk = useQuery({
-    queryKey: ['system-netzwerk'],
-    queryFn:  systemApi.netzwerk,
-    staleTime: 5 * 60_000,
-  })
+  // localhost taugt nicht für QR-Codes (das Handy würde sich selbst aufrufen).
+  // Die Kette der besten Quellen liefert useServerHost — im Docker-Betrieb kann
+  // das Backend die LAN-IP NICHT selbst ermitteln, dann muss sie einmal von
+  // Hand eingetragen werden und wird auf diesem Gerät gemerkt.
+  const erkannt = useServerHost()
   const [host, setHost] = useState(window.location.hostname)
   useEffect(() => {
-    if (host === 'localhost' && netzwerk.data?.ips[0]) setHost(netzwerk.data.ips[0])
-  }, [netzwerk.data, host])
+    if ((host === 'localhost' || host === '127.0.0.1') && erkannt.host) setHost(erkannt.host)
+  }, [erkannt.host, host])
+  const hostUnbekannt = (host === 'localhost' || host === '127.0.0.1') && erkannt.fertig
 
-  // Label | Dev-Port (Vite) | Prod-Port (Docker) | Hinweis
-  const APPS: { label: string; dev: number; prod: number; hinweis: string; modul?: 'sbTerminal' }[] = [
-    { label: 'Kellner-App',   dev: 5178, prod: 8083, hinweis: 'Handy des Kellners — PIN-Login' },
-    { label: 'KDS Küche/Schank', dev: 5175, prod: 8080, hinweis: 'Küchen-/Schank-Bildschirm' },
-    { label: 'Kundendisplay', dev: 5176, prod: 8081, hinweis: 'Display Richtung Gast' },
+  // Label | Dev-Port (Vite) | Prod-Port (Docker) | URL-Parameter | Hinweis
+  //
+  // Die Parameter sind Teil der Einrichtung: die Kellner-App braucht die
+  // mandantId für die Kassen-Auswahl beim ersten PIN-Login (ohne sie nimmt das
+  // Nummernfeld kommentarlos nichts an — Test-PC-Befund), Kundendisplay/
+  // SB-Terminal/Abholmonitor brauchen die Kassen-Bindung.
+  const APPS: { label: string; dev: number; prod: number; params?: string; hinweis: string; modul?: 'sbTerminal' }[] = [
+    { label: 'Kellner-App',   dev: 5178, prod: 8083, params: `?mandantId=${identity.mandantId}`, hinweis: 'Handy des Kellners — PIN-Login' },
+    { label: 'KDS Küche/Schank', dev: 5175, prod: 8080, hinweis: 'Küchen-/Schank-Bildschirm (Station in der App wählen)' },
+    { label: 'Kundendisplay', dev: 5176, prod: 8081, params: `?kasseId=${identity.kasseId}&mandantId=${identity.mandantId}`, hinweis: 'Display Richtung Gast (diese Kasse)' },
     { label: 'Gast-Bestellung', dev: 5177, prod: 8082, hinweis: 'QR am Tisch (siehe Tischnummern-Druck)' },
-    { label: 'SB-Terminal',   dev: 5179, prod: 8084, hinweis: 'Selbstbedienungs-Kiosk', modul: 'sbTerminal' },
-    { label: 'Abholmonitor',  dev: 5180, prod: 8085, hinweis: 'Wandbildschirm Abholung', modul: 'sbTerminal' },
+    { label: 'SB-Terminal',   dev: 5179, prod: 8084, params: `?kasseId=${identity.kasseId}`, hinweis: 'Selbstbedienungs-Kiosk (diese Kasse)', modul: 'sbTerminal' },
+    { label: 'Abholmonitor',  dev: 5180, prod: 8085, params: `?kasseId=${identity.kasseId}`, hinweis: 'Wandbildschirm Abholung (diese Kasse)', modul: 'sbTerminal' },
   ]
   const sichtbar = APPS.filter(a => !a.modul || hasModul(a.modul))
   const urlFuer  = (a: (typeof APPS)[number]) =>
-    `${window.location.protocol}//${host}:${istDev ? a.dev : a.prod}`
+    `${window.location.protocol}//${host}:${istDev ? a.dev : a.prod}/${a.params ?? ''}`
 
   const [kopiert, setKopiert] = useState<string | null>(null)
   const kopieren = (url: string) => {
@@ -3411,12 +3417,23 @@ function GeraeteSektion() {
 
         <div className="max-w-xs">
           <Field label="Server-Adresse (für die QR-Codes)">
-            <Input value={host} onChange={e => setHost(e.target.value.trim())} />
+            <Input
+              value={host}
+              onChange={e => {
+                const v = e.target.value.trim()
+                setHost(v)
+                // Sofort merken (nicht erst bei Fokusverlust) — auf Kiosk-Geräten
+                // ist der Fokuswechsel unzuverlässig. localhost wird nie gemerkt.
+                merkeServerHost(v)
+              }}
+            />
           </Field>
-          {host === 'localhost' && (
+          {hostUnbekannt && (
             <p className="mt-1 text-xs text-amber-600">
-              „localhost" funktioniert nur auf diesem Rechner — für Handys die
-              Netzwerk-IP des Servers eintragen{netzwerk.data?.ips.length ? ` (z. B. ${netzwerk.data.ips.join(', ')})` : ''}.
+              Die LAN-Adresse konnte nicht automatisch ermittelt werden (im Docker-Betrieb
+              prinzipiell nicht möglich). Am Kassen-Rechner <code>ipconfig</code> ausführen
+              (Mac: <code>ipconfig getifaddr en0</code>) und die IPv4-Adresse hier eintragen —
+              sie wird auf diesem Gerät gemerkt.
             </p>
           )}
         </div>

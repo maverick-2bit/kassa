@@ -13,7 +13,8 @@
 import { useQuery, useQueries } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import type { ArtikelBerichtResponse, BerichtGesamt, Artikel } from '@kassa/shared'
-import { berichtApi, kasseApi, tischTabApi, artikelApi, offenerPostenApi, kdsApi, systemApi } from '../lib/api'
+import { berichtApi, kasseApi, tischTabApi, artikelApi, offenerPostenApi, kdsApi } from '../lib/api'
+import { useServerHost } from '../lib/serverHost'
 import { getAuth, hasBerechtigung, hasModul } from '../lib/auth'
 import { formatPreis } from '../lib/format'
 
@@ -155,17 +156,11 @@ export function DashboardPage() {
  * Verlinkt auf Einstellungen → Geräte (QR-Codes je App).
  */
 function ServerAdresse() {
-  const netzwerk = useQuery({
-    queryKey:  ['system-netzwerk'],
-    queryFn:   systemApi.netzwerk,
-    staleTime: 5 * 60_000,
-    retry:     false,
-  })
-
-  // Zugriff über die LAN-IP im Browser? Dann ist der Host selbst die Antwort.
-  const host = window.location.hostname
-  const ip   = host !== 'localhost' ? host : netzwerk.data?.ips[0]
-  if (!ip) return null
+  // Beste bekannte Quelle (Browser-Host → gemerkte Eingabe → Gast-URL →
+  // Netzwerkkarten); im Docker-Betrieb kennt der Server seine LAN-IP nicht
+  // selbst — dann fordert die Karte zum Eintragen auf, statt zu verschwinden.
+  const { host, fertig } = useServerHost()
+  if (!host && !fertig) return null
 
   return (
     <Link
@@ -174,7 +169,11 @@ function ServerAdresse() {
       title="Geräte verbinden (QR-Codes)"
     >
       <p className="text-xs text-ink-subtle">Server-Adresse</p>
-      <p className="font-mono text-sm font-semibold text-ink">{ip}</p>
+      {host ? (
+        <p className="font-mono text-sm font-semibold text-ink">{host}</p>
+      ) : (
+        <p className="text-sm font-semibold text-amber-600">nicht ermittelt</p>
+      )}
       <p className="text-xs text-brand-600">Geräte verbinden →</p>
     </Link>
   )
