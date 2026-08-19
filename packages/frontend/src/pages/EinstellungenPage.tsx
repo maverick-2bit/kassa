@@ -2769,7 +2769,11 @@ function AktualisierungSektion() {
   // Während des Updates startet das Backend neu → der Poll schlägt zeitweise fehl.
   const startetNeu = angefordert && statusQ.isError
   const laeuft     = angefordert || upStatus === 'laeuft'
-  const fertig     = upStatus === 'fertig'
+  // „Update abgeschlossen — Jetzt neu laden" nur, solange die Ansicht den
+  // neuen Stand noch NICHT übernommen hat. status.json behält den letzten
+  // Lauf für immer — ohne diesen Vergleich stand die Box dauerhaft da und ihr
+  // Reload-Knopf „tat nichts" (Test-PC-Befund: das las sich wie ein Defekt).
+  const fertig     = upStatus === 'fertig' && !!s && s.installiert !== __APP_VERSION__
 
   useEffect(() => { setSchnell(angefordert || upStatus === 'laeuft') }, [angefordert, upStatus])
   useEffect(() => { if (upStatus === 'fertig' || upStatus === 'fehler') setAngefordert(false) }, [upStatus])
