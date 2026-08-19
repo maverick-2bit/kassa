@@ -96,6 +96,14 @@ export const systemRoute: FastifyPluginAsync = async (fastify) => {
   // Displays). Am Kassen-Rechner selbst heißt der Browser-Host oft nur
   // „localhost"; ein QR mit localhost wäre für jedes andere Gerät wertlos.
   fastify.get('/system/netzwerk', guard, async () => {
+    // Im Container sieht os.networkInterfaces() NUR die Docker-Bridge (172.x) —
+    // die LAN-IP des Wirts ist von hier aus prinzipiell nicht ermittelbar.
+    // Dann lieber ehrlich leer melden, als eine falsche Adresse in QR-Codes zu
+    // gießen (Test-PC-Befund: „Kassa am Handy funktioniert nicht").
+    const { existsSync } = await import('node:fs')
+    if (existsSync('/.dockerenv')) {
+      return { ips: [], imContainer: true }
+    }
     const os = await import('node:os')
     const ips: string[] = []
     for (const [name, schnittstellen] of Object.entries(os.networkInterfaces())) {
@@ -110,7 +118,7 @@ export const systemRoute: FastifyPluginAsync = async (fastify) => {
         }
       }
     }
-    return { ips }
+    return { ips, imContainer: false }
   })
 
   fastify.post('/system/update', adminOnly, async (_request, reply) => {

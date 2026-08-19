@@ -212,8 +212,8 @@ export const systemApi = {
   status:    () => request<SystemStatus>('GET', '/api/system/status'),
   /** Löst das Update aus (Admin). Body-los — der Updater-Dienst holt das Signal ab. */
   ausloesen: () => request<{ angefordert: boolean }>('POST', '/api/system/update'),
-  /** LAN-IPv4-Adressen des Servers — für QR-Codes auf der Geräte-Seite. */
-  netzwerk:  () => request<{ ips: string[] }>('GET', '/api/system/netzwerk'),
+  /** LAN-IPv4s des Servers; im Docker-Betrieb ehrlich leer (imContainer=true). */
+  netzwerk:  () => request<{ ips: string[]; imContainer?: boolean }>('GET', '/api/system/netzwerk'),
 }
 
 // ---------------------------------------------------------------------------
