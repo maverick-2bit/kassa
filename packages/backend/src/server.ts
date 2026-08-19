@@ -6,6 +6,7 @@ import type { Config } from './config.js'
 import type { Db } from './db/client.js'
 import type { SetupServiceDeps } from './services/setup.service.js'
 import type { BelegServiceDeps } from './services/beleg.service.js'
+import type { StatfsFn } from './services/monitoring.service.js'
 import { registerAuth } from './auth/plugin.js'
 import { setupRoute } from './routes/setup.route.js'
 import { healthRoute } from './routes/health.route.js'
@@ -70,6 +71,8 @@ export interface ServerDeps {
   backupDir:       string
   dbBackupDir:     string
   dbBackupRetention: number
+  /** Nur für Tests: Plattenplatz-Messung ersetzen (hermetisch statt echte Platte). */
+  statfsFn?:       StatfsFn
 }
 
 export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
@@ -197,6 +200,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     dbBackupMaxStunden:  deps.config.DB_BACKUP_MAX_AGE_STUNDEN,
     depBackupMaxStunden: deps.config.DEP_BACKUP_MAX_AGE_STUNDEN,
     dbBackupDir:         deps.dbBackupDir,
+    statfsFn:            deps.statfsFn,
   })
 
   // Globaler Fehler-Handler — fängt alle unbehandelten Fehler ab

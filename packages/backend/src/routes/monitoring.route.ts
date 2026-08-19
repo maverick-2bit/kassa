@@ -5,7 +5,7 @@ import os from 'node:os'
 import v8 from 'node:v8'
 import type { Db } from '../db/client.js'
 import { mandanten } from '../db/schema.js'
-import { holeBackupStatus, holeSpeicherStatus } from '../services/monitoring.service.js'
+import { holeBackupStatus, holeSpeicherStatus, type StatfsFn } from '../services/monitoring.service.js'
 import { fuehreKeepAliveDurch, holeDruckerKeepAliveStatus } from '../services/drucker-keepalive.service.js'
 
 export interface MonitoringRouteOptions {
@@ -16,6 +16,13 @@ export interface MonitoringRouteOptions {
   depBackupMaxStunden: number
   /** Sicherungsverzeichnis — Messpunkt für den freien Plattenplatz. */
   dbBackupDir: string
+  /**
+   * Nur für Tests: Messfunktion für den Plattenplatz. Ohne Injektion misst der
+   * Endpoint die echte Platte — Tests würden damit rot, sobald der Rechner des
+   * Entwicklers vollläuft (genau so gefunden: Hyper-V-VM fraß die Platte, drei
+   * Monitoring-Tests kippten, ohne dass ein Bug existierte).
+   */
+  statfsFn?: StatfsFn | undefined
 }
 
 const START_TIME = Date.now()
@@ -41,7 +48,7 @@ export const monitoringRoute: FastifyPluginAsync<MonitoringRouteOptions> = async
     try { await opts.db.execute(sql`SELECT 1`); dbOk = true } catch { /* DB weg */ }
 
     const backups  = await holeBackupStatus(opts.db, opts.dbBackupMaxStunden, opts.depBackupMaxStunden)
-    const speicher = await holeSpeicherStatus(opts.dbBackupDir)
+    const speicher = await holeSpeicherStatus(opts.dbBackupDir, ...(opts.statfsFn ? [opts.statfsFn] : []))
     // Nur 'kritisch' degradiert: bei 'knapp' soll gewarnt, aber nicht Alarm
     // ausgelöst werden. 'unbekannt' (Messung fehlgeschlagen) zählt als gesund —
     // ein kaputter Messpunkt ist kein Ausfall.
@@ -95,7 +102,7 @@ export const monitoringRoute: FastifyPluginAsync<MonitoringRouteOptions> = async
     const backups = await holeBackupStatus(opts.db, opts.dbBackupMaxStunden, opts.depBackupMaxStunden)
 
     // Plattenplatz — Datenbank, Dumps und DEP-Archive teilen sich die Platte
-    const speicher = await holeSpeicherStatus(opts.dbBackupDir)
+    const speicher = await holeSpeicherStatus(opts.dbBackupDir, ...(opts.statfsFn ? [opts.statfsFn] : []))
 
     // Drucker-Keep-Alive: letzter Ping-Status + konfiguriertes Intervall
     const [mandant] = await opts.db
