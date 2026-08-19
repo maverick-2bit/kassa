@@ -73,6 +73,31 @@ describe('PIN-only-Kellner (Integration, echtes PostgreSQL)', () => {
     expect(u.email).toMatch(/@pin\.kellner\.lokal$/)
   })
 
+  it('ein frisches Handy kann die Kassen-Auswahl OHNE Token laden', async () => {
+    // Der Bootstrap der Kellner-App: vor dem allerersten Login gibt es kein
+    // Token — der alte Weg über GET /kassen war deshalb eine 401-Sackgasse
+    // (leere Liste → totes PIN-Feld, zweimal vom Test-PC gemeldet).
+    const login = (await srv.fastify.inject({
+      method: 'POST', url: '/api/auth/login', payload: { email: ADMIN_EMAIL, passwort: ADMIN_PASSWORT },
+    })).json()
+
+    const res = await srv.fastify.inject({
+      method: 'GET', url: `/api/kassen/auswahl?mandantId=${login.mandant.id}`,
+    })
+    expect(res.statusCode).toBe(200)
+    const liste = res.json() as { id: string; bezeichnung: string }[]
+    expect(liste).toHaveLength(1)
+    expect(liste[0]!.id).toBe(kasseId)
+    expect(liste[0]!.bezeichnung).toBeTruthy()   // Fallback kassenId, nie leer
+
+    // Ungültige mandantId → 400; fremde (nicht existente) → leere Liste
+    expect((await srv.fastify.inject({ method: 'GET', url: '/api/kassen/auswahl?mandantId=quatsch' })).statusCode).toBe(400)
+    const fremd = await srv.fastify.inject({
+      method: 'GET', url: '/api/kassen/auswahl?mandantId=11111111-1111-1111-1111-111111111111',
+    })
+    expect(fremd.json()).toEqual([])
+  })
+
   it('die Aushilfe kann sich per PIN am Handy anmelden — mit ihrem Namen', async () => {
     const res = await srv.fastify.inject({
       method: 'POST', url: '/api/auth/pin-login',

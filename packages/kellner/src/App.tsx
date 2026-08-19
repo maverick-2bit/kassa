@@ -57,14 +57,19 @@ function AppRoutes() {
       <Route path="/"            element={<RequireAuth><TischePage /></RequireAuth>} />
       <Route path="/tab/:tabId"  element={<RequireAuth><TabPage /></RequireAuth>} />
       <Route path="/tab/:tabId/artikel" element={<RequireAuth><ArtikelWaehlenPage /></RequireAuth>} />
-      <Route path="*" element={<Navigate to={getAuth() ? '/' : '/login'} replace />} />
+      <Route path="*" element={getAuth()
+        ? <Navigate to="/" replace />
+        : <Navigate to={{ pathname: '/login', search: window.location.search }} replace />} />
     </Routes>
   )
 }
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   if (!getAuth() || !getKasseIdentity()) {
-    return <Navigate to="/login" replace />
+    // Query-Parameter MITNEHMEN: der Einrichtungs-QR zeigt auf /?mandantId=… —
+    // ohne search-Weitergabe verlor der Redirect die mandantId und die
+    // Login-Seite hielt das Gerät für uneingerichtet (totes PIN-Feld).
+    return <Navigate to={{ pathname: '/login', search: window.location.search }} replace />
   }
   return <>{children}</>
 }
