@@ -75,6 +75,14 @@ export const MandantFreigabenSchema = z.object({
    * jemand mit der Berechtigung „freigabe" (oder ein Admin) seinen PIN eingibt.
    */
   stornoFreigabeAbCent: z.number().int().min(0).max(10_000_00),
+  /**
+   * Ab diesem Nachlass muss ein Rabatt freigegeben werden — prozentual (bezogen
+   * auf die Belegsumme vor Nachlass) ODER absolut in Cent; es greift, was zuerst
+   * erreicht ist. 0 = jeweils aus. Ohne diese Schwelle wäre die Storno-Freigabe
+   * per 100-%-Rabatt umgehbar.
+   */
+  rabattFreigabeAbProzent: z.number().int().min(0).max(100),
+  rabattFreigabeAbCent:    z.number().int().min(0).max(10_000_00),
 })
 export type MandantFreigaben = z.infer<typeof MandantFreigabenSchema>
 

@@ -76,6 +76,11 @@ export const BarzahlungsbelegInputSchema = z.object({
   /** Auto-Druck unterdrücken (für „Alternativdruck": Ausgabe wird im Dialog gewählt).
    *  Reines Transport-Flag, wird nicht persistiert. */
   keinAutodruck: z.boolean().optional(),
+  /**
+   * PIN eines Freigabeberechtigten — nur nötig, wenn der Rabatt über der
+   * eingestellten Freigabeschwelle liegt (Einstellungen → Freigaben).
+   */
+  freigabePin: z.string().trim().min(4).max(12).optional(),
 })
 export type BarzahlungsbelegInput = z.infer<typeof BarzahlungsbelegInputSchema>
 

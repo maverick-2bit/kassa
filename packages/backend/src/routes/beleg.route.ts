@@ -97,6 +97,11 @@ async function fuehreAus<T extends { id: string }>(
     if (err instanceof BelegError) {
       return reply.status(err.httpStatus).send({ fehler: err.message })
     }
+    // Rabatt über der Freigabeschwelle: 403 mit maschinenlesbarem Code — die
+    // Kassa blendet daran das PIN-Feld ein und wiederholt mit freigabePin.
+    if (err instanceof FreigabeError) {
+      return reply.status(err.httpStatus).send({ fehler: err.message, code: err.code, abCent: err.abCent })
+    }
     fastify.log.error({ err }, 'Beleg-Erstellung unerwartet fehlgeschlagen')
     return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
   }

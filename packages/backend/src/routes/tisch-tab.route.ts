@@ -127,6 +127,10 @@ export const tischTabRoute: FastifyPluginAsync<TischTabRouteOptions> = async (fa
       return reply.send(result)
     } catch (err) {
       if (err instanceof TischTabError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      // Rabatt über der Freigabeschwelle — Kassa/Kellner-App öffnen den PIN-Dialog
+      if (err instanceof FreigabeError) {
+        return reply.status(err.httpStatus).send({ fehler: err.message, code: err.code, abCent: err.abCent })
+      }
       throw err
     }
   })

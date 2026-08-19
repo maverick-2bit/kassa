@@ -524,12 +524,21 @@ export async function bezahleTab(
     ? { ...input.zahlung, karteCent: input.zahlung.karteCent + trinkgeldCent }
     : input.zahlung
 
+  // Positionsrabatte sind ab hier nur noch Preis-Overrides — für die
+  // Rabatt-Freigabeschwelle den Nachlass VOR dem Überschreiben festhalten.
+  const posNachlassCent = (input.positionRabatte ?? []).reduce((s, r) => {
+    const p = positionen[r.positionIndex]
+    if (!p) return s
+    return s + Math.max(0, (p.preisBruttoCent - r.einzelpreisBreuttoCent) * p.menge)
+  }, 0)
+
   const beleg = await erstelleBarzahlungsbeleg({
     kasseId:   existing.kasseId,
     positionen: belegPositionen,
     zahlung:    zahlungMitTrinkgeld,
     ...(input.rabatt && { rabatt: input.rabatt }),
-  }, deps.belegDeps, { skipLagerstand: true })  // Tisch: Lager läuft über Positionsänderung
+    ...(input.freigabePin && { freigabePin: input.freigabePin }),
+  }, deps.belegDeps, { skipLagerstand: true, zusatzNachlassCent: posNachlassCent })  // Tisch: Lager läuft über Positionsänderung
 
   const [row] = await deps.db
     .update(tischTabs)

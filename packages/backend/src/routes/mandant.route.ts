@@ -137,9 +137,15 @@ export const mandantRoute: FastifyPluginAsync<MandantRouteOptions> = async (fast
   })
 
   // ---- GET /mandanten/freigaben ----
+  const FREIGABEN_FELDER = {
+    stornoFreigabeAbCent:    mandanten.stornoFreigabeAbCent,
+    rabattFreigabeAbProzent: mandanten.rabattFreigabeAbProzent,
+    rabattFreigabeAbCent:    mandanten.rabattFreigabeAbCent,
+  }
+
   fastify.get('/mandanten/freigaben', guard, async (request, reply) => {
     const [row] = await opts.db
-      .select({ stornoFreigabeAbCent: mandanten.stornoFreigabeAbCent })
+      .select(FREIGABEN_FELDER)
       .from(mandanten)
       .where(eq(mandanten.id, request.user.mandantId))
       .limit(1)
@@ -161,15 +167,20 @@ export const mandantRoute: FastifyPluginAsync<MandantRouteOptions> = async (fast
 
     const body = MandantFreigabenUpdateSchema.safeParse(request.body)
     if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
-    if (body.data.stornoFreigabeAbCent === undefined) {
+    const updates = {
+      ...(body.data.stornoFreigabeAbCent    !== undefined && { stornoFreigabeAbCent:    body.data.stornoFreigabeAbCent }),
+      ...(body.data.rabattFreigabeAbProzent !== undefined && { rabattFreigabeAbProzent: body.data.rabattFreigabeAbProzent }),
+      ...(body.data.rabattFreigabeAbCent    !== undefined && { rabattFreigabeAbCent:    body.data.rabattFreigabeAbCent }),
+    }
+    if (Object.keys(updates).length === 0) {
       return reply.status(400).send({ fehler: 'Keine Änderungen angegeben' })
     }
 
     const [row] = await opts.db
       .update(mandanten)
-      .set({ stornoFreigabeAbCent: body.data.stornoFreigabeAbCent, updatedAt: new Date() })
+      .set({ ...updates, updatedAt: new Date() })
       .where(eq(mandanten.id, request.user.mandantId))
-      .returning({ stornoFreigabeAbCent: mandanten.stornoFreigabeAbCent })
+      .returning(FREIGABEN_FELDER)
 
     if (!row) return reply.status(404).send({ fehler: 'Mandant nicht gefunden' })
     return reply.send(row)
