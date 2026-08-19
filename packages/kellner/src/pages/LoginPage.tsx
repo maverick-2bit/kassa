@@ -66,6 +66,28 @@ export function LoginPage() {
 
   const kasseGesetzt = !!(identity?.kasseId || gewaehlteKasseId)
 
+  // Frisches Gerät OHNE Einrichtungs-Link: Ein PIN-Feld wäre hier tot (der
+  // Login braucht eine Kasse) — das wurde bisher kommentarlos angezeigt und
+  // als „PIN funktioniert nicht" gemeldet. Stattdessen sagen, was fehlt.
+  if (!identity && !mandantId) {
+    return (
+      <div className="min-h-screen bg-surface flex flex-col items-center justify-center p-6">
+        <div className="w-full max-w-sm space-y-4 text-center">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-brand-600 text-white text-2xl">🍽</div>
+          <h1 className="text-2xl font-black text-ink">Kellner-App</h1>
+          <div className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 text-left space-y-2">
+            <p className="font-bold">Dieses Gerät ist noch nicht eingerichtet.</p>
+            <p>
+              Bitte den <strong>QR-Code der Kellner-App</strong> scannen — zu finden an der
+              Kassa unter <strong>Einstellungen → Geräte</strong>. Er enthält die Zuordnung
+              zu eurem Betrieb; ohne sie kann die App keine Anmeldung annehmen.
+            </p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   // Setup-Schritt: Kasse wählen
   if (mandantId && !kasseGesetzt) {
     return (
@@ -87,6 +109,13 @@ export function LoginPage() {
 
           {kassenQuery.data && kassenQuery.data.length === 0 && (
             <p className="text-center text-ink-subtle text-sm">Keine Kassen gefunden.</p>
+          )}
+
+          {kassenQuery.isError && (
+            <p className="text-center text-red-500 text-sm">
+              Kassenliste nicht erreichbar — ist das Gerät im Kassa-WLAN?
+              ({kassenQuery.error instanceof Error ? kassenQuery.error.message : 'Fehler'})
+            </p>
           )}
 
           <div className="space-y-2">

@@ -79,10 +79,14 @@ export const authApi = {
 // ---------------------------------------------------------------------------
 
 export const kasseApi = {
+  /**
+   * Öffentliche Kassen-Auswahl fürs frische Gerät (VOR dem ersten Login).
+   * Der alte Weg über GET /kassen war auth-geschützt — ohne Token 401, leere
+   * Liste, totes PIN-Feld. (Der frühere getByUrl-Aufruf zeigte auf einen
+   * Endpoint, den es im Backend nie gab — entfernt.)
+   */
   list: (mandantId: string) =>
-    request<{ id: string; bezeichnung: string }[]>('GET', `/api/kassen?mandantId=${mandantId}`),
-  getByUrl: () =>
-    request<{ mandantId: string; kasseId: string; bezeichnung: string }>('GET', '/api/kassen/by-url'),
+    request<{ id: string; bezeichnung: string }[]>('GET', `/api/kassen/auswahl?mandantId=${mandantId}`),
 }
 
 // ---------------------------------------------------------------------------

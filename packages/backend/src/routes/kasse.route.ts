@@ -27,6 +27,33 @@ export const kasseRoute: FastifyPluginAsync<KasseRouteOptions> = async (fastify,
     u.rolle === 'admin' || u.berechtigungen.includes('einstellungen')
 
   /**
+   * GET /kassen/auswahl?mandantId= — ÖFFENTLICH.
+   *
+   * Bootstrap für die Kellner-App: Ein frisches Handy hat noch kein Token,
+   * muss aber vor dem allerersten PIN-Login seine Kasse wählen können (der
+   * PIN-Login selbst verlangt eine kasseId). Der bisherige Weg über das
+   * auth-geschützte GET /kassen war für neue Geräte eine Sackgasse: 401 →
+   * leere Liste → totes PIN-Feld.
+   *
+   * Bewusst minimal: nur id + Anzeigename aktiver Kassen, erreichbar nur mit
+   * der (nicht erratbaren) mandantId aus dem Einrichtungs-QR — dieselbe
+   * Vertraulichkeitsstufe wie die kasseId in den öffentlichen Terminal-/
+   * Abholmonitor-URLs.
+   */
+  fastify.get('/kassen/auswahl', async (request, reply) => {
+    const q = z.object({ mandantId: z.string().uuid() }).safeParse(request.query)
+    if (!q.success) return reply.status(400).send({ fehler: 'mandantId fehlt oder ungültig' })
+
+    const rows = await opts.db
+      .select({ id: kassen.id, bezeichnung: kassen.bezeichnung, kassenId: kassen.kassenId })
+      .from(kassen)
+      .where(and(eq(kassen.mandantId, q.data.mandantId), eq(kassen.status, 'aktiv')))
+      .orderBy(asc(kassen.kassenId))
+
+    return reply.send(rows.map(r => ({ id: r.id, bezeichnung: r.bezeichnung || r.kassenId })))
+  })
+
+  /**
    * GET /kassen
    * Alle Kassen des Mandanten — für Verwaltung und Kassen-Umschalter.
    */
