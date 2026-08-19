@@ -390,7 +390,7 @@ export function TischTabPage() {
   })
 
   const bezahlenMutation = useMutation({
-    mutationFn: async ({ bar, karte, trinkgeldCent = 0 }: { bar: number; karte: number; trinkgeldCent?: number }) => {
+    mutationFn: async ({ bar, karte, trinkgeldCent = 0, freigabePin }: { bar: number; karte: number; trinkgeldCent?: number; freigabePin?: string }) => {
       if (korb.length > 0) {
         // Sofort-Kassieren am Tisch: die noch nicht bonierten Korb-Positionen an
         // Küche/Schank (KDS + Bonierdrucker) senden — ident zum Parken, damit
@@ -428,6 +428,7 @@ export function TischTabPage() {
         ...(rabatt && { rabatt }),
         ...(posRabatteArr.length > 0 && { positionRabatte: posRabatteArr }),
         ...(trinkgeldCent > 0 && { trinkgeldCent }),
+        ...(freigabePin && { freigabePin }),
       })
     },
     onSuccess: async ({ belegId }) => {
@@ -446,7 +447,17 @@ export function TischTabPage() {
       }
       navigate('/tische')
     },
-    onError: (err) => { setZahlartLaeuft(null); setFehler(err instanceof Error ? err.message : String(err)) },
+    onError: (err, variables) => {
+      setZahlartLaeuft(null)
+      // Rabatt über der Freigabeschwelle: die bestehende PIN-Nachfrage nutzen
+      // und mit denselben Zahlungsdaten (plus PIN) erneut abrechnen.
+      if (err instanceof ApiError && err.code === 'freigabe_erforderlich') {
+        setFreigabeAnfrage({ art: 'bezahlen', zahlung: variables, meldung: err.message })
+        setFreigabePinEingabe('')
+        return
+      }
+      setFehler(err instanceof Error ? err.message : String(err))
+    },
   })
 
   // Positions-Korrektur (−/+/Numpad/🗑): Server erkennt Reduktionen als Storno
@@ -457,7 +468,10 @@ export function TischTabPage() {
    * er nach der PIN-Eingabe unverändert wiederholt werden kann.
    */
   const [freigabeAnfrage, setFreigabeAnfrage] = useState<
-    { art: 'korrektur'; positionen: TabPosition[] } | { art: 'verwerfen' } | null
+    | { art: 'korrektur'; positionen: TabPosition[] }
+    | { art: 'verwerfen' }
+    | { art: 'bezahlen'; zahlung: { bar: number; karte: number; trinkgeldCent?: number }; meldung: string }
+    | null
   >(null)
   const [freigabePinEingabe, setFreigabePinEingabe] = useState('')
 
@@ -931,6 +945,8 @@ export function TischTabPage() {
                 <p className="text-xs font-bold text-amber-900">
                   Freigabe erforderlich — {freigabeAnfrage.art === 'verwerfen'
                     ? 'Tisch verwerfen liegt über der Storno-Schwelle'
+                    : freigabeAnfrage.art === 'bezahlen'
+                    ? freigabeAnfrage.meldung
                     : 'Storno liegt über der Schwelle'}
                 </p>
                 <input
@@ -952,10 +968,14 @@ export function TischTabPage() {
                     variant="secondary"
                     className="flex-1 text-xs"
                     disabled={freigabePinEingabe.length < 4}
-                    loading={korrekturMutation.isPending || verwerfenMutation.isPending}
+                    loading={korrekturMutation.isPending || verwerfenMutation.isPending || bezahlenMutation.isPending}
                     onClick={() => {
                       if (freigabeAnfrage.art === 'korrektur') {
                         korrekturMutation.mutate({ positionen: freigabeAnfrage.positionen, freigabePin: freigabePinEingabe })
+                      } else if (freigabeAnfrage.art === 'bezahlen') {
+                        bezahlenMutation.mutate({ ...freigabeAnfrage.zahlung, freigabePin: freigabePinEingabe })
+                        setFreigabeAnfrage(null)
+                        setFreigabePinEingabe('')
                       } else {
                         verwerfenMutation.mutate({ freigabePin: freigabePinEingabe })
                       }

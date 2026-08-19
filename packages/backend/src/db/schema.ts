@@ -76,6 +76,13 @@ export const mandanten = pgTable('mandanten', {
    * Berechtigten). 0 = aus — dann darf jeder mit Storno-Recht alles stornieren.
    */
   stornoFreigabeAbCent:     integer('storno_freigabe_ab_cent').notNull().default(0),
+  /**
+   * Rabatt-Freigabe: ab diesem Nachlass muss ein Berechtigter per PIN
+   * freigeben — prozentual ODER absolut, was zuerst greift. 0 = aus.
+   * Ohne sie wäre die Storno-Schwelle per 100-%-Rabatt umgehbar.
+   */
+  rabattFreigabeAbProzent:  integer('rabatt_freigabe_ab_prozent').notNull().default(0),
+  rabattFreigabeAbCent:     integer('rabatt_freigabe_ab_cent').notNull().default(0),
 
   // Pro-Mandant-Stripe-Konto (Gast-Onlinezahlung). AES-256-GCM-verschlüsselt
   // (Muster crypto/master-key.ts). Leer → globale Env-Keys als Fallback.

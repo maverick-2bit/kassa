@@ -83,6 +83,54 @@ export async function pruefeStornoFreigabe(
 }
 
 /**
+ * Prüft, ob ein Rabatt über der Schwelle liegt (prozentual ODER absolut — was
+ * zuerst greift), und verlangt in dem Fall einen gültigen Freigabe-PIN.
+ *
+ * Ohne diese Prüfung wäre die Storno-Freigabe wertlos: statt 80 € zu
+ * stornieren gibt der Kellner einfach 100 % Rabatt — gleicher Effekt, kein PIN.
+ *
+ * @param nachlassCent Gesamtnachlass des Belegs (Belegrabatt + Positionsrabatte)
+ * @param basisCent    Belegsumme VOR dem Nachlass (Bezugsgröße fürs Prozent)
+ */
+export async function pruefeRabattFreigabe(
+  db:           Db,
+  mandantId:    string,
+  nachlassCent: number,
+  basisCent:    number,
+  pin?:         string,
+): Promise<Freigeber | null> {
+  if (nachlassCent <= 0) return null
+
+  const [m] = await db
+    .select({
+      abProzent: mandanten.rabattFreigabeAbProzent,
+      abCent:    mandanten.rabattFreigabeAbCent,
+    })
+    .from(mandanten)
+    .where(eq(mandanten.id, mandantId))
+    .limit(1)
+
+  const abProzent = m?.abProzent ?? 0
+  const abCent    = m?.abCent ?? 0
+
+  const prozent        = basisCent > 0 ? (nachlassCent / basisCent) * 100 : 100
+  const prozentGreift  = abProzent > 0 && prozent >= abProzent
+  const centGreift     = abCent > 0 && nachlassCent >= abCent
+  if (!prozentGreift && !centGreift) return null
+
+  if (!pin) {
+    const grenze = prozentGreift ? `${abProzent} % Nachlass` : euro(abCent)
+    throw new FreigabeError(`Rabatt ab ${grenze} muss freigegeben werden.`, abCent)
+  }
+
+  const freigeber = await findeFreigeber(db, mandantId, pin)
+  if (!freigeber) {
+    throw new FreigabeError('Freigabe-PIN ist nicht gültig.', abCent)
+  }
+  return freigeber
+}
+
+/**
  * Sucht den Benutzer zum PIN — nur Admins und Träger der Berechtigung
  * „freigabe" kommen infrage.
  *

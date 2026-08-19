@@ -21,7 +21,8 @@ import type {
 } from '@kassa/shared'
 import { GUTSCHEIN_STATUS_LABELS, MWST_LABELS, STATION_LABELS, aktionsPreisCent, aktiverRabattProzent, aktiveAktion } from '@kassa/shared'
 import type { AktiveAktion } from '@kassa/shared'
-import { angebotApi, artikelApi, belegApi, bonierApi, druckerApi, emailApi, gutscheinApi, kategorieApi, lieferscheinApi, modifikatorApi, offenerPostenApi, posConfigApi, preisregelApi, tischTabApi, zvtApi, displayApi } from '../lib/api'
+import { angebotApi, artikelApi, belegApi, bonierApi, druckerApi, emailApi, gutscheinApi, kategorieApi, lieferscheinApi, modifikatorApi, offenerPostenApi, posConfigApi, preisregelApi, tischTabApi, zvtApi, displayApi, ApiError } from '../lib/api'
+import { FreigabePinModal } from '../components/FreigabePinModal'
 import { getKasseIdentity } from '../lib/kasse'
 import { getAuth, hasBerechtigung } from '../lib/auth'
 import { formatPreis, heuteLokalYMD } from '../lib/format'
@@ -133,6 +134,8 @@ export function KassePage() {
   const zahlungRef = useRef<{ barCent: number; karteCent: number }>({ barCent: 0, karteCent: 0 })
   const [letzterAngebot, setLetzterAngebot] = useState<AngebotResponse | null>(null)
   const [bonierungErgebnis, setBonierungErgebnis] = useState<BonierungErgebnis | null>(null)
+  /** Rabatt über der Freigabeschwelle: Backend-Meldung + der abgelehnte Beleg für den zweiten Versuch mit PIN */
+  const [freigabe, setFreigabe] = useState<{ meldung: string; input: BarzahlungsbelegInput } | null>(null)
   const [fehler, setFehler] = useState<string | null>(null)
   const [zvtOffen, setZvtOffen] = useState(false)
   const [zvtBetrag, setZvtBetrag] = useState(0)
@@ -412,7 +415,15 @@ export function KassePage() {
       reset()
       void queryClient.invalidateQueries({ queryKey: ['belege'] })
     },
-    onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
+    onError: (err, variables) => {
+      // Rabatt über der Freigabeschwelle: PIN-Dialog öffnen, Eingabe bleibt
+      // erhalten — nach der Freigabe wird derselbe Beleg erneut gesendet.
+      if (err instanceof ApiError && err.code === 'freigabe_erforderlich') {
+        setFreigabe({ meldung: err.message, input: variables })
+        return
+      }
+      setFehler(err instanceof Error ? err.message : String(err))
+    },
   })
 
   const kreditMutation = useMutation({
@@ -1224,6 +1235,20 @@ export function KassePage() {
           </div>
         )}
       </Modal>
+
+      {/* Rabatt über der Freigabeschwelle: PIN eines Berechtigten einsammeln,
+          dann denselben Beleg mit freigabePin erneut senden */}
+      <FreigabePinModal
+        open={!!freigabe}
+        meldung={freigabe?.meldung ?? ''}
+        laedt={belegMutation.isPending}
+        onBestaetigen={(pin) => {
+          if (!freigabe) return
+          belegMutation.mutate({ ...freigabe.input, freigabePin: pin })
+          setFreigabe(null)
+        }}
+        onAbbrechen={() => setFreigabe(null)}
+      />
 
       {/* Bonierungs-Ergebnis */}
       <Modal

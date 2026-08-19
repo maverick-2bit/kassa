@@ -745,7 +745,9 @@ function DruckerStatusSektion() {
  */
 function FreigabenSektion() {
   const queryClient = useQueryClient()
-  const [euro, setEuro] = useState('0')
+  const [stornoEuro,  setStornoEuro]  = useState('0')
+  const [rabattProzent, setRabattProzent] = useState('0')
+  const [rabattEuro,  setRabattEuro]  = useState('0')
   const [meldung, setMeldung] = useState<{ typ: 'ok' | 'fehler'; text: string } | null>(null)
 
   const abfrage = useQuery({
@@ -755,50 +757,76 @@ function FreigabenSektion() {
 
   useEffect(() => {
     if (!abfrage.data) return
-    setEuro((abfrage.data.stornoFreigabeAbCent / 100).toFixed(2).replace('.', ','))
+    setStornoEuro((abfrage.data.stornoFreigabeAbCent / 100).toFixed(2).replace('.', ','))
+    setRabattProzent(String(abfrage.data.rabattFreigabeAbProzent ?? 0))
+    setRabattEuro(((abfrage.data.rabattFreigabeAbCent ?? 0) / 100).toFixed(2).replace('.', ','))
   }, [abfrage.data])
 
   const speichern = useMutation({
     mutationFn: () => {
-      const cent = Math.round(Number(euro.replace(',', '.')) * 100)
-      if (!Number.isFinite(cent) || cent < 0) throw new Error('Bitte einen gültigen Betrag eingeben')
-      return mandantApi.patchFreigaben({ stornoFreigabeAbCent: cent })
+      const euroZuCent = (s: string) => Math.round(Number(s.replace(',', '.')) * 100)
+      const stornoCent = euroZuCent(stornoEuro)
+      const rabCent    = euroZuCent(rabattEuro)
+      const rabProz    = Number(rabattProzent)
+      if (![stornoCent, rabCent, rabProz].every(n => Number.isFinite(n) && n >= 0)) {
+        throw new Error('Bitte gültige Werte eingeben')
+      }
+      return mandantApi.patchFreigaben({
+        stornoFreigabeAbCent:    stornoCent,
+        rabattFreigabeAbProzent: Math.round(rabProz),
+        rabattFreigabeAbCent:    rabCent,
+      })
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mandant-freigaben'] })
-      setMeldung({ typ: 'ok', text: 'Freigabeschwelle gespeichert' })
+      setMeldung({ typ: 'ok', text: 'Freigabeschwellen gespeichert' })
     },
     onError: (err) => setMeldung({ typ: 'fehler', text: err instanceof Error ? err.message : String(err) }),
   })
 
-  const aktuellCent = abfrage.data?.stornoFreigabeAbCent ?? 0
+  const d = abfrage.data
+  const feld = 'w-28 rounded-md border border-line-strong px-3 py-2 text-sm text-right font-mono ' +
+               'focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none'
 
   return (
     <section className="rounded-lg bg-panel shadow-sm border border-line p-6 space-y-4">
       <div>
         <h2 className="text-base font-semibold text-ink">Freigaben</h2>
         <p className="text-sm text-ink-muted mt-0.5">
-          Ab welchem Betrag ein Storno von einem Berechtigten per PIN freigegeben werden muss.
-          Der Storno bleibt Kellner-Funktion — es muss nur jemand mit dem Recht
-          „Storno freigeben" seinen PIN dazugeben.
+          Ab diesen Grenzen muss ein Berechtigter per PIN freigeben. Storno und Rabatt bleiben
+          Kellner-Funktionen — es muss nur jemand mit dem Recht „Storno freigeben" seinen PIN
+          dazugeben. Ohne Rabatt-Schwelle wäre die Storno-Schwelle per 100-%-Rabatt umgehbar.
         </p>
       </div>
 
-      <div className="flex flex-wrap items-end gap-3">
+      <div className="flex flex-wrap items-end gap-4">
         <div>
           <label htmlFor="storno-schwelle" className="block text-sm font-medium text-ink mb-1">
-            Storno-Freigabe ab
+            Storno ab
           </label>
           <div className="flex items-center gap-2">
-            <input
-              id="storno-schwelle"
-              type="text"
-              inputMode="decimal"
-              value={euro}
-              onChange={(e) => setEuro(e.target.value)}
-              className="w-32 rounded-md border border-line-strong px-3 py-2 text-sm text-right font-mono
-                         focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
-            />
+            <input id="storno-schwelle" type="text" inputMode="decimal" value={stornoEuro}
+              onChange={(e) => setStornoEuro(e.target.value)} className={feld} />
+            <span className="text-sm text-ink-muted">€</span>
+          </div>
+        </div>
+        <div>
+          <label htmlFor="rabatt-prozent" className="block text-sm font-medium text-ink mb-1">
+            Rabatt ab
+          </label>
+          <div className="flex items-center gap-2">
+            <input id="rabatt-prozent" type="text" inputMode="numeric" value={rabattProzent}
+              onChange={(e) => setRabattProzent(e.target.value.replace(/\D/g, ''))} className={feld} />
+            <span className="text-sm text-ink-muted">%</span>
+          </div>
+        </div>
+        <div>
+          <label htmlFor="rabatt-euro" className="block text-sm font-medium text-ink mb-1">
+            oder Nachlass ab
+          </label>
+          <div className="flex items-center gap-2">
+            <input id="rabatt-euro" type="text" inputMode="decimal" value={rabattEuro}
+              onChange={(e) => setRabattEuro(e.target.value)} className={feld} />
             <span className="text-sm text-ink-muted">€</span>
           </div>
         </div>
@@ -808,9 +836,14 @@ function FreigabenSektion() {
       </div>
 
       <p className="text-xs text-ink-subtle">
-        {aktuellCent === 0
-          ? 'Aktuell aus — jeder mit Storno-Recht darf jeden Beleg stornieren.'
-          : `Aktuell aktiv: Storno ab ${(aktuellCent / 100).toFixed(2).replace('.', ',')} € braucht eine Freigabe.`}
+        0 = jeweils aus.{' '}
+        {d && (d.stornoFreigabeAbCent > 0 || (d.rabattFreigabeAbProzent ?? 0) > 0 || (d.rabattFreigabeAbCent ?? 0) > 0)
+          ? `Aktiv: ${[
+              d.stornoFreigabeAbCent > 0 ? `Storno ab ${(d.stornoFreigabeAbCent / 100).toFixed(2).replace('.', ',')} €` : null,
+              (d.rabattFreigabeAbProzent ?? 0) > 0 ? `Rabatt ab ${d.rabattFreigabeAbProzent} %` : null,
+              (d.rabattFreigabeAbCent ?? 0) > 0 ? `Nachlass ab ${((d.rabattFreigabeAbCent ?? 0) / 100).toFixed(2).replace('.', ',')} €` : null,
+            ].filter(Boolean).join(' · ')}.`
+          : 'Aktuell alles aus — Storno und Rabatt sind ohne Freigabe möglich.'}
         {' '}Das Recht „Storno freigeben" vergibst du je Benutzer unter Personal; Administratoren
         haben es immer.
       </p>

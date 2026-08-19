@@ -25,6 +25,7 @@ export type AuditAktion =
   | 'jahresbeleg.erstellt'
   | 'nullbeleg.erstellt'
   | 'storno.freigegeben'
+  | 'rabatt.freigegeben'
 
 export interface AuditEintrag {
   mandantId?: string | null

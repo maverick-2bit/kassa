@@ -45,6 +45,8 @@ import { ArtikelPositionSchema } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import { artikel, belege, kassen, kategorien, mandanten, modifikatoren, seriennummern } from '../db/schema.js'
 import { erstelleKunde, ladeKundeSnapshot } from './kunde.service.js'
+import { pruefeRabattFreigabe } from './freigabe.service.js'
+import { logAudit } from './audit.service.js'
 import { dekrementiereBestandteile, ladeRezepte } from './bestandteil.service.js'
 import { decryptPrivateKey, encryptPrivateKey } from '../crypto/master-key.js'
 
@@ -289,7 +291,15 @@ async function signiereImTx(
 export async function erstelleBarzahlungsbeleg(
   input: BarzahlungsbelegInput,
   deps:  BelegServiceDeps,
-  opts:  { skipLagerstand?: boolean } = {},
+  opts:  {
+    skipLagerstand?: boolean
+    /**
+     * Nachlass, der VOR diesem Aufruf schon in die Positionspreise eingerechnet
+     * wurde (Tisch: positionRabatte werden zu Preis-Overrides) — zählt zur
+     * Rabatt-Freigabeschwelle dazu, ist hier aber nicht mehr sichtbar.
+     */
+    zusatzNachlassCent?: number
+  } = {},
 ): Promise<BelegResponse> {
   // Kunden-Snapshot vor der Transaktion auflösen (neuer Kunde wird hier angelegt)
   let kundeId:       string | undefined
@@ -417,6 +427,7 @@ export async function erstelleBarzahlungsbeleg(
       }
 
       // Rabatt-Positionen einfügen (nach Artikel-Lookup, vor Lagerstand-Update)
+      let belegRabattCent = 0
       if (input.rabatt) {
         const rabattLabel = input.rabatt.bezeichnung
           ?? (input.rabatt.typ === 'prozent'
@@ -432,11 +443,49 @@ export async function erstelleBarzahlungsbeleg(
           for (const [satz, summe] of satzSummen) {
             if (summe <= 0) continue
             const rabattCent = Math.round(summe * input.rabatt.prozent / 100)
+            belegRabattCent += rabattCent
             positionen.push({ bezeichnung: rabattLabel, menge: 1, einzelpreisBreutto: -rabattCent, mwstSatz: satz })
           }
         } else {
           const satz = input.rabatt.mwstSatz ?? 'normal'
+          belegRabattCent = input.rabatt.betragCent
           positionen.push({ bezeichnung: rabattLabel, menge: 1, einzelpreisBreutto: -input.rabatt.betragCent, mwstSatz: satz })
+        }
+      }
+
+      // Rabatt-Freigabe: über der Schwelle (Prozent ODER Betrag) muss ein
+      // Berechtigter per PIN freigeben — geprüft VOR dem Signieren, eine
+      // Ablehnung erzeugt keinen Beleg. Ohne diese Prüfung wäre die
+      // Storno-Freigabe per 100-%-Rabatt umgehbar. zusatzNachlassCent trägt
+      // die vorab eingerechneten Positionsrabatte des Tisches bei.
+      const gesamtNachlassCent = belegRabattCent + (opts.zusatzNachlassCent ?? 0)
+      if (gesamtNachlassCent > 0) {
+        // Basis = Belegsumme VOR allen Nachlässen: positive Positionssummen
+        // (ohne die eben eingefügten negativen Rabattzeilen) + Positionsrabatte.
+        const basisCent = positionen.reduce(
+          (s, p) => s + Math.max(0, p.einzelpreisBreutto * p.menge), 0,
+        ) + (opts.zusatzNachlassCent ?? 0)
+        const [kasseRow] = await tx
+          .select({ mandantId: kassen.mandantId })
+          .from(kassen)
+          .where(eq(kassen.id, input.kasseId))
+          .limit(1)
+        if (kasseRow) {
+          const freigeber = await pruefeRabattFreigabe(
+            deps.db, kasseRow.mandantId, gesamtNachlassCent, basisCent, input.freigabePin,
+          )
+          if (freigeber) {
+            await logAudit(deps.db, {
+              mandantId: kasseRow.mandantId,
+              aktion:    'rabatt.freigegeben',
+              details:   {
+                nachlassCent: gesamtNachlassCent,
+                basisCent,
+                freigeberId:   freigeber.userId,
+                freigeberName: freigeber.name,
+              },
+            })
+          }
         }
       }
 

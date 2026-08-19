@@ -95,6 +95,8 @@ export const TischTabBezahlenInputSchema = z.object({
   })).optional(),
   /** Trinkgeld in Cent — wird als freie Position (0 % MwSt) auf den Beleg gebucht */
   trinkgeldCent: z.number().int().nonnegative().optional(),
+  /** PIN eines Freigabeberechtigten — nur nötig über der Rabatt-Freigabeschwelle. */
+  freigabePin: z.string().trim().min(4).max(12).optional(),
 })
 export type TischTabBezahlenInput = z.infer<typeof TischTabBezahlenInputSchema>
 
