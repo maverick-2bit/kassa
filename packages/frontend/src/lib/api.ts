@@ -217,6 +217,11 @@ export const systemApi = {
   netzwerk:  () => request<{ ips: string[]; imContainer?: boolean }>('GET', '/api/system/netzwerk'),
 }
 
+export const kdsGeraetApi = {
+  /** Langlebiger Geräte-Token für KDS-Bildschirme (nur Admin) — wandert in den Geräte-QR. */
+  token: () => request<{ token: string }>('POST', '/api/kds/geraete-token'),
+}
+
 // ---------------------------------------------------------------------------
 // DEP-Export (Datei-Download)
 // ---------------------------------------------------------------------------

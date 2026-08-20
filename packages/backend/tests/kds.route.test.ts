@@ -327,3 +327,54 @@ describe('POST /api/kds/bon/:id/teilbon', () => {
     await srv.close()
   })
 })
+
+// ---------------------------------------------------------------------------
+// POST /api/kds/geraete-token  (langlebiger Token für KDS-Bildschirme)
+// ---------------------------------------------------------------------------
+
+describe('POST /api/kds/geraete-token', () => {
+  it('Admin bekommt einen Geräte-Token, der an KDS-Routen funktioniert', async () => {
+    const srv = await buildTestServer(mockDb({ selects: [[]] }))
+    const res = await srv.fastify.inject({
+      method: 'POST', url: '/api/kds/geraete-token', headers: srv.authHeader(),
+    })
+    expect(res.statusCode).toBe(200)
+    const { token } = res.json() as { token: string }
+    expect(token).toBeTruthy()
+
+    const bons = await srv.fastify.inject({
+      method: 'GET', url: '/api/kds/bons?station=kueche',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(bons.statusCode).toBe(200)
+    await srv.close()
+  })
+
+  it('Kellner darf keinen Geräte-Token ausstellen (403), anonym 401', async () => {
+    const srv = await buildTestServer(mockDb())
+    const kellner = await srv.fastify.inject({
+      method: 'POST', url: '/api/kds/geraete-token',
+      headers: srv.authHeader({ rolle: 'kellner' }),
+    })
+    expect(kellner.statusCode).toBe(403)
+    const anonym = await srv.fastify.inject({ method: 'POST', url: '/api/kds/geraete-token' })
+    expect(anonym.statusCode).toBe(401)
+    await srv.close()
+  })
+
+  it('der Geräte-Token ist außerhalb von /api/kds wertlos (403)', async () => {
+    // Der Kern der Sache: ein abfotografierter KDS-QR gibt nur Küchen-Bons
+    // frei — niemals Kassen-, Artikel- oder Benutzerdaten.
+    const srv = await buildTestServer(mockDb({ selects: [[]] }))
+    const { token } = (await srv.fastify.inject({
+      method: 'POST', url: '/api/kds/geraete-token', headers: srv.authHeader(),
+    })).json() as { token: string }
+
+    const H = { authorization: `Bearer ${token}` }
+    const kategorien = await srv.fastify.inject({ method: 'GET', url: '/api/kategorien', headers: H })
+    expect(kategorien.statusCode).toBe(403)
+    const users = await srv.fastify.inject({ method: 'GET', url: '/api/users', headers: H })
+    expect(users.statusCode).toBe(403)
+    await srv.close()
+  })
+})
