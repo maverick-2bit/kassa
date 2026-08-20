@@ -178,17 +178,29 @@ function TabWarengruppen({
   }
 
   // Server-Semantik: LEERE Liste = alle Warengruppen sichtbar (auch künftige).
-  const alleAktiv = sichtbar.size === 0
-  const istSichtbar = (id: string) => alleAktiv || sichtbar.has(id)
+  // „Keine" ist darin nicht speicherbar (und null sichtbare Gruppen wären an
+  // einer Kasse sinnlos) → keineModus ist ein reiner Auswahl-Neustart in der
+  // Oberfläche: alles aus, gespeichert wird erst die erste wieder
+  // eingeschaltete Gruppe. Abbruch/Kassenwechsel lässt den Serverstand unberührt.
+  const [keineModus, setKeineModus] = useState(false)
+  const alleAktiv = !keineModus && sichtbar.size === 0
+  const istSichtbar = (id: string) => !keineModus && (alleAktiv || sichtbar.has(id))
 
   const alleAktivieren = () => {
+    setKeineModus(false)
     setSichtbar(new Set())
     sichtbarkeitMut.mutate([])
   }
 
+  const keineAktivieren = () => setKeineModus(true)
+
   const toggleSichtbar = (id: string) => {
     let next: Set<string>
-    if (alleAktiv) {
+    if (keineModus) {
+      // Erste Gruppe nach dem Neustart → wird die neue (gespeicherte) Auswahl
+      setKeineModus(false)
+      next = new Set([id])
+    } else if (alleAktiv) {
       // Aus „alle" heraus eine ausblenden → explizite Liste ohne diese eine
       if (items.length <= 1) return // die letzte Warengruppe bleibt sichtbar
       next = new Set(items.map(k => k.id))
@@ -225,6 +237,14 @@ function TabWarengruppen({
           >
             {alleAktiv ? '✓ Alle sichtbar' : 'Alle sichtbar'}
           </button>
+          <button
+            onClick={keineAktivieren}
+            disabled={keineModus || sichtbarkeitMut.isPending}
+            title="Auswahl neu beginnen: alles aus — die erste wieder eingeschaltete Warengruppe legt die neue Auswahl fest"
+            className="rounded-lg border border-line px-3 py-1.5 text-sm font-medium text-ink-muted hover:border-brand-400 hover:text-brand-700 transition disabled:opacity-40 disabled:hover:border-line disabled:hover:text-ink-muted"
+          >
+            Keine
+          </button>
           {dirty && (
             <Button onClick={saveReihenfolge} loading={reihenfolge.isPending}>
               Reihenfolge speichern
@@ -232,6 +252,13 @@ function TabWarengruppen({
           )}
         </div>
       </div>
+
+      {keineModus && (
+        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          Noch nichts gespeichert — die erste Warengruppe, die du jetzt einschaltest, legt die
+          neue Auswahl fest (mindestens eine muss sichtbar sein). Solange gilt die bisherige Auswahl weiter.
+        </p>
+      )}
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={items.map(k => k.id)} strategy={verticalListSortingStrategy}>
