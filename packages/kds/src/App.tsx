@@ -31,6 +31,17 @@ function merkeConfig(station: KdsStation, token: string) {
   window.history.replaceState({}, '', url.toString())
 }
 
+/**
+ * Verbindung zurücksetzen → Einrichtungsbildschirm. Nötig, wenn der gemerkte
+ * Token ungültig geworden ist (z. B. ein vor v0.7.162 verwendetes Login-JWT,
+ * das nach 8 h abläuft) — vorher gab es aus diesem Zustand keinen Weg zurück.
+ */
+function verbindungZuruecksetzen() {
+  localStorage.removeItem('kds:token')
+  localStorage.removeItem('kds:station')
+  window.location.href = window.location.pathname   // Params abwerfen + neu laden
+}
+
 /** Hell/Dunkel-Umschalter für die Kopfleiste (Standard hell). */
 function ThemeToggle() {
   const [mode, setMode] = useState<ThemeMode>(() => getTheme())
@@ -671,8 +682,20 @@ export default function App() {
 
       {/* Fehler-Banner */}
       {fehler && (
-        <div className="bg-red-900/50 text-red-700 dark:text-red-300 text-sm px-5 py-2 text-center">
-          Verbindungsfehler: {fehler} – wird automatisch erneut versucht…
+        <div className="bg-red-900/50 text-red-700 dark:text-red-300 text-sm px-5 py-2 text-center space-x-3">
+          <span>
+            {/401/.test(fehler)
+              ? 'Geräte-Verbindung ungültig oder abgelaufen.'
+              : `Verbindungsfehler: ${fehler} – wird automatisch erneut versucht…`}
+          </span>
+          {/401/.test(fehler) && (
+            <button
+              onClick={verbindungZuruecksetzen}
+              className="rounded-lg bg-red-700 px-3 py-1 text-white font-bold text-xs"
+            >
+              Neu verbinden
+            </button>
+          )}
         </div>
       )}
 
@@ -682,34 +705,34 @@ export default function App() {
       {/* Haupt-Bereich: Aggregations-Spalte links + Bons-Grid rechts */}
       <div className="flex-1 flex overflow-hidden">
 
-        {/* Linke Aggregations-Spalte */}
-        <div
-          className="w-52 shrink-0 flex flex-col border-r border-line overflow-y-auto"
-          style={{ background: '#111113' }}
-        >
+        {/* Linke Aggregations-Spalte — bewusst Theme-Farben statt festem
+            Schwarz (der alte #111113-Hintergrund machte die Spalte im hellen
+            Modus unlesbar: dunkle Schrift auf dunklem Grund) und groß genug,
+            um aus Küchen-Distanz lesbar zu sein. */}
+        <div className="w-64 shrink-0 flex flex-col border-r-2 border-line overflow-y-auto bg-panel-2">
           <div className="px-3 pt-3 pb-2">
-            <p className="text-xs font-black uppercase tracking-widest text-ink-subtle">
+            <p className="text-sm font-black uppercase tracking-widest text-ink-muted">
               Offen gesamt
             </p>
           </div>
           {aggregiertArtikel.length === 0 ? (
             <div className="flex-1 flex items-center justify-center">
-              <span className="text-ink-subtle text-sm">–</span>
+              <span className="text-ink-subtle text-lg">–</span>
             </div>
           ) : (
             <div className="flex-1 px-2 pb-3 space-y-1">
               {aggregiertArtikel.map(([bezeichnung, menge]) => (
                 <div
                   key={bezeichnung}
-                  className="flex items-start gap-2 px-2 py-1.5 rounded-lg hover:bg-panel-2/60 transition-colors"
+                  className="flex items-start gap-2.5 px-2 py-2 rounded-lg hover:bg-panel transition-colors"
                 >
                   <span
-                    className="text-base font-black tabular-nums shrink-0 min-w-[2rem] text-right"
+                    className="text-2xl font-black tabular-nums shrink-0 min-w-[2.75rem] text-right leading-tight"
                     style={{ color: farbe }}
                   >
                     {menge}×
                   </span>
-                  <span className="text-sm text-ink font-medium leading-tight break-words">
+                  <span className="text-lg text-ink font-semibold leading-snug break-words">
                     {bezeichnung}
                   </span>
                 </div>

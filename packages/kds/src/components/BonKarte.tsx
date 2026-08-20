@@ -94,6 +94,33 @@ export function BonKarte({ bon, token, onErledigt }: BonKarteProps) {
     }
   }, [bon.id, token, onErledigt])
 
+  /**
+   * Direkt-Erledigen per Antippen (Normalmodus): ein Tipp auf die Zeile
+   * schließt die offene Restmenge dieser Position ab — ohne den Umweg
+   * Teilbon-Modus → Menge wählen → Senden. Ist damit alles erledigt,
+   * schließt das Backend den Bon von selbst (Status 'erledigt' + SSE).
+   * Für Teilmengen (2 von 5 fertig) bleibt der Teilbon-Modus.
+   */
+  const handlePositionTipp = useCallback(async (pos: KdsPosition) => {
+    const offen = offeneMenge(pos)
+    if (pos.erledigt || offen <= 0 || loading) return
+    setLoading(true)
+    try {
+      await bonTeilbon(bon.id, [{ id: pos.id, menge: offen }], token)
+      setPositionen(prev => {
+        const next = prev.map(p =>
+          p.id === pos.id ? { ...p, erledigtMenge: p.menge, erledigt: true } : p,
+        )
+        if (next.every(p => p.erledigt)) onErledigt(bon.id)
+        return next
+      })
+    } catch (e) {
+      alert('Fehler: ' + (e instanceof Error ? e.message : e))
+    } finally {
+      setLoading(false)
+    }
+  }, [bon.id, token, loading, onErledigt])
+
   const handleTeilbon = useCallback(async () => {
     const posMengen = [...ausgewaehlt.entries()]
       .filter(([, m]) => m > 0)
@@ -162,13 +189,18 @@ export function BonKarte({ bon, token, onErledigt }: BonKarteProps) {
           const gewaehlt = ausgewaehlt.get(pos.id) ?? 0
 
           if (!teilbonModus) {
-            // Normalmodus: Zeile zeigt offene/gesamt Menge
+            // Normalmodus: Antippen der Zeile erledigt die Position direkt
             return (
-              <div
+              <button
                 key={pos.id}
+                onClick={() => handlePositionTipp(pos)}
+                disabled={pos.erledigt || loading}
+                title={pos.erledigt ? undefined : 'Antippen = Position erledigt'}
                 className={[
-                  'w-full text-left px-4 py-3 flex items-center gap-3',
-                  pos.erledigt ? 'opacity-40 text-ink-subtle' : 'text-ink',
+                  'w-full text-left px-4 py-3 flex items-center gap-3 transition-colors',
+                  pos.erledigt
+                    ? 'opacity-40 text-ink-subtle cursor-default'
+                    : 'text-ink hover:bg-emerald-600/10 active:bg-emerald-600/20',
                 ].join(' ')}
               >
                 <span className={`text-xl font-black w-12 shrink-0 tabular-nums ${pos.erledigt ? 'text-ink-subtle' : 'text-amber-600 dark:text-amber-400'}`}>
@@ -194,7 +226,7 @@ export function BonKarte({ bon, token, onErledigt }: BonKarteProps) {
                     {pos.erledigtMenge} gesendet
                   </span>
                 )}
-              </div>
+              </button>
             )
           }
 
