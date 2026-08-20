@@ -188,6 +188,8 @@ export const kassen = pgTable('kassen', {
   artikelbilderAktiv:    boolean('artikel_bilder_aktiv').notNull().default(true),
   /** Startseite nach Login: tische | kasse | kasse_favoriten | dashboard */
   startseite:            varchar('startseite', { length: 20 }).notNull().default('tische'),
+  /** Kellner-App: Betriebsart — tische | theke (Direktverkauf ohne Tische) */
+  kellnerModus:          varchar('kellner_modus', { length: 20 }).notNull().default('tische'),
   /** Kellner-App: Tischauswahl beim Öffnen — manuell | liste | plan */
   kellnerTischwahl:      varchar('kellner_tischwahl', { length: 20 }).notNull().default('manuell'),
   /** Kellner-App: Favoriten als ersten Reiter in der Artikelwahl anzeigen */

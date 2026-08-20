@@ -14,6 +14,7 @@ import type {
   ZvtJob,
   ZvtZahlungInput,
   KellnerTischwahl,
+  KellnerModus,
   TischplanBereich,
 } from '@kassa/shared'
 import { getToken, clearAuth } from './auth'
@@ -97,6 +98,7 @@ export const kasseApi = {
 
 /** Ausschnitt der pos-config, den die Kellner-App braucht. */
 export interface KellnerKonfig {
+  kellnerModus:          KellnerModus
   kellnerTischwahl:      KellnerTischwahl
   kellnerFavoritenAktiv: boolean
 }
