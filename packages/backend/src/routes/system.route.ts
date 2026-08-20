@@ -28,11 +28,14 @@ const GITHUB_VERSION_URL = `https://raw.githubusercontent.com/maverick-2bit/kass
 let cache: { version: string | null; geprueft: number } = { version: null, geprueft: 0 }
 const CACHE_MS = 10 * 60_000
 
-async function holeNeuesteVersion(): Promise<string | null> {
+async function holeNeuesteVersion(frisch = false): Promise<string | null> {
   const jetzt = Date.now()
-  if (cache.version && jetzt - cache.geprueft < CACHE_MS) return cache.version
+  if (!frisch && cache.version && jetzt - cache.geprueft < CACHE_MS) return cache.version
   try {
-    const res = await fetch(GITHUB_VERSION_URL, { signal: AbortSignal.timeout(5000) })
+    // frisch: eindeutige Query als Cache-Buster gegen das GitHub-CDN — sonst
+    // kann auch eine erzwungene Prüfung noch minutenlang den alten Stand sehen.
+    const url = frisch ? `${GITHUB_VERSION_URL}?frisch=${jetzt}` : GITHUB_VERSION_URL
+    const res = await fetch(url, { signal: AbortSignal.timeout(5000) })
     if (!res.ok) return cache.version
     const pkg = (await res.json()) as { version?: string }
     if (pkg.version) cache = { version: pkg.version, geprueft: jetzt }
@@ -77,9 +80,12 @@ export const systemRoute: FastifyPluginAsync = async (fastify) => {
   const guard     = { onRequest: [fastify.authenticate] }
   const adminOnly = { onRequest: [fastify.requireRolle('admin')] }
 
-  fastify.get('/system/status', guard, async () => {
+  fastify.get('/system/status', guard, async (request) => {
+    // ?frisch=1 (Knopf „Nach Updates suchen"): Caches umgehen — im Eventbetrieb
+    // darf eine dringende Umstellung nicht an der 10-Minuten-Anzeige hängen.
+    const frisch = (request.query as { frisch?: string }).frisch === '1'
     const [neueste, updaterVerfuegbar, update] = await Promise.all([
-      holeNeuesteVersion(),
+      holeNeuesteVersion(frisch),
       updaterLaeuft(),
       leseUpdateStatus(),
     ])
