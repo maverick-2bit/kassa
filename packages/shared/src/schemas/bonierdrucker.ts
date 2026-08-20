@@ -54,6 +54,15 @@ export type Startseite = z.infer<typeof StartseitenEnum>
 export const BelegModusEnum = z.enum(['drucken', 'digital', 'beides'])
 export type BelegModus = z.infer<typeof BelegModusEnum>
 
+/**
+ * Tischauswahl beim Öffnen eines neuen Tisches in der Kellner-App:
+ *   manuell → Nummer eintippen (bisheriges Verhalten)
+ *   liste   → Tische je Bereich aus dem Tischplan als Liste antippen
+ *   plan    → grafischer Mini-Tischplan (setzt gepflegten Tischplan voraus)
+ */
+export const KellnerTischwahlEnum = z.enum(['manuell', 'liste', 'plan'])
+export type KellnerTischwahl = z.infer<typeof KellnerTischwahlEnum>
+
 export const PosKonfigSchema = z.object({
   /** IDs der Kategorien, die in dieser Kasse im POS sichtbar sind */
   sichtbareKategorieIds: z.array(z.string().uuid()),
@@ -65,6 +74,10 @@ export const PosKonfigSchema = z.object({
   artikelbilderAktiv:    z.boolean(),
   /** Startseite nach Login */
   startseite:            StartseitenEnum,
+  /** Kellner-App: wie wird der Tisch beim Öffnen gewählt? */
+  kellnerTischwahl:      KellnerTischwahlEnum,
+  /** Kellner-App: Favoriten als ersten Reiter in der Artikelwahl anzeigen */
+  kellnerFavoritenAktiv: z.boolean(),
 })
 export type PosKonfig = z.infer<typeof PosKonfigSchema>
 
@@ -74,6 +87,8 @@ export const PosKonfigUpdateSchema = z.object({
   erlaubteZahlungsarten: z.array(z.enum(['bar', 'karte', 'sonstige'])).optional(),
   artikelbilderAktiv:    z.boolean().optional(),
   startseite:            StartseitenEnum.optional(),
+  kellnerTischwahl:      KellnerTischwahlEnum.optional(),
+  kellnerFavoritenAktiv: z.boolean().optional(),
 })
 export type PosKonfigUpdate = z.infer<typeof PosKonfigUpdateSchema>
 

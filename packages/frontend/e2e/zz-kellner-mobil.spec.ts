@@ -124,16 +124,14 @@ test('PIN-Login → Tisch öffnen → Gänge buchen → Gang für Gang abrufen �
   // Nur der Header trägt „<Name> · N offen" — der Kellnername steht auch auf Tab-Karten
   await expect(page.getByText(new RegExp(`${KELLNER_NAME} · \\d+ offen`))).toBeVisible()
 
-  // ---- Tisch öffnen ----
+  // ---- Tisch öffnen → landet DIREKT im Bestellmodus (Artikelwahl) ----
   const tisch = `M${ts % 100000}`
   await page.getByRole('button', { name: '+ Tisch' }).click()
   await page.getByPlaceholder(/Tisch 3 oder Bar/).fill(tisch)
   await page.getByRole('button', { name: 'Öffnen' }).click()
-  await expect(page.getByRole('heading', { name: tisch })).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByRole('heading', { name: `Tisch ${tisch}` })).toBeVisible({ timeout: 10_000 })
 
-  // ---- Artikel wählen: Gang-Wähler, Artikel erben den aktiven Gang ----
-  await page.getByRole('button', { name: '+ Artikel' }).click()
-  await expect(page.getByRole('heading', { name: 'Artikel wählen' })).toBeVisible()
+  // ---- Artikelwahl: Gang-Wähler, Artikel erben den aktiven Gang ----
   await expect(page.getByRole('button', { name: 'Sofort',  exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: '3. Gang', exact: true })).toBeVisible()
 
@@ -141,10 +139,11 @@ test('PIN-Login → Tisch öffnen → Gänge buchen → Gang für Gang abrufen �
   // Kategorien früherer Versuche, daher explizit die eigene wählen.
   await page.getByRole('button', { name: `Mobil-Kat ${ts}` }).click()
 
+  // Kacheln: Antippen bucht den Artikel direkt (+1)
   await page.getByRole('button', { name: '1. Gang', exact: true }).click()
-  await page.locator('div.bg-panel').filter({ hasText: vorspeise }).getByRole('button', { name: '+', exact: true }).first().click()
+  await page.getByRole('button', { name: vorspeise }).click()
   await page.getByRole('button', { name: '2. Gang', exact: true }).click()
-  await page.locator('div.bg-panel').filter({ hasText: hauptgang }).getByRole('button', { name: '+', exact: true }).first().click()
+  await page.getByRole('button', { name: hauptgang }).click()
 
   await page.getByRole('button', { name: /Zum Tab hinzufügen/ }).click()
   await expect(page.getByRole('heading', { name: tisch })).toBeVisible({ timeout: 10_000 })
