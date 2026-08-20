@@ -12,6 +12,12 @@ export interface JwtPayload {
   rolle:          Rolle
   name:           string
   berechtigungen: Berechtigung[]
+  /**
+   * Geräte-Token (z. B. fest verbauter KDS-Bildschirm): langlebig, aber auf
+   * seine Geräte-Routen beschränkt — die authenticate/require*-Decorators
+   * lehnen ihn überall sonst ab.
+   */
+  typ?:           'kds_geraet'
 }
 
 declare module '@fastify/jwt' {

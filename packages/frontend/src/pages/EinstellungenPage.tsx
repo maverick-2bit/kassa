@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { QRCodeSVG } from 'qrcode.react'
 import { ALLE_STATIONEN, STATION_LABELS, type Station, type ZvtConfig, type WeitereKasseInput, type PosKonfig, type Artikel, type Kategorie, type SeeTyp } from '@kassa/shared'
-import { druckerApi, druckerPoolApi, kdsApi, seeApi, zvtApi, downloadDepExport, healthApi, monitoringApi, mandantApi, stripeApi, kasseApi, kasseErweiterungApi, kategorieApi, artikelApi, posConfigApi, tischplanApi, dbBackupApi, belegApi, systemApi, rksvSelbsttestApi, type DruckerConfig, type KdsConfig, type DbSicherungRow, type MonitoringStatus } from '../lib/api'
+import { druckerApi, druckerPoolApi, kdsApi, kdsGeraetApi, seeApi, zvtApi, downloadDepExport, healthApi, monitoringApi, mandantApi, stripeApi, kasseApi, kasseErweiterungApi, kategorieApi, artikelApi, posConfigApi, tischplanApi, dbBackupApi, belegApi, systemApi, rksvSelbsttestApi, type DruckerConfig, type KdsConfig, type DbSicherungRow, type MonitoringStatus } from '../lib/api'
 import type { DruckerPool, DruckerPoolInput } from '@kassa/shared'
 import { Modal } from '../components/ui/Modal'
 import { BonierdruckerBibliothek } from '../components/BonierdruckerBibliothek'
@@ -3414,15 +3414,25 @@ function GeraeteSektion() {
   }, [erkannt.host, host])
   const hostUnbekannt = (host === 'localhost' || host === '127.0.0.1') && erkannt.fertig
 
+  // KDS-Bildschirme haben keinen Login → der QR trägt einen langlebigen
+  // Geräte-Token (nur für /api/kds gültig). Ohne ihn zeigt das KDS eine
+  // Scan-Anleitung statt des früheren „JWT-Token einfügen"-Felds.
+  const kdsTokenQ = useQuery({
+    queryKey:  ['kds-geraete-token'],
+    queryFn:   kdsGeraetApi.token,
+    staleTime: Infinity,
+    retry:     false,
+  })
+
   // Label | Dev-Port (Vite) | Prod-Port (Docker) | URL-Parameter | Hinweis
   //
   // Die Parameter sind Teil der Einrichtung: die Kellner-App braucht die
   // mandantId für die Kassen-Auswahl beim ersten PIN-Login (ohne sie nimmt das
   // Nummernfeld kommentarlos nichts an — Test-PC-Befund), Kundendisplay/
   // SB-Terminal/Abholmonitor brauchen die Kassen-Bindung.
-  const APPS: { label: string; dev: number; prod: number; params?: string; hinweis: string; modul?: 'sbTerminal' }[] = [
+  const APPS: { label: string; dev: number; prod: number; params?: string | undefined; hinweis: string; modul?: 'sbTerminal' }[] = [
     { label: 'Kellner-App',   dev: 5178, prod: 8083, params: `?mandantId=${identity.mandantId}`, hinweis: 'Handy des Kellners — PIN-Login' },
-    { label: 'KDS Küche/Schank', dev: 5175, prod: 8080, hinweis: 'Küchen-/Schank-Bildschirm (Station in der App wählen)' },
+    { label: 'KDS Küche/Schank', dev: 5175, prod: 8080, params: kdsTokenQ.data ? `?token=${kdsTokenQ.data.token}` : undefined, hinweis: 'Küchen-/Schank-Bildschirm (Station in der App wählen)' },
     { label: 'Kundendisplay', dev: 5176, prod: 8081, params: `?kasseId=${identity.kasseId}&mandantId=${identity.mandantId}`, hinweis: 'Display Richtung Gast (diese Kasse)' },
     { label: 'Gast-Bestellung', dev: 5177, prod: 8082, hinweis: 'QR am Tisch (siehe Tischnummern-Druck)' },
     { label: 'SB-Terminal',   dev: 5179, prod: 8084, params: `?kasseId=${identity.kasseId}`, hinweis: 'Selbstbedienungs-Kiosk (diese Kasse)', modul: 'sbTerminal' },

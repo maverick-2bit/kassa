@@ -59,6 +59,27 @@ const AntwortBody      = z.object({
 
 export const kdsRoute: FastifyPluginAsync<KdsRouteOptions> = async (fastify, opts) => {
 
+  // ── Geräte-Token für den KDS-Bildschirm ────────────────────────────────────
+  // Küchen-Displays haben keinen Login: die Geräte-Seite holt hier einen
+  // langlebigen Token und packt ihn in den KDS-QR. Der Token trägt typ
+  // 'kds_geraet' und wird von authenticate außerhalb von /api/kds abgelehnt —
+  // ein abfotografierter QR gibt also nur Küchen-Bons frei, nie die Kassa.
+  fastify.post('/kds/geraete-token', { onRequest: [fastify.requireRolle('admin')] }, async (request, reply) => {
+    const token = fastify.jwt.sign(
+      {
+        sub:            'kds-geraet',
+        mandantId:      request.user.mandantId,
+        rolle:          'kellner',
+        name:           'KDS-Bildschirm',
+        berechtigungen: [],
+        typ:            'kds_geraet',
+      },
+      // Fest verbaute Bildschirme, Event-Betrieb: bewusst sehr lange gültig.
+      { expiresIn: '3650d' },
+    )
+    return reply.send({ token })
+  })
+
   /**
    * SB-Auto-„bereit": Bon gehört zu einer Terminal-Bestellung und ALLE ihre
    * Bons sind erledigt → Bestellung springt am Abholmonitor auf „bereit".

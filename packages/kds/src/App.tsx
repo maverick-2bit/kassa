@@ -8,13 +8,27 @@ import { BonKarte } from './components/BonKarte'
 import { GrossAnzeige } from './components/GrossAnzeige'
 import { BonArchiv } from './components/BonArchiv'
 
-// Konfiguration aus URL-Parametern
+// Konfiguration aus URL-Parametern; localStorage als Rückfallebene, damit ein
+// Neustart ohne Parameter (z. B. nach URL-Bereinigung) eingerichtet bleibt.
 function getConfig() {
-  const params = new URLSearchParams(window.location.search)
+  const params  = new URLSearchParams(window.location.search)
+  const token   = params.get('token')   ?? localStorage.getItem('kds:token')   ?? ''
+  const station = params.get('station') ?? localStorage.getItem('kds:station') ?? ''
   return {
-    station: (params.get('station') ?? 'kueche') as KdsStation,
-    token:   params.get('token') ?? '',
+    station: (station || 'kueche') as KdsStation,
+    /** Erst nach expliziter Wahl am Gerät — sonst zeigt die App die Stationswahl. */
+    stationGewaehlt: Boolean(station),
+    token,
   }
+}
+
+function merkeConfig(station: KdsStation, token: string) {
+  localStorage.setItem('kds:token', token)
+  localStorage.setItem('kds:station', station)
+  const url = new URL(window.location.href)
+  url.searchParams.set('station', station)
+  url.searchParams.set('token', token)
+  window.history.replaceState({}, '', url.toString())
 }
 
 /** Hell/Dunkel-Umschalter für die Kopfleiste (Standard hell). */
@@ -41,14 +55,54 @@ function ThemeToggle() {
   )
 }
 
-function SetupScreen({ onSave }: { onSave: (station: KdsStation, token: string) => void }) {
+/**
+ * Einrichtung: mit Geräte-Token (aus dem QR der Geräte-Seite) fehlt nur noch
+ * die Stationswahl. Ohne Token zeigt der Schirm die Scan-Anleitung — das
+ * frühere Pflichtfeld „JWT-Token einfügen" war für Endanwender unbrauchbar
+ * (woher nehmen, und ein Login-Token stirbt nach 8 Stunden).
+ */
+function SetupScreen({ vorhandenerToken, onSave }: { vorhandenerToken: string; onSave: (station: KdsStation, token: string) => void }) {
   const [station, setStation] = useState<KdsStation>('kueche')
   const [token, setToken]     = useState('')
+  const [manuell, setManuell] = useState(false)
+  const hatToken = Boolean(vorhandenerToken)
+
+  const starten = () => {
+    const tok = (vorhandenerToken || token).trim()
+    if (!tok) return
+    merkeConfig(station, tok)
+    onSave(station, tok)
+  }
 
   return (
     <div className="min-h-screen bg-surface flex items-center justify-center p-6">
       <div className="bg-panel rounded-2xl p-8 w-full max-w-md space-y-6">
         <h1 className="text-2xl font-black text-ink">KDS Einrichtung</h1>
+
+        {!hatToken && (
+          <div className="rounded-xl border-2 border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 space-y-2">
+            <p className="font-bold">Dieses Gerät ist noch nicht verbunden.</p>
+            <p>
+              An der Kassa unter <strong>Einstellungen → Geräte</strong> den
+              QR-Code <strong>„KDS Küche/Schank"</strong> scannen bzw. dessen Adresse
+              hier öffnen — sie enthält die Geräte-Freigabe. Danach nur noch die
+              Station wählen.
+            </p>
+            {!manuell ? (
+              <button onClick={() => setManuell(true)} className="text-xs underline text-amber-800">
+                Alternativ: Geräte-Token von Hand eintragen
+              </button>
+            ) : (
+              <textarea
+                value={token}
+                onChange={e => setToken(e.target.value)}
+                rows={3}
+                placeholder="Geräte-Token (aus der Geräte-Adresse hinter ?token=) einfügen…"
+                className="w-full bg-panel-2 text-ink rounded-xl p-3 text-sm font-mono border border-line focus:outline-none focus:border-line-strong resize-none"
+              />
+            )}
+          </div>
+        )}
 
         <div className="space-y-2">
           <label className="text-ink-muted text-sm font-medium">Station</label>
@@ -66,28 +120,10 @@ function SetupScreen({ onSave }: { onSave: (station: KdsStation, token: string) 
           </div>
         </div>
 
-        <div className="space-y-2">
-          <label className="text-ink-muted text-sm font-medium">JWT-Token</label>
-          <textarea
-            value={token}
-            onChange={e => setToken(e.target.value)}
-            rows={3}
-            placeholder="Bearer Token aus der Kassa-Einstellung einfügen..."
-            className="w-full bg-panel-2 text-ink rounded-xl p-3 text-sm font-mono border border-line focus:outline-none focus:border-line-strong resize-none"
-          />
-        </div>
-
         <button
-          onClick={() => {
-            if (!token.trim()) return alert('Token fehlt')
-            // URL aktualisieren + starten
-            const url = new URL(window.location.href)
-            url.searchParams.set('station', station)
-            url.searchParams.set('token', token.trim())
-            window.history.replaceState({}, '', url.toString())
-            onSave(station, token.trim())
-          }}
-          className="w-full py-4 rounded-xl font-black text-ink text-lg"
+          onClick={starten}
+          disabled={!hatToken && !token.trim()}
+          className="w-full py-4 rounded-xl font-black text-ink text-lg disabled:opacity-40"
           style={{ backgroundColor: STATION_FARBEN[station] }}
         >
           {STATION_LABELS[station]} starten
@@ -365,7 +401,7 @@ export default function App() {
   const audioCtxRef = useRef<AudioContext | null>(null)
 
   const { station, token } = config
-  const istKonfiguriert     = Boolean(token)
+  const istKonfiguriert     = Boolean(token) && config.stationGewaehlt
 
   // Initial-Laden
   useEffect(() => {
@@ -474,7 +510,8 @@ export default function App() {
   if (!istKonfiguriert) {
     return (
       <SetupScreen
-        onSave={(s, t) => setConfig({ station: s, token: t })}
+        vorhandenerToken={token}
+        onSave={(s, t) => setConfig({ station: s, stationGewaehlt: true, token: t })}
       />
     )
   }
