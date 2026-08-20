@@ -153,15 +153,16 @@ function tryBonierDirektverkauf(
       const flagged = rows.filter(a => a.bonierBeiDirektverkauf)
       if (flagged.length === 0) return
 
-      // Kategorie-Bonierdrucker für die Routing-Prüfung (spiegelt beleg.service De-Dup)
+      // Kategorie-Routing (Bonierdrucker ODER Stations-Vorgabe) für die
+      // Routing-Prüfung (spiegelt beleg.service De-Dup)
       const katIds = [...new Set(flagged.map(a => a.kategorieId).filter((id): id is string => id !== null))]
-      const katBonierdruckerMap = new Map<string, string | null>()
+      const katRoutingMap = new Map<string, boolean>()
       if (katIds.length > 0) {
         const katRows = await deps.db
-          .select({ id: kategorien.id, bonierdruckerId: kategorien.bonierdruckerId })
+          .select({ id: kategorien.id, bonierdruckerId: kategorien.bonierdruckerId, station: kategorien.station })
           .from(kategorien)
           .where(inArray(kategorien.id, katIds))
-        for (const k of katRows) katBonierdruckerMap.set(k.id, k.bonierdruckerId)
+        for (const k of katRows) katRoutingMap.set(k.id, (k.bonierdruckerId ?? k.station ?? null) !== null)
       }
 
       const geroutet = new Set(
@@ -169,7 +170,7 @@ function tryBonierDirektverkauf(
           .filter(a =>
             a.station !== null ||
             a.bonierdruckerId !== null ||
-            (a.kategorieId ? (katBonierdruckerMap.get(a.kategorieId) ?? null) !== null : false),
+            (a.kategorieId ? (katRoutingMap.get(a.kategorieId) ?? false) : false),
           )
           .map(a => a.id),
       )

@@ -616,6 +616,8 @@ export const kategorien = pgTable('kategorien', {
   aktiv:           boolean('aktiv').notNull().default(true),
   /** Standard-Bonierdrucker für alle Artikel dieser Kategorie */
   bonierdruckerId: uuid('bonierdrucker_id').references(() => bonierdrucker.id, { onDelete: 'set null' }),
+  /** KDS-Stations-Vorgabe für alle Artikel dieser Kategorie (artikel.station geht vor) */
+  station:         varchar('station', { length: 20 }),
   /** SB-Terminal: Artikel dieser Warengruppe am Bestellterminal anzeigen */
   terminalSichtbar: boolean('terminal_sichtbar').notNull().default(false),
   createdAt:       timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

@@ -98,13 +98,15 @@ export async function bonierBestellung(
         .filter((id): id is string => id !== null),
     ),
   ]
-  const kategorieMap = new Map<string, { bonierdruckerId: string | null }>()
+  const kategorieMap = new Map<string, { bonierdruckerId: string | null; station: Station | null }>()
   if (kategorieIds.length > 0) {
     const katRows = await deps.db
-      .select({ id: kategorien.id, bonierdruckerId: kategorien.bonierdruckerId })
+      .select({ id: kategorien.id, bonierdruckerId: kategorien.bonierdruckerId, station: kategorien.station })
       .from(kategorien)
       .where(inArray(kategorien.id, kategorieIds))
-    for (const k of katRows) kategorieMap.set(k.id, { bonierdruckerId: k.bonierdruckerId })
+    for (const k of katRows) {
+      kategorieMap.set(k.id, { bonierdruckerId: k.bonierdruckerId, station: k.station as Station | null })
+    }
   }
 
   // 4. Alle aktiven Bonierdrucker laden — je Kasse ggf. auf die gewählten filtern
@@ -154,10 +156,13 @@ export async function bonierBestellung(
     }
     allePositionen.push(pos)
 
-    // KDS-Routing (nur wenn kdsAktiv und Artikel eine Station hat).
-    // SB-Bestellungen: immer KDS — Positionen ohne Station fallen auf 'kueche'.
+    // KDS-Routing: Artikel-Station geht vor, sonst gilt die Stations-Vorgabe
+    // der Warengruppe. SB-Bestellungen: immer KDS — ohne Station → 'kueche'.
     if (kasse.kdsAktiv || optionen.sb) {
-      const station = (a.station as Station | null) ?? (optionen.sb ? 'kueche' : null)
+      const station =
+        (a.station as Station | null) ??
+        (a.kategorieId ? (kategorieMap.get(a.kategorieId)?.station ?? null) : null) ??
+        (optionen.sb ? 'kueche' : null)
       if (station) {
         const liste = proStation.get(station) ?? []
         liste.push(pos)
@@ -284,9 +289,8 @@ export async function bonierBestellung(
     // würden ungeroutete (Kueche-Fallback) doppelt gezählt.
     .filter(({ a }) => {
       if (!optionen.sb) return true
-      const hatKategorieRouting = a.kategorieId
-        ? (kategorieMap.get(a.kategorieId)?.bonierdruckerId ?? null) !== null
-        : false
+      const kat = a.kategorieId ? kategorieMap.get(a.kategorieId) : undefined
+      const hatKategorieRouting = (kat?.bonierdruckerId ?? kat?.station ?? null) !== null
       return a.station !== null || a.bonierdruckerId !== null || hatKategorieRouting
     })
 
@@ -297,9 +301,8 @@ export async function bonierBestellung(
     .filter(p => {
       if (!optionen.sb) return true
       const a = artikelById.get(p.artikelId)!
-      const hatKategorieRouting = a.kategorieId
-        ? (kategorieMap.get(a.kategorieId)?.bonierdruckerId ?? null) !== null
-        : false
+      const kat = a.kategorieId ? kategorieMap.get(a.kategorieId) : undefined
+      const hatKategorieRouting = (kat?.bonierdruckerId ?? kat?.station ?? null) !== null
       return a.station !== null || a.bonierdruckerId !== null || hatKategorieRouting
     })
     .map(p => ({ artikelId: p.artikelId, menge: p.menge }))

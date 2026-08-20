@@ -357,15 +357,16 @@ export async function erstelleBarzahlungsbeleg(
       const katergorieIds = [...new Set(
         artikelRows.map(a => a.kategorieId).filter((id): id is string => id !== null),
       )]
-      const katBonierdruckerMap = new Map<string, string | null>()
-      const katNameMap          = new Map<string, string>()
+      /** true = die Kategorie routet (Bonierdrucker ODER Stations-Vorgabe) */
+      const katRoutingMap = new Map<string, boolean>()
+      const katNameMap    = new Map<string, string>()
       if (katergorieIds.length > 0) {
         const katRows = await tx
-          .select({ id: kategorien.id, name: kategorien.name, bonierdruckerId: kategorien.bonierdruckerId })
+          .select({ id: kategorien.id, name: kategorien.name, bonierdruckerId: kategorien.bonierdruckerId, station: kategorien.station })
           .from(kategorien)
           .where(inArray(kategorien.id, katergorieIds))
         for (const k of katRows) {
-          katBonierdruckerMap.set(k.id, k.bonierdruckerId)
+          katRoutingMap.set(k.id, (k.bonierdruckerId ?? k.station ?? null) !== null)
           katNameMap.set(k.id, k.name)
         }
       }
@@ -509,7 +510,7 @@ export async function erstelleBarzahlungsbeleg(
         // Bonierbar? → Lagerstand (Artikel + Bestandteile) wurde beim Bonieren abgezogen, nicht hier.
         const hatArtikelBonierrouting  = a.station !== null || a.bonierdruckerId !== null
         const hatKategorieBonierrouting = a.kategorieId
-          ? (katBonierdruckerMap.get(a.kategorieId) ?? null) !== null
+          ? (katRoutingMap.get(a.kategorieId) ?? false)
           : false
         if (hatArtikelBonierrouting || hatKategorieBonierrouting) continue
 

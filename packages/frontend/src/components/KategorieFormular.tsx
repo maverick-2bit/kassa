@@ -2,10 +2,13 @@ import { useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import {
   KATEGORIE_FARBE_LABELS,
+  STATION_LABELS,
+  ALLE_STATIONEN,
   type Bonierdrucker,
   type KategorieFarbe,
   type KategorieInput,
   type Kategorie,
+  type Station,
 } from '@kassa/shared'
 import { Field } from './ui/Field'
 import { Input } from './ui/Input'
@@ -21,6 +24,7 @@ type FormValues = {
   farbe:           KategorieFarbe
   reihenfolge:     string
   bonierdruckerId: string
+  station:         string
 }
 
 interface Props {
@@ -39,6 +43,7 @@ export function KategorieFormular({ initial, bonierdrucker, onSubmit, onCancel, 
       farbe:           initial?.farbe              ?? 'grau',
       reihenfolge:     String(initial?.reihenfolge ?? 0),
       bonierdruckerId: initial?.bonierdruckerId    ?? '',
+      station:         initial?.station            ?? '',
     },
   })
 
@@ -48,6 +53,7 @@ export function KategorieFormular({ initial, bonierdrucker, onSubmit, onCancel, 
       farbe:           initial?.farbe              ?? 'grau',
       reihenfolge:     String(initial?.reihenfolge ?? 0),
       bonierdruckerId: initial?.bonierdruckerId    ?? '',
+      station:         initial?.station            ?? '',
     })
   }, [initial, reset])
 
@@ -57,6 +63,7 @@ export function KategorieFormular({ initial, bonierdrucker, onSubmit, onCancel, 
       farbe:           values.farbe,
       reihenfolge:     parseInt(values.reihenfolge || '0', 10) || 0,
       bonierdruckerId: values.bonierdruckerId || null,
+      station:         (values.station || null) as Station | null,
       // Wird zentral im SB-Terminal-Bereich der Einstellungen verwaltet — hier nur erhalten
       terminalSichtbar: initial?.terminalSichtbar ?? false,
     })
@@ -91,6 +98,15 @@ export function KategorieFormular({ initial, bonierdrucker, onSubmit, onCancel, 
           />
         </Field>
       </div>
+
+      <Field label="KDS-Station (Vorgabe)" hint="Gilt für alle Artikel dieser Warengruppe — einzelne Artikel können abweichen">
+        <Select {...register('station')}>
+          <option value="">— keine Vorgabe —</option>
+          {ALLE_STATIONEN.map(s => (
+            <option key={s} value={s}>{STATION_LABELS[s]}</option>
+          ))}
+        </Select>
+      </Field>
 
       {bonierdrucker && bonierdrucker.length > 0 && (
         <Field label="Standard-Bonierdrucker" hint="Gilt für alle Artikel dieser Kategorie (überschreibbar pro Artikel)">

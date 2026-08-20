@@ -176,4 +176,49 @@ describe('Bonieren + Drucker/ZVT-Config (Integration, echtes PostgreSQL)', () =>
       expect(cfg.zvtAktiv).toBe(true)
     })
   })
+
+  describe('Warengruppen-Stations-Vorgabe (Vererbung an Artikel)', () => {
+    it('Artikel ohne eigene Station erbt die Station der Warengruppe; eigene Station geht vor', async () => {
+      await idb.db.update(kassen).set({ kdsAktiv: true, kdsStationen: {} }).where(eq(kassen.id, kasseId))
+
+      // Warengruppe mit Vorgabe Schank
+      const kat = (await srv.fastify.inject({
+        method: 'POST', url: '/api/kategorien', headers: auth(),
+        payload: { name: 'Getränke (Vorgabe Schank)', farbe: 'blau', reihenfolge: 0, station: 'schank' },
+      })).json() as { id: string; station: string }
+      expect(kat.station).toBe('schank')
+
+      // Erbt: keine eigene Station | Weicht ab: eigene Station 'dessert'
+      const erbtId    = await neuerArtikel({ bezeichnung: 'Spritzer (erbt)', preisBruttoCent: 400, kategorieId: kat.id })
+      const eigeneId  = await neuerArtikel({ bezeichnung: 'Eiskaffee (eigen)', preisBruttoCent: 550, kategorieId: kat.id, station: 'dessert' })
+
+      const res = await srv.fastify.inject({
+        method: 'POST', url: '/api/bestellung/bonieren', headers: auth(),
+        payload: {
+          kasseId, tisch: 'Tisch 9', kellner: 'Vera',
+          positionen: [{ artikelId: erbtId, menge: 1 }, { artikelId: eigeneId, menge: 1 }],
+        },
+      })
+      expect([200, 207]).toContain(res.statusCode)
+
+      // Je ein KDS-Bon auf Schank (geerbt) und Dessert (eigene Station schlägt Vorgabe)
+      const schankBons = await idb.db.select().from(kdsBons)
+        .where(and(eq(kdsBons.mandantId, mandantId), eq(kdsBons.station, 'schank')))
+      const dessertBons = await idb.db.select().from(kdsBons)
+        .where(and(eq(kdsBons.mandantId, mandantId), eq(kdsBons.station, 'dessert')))
+      expect(schankBons.some(b => JSON.stringify(b.positionen).includes('Spritzer'))).toBe(true)
+      expect(dessertBons.some(b => JSON.stringify(b.positionen).includes('Eiskaffee'))).toBe(true)
+      // Der abweichende Artikel darf NICHT zusätzlich auf der Vorgabe-Station landen
+      expect(schankBons.some(b => JSON.stringify(b.positionen).includes('Eiskaffee'))).toBe(false)
+    })
+
+    it('ohne Vorgabe und ohne eigene Station wird weiterhin nichts boniert (400)', async () => {
+      const ohneAlles = await neuerArtikel({ bezeichnung: 'Pfand ohne Routing', preisBruttoCent: 100 })
+      const res = await srv.fastify.inject({
+        method: 'POST', url: '/api/bestellung/bonieren', headers: auth(),
+        payload: { kasseId, tisch: 'Tisch 9', kellner: 'Vera', positionen: [{ artikelId: ohneAlles, menge: 1 }] },
+      })
+      expect(res.statusCode).toBe(400)
+    })
+  })
 })
