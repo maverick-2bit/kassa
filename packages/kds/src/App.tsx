@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { getTheme, toggleTheme, type ThemeMode } from './theme'
 import type { KdsBon, KdsStation, KdsSseEvent } from './types'
 import { STATION_LABELS, STATION_FARBEN } from './types'
-import { fetchBons, ladeKassen, nachrichtSenden, sbAbgeholt, sbBestellungen, type KdsKasse, type SbBestellungEintrag } from './api'
+import { fetchBons, ladeKassen, nachrichtSenden, sbAbgeholt, sbBestellungen, codeEinloesen, type KdsKasse, type SbBestellungEintrag } from './api'
 import { useKdsSse } from './hooks/useKdsSse'
 import { BonKarte } from './components/BonKarte'
 import { GrossAnzeige } from './components/GrossAnzeige'
@@ -62,13 +62,29 @@ function ThemeToggle() {
  * (woher nehmen, und ein Login-Token stirbt nach 8 Stunden).
  */
 function SetupScreen({ vorhandenerToken, onSave }: { vorhandenerToken: string; onSave: (station: KdsStation, token: string) => void }) {
-  const [station, setStation] = useState<KdsStation>('kueche')
-  const [token, setToken]     = useState('')
-  const [manuell, setManuell] = useState(false)
-  const hatToken = Boolean(vorhandenerToken)
+  const [station, setStation]         = useState<KdsStation>('kueche')
+  const [geraeteToken, setGeraeteToken] = useState(vorhandenerToken)
+  const [code, setCode]               = useState('')
+  const [laedt, setLaedt]             = useState(false)
+  const [fehler, setFehler]           = useState<string | null>(null)
+  const hatToken = Boolean(geraeteToken)
+
+  const verbinden = async () => {
+    const c = code.replace(/\D/g, '')
+    if (c.length !== 6 || laedt) return
+    setLaedt(true)
+    setFehler(null)
+    try {
+      setGeraeteToken(await codeEinloesen(c))
+    } catch (e) {
+      setFehler(e instanceof Error ? e.message : 'Verbindung fehlgeschlagen')
+    } finally {
+      setLaedt(false)
+    }
+  }
 
   const starten = () => {
-    const tok = (vorhandenerToken || token).trim()
+    const tok = geraeteToken.trim()
     if (!tok) return
     merkeConfig(station, tok)
     onSave(station, tok)
@@ -80,28 +96,41 @@ function SetupScreen({ vorhandenerToken, onSave }: { vorhandenerToken: string; o
         <h1 className="text-2xl font-black text-ink">KDS Einrichtung</h1>
 
         {!hatToken && (
-          <div className="rounded-xl border-2 border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 space-y-2">
+          <div className="rounded-xl border-2 border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 space-y-3">
             <p className="font-bold">Dieses Gerät ist noch nicht verbunden.</p>
             <p>
-              An der Kassa unter <strong>Einstellungen → Geräte</strong> den
-              QR-Code <strong>„KDS Küche/Schank"</strong> scannen bzw. dessen Adresse
-              hier öffnen — sie enthält die Geräte-Freigabe. Danach nur noch die
-              Station wählen.
+              <strong>Tablet/Handy:</strong> an der Kassa unter <strong>Einstellungen → Geräte</strong> den
+              QR-Code „KDS Küche/Schank" scannen — fertig.
             </p>
-            {!manuell ? (
-              <button onClick={() => setManuell(true)} className="text-xs underline text-amber-800">
-                Alternativ: Geräte-Token von Hand eintragen
-              </button>
-            ) : (
-              <textarea
-                value={token}
-                onChange={e => setToken(e.target.value)}
-                rows={3}
-                placeholder="Geräte-Token (aus der Geräte-Adresse hinter ?token=) einfügen…"
-                className="w-full bg-panel-2 text-ink rounded-xl p-3 text-sm font-mono border border-line focus:outline-none focus:border-line-strong resize-none"
+            <p>
+              <strong>PC ohne Kamera:</strong> dort auf „Code für PC-Einrichtung" klicken
+              und den 6-stelligen Code hier eingeben:
+            </p>
+            <div className="flex gap-2">
+              <input
+                value={code}
+                onChange={e => { setCode(e.target.value.replace(/\D/g, '').slice(0, 6)); setFehler(null) }}
+                onKeyDown={e => e.key === 'Enter' && verbinden()}
+                inputMode="numeric"
+                placeholder="000000"
+                className="flex-1 bg-panel-2 text-ink rounded-xl px-4 py-3 text-xl font-mono font-black tracking-[0.25em] text-center border border-line focus:outline-none focus:border-line-strong"
               />
-            )}
+              <button
+                onClick={verbinden}
+                disabled={code.length !== 6 || laedt}
+                className="px-5 rounded-xl bg-amber-500 text-white font-black text-sm disabled:opacity-40"
+              >
+                {laedt ? '…' : 'Verbinden'}
+              </button>
+            </div>
+            {fehler && <p className="text-red-600 text-xs font-medium">{fehler}</p>}
           </div>
+        )}
+
+        {hatToken && !vorhandenerToken && (
+          <p className="rounded-xl border border-green-300 bg-green-50 px-4 py-2.5 text-sm text-green-800 font-medium">
+            ✓ Gerät verbunden — jetzt die Station wählen.
+          </p>
         )}
 
         <div className="space-y-2">
@@ -122,7 +151,7 @@ function SetupScreen({ vorhandenerToken, onSave }: { vorhandenerToken: string; o
 
         <button
           onClick={starten}
-          disabled={!hatToken && !token.trim()}
+          disabled={!hatToken}
           className="w-full py-4 rounded-xl font-black text-ink text-lg disabled:opacity-40"
           style={{ backgroundColor: STATION_FARBEN[station] }}
         >

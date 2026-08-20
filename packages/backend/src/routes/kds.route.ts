@@ -57,18 +57,37 @@ const AntwortBody      = z.object({
   station: z.string().min(1),
 })
 
+// ---------------------------------------------------------------------------
+// Einrichtungs-Codes (PC-Pairing wie beim Fernseher): kurzlebig, einmalig,
+// in-memory — ein Backend-Neustart macht offene Codes einfach ungültig.
+// ---------------------------------------------------------------------------
+
+const CODE_TTL_MS = 10 * 60_000
+const einrichtungsCodes = new Map<string, { mandantId: string; gueltigBis: number }>()
+
+// Brute-Force-Bremse für das öffentliche Einlösen: nach zu vielen
+// Fehlversuchen pausiert das Einlösen bis zum Ablauf des Fensters.
+let codeFehlversuche = 0
+let codeFensterStart = 0
+const MAX_FEHLVERSUCHE = 30
+
+function pruneCodes(): void {
+  const jetzt = Date.now()
+  for (const [code, e] of einrichtungsCodes) {
+    if (e.gueltigBis < jetzt) einrichtungsCodes.delete(code)
+  }
+}
+
+const EinloesenBody = z.object({ code: z.string().trim().regex(/^\d{6}$/) })
+
 export const kdsRoute: FastifyPluginAsync<KdsRouteOptions> = async (fastify, opts) => {
 
-  // ── Geräte-Token für den KDS-Bildschirm ────────────────────────────────────
-  // Küchen-Displays haben keinen Login: die Geräte-Seite holt hier einen
-  // langlebigen Token und packt ihn in den KDS-QR. Der Token trägt typ
-  // 'kds_geraet' und wird von authenticate außerhalb von /api/kds abgelehnt —
-  // ein abfotografierter QR gibt also nur Küchen-Bons frei, nie die Kassa.
-  fastify.post('/kds/geraete-token', { onRequest: [fastify.requireRolle('admin')] }, async (request, reply) => {
-    const token = fastify.jwt.sign(
+  /** Langlebiger Geräte-Token — gemeinsame Quelle für QR und Einrichtungs-Code. */
+  const signGeraeteToken = (mandantId: string): string =>
+    fastify.jwt.sign(
       {
         sub:            'kds-geraet',
-        mandantId:      request.user.mandantId,
+        mandantId,
         rolle:          'kellner',
         name:           'KDS-Bildschirm',
         berechtigungen: [],
@@ -77,7 +96,49 @@ export const kdsRoute: FastifyPluginAsync<KdsRouteOptions> = async (fastify, opt
       // Fest verbaute Bildschirme, Event-Betrieb: bewusst sehr lange gültig.
       { expiresIn: '3650d' },
     )
-    return reply.send({ token })
+
+  // ── Einrichtungs-Code fürs PC-Pairing ──────────────────────────────────────
+  // Am PC lässt sich kein QR scannen und niemand tippt einen JWT ab (User-
+  // Befund: „muss extra mit AnyDesk den Token holen"). Die Geräte-Seite zeigt
+  // einen 6-stelligen Code, das KDS tauscht ihn gegen den Geräte-Token.
+  fastify.post('/kds/einrichtungscode', { onRequest: [fastify.requireRolle('admin')] }, async (request, reply) => {
+    pruneCodes()
+    const { randomInt } = await import('node:crypto')
+    let code: string
+    do { code = String(randomInt(0, 1_000_000)).padStart(6, '0') } while (einrichtungsCodes.has(code))
+    const gueltigBis = Date.now() + CODE_TTL_MS
+    einrichtungsCodes.set(code, { mandantId: request.user.mandantId, gueltigBis })
+    return reply.send({ code, gueltigBis: new Date(gueltigBis).toISOString() })
+  })
+
+  // Öffentlich — das frische KDS-Gerät hat noch keinerlei Anmeldung.
+  fastify.post('/kds/einrichtungscode/einloesen', async (request, reply) => {
+    const b = EinloesenBody.safeParse(request.body)
+    if (!b.success) return reply.status(400).send({ fehler: 'Code muss 6 Ziffern haben' })
+
+    const jetzt = Date.now()
+    if (jetzt - codeFensterStart > CODE_TTL_MS) { codeFensterStart = jetzt; codeFehlversuche = 0 }
+    if (codeFehlversuche >= MAX_FEHLVERSUCHE) {
+      return reply.status(429).send({ fehler: 'Zu viele Fehlversuche — bitte einige Minuten warten und neuen Code erzeugen' })
+    }
+
+    const eintrag = einrichtungsCodes.get(b.data.code)
+    if (!eintrag || eintrag.gueltigBis < jetzt) {
+      codeFehlversuche++
+      return reply.status(404).send({ fehler: 'Code unbekannt oder abgelaufen — an der Kassa einen neuen erzeugen' })
+    }
+
+    einrichtungsCodes.delete(b.data.code)   // einmal verwendbar
+    return reply.send({ token: signGeraeteToken(eintrag.mandantId) })
+  })
+
+  // ── Geräte-Token für den KDS-Bildschirm ────────────────────────────────────
+  // Küchen-Displays haben keinen Login: die Geräte-Seite holt hier einen
+  // langlebigen Token und packt ihn in den KDS-QR. Der Token trägt typ
+  // 'kds_geraet' und wird von authenticate außerhalb von /api/kds abgelehnt —
+  // ein abfotografierter QR gibt also nur Küchen-Bons frei, nie die Kassa.
+  fastify.post('/kds/geraete-token', { onRequest: [fastify.requireRolle('admin')] }, async (request, reply) => {
+    return reply.send({ token: signGeraeteToken(request.user.mandantId) })
   })
 
   /**

@@ -378,3 +378,54 @@ describe('POST /api/kds/geraete-token', () => {
     await srv.close()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Einrichtungs-Code (PC-Pairing)
+// ---------------------------------------------------------------------------
+
+describe('POST /api/kds/einrichtungscode (+ einloesen)', () => {
+  it('Admin erzeugt Code, Gerät löst ihn öffentlich gegen einen Token ein — einmalig', async () => {
+    const srv = await buildTestServer(mockDb({ selects: [[]] }))
+    const erz = await srv.fastify.inject({
+      method: 'POST', url: '/api/kds/einrichtungscode', headers: srv.authHeader(),
+    })
+    expect(erz.statusCode).toBe(200)
+    const { code } = erz.json() as { code: string }
+    expect(code).toMatch(/^\d{6}$/)
+
+    // Einlösen OHNE jede Anmeldung — das frische Gerät hat keine
+    const tausch = await srv.fastify.inject({
+      method: 'POST', url: '/api/kds/einrichtungscode/einloesen', payload: { code },
+    })
+    expect(tausch.statusCode).toBe(200)
+    const { token } = tausch.json() as { token: string }
+
+    // Der eingetauschte Token funktioniert an KDS-Routen …
+    const bons = await srv.fastify.inject({
+      method: 'GET', url: '/api/kds/bons?station=kueche',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(bons.statusCode).toBe(200)
+
+    // … und der Code ist verbraucht
+    const nochmal = await srv.fastify.inject({
+      method: 'POST', url: '/api/kds/einrichtungscode/einloesen', payload: { code },
+    })
+    expect(nochmal.statusCode).toBe(404)
+    await srv.close()
+  })
+
+  it('falscher/fehlerhafter Code wird abgelehnt, Erzeugen braucht Admin', async () => {
+    const srv = await buildTestServer(mockDb())
+    expect((await srv.fastify.inject({
+      method: 'POST', url: '/api/kds/einrichtungscode/einloesen', payload: { code: '000000' },
+    })).statusCode).toBe(404)
+    expect((await srv.fastify.inject({
+      method: 'POST', url: '/api/kds/einrichtungscode/einloesen', payload: { code: 'abc' },
+    })).statusCode).toBe(400)
+    expect((await srv.fastify.inject({
+      method: 'POST', url: '/api/kds/einrichtungscode', headers: srv.authHeader({ rolle: 'kellner' }),
+    })).statusCode).toBe(403)
+    await srv.close()
+  })
+})

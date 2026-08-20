@@ -3449,6 +3449,10 @@ function GeraeteSektion() {
     setTimeout(() => setKopiert(k => (k === url ? null : k)), 1500)
   }
 
+  // PC-Pairing: am PC lässt sich kein QR scannen und niemand tippt einen JWT
+  // ab — der 6-stellige Code wird stattdessen direkt am KDS-Gerät eingegeben.
+  const codeMut = useMutation({ mutationFn: kdsGeraetApi.einrichtungscode })
+
   return (
     <>
       <section className="rounded-xl border border-line bg-panel p-6 space-y-5">
@@ -3501,6 +3505,28 @@ function GeraeteSektion() {
                 >
                   {kopiert === url ? 'Kopiert ✓' : url}
                 </button>
+                {/* PC ohne Kamera: Code an der Kassa erzeugen, am KDS eintippen */}
+                {a.label.startsWith('KDS') && (
+                  codeMut.data ? (
+                    <div className="rounded-lg border border-brand-200 bg-brand-50 px-2 py-2 space-y-0.5">
+                      <p className="font-mono text-2xl font-black tracking-[0.3em] text-brand-800">
+                        {codeMut.data.code.slice(0, 3)} {codeMut.data.code.slice(3)}
+                      </p>
+                      <p className="text-[11px] text-brand-700">
+                        Am KDS-Gerät eingeben — 10 Minuten gültig, einmal verwendbar
+                      </p>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => codeMut.mutate()}
+                      disabled={codeMut.isPending}
+                      className="w-full rounded-lg border border-line px-2 py-1.5 text-xs font-medium text-ink-muted hover:border-brand-400 hover:text-brand-700 transition disabled:opacity-50"
+                    >
+                      {codeMut.isPending ? '…' : 'Code für PC-Einrichtung (ohne Kamera)'}
+                    </button>
+                  )
+                )}
               </div>
             )
           })}
