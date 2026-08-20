@@ -20,6 +20,7 @@ const KasseIdParam = z.object({ kasseId: z.string().uuid() })
 
 const StartseitenEnum      = z.enum(['tische', 'kasse', 'kasse_favoriten', 'dashboard'])
 const KellnerTischwahlEnum = z.enum(['manuell', 'liste', 'plan'])
+const KellnerModusEnum     = z.enum(['tische', 'theke'])
 
 const PosConfigBodySchema = z.object({
   sichtbareKategorieIds:     z.array(z.string().uuid()).optional(),
@@ -27,6 +28,7 @@ const PosConfigBodySchema = z.object({
   erlaubteZahlungsarten: z.array(z.enum(['bar', 'karte', 'sonstige'])).optional(),
   artikelbilderAktiv:    z.boolean().optional(),
   startseite:            StartseitenEnum.optional(),
+  kellnerModus:          KellnerModusEnum.optional(),
   kellnerTischwahl:      KellnerTischwahlEnum.optional(),
   kellnerFavoritenAktiv: z.boolean().optional(),
 })
@@ -43,6 +45,7 @@ export const posConfigRoute: FastifyPluginAsync<PosConfigRouteOptions> = async (
         erlaubteZahlungsarten: kassen.erlaubteZahlungsarten,
         artikelbilderAktiv:    kassen.artikelbilderAktiv,
         startseite:            kassen.startseite,
+        kellnerModus:          kassen.kellnerModus,
         kellnerTischwahl:      kassen.kellnerTischwahl,
         kellnerFavoritenAktiv: kassen.kellnerFavoritenAktiv,
       })
@@ -67,6 +70,7 @@ export const posConfigRoute: FastifyPluginAsync<PosConfigRouteOptions> = async (
       erlaubteZahlungsarten: kasse.erlaubteZahlungsarten as string[],
       artikelbilderAktiv:    kasse.artikelbilderAktiv,
       startseite:            kasse.startseite,
+      kellnerModus:          kasse.kellnerModus,
       kellnerTischwahl:      kasse.kellnerTischwahl,
       kellnerFavoritenAktiv: kasse.kellnerFavoritenAktiv,
     })
@@ -93,6 +97,7 @@ export const posConfigRoute: FastifyPluginAsync<PosConfigRouteOptions> = async (
         ...(body.data.erlaubteZahlungsarten !== undefined && { erlaubteZahlungsarten: body.data.erlaubteZahlungsarten }),
         ...(body.data.artikelbilderAktiv    !== undefined && { artikelbilderAktiv:    body.data.artikelbilderAktiv }),
         ...(body.data.startseite            !== undefined && { startseite:            body.data.startseite }),
+        ...(body.data.kellnerModus          !== undefined && { kellnerModus:          body.data.kellnerModus }),
         ...(body.data.kellnerTischwahl      !== undefined && { kellnerTischwahl:      body.data.kellnerTischwahl }),
         ...(body.data.kellnerFavoritenAktiv !== undefined && { kellnerFavoritenAktiv: body.data.kellnerFavoritenAktiv }),
       }

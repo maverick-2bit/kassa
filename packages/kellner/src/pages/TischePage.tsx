@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import type { TischplanBereich, TischTabResponse } from '@kassa/shared'
@@ -85,6 +85,18 @@ export function TischePage() {
   }
 
   const tabs = tabsQuery.data ?? []
+
+  // Theken-Modus (Bar-Tablet): keine Tischliste — direkt in den Verkauf.
+  if (konfigQuery.isLoading) {
+    return (
+      <div className="min-h-screen bg-surface flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-brand-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+  if (konfigQuery.data?.kellnerModus === 'theke') {
+    return <ThekeStart onAbmelden={abmelden} />
+  }
 
   return (
     <div className="min-h-screen bg-surface flex flex-col max-w-lg mx-auto">
@@ -238,6 +250,67 @@ export function TischePage() {
             </div>
           </div>
         </div>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Theken-Modus: offenen Theken-Tab des Kellners finden oder anlegen,
+// dann direkt in die Artikelwahl. Nach dem Bezahlen führt „Fertig" wieder
+// hierher → automatisch der nächste Verkauf.
+// ---------------------------------------------------------------------------
+
+function ThekeStart({ onAbmelden }: { onAbmelden: () => void }) {
+  const navigate  = useNavigate()
+  const identity  = getKasseIdentity()!
+  const auth      = getAuth()!
+  const [fehler, setFehler] = useState<string | null>(null)
+  const gestartet = useRef(false)
+
+  // Ein Theken-Tab je Kellner — so kommen sich zwei angemeldete Kellner
+  // am selben Gerät (Schichtwechsel) nicht in die Quere, und der Name
+  // steht auf dem Küchen-/Schank-Bon.
+  const thekenTisch = `Theke ${auth.user.name}`.slice(0, 100)
+
+  useEffect(() => {
+    if (gestartet.current) return
+    gestartet.current = true
+    ;(async () => {
+      try {
+        const offene = await tischTabApi.list(identity.kasseId)
+        const vorhanden = offene.find(t => t.tischNummer === thekenTisch)
+        const tab = vorhanden ?? await tischTabApi.erstelle({
+          kasseId:     identity.kasseId,
+          tischNummer: thekenTisch,
+          kellner:     auth.user.name,
+        })
+        navigate(`/tab/${tab.id}/artikel`, { replace: true })
+      } catch (err) {
+        setFehler(err instanceof Error ? err.message : 'Theke konnte nicht geöffnet werden')
+      }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  return (
+    <div className="min-h-screen bg-surface flex flex-col items-center justify-center p-6 gap-4">
+      {fehler ? (
+        <>
+          <p className="text-red-500 text-sm text-center font-medium">{fehler}</p>
+          <button
+            onClick={() => { gestartet.current = false; setFehler(null); window.location.reload() }}
+            className="py-3 px-6 rounded-xl bg-brand-600 text-white font-bold text-sm active:scale-95 transition"
+          >
+            Nochmal versuchen
+          </button>
+          <button onClick={onAbmelden} className="text-ink-subtle text-sm underline">Abmelden</button>
+        </>
+      ) : (
+        <>
+          <div className="w-8 h-8 border-4 border-brand-500 border-t-transparent rounded-full animate-spin" />
+          <p className="text-ink-subtle text-sm">Theke wird geöffnet…</p>
+        </>
       )}
     </div>
   )

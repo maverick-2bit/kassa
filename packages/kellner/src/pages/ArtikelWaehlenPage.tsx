@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
 import type { Artikel, ModifikatorGruppe, ModifikatorAuswahl } from '@kassa/shared'
 import { artikelApi, kategorieApi, modifikatorApi, tischTabApi, kellnerKonfigApi } from '../lib/api'
-import { getAuth, gaengeAktiv as istGaengeAktiv, gaengeAnzahl } from '../lib/auth'
+import { getAuth, clearAuth, gaengeAktiv as istGaengeAktiv, gaengeAnzahl } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
 
@@ -447,20 +447,31 @@ export function ArtikelWaehlenPage() {
       {/* Header */}
       <div className="bg-panel border-b border-line px-4 py-4 sticky top-0 z-10">
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/')} className="text-ink-subtle text-2xl leading-none">‹</button>
+          {konfigQuery.data?.kellnerModus === 'theke' ? (
+            // Theke: es gibt keine Tischliste, zu der „zurück" führen könnte
+            <button
+              onClick={() => { clearAuth(); navigate('/login', { replace: true }) }}
+              title="Abmelden"
+              className="text-ink-subtle text-xl leading-none p-1"
+            >⏏</button>
+          ) : (
+            <button onClick={() => navigate('/')} className="text-ink-subtle text-2xl leading-none">‹</button>
+          )}
           <div className="flex-1 min-w-0">
             <h1 className="font-black text-ink text-lg leading-tight truncate">
-              {tabQuery.data ? `Tisch ${tabQuery.data.tischNummer}` : 'Artikel wählen'}
+              {konfigQuery.data?.kellnerModus === 'theke'
+                ? 'Theke'
+                : tabQuery.data ? `Tisch ${tabQuery.data.tischNummer}` : 'Artikel wählen'}
             </h1>
             <p className="text-xs text-ink-subtle">{auth.user.name}</p>
           </div>
-          {/* Zur Tisch-Übersicht: bonieren, kassieren, Positionen */}
+          {/* Zur Tab-Ansicht: bonieren, kassieren, Positionen */}
           <button
             onClick={() => navigate(`/tab/${tabId}`)}
             className="shrink-0 rounded-xl border-2 border-line px-3 py-2 text-sm font-bold text-ink-muted hover:border-brand-400 active:scale-95 transition"
           >
             {tabQuery.data && tabQuery.data.positionen.length > 0
-              ? `${tabQuery.data.positionen.length} Pos. · ${formatPreis(tabQuery.data.summeGesamtCent)}`
+              ? `${konfigQuery.data?.kellnerModus === 'theke' ? 'Kassieren' : `${tabQuery.data.positionen.length} Pos.`} · ${formatPreis(tabQuery.data.summeGesamtCent)}`
               : 'Übersicht'} ›
           </button>
         </div>

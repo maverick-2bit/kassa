@@ -58,13 +58,37 @@ describe('Kellner-App-Konfiguration (Integration, echtes PostgreSQL)', () => {
     await idb?.zerstoeren()
   })
 
-  it('liefert die Standardwerte: manuelle Tischwahl, Favoriten aus', async () => {
+  it('liefert die Standardwerte: Tisch-Betrieb, manuelle Tischwahl, Favoriten aus', async () => {
     const res = await srv.fastify.inject({
       method: 'GET', url: `/api/kassen/${kasseId}/pos-config`, headers: auth(),
     })
     expect(res.statusCode).toBe(200)
+    expect(res.json().kellnerModus).toBe('tische')
     expect(res.json().kellnerTischwahl).toBe('manuell')
     expect(res.json().kellnerFavoritenAktiv).toBe(false)
+  })
+
+  it('speichert die Betriebsart Theke (und lehnt Unsinn ab)', async () => {
+    const put = await srv.fastify.inject({
+      method: 'PUT', url: `/api/kassen/${kasseId}/pos-config`, headers: auth(),
+      payload: { kellnerModus: 'theke' },
+    })
+    expect(put.statusCode).toBe(204)
+    const res = (await srv.fastify.inject({
+      method: 'GET', url: `/api/kassen/${kasseId}/pos-config`, headers: auth(),
+    })).json()
+    expect(res.kellnerModus).toBe('theke')
+
+    expect((await srv.fastify.inject({
+      method: 'PUT', url: `/api/kassen/${kasseId}/pos-config`, headers: auth(),
+      payload: { kellnerModus: 'drivein' },
+    })).statusCode).toBe(400)
+
+    // Zurück auf Standard, damit die Folgetests unbeeinflusst bleiben
+    await srv.fastify.inject({
+      method: 'PUT', url: `/api/kassen/${kasseId}/pos-config`, headers: auth(),
+      payload: { kellnerModus: 'tische' },
+    })
   })
 
   it('speichert Tischwahl-Modus und Favoriten-Schalter', async () => {

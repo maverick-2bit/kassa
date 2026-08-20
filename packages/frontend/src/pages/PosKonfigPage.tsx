@@ -26,8 +26,8 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { Artikel, Kategorie, Startseite, KellnerTischwahl } from '@kassa/shared'
-import { artikelApi, kategorieApi, posConfigApi, bonierdruckerApi, tischplanApi } from '../lib/api'
+import type { Artikel, Kategorie, Startseite, KellnerTischwahl, KellnerModus } from '@kassa/shared'
+import { artikelApi, kategorieApi, posConfigApi, bonierdruckerApi, tischplanApi, kasseApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { Button } from '../components/ui/Button'
 
@@ -139,10 +139,11 @@ function TabWarengruppen({
   const [sichtbar, setSichtbar] = useState<Set<string>>(
     () => new Set(posQuery.data?.sichtbareKategorieIds ?? [])
   )
-  // Sync wenn posQuery geladen
-  useState(() => {
+  // Serverstand übernehmen, sobald (oder wann immer) er eintrifft — der frühere
+  // useState-Trick lief nur beim Mount und verpasste später geladene Daten.
+  useEffect(() => {
     if (posQuery.data) setSichtbar(new Set(posQuery.data.sichtbareKategorieIds))
-  })
+  }, [posQuery.data])
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -176,10 +177,34 @@ function TabWarengruppen({
     reihenfolge.mutate(items.map((k, i) => ({ id: k.id, reihenfolge: i })))
   }
 
+  // Server-Semantik: LEERE Liste = alle Warengruppen sichtbar (auch künftige).
+  const alleAktiv = sichtbar.size === 0
+  const istSichtbar = (id: string) => alleAktiv || sichtbar.has(id)
+
+  const alleAktivieren = () => {
+    setSichtbar(new Set())
+    sichtbarkeitMut.mutate([])
+  }
+
   const toggleSichtbar = (id: string) => {
-    const next = new Set(sichtbar)
-    if (next.has(id)) next.delete(id)
-    else next.add(id)
+    let next: Set<string>
+    if (alleAktiv) {
+      // Aus „alle" heraus eine ausblenden → explizite Liste ohne diese eine
+      if (items.length <= 1) return // die letzte Warengruppe bleibt sichtbar
+      next = new Set(items.map(k => k.id))
+      next.delete(id)
+    } else {
+      next = new Set(sichtbar)
+      if (next.has(id)) {
+        if (next.size <= 1) return // mindestens eine Warengruppe muss sichtbar bleiben
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      // Wieder vollständig → zurück zur „alle"-Semantik (leer), damit neue
+      // Warengruppen an dieser Kasse automatisch sichtbar sind
+      if (next.size === items.length) next = new Set()
+    }
     setSichtbar(next)
     sichtbarkeitMut.mutate([...next])
   }
@@ -191,11 +216,21 @@ function TabWarengruppen({
           Reihenfolge per Drag&nbsp;&amp;&nbsp;Drop anpassen (gilt für alle Kassen).
           Sichtbarkeit ist pro Kasse einstellbar.
         </p>
-        {dirty && (
-          <Button onClick={saveReihenfolge} loading={reihenfolge.isPending}>
-            Reihenfolge speichern
-          </Button>
-        )}
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={alleAktivieren}
+            disabled={alleAktiv || sichtbarkeitMut.isPending}
+            title="Alle Warengruppen an dieser Kasse sichtbar machen — auch künftig angelegte"
+            className="rounded-lg border border-line px-3 py-1.5 text-sm font-medium text-ink-muted hover:border-brand-400 hover:text-brand-700 transition disabled:opacity-40 disabled:hover:border-line disabled:hover:text-ink-muted"
+          >
+            {alleAktiv ? '✓ Alle sichtbar' : 'Alle sichtbar'}
+          </button>
+          {dirty && (
+            <Button onClick={saveReihenfolge} loading={reihenfolge.isPending}>
+              Reihenfolge speichern
+            </Button>
+          )}
+        </div>
       </div>
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -221,12 +256,12 @@ function TabWarengruppen({
                     <button
                       onClick={() => toggleSichtbar(k.id)}
                       className={`relative inline-flex h-5 w-9 flex-shrink-0 rounded-full border-2 border-transparent transition-colors ${
-                        sichtbar.has(k.id) ? 'bg-brand-500' : 'bg-panel-2'
+                        istSichtbar(k.id) ? 'bg-brand-500' : 'bg-panel-2'
                       }`}
-                      title={sichtbar.has(k.id) ? 'In dieser Kasse sichtbar' : 'In dieser Kasse ausgeblendet'}
+                      title={istSichtbar(k.id) ? 'In dieser Kasse sichtbar' : 'In dieser Kasse ausgeblendet'}
                     >
                       <span className={`inline-block h-4 w-4 rounded-full bg-panel shadow transition-transform ${
-                        sichtbar.has(k.id) ? 'translate-x-4' : 'translate-x-0'
+                        istSichtbar(k.id) ? 'translate-x-4' : 'translate-x-0'
                       }`} />
                     </button>
                   </div>
@@ -550,15 +585,15 @@ function TabZahlungsarten({ kasseId }: { kasseId: string }) {
     () => posQuery.data?.startseite ?? 'tische'
   )
 
-  // Sync wenn posQuery geladen (z.B. nach erstem Render)
-  const posDataRef = posQuery.data
-  useState(() => {
-    if (posDataRef) {
-      setErlaubte(new Set(posDataRef.erlaubteZahlungsarten))
-      setArtikelbilder(posDataRef.artikelbilderAktiv)
-      setStartseite(posDataRef.startseite)
+  // Serverstand übernehmen, sobald (oder wann immer) er eintrifft — der frühere
+  // useState-Trick lief nur beim Mount und verpasste später geladene Daten.
+  useEffect(() => {
+    if (posQuery.data) {
+      setErlaubte(new Set(posQuery.data.erlaubteZahlungsarten))
+      setArtikelbilder(posQuery.data.artikelbilderAktiv)
+      setStartseite(posQuery.data.startseite)
     }
-  })
+  }, [posQuery.data])
 
   const zahlMut = useMutation({
     mutationFn: (arten: string[]) =>
@@ -672,6 +707,11 @@ function TabZahlungsarten({ kasseId }: { kasseId: string }) {
 // Tab 5: Kellner-App (mobile Kassen)
 // ---------------------------------------------------------------------------
 
+const KELLNER_MODI: { value: KellnerModus; label: string; beschreibung: string }[] = [
+  { value: 'tische', label: 'Tische (Gastro)',        beschreibung: 'Tischliste + Tisch-Tabs — der Standard im Service' },
+  { value: 'theke',  label: 'Theke / Direktverkauf',  beschreibung: 'Ohne Tische: anmelden → Artikel wählen → sofort kassieren (z. B. Bar-Tablet)' },
+]
+
 const TISCHWAHL_OPTIONEN: { value: KellnerTischwahl; label: string; beschreibung: string; brauchtPlan: boolean }[] = [
   { value: 'manuell', label: 'Manuelle Eingabe',       beschreibung: 'Tischnummer wird eingetippt (bisheriges Verhalten)', brauchtPlan: false },
   { value: 'liste',   label: 'Tischliste nach Bereich', beschreibung: 'Tische je Bereich aus dem Tischplan antippen',       brauchtPlan: true },
@@ -691,7 +731,7 @@ function TabKellner({ kasseId }: { kasseId: string }) {
   const planVorhanden = (bereicheQuery.data ?? []).some(b => b.elemente.length > 0)
 
   const mut = useMutation({
-    mutationFn: (input: { kellnerTischwahl?: KellnerTischwahl; kellnerFavoritenAktiv?: boolean }) =>
+    mutationFn: (input: { kellnerModus?: KellnerModus; kellnerTischwahl?: KellnerTischwahl; kellnerFavoritenAktiv?: boolean }) =>
       posConfigApi.update(kasseId, input),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['pos-config', kasseId] }),
   })
@@ -703,8 +743,30 @@ function TabKellner({ kasseId }: { kasseId: string }) {
 
   return (
     <div className="space-y-6 max-w-sm">
-      {/* Tischauswahl */}
+      {/* Betriebsart */}
       <div className="space-y-3">
+        <p className="text-xs font-semibold text-ink-muted uppercase tracking-wide">Betriebsart</p>
+        {KELLNER_MODI.map(({ value, label, beschreibung }) => (
+          <label key={value} className="flex items-center gap-3 cursor-pointer rounded-xl border border-line bg-panel px-4 py-3 hover:bg-panel-2">
+            <input
+              type="radio"
+              name="kellnerModus"
+              value={value}
+              checked={konfig.kellnerModus === value}
+              onChange={() => mut.mutate({ kellnerModus: value })}
+              className="h-4 w-4 border-line-strong text-brand-600 focus:ring-brand-500"
+            />
+            <div>
+              <p className="text-sm font-medium text-ink">{label}</p>
+              <p className="text-xs text-ink-subtle mt-0.5">{beschreibung}</p>
+            </div>
+          </label>
+        ))}
+      </div>
+
+      {/* Tischauswahl — im Theken-Modus gegenstandslos */}
+      {konfig.kellnerModus === 'tische' && (
+      <div className="border-t border-line pt-5 space-y-3">
         <p className="text-xs font-semibold text-ink-muted uppercase tracking-wide">Tischauswahl beim Öffnen</p>
         <p className="text-sm text-ink-muted">
           Wie wählen die Kellner am Handy einen Tisch? Die manuelle Eingabe bleibt
@@ -742,6 +804,7 @@ function TabKellner({ kasseId }: { kasseId: string }) {
           </p>
         )}
       </div>
+      )}
 
       {/* Favoriten */}
       <div className="border-t border-line pt-5 space-y-3">
@@ -785,6 +848,16 @@ export function PosKonfigPage() {
   const identity = getKasseIdentity()!
   const [aktuellerTab, setAktuellerTab] = useState<Tab>('warengruppen')
 
+  // Kassen-Auswahl: alle per-Kasse-Einstellungen (Sichtbarkeit, Zahlungsarten,
+  // Kellner-App) lassen sich für JEDE Kasse pflegen, nicht nur die angemeldete —
+  // z. B. das Bar-Tablet vom Büro-PC aus konfigurieren.
+  const [gewaehlteKasseId, setGewaehlteKasseId] = useState(identity.kasseId)
+  const kassenQuery = useQuery({
+    queryKey: ['kassen'],
+    queryFn:  () => kasseApi.liste(),
+  })
+  const aktiveKassen = (kassenQuery.data ?? []).filter(k => k.status === 'aktiv')
+
   const kategorienQuery = useQuery({
     queryKey: ['kategorien'],
     queryFn:  () => kategorieApi.list(false),
@@ -816,6 +889,33 @@ export function PosKonfigPage() {
         </p>
       </div>
 
+      {/* Kassen-Auswahl — nur wenn es mehr als eine aktive Kasse gibt */}
+      {aktiveKassen.length > 1 && (
+        <div className="space-y-2">
+          <div className="flex gap-2 flex-wrap">
+            {aktiveKassen.map(k => (
+              <button
+                key={k.id}
+                onClick={() => setGewaehlteKasseId(k.id)}
+                className={`px-3 py-1.5 rounded-full text-sm font-medium transition ${
+                  gewaehlteKasseId === k.id
+                    ? 'bg-brand-600 text-white'
+                    : 'bg-panel-2 text-ink-muted hover:text-ink'
+                }`}
+              >
+                {k.bezeichnung || k.kassenId}
+                {k.id === identity.kasseId && <span className="opacity-70"> · diese</span>}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-ink-subtle">
+            Warengruppen-Sichtbarkeit, Zahlungsarten und Kellner-App gelten je Kasse —
+            hier die Kasse wählen, für die die Einstellungen gelten sollen.
+            Reihenfolgen und Favoriten sind global.
+          </p>
+        </div>
+      )}
+
       {/* Tab-Navigation */}
       <div className="flex gap-1 rounded-xl bg-panel-2 p-1">
         {tabs.map(t => (
@@ -838,7 +938,7 @@ export function PosKonfigPage() {
       ) : (
         <div>
           {aktuellerTab === 'warengruppen' && (
-            <TabWarengruppen kategorien={kategorien} kasseId={identity.kasseId} />
+            <TabWarengruppen key={gewaehlteKasseId} kategorien={kategorien} kasseId={gewaehlteKasseId} />
           )}
           {aktuellerTab === 'artikel' && (
             <TabArtikel kategorien={kategorien} alleArtikel={alleArtikel} />
@@ -847,10 +947,10 @@ export function PosKonfigPage() {
             <TabFavoriten alleArtikel={alleArtikel} />
           )}
           {aktuellerTab === 'zahlungsarten' && (
-            <TabZahlungsarten kasseId={identity.kasseId} />
+            <TabZahlungsarten key={gewaehlteKasseId} kasseId={gewaehlteKasseId} />
           )}
           {aktuellerTab === 'kellner' && (
-            <TabKellner kasseId={identity.kasseId} />
+            <TabKellner kasseId={gewaehlteKasseId} />
           )}
         </div>
       )}
