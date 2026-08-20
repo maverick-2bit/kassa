@@ -89,10 +89,10 @@ describe('Bonieren + Drucker/ZVT-Config (Integration, echtes PostgreSQL)', () =>
         method: 'POST', url: '/api/bestellung/bonieren', headers: auth(),
         payload: { kasseId, tisch: 'Tisch 1', kellner: 'Anna', positionen: [{ artikelId: pizzaId, menge: 2 }] },
       })
-      // 200 = alle Stationen zugestellt, 207 = Bon erstellt aber Station(en)
-      // physisch nicht erreichbar (hier: KDS-Station ohne IP). Beides ok — der
-      // Bon ist erstellt und der Lagerstand wird gezogen.
-      expect([200, 207]).toContain(res.statusCode)
+      // Station OHNE IP = Browser-KDS-Betrieb: der DB-Bon + SSE IST die
+      // Zustellung → glatte 200. (Früher fälschlich als Fehlschlag gemeldet —
+      // das schickte die Kasse auf eine falsche IP-Fährte.)
+      expect(res.statusCode).toBe(200)
       expect(res.json().bonNummer).toBeTruthy()
 
       // KDS-Bon in der DB
@@ -199,7 +199,8 @@ describe('Bonieren + Drucker/ZVT-Config (Integration, echtes PostgreSQL)', () =>
           positionen: [{ artikelId: erbtId, menge: 1 }, { artikelId: eigeneId, menge: 1 }],
         },
       })
-      expect([200, 207]).toContain(res.statusCode)
+      // Browser-KDS-Betrieb (keine Stations-IPs) → Zustellung in die DB zählt: 200
+      expect(res.statusCode).toBe(200)
 
       // Je ein KDS-Bon auf Schank (geerbt) und Dessert (eigene Station schlägt Vorgabe)
       const schankBons = await idb.db.select().from(kdsBons)
