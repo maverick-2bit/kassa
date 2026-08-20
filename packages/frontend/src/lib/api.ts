@@ -209,7 +209,8 @@ export interface SystemStatus {
 }
 
 export const systemApi = {
-  status:    () => request<SystemStatus>('GET', '/api/system/status'),
+  /** frisch=true umgeht Server- und CDN-Cache — für den manuellen Prüf-Knopf. */
+  status:    (frisch = false) => request<SystemStatus>('GET', `/api/system/status${frisch ? '?frisch=1' : ''}`),
   /** Löst das Update aus (Admin). Body-los — der Updater-Dienst holt das Signal ab. */
   ausloesen: () => request<{ angefordert: boolean }>('POST', '/api/system/update'),
   /** LAN-IPv4s des Servers; im Docker-Betrieb ehrlich leer (imContainer=true). */

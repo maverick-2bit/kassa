@@ -2757,13 +2757,22 @@ function AktualisierungSektion() {
   const [angefordert, setAngefordert] = useState(false)
   const [schnell, setSchnell]         = useState(false)
   const [bestaetigen, setBestaetigen] = useState(false)
+  const [erzwingen, setErzwingen]     = useState(false)
   const [fehler, setFehler]           = useState<string | null>(null)
 
   const statusQ = useQuery({
     queryKey:        ['system-status'],
-    queryFn:         systemApi.status,
+    queryFn:         () => systemApi.status(),
     refetchInterval: schnell ? 3000 : 60_000,
     retry:           false,
+  })
+
+  // Manuelle Prüfung umgeht Server-Cache (10 Min) UND GitHub-CDN — wer den
+  // Knopf drückt, will JETZT wissen, ob es ein Update gibt (Eventbetrieb).
+  const pruefeFrisch = useMutation({
+    mutationFn: () => systemApi.status(true),
+    onSuccess:  (data) => { setFehler(null); qc.setQueryData(['system-status'], data) },
+    onError:    (e) => setFehler(e instanceof Error ? e.message : String(e)),
   })
   const s        = statusQ.data
   const upStatus = s?.update?.status
@@ -2781,8 +2790,8 @@ function AktualisierungSektion() {
 
   const start = useMutation({
     mutationFn: systemApi.ausloesen,
-    onSuccess:  () => { setAngefordert(true); setBestaetigen(false); setFehler(null); void qc.invalidateQueries({ queryKey: ['system-status'] }) },
-    onError:    (e) => { setFehler(e instanceof Error ? e.message : String(e)); setBestaetigen(false) },
+    onSuccess:  () => { setAngefordert(true); setBestaetigen(false); setErzwingen(false); setFehler(null); void qc.invalidateQueries({ queryKey: ['system-status'] }) },
+    onError:    (e) => { setFehler(e instanceof Error ? e.message : String(e)); setBestaetigen(false); setErzwingen(false) },
   })
 
   return (
@@ -2794,11 +2803,11 @@ function AktualisierungSektion() {
         </div>
         <button
           type="button"
-          onClick={() => { setFehler(null); void statusQ.refetch() }}
-          disabled={statusQ.isFetching || laeuft}
+          onClick={() => { setFehler(null); pruefeFrisch.mutate() }}
+          disabled={pruefeFrisch.isPending || laeuft}
           className="text-xs text-brand-600 hover:text-brand-700 disabled:text-ink-subtle"
         >
-          {statusQ.isFetching ? 'Prüfe…' : '↻ Nach Updates suchen'}
+          {pruefeFrisch.isPending ? 'Prüfe…' : '↻ Nach Updates suchen'}
         </button>
       </div>
 
@@ -2873,8 +2882,36 @@ function AktualisierungSektion() {
           )}
         </div>
       ) : (
-        <div className="rounded-lg border border-line bg-panel-2 p-4 text-sm text-ink-muted">
-          {s ? 'Die Kassa ist auf dem neuesten Stand.' : 'Status wird geladen…'}
+        <div className="rounded-lg border border-line bg-panel-2 p-4 text-sm text-ink-muted space-y-3">
+          <p>{s ? 'Die Kassa ist auf dem neuesten Stand.' : 'Status wird geladen…'}</p>
+          {/* Notfall: Update auch OHNE angezeigte neuere Version anstoßen — der
+              Updater holt immer den aktuellen GitHub-Stand; nur die Anzeige
+              kann (Cache/CDN) nachhinken. Für dringende Umstellungen im Event. */}
+          {s && isAdmin && s.updaterVerfuegbar && (
+            erzwingen ? (
+              <div className="space-y-2 border-t border-line pt-3">
+                <p className="text-xs text-ink-muted">
+                  Holt den aktuellen Stand von GitHub und baut die Dienste neu — auch wenn oben
+                  keine neuere Version steht. Die Kassa ist dabei <strong>rund 1 Minute offline</strong>.
+                  Nur starten, wenn gerade nicht kassiert wird. Fortfahren?
+                </p>
+                <div className="flex gap-2">
+                  <Button variant="primary" loading={start.isPending} onClick={() => start.mutate()}>
+                    Ja, Update erzwingen
+                  </Button>
+                  <Button variant="secondary" onClick={() => setErzwingen(false)}>Abbrechen</Button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => { setFehler(null); setErzwingen(true) }}
+                className="text-xs text-ink-subtle underline hover:text-brand-700"
+              >
+                Update erzwingen (Notfall — auch ohne angezeigte neue Version)
+              </button>
+            )
+          )}
         </div>
       )}
 

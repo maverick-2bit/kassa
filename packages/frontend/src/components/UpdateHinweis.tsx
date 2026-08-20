@@ -57,7 +57,7 @@ export function UpdateHinweis() {
 
   const status = useQuery({
     queryKey:             ['system-status-bundle-drift'],
-    queryFn:              systemApi.status,
+    queryFn:              () => systemApi.status(),
     refetchInterval:      5 * 60_000,
     refetchOnWindowFocus: true,
     staleTime:            60_000,
