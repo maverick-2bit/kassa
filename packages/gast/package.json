@@ -1,6 +1,6 @@
 {
   "name": "@kassa/gast",
-  "version": "0.7.160",
+  "version": "0.7.161",
   "private": true,
   "type": "module",
   "scripts": {
