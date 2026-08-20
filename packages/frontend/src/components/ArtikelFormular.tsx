@@ -134,6 +134,10 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
   const lagerstandAktiv    = watch('lagerstandAktiv')
   const seriennummernAktiv = watch('seriennummernAktiv')
 
+  // Stations-Vorgabe der gewählten Warengruppe — bestimmt, was „Automatisch" bedeutet
+  const gewaehlteKatId  = watch('kategorieId')
+  const katVorgabe      = kategorien?.find(k => k.id === gewaehlteKatId)?.station ?? null
+
   useEffect(() => {
     reset({
       bezeichnung:        initial?.bezeichnung      ?? '',
@@ -291,9 +295,16 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
         </Field>
       </div>
 
-      <Field label="KDS-Station" hint="Zielstation für Bonierbon (Küche, Schank …)">
+      <Field
+        label="KDS-Station"
+        hint={katVorgabe
+          ? `Ohne Auswahl gilt die Warengruppen-Vorgabe (${STATION_LABELS[katVorgabe]}) — hier nur einstellen, wenn dieser Artikel abweicht`
+          : 'Zielstation für Bonierbon (Küche, Schank …) — oder als Vorgabe an der Warengruppe pflegen'}
+      >
         <Select {...register('station')}>
-          <option value="">— ohne KDS-Bonierung —</option>
+          <option value="">
+            {katVorgabe ? `— Automatisch: ${STATION_LABELS[katVorgabe]} (Warengruppe) —` : '— ohne KDS-Bonierung —'}
+          </option>
           {ALLE_STATIONEN.map((s) => (
             <option key={s} value={s}>{STATION_LABELS[s]}</option>
           ))}
