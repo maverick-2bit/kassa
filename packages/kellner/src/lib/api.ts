@@ -233,6 +233,15 @@ export const zvtApi = {
 }
 
 // ---------------------------------------------------------------------------
+// KDS-Nachrichten (Antwort vom Kellner an die Station)
+// ---------------------------------------------------------------------------
+
+export const kdsAntwortApi = {
+  senden: (text: string, station: string) =>
+    request<{ erfolgreich: boolean }>('POST', '/api/kds/antwort', { text, station }),
+}
+
+// ---------------------------------------------------------------------------
 // Bonierung
 // ---------------------------------------------------------------------------
 

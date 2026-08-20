@@ -42,6 +42,8 @@ const killSwImDev = (): Plugin => ({
 const keepAliveAgent = new Agent({ keepAlive: true })
 const API_PROXY = {
   '/api': { target: 'http://127.0.0.1:3000', changeOrigin: true, agent: keepAliveAgent },
+  // SSE-Kanal (KDS→Kellner-Nachrichten) — läuft bewusst außerhalb von /api
+  '/sse': { target: 'http://127.0.0.1:3000', changeOrigin: true, agent: keepAliveAgent },
 }
 
 export default defineConfig({

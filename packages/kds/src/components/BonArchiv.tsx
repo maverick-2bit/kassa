@@ -124,13 +124,10 @@ export function BonArchiv({ station, token, farbe, onZurueck }: BonArchivProps) 
               <button
                 key={s || 'alle'}
                 onClick={() => setStationFilter(s)}
-                className="px-3 py-1.5 rounded-lg text-xs font-bold transition"
-                style={{
-                  backgroundColor: aktiv ? fc : '#27272a',
-                  color:           aktiv ? '#fff' : '#a1a1aa',
-                  outline:         aktiv ? `2px solid ${fc}` : 'none',
-                  outlineOffset:   '1px',
-                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  aktiv ? 'text-white' : 'bg-panel-2 text-ink-muted hover:text-ink'
+                }`}
+                style={aktiv ? { backgroundColor: fc, outline: `2px solid ${fc}`, outlineOffset: '1px' } : {}}
               >
                 {s ? stationLabel(s) : 'Alle'}
               </button>
@@ -139,8 +136,8 @@ export function BonArchiv({ station, token, farbe, onZurueck }: BonArchivProps) 
         </div>
       </div>
 
-      {/* Liste */}
-      <div className="flex-1 overflow-auto p-4 space-y-3">
+      {/* Karten-Raster — gleiche Anordnung wie die Hauptansicht */}
+      <div className="flex-1 overflow-auto p-4 space-y-4">
 
         {fehler && (
           <div className="bg-red-900/40 border border-red-700 text-red-700 dark:text-red-300 px-4 py-3 rounded-xl text-sm">
@@ -155,6 +152,7 @@ export function BonArchiv({ station, token, farbe, onZurueck }: BonArchivProps) 
           </div>
         )}
 
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 auto-rows-max">
         {bons.map(bon => {
           const ds = druckStatus.get(bon.id)
           const fc = STATION_FARBEN[bon.station as KdsStation] ?? '#6b7280'
@@ -162,7 +160,7 @@ export function BonArchiv({ station, token, farbe, onZurueck }: BonArchivProps) 
           return (
             <div
               key={bon.id}
-              className="bg-panel border border-line rounded-2xl overflow-hidden"
+              className="bg-panel border border-line rounded-2xl overflow-hidden flex flex-col"
             >
               {/* Bon-Header */}
               <div className="bg-panel-2 px-4 py-3 flex items-start justify-between gap-3">
@@ -235,6 +233,7 @@ export function BonArchiv({ station, token, farbe, onZurueck }: BonArchivProps) 
             </div>
           )
         })}
+        </div>
 
         {/* Mehr laden */}
         {hatMehr && !loading && (

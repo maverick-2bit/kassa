@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { BrowserRouter as Router, Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import { LoginPage }         from './pages/LoginPage'
+import { KdsNachrichten }    from './components/KdsNachrichten'
 import { TischePage }        from './pages/TischePage'
 import { TabPage }           from './pages/TabPage'
 import { ArtikelWaehlenPage } from './pages/ArtikelWaehlenPage'
@@ -52,15 +53,21 @@ function AppRoutes() {
   }, [navigate])
 
   return (
-    <Routes>
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/"            element={<RequireAuth><TischePage /></RequireAuth>} />
-      <Route path="/tab/:tabId"  element={<RequireAuth><TabPage /></RequireAuth>} />
-      <Route path="/tab/:tabId/artikel" element={<RequireAuth><ArtikelWaehlenPage /></RequireAuth>} />
-      <Route path="*" element={getAuth()
-        ? <Navigate to="/" replace />
-        : <Navigate to={{ pathname: '/login', search: window.location.search }} replace />} />
-    </Routes>
+    <>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/"            element={<RequireAuth><TischePage /></RequireAuth>} />
+        <Route path="/tab/:tabId"  element={<RequireAuth><TabPage /></RequireAuth>} />
+        <Route path="/tab/:tabId/artikel" element={<RequireAuth><ArtikelWaehlenPage /></RequireAuth>} />
+        <Route path="*" element={getAuth()
+          ? <Navigate to="/" replace />
+          : <Navigate to={{ pathname: '/login', search: window.location.search }} replace />} />
+      </Routes>
+      {/* KDS→Kellner-Nachrichten: erst mit Anmeldung mounten (SSE braucht den
+          Token; AppRoutes rendert bei jedem Routenwechsel neu, daher greift
+          das direkt nach dem Login). */}
+      {getAuth() && <KdsNachrichten />}
+    </>
   )
 }
 
