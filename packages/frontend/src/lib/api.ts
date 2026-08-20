@@ -220,6 +220,8 @@ export const systemApi = {
 export const kdsGeraetApi = {
   /** Langlebiger Geräte-Token für KDS-Bildschirme (nur Admin) — wandert in den Geräte-QR. */
   token: () => request<{ token: string }>('POST', '/api/kds/geraete-token'),
+  /** 6-stelliger Einrichtungs-Code fürs PC-Pairing (10 Min gültig, einmalig). */
+  einrichtungscode: () => request<{ code: string; gueltigBis: string }>('POST', '/api/kds/einrichtungscode'),
 }
 
 // ---------------------------------------------------------------------------

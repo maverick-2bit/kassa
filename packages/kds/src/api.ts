@@ -171,3 +171,21 @@ export async function sbRechnung(id: string, token: string): Promise<SbRechnungA
   if (!res.ok) throw new Error(`Fehler: ${res.status}`)
   return res.json()
 }
+
+/**
+ * PC-Pairing: 6-stelligen Einrichtungs-Code (von der Geräte-Seite der Kassa)
+ * gegen den langlebigen Geräte-Token eintauschen. Öffentlich — das frische
+ * Gerät hat noch keine Anmeldung.
+ */
+export async function codeEinloesen(code: string): Promise<string> {
+  const res = await fetch(`${BASE}/einrichtungscode/einloesen`, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ code }),
+  })
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { fehler?: string } | null
+    throw new Error(body?.fehler ?? `Fehler: ${res.status}`)
+  }
+  return ((await res.json()) as { token: string }).token
+}
