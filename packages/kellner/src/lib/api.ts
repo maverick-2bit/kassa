@@ -13,6 +13,8 @@ import type {
   ZvtConfig,
   ZvtJob,
   ZvtZahlungInput,
+  KellnerTischwahl,
+  TischplanBereich,
 } from '@kassa/shared'
 import { getToken, clearAuth } from './auth'
 import { clearKasseIdentity } from './kasse'
@@ -87,6 +89,26 @@ export const kasseApi = {
    */
   list: (mandantId: string) =>
     request<{ id: string; bezeichnung: string }[]>('GET', `/api/kassen/auswahl?mandantId=${mandantId}`),
+}
+
+// ---------------------------------------------------------------------------
+// Kellner-relevante Kassen-Konfiguration + Tischplan
+// ---------------------------------------------------------------------------
+
+/** Ausschnitt der pos-config, den die Kellner-App braucht. */
+export interface KellnerKonfig {
+  kellnerTischwahl:      KellnerTischwahl
+  kellnerFavoritenAktiv: boolean
+}
+
+export const kellnerKonfigApi = {
+  get: (kasseId: string) =>
+    request<KellnerKonfig>('GET', `/api/kassen/${kasseId}/pos-config`),
+}
+
+export const tischplanApi = {
+  listeBereiche: (kasseId: string) =>
+    request<TischplanBereich[]>('GET', `/api/tischplan/bereiche?kasseId=${kasseId}`),
 }
 
 // ---------------------------------------------------------------------------

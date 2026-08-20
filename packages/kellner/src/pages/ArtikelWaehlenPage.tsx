@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
 import type { Artikel, ModifikatorGruppe, ModifikatorAuswahl } from '@kassa/shared'
-import { artikelApi, kategorieApi, modifikatorApi, tischTabApi } from '../lib/api'
+import { artikelApi, kategorieApi, modifikatorApi, tischTabApi, kellnerKonfigApi } from '../lib/api'
 import { getAuth, gaengeAktiv as istGaengeAktiv, gaengeAnzahl } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
@@ -25,6 +25,9 @@ function gangLabel(g: number): string {
 }
 
 type Phase = 'artikel' | 'modifikatoren'
+
+/** Pseudo-Kategorie-ID für den Favoriten-Reiter (kollidiert mit keiner UUID). */
+const FAVORITEN_KAT = '__favoriten__'
 
 // gruppeId → (modId → menge)
 type ModMengenMap = Map<string, Map<string, number>>
@@ -66,16 +69,40 @@ export function ArtikelWaehlenPage() {
     staleTime: 30_000,
   })
 
+  const konfigQuery = useQuery({
+    queryKey:  ['kellner-konfig', identity.kasseId],
+    queryFn:   () => kellnerKonfigApi.get(identity.kasseId),
+    staleTime: 30_000,
+  })
+
+  // Tisch-Info für die Kopfzeile (teilt den Cache mit der Tab-Seite)
+  const tabQuery = useQuery({
+    queryKey:  ['tisch-tab', tabId],
+    queryFn:   () => tischTabApi.get(tabId!),
+    enabled:   !!tabId,
+    staleTime: 10_000,
+  })
+
   const kategorien  = katQuery.data ?? []
   const alleArtikel = artikelQuery.data ?? []
 
-  if (kategorien.length > 0 && aktivKat === null) {
-    setAktivKat(kategorien[0]!.id)
+  const favoriten = alleArtikel
+    .filter(a => a.istFavorit)
+    .sort((a, b) => a.favoritenReihenfolge - b.favoritenReihenfolge)
+  const favoritenAktiv = (konfigQuery.data?.kellnerFavoritenAktiv ?? false) && favoriten.length > 0
+
+  // Start-Reiter erst wählen, wenn Konfiguration UND Artikel da sind — sonst
+  // gewinnt die erste Warengruppe, weil die Favoritenliste noch leer scheint.
+  if (aktivKat === null && !konfigQuery.isLoading && !artikelQuery.isLoading && !katQuery.isLoading) {
+    if (favoritenAktiv) setAktivKat(FAVORITEN_KAT)
+    else if (kategorien.length > 0) setAktivKat(kategorien[0]!.id)
   }
 
-  const artikelInKat = alleArtikel
-    .filter(a => a.kategorieId === aktivKat)
-    .sort((a, b) => a.reihenfolge - b.reihenfolge)
+  const artikelInKat = aktivKat === FAVORITEN_KAT
+    ? favoriten
+    : alleArtikel
+        .filter(a => a.kategorieId === aktivKat)
+        .sort((a, b) => a.reihenfolge - b.reihenfolge)
 
   function mengeImKorb(artikelId: string) {
     return korb.filter(k => k.artikel.id === artikelId).reduce((s, k) => s + k.menge, 0)
@@ -420,9 +447,22 @@ export function ArtikelWaehlenPage() {
       {/* Header */}
       <div className="bg-panel border-b border-line px-4 py-4 sticky top-0 z-10">
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate(`/tab/${tabId}`)} className="text-ink-subtle text-2xl leading-none">‹</button>
-          <h1 className="font-black text-ink text-lg flex-1">Artikel wählen</h1>
-          <span className="text-xs text-ink-subtle">{auth.user.name}</span>
+          <button onClick={() => navigate('/')} className="text-ink-subtle text-2xl leading-none">‹</button>
+          <div className="flex-1 min-w-0">
+            <h1 className="font-black text-ink text-lg leading-tight truncate">
+              {tabQuery.data ? `Tisch ${tabQuery.data.tischNummer}` : 'Artikel wählen'}
+            </h1>
+            <p className="text-xs text-ink-subtle">{auth.user.name}</p>
+          </div>
+          {/* Zur Tisch-Übersicht: bonieren, kassieren, Positionen */}
+          <button
+            onClick={() => navigate(`/tab/${tabId}`)}
+            className="shrink-0 rounded-xl border-2 border-line px-3 py-2 text-sm font-bold text-ink-muted hover:border-brand-400 active:scale-95 transition"
+          >
+            {tabQuery.data && tabQuery.data.positionen.length > 0
+              ? `${tabQuery.data.positionen.length} Pos. · ${formatPreis(tabQuery.data.summeGesamtCent)}`
+              : 'Übersicht'} ›
+          </button>
         </div>
 
         {/* Gang-Wähler: neu gebuchte Artikel erben den aktiven Gang (0 = Sofort) */}
@@ -446,6 +486,18 @@ export function ArtikelWaehlenPage() {
 
         {kategorien.length > 0 && (
           <div className="mt-3 flex gap-1 overflow-x-auto pb-1 scrollbar-none">
+            {favoritenAktiv && (
+              <button
+                onClick={() => setAktivKat(FAVORITEN_KAT)}
+                className={`px-4 py-1.5 rounded-xl text-sm font-bold whitespace-nowrap transition shrink-0 ${
+                  aktivKat === FAVORITEN_KAT
+                    ? 'bg-amber-500 text-white'
+                    : 'text-amber-600 hover:bg-panel-2'
+                }`}
+              >
+                ★ Favoriten
+              </button>
+            )}
             {kategorien.map(k => (
               <button
                 key={k.id}
@@ -463,8 +515,9 @@ export function ArtikelWaehlenPage() {
         )}
       </div>
 
-      {/* Artikel */}
-      <div className="flex-1 p-4 space-y-2 pb-36">
+      {/* Artikel — kompakte Kacheln (3 pro Zeile): Antippen bucht +1, das
+          kleine − nimmt wieder raus. Name groß, Preis klein. */}
+      <div className="flex-1 p-3 pb-36">
         {isLoading && (
           <div className="flex justify-center py-12">
             <div className="w-8 h-8 border-4 border-brand-500 border-t-transparent rounded-full animate-spin" />
@@ -477,43 +530,49 @@ export function ArtikelWaehlenPage() {
           </div>
         )}
 
-        {artikelInKat.map(a => {
-          const menge      = mengeImKorb(a.id)
-          const ausverkauft = a.lagerstandMenge !== null && a.lagerstandMenge !== undefined && a.lagerstandMenge <= 0
-          return (
-            <div
-              key={a.id}
-              className={`bg-panel rounded-2xl border border-line px-4 py-3 flex items-center gap-3 ${ausverkauft ? 'opacity-40' : ''}`}
-            >
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-ink text-sm leading-tight">{a.bezeichnung}</p>
-                <p className="text-brand-700 font-black text-base mt-0.5">{formatPreis(a.preisBruttoCent)}</p>
-                {ausverkauft && <p className="text-xs text-red-500 font-bold">Ausverkauft</p>}
-              </div>
+        <div className="grid grid-cols-3 gap-2">
+          {artikelInKat.map(a => {
+            const menge      = mengeImKorb(a.id)
+            const ausverkauft = a.lagerstandMenge !== null && a.lagerstandMenge !== undefined && a.lagerstandMenge <= 0
+            return (
+              <button
+                key={a.id}
+                onClick={() => !ausverkauft && artikelWaehlen(a)}
+                disabled={ausverkauft}
+                className={`relative rounded-2xl border-2 p-2 pb-1.5 min-h-[5.25rem] flex flex-col justify-between text-left active:scale-95 transition ${
+                  ausverkauft
+                    ? 'bg-panel border-line opacity-40'
+                    : menge > 0
+                    ? 'bg-brand-50 border-brand-500'
+                    : 'bg-panel border-line hover:border-brand-300'
+                }`}
+              >
+                <p className="font-bold text-ink text-sm leading-snug break-words [display:-webkit-box] [-webkit-line-clamp:3] [-webkit-box-orient:vertical] overflow-hidden">
+                  {a.bezeichnung}
+                </p>
+                {ausverkauft ? (
+                  <p className="text-[11px] text-red-500 font-bold mt-1">Ausverkauft</p>
+                ) : (
+                  <p className="text-xs text-ink-subtle font-mono mt-1">{formatPreis(a.preisBruttoCent)}</p>
+                )}
 
-              {ausverkauft ? (
-                <div className="w-10 h-10 shrink-0" />
-              ) : menge === 0 ? (
-                <button
-                  onClick={() => artikelWaehlen(a)}
-                  className="w-10 h-10 rounded-xl bg-brand-600 text-white font-black text-xl flex items-center justify-center active:scale-90 transition shrink-0"
-                >+</button>
-              ) : (
-                <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    onClick={() => removeFromKorb(a.id)}
-                    className="w-9 h-9 rounded-xl border-2 border-brand-300 text-brand-600 font-black text-xl flex items-center justify-center active:scale-90 transition"
-                  >−</button>
-                  <span className="w-6 text-center font-black text-ink">{menge}</span>
-                  <button
-                    onClick={() => artikelWaehlen(a)}
-                    className="w-9 h-9 rounded-xl bg-brand-600 text-white font-black text-xl flex items-center justify-center active:scale-90 transition"
-                  >+</button>
-                </div>
-              )}
-            </div>
-          )
-        })}
+                {/* Mengen-Badge + Minus, nur wenn schon im Korb */}
+                {menge > 0 && (
+                  <>
+                    <span className="absolute -top-1.5 -right-1.5 min-w-[1.4rem] h-[1.4rem] rounded-full bg-brand-600 text-white text-xs font-black flex items-center justify-center px-1 shadow">
+                      {menge}
+                    </span>
+                    <span
+                      role="button"
+                      onClick={e => { e.stopPropagation(); removeFromKorb(a.id) }}
+                      className="absolute -bottom-1.5 -right-1.5 w-7 h-7 rounded-full bg-panel border-2 border-brand-400 text-brand-700 font-black text-base flex items-center justify-center shadow active:scale-90 transition"
+                    >−</span>
+                  </>
+                )}
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       {/* Footer */}

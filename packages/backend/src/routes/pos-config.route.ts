@@ -18,7 +18,8 @@ export interface PosConfigRouteOptions { db: Db }
 
 const KasseIdParam = z.object({ kasseId: z.string().uuid() })
 
-const StartseitenEnum = z.enum(['tische', 'kasse', 'kasse_favoriten', 'dashboard'])
+const StartseitenEnum      = z.enum(['tische', 'kasse', 'kasse_favoriten', 'dashboard'])
+const KellnerTischwahlEnum = z.enum(['manuell', 'liste', 'plan'])
 
 const PosConfigBodySchema = z.object({
   sichtbareKategorieIds:     z.array(z.string().uuid()).optional(),
@@ -26,6 +27,8 @@ const PosConfigBodySchema = z.object({
   erlaubteZahlungsarten: z.array(z.enum(['bar', 'karte', 'sonstige'])).optional(),
   artikelbilderAktiv:    z.boolean().optional(),
   startseite:            StartseitenEnum.optional(),
+  kellnerTischwahl:      KellnerTischwahlEnum.optional(),
+  kellnerFavoritenAktiv: z.boolean().optional(),
 })
 
 export const posConfigRoute: FastifyPluginAsync<PosConfigRouteOptions> = async (fastify, opts) => {
@@ -36,7 +39,13 @@ export const posConfigRoute: FastifyPluginAsync<PosConfigRouteOptions> = async (
     if (!p.success) return reply.status(400).send({ fehler: 'Ungültige Kassen-ID' })
 
     const [kasse] = await opts.db
-      .select({ erlaubteZahlungsarten: kassen.erlaubteZahlungsarten, artikelbilderAktiv: kassen.artikelbilderAktiv, startseite: kassen.startseite })
+      .select({
+        erlaubteZahlungsarten: kassen.erlaubteZahlungsarten,
+        artikelbilderAktiv:    kassen.artikelbilderAktiv,
+        startseite:            kassen.startseite,
+        kellnerTischwahl:      kassen.kellnerTischwahl,
+        kellnerFavoritenAktiv: kassen.kellnerFavoritenAktiv,
+      })
       .from(kassen)
       .where(and(eq(kassen.id, p.data.kasseId), eq(kassen.mandantId, request.user.mandantId)))
       .limit(1)
@@ -58,6 +67,8 @@ export const posConfigRoute: FastifyPluginAsync<PosConfigRouteOptions> = async (
       erlaubteZahlungsarten: kasse.erlaubteZahlungsarten as string[],
       artikelbilderAktiv:    kasse.artikelbilderAktiv,
       startseite:            kasse.startseite,
+      kellnerTischwahl:      kasse.kellnerTischwahl,
+      kellnerFavoritenAktiv: kasse.kellnerFavoritenAktiv,
     })
   })
 
@@ -78,14 +89,16 @@ export const posConfigRoute: FastifyPluginAsync<PosConfigRouteOptions> = async (
 
     await opts.db.transaction(async (tx) => {
       // Zahlungsarten + Darstellungsoptionen + Startseite
-      if (body.data.erlaubteZahlungsarten !== undefined || body.data.artikelbilderAktiv !== undefined || body.data.startseite !== undefined) {
+      const kassenPatch = {
+        ...(body.data.erlaubteZahlungsarten !== undefined && { erlaubteZahlungsarten: body.data.erlaubteZahlungsarten }),
+        ...(body.data.artikelbilderAktiv    !== undefined && { artikelbilderAktiv:    body.data.artikelbilderAktiv }),
+        ...(body.data.startseite            !== undefined && { startseite:            body.data.startseite }),
+        ...(body.data.kellnerTischwahl      !== undefined && { kellnerTischwahl:      body.data.kellnerTischwahl }),
+        ...(body.data.kellnerFavoritenAktiv !== undefined && { kellnerFavoritenAktiv: body.data.kellnerFavoritenAktiv }),
+      }
+      if (Object.keys(kassenPatch).length > 0) {
         await tx.update(kassen)
-          .set({
-            ...(body.data.erlaubteZahlungsarten !== undefined && { erlaubteZahlungsarten: body.data.erlaubteZahlungsarten }),
-            ...(body.data.artikelbilderAktiv    !== undefined && { artikelbilderAktiv:    body.data.artikelbilderAktiv }),
-            ...(body.data.startseite            !== undefined && { startseite:            body.data.startseite }),
-            updatedAt: new Date(),
-          })
+          .set({ ...kassenPatch, updatedAt: new Date() })
           .where(eq(kassen.id, p.data.kasseId))
       }
 

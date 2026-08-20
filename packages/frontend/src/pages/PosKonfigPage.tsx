@@ -26,12 +26,12 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { Artikel, Kategorie, Startseite } from '@kassa/shared'
-import { artikelApi, kategorieApi, posConfigApi, bonierdruckerApi } from '../lib/api'
+import type { Artikel, Kategorie, Startseite, KellnerTischwahl } from '@kassa/shared'
+import { artikelApi, kategorieApi, posConfigApi, bonierdruckerApi, tischplanApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { Button } from '../components/ui/Button'
 
-type Tab = 'warengruppen' | 'artikel' | 'favoriten' | 'zahlungsarten'
+type Tab = 'warengruppen' | 'artikel' | 'favoriten' | 'zahlungsarten' | 'kellner'
 
 const STARTSEITEN: { value: Startseite; label: string; beschreibung: string }[] = [
   { value: 'tische',          label: 'Tische',             beschreibung: 'Tischübersicht (Gastro)' },
@@ -669,6 +669,104 @@ function TabZahlungsarten({ kasseId }: { kasseId: string }) {
 }
 
 // ---------------------------------------------------------------------------
+// Tab 5: Kellner-App (mobile Kassen)
+// ---------------------------------------------------------------------------
+
+const TISCHWAHL_OPTIONEN: { value: KellnerTischwahl; label: string; beschreibung: string; brauchtPlan: boolean }[] = [
+  { value: 'manuell', label: 'Manuelle Eingabe',       beschreibung: 'Tischnummer wird eingetippt (bisheriges Verhalten)', brauchtPlan: false },
+  { value: 'liste',   label: 'Tischliste nach Bereich', beschreibung: 'Tische je Bereich aus dem Tischplan antippen',       brauchtPlan: true },
+  { value: 'plan',    label: 'Grafischer Tischplan',    beschreibung: 'Mini-Tischplan wie an der Kassa',                    brauchtPlan: true },
+]
+
+function TabKellner({ kasseId }: { kasseId: string }) {
+  const qc = useQueryClient()
+  const posQuery = useQuery({
+    queryKey: ['pos-config', kasseId],
+    queryFn:  () => posConfigApi.get(kasseId),
+  })
+  const bereicheQuery = useQuery({
+    queryKey: ['tischplan-bereiche', kasseId],
+    queryFn:  () => tischplanApi.listeBereiche(kasseId),
+  })
+  const planVorhanden = (bereicheQuery.data ?? []).some(b => b.elemente.length > 0)
+
+  const mut = useMutation({
+    mutationFn: (input: { kellnerTischwahl?: KellnerTischwahl; kellnerFavoritenAktiv?: boolean }) =>
+      posConfigApi.update(kasseId, input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['pos-config', kasseId] }),
+  })
+
+  if (!posQuery.data) {
+    return <div className="text-sm text-ink-subtle py-8 text-center">Laden…</div>
+  }
+  const konfig = posQuery.data
+
+  return (
+    <div className="space-y-6 max-w-sm">
+      {/* Tischauswahl */}
+      <div className="space-y-3">
+        <p className="text-xs font-semibold text-ink-muted uppercase tracking-wide">Tischauswahl beim Öffnen</p>
+        <p className="text-sm text-ink-muted">
+          Wie wählen die Kellner am Handy einen Tisch? Die manuelle Eingabe bleibt
+          in jedem Modus als Rückfallebene verfügbar.
+        </p>
+        {TISCHWAHL_OPTIONEN.map(({ value, label, beschreibung, brauchtPlan }) => {
+          const gesperrt = brauchtPlan && !planVorhanden
+          return (
+            <label
+              key={value}
+              className={`flex items-center gap-3 rounded-xl border border-line bg-panel px-4 py-3 ${
+                gesperrt ? 'opacity-50' : 'cursor-pointer hover:bg-panel-2'
+              }`}
+            >
+              <input
+                type="radio"
+                name="kellnerTischwahl"
+                value={value}
+                disabled={gesperrt}
+                checked={konfig.kellnerTischwahl === value}
+                onChange={() => mut.mutate({ kellnerTischwahl: value })}
+                className="h-4 w-4 border-line-strong text-brand-600 focus:ring-brand-500"
+              />
+              <div>
+                <p className="text-sm font-medium text-ink">{label}</p>
+                <p className="text-xs text-ink-subtle mt-0.5">{beschreibung}</p>
+              </div>
+            </label>
+          )
+        })}
+        {!planVorhanden && !bereicheQuery.isLoading && (
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            Noch kein Tischplan mit Tischen angelegt — unter Einstellungen → Tischplan
+            Bereiche und Tische anlegen, dann werden Liste und Plan wählbar.
+          </p>
+        )}
+      </div>
+
+      {/* Favoriten */}
+      <div className="border-t border-line pt-5 space-y-3">
+        <p className="text-xs font-semibold text-ink-muted uppercase tracking-wide">Artikelwahl</p>
+        <label className="flex items-center gap-3 cursor-pointer rounded-xl border border-line bg-panel px-4 py-3 hover:bg-panel-2">
+          <input
+            type="checkbox"
+            checked={konfig.kellnerFavoritenAktiv}
+            onChange={() => mut.mutate({ kellnerFavoritenAktiv: !konfig.kellnerFavoritenAktiv })}
+            className="h-4 w-4 rounded border-line-strong text-brand-600 focus:ring-brand-500"
+          />
+          <div>
+            <p className="text-sm font-medium text-ink">Favoriten-Reiter anzeigen</p>
+            <p className="text-xs text-ink-subtle mt-0.5">
+              Die Favoriten (Reiter „Favoriten" hier in der POS-Konfiguration) erscheinen
+              in der Kellner-App als erster Reiter der Artikelwahl.
+            </p>
+          </div>
+        </label>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Hauptseite
 // ---------------------------------------------------------------------------
 
@@ -702,6 +800,7 @@ export function PosKonfigPage() {
     { key: 'artikel',       label: 'Artikel' },
     { key: 'favoriten',     label: 'Favoriten' },
     { key: 'zahlungsarten', label: 'Zahlungsarten' },
+    { key: 'kellner',       label: 'Kellner-App' },
   ]
 
   const kategorien  = kategorienQuery.data ?? []
@@ -749,6 +848,9 @@ export function PosKonfigPage() {
           )}
           {aktuellerTab === 'zahlungsarten' && (
             <TabZahlungsarten kasseId={identity.kasseId} />
+          )}
+          {aktuellerTab === 'kellner' && (
+            <TabKellner kasseId={identity.kasseId} />
           )}
         </div>
       )}

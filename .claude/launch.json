@@ -12,6 +12,18 @@
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["--filter", "@kassa/gast", "dev", "--", "--port", "5197"],
       "port": 5197
+    },
+    {
+      "name": "backend",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@kassa/backend", "dev"],
+      "port": 3000
+    },
+    {
+      "name": "kellner",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@kassa/kellner", "dev"],
+      "port": 5178
     }
   ]
 }
