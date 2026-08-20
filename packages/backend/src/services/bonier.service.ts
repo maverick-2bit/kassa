@@ -201,12 +201,16 @@ export async function bonierBestellung(
     if (!kasse.kdsAktiv) break
     const ip = kdsStationen[station]
     if (!ip) {
+      // Keine IP = Browser-KDS-Betrieb: der Bon liegt in der DB und geht per
+      // SSE an jeden verbundenen Bildschirm dieser Station — das IST die
+      // Zustellung. Die frühere Fehlermeldung („Keine IP konfiguriert")
+      // schickte die Kasse auf eine falsche IP-Fährte, obwohl alles ankam.
+      // Eine IP wird NUR für alte TCP-Hardware-Displays eingetragen.
       stationenErgebnisse.push({
         station,
         ip:          '',
         positionen:  positionen.length,
-        erfolgreich: false,
-        fehler:      'Keine IP für diese Station konfiguriert',
+        erfolgreich: true,
       })
       continue
     }

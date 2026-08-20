@@ -2396,8 +2396,10 @@ function KdsSektion() {
       <div>
         <h2 className="text-base font-semibold text-ink">Küchen-Display-System (KDS)</h2>
         <p className="text-sm text-ink-muted mt-0.5">
-          Bonierbons werden an die jeweilige Stations-IP gesendet. Das KDS leitet sie
-          an die zugehörigen Küchen-Displays weiter (TCP-Port wie bei den Druckern).
+          „KDS aktiviert" genügt für die <strong>Browser-Displays</strong> (Geräte-Seite →
+          QR „KDS Küche/Schank"): jeder Bildschirm holt sich seine Bons selbst vom
+          Kassen-Server — <strong>hier ist dafür KEINE IP einzutragen</strong>, egal auf
+          welchem Gerät das Display läuft.
         </p>
       </div>
 
@@ -2424,9 +2426,12 @@ function KdsSektion() {
           </Field>
 
           <div className="space-y-2">
-            <p className="text-sm font-medium text-ink">Stations-IPs</p>
+            <p className="text-sm font-medium text-ink">Stations-IPs (nur TCP-Hardware-Displays)</p>
             <p className="text-xs text-ink-muted">
-              Pro Station eine IP. Leer lassen, wenn die Station nicht verwendet wird.
+              Nur ausfüllen, wenn an der Station ein eigenes TCP-Empfangsgerät hängt
+              (z. B. Alt-KDS mit ESC/POS-Empfänger) — die Bons werden dann zusätzlich
+              dorthin gesendet. <strong>Für Browser-Displays leer lassen</strong>, sonst
+              meldet jede Bonierung eine fehlgeschlagene Zustellung an diese IP.
             </p>
             {ALLE_STATIONEN.map((s) => (
               <div key={s} className="grid grid-cols-[140px_1fr] gap-3 items-center">
