@@ -29,6 +29,11 @@ export function TischePage() {
     queryKey:        ['tisch-tabs', identity.kasseId],
     queryFn:         () => tischTabApi.list(identity.kasseId),
     refetchInterval: 8_000,
+    // Natürliche Sortierung nach Tischnummer (1, 2, 10, 25, 221, Bar, T1)
+    select: (tabs) => {
+      const collator = new Intl.Collator('de', { numeric: true, sensitivity: 'base' })
+      return [...tabs].sort((a, b) => collator.compare(a.tischNummer, b.tischNummer))
+    },
   })
 
   const konfigQuery = useQuery({

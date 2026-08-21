@@ -639,6 +639,8 @@ export const artikel = pgTable('artikel', {
   artikelnummer:       varchar('artikelnummer', { length: 40 }),
   /** KDS-Station für Bonierbon-Routing (null = nicht bonieren, z.B. Pfand) */
   station:             varchar('station', { length: 20 }),
+  /** Eigene Kachel-Farbe; null = Farbe der Warengruppe (Muster wie station) */
+  farbe:               varchar('farbe', { length: 20 }),
   /** Optionale Kategorie-Zuordnung für Tab-Gruppierung in der POS-Ansicht */
   kategorieId:         uuid('kategorie_id').references(() => kategorien.id),
   aktiv:               boolean('aktiv').notNull().default(true),

@@ -1277,22 +1277,16 @@ function ArtikelGruppenZuweisungModal({
 // Hilfkomponente: Farb-Chip
 // ---------------------------------------------------------------------------
 
-import type { KategorieFarbe } from '@kassa/shared'
-
-const CHIP_KLASSEN: Record<KategorieFarbe, string> = {
-  grau:   'bg-panel-2 text-ink',
-  rot:    'bg-red-100 text-red-700',
-  orange: 'bg-orange-100 text-orange-700',
-  gelb:   'bg-yellow-100 text-yellow-700',
-  gruen:  'bg-green-100 text-green-700',
-  blau:   'bg-blue-100 text-blue-700',
-  lila:   'bg-purple-100 text-purple-700',
-  pink:   'bg-pink-100 text-pink-700',
-}
+import { KATEGORIE_FARBE_HEX, type KategorieFarbe } from '@kassa/shared'
 
 function FarbChip({ farbe }: { farbe: KategorieFarbe }) {
+  // Hex-Palette statt Klassen-Map — trägt alle 20 Farben
+  const hex = KATEGORIE_FARBE_HEX[farbe]
   return (
-    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${CHIP_KLASSEN[farbe]}`}>
+    <span
+      className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
+      style={{ backgroundColor: `${hex}22`, color: hex }}
+    >
       {KATEGORIE_FARBE_LABELS[farbe]}
     </span>
   )

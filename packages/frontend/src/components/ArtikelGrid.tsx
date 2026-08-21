@@ -11,59 +11,13 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { AktiveAktion, Artikel, Kategorie, KategorieFarbe, ModifikatorAuswahl, ModifikatorGruppe } from '@kassa/shared'
+import { KATEGORIE_FARBE_HEX, type AktiveAktion, type Artikel, type Kategorie, type KategorieFarbe, type ModifikatorAuswahl, type ModifikatorGruppe } from '@kassa/shared'
 import { formatPreis } from '../lib/format'
 import { ModifikatorModal } from './ModifikatorModal'
 import { Input } from './ui/Input'
 
-// ---------------------------------------------------------------------------
-// Farb-Mapping
-// ---------------------------------------------------------------------------
-
-const FARBE_TAB_INAKTIV: Record<KategorieFarbe, string> = {
-  grau:   'bg-panel-2 text-ink hover:bg-panel-2',
-  rot:    'bg-red-50 text-red-700 hover:bg-red-100',
-  orange: 'bg-orange-50 text-orange-700 hover:bg-orange-100',
-  gelb:   'bg-yellow-50 text-yellow-700 hover:bg-yellow-100',
-  gruen:  'bg-green-50 text-green-700 hover:bg-green-100',
-  blau:   'bg-blue-50 text-blue-700 hover:bg-blue-100',
-  lila:   'bg-purple-50 text-purple-700 hover:bg-purple-100',
-  pink:   'bg-pink-50 text-pink-700 hover:bg-pink-100',
-}
-
-const FARBE_TAB_AKTIV: Record<KategorieFarbe, string> = {
-  grau:   'bg-gray-600 text-white',
-  rot:    'bg-red-600 text-white',
-  orange: 'bg-orange-500 text-white',
-  gelb:   'bg-yellow-500 text-white',
-  gruen:  'bg-green-600 text-white',
-  blau:   'bg-blue-600 text-white',
-  lila:   'bg-purple-600 text-white',
-  pink:   'bg-pink-500 text-white',
-}
-
-const FARBE_ARTIKEL_HOVER: Record<KategorieFarbe, string> = {
-  grau:   'hover:border-line-strong hover:bg-panel-2',
-  rot:    'hover:border-red-400 hover:bg-red-50',
-  orange: 'hover:border-orange-400 hover:bg-orange-50',
-  gelb:   'hover:border-yellow-400 hover:bg-yellow-50',
-  gruen:  'hover:border-green-400 hover:bg-green-50',
-  blau:   'hover:border-blue-400 hover:bg-blue-50',
-  lila:   'hover:border-purple-400 hover:bg-purple-50',
-  pink:   'hover:border-pink-400 hover:bg-pink-50',
-}
-
-// Farbiger Akzentstreifen je Kategorie (dezenter Farbcode statt Vollfläche).
-const FARBE_AKZENT: Record<KategorieFarbe, string> = {
-  grau:   'bg-gray-400',
-  rot:    'bg-red-500',
-  orange: 'bg-orange-500',
-  gelb:   'bg-yellow-500',
-  gruen:  'bg-green-500',
-  blau:   'bg-blue-500',
-  lila:   'bg-purple-500',
-  pink:   'bg-pink-500',
-}
+// Farben kommen aus der zentralen 20er-Hex-Palette (@kassa/shared) — die
+// früheren Tailwind-Klassen-Maps je Farbe waren auf 8 Farben festgenagelt.
 
 // ---------------------------------------------------------------------------
 // Typen
@@ -237,11 +191,7 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
                 onClick={() => setAktivKategorieId(
                   aktivKategorieId === FAVORITEN_TAB_ID ? null : FAVORITEN_TAB_ID,
                 )}
-                klassen={
-                  aktivKategorieId === FAVORITEN_TAB_ID
-                    ? 'bg-amber-500 text-white'
-                    : 'bg-amber-50 text-amber-700 hover:bg-amber-100'
-                }
+                farbeHex="#f59e0b"
               >
                 ⭐ Favoriten <Anzahl wert={favoriten.length} aktiv={aktivKategorieId === FAVORITEN_TAB_ID} />
               </TabBtn>
@@ -250,7 +200,7 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
             <TabBtn
               aktiv={aktivKategorieId === null}
               onClick={() => setAktivKategorieId(null)}
-              klassen={aktivKategorieId === null ? 'bg-brand-600 text-white' : 'bg-brand-50 text-brand-700 hover:bg-brand-100'}
+              farbeHex="#16a34a"
             >
               Alle <Anzahl wert={verkaufsartikel.length} aktiv={aktivKategorieId === null} />
             </TabBtn>
@@ -263,7 +213,7 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
                   key={k.id}
                   aktiv={isAktiv}
                   onClick={() => setAktivKategorieId(isAktiv ? null : k.id)}
-                  klassen={isAktiv ? FARBE_TAB_AKTIV[k.farbe] : FARBE_TAB_INAKTIV[k.farbe]}
+                  farbeHex={KATEGORIE_FARBE_HEX[k.farbe]}
                 >
                   {k.name}
                   {anzahl > 0 && <Anzahl wert={anzahl} aktiv={isAktiv} />}
@@ -283,7 +233,9 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
         <div className="flex-1 min-h-0 overflow-y-auto pr-0.5">
           <div className="grid grid-cols-4 gap-1.5 pb-1">
             {gefilterteArtikel.map((a) => {
-              const farbe         = a.kategorieId ? farbeProKategorie.get(a.kategorieId) : undefined
+              // Eigene Artikel-Farbe geht vor, sonst die der Warengruppe
+              const farbe         = a.farbe ?? (a.kategorieId ? farbeProKategorie.get(a.kategorieId) : undefined)
+              const farbeHex      = farbe ? KATEGORIE_FARBE_HEX[farbe as KategorieFarbe] : undefined
               const gruppen       = artikelGruppen?.get(a.id) ?? []
               const hatMods       = gruppen.length > 0
               // Abgeleitete Verfügbarkeit aus dem Rezept (null = kein Rezept-Limit)
@@ -323,14 +275,14 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
                     ${istAusverkauft
                       ? 'border-line opacity-50 cursor-not-allowed'
                       : `active:scale-[0.97] shadow-sm ${mengeImKorb > 0 ? 'border-brand-500 ring-1 ring-brand-500' : 'border-line'} ${farbe
-                          ? FARBE_ARTIKEL_HOVER[farbe]
+                          ? 'hover:bg-panel-2 hover:border-line-strong'
                           : 'hover:bg-brand-50 hover:border-brand-400'
                         }`
                     }
                   `}
                 >
-                  {/* Farbiger Kategorie-Akzent oben */}
-                  <div className={`h-1.5 w-full ${farbe ? FARBE_AKZENT[farbe] : 'bg-brand-500'}`} />
+                  {/* Farbiger Akzent oben: Artikel-Farbe ?? Warengruppen-Farbe */}
+                  <div className="h-1.5 w-full" style={{ backgroundColor: farbeHex ?? 'var(--color-brand-500, #16a34a)' }} />
 
                   {/* Mengen-Badge, wenn im Warenkorb */}
                   {mengeImKorb > 0 && (
@@ -420,24 +372,27 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
 // ---------------------------------------------------------------------------
 
 function TabBtn({
-  aktiv: _aktiv,
+  aktiv,
   onClick,
-  klassen,
+  farbeHex,
   children,
 }: {
   aktiv:    boolean
   onClick:  () => void
-  klassen:  string
+  farbeHex: string
   children: React.ReactNode
 }) {
+  // Aktiv = Vollton mit weißer Schrift, inaktiv = zarter Farbton mit
+  // Farbtext — direkt aus der Hex-Palette, damit alle 20 Farben tragen.
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`
-        shrink-0 px-4 py-2.5 rounded-full text-sm font-medium transition
-        min-h-[44px] flex items-center gap-1.5 ${klassen}
-      `}
+      className="shrink-0 px-4 py-2.5 rounded-full text-sm font-medium transition
+        min-h-[44px] flex items-center gap-1.5 hover:opacity-85"
+      style={aktiv
+        ? { backgroundColor: farbeHex, color: '#fff' }
+        : { backgroundColor: `${farbeHex}1f`, color: farbeHex }}
     >
       {children}
     </button>

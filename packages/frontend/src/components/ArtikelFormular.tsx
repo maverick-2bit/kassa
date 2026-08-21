@@ -4,10 +4,12 @@ import {
   ALLE_STATIONEN,
   MWST_LABELS,
   STATION_LABELS,
+  KATEGORIE_FARBE_HEX,
   type Artikel,
   type ArtikelInput,
   type Bonierdrucker,
   type Kategorie,
+  type KategorieFarbe,
   type Lieferant,
   type MwStSatz,
   type Station,
@@ -16,6 +18,7 @@ import { Field } from './ui/Field'
 import { Input } from './ui/Input'
 import { Select } from './ui/Select'
 import { Button } from './ui/Button'
+import { FarbAuswahl } from './FarbAuswahl'
 import { formatPreis, parseEuroToCent } from '../lib/format'
 
 type FormValues = {
@@ -23,6 +26,7 @@ type FormValues = {
   preisEuro:            string
   mwstSatz:             MwStSatz
   station:              Station | ''
+  farbe:                KategorieFarbe | ''
   kategorieId:          string
   istFavorit:           boolean
   bonierdruckerId:      string
@@ -118,6 +122,7 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
       preisEuro:          initial ? (initial.preisBruttoCent / 100).toFixed(2).replace('.', ',') : '',
       mwstSatz:           initial?.mwstSatz         ?? 'normal',
       station:            initial?.station          ?? '',
+      farbe:              initial?.farbe            ?? '',
       kategorieId:        initial?.kategorieId      ?? '',
       istFavorit:         initial?.istFavorit       ?? false,
       bonierdruckerId:    initial?.bonierdruckerId  ?? '',
@@ -136,7 +141,9 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
 
   // Stations-Vorgabe der gewählten Warengruppe — bestimmt, was „Automatisch" bedeutet
   const gewaehlteKatId  = watch('kategorieId')
-  const katVorgabe      = kategorien?.find(k => k.id === gewaehlteKatId)?.station ?? null
+  const gewaehlteKat    = kategorien?.find(k => k.id === gewaehlteKatId)
+  const katVorgabe      = gewaehlteKat?.station ?? null
+  const katFarbeHex     = gewaehlteKat ? KATEGORIE_FARBE_HEX[gewaehlteKat.farbe] : undefined
 
   useEffect(() => {
     reset({
@@ -144,6 +151,7 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
       preisEuro:          initial ? (initial.preisBruttoCent / 100).toFixed(2).replace('.', ',') : '',
       mwstSatz:           initial?.mwstSatz         ?? 'normal',
       station:            initial?.station          ?? '',
+      farbe:              initial?.farbe            ?? '',
       kategorieId:        initial?.kategorieId      ?? '',
       istFavorit:         initial?.istFavorit       ?? false,
       bonierdruckerId:    initial?.bonierdruckerId  ?? '',
@@ -199,6 +207,7 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
       preisBruttoCent: cent,
       mwstSatz:        values.mwstSatz,
       station:         values.station          || null,
+      farbe:           values.farbe            || null,
       kategorieId:     values.kategorieId      || null,
       istFavorit:      values.istFavorit,
       bonierdruckerId: values.bonierdruckerId  || null,
@@ -309,6 +318,18 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
             <option key={s} value={s}>{STATION_LABELS[s]}</option>
           ))}
         </Select>
+      </Field>
+
+      <Field
+        label="Kachel-Farbe"
+        hint="A = Automatisch (Farbe der Warengruppe) — eigene Farbe nur für Artikel, die hervorstechen sollen"
+      >
+        <FarbAuswahl
+          wert={watch('farbe') || null}
+          onChange={(f) => setValue('farbe', f ?? '')}
+          mitAutomatisch
+          automatischHex={katFarbeHex}
+        />
       </Field>
 
       <Field label="Warengruppe" hint="Gruppierung in der Kassen-Ansicht">

@@ -45,6 +45,7 @@ function toDto(
     mwstSatz:             row.mwstSatz as Artikel['mwstSatz'],
     artikelnummer:        row.artikelnummer,
     station:              row.station as Artikel['station'],
+    farbe:                row.farbe as Artikel['farbe'],
     kategorieId:          row.kategorieId,
     aktiv:                row.aktiv,
     lagerstandAktiv:      row.lagerstandAktiv,
@@ -88,6 +89,7 @@ export async function erstelleArtikel(db: Db, input: ArtikelInput): Promise<Arti
       mwstSatz:        input.mwstSatz,
       artikelnummer,
       station:         input.station ?? null,
+      farbe:           input.farbe ?? null,
       kategorieId:     input.kategorieId ?? null,
       lagerstandAktiv: input.lagerstandAktiv ?? false,
       lagerstandMenge: input.lagerstandAktiv ? (input.lagerstandMenge ?? null) : null,
@@ -139,6 +141,7 @@ export async function aktualisiereArtikel(
   if (update.mwstSatz        !== undefined) values.mwstSatz        = update.mwstSatz
   // artikelnummer ist schreibgeschützt (immer auto-generiert)
   if (update.station         !== undefined) values.station         = update.station
+  if (update.farbe           !== undefined) values.farbe           = update.farbe
   if (update.kategorieId     !== undefined) values.kategorieId     = update.kategorieId
   if (update.aktiv           !== undefined) values.aktiv           = update.aktiv
   if (update.lagerstandAktiv      !== undefined) values.lagerstandAktiv      = update.lagerstandAktiv

@@ -1,7 +1,6 @@
 import { useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import {
-  KATEGORIE_FARBE_LABELS,
   STATION_LABELS,
   ALLE_STATIONEN,
   type Bonierdrucker,
@@ -14,10 +13,7 @@ import { Field } from './ui/Field'
 import { Input } from './ui/Input'
 import { Select } from './ui/Select'
 import { Button } from './ui/Button'
-
-const ALLE_FARBEN: KategorieFarbe[] = [
-  'grau', 'rot', 'orange', 'gelb', 'gruen', 'blau', 'lila', 'pink',
-]
+import { FarbAuswahl } from './FarbAuswahl'
 
 type FormValues = {
   name:            string
@@ -37,7 +33,7 @@ interface Props {
 }
 
 export function KategorieFormular({ initial, bonierdrucker, onSubmit, onCancel, loading, fehler }: Props) {
-  const { register, handleSubmit, formState: { errors }, reset } = useForm<FormValues>({
+  const { register, handleSubmit, formState: { errors }, reset, setValue, watch } = useForm<FormValues>({
     defaultValues: {
       name:            initial?.name               ?? '',
       farbe:           initial?.farbe              ?? 'grau',
@@ -80,24 +76,23 @@ export function KategorieFormular({ initial, bonierdrucker, onSubmit, onCancel, 
         />
       </Field>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Field label="Farbe" required>
-          <Select {...register('farbe', { required: true })}>
-            {ALLE_FARBEN.map((f) => (
-              <option key={f} value={f}>{KATEGORIE_FARBE_LABELS[f]}</option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Reihenfolge" hint="Kleinere Zahl = weiter links im Tab">
-          <Input
-            type="number"
-            min="0"
-            step="1"
-            placeholder="0"
-            {...register('reihenfolge')}
-          />
-        </Field>
-      </div>
+      <Field label="Farbe" required hint="Färbt die Artikel-Kacheln dieser Warengruppe (einzelne Artikel können abweichen)">
+        <FarbAuswahl
+          wert={watch('farbe')}
+          onChange={(f) => { if (f) setValue('farbe', f as KategorieFarbe) }}
+        />
+      </Field>
+
+      <Field label="Reihenfolge" hint="Kleinere Zahl = weiter links im Tab">
+        <Input
+          type="number"
+          min="0"
+          step="1"
+          placeholder="0"
+          className="w-32"
+          {...register('reihenfolge')}
+        />
+      </Field>
 
       <Field label="KDS-Station (Vorgabe)" hint="Gilt für alle Artikel dieser Warengruppe — einzelne Artikel können abweichen">
         <Select {...register('station')}>

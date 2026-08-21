@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
-import type { Artikel, ModifikatorGruppe, ModifikatorAuswahl } from '@kassa/shared'
+import { KATEGORIE_FARBE_HEX, type Artikel, type KategorieFarbe, type ModifikatorGruppe, type ModifikatorAuswahl } from '@kassa/shared'
 import { artikelApi, kategorieApi, modifikatorApi, tischTabApi, kellnerKonfigApi } from '../lib/api'
 import { getAuth, clearAuth, gaengeAktiv as istGaengeAktiv, gaengeAnzahl } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
@@ -545,11 +545,15 @@ export function ArtikelWaehlenPage() {
           {artikelInKat.map(a => {
             const menge      = mengeImKorb(a.id)
             const ausverkauft = a.lagerstandMenge !== null && a.lagerstandMenge !== undefined && a.lagerstandMenge <= 0
+            // Eigene Artikel-Farbe geht vor, sonst die der Warengruppe
+            const farbName = a.farbe ?? kategorien.find(k => k.id === a.kategorieId)?.farbe
+            const farbeHex = farbName ? KATEGORIE_FARBE_HEX[farbName as KategorieFarbe] : undefined
             return (
               <button
                 key={a.id}
                 onClick={() => !ausverkauft && artikelWaehlen(a)}
                 disabled={ausverkauft}
+                style={farbeHex && !ausverkauft && menge === 0 ? { borderTopColor: farbeHex, borderTopWidth: 4 } : {}}
                 className={`relative rounded-2xl border-2 p-2 pb-1.5 min-h-[5.25rem] flex flex-col justify-between text-left active:scale-95 transition ${
                   ausverkauft
                     ? 'bg-panel border-line opacity-40'
