@@ -194,15 +194,15 @@ export function GrossAnzeige({ bons, station, farbe, onZurueck }: GrossAnzeigePr
                     border: `2px solid ${fc}40`,
                   }}
                 >
-                  {/* Inhalt */}
+                  {/* Inhalt — Artikeltext OBEN, Menge darunter (User-Vorgabe) */}
+                  <div className="text-center text-4xl font-bold text-ink px-3 leading-tight max-w-full break-words">
+                    {key}
+                  </div>
                   <div
-                    className="text-9xl font-black tabular-nums leading-none"
+                    className="text-9xl font-black tabular-nums leading-none mt-3"
                     style={{ color: menge === 0 ? '#3f3f46' : fc }}
                   >
                     {menge}
-                  </div>
-                  <div className="text-center text-4xl font-bold text-ink mt-3 px-3 leading-tight max-w-full break-words">
-                    {key}
                   </div>
                   {fixiert && !bearbeitenModus && (
                     <div className="absolute top-2 right-2 text-xs text-ink-subtle">📌</div>
