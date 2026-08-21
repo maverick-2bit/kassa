@@ -191,6 +191,11 @@ export function KassePage() {
     queryFn:  () => posConfigApi.get(identity.kasseId),
   })
 
+  const favoritenQuery = useQuery({
+    queryKey: ['kasse-favoriten', identity.kasseId],
+    queryFn:  () => posConfigApi.favoriten(identity.kasseId),
+  })
+
   const druckerCfg = useQuery({
     queryKey: ['drucker', identity.kasseId],
     queryFn:  () => druckerApi.get(identity.kasseId),
@@ -734,6 +739,8 @@ export function KassePage() {
               initialKategorieId={initialKategorieId}
               mengenProArtikel={mengenProArtikel}
               aktionen={aktionenProArtikel}
+              favoritenEintraege={favoritenQuery.data?.eintraege}
+              artikelProZeile={posConfigQuery.data?.artikelProZeile}
             />
           </div>
         </section>

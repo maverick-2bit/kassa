@@ -40,6 +40,10 @@ interface Props {
   mengenProArtikel?:    Map<string, number>
   /** Optional: gerade laufende Aktionen je Artikel — zeigt Badge + Aktionspreis */
   aktionen?:            Map<string, AktiveAktion>
+  /** Favoriten dieser Kasse (artikelId null = Platzhalter); leer/undefined = globale istFavorit-Liste */
+  favoritenEintraege?:  { artikelId: string | null }[] | undefined
+  /** Artikel je Zeile (2–6, default 4) — gemeinsame Einstellung mit der Kellner-App */
+  artikelProZeile?:     number | undefined
 }
 
 // ---------------------------------------------------------------------------
@@ -49,7 +53,7 @@ interface Props {
 // Sentinel für den Favoriten-Tab
 const FAVORITEN_TAB_ID = '__favoriten__'
 
-export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClick, loading, sichtbareKategorieIds, artikelbilderAktiv = true, initialKategorieId = null, mengenProArtikel, aktionen }: Props) {
+export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClick, loading, sichtbareKategorieIds, artikelbilderAktiv = true, initialKategorieId = null, mengenProArtikel, aktionen, favoritenEintraege, artikelProZeile }: Props) {
   // Kategorie-ID → Farbe, für den Akzentstreifen je Artikel (auch im „Alle"-Tab).
   const farbeProKategorie = useMemo(
     () => new Map(kategorien.map(k => [k.id, k.farbe] as const)),
@@ -78,13 +82,26 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
   // Rohstoffe/Bestandteile sind nur Lager, nicht direkt verkäuflich → aus dem Raster ausblenden.
   const verkaufsartikel = useMemo(() => artikel.filter(a => !a.istBestandteil), [artikel])
 
-  const favoriten = useMemo(
-    () =>
-      verkaufsartikel
-        .filter(a => a.istFavorit)
-        .sort((a, b) => a.favoritenReihenfolge - b.favoritenReihenfolge || a.bezeichnung.localeCompare(b.bezeichnung)),
-    [verkaufsartikel],
-  )
+  /**
+   * Favoriten mit Platzhaltern (null): kommt eine Kassen-Liste, gilt exakt
+   * deren Reihenfolge; ohne eigene Liste die globalen istFavorit-Artikel.
+   */
+  const favoriten = useMemo<(Artikel | null)[]>(() => {
+    // Nur Favoriten aus Warengruppen, die an dieser Kasse sichtbar sind (leer = alle)
+    const kategorieSichtbar = (a: Artikel) =>
+      !sichtbareKategorieIds || sichtbareKategorieIds.length === 0 ||
+      (a.kategorieId !== null && sichtbareKategorieIds.includes(a.kategorieId))
+    if (favoritenEintraege && favoritenEintraege.length > 0) {
+      const byId = new Map(verkaufsartikel.map(a => [a.id, a] as const))
+      return favoritenEintraege
+        .map(e => (e.artikelId === null ? null : byId.get(e.artikelId)))
+        .filter((x): x is Artikel | null => x !== undefined)
+        .filter(x => x === null || kategorieSichtbar(x))
+    }
+    return verkaufsartikel
+      .filter(a => a.istFavorit && kategorieSichtbar(a))
+      .sort((a, b) => a.favoritenReihenfolge - b.favoritenReihenfolge || a.bezeichnung.localeCompare(b.bezeichnung))
+  }, [verkaufsartikel, favoritenEintraege, sichtbareKategorieIds])
 
   const anzahlProKategorie = useMemo(() => {
     const map = new Map<string, number>()
@@ -108,7 +125,8 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
     return () => { el.removeEventListener('scroll', check); ro.disconnect() }
   }, [aktiveKategorien.length])
 
-  const gefilterteArtikel = useMemo(() => {
+  // Kann Platzhalter (null) enthalten — nur im Favoriten-Tab ohne aktive Suche.
+  const gefilterteArtikel = useMemo<(Artikel | null)[]>(() => {
     // Aktive Suche überstimmt Kategorie/Favoriten und filtert global über
     // Bezeichnung UND Artikelnummer (client-seitig, artikel ist komplett geladen).
     const q = suche.trim().toLowerCase()
@@ -193,7 +211,7 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
                 )}
                 farbeHex="#f59e0b"
               >
-                ⭐ Favoriten <Anzahl wert={favoriten.length} aktiv={aktivKategorieId === FAVORITEN_TAB_ID} />
+                ⭐ Favoriten <Anzahl wert={favoriten.filter(f => f !== null).length} aktiv={aktivKategorieId === FAVORITEN_TAB_ID} />
               </TabBtn>
             )}
 
@@ -231,8 +249,21 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
         </p>
       ) : (
         <div className="flex-1 min-h-0 overflow-y-auto pr-0.5">
-          <div className="grid grid-cols-4 gap-1.5 pb-1">
-            {gefilterteArtikel.map((a) => {
+          <div
+            className="grid gap-1.5 pb-1"
+            style={{ gridTemplateColumns: `repeat(${artikelProZeile ?? 4}, minmax(0, 1fr))` }}
+          >
+            {gefilterteArtikel.map((a, idx) => {
+              // Platzhalter (nur im Favoriten-Tab): graue, gesperrte Kachel
+              if (a === null) {
+                return (
+                  <div
+                    key={`platzhalter-${idx}`}
+                    aria-hidden
+                    className="rounded-lg border border-dashed border-line bg-panel-2/60 min-h-[4.5rem]"
+                  />
+                )
+              }
               // Eigene Artikel-Farbe geht vor, sonst die der Warengruppe
               const farbe         = a.farbe ?? (a.kategorieId ? farbeProKategorie.get(a.kategorieId) : undefined)
               const farbeHex      = farbe ? KATEGORIE_FARBE_HEX[farbe as KategorieFarbe] : undefined

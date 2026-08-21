@@ -33,6 +33,7 @@ import type {
   BonierdruckerInput,
   BonierdruckerUpdate,
   PosKonfig,
+  KasseFavoritEintrag,
   PosKonfigUpdate,
   ReihenfolgeUpdate,
   FavoritenReihenfolgeUpdate,
@@ -581,6 +582,11 @@ export const posConfigApi = {
     request<PosKonfig>('GET', `/api/kassen/${kasseId}/pos-config`),
   update: (kasseId: string, input: PosKonfigUpdate) =>
     request<void>('PUT', `/api/kassen/${kasseId}/pos-config`, input),
+  /** Favoriten je Kasse in fester Reihenfolge; artikelId null = Platzhalter. Leer = globale istFavorit-Liste gilt. */
+  favoriten: (kasseId: string) =>
+    request<{ eintraege: KasseFavoritEintrag[] }>('GET', `/api/kassen/${kasseId}/favoriten`),
+  favoritenSpeichern: (kasseId: string, eintraege: KasseFavoritEintrag[]) =>
+    request<void>('PUT', `/api/kassen/${kasseId}/favoriten`, { eintraege }),
 }
 
 // ---------------------------------------------------------------------------

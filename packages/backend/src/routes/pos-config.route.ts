@@ -10,9 +10,10 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { ReihenfolgeUpdateSchema, FavoritenReihenfolgeUpdateSchema } from '@kassa/shared'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, asc, eq, inArray } from 'drizzle-orm'
+import { KasseFavoritenUpdateSchema } from '@kassa/shared'
 import type { Db } from '../db/client.js'
-import { kassen, kassekategorieSichtbarkeit, kasseBonierdruckerSichtbarkeit, artikel, kategorien } from '../db/schema.js'
+import { kassen, kassekategorieSichtbarkeit, kasseBonierdruckerSichtbarkeit, kasseFavoriten, artikel, kategorien } from '../db/schema.js'
 
 export interface PosConfigRouteOptions { db: Db }
 
@@ -27,6 +28,7 @@ const PosConfigBodySchema = z.object({
   sichtbareBonierdruckerIds: z.array(z.string().uuid()).optional(),
   erlaubteZahlungsarten: z.array(z.enum(['bar', 'karte', 'sonstige'])).optional(),
   artikelbilderAktiv:    z.boolean().optional(),
+  artikelProZeile:       z.number().int().min(2).max(6).optional(),
   startseite:            StartseitenEnum.optional(),
   kellnerModus:          KellnerModusEnum.optional(),
   kellnerTischwahl:      KellnerTischwahlEnum.optional(),
@@ -44,6 +46,7 @@ export const posConfigRoute: FastifyPluginAsync<PosConfigRouteOptions> = async (
       .select({
         erlaubteZahlungsarten: kassen.erlaubteZahlungsarten,
         artikelbilderAktiv:    kassen.artikelbilderAktiv,
+        artikelProZeile:       kassen.artikelProZeile,
         startseite:            kassen.startseite,
         kellnerModus:          kassen.kellnerModus,
         kellnerTischwahl:      kassen.kellnerTischwahl,
@@ -69,6 +72,7 @@ export const posConfigRoute: FastifyPluginAsync<PosConfigRouteOptions> = async (
       sichtbareBonierdruckerIds: bonierdruckerSicht.map(r => r.bonierdruckerId),
       erlaubteZahlungsarten: kasse.erlaubteZahlungsarten as string[],
       artikelbilderAktiv:    kasse.artikelbilderAktiv,
+      artikelProZeile:       kasse.artikelProZeile,
       startseite:            kasse.startseite,
       kellnerModus:          kasse.kellnerModus,
       kellnerTischwahl:      kasse.kellnerTischwahl,
@@ -96,6 +100,7 @@ export const posConfigRoute: FastifyPluginAsync<PosConfigRouteOptions> = async (
       const kassenPatch = {
         ...(body.data.erlaubteZahlungsarten !== undefined && { erlaubteZahlungsarten: body.data.erlaubteZahlungsarten }),
         ...(body.data.artikelbilderAktiv    !== undefined && { artikelbilderAktiv:    body.data.artikelbilderAktiv }),
+        ...(body.data.artikelProZeile       !== undefined && { artikelProZeile:       body.data.artikelProZeile }),
         ...(body.data.startseite            !== undefined && { startseite:            body.data.startseite }),
         ...(body.data.kellnerModus          !== undefined && { kellnerModus:          body.data.kellnerModus }),
         ...(body.data.kellnerTischwahl      !== undefined && { kellnerTischwahl:      body.data.kellnerTischwahl }),
@@ -138,6 +143,62 @@ export const posConfigRoute: FastifyPluginAsync<PosConfigRouteOptions> = async (
       }
     })
 
+    return reply.status(204).send()
+  })
+
+  // ---- Favoriten je Kasse (artikelId null = Platzhalter) ----
+  fastify.get('/kassen/:kasseId/favoriten', { onRequest: [fastify.authenticate] }, async (request, reply) => {
+    const p = KasseIdParam.safeParse(request.params)
+    if (!p.success) return reply.status(400).send({ fehler: 'Ungültige Kassen-ID' })
+
+    const rows = await opts.db
+      .select({ artikelId: kasseFavoriten.artikelId })
+      .from(kasseFavoriten)
+      .innerJoin(kassen, eq(kassen.id, kasseFavoriten.kasseId))
+      .where(and(eq(kasseFavoriten.kasseId, p.data.kasseId), eq(kassen.mandantId, request.user.mandantId)))
+      .orderBy(asc(kasseFavoriten.position))
+    return reply.send({ eintraege: rows })
+  })
+
+  fastify.put('/kassen/:kasseId/favoriten', { onRequest: [fastify.authenticate] }, async (request, reply) => {
+    const p = KasseIdParam.safeParse(request.params)
+    if (!p.success) return reply.status(400).send({ fehler: 'Ungültige Kassen-ID' })
+    const body = KasseFavoritenUpdateSchema.safeParse(request.body)
+    if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
+
+    const mandantId = request.user.mandantId
+    const [kasse] = await opts.db
+      .select({ id: kassen.id })
+      .from(kassen)
+      .where(and(eq(kassen.id, p.data.kasseId), eq(kassen.mandantId, mandantId)))
+      .limit(1)
+    if (!kasse) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
+
+    // Artikel-IDs müssen dem Mandanten gehören (Platzhalter = null sind frei)
+    const artikelIds = [...new Set(body.data.eintraege.map(e => e.artikelId).filter((id): id is string => id !== null))]
+    if (artikelIds.length > 0) {
+      const bekannt = await opts.db
+        .select({ id: artikel.id })
+        .from(artikel)
+        .where(and(inArray(artikel.id, artikelIds), eq(artikel.mandantId, mandantId)))
+      if (bekannt.length !== artikelIds.length) {
+        return reply.status(400).send({ fehler: 'Unbekannte Artikel-ID in den Favoriten' })
+      }
+    }
+
+    await opts.db.transaction(async (tx) => {
+      await tx.delete(kasseFavoriten).where(eq(kasseFavoriten.kasseId, p.data.kasseId))
+      if (body.data.eintraege.length > 0) {
+        await tx.insert(kasseFavoriten).values(
+          body.data.eintraege.map((e, i) => ({
+            mandantId,
+            kasseId:   p.data.kasseId,
+            position:  i,
+            artikelId: e.artikelId,
+          })),
+        )
+      }
+    })
     return reply.status(204).send()
   })
 

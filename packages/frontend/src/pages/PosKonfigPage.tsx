@@ -4,11 +4,11 @@
  * Tabs:
  *   1. Warengruppen  — Reihenfolge (Drag & Drop, global) + Sichtbarkeit pro Kasse
  *   2. Artikel       — Warengruppe wählen → Artikel-Reihenfolge (Drag & Drop, global)
- *   3. Favoriten     — Favoriten-Reihenfolge (Drag & Drop, global)
+ *   3. Favoriten     — Favoritenliste je Kasse (Kachel-Editor mit Platzhaltern)
  *   4. Zahlungsarten — pro Kasse An/Aus
  */
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import {
   DndContext,
   closestCenter,
@@ -22,11 +22,12 @@ import {
   SortableContext,
   useSortable,
   verticalListSortingStrategy,
+  rectSortingStrategy,
   arrayMove,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { KATEGORIE_FARBE_HEX, type Artikel, type Kategorie, type Startseite, type KellnerTischwahl, type KellnerModus } from '@kassa/shared'
+import { KATEGORIE_FARBE_HEX, type Artikel, type Kategorie, type KategorieFarbe, type Startseite, type KellnerTischwahl, type KellnerModus } from '@kassa/shared'
 import { artikelApi, kategorieApi, posConfigApi, bonierdruckerApi, tischplanApi, kasseApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { Button } from '../components/ui/Button'
@@ -416,96 +417,195 @@ function TabArtikel({ kategorien, alleArtikel }: { kategorien: Kategorie[]; alle
 }
 
 // ---------------------------------------------------------------------------
-// Tab 3: Favoriten-Reihenfolge
+// Tab 3: Favoriten je Kasse — Kachel-Editor in der Kassen-Ansicht
 // ---------------------------------------------------------------------------
 
-function TabFavoriten({ alleArtikel }: { alleArtikel: Artikel[] }) {
+/** Ein Eintrag im Favoriten-Editor; artikel null = Platzhalter (graue Kachel). */
+type FavoritEintrag = { key: string; artikel: Artikel | null }
+
+/** Sortierbare Raster-Kachel (ganze Kachel = Drag-Handle). */
+function SortableKachel({ id, children }: { id: string; children: React.ReactNode }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.6 : 1,
+    zIndex:  isDragging ? 10 : undefined,
+  }
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners}
+      className="relative cursor-grab active:cursor-grabbing touch-none">
+      {children}
+    </div>
+  )
+}
+
+function TabFavoriten({ alleArtikel, kategorien, kasseId }: {
+  alleArtikel: Artikel[]
+  kategorien:  Kategorie[]
+  kasseId:     string
+}) {
   const qc = useQueryClient()
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(TouchSensor,   { activationConstraint: { delay: 200, tolerance: 8 } }),
   )
 
-  const [items, setItems] = useState(() =>
-    alleArtikel
-      .filter(a => a.istFavorit && a.aktiv)
-      .sort((a, b) => a.favoritenReihenfolge - b.favoritenReihenfolge)
+  const posQuery = useQuery({
+    queryKey: ['pos-config', kasseId],
+    queryFn:  () => posConfigApi.get(kasseId),
+  })
+  const favQuery = useQuery({
+    queryKey: ['kasse-favoriten', kasseId],
+    queryFn:  () => posConfigApi.favoriten(kasseId),
+  })
+
+  const artikelProZeile = posQuery.data?.artikelProZeile ?? 4
+  const sichtbareKatIds = posQuery.data?.sichtbareKategorieIds ?? []
+  const artikelbilder   = posQuery.data?.artikelbilderAktiv ?? true
+  const farbeProKategorie = useMemo(
+    () => new Map(kategorien.map(k => [k.id, k.farbe] as const)),
+    [kategorien],
   )
+
+  // Nur Artikel aus Warengruppen, die an DIESER Kasse sichtbar sind (leer = alle)
+  const kategorieSichtbar = (a: Artikel) =>
+    sichtbareKatIds.length === 0 || (a.kategorieId !== null && sichtbareKatIds.includes(a.kategorieId))
+
+  // Editor-Zustand: null = wartet noch auf Kassen-Liste + Konfiguration
+  const [items, setItems] = useState<FavoritEintrag[] | null>(null)
   const [dirty, setDirty] = useState(false)
   const [suche, setSuche] = useState('')
+  const phZaehler = useRef(0)
 
-  // Externe Änderungen (neue/geänderte Artikel, anderswo gesetzte Favoriten)
-  // übernehmen, sobald die Artikelliste neu geladen wurde — dabei die aktuelle
-  // Bildschirm-Reihenfolge ERHALTEN (nur neue hinten anhängen, entfernte raus),
-  // damit ein laufendes/ungespeichertes Umsortieren nicht zurückspringt.
+  // Initial befüllen, sobald beide Queries da sind: Kassen-Liste geht vor;
+  // ohne eigene Liste die globalen ★-Favoriten als Startvorschlag.
   useEffect(() => {
-    if (dirty) return
-    const favs = alleArtikel.filter(a => a.istFavorit && a.aktiv)
-    const favById = new Map(favs.map(a => [a.id, a]))
-    setItems(prev => {
-      const behalten = prev.filter(p => favById.has(p.id)).map(p => favById.get(p.id)!)
-      const behaltenIds = new Set(behalten.map(k => k.id))
-      const neue = favs
-        .filter(a => !behaltenIds.has(a.id))
-        .sort((a, b) => a.favoritenReihenfolge - b.favoritenReihenfolge)
-      // Nur ersetzen, wenn sich der Bestand wirklich geändert hat (verhindert Render-Schleifen)
-      if (behalten.length === prev.length && neue.length === 0) return prev
-      return [...behalten, ...neue]
-    })
-  }, [alleArtikel, dirty])
+    if (items !== null || !favQuery.data || !posQuery.data) return
+    const katIds = posQuery.data.sichtbareKategorieIds
+    const sichtbar = (a: Artikel) =>
+      katIds.length === 0 || (a.kategorieId !== null && katIds.includes(a.kategorieId))
+    const byId = new Map(alleArtikel.map(a => [a.id, a] as const))
+    const kassenListe: FavoritEintrag[] = []
+    for (const e of favQuery.data.eintraege) {
+      if (e.artikelId === null) {
+        kassenListe.push({ key: `ph-${phZaehler.current++}`, artikel: null })
+      } else {
+        const a = byId.get(e.artikelId)
+        if (a) kassenListe.push({ key: a.id, artikel: a })
+      }
+    }
+    if (kassenListe.length > 0) { setItems(kassenListe); return }
+    const global = alleArtikel
+      .filter(a => a.istFavorit && a.aktiv && sichtbar(a))
+      .sort((a, b) => a.favoritenReihenfolge - b.favoritenReihenfolge || a.bezeichnung.localeCompare(b.bezeichnung))
+    setItems(global.map(a => ({ key: a.id, artikel: a })))
+  }, [items, favQuery.data, posQuery.data, alleArtikel])
 
   const preis = (c: number) => `€ ${(c / 100).toFixed(2).replace('.', ',')}`
 
-  const reihenfolge = useMutation({
-    mutationFn: (eintraege: { id: string; favoritenReihenfolge: number }[]) =>
-      artikelApi.updateFavoritenReihenfolge(eintraege),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['artikel'] }); setDirty(false) },
+  const speichern = useMutation({
+    mutationFn: (eintraege: { artikelId: string | null }[]) =>
+      posConfigApi.favoritenSpeichern(kasseId, eintraege),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['kasse-favoriten', kasseId] })
+      setDirty(false)
+    },
   })
 
-  // Favorit setzen/entfernen (istFavorit-Flag am Artikel)
-  const toggleFavorit = useMutation({
-    mutationFn: (v: { id: string; istFavorit: boolean; favoritenReihenfolge?: number }) =>
-      artikelApi.update(v.id, {
-        istFavorit: v.istFavorit,
-        ...(v.favoritenReihenfolge !== undefined && { favoritenReihenfolge: v.favoritenReihenfolge }),
-      }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['artikel'] }),
+  // „Artikel je Zeile" — gemeinsame Raster-Einstellung für Kasse + Kellner-App
+  const spalten = useMutation({
+    mutationFn: (n: number) => posConfigApi.update(kasseId, { artikelProZeile: n }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['pos-config', kasseId] }),
   })
 
   const hinzufuegen = (a: Artikel) => {
-    if (items.some(i => i.id === a.id)) return
-    const pos = items.length
-    setItems(prev => [...prev, { ...a, istFavorit: true, favoritenReihenfolge: pos }])
-    toggleFavorit.mutate({ id: a.id, istFavorit: true, favoritenReihenfolge: pos })
+    setItems(prev => (prev ?? []).some(i => i.artikel?.id === a.id) ? prev : [...(prev ?? []), { key: a.id, artikel: a }])
+    setDirty(true)
   }
 
-  const entfernen = (id: string) => {
-    setItems(prev => prev.filter(i => i.id !== id))
-    toggleFavorit.mutate({ id, istFavorit: false })
+  const platzhalterHinzufuegen = () => {
+    setItems(prev => [...(prev ?? []), { key: `ph-${phZaehler.current++}`, artikel: null }])
+    setDirty(true)
+  }
+
+  const entfernen = (key: string) => {
+    setItems(prev => (prev ?? []).filter(i => i.key !== key))
+    setDirty(true)
+  }
+
+  const verschieben = (idx: number, delta: number) => {
+    setItems(prev => prev ? arrayMove(prev, idx, idx + delta) : prev)
+    setDirty(true)
   }
 
   const handleDragEnd = (e: DragEndEvent) => {
     const { active, over } = e
     if (!over || active.id === over.id) return
     setItems(prev => {
-      const oldIdx = prev.findIndex(i => i.id === active.id)
-      const newIdx = prev.findIndex(i => i.id === over.id)
+      if (!prev) return prev
+      const oldIdx = prev.findIndex(i => i.key === active.id)
+      const newIdx = prev.findIndex(i => i.key === over.id)
       return arrayMove(prev, oldIdx, newIdx)
     })
     setDirty(true)
   }
 
-  // Wählbare Artikel: aktiv und noch nicht Favorit, optional per Suche gefiltert
+  const liste = items ?? []
+
+  // Wählbare Artikel: aktiv, an dieser Kasse sichtbar, noch nicht in der Liste
   const verfuegbar = alleArtikel
-    .filter(a => a.aktiv && !items.some(i => i.id === a.id))
+    .filter(a => a.aktiv && kategorieSichtbar(a) && !liste.some(i => i.artikel?.id === a.id))
     .filter(a => a.bezeichnung.toLowerCase().includes(suche.trim().toLowerCase()))
     .sort((a, b) => a.bezeichnung.localeCompare(b.bezeichnung))
 
+  if (items === null) {
+    return <div className="text-sm text-ink-subtle py-8 text-center">Laden…</div>
+  }
+
   return (
     <div className="space-y-6">
-      {/* Picker: Artikel zu Favoriten hinzufügen */}
+      <p className="text-xs text-ink-subtle">
+        Diese Favoritenliste gilt nur für die oben gewählte Kasse und wird dort
+        genau in dieser Anordnung angezeigt. Ohne gespeicherte Liste gelten die
+        globalen ★-Favoriten aus der Artikelverwaltung.
+      </p>
+
+      {/* Artikel je Zeile — gemeinsame Einstellung für Kasse + Kellner-App */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <h3 className="text-sm font-semibold text-ink">Artikel je Zeile</h3>
+        <div className="flex gap-1">
+          {[2, 3, 4, 5, 6].map(n => (
+            <button
+              key={n}
+              type="button"
+              onClick={() => spalten.mutate(n)}
+              disabled={spalten.isPending}
+              className={`w-9 h-9 rounded-lg text-sm font-semibold transition ${
+                artikelProZeile === n
+                  ? 'bg-brand-600 text-white'
+                  : 'bg-panel-2 text-ink-muted hover:text-ink'
+              }`}
+            >
+              {n}
+            </button>
+          ))}
+        </div>
+        <span className="text-xs text-ink-subtle">gilt für Kasse und Kellner-App gemeinsam</span>
+      </div>
+
+      {/* Picker: Artikel oder Platzhalter anhängen */}
       <div className="space-y-2">
-        <h3 className="text-sm font-semibold text-ink">Artikel hinzufügen</h3>
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold text-ink">Hinzufügen</h3>
+          <button
+            type="button"
+            onClick={platzhalterHinzufuegen}
+            className="rounded-full border border-dashed border-line-strong px-3 py-1.5 text-xs text-ink-muted hover:border-brand-400 hover:text-ink transition"
+          >
+            + Platzhalter (leere Kachel)
+          </button>
+        </div>
         <input
           value={suche}
           onChange={e => setSuche(e.target.value)}
@@ -514,7 +614,7 @@ function TabFavoriten({ alleArtikel }: { alleArtikel: Artikel[] }) {
         />
         {verfuegbar.length === 0 ? (
           <p className="text-xs text-ink-subtle py-2">
-            {suche.trim() ? 'Kein passender Artikel.' : 'Alle aktiven Artikel sind bereits Favoriten.'}
+            {suche.trim() ? 'Kein passender Artikel.' : 'Alle an dieser Kasse sichtbaren Artikel sind bereits in der Liste.'}
           </p>
         ) : (
           <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto pr-1">
@@ -535,53 +635,82 @@ function TabFavoriten({ alleArtikel }: { alleArtikel: Artikel[] }) {
         )}
       </div>
 
-      {/* Favoriten: Reihenfolge (Drag & Drop) + Entfernen */}
+      {/* Vorschau-Raster in Kassen-Optik: Ziehen zum Anordnen, ‹ › ✕ je Kachel */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-ink">
-            Favoriten <span className="font-normal text-ink-subtle">({items.length})</span>
+            Favoriten dieser Kasse <span className="font-normal text-ink-subtle">({liste.filter(i => i.artikel !== null).length})</span>
           </h3>
           {dirty && (
             <Button
-              onClick={() => reihenfolge.mutate(items.map((a, i) => ({ id: a.id, favoritenReihenfolge: i })))}
-              loading={reihenfolge.isPending}>
-              Reihenfolge speichern
+              onClick={() => speichern.mutate(liste.map(i => ({ artikelId: i.artikel?.id ?? null })))}
+              loading={speichern.isPending}>
+              Favoriten speichern
             </Button>
           )}
         </div>
 
-        {items.length === 0 ? (
+        {liste.length === 0 ? (
           <div className="rounded-lg border-2 border-dashed border-line p-8 text-center">
-            <p className="text-sm text-ink-subtle">Noch keine Favoriten.</p>
+            <p className="text-sm text-ink-subtle">Noch keine Favoriten für diese Kasse.</p>
             <p className="mt-1 text-xs text-ink-subtle">Oben Artikel auswählen, dann per Ziehen anordnen.</p>
           </div>
         ) : (
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-            <SortableContext items={items.map(a => a.id)} strategy={verticalListSortingStrategy}>
-              <div className="space-y-2">
-                {items.map((a, i) => (
-                  <SortableItem key={a.id} id={a.id}
-                    onMoveUp={() => { setItems(prev => arrayMove(prev, i, i - 1)); setDirty(true) }}
-                    onMoveDown={() => { setItems(prev => arrayMove(prev, i, i + 1)); setDirty(true) }}
-                    istErster={i === 0} istLetzter={i === items.length - 1}>
-                    {(handle) => (
-                      <div className="flex items-center gap-3 rounded-xl border border-line bg-panel px-3 py-2.5 shadow-sm">
-                        {handle}
-                        <span className="text-amber-400">★</span>
-                        <span className="flex-1 text-sm font-medium text-ink">{a.bezeichnung}</span>
-                        <span className="text-xs text-ink-subtle font-mono tabular-nums">{preis(a.preisBruttoCent)}</span>
-                        <button
-                          type="button"
-                          onClick={() => entfernen(a.id)}
-                          title="Aus Favoriten entfernen"
-                          className="text-ink-subtle hover:text-red-500 text-lg leading-none px-1"
-                        >
-                          ×
-                        </button>
-                      </div>
-                    )}
-                  </SortableItem>
-                ))}
+            <SortableContext items={liste.map(i => i.key)} strategy={rectSortingStrategy}>
+              <div
+                className="grid gap-1.5"
+                style={{ gridTemplateColumns: `repeat(${artikelProZeile}, minmax(0, 1fr))` }}
+              >
+                {liste.map((eintrag, i) => {
+                  const a = eintrag.artikel
+                  const farbe    = a ? (a.farbe ?? (a.kategorieId ? farbeProKategorie.get(a.kategorieId) : undefined)) : undefined
+                  const farbeHex = farbe ? KATEGORIE_FARBE_HEX[farbe as KategorieFarbe] : undefined
+                  // Bedienleiste je Kachel; onPointerDown stoppen, damit kein Drag startet
+                  const leiste = (
+                    <div className="flex items-center justify-end gap-0.5 border-t border-line bg-panel-2/60 px-1 py-0.5">
+                      <button type="button" aria-label="Nach vorne" disabled={i === 0}
+                        onPointerDown={e => e.stopPropagation()} onClick={() => verschieben(i, -1)}
+                        className="w-6 h-6 rounded text-ink-muted hover:text-brand-600 hover:bg-panel disabled:opacity-25 text-sm leading-none">‹</button>
+                      <button type="button" aria-label="Nach hinten" disabled={i === liste.length - 1}
+                        onPointerDown={e => e.stopPropagation()} onClick={() => verschieben(i, 1)}
+                        className="w-6 h-6 rounded text-ink-muted hover:text-brand-600 hover:bg-panel disabled:opacity-25 text-sm leading-none">›</button>
+                      <button type="button" aria-label="Entfernen"
+                        onPointerDown={e => e.stopPropagation()} onClick={() => entfernen(eintrag.key)}
+                        className="w-6 h-6 rounded text-ink-subtle hover:text-red-500 hover:bg-panel text-sm leading-none">✕</button>
+                    </div>
+                  )
+                  return (
+                    <SortableKachel key={eintrag.key} id={eintrag.key}>
+                      {a === null ? (
+                        // Platzhalter: graue, gesperrte Kachel — so sieht sie auch an der Kasse aus
+                        <div className="rounded-lg border border-dashed border-line bg-panel-2/60 overflow-hidden flex flex-col">
+                          <div className="flex-1 min-h-[3.5rem] flex items-center justify-center">
+                            <span className="text-[10px] text-ink-subtle">Platzhalter</span>
+                          </div>
+                          {leiste}
+                        </div>
+                      ) : (
+                        <div className="rounded-lg border border-line bg-panel shadow-sm overflow-hidden flex flex-col">
+                          {/* Farbiger Akzent oben wie an der Kasse */}
+                          <div className="h-1.5 w-full" style={{ backgroundColor: farbeHex ?? 'var(--color-brand-500, #16a34a)' }} />
+                          {artikelbilder && a.bild && (
+                            <div className="w-full h-16 overflow-hidden bg-panel-2">
+                              <img src={a.bild} alt="" className="w-full h-full object-cover" loading="lazy" />
+                            </div>
+                          )}
+                          <div className="p-2 flex-1">
+                            <p className="text-xs font-medium text-ink line-clamp-2 min-h-[2rem] leading-tight">
+                              {a.bezeichnung}
+                            </p>
+                            <p className="mt-1 text-xs font-semibold text-brand-600">{preis(a.preisBruttoCent)}</p>
+                          </div>
+                          {leiste}
+                        </div>
+                      )}
+                    </SortableKachel>
+                  )
+                })}
               </div>
             </SortableContext>
           </DndContext>
@@ -927,9 +1056,9 @@ export function PosKonfigPage() {
             ))}
           </div>
           <p className="text-xs text-ink-subtle">
-            Warengruppen-Sichtbarkeit, Zahlungsarten und Kellner-App gelten je Kasse —
-            hier die Kasse wählen, für die die Einstellungen gelten sollen.
-            Reihenfolgen und Favoriten sind global.
+            Warengruppen-Sichtbarkeit, Favoriten, Zahlungsarten und Kellner-App gelten
+            je Kasse — hier die Kasse wählen, für die die Einstellungen gelten sollen.
+            Reihenfolgen sind global.
           </p>
         </div>
       )}
@@ -962,7 +1091,7 @@ export function PosKonfigPage() {
             <TabArtikel kategorien={kategorien} alleArtikel={alleArtikel} />
           )}
           {aktuellerTab === 'favoriten' && (
-            <TabFavoriten alleArtikel={alleArtikel} />
+            <TabFavoriten key={gewaehlteKasseId} alleArtikel={alleArtikel} kategorien={kategorien} kasseId={gewaehlteKasseId} />
           )}
           {aktuellerTab === 'zahlungsarten' && (
             <TabZahlungsarten key={gewaehlteKasseId} kasseId={gewaehlteKasseId} />

@@ -186,6 +186,8 @@ export const kassen = pgTable('kassen', {
   erlaubteZahlungsarten: jsonb('erlaubte_zahlungsarten').notNull().default(['bar', 'karte', 'sonstige']),
   /** Artikelbilder im Kassen-Raster anzeigen */
   artikelbilderAktiv:    boolean('artikel_bilder_aktiv').notNull().default(true),
+  /** Artikel je Zeile im Kachel-Raster — gilt für Kasse, Kellner-App und Favoriten-Editor */
+  artikelProZeile:       integer('artikel_pro_zeile').notNull().default(4),
   /** Startseite nach Login: tische | kasse | kasse_favoriten | dashboard */
   startseite:            varchar('startseite', { length: 20 }).notNull().default('tische'),
   /** Kellner-App: Betriebsart — tische | theke (Direktverkauf ohne Tische) */
@@ -709,6 +711,23 @@ export const kassekategorieSichtbarkeit = pgTable('kasse_kategorie_sichtbarkeit'
 }, (t) => ({
   pk:       primaryKey({ columns: [t.kasseId, t.kategorieId] }),
   kasseIdx: index('kks_kasse_idx').on(t.kasseId),
+}))
+
+/**
+ * Favoriten je Kasse mit fester Reihenfolge. artikelId NULL = Platzhalter
+ * (graue, gesperrte Kachel zum Auffüllen des Rasters). Existiert für eine
+ * Kasse KEIN Eintrag, gelten (abwärtskompatibel) die globalen istFavorit-
+ * Artikel in favoritenReihenfolge.
+ */
+export const kasseFavoriten = pgTable('kasse_favoriten', {
+  id:        uuid('id').primaryKey().defaultRandom(),
+  mandantId: uuid('mandant_id').notNull().references(() => mandanten.id),
+  kasseId:   uuid('kasse_id').notNull().references(() => kassen.id, { onDelete: 'cascade' }),
+  position:  integer('position').notNull(),
+  /** NULL = Platzhalter */
+  artikelId: uuid('artikel_id').references(() => artikel.id, { onDelete: 'cascade' }),
+}, (t) => ({
+  kasseIdx: index('kasse_favoriten_kasse_idx').on(t.kasseId),
 }))
 
 /**
