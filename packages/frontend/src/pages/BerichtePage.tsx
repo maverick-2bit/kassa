@@ -114,7 +114,11 @@ const TABS: [BerichtTab, string][] = [
 ]
 
 export function BerichtePage() {
-  const [aktTab, setAktTab] = useState<BerichtTab>('gesamtumsatz')
+  // ?tab=kueche etc. — Deep-Link vom Dashboard (Küchen-Laufzeiten-Karte)
+  const [aktTab, setAktTab] = useState<BerichtTab>(() => {
+    const t = new URLSearchParams(window.location.search).get('tab')
+    return TABS.some(([tab]) => tab === t) ? (t as BerichtTab) : 'gesamtumsatz'
+  })
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 sm:py-8 space-y-6">
@@ -2315,6 +2319,104 @@ function KuechenBericht() {
   )
 }
 
+/** Stationsfarben — identisch zur KDS-App, damit Bericht und Bildschirm zusammenpassen. */
+const KDS_STATION_FARBEN: Record<string, string> = {
+  kueche: '#ef4444', schank: '#3b82f6', kalte_kueche: '#06b6d4', dessert: '#a855f7',
+}
+
+/**
+ * Ø-Zubereitungszeit im Zeitverlauf, eine Linie je Station (SVG, ohne Chart-Lib).
+ * Buckets kommen sortiert vom Backend ('YYYY-MM-DD( HH:00)').
+ */
+function KuechenVerlaufChart({ data }: { data: KuechenBerichtResponse }) {
+  const buckets = [...new Set(data.verlauf.map(v => v.zeitpunkt))].sort()
+  if (buckets.length < 2) return null   // eine Stützstelle ergibt keine Linie
+
+  const stationen = [...new Set(data.verlauf.map(v => v.station))]
+  const maxMin    = Math.max(...data.verlauf.map(v => v.avgMinuten), 1)
+  const yMax      = Math.ceil(maxMin * 1.15)
+
+  const B = { l: 44, r: 12, t: 10, b: 26 }          // Ränder für Achsen-Beschriftung
+  const W = 720, H = 240
+  const x = (i: number)   => B.l + (i / (buckets.length - 1)) * (W - B.l - B.r)
+  const y = (min: number) => H - B.b - (min / yMax) * (H - B.t - B.b)
+
+  const label = (zp: string) =>
+    data.granularitaet === 'stunde'
+      ? zp.slice(11, 16)                                       // 'HH:00'
+      : `${zp.slice(8, 10)}.${zp.slice(5, 7)}.`                // 'TT.MM.'
+  // Höchstens ~8 X-Beschriftungen, sonst überlappen sie
+  const schritt = Math.max(1, Math.ceil(buckets.length / 8))
+
+  const proStation = new Map(stationen.map(s => [s, new Map(
+    data.verlauf.filter(v => v.station === s).map(v => [v.zeitpunkt, v] as const),
+  )]))
+
+  const stationName = (s: string) => (STATION_LABELS as Record<string, string>)[s as Station] ?? s
+
+  return (
+    <div className="rounded-lg border border-line bg-panel p-4">
+      <h3 className="text-sm font-semibold text-ink mb-1">Ø Zubereitungszeit im Verlauf</h3>
+      <p className="text-xs text-ink-subtle mb-3">
+        {data.granularitaet === 'stunde' ? 'stundenweise' : 'tageweise'} · Minuten je Station
+      </p>
+      <div className="overflow-x-auto">
+        <svg viewBox={`0 0 ${W} ${H}`} className="w-full min-w-[560px]" role="img">
+          {/* Y-Raster + Beschriftung */}
+          {[0, 0.25, 0.5, 0.75, 1].map(f => {
+            const wert = Math.round(yMax * f * 10) / 10
+            return (
+              <g key={f}>
+                <line x1={B.l} x2={W - B.r} y1={y(wert)} y2={y(wert)} stroke="currentColor" className="text-line" strokeWidth={1} />
+                <text x={B.l - 6} y={y(wert) + 4} textAnchor="end" fontSize={11} fill="currentColor" className="text-ink-muted">
+                  {wert.toLocaleString('de-AT')}
+                </text>
+              </g>
+            )
+          })}
+          {/* X-Beschriftung */}
+          {buckets.map((b, i) => (i % schritt === 0 || i === buckets.length - 1) && (
+            <text key={b} x={x(i)} y={H - 8} textAnchor="middle" fontSize={11} fill="currentColor" className="text-ink-muted">
+              {label(b)}
+            </text>
+          ))}
+          {/* Eine Linie je Station */}
+          {stationen.map(s => {
+            const werte = proStation.get(s)!
+            const punkte = buckets
+              .map((b, i) => ({ i, v: werte.get(b) }))
+              .filter((p): p is { i: number; v: (typeof data.verlauf)[number] } => !!p.v)
+            if (punkte.length === 0) return null
+            const farbe = KDS_STATION_FARBEN[s] ?? '#6b7280'
+            return (
+              <g key={s}>
+                <polyline
+                  points={punkte.map(p => `${x(p.i)},${y(p.v.avgMinuten)}`).join(' ')}
+                  fill="none" stroke={farbe} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round"
+                />
+                {punkte.map(p => (
+                  <circle key={p.v.zeitpunkt} cx={x(p.i)} cy={y(p.v.avgMinuten)} r={3.5} fill={farbe}>
+                    <title>{`${stationName(s)} · ${label(p.v.zeitpunkt)} · Ø ${p.v.avgMinuten.toFixed(1).replace('.', ',')} min (${p.v.anzahlBons} Bons)`}</title>
+                  </circle>
+                ))}
+              </g>
+            )
+          })}
+        </svg>
+      </div>
+      {/* Legende */}
+      <div className="mt-2 flex flex-wrap gap-3">
+        {stationen.map(s => (
+          <span key={s} className="inline-flex items-center gap-1.5 text-xs text-ink-muted">
+            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: KDS_STATION_FARBEN[s] ?? '#6b7280' }} />
+            {stationName(s)}
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function KuechenBerichtAnzeige({ data }: { data: KuechenBerichtResponse }) {
   if (data.gesamtBons === 0 && data.offeneBons === 0) {
     return <p className="text-sm text-ink-muted">Keine KDS-Bons in diesem Zeitraum. (Die Durchlaufzeit wird seit v0.7.117 beim Erledigen erfasst — ältere Bons erscheinen hier nicht.)</p>
@@ -2339,6 +2441,8 @@ function KuechenBerichtAnzeige({ data }: { data: KuechenBerichtResponse }) {
           </div>
         ))}
       </div>
+
+      <KuechenVerlaufChart data={data} />
 
       {data.stationen.length > 0 && (
         <div className="rounded-lg border border-line bg-panel overflow-hidden">

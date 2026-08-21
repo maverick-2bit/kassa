@@ -95,22 +95,24 @@ export function BonKarte({ bon, token, onErledigt }: BonKarteProps) {
   }, [bon.id, token, onErledigt])
 
   /**
-   * Direkt-Erledigen per Antippen (Normalmodus): ein Tipp auf die Zeile
-   * schließt die offene Restmenge dieser Position ab — ohne den Umweg
-   * Teilbon-Modus → Menge wählen → Senden. Ist damit alles erledigt,
-   * schließt das Backend den Bon von selbst (Status 'erledigt' + SSE).
-   * Für Teilmengen (2 von 5 fertig) bleibt der Teilbon-Modus.
+   * Direkt-Erledigen per Antippen (Normalmodus): ein Tipp = EIN Stück dieser
+   * Position fertig (bei 3× dreimal tippen) — ohne den Umweg Teilbon-Modus →
+   * Menge wählen → Senden. Jede Buchung druckt den Runner-Beleg („Teil der
+   * Bestellung" + Rest). Ist alles erledigt, schließt das Backend den Bon von
+   * selbst. Für ganze Sätze auf einmal bleibt der Teilbon-Modus.
    */
   const handlePositionTipp = useCallback(async (pos: KdsPosition) => {
     const offen = offeneMenge(pos)
     if (pos.erledigt || offen <= 0 || loading) return
     setLoading(true)
     try {
-      await bonTeilbon(bon.id, [{ id: pos.id, menge: offen }], token)
+      await bonTeilbon(bon.id, [{ id: pos.id, menge: 1 }], token)
       setPositionen(prev => {
-        const next = prev.map(p =>
-          p.id === pos.id ? { ...p, erledigtMenge: p.menge, erledigt: true } : p,
-        )
+        const next = prev.map(p => {
+          if (p.id !== pos.id) return p
+          const neueErledigtMenge = (p.erledigtMenge ?? 0) + 1
+          return { ...p, erledigtMenge: neueErledigtMenge, erledigt: neueErledigtMenge >= p.menge }
+        })
         if (next.every(p => p.erledigt)) onErledigt(bon.id)
         return next
       })

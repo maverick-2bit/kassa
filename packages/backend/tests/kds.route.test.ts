@@ -228,8 +228,11 @@ describe('POST /api/kds/bon/:id/erledigt', () => {
   })
 
   it('200 bei erfolgreichem Abschluss', async () => {
+    // Zwei Selects: (1) Vorab-Lesen für den Runner-Beleg (was ist noch offen?),
+    // (2) das Lesen im Service selbst. Danach greifen pruefeSbBereit und der
+    // Bonierdrucker-Lookup ins Leere (leere Queue = keine Treffer) — unkritisch.
     const srv = await buildTestServer(mockDb({
-      selects: [[bonRow()]],
+      selects: [[bonRow()], [bonRow()]],
       updates: [[bonRow({ status: 'erledigt' })]],
     }))
     const res = await srv.fastify.inject({

@@ -12,7 +12,7 @@
 
 import { useQuery, useQueries } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import type { ArtikelBerichtResponse, BerichtGesamt, Artikel } from '@kassa/shared'
+import { STATION_LABELS, type ArtikelBerichtResponse, type BerichtGesamt, type Artikel, type Station } from '@kassa/shared'
 import { berichtApi, kasseApi, tischTabApi, artikelApi, offenerPostenApi, kdsApi } from '../lib/api'
 import { useServerHost } from '../lib/serverHost'
 import { getAuth, hasBerechtigung, hasModul } from '../lib/auth'
@@ -135,6 +135,9 @@ export function DashboardPage() {
         </div>
       )}
 
+      {/* KDS-Laufzeiten heute (nur wenn es heute Bons gibt) */}
+      <KuechenLaufzeitenWidget datum={datum} />
+
       {/* Lagerstand-Warnungen */}
       {hasBerechtigung('artikel.verwalten') && (
         <LagerstandWarnungen mandantId={auth.mandant.id} />
@@ -142,6 +145,58 @@ export function DashboardPage() {
 
       {/* Stundenaufriss für heute */}
       <StundenVerlauf datum={datum} />
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// KDS-Laufzeiten heute — Ø Zubereitungszeit je Station
+// ---------------------------------------------------------------------------
+
+const KDS_STATION_FARBEN: Record<string, string> = {
+  kueche: '#ef4444', schank: '#3b82f6', kalte_kueche: '#06b6d4', dessert: '#a855f7',
+}
+
+function KuechenLaufzeitenWidget({ datum }: { datum: string }) {
+  const { data } = useQuery({
+    queryKey:        ['dashboard-kueche', datum],
+    queryFn:         () => berichtApi.kueche({ von: datum, bis: datum }),
+    refetchInterval: 60_000,
+  })
+
+  // Ohne Bons heute keine leere Karte anzeigen (z. B. Betrieb ohne KDS)
+  if (!data || (data.gesamtBons === 0 && data.offeneBons === 0)) return null
+
+  const fmtMin = (m: number) => `${m.toFixed(1).replace('.', ',')} min`
+  const stationName = (s: string) => (STATION_LABELS as Record<string, string>)[s as Station] ?? s
+
+  return (
+    <div className="rounded-lg border border-line bg-panel p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-sm font-semibold text-ink">Küche/Schank heute — Ø Zubereitungszeit</h2>
+        <Link to="/berichte?tab=kueche" className="text-xs text-brand-600 hover:text-brand-700 font-medium">
+          Zur Auswertung →
+        </Link>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {data.stationen.map(s => (
+          <div key={s.station} className="rounded-lg bg-panel-2 p-3">
+            <p className="flex items-center gap-1.5 text-xs text-ink-muted">
+              <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: KDS_STATION_FARBEN[s.station] ?? '#6b7280' }} />
+              {stationName(s.station)}
+            </p>
+            <p className="mt-1 text-lg font-bold text-ink">{fmtMin(s.avgMinuten)}</p>
+            <p className="text-xs text-ink-subtle">{s.anzahlBons} Bons</p>
+          </div>
+        ))}
+        {data.offeneBons > 0 && (
+          <div className="rounded-lg bg-amber-50 border border-amber-200 p-3">
+            <p className="text-xs text-amber-700">Noch offen</p>
+            <p className="mt-1 text-lg font-bold text-amber-800">{data.offeneBons}</p>
+            <p className="text-xs text-amber-700">Bons in Arbeit</p>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

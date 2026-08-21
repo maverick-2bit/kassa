@@ -721,6 +721,28 @@ export async function holeKuechenBericht(
     WHERE mandant_id = ${mandantId} AND status = 'offen' AND ${zeitraum}
   `)
 
+  // Ø-Zubereitungszeit im Zeitverlauf je Station: Ein-Tages-Zeitraum
+  // stundenweise, sonst tageweise. 'YYYY-MM-DD( HH24:00)' sortiert
+  // lexikografisch chronologisch — der Frontend-Chart braucht keine Datums-Logik.
+  const proStunde = filter.von === filter.bis
+  type VerlaufRow = { t: string; station: string; anzahl: string; avg_min: string }
+  const verlaufRows = await deps.db.execute<VerlaufRow>(sql`
+    SELECT
+      to_char(
+        date_trunc(${sql.raw(proStunde ? `'hour'` : `'day'`)}, erstellt_at AT TIME ZONE 'Europe/Vienna'),
+        ${sql.raw(proStunde ? `'YYYY-MM-DD HH24:00'` : `'YYYY-MM-DD'`)}
+      )                                                                          AS t,
+      station,
+      COUNT(*)::int                                                              AS anzahl,
+      (AVG(EXTRACT(EPOCH FROM (erledigt_at - erstellt_at))) / 60)::numeric(10,1) AS avg_min
+    FROM kds_bons
+    WHERE mandant_id = ${mandantId}
+      AND status = 'erledigt' AND erledigt_at IS NOT NULL
+      AND ${zeitraum}
+    GROUP BY t, station
+    ORDER BY t, station
+  `)
+
   const stationen = [...stationRows].map(r => ({
     station:       r.station,
     anzahlBons:    parseInt(r.anzahl, 10),
@@ -749,6 +771,13 @@ export async function holeKuechenBericht(
     stunden: [...stundenRows].map(r => ({
       stunde:     parseInt(r.stunde, 10),
       anzahlBons: parseInt(r.anzahl, 10),
+    })),
+    granularitaet: proStunde ? 'stunde' as const : 'tag' as const,
+    verlauf: [...verlaufRows].map(r => ({
+      zeitpunkt:  r.t,
+      station:    r.station,
+      anzahlBons: parseInt(r.anzahl, 10),
+      avgMinuten: parseFloat(r.avg_min),
     })),
   }
 }

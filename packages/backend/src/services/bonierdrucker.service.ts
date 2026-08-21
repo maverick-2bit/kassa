@@ -158,6 +158,109 @@ function baueBonierbon(tischNummer: string, kellner: string, zeilen: Bonierdruck
   return Buffer.concat(parts)
 }
 
+// ---------------------------------------------------------------------------
+// Erledigt-Bon (Runner-Beleg): druckt beim (Teil-)Erledigen am KDS.
+// Bei aktivem KDS schweigt der Bonierdrucker beim Bestellen — die Küche
+// arbeitet am Bildschirm; der Papierbon entsteht erst, wenn etwas FERTIG ist,
+// und dient dem Runner als Laufzettel.
+// ---------------------------------------------------------------------------
+
+export interface ErledigtBonInhalt {
+  tischNummer: string
+  kellner:     string
+  /** Gerade fertig gewordene Positionen — groß gedruckt */
+  fertig:      BonierdruckZeile[]
+  /** Noch offene Rest-Positionen (klein) — leer = Bestellung komplett */
+  rest:        BonierdruckZeile[]
+}
+
+function baueErledigtBon(inhalt: ErledigtBonInhalt): Buffer {
+  const ESC = 0x1b
+  const parts: Buffer[] = []
+  const add = (data: number[] | Buffer | string) => {
+    if (typeof data === 'string') parts.push(Buffer.from(data, 'utf8'))
+    else parts.push(Buffer.from(data))
+  }
+
+  const teil = inhalt.rest.length > 0
+
+  add([ESC, 0x40])
+  add([ESC, 0x61, 0x01])
+  // Kopf unübersehbar: invertiert + fett/doppelhoch
+  add([0x1d, 0x42, 0x01])
+  add([ESC, 0x21, 0x18])
+  add(teil ? 'TEIL DER BESTELLUNG\n' : 'BESTELLUNG KOMPLETT\n')
+  add([0x1d, 0x42, 0x00])
+  add([ESC, 0x21, 0x18])
+  add(`Tisch ${inhalt.tischNummer}\n`)
+  add([ESC, 0x21, 0x00])
+  add(`${inhalt.kellner}  ${new Date().toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' })}\n`)
+  add('--------------------------------\n')
+  add([ESC, 0x61, 0x00])
+  // Fertige Positionen groß + fett
+  add([ESC, 0x21, 0x18])
+  for (const z of inhalt.fertig) {
+    add(`${z.menge}x ${z.bezeichnung}\n`)
+  }
+  add([ESC, 0x21, 0x00])
+  if (teil) {
+    // Der Runner soll dem Gast sagen können, was noch nachkommt
+    add('--------------------------------\n')
+    add([ESC, 0x21, 0x08])
+    add('Es folgt noch:\n')
+    add([ESC, 0x21, 0x00])
+    for (const z of inhalt.rest) {
+      add(`  ${z.menge}x ${z.bezeichnung}\n`)
+    }
+  }
+  add('--------------------------------\n')
+  add(ep.cut())
+  return Buffer.concat(parts)
+}
+
+/**
+ * Druckt den Erledigt-Bon an ALLE aktiven Nicht-Backup-Bonierdrucker
+ * (Muster kdsBonNachdrucken), je Drucker mit Fallback-Versuch.
+ */
+export async function druckeErledigtBon(
+  db:        Db,
+  mandantId: string,
+  inhalt:    ErledigtBonInhalt,
+): Promise<{ gedruckt: number; fehler: number }> {
+  const drucker = await db
+    .select()
+    .from(bonierdrucker)
+    .where(and(
+      eq(bonierdrucker.mandantId, mandantId),
+      eq(bonierdrucker.aktiv, true),
+      eq(bonierdrucker.istBackup, false),
+    ))
+
+  const bon = baueErledigtBon(inhalt)
+  let gedruckt = 0
+  let fehler   = 0
+  for (const d of drucker) {
+    try {
+      try {
+        await sendTcp(d.ip, d.port, bon)
+      } catch (primaerFehler) {
+        if (!d.fallbackId) throw primaerFehler
+        const [fallback] = await db
+          .select()
+          .from(bonierdrucker)
+          .where(and(eq(bonierdrucker.id, d.fallbackId), eq(bonierdrucker.mandantId, mandantId)))
+          .limit(1)
+        if (!fallback?.aktiv) throw primaerFehler
+        await sendTcp(fallback.ip, fallback.port, bon)
+      }
+      gedruckt++
+    } catch {
+      fehler++
+    }
+  }
+  return { gedruckt, fehler }
+}
+
 function sendTcp(ip: string, port: number, bon: Buffer): Promise<void> {
   // sendBytes schließt die Verbindung sauber (flush + socket.end); ein abruptes
   // socket.destroy() direkt nach dem Schreiben verwirft die Bytes am Drucker.
