@@ -153,6 +153,11 @@ export function TischTabPage() {
     queryFn:  () => posConfigApi.get(identity.kasseId),
   })
 
+  const favoritenQuery = useQuery({
+    queryKey: ['kasse-favoriten', identity.kasseId],
+    queryFn:  () => posConfigApi.favoriten(identity.kasseId),
+  })
+
   const artikelGruppenMap = useMemo<Map<string, ModifikatorGruppe[]>>(() => {
     const gruppen     = modGruppenQuery.data ?? []
     const zuweisungen = modZuweisungenQuery.data ?? []
@@ -733,8 +738,11 @@ export function TischTabPage() {
               artikelGruppen={artikelGruppenMap}
               onArtikelClick={addArtikel}
               loading={artikelQuery.isLoading}
+              sichtbareKategorieIds={posConfigQuery.data?.sichtbareKategorieIds}
               artikelbilderAktiv={posConfigQuery.data?.artikelbilderAktiv ?? true}
               aktionen={aktionenProArtikel}
+              favoritenEintraege={favoritenQuery.data?.eintraege}
+              artikelProZeile={posConfigQuery.data?.artikelProZeile}
             />
           </div>
         </section>

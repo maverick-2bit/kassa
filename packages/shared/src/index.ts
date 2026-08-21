@@ -226,6 +226,8 @@ export {
   BelegModusEnum,
   KellnerTischwahlEnum,
   KellnerModusEnum,
+  KasseFavoritEintragSchema,
+  KasseFavoritenUpdateSchema,
   ReihenfolgeUpdateSchema,
   FavoritenReihenfolgeUpdateSchema,
 } from './schemas/bonierdrucker.js'
@@ -239,6 +241,8 @@ export type {
   BelegModus,
   KellnerTischwahl,
   KellnerModus,
+  KasseFavoritEintrag,
+  KasseFavoritenUpdate,
   ReihenfolgeUpdate,
   FavoritenReihenfolgeUpdate,
 } from './schemas/bonierdrucker.js'

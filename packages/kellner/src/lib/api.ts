@@ -101,11 +101,22 @@ export interface KellnerKonfig {
   kellnerModus:          KellnerModus
   kellnerTischwahl:      KellnerTischwahl
   kellnerFavoritenAktiv: boolean
+  /** Artikel je Zeile im Kachel-Raster — gemeinsame Einstellung mit der stationären Kasse */
+  artikelProZeile:       number
+  /** An dieser Kasse sichtbare Warengruppen (leer = alle) */
+  sichtbareKategorieIds: string[]
+}
+
+/** Favoriten-Eintrag dieser Kasse; artikelId null = Platzhalter (graue Kachel). */
+export interface KasseFavoritEintrag {
+  artikelId: string | null
 }
 
 export const kellnerKonfigApi = {
   get: (kasseId: string) =>
     request<KellnerKonfig>('GET', `/api/kassen/${kasseId}/pos-config`),
+  favoriten: (kasseId: string) =>
+    request<{ eintraege: KasseFavoritEintrag[] }>('GET', `/api/kassen/${kasseId}/favoriten`),
 }
 
 export const tischplanApi = {

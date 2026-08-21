@@ -81,6 +81,8 @@ export const PosKonfigSchema = z.object({
   erlaubteZahlungsarten: z.array(z.enum(['bar', 'karte', 'sonstige'])),
   /** Artikelbilder im Kassen-Raster anzeigen (default: true) */
   artikelbilderAktiv:    z.boolean(),
+  /** Artikel je Zeile im Kachel-Raster — Kasse, Kellner-App und Favoriten-Editor gemeinsam */
+  artikelProZeile:       z.number().int().min(2).max(6),
   /** Startseite nach Login */
   startseite:            StartseitenEnum,
   /** Kellner-App: Betriebsart (Tische vs. Theken-Direktverkauf) */
@@ -97,6 +99,7 @@ export const PosKonfigUpdateSchema = z.object({
   sichtbareBonierdruckerIds: z.array(z.string().uuid()).optional(),
   erlaubteZahlungsarten: z.array(z.enum(['bar', 'karte', 'sonstige'])).optional(),
   artikelbilderAktiv:    z.boolean().optional(),
+  artikelProZeile:       z.number().int().min(2).max(6).optional(),
   startseite:            StartseitenEnum.optional(),
   kellnerModus:          KellnerModusEnum.optional(),
   kellnerTischwahl:      KellnerTischwahlEnum.optional(),
@@ -107,6 +110,20 @@ export type PosKonfigUpdate = z.infer<typeof PosKonfigUpdateSchema>
 // ---------------------------------------------------------------------------
 // Reihenfolge-Update (Bulk)
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Favoriten je Kasse (artikelId null = Platzhalter — graue, gesperrte Kachel)
+// ---------------------------------------------------------------------------
+
+export const KasseFavoritEintragSchema = z.object({
+  artikelId: z.string().uuid().nullable(),
+})
+export type KasseFavoritEintrag = z.infer<typeof KasseFavoritEintragSchema>
+
+export const KasseFavoritenUpdateSchema = z.object({
+  eintraege: z.array(KasseFavoritEintragSchema).max(200),
+})
+export type KasseFavoritenUpdate = z.infer<typeof KasseFavoritenUpdateSchema>
 
 export const ReihenfolgeUpdateSchema = z.object({
   /** Array von { id, reihenfolge } — wird als Bulk-Update angewendet */

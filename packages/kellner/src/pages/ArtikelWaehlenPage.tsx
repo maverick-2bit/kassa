@@ -75,6 +75,13 @@ export function ArtikelWaehlenPage() {
     staleTime: 30_000,
   })
 
+  // Favoriten dieser Kasse (mit Platzhaltern); leer = globale istFavorit-Liste
+  const favoritenQuery = useQuery({
+    queryKey:  ['kasse-favoriten', identity.kasseId],
+    queryFn:   () => kellnerKonfigApi.favoriten(identity.kasseId),
+    staleTime: 30_000,
+  })
+
   // Tisch-Info für die Kopfzeile (teilt den Cache mit der Tab-Seite)
   const tabQuery = useQuery({
     queryKey:  ['tisch-tab', tabId],
@@ -83,22 +90,37 @@ export function ArtikelWaehlenPage() {
     staleTime: 10_000,
   })
 
-  const kategorien  = katQuery.data ?? []
+  const sichtbareKatIds = konfigQuery.data?.sichtbareKategorieIds ?? []
+  // Warengruppen-Sichtbarkeit dieser Kasse (leer = alle) — wie an der stationären Kasse
+  const kategorien  = (katQuery.data ?? []).filter(k =>
+    sichtbareKatIds.length === 0 || sichtbareKatIds.includes(k.id))
   const alleArtikel = artikelQuery.data ?? []
 
-  const favoriten = alleArtikel
-    .filter(a => a.istFavorit)
-    .sort((a, b) => a.favoritenReihenfolge - b.favoritenReihenfolge)
-  const favoritenAktiv = (konfigQuery.data?.kellnerFavoritenAktiv ?? false) && favoriten.length > 0
+  // Nur Favoriten aus Warengruppen, die an dieser Kasse sichtbar sind
+  const kategorieSichtbar = (a: Artikel) =>
+    sichtbareKatIds.length === 0 || (a.kategorieId !== null && sichtbareKatIds.includes(a.kategorieId))
+
+  // Kassen-Liste (mit Platzhaltern = null) geht vor; sonst globale istFavorit-Liste
+  const kassenEintraege = favoritenQuery.data?.eintraege ?? []
+  const favoriten: (Artikel | null)[] = kassenEintraege.length > 0
+    ? kassenEintraege
+        .map(e => (e.artikelId === null ? null : alleArtikel.find(a => a.id === e.artikelId)))
+        .filter((x): x is Artikel | null => x !== undefined)
+        .filter(x => x === null || kategorieSichtbar(x))
+    : alleArtikel
+        .filter(a => a.istFavorit && kategorieSichtbar(a))
+        .sort((a, b) => a.favoritenReihenfolge - b.favoritenReihenfolge)
+  const favoritenAktiv = (konfigQuery.data?.kellnerFavoritenAktiv ?? false)
+    && favoriten.some(f => f !== null)
 
   // Start-Reiter erst wählen, wenn Konfiguration UND Artikel da sind — sonst
   // gewinnt die erste Warengruppe, weil die Favoritenliste noch leer scheint.
-  if (aktivKat === null && !konfigQuery.isLoading && !artikelQuery.isLoading && !katQuery.isLoading) {
+  if (aktivKat === null && !konfigQuery.isLoading && !artikelQuery.isLoading && !katQuery.isLoading && !favoritenQuery.isLoading) {
     if (favoritenAktiv) setAktivKat(FAVORITEN_KAT)
     else if (kategorien.length > 0) setAktivKat(kategorien[0]!.id)
   }
 
-  const artikelInKat = aktivKat === FAVORITEN_KAT
+  const artikelInKat: (Artikel | null)[] = aktivKat === FAVORITEN_KAT
     ? favoriten
     : alleArtikel
         .filter(a => a.kategorieId === aktivKat)
@@ -526,8 +548,9 @@ export function ArtikelWaehlenPage() {
         )}
       </div>
 
-      {/* Artikel — kompakte Kacheln (3 pro Zeile): Antippen bucht +1, das
-          kleine − nimmt wieder raus. Name groß, Preis klein. */}
+      {/* Artikel — kompakte Kacheln (Spaltenzahl = gemeinsame Kassen-Einstellung
+          „Artikel je Zeile"): Antippen bucht +1, das kleine − nimmt wieder raus.
+          Name groß, Preis klein. */}
       <div className="flex-1 p-3 pb-36">
         {isLoading && (
           <div className="flex justify-center py-12">
@@ -541,8 +564,21 @@ export function ArtikelWaehlenPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-3 gap-2">
-          {artikelInKat.map(a => {
+        <div
+          className="grid gap-2"
+          style={{ gridTemplateColumns: `repeat(${konfigQuery.data?.artikelProZeile ?? 4}, minmax(0, 1fr))` }}
+        >
+          {artikelInKat.map((a, idx) => {
+            // Platzhalter (nur im Favoriten-Reiter): graue, gesperrte Kachel
+            if (a === null) {
+              return (
+                <div
+                  key={`platzhalter-${idx}`}
+                  aria-hidden
+                  className="rounded-2xl border-2 border-dashed border-line bg-panel/50 min-h-[5.25rem]"
+                />
+              )
+            }
             const menge      = mengeImKorb(a.id)
             const ausverkauft = a.lagerstandMenge !== null && a.lagerstandMenge !== undefined && a.lagerstandMenge <= 0
             // Eigene Artikel-Farbe geht vor, sonst die der Warengruppe

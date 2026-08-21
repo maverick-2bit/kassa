@@ -508,14 +508,30 @@ function OptionInlineAnlage({ onAnlegen }: { onAnlegen: (input: ModifikatorErste
         </label>
         <label className="w-24">
           <span className="block text-xs text-ink-muted mb-1">Aufpreis €</span>
-          <input
-            value={aufpreis}
-            onChange={e => { setAufpreis(e.target.value); setFehler(null) }}
-            onKeyDown={beiEnter}
-            placeholder="0,00"
-            inputMode="decimal"
-            className="w-full rounded-md border border-line-strong px-2.5 py-1.5 text-sm text-right font-mono"
-          />
+          <div className="flex items-center gap-1">
+            {/* ±: Handy-Zahlentastaturen haben kein Minus — Rabatt-Optionen
+                (z. B. „Pizza klein −2,00") wären dort sonst nicht anlegbar */}
+            <button
+              type="button"
+              onClick={() => setAufpreis(p => p.startsWith('-') ? p.slice(1) : p ? `-${p}` : '-')}
+              title="Vorzeichen wechseln (negativ = Rabatt)"
+              className={`shrink-0 w-8 rounded-md border px-0 py-1.5 text-sm font-bold transition ${
+                aufpreis.startsWith('-')
+                  ? 'border-green-500 bg-green-50 text-green-700'
+                  : 'border-line-strong text-ink-muted hover:border-brand-400'
+              }`}
+            >
+              ±
+            </button>
+            <input
+              value={aufpreis}
+              onChange={e => { setAufpreis(e.target.value); setFehler(null) }}
+              onKeyDown={beiEnter}
+              placeholder="0,00"
+              inputMode="decimal"
+              className="w-full rounded-md border border-line-strong px-2.5 py-1.5 text-sm text-right font-mono"
+            />
+          </div>
         </label>
         <label className="w-24">
           <span className="block text-xs text-ink-muted mb-1">Lagerstand</span>
@@ -772,14 +788,29 @@ function ModifikatorFormModal({
           <label className="block text-sm font-medium text-ink mb-1">
             Preisaufschlag <span className="text-ink-subtle font-normal">(0 = kostenlos, negativ = Rabatt)</span>
           </label>
-          <div className="relative">
-            <Input
-              type="number"
-              step="0.10"
-              value={aufschlagStr}
-              onChange={e => setAufschlagStr(e.target.value)}
-            />
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-subtle text-sm pointer-events-none">€</span>
+          <div className="flex items-center gap-1.5">
+            {/* ±: Handy-Zahlentastaturen haben kein Minus */}
+            <button
+              type="button"
+              onClick={() => setAufschlagStr(p => p.startsWith('-') ? p.slice(1) : `-${p}`)}
+              title="Vorzeichen wechseln (negativ = Rabatt)"
+              className={`shrink-0 w-9 rounded-md border py-2 text-sm font-bold transition ${
+                aufschlagStr.startsWith('-')
+                  ? 'border-green-500 bg-green-50 text-green-700'
+                  : 'border-line-strong text-ink-muted hover:border-brand-400'
+              }`}
+            >
+              ±
+            </button>
+            <div className="relative flex-1">
+              <Input
+                type="number"
+                step="0.10"
+                value={aufschlagStr}
+                onChange={e => setAufschlagStr(e.target.value)}
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-subtle text-sm pointer-events-none">€</span>
+            </div>
           </div>
           {aufschlagStr && parseFloat(aufschlagStr.replace(',', '.')) !== 0 && (
             <p className="text-xs text-ink-muted mt-1">
