@@ -164,4 +164,49 @@ describe('Gutscheine (Integration, echtes PostgreSQL)', () => {
     // mindestens die beiden Einlösungen
     expect(buchungen.length).toBeGreaterThanOrEqual(2)
   })
+  it('Journal: Codewechsel dokumentiert + tagesaktuelle Offen-Summe + CSV-Export', async () => {
+    // Frische Ausgangslage in DIESEM Test nicht nötig — das Journal zählt
+    // mandantenweit; wir prüfen relativ (Deltas + Vorhandensein der Einträge).
+    const gs = await erstelle(5000, 'JRNL-TEST-01')
+    const res = await einloesen(gs.id, 2000, true)
+    expect(res.statusCode).toBe(200)
+    const result = res.json() as GutscheinEinloesungResult
+    expect(result.restGutschein).toBeTruthy()
+    const restCode = result.restGutschein!.code
+
+    const heute = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Vienna' })
+    const jr = await srv.fastify.inject({
+      method: 'GET', url: `/api/gutscheine/journal?von=${heute}&bis=${heute}`, headers: auth(),
+    })
+    expect(jr.statusCode).toBe(200)
+    const journal = jr.json() as {
+      eintraege: { typ: string; code: string; verknuepfterCode: string | null; betragCent: number; restCentNach: number }[]
+      offen: { anzahl: number; summeCent: number }
+    }
+
+    // Der Codewechsel ist als eigener Journaleintrag dokumentiert: alter Code → neuer Code
+    const wechsel = journal.eintraege.find(e => e.typ === 'restgutschein' && e.code === 'JRNL-TEST-01')
+    expect(wechsel).toBeTruthy()
+    expect(wechsel!.verknuepfterCode).toBe(restCode)
+    // Ausstellung + Einlösung des Originals stehen ebenfalls drin
+    expect(journal.eintraege.some(e => e.typ === 'ausstellung' && e.code === 'JRNL-TEST-01' && e.betragCent === 5000)).toBe(true)
+    expect(journal.eintraege.some(e => e.typ === 'einloesung'  && e.code === 'JRNL-TEST-01' && e.betragCent === -2000)).toBe(true)
+    // Ausstellung des Restgutscheins über 30 €
+    expect(journal.eintraege.some(e => e.typ === 'ausstellung' && e.code === restCode && e.betragCent === 3000)).toBe(true)
+
+    // Offen-Summe enthält den 30-€-Rest (weitere offene Test-Gutscheine möglich → >=)
+    expect(journal.offen.summeCent).toBeGreaterThanOrEqual(3000)
+    expect(journal.offen.anzahl).toBeGreaterThanOrEqual(1)
+
+    // CSV-Export liefert eine Datei mit Kopfzeile und dem Codewechsel
+    const csv = await srv.fastify.inject({
+      method: 'GET', url: `/api/gutscheine/journal.csv?von=${heute}&bis=${heute}`, headers: auth(),
+    })
+    expect(csv.statusCode).toBe(200)
+    expect(csv.headers['content-type']).toContain('text/csv')
+    expect(csv.body).toContain('Datum;Vorgang;Gutschein-Code')
+    expect(csv.body).toContain('JRNL-TEST-01')
+    expect(csv.body).toContain(restCode)
+    expect(csv.body).toContain('Offene Gutscheine (Stichtag')
+  })
 })

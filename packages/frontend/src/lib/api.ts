@@ -1092,6 +1092,41 @@ export const gutscheinApi = {
   drucken:    (id: string, kasseId: string, druckerId?: string): Promise<{ erfolgreich: boolean }> =>
     request<{ erfolgreich: boolean }>('POST', `/api/gutscheine/${id}/drucken`,
       { kasseId, ...(druckerId ? { druckerId } : {}) }),
+  journal:    (von: string, bis: string): Promise<GutscheinJournal> =>
+    request<GutscheinJournal>('GET', `/api/gutscheine/journal?von=${von}&bis=${bis}`),
+}
+
+/** Gutschein-Journal (Finanz): Bewegungen + tagesaktuelle Offen-Summe. */
+export interface GutscheinJournal {
+  von: string
+  bis: string
+  eintraege: {
+    datum: string; typ: string; code: string; nummer: number
+    betragCent: number; restCentNach: number
+    verknuepfterCode: string | null; belegNummer: number | null; notiz: string | null
+  }[]
+  offen: { anzahl: number; summeCent: number; davonAbgelaufenCent: number }
+}
+
+/** CSV-Export des Gutschein-Journals als Datei-Download (authentifiziert). */
+export async function downloadGutscheinJournalCsv(von: string, bis: string): Promise<void> {
+  const token = getToken()
+  const res = await fetch(`/api/gutscheine/journal.csv?von=${von}&bis=${bis}`, {
+    headers: { Authorization: token ? `Bearer ${token}` : '' },
+  })
+  if (res.status === 401) { handleUnauthorized(); throw new ApiError(401, 'Nicht angemeldet') }
+  if (!res.ok) throw new ApiError(res.status, `Export fehlgeschlagen (HTTP ${res.status})`)
+  const disposition = res.headers.get('Content-Disposition') ?? ''
+  const filename = disposition.match(/filename="([^"]+)"/)?.[1] ?? 'gutschein-journal.csv'
+  const blob = await res.blob()
+  const url  = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
 }
 
 export const offenerPostenApi = {

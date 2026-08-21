@@ -12,6 +12,8 @@ import {
   erstelleGutschein,
   loesGutscheinEin,
   storniereGutschein,
+  holeGutscheinJournal,
+  erstelleGutscheinJournalCsv,
   GutscheinError,
 } from '../services/gutschein.service.js'
 import { sendBytes, druckerConfigVonKasse } from '../services/drucker.service.js'
@@ -31,6 +33,39 @@ export const gutscheinRoute: FastifyPluginAsync<GutscheinRouteOptions> = async (
       ...(kundeId ? { kundeId } : {}),
       limit: q['limit'] ? parseInt(q['limit'], 10) : 500,
     }))
+  })
+
+  // ── Journal (Finanz): alle Bewegungen + tagesaktuelle Offen-Summe ─────────
+  const JournalQuery = z.object({
+    von: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    bis: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  })
+
+  fastify.get('/gutscheine/journal', auth, async (request, reply) => {
+    const q = JournalQuery.safeParse(request.query)
+    if (!q.success) return reply.status(400).send({ fehler: 'von/bis (YYYY-MM-DD) erforderlich' })
+    try {
+      return reply.send(await holeGutscheinJournal(opts.db, request.user.mandantId, q.data.von, q.data.bis))
+    } catch (err) {
+      if (err instanceof GutscheinError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      throw err
+    }
+  })
+
+  fastify.get('/gutscheine/journal.csv', auth, async (request, reply) => {
+    const q = JournalQuery.safeParse(request.query)
+    if (!q.success) return reply.status(400).send({ fehler: 'von/bis (YYYY-MM-DD) erforderlich' })
+    try {
+      const journal = await holeGutscheinJournal(opts.db, request.user.mandantId, q.data.von, q.data.bis)
+      const csv = erstelleGutscheinJournalCsv(journal)
+      return reply
+        .header('Content-Type', 'text/csv; charset=utf-8')
+        .header('Content-Disposition', `attachment; filename="gutschein-journal_${q.data.von}_${q.data.bis}.csv"`)
+        .send(csv)
+    } catch (err) {
+      if (err instanceof GutscheinError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      throw err
+    }
   })
 
   /** Lookup per Code — für die Kasse */
