@@ -26,6 +26,7 @@ import {
   kdsBonNachdrucken,
 } from '../services/kds/kds-store.service.js'
 import { sbAutoBereitNachBonErledigt } from '../services/sb-bestellung.service.js'
+import { druckeErledigtBon } from '../services/bonierdrucker.service.js'
 
 export interface KdsRouteOptions { db: Db }
 
@@ -251,10 +252,35 @@ export const kdsRoute: FastifyPluginAsync<KdsRouteOptions> = async (fastify, opt
       const p = IdParam.safeParse(request.params)
       if (!p.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
 
+      // Vor dem Erledigen lesen: was ist jetzt noch offen? Genau das kommt auf
+      // den Runner-Beleg — bereits per Teilbon gebuchte (und gedruckte) Teile
+      // nicht erneut.
+      const [vorher] = await opts.db
+        .select()
+        .from(kdsBons)
+        .where(and(eq(kdsBons.id, p.data.id), eq(kdsBons.mandantId, request.user.mandantId)))
+        .limit(1)
+
       const ok = await kdsBonErledigt(opts.db, p.data.id, request.user.mandantId)
       if (!ok) return reply.status(404).send({ fehler: 'Bon nicht gefunden oder bereits erledigt' })
 
       await pruefeSbBereit(p.data.id, request.user.mandantId)
+
+      // Runner-Beleg (fire-and-forget): die noch offenen Positionen als
+      // „BESTELLUNG KOMPLETT". War alles schon per Teilbon gedruckt → kein Druck.
+      if (vorher) {
+        const offen = vorher.positionen
+          .filter(pos => !pos.erledigt && pos.menge - (pos.erledigtMenge ?? 0) > 0)
+          .map(pos => ({ menge: pos.menge - (pos.erledigtMenge ?? 0), bezeichnung: pos.bezeichnung, preisLabel: '' }))
+        if (offen.length > 0) {
+          void druckeErledigtBon(opts.db, request.user.mandantId, {
+            tischNummer: vorher.tisch,
+            kellner:     vorher.kellner,
+            fertig:      offen,
+            rest:        [],
+          }).catch(err => fastify.log.error({ err }, 'Erledigt-Bon-Druck fehlgeschlagen'))
+        }
+      }
 
       return reply.send({ erfolgreich: true })
     },
@@ -374,6 +400,29 @@ export const kdsRoute: FastifyPluginAsync<KdsRouteOptions> = async (fastify, opt
 
       // Teilbon kann den Bon vervollständigen → SB-Auto-„bereit" prüfen
       await pruefeSbBereit(p.data.id, request.user.mandantId)
+
+      // Runner-Beleg (fire-and-forget): die gerade gebuchten Teile groß,
+      // darunter klein was noch fehlt — der Runner kann dem Gast sagen,
+      // was nachgeliefert wird. Kein Rest mehr → „BESTELLUNG KOMPLETT".
+      const bonNachher = result.bon
+      const posById    = new Map(bonNachher.positionen.map(pos => [pos.id, pos]))
+      const fertig = b.data.positionsMengen
+        .map(pm => {
+          const pos = posById.get(pm.id)
+          return pos ? { menge: pm.menge, bezeichnung: pos.bezeichnung, preisLabel: '' } : null
+        })
+        .filter((z): z is { menge: number; bezeichnung: string; preisLabel: string } => z !== null)
+      const rest = bonNachher.positionen
+        .filter(pos => !pos.erledigt && pos.menge - (pos.erledigtMenge ?? 0) > 0)
+        .map(pos => ({ menge: pos.menge - (pos.erledigtMenge ?? 0), bezeichnung: pos.bezeichnung, preisLabel: '' }))
+      if (fertig.length > 0) {
+        void druckeErledigtBon(opts.db, request.user.mandantId, {
+          tischNummer: bonNachher.tisch,
+          kellner:     bonNachher.kellner,
+          fertig,
+          rest,
+        }).catch(err => fastify.log.error({ err }, 'Teilbon-Druck fehlgeschlagen'))
+      }
 
       return reply.send({ erfolgreich: true })
     },

@@ -255,6 +255,15 @@ export const KuechenBerichtStundenZeileSchema = z.object({
 })
 export type KuechenBerichtStundenZeile = z.infer<typeof KuechenBerichtStundenZeileSchema>
 
+export const KuechenBerichtVerlaufZeileSchema = z.object({
+  /** Bucket-Beginn (Wiener Zeit): 'YYYY-MM-DD' (Tag) bzw. 'YYYY-MM-DD HH:00' (Stunde) */
+  zeitpunkt:  z.string(),
+  station:    z.string(),
+  anzahlBons: z.number().int(),
+  avgMinuten: z.number(),
+})
+export type KuechenBerichtVerlaufZeile = z.infer<typeof KuechenBerichtVerlaufZeileSchema>
+
 export const KuechenBerichtResponseSchema = z.object({
   von:              z.string(),
   bis:              z.string(),
@@ -265,5 +274,8 @@ export const KuechenBerichtResponseSchema = z.object({
   stationen:        z.array(KuechenBerichtStationZeileSchema),
   topArtikel:       z.array(KuechenBerichtArtikelZeileSchema),
   stunden:          z.array(KuechenBerichtStundenZeileSchema),
+  /** Ø-Zubereitungszeit im Zeitverlauf je Station — Ein-Tages-Zeitraum stundenweise, sonst tageweise */
+  granularitaet:    z.enum(['stunde', 'tag']),
+  verlauf:          z.array(KuechenBerichtVerlaufZeileSchema),
 })
 export type KuechenBerichtResponse = z.infer<typeof KuechenBerichtResponseSchema>

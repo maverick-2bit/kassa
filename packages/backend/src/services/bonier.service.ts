@@ -146,6 +146,8 @@ export async function bonierBestellung(
   const proStation = new Map<Station, BonierbonPosition[]>()
   const proDrucker = new Map<string, { drucker: DruckerRow; positionen: BonierbonPosition[] }>()
   const allePositionen: BonierbonPosition[] = []
+  /** Positionen, die SOFORT auf Papier gehören (kein KDS-Bildschirm zuständig) */
+  const sofortDruckPositionen: BonierbonPosition[] = []
 
   for (const p of input.positionen) {
     const a   = artikelById.get(p.artikelId)!
@@ -156,13 +158,14 @@ export async function bonierBestellung(
     }
     allePositionen.push(pos)
 
-    // KDS-Routing: Artikel-Station geht vor, sonst gilt die Stations-Vorgabe
-    // der Warengruppe. SB-Bestellungen: immer KDS — ohne Station → 'kueche'.
+    // Effektive Station: Artikel geht vor, sonst Warengruppen-Vorgabe
+    const effektiveStation =
+      (a.station as Station | null) ??
+      (a.kategorieId ? (kategorieMap.get(a.kategorieId)?.station ?? null) : null)
+
+    // KDS-Routing. SB-Bestellungen: immer KDS — ohne Station → 'kueche'.
     if (kasse.kdsAktiv || optionen.sb) {
-      const station =
-        (a.station as Station | null) ??
-        (a.kategorieId ? (kategorieMap.get(a.kategorieId)?.station ?? null) : null) ??
-        (optionen.sb ? 'kueche' : null)
+      const station = effektiveStation ?? (optionen.sb ? 'kueche' : null)
       if (station) {
         const liste = proStation.get(station) ?? []
         liste.push(pos)
@@ -170,10 +173,18 @@ export async function bonierBestellung(
       }
     }
 
+    // Bei aktivem KDS läuft die Stations-Position über den Bildschirm — der
+    // Papierbon entsteht erst beim (Teil-)Erledigen als Runner-Beleg, NICHT
+    // parallel beim Bestellen. Storno-Korrekturbons drucken weiterhin sofort
+    // (die Küche muss sofort stoppen). Positionen OHNE Station drucken sofort.
+    const druckErstBeimErledigen = kasse.kdsAktiv && !optionen.storno && effektiveStation !== null
+    if (!druckErstBeimErledigen) sofortDruckPositionen.push(pos)
+
     // Bonierdrucker-Routing: artikel.bonierdruckerId → kategorie.bonierdruckerId → nichts
-    const effektiverDruckerId =
-      a.bonierdruckerId ??
-      (a.kategorieId ? (kategorieMap.get(a.kategorieId)?.bonierdruckerId ?? null) : null)
+    const effektiverDruckerId = druckErstBeimErledigen
+      ? null
+      : a.bonierdruckerId ??
+        (a.kategorieId ? (kategorieMap.get(a.kategorieId)?.bonierdruckerId ?? null) : null)
 
     if (effektiverDruckerId) {
       const drucker = nichtBackupMap.get(effektiverDruckerId)
@@ -275,9 +286,11 @@ export async function bonierBestellung(
     await sendeAnDrucker(drucker, positionen, false)
   }
 
-  // 9. Backup-Drucker: erhalten alle Positionen
+  // 9. Backup-Drucker: erhalten alle SOFORT zu druckenden Positionen —
+  //    KDS-Positionen (Druck erst beim Erledigen) gehören auch hier nicht drauf.
   for (const backup of backupDrucker) {
-    await sendeAnDrucker(backup, allePositionen, true)
+    if (sofortDruckPositionen.length === 0) break
+    await sendeAnDrucker(backup, sofortDruckPositionen, true)
   }
 
   // 10. Lagerstand dekrementieren (atomar, direkt in der DB)

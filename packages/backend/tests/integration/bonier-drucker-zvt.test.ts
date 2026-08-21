@@ -177,6 +177,72 @@ describe('Bonieren + Drucker/ZVT-Config (Integration, echtes PostgreSQL)', () =>
     })
   })
 
+  describe('KDS aktiv: Bonierdrucker schweigt beim Bestellen (Druck erst beim Erledigen)', () => {
+    it('Stations-Artikel mit Drucker-Routing erzeugt beim Bonieren KEINEN Druckversuch', async () => {
+      await idb.db.update(kassen).set({ kdsAktiv: true, kdsStationen: {} }).where(eq(kassen.id, kasseId))
+
+      // Toter Drucker: 127.0.0.1:9 → ECONNREFUSED, falls doch gedruckt würde
+      const drucker = (await srv.fastify.inject({
+        method: 'POST', url: '/api/bonierdrucker', headers: auth(),
+        payload: { name: 'Schank-Drucker', ip: '127.0.0.1', port: 9 },
+      })).json() as { id: string }
+
+      const artikelId = await neuerArtikel({
+        bezeichnung: 'Spritzer mit Drucker', preisBruttoCent: 400,
+        station: 'schank', bonierdruckerId: drucker.id,
+      })
+
+      const res = await srv.fastify.inject({
+        method: 'POST', url: '/api/bestellung/bonieren', headers: auth(),
+        payload: { kasseId, tisch: 'Tisch 12', kellner: 'Runa', positionen: [{ artikelId, menge: 1 }] },
+      })
+      // Kein Druckversuch (drucker leer) → keine 207, Browser-Bon zählt als zugestellt
+      expect(res.statusCode).toBe(200)
+      expect(res.json().drucker).toEqual([])
+
+      // Erledigen stößt den Runner-Beleg an (fire-and-forget an den toten
+      // Drucker — die Antwort bleibt trotzdem 200; der Bon wird erledigt)
+      const bons = await (await srv.fastify.inject({
+        method: 'GET', url: '/api/kds/bons?station=schank', headers: auth(),
+      })).json() as { id: string; positionen: unknown[] }[]
+      const meiner = bons.find(b => JSON.stringify(b.positionen).includes('Spritzer mit Drucker'))!
+      const fertig = await srv.fastify.inject({
+        method: 'POST', url: `/api/kds/bon/${meiner.id}/erledigt`, headers: auth(), payload: {},
+      })
+      expect(fertig.statusCode).toBe(200)
+
+      // Aufräumen: Drucker deaktivieren, damit Folgetests nicht dorthin drucken
+      await srv.fastify.inject({
+        method: 'PATCH', url: `/api/bonierdrucker/${drucker.id}`, headers: auth(),
+        payload: { aktiv: false },
+      })
+    })
+
+    it('Artikel OHNE Station druckt weiterhin sofort (207 bei totem Drucker)', async () => {
+      const drucker = (await srv.fastify.inject({
+        method: 'POST', url: '/api/bonierdrucker', headers: auth(),
+        payload: { name: 'ToGo-Drucker', ip: '127.0.0.1', port: 9 },
+      })).json() as { id: string }
+
+      const artikelId = await neuerArtikel({
+        bezeichnung: 'ToGo ohne Station', preisBruttoCent: 300, bonierdruckerId: drucker.id,
+      })
+      const res = await srv.fastify.inject({
+        method: 'POST', url: '/api/bestellung/bonieren', headers: auth(),
+        payload: { kasseId, tisch: 'Tisch 13', kellner: 'Runa', positionen: [{ artikelId, menge: 1 }] },
+      })
+      expect(res.statusCode).toBe(207)
+      const d = res.json().drucker as { erfolgreich: boolean }[]
+      expect(d).toHaveLength(1)
+      expect(d[0]!.erfolgreich).toBe(false)
+
+      await srv.fastify.inject({
+        method: 'PATCH', url: `/api/bonierdrucker/${drucker.id}`, headers: auth(),
+        payload: { aktiv: false },
+      })
+    })
+  })
+
   describe('Warengruppen-Stations-Vorgabe (Vererbung an Artikel)', () => {
     it('Artikel ohne eigene Station erbt die Station der Warengruppe; eigene Station geht vor', async () => {
       await idb.db.update(kassen).set({ kdsAktiv: true, kdsStationen: {} }).where(eq(kassen.id, kasseId))

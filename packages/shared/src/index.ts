@@ -315,6 +315,7 @@ export {
   KuechenBerichtStationZeileSchema,
   KuechenBerichtArtikelZeileSchema,
   KuechenBerichtStundenZeileSchema,
+  KuechenBerichtVerlaufZeileSchema,
   KuechenBerichtResponseSchema,
 } from './schemas/bericht.js'
 export type {
@@ -342,6 +343,7 @@ export type {
   KuechenBerichtStationZeile,
   KuechenBerichtArtikelZeile,
   KuechenBerichtStundenZeile,
+  KuechenBerichtVerlaufZeile,
   KuechenBerichtResponse,
 } from './schemas/bericht.js'
 
