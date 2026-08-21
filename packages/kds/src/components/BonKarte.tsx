@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import { generiereRechnungHtml } from '@kassa/shared'
 import type { KdsBon, KdsPosition } from '../types'
-import { bonErledigt, bonTeilbon, sbRechnung } from '../api'
+import { bonErledigt, bonTeilbon, positionHaken, sbRechnung } from '../api'
 
 interface BonKarteProps {
   bon:     KdsBon
@@ -68,6 +68,10 @@ function RechnungButton({ sbBestellungId, token }: { sbBestellungId: string; tok
 
 export function BonKarte({ bon, token, onErledigt }: BonKarteProps) {
   const [positionen, setPositionen] = useState<KdsPosition[]>(bon.positionen)
+
+  // Externe Updates (SSE von anderen Bildschirmen) übernehmen — die App
+  // aktualisiert bons immutabel, daher reicht der Referenzvergleich.
+  useEffect(() => { setPositionen(bon.positionen) }, [bon.positionen])
   const [teilbonModus, setTeilbonModus] = useState(false)
   // Map: positionId → wie viele senden
   const [ausgewaehlt, setAusgewaehlt] = useState<Map<string, number>>(new Map())
@@ -82,46 +86,67 @@ export function BonKarte({ bon, token, onErledigt }: BonKarteProps) {
     })
   }
 
+  /**
+   * ✓-Knopf — druckt (erst hier entsteht der Runner-Beleg):
+   *   – Teil markiert (Häkchen), aber nicht alles → die markierten Stücke als
+   *     Teilbon senden („TEIL DER BESTELLUNG" + Rest klein); Bon bleibt offen.
+   *   – Alles markiert oder nichts markiert → ganzen Bon abschließen
+   *     („BESTELLUNG KOMPLETT" mit allen noch nicht gesendeten Positionen).
+   */
   const handleErledigt = useCallback(async () => {
+    const markiert = positionen
+      .filter(p => !p.erledigt && (p.haken ?? 0) > 0)
+      .map(p => ({ id: p.id, menge: Math.min(p.haken ?? 0, offeneMenge(p)) }))
+    const alleMarkiert = positionen.every(p => p.erledigt || (p.haken ?? 0) >= offeneMenge(p))
+
     setLoading(true)
     try {
-      await bonErledigt(bon.id, token)
-      onErledigt(bon.id)
+      if (markiert.length > 0 && !alleMarkiert) {
+        // Zielwerte VOR dem Senden festhalten und danach ABSOLUT setzen —
+        // aufaddieren würde mit dem SSE-Echo doppelt zählen (Race).
+        const ziel = new Map(positionen.map(p => {
+          const m = markiert.find(x => x.id === p.id)
+          return [p.id, m ? (p.erledigtMenge ?? 0) + m.menge : null] as const
+        }))
+        await bonTeilbon(bon.id, markiert, token)
+        setPositionen(prev => prev.map(p => {
+          const z = ziel.get(p.id)
+          if (z === null || z === undefined) return p
+          return { ...p, erledigtMenge: z, haken: 0, erledigt: z >= p.menge }
+        }))
+      } else {
+        await bonErledigt(bon.id, token)
+        onErledigt(bon.id)
+      }
     } catch (e) {
       alert('Fehler beim Speichern: ' + (e instanceof Error ? e.message : e))
     } finally {
       setLoading(false)
     }
-  }, [bon.id, token, onErledigt])
+  }, [bon.id, token, onErledigt, positionen])
 
   /**
-   * Direkt-Erledigen per Antippen (Normalmodus): ein Tipp = EIN Stück dieser
-   * Position fertig (bei 3× dreimal tippen) — ohne den Umweg Teilbon-Modus →
-   * Menge wählen → Senden. Jede Buchung druckt den Runner-Beleg („Teil der
-   * Bestellung" + Rest). Ist alles erledigt, schließt das Backend den Bon von
-   * selbst. Für ganze Sätze auf einmal bleibt der Teilbon-Modus.
+   * Antippen (Normalmodus): EIN Stück als fertig MARKIEREN (Häkchen) — reine
+   * Anzeige, löst KEINEN Druck aus und schließt nichts ab. Gedruckt wird erst
+   * beim ✓-Knopf (auch mit Teilmenge) bzw. beim Teilbon-Senden.
    */
   const handlePositionTipp = useCallback(async (pos: KdsPosition) => {
-    const offen = offeneMenge(pos)
+    const offen = offeneMenge(pos) - (pos.haken ?? 0)
     if (pos.erledigt || offen <= 0 || loading) return
     setLoading(true)
     try {
-      await bonTeilbon(bon.id, [{ id: pos.id, menge: 1 }], token)
-      setPositionen(prev => {
-        const next = prev.map(p => {
-          if (p.id !== pos.id) return p
-          const neueErledigtMenge = (p.erledigtMenge ?? 0) + 1
-          return { ...p, erledigtMenge: neueErledigtMenge, erledigt: neueErledigtMenge >= p.menge }
-        })
-        if (next.every(p => p.erledigt)) onErledigt(bon.id)
-        return next
-      })
+      // Absoluten Serverwert übernehmen — ein lokales +1 würde mit dem
+      // SSE-Echo desselben Klicks doppelt zählen (Race, live beobachtet).
+      const res = await positionHaken(bon.id, pos.id, token)
+      setPositionen(prev => prev.map(p =>
+        p.id === pos.id ? { ...p, haken: res.haken } : p,
+      ))
     } catch (e) {
       alert('Fehler: ' + (e instanceof Error ? e.message : e))
     } finally {
       setLoading(false)
     }
-  }, [bon.id, token, loading, onErledigt])
+  }, [bon.id, token, loading])
 
   const handleTeilbon = useCallback(async () => {
     const posMengen = [...ausgewaehlt.entries()]
@@ -131,17 +156,21 @@ export function BonKarte({ bon, token, onErledigt }: BonKarteProps) {
 
     setLoading(true)
     try {
+      // Zielwerte VOR dem Senden festhalten und ABSOLUT setzen — aufaddieren
+      // würde mit dem SSE-Echo desselben Aufrufs doppelt zählen (Race).
+      const ziel = new Map(positionen.map(p => {
+        const zuSenden = ausgewaehlt.get(p.id) ?? 0
+        return [p.id, zuSenden > 0 ? (p.erledigtMenge ?? 0) + zuSenden : null] as const
+      }))
       await bonTeilbon(bon.id, posMengen, token)
-      // Lokaler Update: erledigtMenge akkumulieren
       setPositionen(prev =>
         prev.map(p => {
-          const zuSenden = ausgewaehlt.get(p.id) ?? 0
-          if (zuSenden === 0) return p
-          const neueErledigtMenge = (p.erledigtMenge ?? 0) + zuSenden
+          const z = ziel.get(p.id)
+          if (z === null || z === undefined) return p
           return {
             ...p,
-            erledigtMenge: neueErledigtMenge,
-            erledigt:      neueErledigtMenge >= p.menge,
+            erledigtMenge: z,
+            erledigt:      z >= p.menge,
           }
         })
       )
@@ -156,6 +185,9 @@ export function BonKarte({ bon, token, onErledigt }: BonKarteProps) {
 
   const alleErledigt     = positionen.every(p => p.erledigt)
   const totalAusgewaehlt = [...ausgewaehlt.values()].reduce((s, n) => s + n, 0)
+  // Für die ✓-Knopf-Beschriftung: markierte Stücke + ob damit alles fertig wäre
+  const markierteStk     = positionen.reduce((s, p) => s + (p.erledigt ? 0 : Math.min(p.haken ?? 0, offeneMenge(p))), 0)
+  const alleMarkiert     = positionen.every(p => p.erledigt || (p.haken ?? 0) >= offeneMenge(p))
 
   return (
     <div className="bg-panel border border-line rounded-2xl overflow-hidden flex flex-col">
@@ -191,17 +223,21 @@ export function BonKarte({ bon, token, onErledigt }: BonKarteProps) {
           const gewaehlt = ausgewaehlt.get(pos.id) ?? 0
 
           if (!teilbonModus) {
-            // Normalmodus: Antippen der Zeile erledigt die Position direkt
+            // Normalmodus: Antippen markiert 1 Stück als fertig (Häkchen)
+            const haken       = pos.haken ?? 0
+            const vollMarkiert = !pos.erledigt && haken >= offen
             return (
               <button
                 key={pos.id}
                 onClick={() => handlePositionTipp(pos)}
-                disabled={pos.erledigt || loading}
-                title={pos.erledigt ? undefined : 'Antippen = Position erledigt'}
+                disabled={pos.erledigt || vollMarkiert || loading}
+                title={pos.erledigt || vollMarkiert ? undefined : 'Antippen = 1 Stück fertig markieren (Druck erst bei ✓ Erledigt)'}
                 className={[
                   'w-full text-left px-4 py-3 flex items-center gap-3 transition-colors',
                   pos.erledigt
                     ? 'opacity-40 text-ink-subtle cursor-default'
+                    : vollMarkiert
+                    ? 'bg-emerald-600/15 text-ink cursor-default'
                     : 'text-ink hover:bg-emerald-600/10 active:bg-emerald-600/20',
                 ].join(' ')}
               >
@@ -223,9 +259,14 @@ export function BonKarte({ bon, token, onErledigt }: BonKarteProps) {
                     <span className="block text-sm font-normal text-ink-muted">{pos.details}</span>
                   )}
                 </span>
-                {pos.erledigtMenge !== undefined && !pos.erledigt && (
-                  <span className="text-xs text-emerald-600 dark:text-emerald-500 font-bold shrink-0">
-                    {pos.erledigtMenge} gesendet
+                {haken > 0 && !pos.erledigt && (
+                  <span className="text-sm text-emerald-600 dark:text-emerald-400 font-black shrink-0">
+                    ✓ {haken} fertig
+                  </span>
+                )}
+                {!!pos.erledigtMenge && !pos.erledigt && (
+                  <span className="text-xs text-ink-subtle font-bold shrink-0">
+                    {pos.erledigtMenge} gedruckt
                   </span>
                 )}
               </button>
@@ -299,13 +340,17 @@ export function BonKarte({ bon, token, onErledigt }: BonKarteProps) {
               disabled={loading}
               className={[
                 'flex-1 py-3 rounded-xl font-bold text-sm transition-colors',
-                alleErledigt
+                alleErledigt || alleMarkiert
                   ? 'bg-emerald-600 text-white active:bg-emerald-500'
                   : 'bg-emerald-800 text-emerald-200 active:bg-emerald-700',
                 loading ? 'opacity-50 cursor-not-allowed' : '',
               ].join(' ')}
             >
-              {loading ? '…' : '✓ Erledigt'}
+              {loading
+                ? '…'
+                : markierteStk > 0 && !alleMarkiert
+                ? `✓ Teil fertig (${markierteStk}) — drucken`
+                : '✓ Erledigt — drucken'}
             </button>
           </>
         ) : (

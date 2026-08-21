@@ -189,3 +189,14 @@ export async function codeEinloesen(code: string): Promise<string> {
   }
   return ((await res.json()) as { token: string }).token
 }
+
+/** Häkchen: 1 Stück als fertig markieren — reine Anzeige, löst KEINEN Druck aus */
+export async function positionHaken(bonId: string, positionId: string, token: string) {
+  const res = await fetch(`${BASE}/bon/${bonId}/haken`, {
+    method:  'POST',
+    headers: headers(token),
+    body:    JSON.stringify({ positionId }),
+  })
+  if (!res.ok) throw new Error(`Fehler: ${res.status}`)
+  return res.json() as Promise<{ haken: number }>
+}

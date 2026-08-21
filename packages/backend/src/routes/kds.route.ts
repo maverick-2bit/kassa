@@ -22,6 +22,7 @@ import {
   kdsUebersicht,
   kdsBonErledigt,
   kdsBonTeilbon,
+  kdsPositionHaken,
   kdsArchivBons,
   kdsBonNachdrucken,
 } from '../services/kds/kds-store.service.js'
@@ -376,6 +377,22 @@ export const kdsRoute: FastifyPluginAsync<KdsRouteOptions> = async (fastify, opt
 
       const ergebnis = await kdsBonNachdrucken(opts.db, p.data.id, request.user.mandantId)
       return reply.send(ergebnis)
+    },
+  )
+
+  // ── Häkchen: 1 Stück als fertig markieren (nur Anzeige, KEIN Druck) ────────
+  fastify.post(
+    '/kds/bon/:id/haken',
+    { onRequest: [fastify.authenticate] },
+    async (request, reply) => {
+      const p = IdParam.safeParse(request.params)
+      if (!p.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
+      const b = z.object({ positionId: z.string().uuid() }).safeParse(request.body)
+      if (!b.success) return reply.status(400).send({ fehler: 'positionId fehlt oder ungültig' })
+
+      const result = await kdsPositionHaken(opts.db, p.data.id, request.user.mandantId, b.data.positionId)
+      if (!result) return reply.status(404).send({ fehler: 'Bon/Position nicht gefunden oder bereits erledigt' })
+      return reply.send(result)
     },
   )
 
