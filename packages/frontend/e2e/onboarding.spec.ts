@@ -446,9 +446,10 @@ test('Tisch-Split: Rechnung auf 2 Zahler teilen schließt den Tab mit 2 Bons', a
   await expect(page.getByText(/Rechnung teilen — Tisch E2E-SPLIT/)).toBeVisible()
 
   const splitZeile = page.locator('tr', { hasText: 'Kaffee' })
-  // Mengen-Buttons je Zahler-Spalte: [− +] Zahler 1, [− +] Zahler 2
-  await splitZeile.getByRole('button').filter({ hasText: '−' }).first().click()  // Zahler 1: 2 → 1
-  await splitZeile.getByRole('button').filter({ hasText: '+' }).nth(1).click()   // Zahler 2: 0 → 1
+  // Mengen-Buttons je Zahler-Spalte: [− +] Zahler 1, [− +] Zahler 2.
+  // Seit dem Auto-Ausgleich reicht EIN Klick: + bei Zahler 2 holt das Stück
+  // automatisch von Zahler 1 (2 → 1, Zahler 2: 0 → 1).
+  await splitZeile.getByRole('button').filter({ hasText: '+' }).nth(1).click()
 
   // Beide Zahler bar per Ein-Klick-Zahlart-Button (v0.7.131: Buttons statt Cent-Felder)
   const barButtons = page.getByRole('button', { name: '💶 Bar' })

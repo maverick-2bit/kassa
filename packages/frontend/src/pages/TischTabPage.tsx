@@ -1564,12 +1564,38 @@ function SplitModal({ open, tab, loading, fehler, onSubmit, onClose }: SplitModa
     ])
   }
 
+  /**
+   * Verschiebt 1 Stück ZU (+1) bzw. WEG VON (−1) diesem Zahler — der Ausgleich
+   * passiert automatisch beim jeweils anderen Zahler (User-Wunsch: „bei
+   * Zahler 1 um dieselbe Menge reduzieren, ohne dass ich das händisch mache").
+   * Dadurch ist die Verteilung IMMER vollständig — keine roten Zeilen mehr.
+   */
   const updateMenge = (zahlerId: number, posIdx: number, delta: number) => {
-    setZahler(prev => prev.map(z => {
-      if (z.id !== zahlerId) return z
-      const neu = Math.max(0, (z.mengen[posIdx] ?? 0) + delta)
-      return { ...z, mengen: { ...z.mengen, [posIdx]: neu } }
-    }))
+    setZahler(prev => {
+      const selbst = prev.find(z => z.id === zahlerId)
+      if (!selbst) return prev
+
+      if (delta > 0) {
+        // Holen: vom ersten anderen Zahler, der von dieser Position etwas hat
+        const geber = prev.find(z => z.id !== zahlerId && (z.mengen[posIdx] ?? 0) > 0)
+        if (!geber) return prev
+        return prev.map(z =>
+          z.id === zahlerId ? { ...z, mengen: { ...z.mengen, [posIdx]: (z.mengen[posIdx] ?? 0) + 1 } } :
+          z.id === geber.id ? { ...z, mengen: { ...z.mengen, [posIdx]: (z.mengen[posIdx] ?? 0) - 1 } } :
+          z,
+        )
+      }
+
+      // Abgeben: an den ersten anderen Zahler (praktisch Zahler 1 als Sammler)
+      if ((selbst.mengen[posIdx] ?? 0) <= 0) return prev
+      const nehmer = prev.find(z => z.id !== zahlerId)
+      if (!nehmer) return prev
+      return prev.map(z =>
+        z.id === zahlerId  ? { ...z, mengen: { ...z.mengen, [posIdx]: (z.mengen[posIdx] ?? 0) - 1 } } :
+        z.id === nehmer.id ? { ...z, mengen: { ...z.mengen, [posIdx]: (z.mengen[posIdx] ?? 0) + 1 } } :
+        z,
+      )
+    })
   }
 
   const updateBar  = (zahlerId: number, val: string) =>

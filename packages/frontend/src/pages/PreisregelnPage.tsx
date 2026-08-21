@@ -345,9 +345,15 @@ function PreisregelForm({
         <div>
           <label className="block text-xs font-medium text-ink-muted mb-1">Rabatt (%)</label>
           <Input type="number" min={0} max={100} value={rabatt} onChange={(e) => setRabatt(e.target.value)} />
-          <p className="mt-0.5 text-[11px] text-ink-subtle">0 = nur Aktionspreise</p>
         </div>
       </div>
+
+      <p className="rounded-md border border-brand-200 bg-brand-50 px-3 py-2 text-xs text-brand-800">
+        <strong>Fixer Aktionspreis statt Prozent?</strong> Unten bei „Artikel &amp; Aktionspreise"
+        direkt in die Artikel-Kachel den neuen Preis eintragen — oder mehrere Artikel auswählen
+        und über die Leiste einen Preis für alle setzen. Aktionspreise schlagen den Prozentsatz;
+        Rabatt 0 % = nur Aktionspreise.
+      </p>
 
       <div>
         <label className="block text-xs font-medium text-ink-muted mb-1">Warengruppen</label>

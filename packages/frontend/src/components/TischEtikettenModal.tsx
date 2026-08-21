@@ -14,18 +14,34 @@ import { Modal } from './ui/Modal'
 import { Button } from './ui/Button'
 import { Input } from './ui/Input'
 
-/** Parst freie Eingabe („1-20", „Bar, Terrasse 3") in eine Tischliste. */
+/**
+ * Parst freie Eingabe in eine Tischliste. Bereiche funktionieren auch mit
+ * Buchstaben-Präfix und führenden Nullen:
+ *   „1-20"          → 1 … 20
+ *   „T1-T5", „T1-5" → T1 … T5   (vorher: 1 Etikett „T1-T5" — Test-PC-Befund)
+ *   „Tisch 1-8"     → Tisch 1 … Tisch 8
+ *   „T01-T05"       → T01 … T05 (Null-Auffüllung bleibt erhalten)
+ *   „Bar, Terrasse 3" → einzelne Namen unverändert
+ */
 export function parseTischEingabe(text: string): string[] {
   const out: string[] = []
   for (const teil of text.split(',')) {
     const t = teil.trim()
     if (!t) continue
-    const m = t.match(/^(\d+)\s*-\s*(\d+)$/)
-    if (m) {
-      let a = parseInt(m[1]!, 10)
-      let b = parseInt(m[2]!, 10)
+    // Bereich: [Präfix]Zahl - [gleiches Präfix oder leer]Zahl
+    const m = t.match(/^(.*?)(\d+)\s*-\s*(.*?)(\d+)$/)
+    if (m && (m[3]!.trim() === '' || m[3]!.trim() === m[1]!.trim())) {
+      const praefix = m[1]!
+      let a = parseInt(m[2]!, 10)
+      let b = parseInt(m[4]!, 10)
       if (a > b) [a, b] = [b, a]
-      if (b - a <= 200) for (let i = a; i <= b; i++) out.push(String(i))
+      // „T01" → auf die Stellenzahl der Start-Nummer auffüllen
+      const pad = m[2]!.startsWith('0') ? m[2]!.length : 0
+      if (b - a <= 200) {
+        for (let i = a; i <= b; i++) {
+          out.push(`${praefix}${pad > 0 ? String(i).padStart(pad, '0') : i}`)
+        }
+      }
     } else {
       out.push(t)
     }
