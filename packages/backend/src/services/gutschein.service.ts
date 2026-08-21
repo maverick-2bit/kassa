@@ -393,3 +393,138 @@ export async function storniereGutschein(
 
   return toDto(updated)
 }
+
+// ---------------------------------------------------------------------------
+// Gutschein-Journal (Finanz-Anforderung): alle Bewegungen chronologisch,
+// Codewechsel bei Restgutscheinen nachvollziehbar, plus tagesaktuelle Summe
+// der offenen Gutscheine (= ausstehende Verbindlichkeit).
+// ---------------------------------------------------------------------------
+
+export interface GutscheinJournalEintrag {
+  datum:            string
+  typ:              string
+  code:             string
+  nummer:           number
+  betragCent:       number
+  restCentNach:     number
+  /** Bei Codewechsel (Restgutschein): der NEUE Code */
+  verknuepfterCode: string | null
+  belegNummer:      number | null
+  notiz:            string | null
+}
+
+export interface GutscheinJournal {
+  von:       string
+  bis:       string
+  eintraege: GutscheinJournalEintrag[]
+  /** Aktueller Bestand offener Gutscheine (aktiv + teileingelöst) — Stichtag JETZT */
+  offen: {
+    anzahl:               number
+    summeCent:            number
+    davonAbgelaufenCent:  number
+  }
+}
+
+export async function holeGutscheinJournal(
+  db:        Db,
+  mandantId: string,
+  von:       string,
+  bis:       string,
+): Promise<GutscheinJournal> {
+  if (von > bis) throw new GutscheinError(400, '"von" muss vor oder gleich "bis" liegen')
+
+  type JRow = {
+    datum: string; typ: string; code: string; nummer: number
+    betrag_cent: string; rest_cent_nach: string
+    verknuepfter_code: string | null; beleg_nummer: number | null; notiz: string | null
+  }
+  const rows = await db.execute<JRow>(sql`
+    SELECT
+      b.created_at                                   AS datum,
+      b.typ,
+      g.code,
+      g.nummer,
+      b.betrag_cent,
+      b.rest_cent_nach,
+      vg.code                                        AS verknuepfter_code,
+      be.beleg_nummer                                AS beleg_nummer,
+      b.notiz
+    FROM gutschein_buchungen b
+    JOIN gutscheine g        ON g.id = b.gutschein_id
+    LEFT JOIN gutscheine vg  ON vg.id = b.verknuepfter_gutschein_id
+    LEFT JOIN belege be      ON be.id = b.beleg_id
+    WHERE b.mandant_id = ${mandantId}
+      AND (b.created_at AT TIME ZONE 'Europe/Vienna')::date >= ${von}::date
+      AND (b.created_at AT TIME ZONE 'Europe/Vienna')::date <= ${bis}::date
+    ORDER BY b.created_at DESC
+  `)
+
+  const heute = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Vienna' })
+  type ORow = { anzahl: string; summe: string; abgelaufen: string }
+  const offenRows = await db.execute<ORow>(sql`
+    SELECT
+      COUNT(*)::int                                                                  AS anzahl,
+      COALESCE(SUM(betrag_cent - bezahlt_cent), 0)::bigint                           AS summe,
+      COALESCE(SUM(CASE WHEN gueltig_bis IS NOT NULL AND gueltig_bis < ${heute}
+                        THEN betrag_cent - bezahlt_cent ELSE 0 END), 0)::bigint      AS abgelaufen
+    FROM gutscheine
+    WHERE mandant_id = ${mandantId} AND status IN ('aktiv', 'teileingeloest')
+  `)
+  const o = [...offenRows][0]
+
+  return {
+    von,
+    bis,
+    eintraege: [...rows].map(r => ({
+      datum:            new Date(r.datum).toISOString(),
+      typ:              r.typ,
+      code:             r.code,
+      nummer:           r.nummer,
+      betragCent:       parseInt(r.betrag_cent, 10),
+      restCentNach:     parseInt(r.rest_cent_nach, 10),
+      verknuepfterCode: r.verknuepfter_code,
+      belegNummer:      r.beleg_nummer,
+      notiz:            r.notiz,
+    })),
+    offen: {
+      anzahl:              o ? parseInt(o.anzahl, 10) : 0,
+      summeCent:           o ? parseInt(o.summe, 10) : 0,
+      davonAbgelaufenCent: o ? parseInt(o.abgelaufen, 10) : 0,
+    },
+  }
+}
+
+const JOURNAL_TYP_LABELS: Record<string, string> = {
+  ausstellung:   'Ausstellung',
+  einloesung:    'Einlösung',
+  restgutschein: 'Restgutschein ausgestellt (Codewechsel)',
+  storno:        'Storno',
+}
+
+/** CSV fürs Finanzamt/Steuerbüro — Semikolon-getrennt, de-AT-Formate. */
+export function erstelleGutscheinJournalCsv(journal: GutscheinJournal): string {
+  const fmtDatum  = new Intl.DateTimeFormat('de-AT', {
+    timeZone: 'Europe/Vienna',
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  })
+  const euro = (cent: number) => (cent / 100).toFixed(2).replace('.', ',')
+
+  const zeilen: string[] = []
+  zeilen.push('Datum;Vorgang;Gutschein-Code;Nr.;Betrag EUR;Restwert danach EUR;Neuer Code (bei Restgutschein);Beleg-Nr.;Notiz')
+  for (const e of journal.eintraege) {
+    zeilen.push([
+      fmtDatum.format(new Date(e.datum)),
+      JOURNAL_TYP_LABELS[e.typ] ?? e.typ,
+      e.code,
+      String(e.nummer),
+      euro(e.betragCent),
+      euro(e.restCentNach),
+      e.verknuepfterCode ?? '',
+      e.belegNummer !== null ? String(e.belegNummer) : '',
+      (e.notiz ?? '').replace(/;/g, ','),
+    ].join(';'))
+  }
+  zeilen.push('')
+  zeilen.push(`Offene Gutscheine (Stichtag ${fmtDatum.format(new Date())});${journal.offen.anzahl} Stück;;;${euro(journal.offen.summeCent)};;davon abgelaufen: ${euro(journal.offen.davonAbgelaufenCent)};;`)
+  return '﻿' + zeilen.join('\r\n')
+}

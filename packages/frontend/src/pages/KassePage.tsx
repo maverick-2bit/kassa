@@ -378,10 +378,16 @@ export function KassePage() {
             belegId:              beleg.id,
           })
           void queryClient.invalidateQueries({ queryKey: ['gutscheine'] })
-          // Restgutschein anzeigen und direkt drucken
+          // Restgutschein anzeigen und direkt drucken — zuerst am Bondrucker
+          // (wie die Gutschein-Erstellung); ohne Drucker/Kasse fällt es aufs
+          // A4-Druckfenster zurück.
           if (result.restGutschein) {
-            const auth = getAuth()
-            if (auth) druckeGutschein(result.restGutschein, { firmenname: auth.mandant.firmenname, uid: auth.mandant.uid })
+            try {
+              await gutscheinApi.drucken(result.restGutschein.id, identity.kasseId)
+            } catch {
+              const auth = getAuth()
+              if (auth) druckeGutschein(result.restGutschein, { firmenname: auth.mandant.firmenname, uid: auth.mandant.uid })
+            }
             setRestGutschein(result.restGutschein)
           }
         } catch (e) {

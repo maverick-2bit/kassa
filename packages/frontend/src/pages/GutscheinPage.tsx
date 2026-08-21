@@ -9,7 +9,7 @@ import {
   GUTSCHEIN_BUCHUNG_TYP_LABELS,
   GUTSCHEIN_STATUS_LABELS,
 } from '@kassa/shared'
-import { gutscheinApi } from '../lib/api'
+import { gutscheinApi, downloadGutscheinJournalCsv } from '../lib/api'
 import { getAuth } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
@@ -511,6 +511,9 @@ export function GutscheinPage() {
         </div>
       )}
 
+      {/* Journal (Finanz): alle Bewegungen + Export + Offen-Summe */}
+      <GutscheinJournalSektion />
+
       {/* Neuer Gutschein Modal */}
       <Modal open={neuerOffen} onClose={() => setNeuerOffen(false)} title="Neuer Gutschein">
         <NeuerGutscheinModal
@@ -571,6 +574,150 @@ export function GutscheinPage() {
           <GutscheinDetailModal gs={detailGs} onClose={() => setDetailGs(null)}
             onBonDruck={(id) => bonDruckMutation.mutate(id)} bonDruckLaeuft={bonDruckMutation.isPending} />
         </Modal>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Journal (Finanz-Anforderung): alle Gutschein-Bewegungen chronologisch,
+// Codewechsel bei Restgutscheinen nachvollziehbar, CSV-Export und die
+// tagesaktuelle Summe der offenen Gutscheine.
+// ---------------------------------------------------------------------------
+
+const JOURNAL_TYP_ANZEIGE: Record<string, string> = {
+  ausstellung:   'Ausstellung',
+  einloesung:    'Einlösung',
+  restgutschein: 'Restgutschein (Codewechsel)',
+  storno:        'Storno',
+}
+
+function heuteISO(): string {
+  return new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Vienna' })
+}
+
+function vorTagenISO(tage: number): string {
+  const d = new Date()
+  d.setDate(d.getDate() - tage)
+  return d.toLocaleDateString('sv-SE', { timeZone: 'Europe/Vienna' })
+}
+
+function GutscheinJournalSektion() {
+  const [von, setVon] = useState(() => vorTagenISO(31))
+  const [bis, setBis] = useState(() => heuteISO())
+  const [geladen, setGeladen] = useState<{ von: string; bis: string } | null>(null)
+  const [exportFehler, setExportFehler] = useState<string | null>(null)
+  const [exportiert, setExportiert] = useState(false)
+
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: ['gutschein-journal', geladen],
+    queryFn:  () => gutscheinApi.journal(geladen!.von, geladen!.bis),
+    enabled:  geladen !== null,
+  })
+
+  const exportCsv = async () => {
+    setExportFehler(null)
+    setExportiert(false)
+    try {
+      await downloadGutscheinJournalCsv(von, bis)
+      setExportiert(true)
+      setTimeout(() => setExportiert(false), 3000)
+    } catch (e) {
+      setExportFehler(e instanceof Error ? e.message : 'Export fehlgeschlagen')
+    }
+  }
+
+  return (
+    <div className="mt-10">
+      <div className="flex items-start justify-between mb-3">
+        <div>
+          <h2 className="text-lg font-bold text-ink">Gutschein-Journal</h2>
+          <p className="text-xs text-ink-muted mt-0.5">
+            Alle Bewegungen inkl. Codewechsel bei Restgutscheinen — als Nachweis für die Finanz
+            per CSV exportierbar, samt tagesaktueller Summe der offenen Gutscheine.
+          </p>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-line bg-panel p-4 mb-4 flex flex-wrap items-end gap-3">
+        <div>
+          <label className="block text-xs font-medium text-ink-muted mb-1">Von</label>
+          <input type="date" value={von} max={bis} onChange={e => setVon(e.target.value)}
+            className="rounded border border-line-strong px-2 py-1.5 text-sm focus:border-brand-500 outline-none" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-ink-muted mb-1">Bis</label>
+          <input type="date" value={bis} min={von} max={heuteISO()} onChange={e => setBis(e.target.value)}
+            className="rounded border border-line-strong px-2 py-1.5 text-sm focus:border-brand-500 outline-none" />
+        </div>
+        <Button onClick={() => setGeladen({ von, bis })} loading={isLoading}>Journal laden</Button>
+        <Button variant="secondary" onClick={() => { void exportCsv() }}>
+          {exportiert ? '✓ Exportiert' : '⬇ CSV exportieren'}
+        </Button>
+        {exportFehler && <p className="text-xs text-red-600">{exportFehler}</p>}
+      </div>
+
+      {isError && (
+        <div className="rounded-md p-3 text-sm bg-red-50 border border-red-200 text-red-700 mb-4">
+          {error instanceof Error ? error.message : 'Journal konnte nicht geladen werden'}
+        </div>
+      )}
+
+      {data && (
+        <>
+          {/* Offen-Summe — Stichtag jetzt (Finanz) */}
+          <div className="grid grid-cols-3 gap-4 mb-4">
+            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+              <p className="text-2xl font-bold text-blue-700">{formatPreis(data.offen.summeCent)}</p>
+              <p className="text-xs text-ink-muted mt-0.5">Offene Gutscheine gesamt (Stichtag heute)</p>
+            </div>
+            <div className="rounded-xl border border-line bg-panel p-4">
+              <p className="text-2xl font-bold text-ink">{data.offen.anzahl}</p>
+              <p className="text-xs text-ink-muted mt-0.5">Stück offen (aktiv + teileingelöst)</p>
+            </div>
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+              <p className="text-2xl font-bold text-amber-700">{formatPreis(data.offen.davonAbgelaufenCent)}</p>
+              <p className="text-xs text-ink-muted mt-0.5">davon bereits abgelaufen</p>
+            </div>
+          </div>
+
+          {data.eintraege.length === 0 ? (
+            <p className="text-sm text-ink-muted">Keine Bewegungen im gewählten Zeitraum.</p>
+          ) : (
+            <div className="bg-panel border border-line rounded-xl overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-line bg-panel-2 text-xs font-semibold text-ink-muted uppercase tracking-wider">
+                    <th className="px-3 py-2.5 text-left">Datum</th>
+                    <th className="px-3 py-2.5 text-left">Vorgang</th>
+                    <th className="px-3 py-2.5 text-left">Code</th>
+                    <th className="px-3 py-2.5 text-right">Betrag</th>
+                    <th className="px-3 py-2.5 text-right">Rest danach</th>
+                    <th className="px-3 py-2.5 text-left">Neuer Code</th>
+                    <th className="px-3 py-2.5 text-right">Beleg-Nr.</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.eintraege.map((e, i) => (
+                    <tr key={i} className={`border-b border-line last:border-0 ${i % 2 === 0 ? 'bg-panel' : 'bg-panel-2/40'}`}>
+                      <td className="px-3 py-2 text-ink-muted whitespace-nowrap">
+                        {new Date(e.datum).toLocaleString('de-AT', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </td>
+                      <td className="px-3 py-2 text-ink">{JOURNAL_TYP_ANZEIGE[e.typ] ?? e.typ}</td>
+                      <td className="px-3 py-2 font-mono font-semibold text-brand-700">{e.code}</td>
+                      <td className={`px-3 py-2 text-right font-mono ${e.betragCent < 0 ? 'text-red-600' : 'text-green-700'}`}>
+                        {formatPreis(e.betragCent)}
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono text-ink">{formatPreis(e.restCentNach)}</td>
+                      <td className="px-3 py-2 font-mono text-ink-muted">{e.verknuepfterCode ?? '–'}</td>
+                      <td className="px-3 py-2 text-right font-mono text-ink-muted">{e.belegNummer ?? '–'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
       )}
     </div>
   )
