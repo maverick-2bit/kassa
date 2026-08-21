@@ -12,7 +12,7 @@ export type KdsSseEvent =
   | { typ: 'snapshot';        bons: KdsBonDto[] }
   | { typ: 'neuer_bon';       bon: KdsBonDto }
   | { typ: 'bon_erledigt';    bonId: string }
-  | { typ: 'position_toggle'; bonId: string; positionId: string; erledigt: boolean; erledigtMenge?: number }
+  | { typ: 'position_toggle'; bonId: string; positionId: string; erledigt: boolean; erledigtMenge?: number; haken?: number }
   | { typ: 'kellner_antwort'; text: string; kasseBezeichnung: string; zeit: string }
 
 export interface KdsBonDto {
@@ -35,6 +35,8 @@ export interface KdsPositionDto {
   bezeichnung:    string
   menge:          number
   erledigtMenge?: number
+  /** Per Antippen als fertig markierte Stücke (reine Anzeige) */
+  haken?:         number
   details?:       string
   erledigt:       boolean
 }

@@ -496,6 +496,7 @@ export default function App() {
                 ...p,
                 erledigt: event.erledigt,
                 ...(event.erledigtMenge !== undefined ? { erledigtMenge: event.erledigtMenge } : {}),
+                ...(event.haken !== undefined ? { haken: event.haken } : {}),
               }
             }),
           }

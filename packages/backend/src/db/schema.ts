@@ -1084,7 +1084,10 @@ export interface KdsPosition {
   id:             string
   bezeichnung:    string
   menge:          number
+  /** Per Teilbon GESENDETE (= gedruckte) Stückzahl */
   erledigtMenge?: number
+  /** Per Antippen als fertig MARKIERTE Stücke — reine Anzeige, kein Druck */
+  haken?:         number
   details?:       string
   erledigt:       boolean
 }

@@ -23,7 +23,8 @@ export interface KdsPosition {
   id:             string   // uuid, eindeutig pro Position
   bezeichnung:    string
   menge:          number
-  erledigtMenge?: number   // bereits gesendete Teilmenge
+  erledigtMenge?: number   // bereits gesendete (= gedruckte) Teilmenge
+  haken?:         number   // per Antippen als fertig markierte Stücke (nur Anzeige)
   details?:       string
   erledigt:       boolean
 }
@@ -47,5 +48,5 @@ export type KdsSseEvent =
   | { typ: 'snapshot';        bons: KdsBon[] }
   | { typ: 'neuer_bon';       bon: KdsBon }
   | { typ: 'bon_erledigt';    bonId: string }
-  | { typ: 'position_toggle'; bonId: string; positionId: string; erledigt: boolean; erledigtMenge?: number }
+  | { typ: 'position_toggle'; bonId: string; positionId: string; erledigt: boolean; erledigtMenge?: number; haken?: number }
   | { typ: 'kellner_antwort'; text: string; kasseBezeichnung: string; zeit: string }

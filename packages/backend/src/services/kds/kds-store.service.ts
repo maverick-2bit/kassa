@@ -173,6 +173,11 @@ export async function kdsBonTeilbon(
     return {
       ...p,
       erledigtMenge: neueErledigtMenge,
+      // Häkchen um die gesendete Menge abbauen (markierte Stücke gelten als
+      // gesendet), nie unter 0 und nie über die Restmenge hinaus
+      ...(p.haken !== undefined
+        ? { haken: Math.max(0, Math.min(p.haken - zuSenden, p.menge - neueErledigtMenge)) }
+        : {}),
       erledigt: vollstaendig,
     }
   })
@@ -201,6 +206,7 @@ export async function kdsBonTeilbon(
       positionId: posId,
       erledigt:   pos.erledigt,
       ...(pos.erledigtMenge !== undefined ? { erledigtMenge: pos.erledigtMenge } : {}),
+      ...(pos.haken !== undefined ? { haken: pos.haken } : {}),
     })
   }
 
@@ -209,6 +215,52 @@ export async function kdsBonTeilbon(
   }
 
   return { bon: updated }
+}
+
+/**
+ * Häkchen: EIN Stück einer Position als fertig MARKIEREN — reine Anzeige,
+ * ohne Druck und ohne den Bon abzuschließen. Gedruckt wird erst beim
+ * expliziten ✓ Erledigt bzw. beim Teilbon-Senden (User-Workflow).
+ */
+export async function kdsPositionHaken(
+  db:         Db,
+  bonId:      string,
+  mandantId:  string,
+  positionId: string,
+): Promise<{ haken: number } | null> {
+  const [bon] = await db
+    .select()
+    .from(kdsBons)
+    .where(and(eq(kdsBons.id, bonId), eq(kdsBons.mandantId, mandantId)))
+    .limit(1)
+
+  if (!bon || bon.status !== 'offen') return null
+  const pos = bon.positionen.find(p => p.id === positionId)
+  if (!pos || pos.erledigt) return null
+
+  const offen     = pos.menge - (pos.erledigtMenge ?? 0)
+  const neuerWert = Math.min((pos.haken ?? 0) + 1, offen)
+
+  const aktualisiert: KdsPosition[] = bon.positionen.map(p =>
+    p.id === positionId ? { ...p, haken: neuerWert } : p,
+  )
+  const [updated] = await db
+    .update(kdsBons)
+    .set({ positionen: aktualisiert })
+    .where(eq(kdsBons.id, bonId))
+    .returning()
+  if (!updated) return null
+
+  emitKdsEvent(mandantId, bon.station, {
+    typ:        'position_toggle',
+    bonId:      bon.id,
+    positionId,
+    erledigt:   false,
+    ...(pos.erledigtMenge !== undefined ? { erledigtMenge: pos.erledigtMenge } : {}),
+    haken:      neuerWert,
+  })
+
+  return { haken: neuerWert }
 }
 
 /** Archiv: erledigte Bons einer Station (neueste zuerst, paginiert) */
