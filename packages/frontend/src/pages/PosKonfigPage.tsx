@@ -26,7 +26,7 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { Artikel, Kategorie, Startseite, KellnerTischwahl, KellnerModus } from '@kassa/shared'
+import { KATEGORIE_FARBE_HEX, type Artikel, type Kategorie, type Startseite, type KellnerTischwahl, type KellnerModus } from '@kassa/shared'
 import { artikelApi, kategorieApi, posConfigApi, bonierdruckerApi, tischplanApi, kasseApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { Button } from '../components/ui/Button'
@@ -273,7 +273,7 @@ function TabWarengruppen({
                     {handle}
                     <div
                       className="h-3 w-3 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: FARB_MAP[k.farbe] ?? '#9ca3af' }}
+                      style={{ backgroundColor: KATEGORIE_FARBE_HEX[k.farbe] ?? '#9ca3af' }}
                     />
                     <span className="flex-1 text-sm font-medium text-ink">{k.name}</span>
                     {!k.aktiv && (
@@ -860,16 +860,7 @@ function TabKellner({ kasseId }: { kasseId: string }) {
 // Hauptseite
 // ---------------------------------------------------------------------------
 
-const FARB_MAP: Record<string, string> = {
-  grau:   '#9ca3af',
-  rot:    '#ef4444',
-  orange: '#f97316',
-  gelb:   '#eab308',
-  gruen:  '#22c55e',
-  blau:   '#3b82f6',
-  lila:   '#a855f7',
-  pink:   '#ec4899',
-}
+// Farb-Punkte kommen aus der zentralen 20er-Hex-Palette (@kassa/shared).
 
 export function PosKonfigPage() {
   const identity = getKasseIdentity()!

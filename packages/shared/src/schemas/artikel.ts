@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { StationSchema } from './station.js'
+import { KategorieFarbeSchema } from './kategorie.js'
 
 /** Österreichische MwSt-Sätze gemäß RKSV */
 export const MwStSatzSchema = z.enum(['normal', 'ermaessigt1', 'ermaessigt2', 'null', 'besonders'])
@@ -43,6 +44,8 @@ export const ArtikelSchema = z.object({
   mwstSatz:             MwStSatzSchema,
   artikelnummer:        z.string().nullable(),
   station:              StationSchema.nullable(),
+  /** Eigene Kachel-Farbe; null = Farbe der Warengruppe (Muster wie station) */
+  farbe:                KategorieFarbeSchema.nullable(),
   kategorieId:          z.string().uuid().nullable(),
   aktiv:                z.boolean(),
   lagerstandAktiv:      z.boolean(),
@@ -79,6 +82,7 @@ export const ArtikelInputSchema = z.object({
   mwstSatz:        MwStSatzSchema,
   // artikelnummer wird serverseitig automatisch generiert – nie vom Client gesetzt
   station:         StationSchema.optional().nullable(),
+  farbe:           KategorieFarbeSchema.optional().nullable(),
   kategorieId:     z.string().uuid().optional().nullable(),
   lagerstandAktiv: z.boolean().default(false),
   lagerstandMenge: z.number().int().nonnegative().nullable().default(null),
@@ -100,6 +104,7 @@ export const ArtikelUpdateSchema = z.object({
   preisBruttoCent:      z.number().int().nonnegative().optional(),
   mwstSatz:             MwStSatzSchema.optional(),
   station:              StationSchema.optional().nullable(),
+  farbe:                KategorieFarbeSchema.optional().nullable(),
   kategorieId:          z.string().uuid().optional().nullable(),
   aktiv:                z.boolean().optional(),
   lagerstandAktiv:      z.boolean().optional(),

@@ -140,6 +140,7 @@ export {
   KategorieUpdateSchema,
   KategorieFarbeSchema,
   KATEGORIE_FARBE_LABELS,
+  KATEGORIE_FARBE_HEX,
 } from './schemas/kategorie.js'
 export type {
   Kategorie,

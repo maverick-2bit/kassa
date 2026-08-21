@@ -36,6 +36,12 @@ export function TischePage() {
     queryKey:        ['tisch-tabs', identity.kasseId],
     queryFn:         () => tischTabApi.list(identity.kasseId),
     refetchInterval: 5_000,
+    // Natürliche Sortierung nach Tischnummer (1, 2, 10, 25, 221, Bar, T1) —
+    // vorher stand die Liste in Buchungsreihenfolge („221, 75, T1, 25").
+    select: (tabs) => {
+      const collator = new Intl.Collator('de', { numeric: true, sensitivity: 'base' })
+      return [...tabs].sort((a, b) => collator.compare(a.tischNummer, b.tischNummer))
+    },
   })
 
   const bereicheQuery = useQuery({
