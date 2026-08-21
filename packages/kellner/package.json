@@ -1,6 +1,6 @@
 {
   "name": "@kassa/kellner",
-  "version": "0.7.169",
+  "version": "0.7.170",
   "private": true,
   "type": "module",
   "scripts": {
