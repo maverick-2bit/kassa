@@ -35,6 +35,8 @@ export interface BuildTestServerOptions {
   finanzOnlineClient?: FinanzOnlineClient
   /** Einzelne Config-Werte überschreiben (z. B. SMTP für Mail-Tests) */
   config?: Partial<Config>
+  /** Globales Rate-Limit (Anfragen/Minute je Client) — Standard im Test: praktisch aus */
+  rateLimitMax?: number
 }
 
 export async function buildTestServer(db: Db, opts: BuildTestServerOptions = {}): Promise<TestServer> {
@@ -62,6 +64,7 @@ export async function buildTestServer(db: Db, opts: BuildTestServerOptions = {})
     // → 0,1 GB frei → drei Monitoring-Tests kippten ohne Bug). 300 von 500 GB
     // frei = deterministisch „ok".
     statfsFn: async () => ({ bsize: 1, blocks: 500 * 1024 ** 3, bavail: 300 * 1024 ** 3 }),
+    ...(opts.rateLimitMax !== undefined && { rateLimitMax: opts.rateLimitMax }),
     setupDeps: {
       db,
       masterPassphrase: TEST_MASTER,

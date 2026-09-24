@@ -6,6 +6,7 @@
  * damit ein DB-Fehler im Audit-Pfad nie die eigentliche Geschäftslogik unterbricht.
  */
 
+import { isIP } from 'node:net'
 import type { FastifyBaseLogger } from 'fastify'
 import type { Db } from '../db/client.js'
 import { auditLogs } from '../db/schema.js'
@@ -58,15 +59,21 @@ export async function logAudit(
   }
 }
 
-/** Extrahiert die Client-IP aus einem Fastify-Request (inkl. X-Forwarded-For hinter Proxy). */
+/**
+ * Client-IP eines Fastify-Requests — für Audit-Log und Rate-Limit.
+ *
+ * Das Backend ist nie direkt erreichbar: jede Anfrage kommt über den nginx einer
+ * App, und der ÜBERSCHREIBT X-Real-IP mit der Client-IP, die er je Eingang
+ * bestimmt (direkt, Caddy, Cloudflare-Tunnel — siehe den Client-IP-Block in
+ * packages/<app>/nginx.conf). X-Forwarded-For wird bewusst nicht gelesen: dessen
+ * erster Eintrag stammt vom Client selbst und ist frei fälschbar.
+ * Ohne (gültiges) X-Real-IP — Dev-Server, Healthcheck — zählt der Absender.
+ */
 export function getClientIp(request: {
   ip: string
   headers: Record<string, string | string[] | undefined>
 }): string {
-  const forwarded = request.headers['x-forwarded-for']
-  if (forwarded) {
-    const first = Array.isArray(forwarded) ? forwarded[0] : forwarded.split(',')[0]
-    return (first ?? request.ip).trim()
-  }
-  return request.ip
+  const wert = request.headers['x-real-ip']
+  const ip = (Array.isArray(wert) ? wert[0] : wert)?.trim()
+  return ip && isIP(ip) ? ip : request.ip
 }

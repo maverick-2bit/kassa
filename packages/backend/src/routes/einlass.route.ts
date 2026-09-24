@@ -32,14 +32,11 @@ const EventParam = z.object({ eventId: z.string().uuid() })
 /**
  * Limit JE GERÄT: alle Scanner kommen über denselben nginx — ohne eigenen
  * Schlüssel teilten sie sich einen Zähler und bremsten sich am Einlass-Ansturm
- * gegenseitig aus. 600/min (10 pro Sekunde) je Gerät ist weit über jedem
+ * gegenseitig aus. Der globale Schlüssel zählt je GEPRÜFTEM Geräte-Token
+ * (auth/rate-limit.ts). 600/min (10 pro Sekunde) je Gerät ist weit über jedem
  * menschlichen Scan-Tempo, bremst aber einen Amoklauf.
  */
-const geraeteLimit = {
-  max: 600,
-  timeWindow: '1 minute',
-  keyGenerator: (req: FastifyRequest) => `einlass:${String(req.headers.authorization ?? req.ip)}`,
-}
+const geraeteLimit = { max: 600, timeWindow: '1 minute' }
 
 export const einlassRoute: FastifyPluginAsync<EinlassRouteOptions> = async (fastify, opts) => {
   const { db } = opts
