@@ -24,6 +24,12 @@
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["--filter", "@kassa/kellner", "dev"],
       "port": 5178
+    },
+    {
+      "name": "tickets",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@kassa/tickets", "dev"],
+      "port": 5181
     }
   ]
 }

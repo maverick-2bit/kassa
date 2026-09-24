@@ -9,6 +9,7 @@ import { buildServer } from '../../src/server.js'
 import type { Db } from '../../src/db/client.js'
 import type { Berechtigung, Rolle } from '@kassa/shared'
 import type { FinanzOnlineClient } from '@kassa/rksv'
+import type { Config } from '../../src/config.js'
 
 export const TEST_MASTER     = 'test-passphrase-long-enough'
 export const TEST_JWT_SECRET = 'test-jwt-secret-key-very-long-and-secret-12345'
@@ -32,6 +33,8 @@ export interface TestServer {
 
 export interface BuildTestServerOptions {
   finanzOnlineClient?: FinanzOnlineClient
+  /** Einzelne Config-Werte überschreiben (z. B. SMTP für Mail-Tests) */
+  config?: Partial<Config>
 }
 
 export async function buildTestServer(db: Db, opts: BuildTestServerOptions = {}): Promise<TestServer> {
@@ -48,6 +51,7 @@ export async function buildTestServer(db: Db, opts: BuildTestServerOptions = {})
       MONITORING_TOKEN:  'test-monitoring-token',
       DB_BACKUP_MAX_AGE_STUNDEN:  26,
       DEP_BACKUP_MAX_AGE_STUNDEN: 26,
+      ...opts.config,
     },
     db,
     // Messpunkt für den Plattenplatz — im Test das Arbeitsverzeichnis, damit

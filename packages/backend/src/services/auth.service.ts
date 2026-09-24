@@ -116,6 +116,7 @@ async function buildLoginResponse(
       modulZeiterfassungAktiv:  mandanten.modulZeiterfassungAktiv,
       modulSbTerminalAktiv:     mandanten.modulSbTerminalAktiv,
       modulGaengeAktiv:         mandanten.modulGaengeAktiv,
+      modulTicketsAktiv:        mandanten.modulTicketsAktiv,
       gaengeAnzahl:             mandanten.gaengeAnzahl,
     })
     .from(mandanten)

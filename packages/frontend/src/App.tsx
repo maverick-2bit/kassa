@@ -58,6 +58,8 @@ const ZeiterfassungPage         = lazyPage(() => import('./pages/ZeiterfassungPa
 const ExportPage                = lazyPage(() => import('./pages/ExportPage'), 'ExportPage')
 const WerbefolienPage           = lazyPage(() => import('./pages/WerbefolienPage'), 'WerbefolienPage')
 const DienstplanPage            = lazyPage(() => import('./pages/DienstplanPage'), 'DienstplanPage')
+const TicketEventsPage          = lazyPage(() => import('./pages/TicketEventsPage'), 'TicketEventsPage')
+const TicketEventPage           = lazyPage(() => import('./pages/TicketEventPage'), 'TicketEventPage')
 const SelfCheckoutPage          = lazyPage(() => import('./pages/SelfCheckoutPage'), 'SelfCheckoutPage')
 
 export function App() {
@@ -124,6 +126,8 @@ function AppRoutes() {
           <Route path="/sb-bestellungen" element={<Require b="kasse"          m="sbTerminal"><SbBestellungenPage /></Require>} />
           <Route path="/lieferungen"     element={<Require b="kasse"            m="mergeport"      ><LieferungenPage /></Require>} />
           <Route path="/reservierungen"  element={<Require b="kasse"            m="reservierungen" ><ReservierungenPage /></Require>} />
+          <Route path="/tickets"          element={<Require b="tickets"          m="tickets"        ><TicketEventsPage /></Require>} />
+          <Route path="/tickets/:eventId" element={<Require b="tickets"          m="tickets"        ><TicketEventPage /></Require>} />
           <Route path="/zeiterfassung"   element={<Require b="einstellungen"    m="zeiterfassung"  ><ZeiterfassungPage /></Require>} />
           <Route path="/lieferanten"    element={<Require b="artikel.verwalten"            ><LieferantenPage /></Require>} />
           <Route path="/bestellliste"   element={<Require b="artikel.verwalten"            ><BestelllistePage /></Require>} />

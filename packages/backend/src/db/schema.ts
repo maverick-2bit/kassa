@@ -70,6 +70,13 @@ export const mandanten = pgTable('mandanten', {
    * Reservierung zusätzlich blockiert (Neueindecken). 0 = aus.
    */
   umruestMinuten:           integer('umruest_minuten').notNull().default(0),
+  /** Ticketing: Events, Online-Tickets, Einlasskontrolle */
+  modulTicketsAktiv:        boolean('modul_tickets_aktiv').notNull().default(false),
+  /**
+   * Öffentliche Adresse der Ticket-App (z. B. https://tickets.example.at).
+   * Links und QR-Codes in Ticket-E-Mails bauen darauf auf. null = nicht eingerichtet.
+   */
+  ticketBasisUrl:           varchar('ticket_basis_url', { length: 300 }),
 
   /**
    * Ab diesem Belegbetrag muss ein Storno freigegeben werden (PIN eines
@@ -1441,3 +1448,113 @@ export const inventurPositionen = pgTable('inventur_positionen', {
 
 export type InventurRow             = typeof inventuren.$inferSelect
 export type InventurPositionRow     = typeof inventurPositionen.$inferSelect
+
+// ---------------------------------------------------------------------------
+// Ticketing — Events, Bänder (Jugendschutz), Ticketarten, Tickets
+// ---------------------------------------------------------------------------
+
+export const ticketEvents = pgTable('ticket_events', {
+  id:           uuid('id').primaryKey().defaultRandom(),
+  mandantId:    uuid('mandant_id').notNull().references(() => mandanten.id),
+  titel:        varchar('titel', { length: 200 }).notNull(),
+  beschreibung: text('beschreibung'),
+  beginn:       timestamp('beginn', { withTimezone: true }).notNull(),
+  ende:         timestamp('ende', { withTimezone: true }),
+  ort:          varchar('ort', { length: 200 }).notNull(),
+  adresse:      varchar('adresse', { length: 300 }),
+  /** Hervorgehobene Zeile im Ticketkopf, z. B. „Motto: wird nach der Party enthüllt" */
+  hinweis:      varchar('hinweis', { length: 200 }),
+  /** null = Firmenname des Mandanten */
+  veranstalter: varchar('veranstalter', { length: 200 }),
+  /** entwurf | test | veroeffentlicht | abgesagt */
+  status:       varchar('status', { length: 20 }).notNull().default('entwurf'),
+  /** Mindestalter am Eventtag; null = keins */
+  mindestalter: integer('mindestalter'),
+  /** Name je Ticket verpflichtend (personalisierte Tickets) */
+  namePflicht:  boolean('name_pflicht').notNull().default(false),
+  /** Geburtsdaten + Namen werden so viele Tage nach Eventende gelöscht */
+  datenLoeschenNachTagen: integer('daten_loeschen_nach_tagen').notNull().default(30),
+  datenGeloeschtAt:       timestamp('daten_geloescht_at', { withTimezone: true }),
+  createdAt:    timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:    timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  mandantBeginnIdx: index('ticket_events_mandant_beginn_idx').on(t.mandantId, t.beginn),
+}))
+
+export const ticketBaender = pgTable('ticket_baender', {
+  id:          uuid('id').primaryKey().defaultRandom(),
+  mandantId:   uuid('mandant_id').notNull().references(() => mandanten.id),
+  eventId:     uuid('event_id').notNull().references(() => ticketEvents.id, { onDelete: 'cascade' }),
+  /** „Grün" — steht auf Ticket und am Einlass */
+  bezeichnung: varchar('bezeichnung', { length: 60 }).notNull(),
+  /** Hex-Farbe #rrggbb */
+  farbe:       varchar('farbe', { length: 7 }).notNull(),
+  /** Altersbereich am Eventtag, beide Grenzen inklusiv; null = offen */
+  alterVon:    integer('alter_von'),
+  alterBis:    integer('alter_bis'),
+  /** Hinweis fürs Einlasspersonal, z. B. „kein Alkohol" */
+  hinweis:     varchar('hinweis', { length: 200 }),
+  reihenfolge: integer('reihenfolge').notNull().default(0),
+}, (t) => ({
+  eventIdx: index('ticket_baender_event_idx').on(t.eventId),
+}))
+
+export const ticketArten = pgTable('ticket_arten', {
+  id:               uuid('id').primaryKey().defaultRandom(),
+  mandantId:        uuid('mandant_id').notNull().references(() => mandanten.id),
+  eventId:          uuid('event_id').notNull().references(() => ticketEvents.id, { onDelete: 'cascade' }),
+  bezeichnung:      varchar('bezeichnung', { length: 120 }).notNull(),
+  beschreibung:     text('beschreibung'),
+  preisCent:        integer('preis_cent').notNull().default(0),
+  mwstSatz:         varchar('mwst_satz', { length: 20 }).notNull().default('ermaessigt1'),
+  /** Anzahl verfügbarer Tickets; null = unbegrenzt */
+  kontingent:       integer('kontingent'),
+  maxProBestellung: integer('max_pro_bestellung').notNull().default(10),
+  verkaufAb:        timestamp('verkauf_ab', { withTimezone: true }),
+  verkaufBis:       timestamp('verkauf_bis', { withTimezone: true }),
+  /** false = nur intern ausstellbar (Freikarten o. Ä.) */
+  onlineVerkauf:    boolean('online_verkauf').notNull().default(true),
+  reihenfolge:      integer('reihenfolge').notNull().default(0),
+  createdAt:        timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  eventIdx: index('ticket_arten_event_idx').on(t.eventId),
+}))
+
+export const tickets = pgTable('tickets', {
+  id:           uuid('id').primaryKey().defaultRandom(),
+  mandantId:    uuid('mandant_id').notNull().references(() => mandanten.id),
+  eventId:      uuid('event_id').notNull().references(() => ticketEvents.id),
+  ticketArtId:  uuid('ticket_art_id').references(() => ticketArten.id, { onDelete: 'set null' }),
+  /** Steht im QR — systemweit eindeutig, nicht erratbar */
+  code:         varchar('code', { length: 32 }).notNull(),
+  /** einzel = 1× gültig | mehrfach = beliebig oft (Crew, Feuerwehr, …) */
+  typ:          varchar('typ', { length: 20 }).notNull().default('einzel'),
+  /** Nur bei mehrfach: Crew, Feuerwehr, Technik, … */
+  rolle:        varchar('rolle', { length: 60 }),
+  /** Snapshot: Ticketart bzw. Rolle — steht so auf dem Ticket */
+  bezeichnung:  varchar('bezeichnung', { length: 120 }).notNull(),
+  name:         varchar('name', { length: 200 }),
+  /** Geburtsdatum des Gastes (nicht des Käufers) — Grundlage für das Band */
+  geburtsdatum: date('geburtsdatum', { mode: 'string' }),
+  /** Empfänger-Adresse (intern ausgestellt) */
+  email:        varchar('email', { length: 254 }),
+  /** reserviert | gueltig | storniert */
+  status:       varchar('status', { length: 20 }).notNull().default('gueltig'),
+  preisCent:    integer('preis_cent').notNull().default(0),
+  mwstSatz:     varchar('mwst_satz', { length: 20 }).notNull().default('ermaessigt1'),
+  /** Erster Einlass — zählt für die Besucherzahl (Mehrfachtickets genau einmal) */
+  ersterEinlassAt:  timestamp('erster_einlass_at', { withTimezone: true }),
+  letzterEinlassAt: timestamp('letzter_einlass_at', { withTimezone: true }),
+  einlassAnzahl:    integer('einlass_anzahl').notNull().default(0),
+  ausgestelltVon:   uuid('ausgestellt_von').references(() => users.id, { onDelete: 'set null' }),
+  createdAt:    timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:    timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  codeIdx:        uniqueIndex('tickets_code_idx').on(t.code),
+  eventStatusIdx: index('tickets_event_status_idx').on(t.eventId, t.status),
+}))
+
+export type TicketEventRow = typeof ticketEvents.$inferSelect
+export type TicketBandRow  = typeof ticketBaender.$inferSelect
+export type TicketArtRow   = typeof ticketArten.$inferSelect
+export type TicketRow      = typeof tickets.$inferSelect

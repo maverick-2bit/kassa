@@ -164,6 +164,7 @@ export const authRoute: FastifyPluginAsync<AuthRouteOptions> = async (fastify, o
         modulZeiterfassungAktiv:  mandanten.modulZeiterfassungAktiv,
         modulSbTerminalAktiv:     mandanten.modulSbTerminalAktiv,
         modulGaengeAktiv:         mandanten.modulGaengeAktiv,
+        modulTicketsAktiv:        mandanten.modulTicketsAktiv,
         gaengeAnzahl:             mandanten.gaengeAnzahl,
       })
       .from(mandanten)

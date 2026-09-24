@@ -27,6 +27,7 @@ export const BerechtigungSchema = z.enum([
   'kunden.verwalten',    // Kundenstamm (CRM) einsehen und bearbeiten
   'kasse.kredit',        // Kreditverkauf (Auf Kredit buchen) verwenden
   'freigabe',            // Storno über der Freigabeschwelle per PIN freigeben
+  'tickets',             // Ticketing: Events, Tickets ausstellen/stornieren
 ])
 export type Berechtigung = z.infer<typeof BerechtigungSchema>
 
@@ -43,6 +44,7 @@ export const BERECHTIGUNG_LABELS: Record<Berechtigung, string> = {
   'kunden.verwalten':  'Kunden (CRM)',
   'kasse.kredit':      'Kreditverkauf (Auf Kredit buchen)',
   'freigabe':          'Storno freigeben (Chef-PIN)',
+  'tickets':           'Tickets & Events verwalten',
 }
 
 // ---------------------------------------------------------------------------
@@ -93,6 +95,7 @@ export const LoginResponseSchema = z.object({
     modulZeiterfassungAktiv:  z.boolean(),
     modulSbTerminalAktiv:     z.boolean(),
     modulGaengeAktiv:         z.boolean(),
+    modulTicketsAktiv:        z.boolean(),
     /** Anzahl wählbarer Gänge (1..9) für den Gang-Wähler */
     gaengeAnzahl:             z.number().int(),
   }),

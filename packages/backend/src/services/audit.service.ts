@@ -26,6 +26,8 @@ export type AuditAktion =
   | 'nullbeleg.erstellt'
   | 'storno.freigegeben'
   | 'rabatt.freigegeben'
+  | 'tickets.ausgestellt'
+  | 'ticket.storniert'
 
 export interface AuditEintrag {
   mandantId?: string | null

@@ -49,3 +49,8 @@ terminal.{$KASSA_DOMAIN} {
 abholmonitor.{$KASSA_DOMAIN} {
 	reverse_proxy abholmonitor:80
 }
+
+# Ticket-App: öffentliche Ticketseite (Link + QR in der Ticket-E-Mail)
+tickets.{$KASSA_DOMAIN} {
+	reverse_proxy tickets:80
+}

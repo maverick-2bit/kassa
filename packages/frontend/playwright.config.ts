@@ -69,5 +69,14 @@ export default defineConfig({
       reuseExistingServer: false,
       timeout: 120_000,
     },
+    {
+      // Ticket-App (öffentliche Ticketseite) — Preview auf 5181, leitet nur
+      // /api/ticketshop weiter (siehe tickets/vite.config.ts).
+      command: 'npx vite build && npx vite preview --port 5181 --strictPort --host 127.0.0.1',
+      cwd: resolve(here, '../tickets'),
+      url: 'http://127.0.0.1:5181',
+      reuseExistingServer: false,
+      timeout: 120_000,
+    },
   ],
 })

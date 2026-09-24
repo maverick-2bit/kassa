@@ -66,6 +66,7 @@ export const mandantRoute: FastifyPluginAsync<MandantRouteOptions> = async (fast
         modulZeiterfassungAktiv:  mandanten.modulZeiterfassungAktiv,
         modulSbTerminalAktiv:     mandanten.modulSbTerminalAktiv,
         modulGaengeAktiv:         mandanten.modulGaengeAktiv,
+        modulTicketsAktiv:        mandanten.modulTicketsAktiv,
         gaengeAnzahl:             mandanten.gaengeAnzahl,
         umruestMinuten:           mandanten.umruestMinuten,
       })
@@ -98,6 +99,7 @@ export const mandantRoute: FastifyPluginAsync<MandantRouteOptions> = async (fast
       modulZeiterfassungAktiv:  boolean
       modulSbTerminalAktiv:     boolean
       modulGaengeAktiv:         boolean
+      modulTicketsAktiv:        boolean
       gaengeAnzahl:             number
       umruestMinuten:           number
     }> = {}
@@ -109,6 +111,7 @@ export const mandantRoute: FastifyPluginAsync<MandantRouteOptions> = async (fast
     if (body.data.modulZeiterfassungAktiv  !== undefined) updates.modulZeiterfassungAktiv  = body.data.modulZeiterfassungAktiv
     if (body.data.modulSbTerminalAktiv     !== undefined) updates.modulSbTerminalAktiv     = body.data.modulSbTerminalAktiv
     if (body.data.modulGaengeAktiv         !== undefined) updates.modulGaengeAktiv         = body.data.modulGaengeAktiv
+    if (body.data.modulTicketsAktiv        !== undefined) updates.modulTicketsAktiv        = body.data.modulTicketsAktiv
     if (body.data.gaengeAnzahl             !== undefined) updates.gaengeAnzahl             = body.data.gaengeAnzahl
     if (body.data.umruestMinuten           !== undefined) updates.umruestMinuten           = body.data.umruestMinuten
 
@@ -128,6 +131,7 @@ export const mandantRoute: FastifyPluginAsync<MandantRouteOptions> = async (fast
         modulZeiterfassungAktiv:  mandanten.modulZeiterfassungAktiv,
         modulSbTerminalAktiv:     mandanten.modulSbTerminalAktiv,
         modulGaengeAktiv:         mandanten.modulGaengeAktiv,
+        modulTicketsAktiv:        mandanten.modulTicketsAktiv,
         gaengeAnzahl:             mandanten.gaengeAnzahl,
         umruestMinuten:           mandanten.umruestMinuten,
       })
