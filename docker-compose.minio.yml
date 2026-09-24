@@ -10,7 +10,10 @@
 # =============================================================================
 services:
   minio:
-    image: minio/minio:latest
+    # Docker Hub führt minio/minio und minio/mc nicht mehr (404 seit 2026); die
+    # Images liegen weiterhin auf quay.io. Fällt auch das weg: SeaweedFS
+    # (chrislusf/seaweedfs, „server -s3") als S3-Ersatz.
+    image: quay.io/minio/minio:latest
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
@@ -23,7 +26,7 @@ services:
 
   # Legt das Bucket an und beendet sich dann (idempotent).
   minio-init:
-    image: minio/mc:latest
+    image: quay.io/minio/mc:latest
     depends_on:
       - minio
     entrypoint:
