@@ -42,21 +42,27 @@ export function UserVerwaltungPage() {
   // Alle Kassen aus Login-Response (Admin sieht alle)
   const verfuegbareKassen = auth.kassen
 
+  /** Liste UND die PIN-Zählung der Längen-Karte — beide hängen an den Benutzern */
+  const neuLaden = () => {
+    void qc.invalidateQueries({ queryKey: ['users'] })
+    void qc.invalidateQueries({ queryKey: ['mandant-pin-laenge'] })
+  }
+
   const erstelleMutation = useMutation({
     mutationFn: userApi.create,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['users'] }); setNeuerUserOffen(false) },
+    onSuccess: () => { neuLaden(); setNeuerUserOffen(false) },
     onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
   })
 
   const updateMutation = useMutation({
     mutationFn: ({ id, input }: { id: string; input: UserUpdateInput }) => userApi.update(id, input),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['users'] }); setEditUser(null); setPinUser(null) },
+    onSuccess: () => { neuLaden(); setEditUser(null); setPinUser(null) },
     onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
   })
 
   const deactivateMutation = useMutation({
     mutationFn: userApi.deactivate,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+    onSuccess: () => neuLaden(),
     onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
   })
 
