@@ -203,14 +203,14 @@ jobs:
         env:
           E2E_BASIS_DATABASE_URL: postgresql://kassa:kassa@localhost:5432/kassa
 
-  # ── Backup-E2E: Off-Site-Backup gegen lokales MinIO (der "Box-Test") ─────────
+  # ── Backup-E2E: Off-Site-Backup gegen lokales S3 (der "Box-Test") ────────────
   backup-e2e:
-    name: Backup-E2E (restic → MinIO)
+    name: Backup-E2E (restic → S3-Testziel)
     runs-on: ubuntu-latest
     env:
-      # Dev- + MinIO-Override: Backend bootet ohne echte Secrets, restic zeigt
-      # auf lokales MinIO. In jedem Schritt verfügbar.
-      COMPOSE: docker compose -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.minio.yml
+      # Dev- + S3-Test-Override (SeaweedFS): Backend bootet ohne echte Secrets,
+      # restic zeigt auf das lokale S3. In jedem Schritt verfügbar.
+      COMPOSE: docker compose -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.s3-test.yml
 
     steps:
       - name: Checkout
@@ -224,14 +224,14 @@ jobs:
           JWT_SECRET=ci-jwt-secret-key-mindestens-32-zeichen-lang
           EOF
 
-      - name: Stack starten (Backend + Backup + MinIO, ohne Frontends)
+      - name: Stack starten (Backend + Backup + S3-Testziel, ohne Frontends)
         run: $COMPOSE up -d --build backup
 
       - name: Auf restic-Repository warten
         run: |
           for i in $(seq 1 60); do
             $COMPOSE exec -T backup restic snapshots >/dev/null 2>&1 && { echo "Repo bereit"; exit 0; }
-            echo "warte auf restic/MinIO ($i) ..."; sleep 2
+            echo "warte auf restic/S3 ($i) ..."; sleep 2
           done
           echo "Repo wurde nicht rechtzeitig erreichbar"; exit 1
 
