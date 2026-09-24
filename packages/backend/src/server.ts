@@ -8,6 +8,7 @@ import type { SetupServiceDeps } from './services/setup.service.js'
 import type { BelegServiceDeps } from './services/beleg.service.js'
 import type { StatfsFn } from './services/monitoring.service.js'
 import { registerAuth } from './auth/plugin.js'
+import { rateLimitSchluessel } from './auth/rate-limit.js'
 import { setupRoute } from './routes/setup.route.js'
 import { healthRoute } from './routes/health.route.js'
 import { systemRoute } from './routes/system.route.js'
@@ -80,6 +81,8 @@ export interface ServerDeps {
   statfsFn?:       StatfsFn
   /** Nur für Tests: Stripe-Zugriffe des Ticketshops ersetzen (kein Netz). */
   ticketshopStripe?: ShopStripe
+  /** Nur für Tests: globales Rate-Limit (Anfragen/Minute je Client) statt des Standards. */
+  rateLimitMax?:   number
 }
 
 export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
@@ -121,12 +124,28 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     referrerPolicy:            { policy: 'strict-origin-when-cross-origin' },
   })
 
-  // Rate-Limiting — in Tests deaktiviert, in Produktion aktiv
+  // Rate-Limiting je Client — angemeldet je Anmeldung, sonst je Client-IP
+  // (Schlüssel siehe auth/rate-limit.ts). In Tests praktisch aus.
+  // Wer ins Limit läuft, steht einmal je Minute und Schlüssel im Log: so lässt
+  // sich nach einem Event nachvollziehen, WER gebremst wurde, ohne dass eine
+  // Anfrageflut das Log flutet.
+  const letzteLimitMeldung = new Map<string, number>()
   await fastify.register(rateLimit, {
-    global:     true,
-    max:        deps.config.NODE_ENV === 'test' ? 10_000 : 300,
-    timeWindow: '1 minute',
+    global:       true,
+    max:          deps.rateLimitMax ?? (deps.config.NODE_ENV === 'test' ? 10_000 : 300),
+    timeWindow:   '1 minute',
+    keyGenerator: rateLimitSchluessel,
+    onExceeded:   (request, key) => {
+      const jetzt = Date.now()
+      if ((letzteLimitMeldung.get(key) ?? 0) > jetzt - 60_000) return
+      if (letzteLimitMeldung.size >= 1000) letzteLimitMeldung.clear()
+      letzteLimitMeldung.set(key, jetzt)
+      request.log.warn({ schluessel: key, url: request.url }, 'Rate-Limit überschritten')
+    },
+    // statusCode ist Pflicht: ohne ihn antwortete Fastify mit 500 statt 429
+    // (der Builder-Rückgabewert wird als Fehler geworfen)
     errorResponseBuilder: (_request, context) => ({
+      statusCode: context.statusCode,
       fehler: `Zu viele Anfragen. Bitte in ${Math.ceil(context.ttl / 1000)} Sekunden erneut versuchen.`,
     }),
   })

@@ -12,13 +12,18 @@ import type { Db } from '../db/client.js'
 import { kassen, mandanten, users } from '../db/schema.js'
 import { AuthError, login, loginWithPin, userZuDto } from '../services/auth.service.js'
 import { logAudit, getClientIp } from '../services/audit.service.js'
+import { ipSchluessel } from '../auth/rate-limit.js'
 
 export interface AuthRouteOptions {
   db: Db
 }
 
-/** Strenges Rate-Limit für Login-Endpunkte (Brute-Force-Schutz via IP). */
-const loginRateLimit = { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }
+/**
+ * Strenges Rate-Limit für Login-Endpunkte (Brute-Force-Schutz via IP).
+ * Bewusst NIE je Token wie das globale Limit: wer schon einen Token hat, darf
+ * damit keinen eigenen Rate-Topf fürs PIN-Raten bekommen.
+ */
+const loginRateLimit = { config: { rateLimit: { max: 10, timeWindow: '1 minute', keyGenerator: ipSchluessel } } }
 
 // ---------------------------------------------------------------------------
 // Account-Lockout (in-memory, pro E-Mail)

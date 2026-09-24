@@ -249,6 +249,21 @@ jobs:
         if: always()
         run: $COMPOSE down -v
 
+  # ── Client-IP-Kette: echte App-nginx-Configs + echte Caddyfile ───────────────
+  # Grundlage des Rate-Limits je Client: je App und Eingang (direkt :80,
+  # Caddy :8090, Tunnel :8091) muss die richtige Client-IP beim Backend
+  # ankommen und ein gefälschter Header wirkungslos bleiben.
+  nginx-client-ip:
+    name: Client-IP-Kette (nginx + Caddy)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Verhaltenstest (ops/nginx/client-ip-test/test.sh)
+        run: sh ops/nginx/client-ip-test/test.sh
+
   # ── Docker-Images bauen & nach GHCR pushen (nur auf master, nach grünen Gates) ─
   docker:
     name: Docker Build & Push
