@@ -10,7 +10,8 @@
 #
 # Ablauf: pollt $CONTROL/request; bei Vorhandensein → neuen Quellcode laden, ins
 # gemountete Workspace (= Host-Install-Verzeichnis) spiegeln (.env bleibt) und
-# `docker compose up -d --build` der APP-Services ausführen (NIE sich selbst).
+# `docker compose up -d --build` der App-Dienste ausführen (nie sich selbst im
+# selben Lauf — danach startet er sich neu, damit seine neue Fassung greift).
 # Fortschritt/Status landen in $CONTROL/status.json, das das Backend ausliest.
 #
 set -u
@@ -20,9 +21,19 @@ WORKSPACE="${KASSA_WORKSPACE:-/workspace}"
 BRANCH="${KASSA_BRANCH:-master}"
 REPO="maverick-2bit/kassa"
 TARURL="https://github.com/${REPO}/archive/refs/heads/${BRANCH}.tar.gz"
-# Alle App-Services — bewusst OHNE 'updater' (der Dienst darf sich nicht selbst neu
-# bauen/neustarten, sonst reißt er sich mitten im Update weg) und ohne 'caddy' (Profil).
-APP_SERVICES="postgres backend frontend kundendisplay kds gast kellner terminal abholmonitor backup"
+# Rückfall-Liste, falls die Compose-Datei nicht auswertbar ist. Normalerweise kommt
+# die Liste aus der NEUEN docker-compose.yml (app_dienste) — so starten neu
+# hinzugekommene Apps (z. B. „tickets" ab v0.7.173) ohne Updater-Anpassung mit.
+APP_SERVICES_RUECKFALL="postgres backend frontend kundendisplay kds gast kellner terminal abholmonitor tickets backup"
+
+# Alle App-Dienste der Compose-Datei — bewusst OHNE 'updater' (der Dienst darf sich
+# nicht mitten im Lauf neu bauen, sonst reißt er sich weg). Dienste hinter einem
+# Profil (caddy) listet `config --services` ohnehin nicht.
+app_dienste() {
+  liste="$(docker compose -p kassa --project-directory "$WORKSPACE" -f "$WORKSPACE/docker-compose.yml" \
+    config --services 2>/dev/null | grep -v '^updater$' | tr '\n' ' ')"
+  if [ -n "$(echo "$liste" | tr -d ' ')" ]; then echo "$liste"; else echo "$APP_SERVICES_RUECKFALL"; fi
+}
 
 mkdir -p "$CONTROL"
 # Das Backend (USER node, UID 1000) muss hier die request-Datei anlegen können.
@@ -74,9 +85,10 @@ run_update() {
   rm -rf "$tmp"
 
   status laeuft "Container werden gebaut (das dauert ein paar Minuten)" null null
+  dienste="$(app_dienste)"
   # shellcheck disable=SC2086 — Wortauftrennung der Service-Liste ist gewollt
   if docker compose -p kassa --project-directory "$WORKSPACE" -f "$WORKSPACE/docker-compose.yml" \
-       up -d --build $APP_SERVICES; then
+       up -d --build $dienste; then
     ziel="$(grep -m1 '"version"' "$WORKSPACE/package.json" 2>/dev/null | sed -E 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/')"
 
     # Nicht die Quell-Version als Erfolg melden, sondern die, die danach WIRKLICH
@@ -115,6 +127,12 @@ while true; do
   if [ -f "$CONTROL/request" ]; then
     rm -f "$CONTROL/request"
     run_update
+    # Nach jedem Lauf beenden: ein laufender sh hält dieses Skript im Speicher,
+    # die eben geladene NEUE Fassung griffe sonst erst nach einem PC-Neustart.
+    # Die restart-Policy (unless-stopped) startet den Container sofort neu und
+    # bindet die Datei dabei frisch ein. Bewusst KEIN „docker restart" auf sich
+    # selbst — bräche der Aufruf nach dem Stopp ab, bliebe der Updater gestoppt.
+    exit 0
   fi
   sleep 5
 done

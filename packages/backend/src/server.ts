@@ -62,6 +62,8 @@ import { selfcheckoutRoute }     from './routes/selfcheckout.route.js'
 import { registerTerminalRoutes } from './routes/terminal.route.js'
 import { registerStripeWebhook }  from './routes/stripe-webhook.route.js'
 import { sbBestellungRoute }     from './routes/sb-bestellung.route.js'
+import { ticketingRoute } from './routes/ticketing.route.js'
+import { ticketshopRoute } from './routes/ticketshop.route.js'
 
 export interface ServerDeps {
   config:          Config
@@ -192,6 +194,8 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     await api.register(dienstplanRoute,         { db: deps.db })
     await api.register(selfcheckoutRoute,       { db: deps.db })
     await api.register(sbBestellungRoute,       { db: deps.db })
+    await api.register(ticketingRoute,          { db: deps.db, config: deps.config })
+    await api.register(ticketshopRoute,         { db: deps.db })
   }, { prefix: '/api' })
 
   await fastify.register(monitoringRoute, {

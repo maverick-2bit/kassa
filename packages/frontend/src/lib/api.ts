@@ -134,6 +134,18 @@ import type {
   DruckerPoolInput,
   DruckerPoolUpdate,
   SignaturSelbsttestErgebnis,
+  TicketAdmin,
+  TicketArt,
+  TicketArtInput,
+  TicketArtUpdate,
+  TicketAusstellenAntwort,
+  TicketAusstellenInput,
+  TicketBand,
+  TicketBaenderSetzen,
+  TicketEventDetail,
+  TicketEventInput,
+  TicketEventUebersicht,
+  TicketEventUpdate,
 } from '@kassa/shared'
 import { getToken, handleUnauthorized } from './auth.js'
 
@@ -1760,3 +1772,59 @@ export const kasseErweiterungApi = {
     request('PATCH', `/api/kassen/${kasseId}/self-checkout`, { aktiv }),
 }
 
+
+// ---------------------------------------------------------------------------
+// Ticketing (Modul)
+// ---------------------------------------------------------------------------
+
+export const ticketingApi = {
+  einstellungen:      (): Promise<{ ticketBasisUrl: string | null }> =>
+    request('GET', '/api/ticketing/einstellungen'),
+  setzeEinstellungen: (ticketBasisUrl: string | null): Promise<{ ticketBasisUrl: string | null }> =>
+    request('PUT', '/api/ticketing/einstellungen', { ticketBasisUrl }),
+
+  events:        (): Promise<TicketEventUebersicht[]> =>
+    request('GET', '/api/ticketing/events'),
+  event:         (id: string): Promise<TicketEventDetail> =>
+    request('GET', `/api/ticketing/events/${id}`),
+  erstelleEvent: (input: TicketEventInput): Promise<TicketEventDetail> =>
+    request('POST', '/api/ticketing/events', input),
+  aendereEvent:  (id: string, input: TicketEventUpdate): Promise<TicketEventDetail> =>
+    request('PATCH', `/api/ticketing/events/${id}`, input),
+  loescheEvent:  (id: string): Promise<void> =>
+    request('DELETE', `/api/ticketing/events/${id}`),
+
+  setzeBaender:  (eventId: string, input: TicketBaenderSetzen): Promise<TicketBand[]> =>
+    request('PUT', `/api/ticketing/events/${eventId}/baender`, input),
+
+  erstelleArt:   (eventId: string, input: TicketArtInput): Promise<TicketArt> =>
+    request('POST', `/api/ticketing/events/${eventId}/arten`, input),
+  aendereArt:    (artId: string, input: TicketArtUpdate): Promise<TicketArt> =>
+    request('PATCH', `/api/ticketing/arten/${artId}`, input),
+  loescheArt:    (artId: string): Promise<void> =>
+    request('DELETE', `/api/ticketing/arten/${artId}`),
+
+  tickets:       (eventId: string, suche?: string): Promise<TicketAdmin[]> =>
+    request('GET', `/api/ticketing/events/${eventId}/tickets${suche ? `?suche=${encodeURIComponent(suche)}` : ''}`),
+  ausstellen:    (eventId: string, input: TicketAusstellenInput): Promise<TicketAusstellenAntwort> =>
+    request('POST', `/api/ticketing/events/${eventId}/tickets`, input),
+  stornieren:    (ticketId: string): Promise<TicketAdmin> =>
+    request('POST', `/api/ticketing/tickets/${ticketId}/stornieren`),
+  senden:        (ticketIds: string[], email: string): Promise<{ erfolgreich: boolean; fehler?: string }> =>
+    request('POST', '/api/ticketing/tickets/senden', { ticketIds, email }),
+}
+
+/** PDF der gewählten Tickets in neuem Tab öffnen (authentifizierter Abruf). */
+export async function oeffneTicketsPdf(ticketIds: string[]): Promise<void> {
+  // Tab SOFORT öffnen — nach dem await blockieren Browser das als Popup
+  const fenster = window.open('', '_blank')
+  const token = getToken()
+  const res = await fetch(`/api/ticketing/tickets/pdf?ids=${ticketIds.join(',')}`, {
+    headers: { Authorization: token ? `Bearer ${token}` : '' },
+  })
+  if (res.status === 401) { fenster?.close(); handleUnauthorized(); throw new ApiError(401, 'Nicht angemeldet') }
+  if (!res.ok) { fenster?.close(); throw new ApiError(res.status, `PDF fehlgeschlagen (HTTP ${res.status})`) }
+  const url = URL.createObjectURL(await res.blob())
+  if (fenster) fenster.location.href = url
+  else window.location.href = url
+}

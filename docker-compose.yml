@@ -141,8 +141,28 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+      # Übergangs-Brücke: Updater vor v0.7.173 starten nur ihre fest verdrahtete
+      # Dienstliste (ohne „tickets"). Als Abhängigkeit eines Dienstes aus dieser
+      # Liste wird die Ticket-App trotzdem mitgebaut und -gestartet. Bewusst am
+      # selten genutzten Abholmonitor, nicht an der Haupt-App.
+      tickets:
+        condition: service_started
     ports:
       - "${ABHOLMONITOR_PORT:-8085}:80"
+
+  # ── Ticket-App (Vite → nginx) — öffentliche Ticketseite, später Ticketshop ──
+  # Leitet nur /api/ticketshop/ ans Backend weiter: auch ins Internet gestellt
+  # (Caddy, tickets.<domain>) bleiben Backoffice- und Kassen-API unerreichbar.
+  tickets:
+    build:
+      context:    .
+      dockerfile: packages/tickets/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${TICKETS_PORT:-8086}:80"
 
   # ── Off-Site-Backup (restic → S3-kompatibel) ────────────────────────────────
   # Schiebt die vom Backend erzeugten DB- und DEP-Sicherungen verschlüsselt und

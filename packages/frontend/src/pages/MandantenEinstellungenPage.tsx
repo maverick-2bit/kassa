@@ -18,6 +18,7 @@ const MODULE_LISTE: { modul: MandantModul; icon: string }[] = [
   { modul: 'mergeport',      icon: '🛵' },
   { modul: 'zeiterfassung',  icon: '🕒' },
   { modul: 'sbTerminal',     icon: '🛒' },
+  { modul: 'tickets',        icon: '🎟️' },
 ]
 
 export function MandantenEinstellungenPage() {
@@ -209,6 +210,7 @@ function modulKey(modul: MandantModul): keyof MandantModule {
   if (modul === 'reservierungen') return 'modulReservierungenAktiv'
   if (modul === 'sbTerminal')     return 'modulSbTerminalAktiv'
   if (modul === 'gaenge')         return 'modulGaengeAktiv'
+  if (modul === 'tickets')        return 'modulTicketsAktiv'
   return 'modulZeiterfassungAktiv'
 }
 

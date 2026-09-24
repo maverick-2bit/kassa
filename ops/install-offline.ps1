@@ -197,6 +197,7 @@ $ports = [ordered]@{
   'Kellner-App'       = (Env-Port 'KELLNER_PORT' 8083)
   'SB-Terminal'       = (Env-Port 'TERMINAL_PORT' 8084)
   'Abholmonitor'      = (Env-Port 'ABHOLMONITOR_PORT' 8085)
+  'Ticket-App'        = (Env-Port 'TICKETS_PORT' 8086)
 }
 
 if ($OhneDocker) {

@@ -89,6 +89,9 @@ function baueNavGruppen(): NavGruppe[] {
       wenn(b('kasse') && m('angebote'),         '/beleg-archiv',   'Beleg-Archiv'),
       wenn(b('kasse') && m('sbTerminal'),       '/sb-bestellungen', 'SB-Bestellungen'),
     ]),
+    gruppe('Tickets', [
+      wenn(b('tickets') && m('tickets'), '/tickets', 'Events & Tickets'),
+    ]),
     gruppe('Artikel & Lager', [
       wenn(b('artikel.verwalten'), '/artikel',      'Artikel'),
       wenn(b('artikel.verwalten'), '/wareneingang', 'Wareneingang'),

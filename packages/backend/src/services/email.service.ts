@@ -6,7 +6,14 @@
  */
 
 import nodemailer from 'nodemailer'
+import {
+  esc,
+  eventZeitText,
+  ticketGueltigkeitsHinweis,
+  ticketTitel,
+} from '@kassa/shared'
 import type { Config } from '../config.js'
+import { erzeugeQrPng, erzeugeTicketPdf, type TicketPdfDaten } from './ticket-pdf.service.js'
 
 export function isEmailAktiv(config: Config): boolean {
   return !!config.SMTP_HOST && !!config.SMTP_USER && !!config.SMTP_PASS
@@ -530,5 +537,110 @@ export async function sendeBelegzweigEmail(
     subject: `${titel} ${kuerzel} — ${daten.firmenname}`,
     html,
     text: `${titel} ${kuerzel} (${datum})\n${daten.firmenname}\n\n${daten.positionen.map(p => `${p.menge}x ${p.bezeichnung}${istRechnung ? ` — ${fmt(p.einzelpreisBreutto * p.menge)}` : ''}`).join('\n')}${istRechnung && daten.gesamtbetragCent !== undefined ? `\n\nSumme: ${fmt(daten.gesamtbetragCent)}` : ''}`,
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Ticket-E-Mail
+// ---------------------------------------------------------------------------
+
+/**
+ * Tickets per E-Mail: je Ticket QR-Code (eingebettetes PNG — Vektor-QR zeigen
+ * viele Mail-Programme nicht an) + Link zur Ticketseite, dazu alle Tickets als
+ * PDF im Anhang zum Ausdrucken. Alle Tickets müssen zum selben Event gehören.
+ */
+export async function sendeTicketEmail(
+  empfaenger: string,
+  ticketsDaten: TicketPdfDaten[],
+  config: Config,
+): Promise<void> {
+  const erstes = ticketsDaten[0]
+  if (!erstes) throw new Error('Keine Tickets zum Versenden')
+  const transporter = erstelleTransporter(config)
+  const from        = config.SMTP_FROM ?? config.SMTP_USER!
+  const event       = erstes.event
+  const zeit        = eventZeitText(event.beginn)
+  const ort         = event.adresse ? `${event.ort}, ${event.adresse}` : event.ort
+
+  const qrBilder = await Promise.all(ticketsDaten.map(async (t) => ({
+    filename: `qr-${t.code}.png`,
+    content:  await erzeugeQrPng(t.url),
+    cid:      `qr-${t.code}@kassa`,
+  })))
+
+  const ticketBloecke = ticketsDaten.map((t) => {
+    const hinweis = ticketGueltigkeitsHinweis(t.typ)
+    const band = t.band
+      ? `<span style="display:inline-block;background:${esc(t.band.farbe)};color:#fff;font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px">Band ${esc(t.band.bezeichnung)} · ${esc(t.band.altersText)}</span>`
+      : ''
+    const link = t.url.startsWith('http')
+      ? `<a href="${esc(t.url)}" style="display:inline-block;margin-top:12px;background:#1f2a52;color:#fff;padding:10px 22px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:600">Ticket öffnen</a>`
+      : ''
+    return `
+      <div style="border-top:2px dashed #cbd2e1;padding:20px 28px">
+        <div style="font-size:16px;font-weight:700;color:#1a2027">${esc(ticketTitel(t))}</div>
+        ${t.name ? `<div style="font-size:13px;color:#6b7280;margin-top:2px">${esc(t.name)}</div>` : ''}
+        <div style="margin-top:8px">${band}</div>
+        <div style="text-align:center;margin-top:16px">
+          <img src="cid:qr-${esc(t.code)}@kassa" width="220" height="220" alt="QR-Code ${esc(t.code)}" style="display:block;margin:0 auto">
+          <div style="display:inline-block;margin-top:8px;background:#eceef1;font-family:Consolas,monospace;font-size:13px;padding:3px 10px;border-radius:6px">${esc(t.code)}</div>
+          <div>${link}</div>
+        </div>
+        <div style="margin-top:16px;background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:10px 12px;font-size:12px;color:#78350f">
+          <strong>${esc(hinweis.titel)}</strong> ${esc(hinweis.text)}
+        </div>
+      </div>`
+  }).join('')
+
+  const anzahlText = ticketsDaten.length === 1 ? 'Ihr Ticket' : `Ihre ${ticketsDaten.length} Tickets`
+  const fuss = event.veranstalter === erstes.verkaeufer
+    ? `Veranstalter &amp; Verkäufer: ${esc(erstes.verkaeufer)}`
+    : `Veranstalter: ${esc(event.veranstalter)} · Verkauf: ${esc(erstes.verkaeufer)}`
+
+  const html = `<!DOCTYPE html>
+<html lang="de">
+<head><meta charset="utf-8"><title>${esc(event.titel)} — Tickets</title></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,sans-serif">
+  <div style="max-width:520px;margin:32px auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08)">
+    <div style="background:#1f2a52;padding:22px 28px;color:#fff">
+      ${event.status === 'test' ? '<div style="font-size:12px;color:#c7cde0;margin-bottom:6px">Interner Test · nicht veröffentlichen</div>' : ''}
+      <div style="font-size:22px;font-weight:700">${esc(event.titel)}</div>
+      <div style="font-size:14px;margin-top:8px">${esc(zeit)}</div>
+      <div style="font-size:14px;margin-top:2px">${esc(ort)}</div>
+      ${event.hinweis ? `<div style="display:inline-block;margin-top:12px;background:#d4a72c;color:#1a1a1a;font-size:13px;font-weight:700;padding:5px 12px;border-radius:999px">${esc(event.hinweis)}</div>` : ''}
+    </div>
+    <div style="padding:18px 28px 4px;font-size:14px;color:#374151">
+      ${anzahlText} für <strong>${esc(event.titel)}</strong>. Am Einlass einfach den QR-Code vorzeigen —
+      am Handy oder ausgedruckt (PDF im Anhang).
+    </div>
+    ${ticketBloecke}
+    <div style="border-top:1px solid #e5e7eb;padding:14px 28px;font-size:11px;color:#9ca3af;text-align:center">${fuss}</div>
+  </div>
+</body>
+</html>`
+
+  const pdf = await erzeugeTicketPdf(ticketsDaten)
+  const text = [
+    `${event.titel} — ${zeit}, ${ort}`,
+    '',
+    ...ticketsDaten.map(t => `${ticketTitel(t)}: ${t.url}`),
+    '',
+    ticketGueltigkeitsHinweis(erstes.typ).titel,
+  ].join('\n')
+
+  await transporter.sendMail({
+    from,
+    to:      empfaenger,
+    subject: `${ticketsDaten.length === 1 ? 'Ihr Ticket' : 'Ihre Tickets'}: ${event.titel}`,
+    html,
+    text,
+    attachments: [
+      ...qrBilder,
+      {
+        filename:    ticketsDaten.length === 1 ? `Ticket-${erstes.code}.pdf` : `Tickets-${event.titel.replace(/[^\p{L}\p{N}]+/gu, '-')}.pdf`,
+        content:     pdf,
+        contentType: 'application/pdf',
+      },
+    ],
   })
 }

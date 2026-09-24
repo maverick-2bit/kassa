@@ -237,7 +237,8 @@ Kundendisplay|KUNDENDISPLAY_PORT|8081
 Gast-Bestellung|GAST_PORT|8082
 Kellner-App|KELLNER_PORT|8083
 SB-Terminal|TERMINAL_PORT|8084
-Abholmonitor|ABHOLMONITOR_PORT|8085"
+Abholmonitor|ABHOLMONITOR_PORT|8085
+Ticket-App|TICKETS_PORT|8086"
 
 printf '\n%s═════════════════════════════════════════════%s\n' "$C_G" "$C_0"
 printf   '%s  Kassa POS ist installiert!%s\n' "$C_G" "$C_0"
