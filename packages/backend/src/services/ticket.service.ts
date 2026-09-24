@@ -87,7 +87,7 @@ export function erzeugeTicketCode(): string {
 // Hilfen
 // ---------------------------------------------------------------------------
 
-function bandAnzeige(b: TicketBandRow): TicketBandAnzeige {
+export function bandAnzeige(b: TicketBandRow): TicketBandAnzeige {
   return { bezeichnung: b.bezeichnung, farbe: b.farbe, altersText: bandAltersText(b), hinweis: b.hinweis }
 }
 
@@ -142,14 +142,14 @@ function zuTicketAdmin(
   }
 }
 
-async function ladeEvent(db: Db, mandantId: string, eventId: string): Promise<TicketEventRow> {
+export async function ladeEvent(db: Db, mandantId: string, eventId: string): Promise<TicketEventRow> {
   const [event] = await db.select().from(ticketEvents)
     .where(and(eq(ticketEvents.id, eventId), eq(ticketEvents.mandantId, mandantId))).limit(1)
   if (!event) throw new TicketError(404, 'Event nicht gefunden')
   return event
 }
 
-async function ladeBaender(db: Db, eventId: string): Promise<TicketBandRow[]> {
+export async function ladeBaender(db: Db, eventId: string): Promise<TicketBandRow[]> {
   return db.select().from(ticketBaender)
     .where(eq(ticketBaender.eventId, eventId)).orderBy(asc(ticketBaender.reihenfolge))
 }
@@ -213,8 +213,11 @@ export async function listeEvents(db: Db, mandantId: string): Promise<TicketEven
     ende:     ticketEvents.ende,
     ort:      ticketEvents.ort,
     status:   ticketEvents.status,
-    tickets:  sql<number>`(SELECT count(*) FROM tickets t WHERE t.event_id = ${ticketEvents.id} AND t.status = 'gueltig')`.mapWith(Number),
-    besucher: sql<number>`(SELECT count(*) FROM tickets t WHERE t.event_id = ${ticketEvents.id} AND t.erster_einlass_at IS NOT NULL)`.mapWith(Number),
+    // Tabelle AUSGESCHRIEBEN statt ${ticketEvents.id}: im Select-Teil setzt Drizzle
+    // Spalten unqualifiziert ein ("id") — in der Unterabfrage bände das an t.id,
+    // die Bedingung hieße „t.event_id = t.id" und zählte immer 0.
+    tickets:  sql<number>`(SELECT count(*) FROM tickets t WHERE t.event_id = ticket_events.id AND t.status = 'gueltig')`.mapWith(Number),
+    besucher: sql<number>`(SELECT count(*) FROM tickets t WHERE t.event_id = ticket_events.id AND t.erster_einlass_at IS NOT NULL)`.mapWith(Number),
   }).from(ticketEvents)
     .where(eq(ticketEvents.mandantId, mandantId))
     .orderBy(desc(ticketEvents.beginn))
@@ -232,7 +235,7 @@ export async function holeEventDetail(db: Db, mandantId: string, eventId: string
   const baender = await ladeBaender(db, eventId)
   const arten   = await db.select({
     art:        ticketArten,
-    ausgegeben: sql<number>`(SELECT count(*) FROM tickets t WHERE t.ticket_art_id = ${ticketArten.id} AND t.status <> 'storniert')`.mapWith(Number),
+    ausgegeben: sql<number>`(SELECT count(*) FROM tickets t WHERE t.ticket_art_id = ticket_arten.id AND t.status <> 'storniert')`.mapWith(Number),
   }).from(ticketArten)
     .where(eq(ticketArten.eventId, eventId))
     .orderBy(asc(ticketArten.reihenfolge), asc(ticketArten.createdAt))
@@ -532,17 +535,30 @@ export async function storniereTicket(db: Db, mandantId: string, ticketId: strin
 // Einstellungen
 // ---------------------------------------------------------------------------
 
-export async function holeTicketEinstellungen(db: Db, mandantId: string): Promise<{ ticketBasisUrl: string | null }> {
-  const { ticketBasisUrl } = await ladeMandant(db, mandantId)
-  return { ticketBasisUrl }
+export interface TicketAdressen {
+  ticketBasisUrl:  string | null
+  einlassBasisUrl: string | null
 }
 
+export async function holeTicketEinstellungen(db: Db, mandantId: string): Promise<TicketAdressen> {
+  const [m] = await db.select({ ticketBasisUrl: mandanten.ticketBasisUrl, einlassBasisUrl: mandanten.einlassBasisUrl })
+    .from(mandanten).where(eq(mandanten.id, mandantId)).limit(1)
+  if (!m) throw new TicketError(404, 'Mandant nicht gefunden')
+  return m
+}
+
+const ohneSchraegstrich = (url: string | null | undefined) => (url ? url.replace(/\/+$/, '') : null)
+
+/** `einlassBasisUrl` undefined = unverändert lassen (ältere Oberflächen senden es nicht). */
 export async function setzeTicketEinstellungen(
-  db: Db, mandantId: string, ticketBasisUrl: string | null,
-): Promise<{ ticketBasisUrl: string | null }> {
-  const url = ticketBasisUrl ? ticketBasisUrl.replace(/\/+$/, '') : null
-  await db.update(mandanten).set({ ticketBasisUrl: url, updatedAt: new Date() }).where(eq(mandanten.id, mandantId))
-  return { ticketBasisUrl: url }
+  db: Db, mandantId: string, input: { ticketBasisUrl: string | null; einlassBasisUrl?: string | null | undefined },
+): Promise<TicketAdressen> {
+  await db.update(mandanten).set({
+    ticketBasisUrl: ohneSchraegstrich(input.ticketBasisUrl),
+    ...(input.einlassBasisUrl !== undefined ? { einlassBasisUrl: ohneSchraegstrich(input.einlassBasisUrl) } : {}),
+    updatedAt: new Date(),
+  }).where(eq(mandanten.id, mandantId))
+  return holeTicketEinstellungen(db, mandantId)
 }
 
 // ---------------------------------------------------------------------------

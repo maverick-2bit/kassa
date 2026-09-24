@@ -30,6 +30,12 @@
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["--filter", "@kassa/tickets", "dev"],
       "port": 5181
+    },
+    {
+      "name": "einlass",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@kassa/einlass", "dev"],
+      "port": 5182
     }
   ]
 }

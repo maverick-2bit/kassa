@@ -24,7 +24,7 @@ TARURL="https://github.com/${REPO}/archive/refs/heads/${BRANCH}.tar.gz"
 # Rückfall-Liste, falls die Compose-Datei nicht auswertbar ist. Normalerweise kommt
 # die Liste aus der NEUEN docker-compose.yml (app_dienste) — so starten neu
 # hinzugekommene Apps (z. B. „tickets" ab v0.7.173) ohne Updater-Anpassung mit.
-APP_SERVICES_RUECKFALL="postgres backend frontend kundendisplay kds gast kellner terminal abholmonitor tickets backup"
+APP_SERVICES_RUECKFALL="postgres backend frontend kundendisplay kds gast kellner terminal abholmonitor tickets einlass backup"
 
 # Alle App-Dienste der Compose-Datei — bewusst OHNE 'updater' (der Dienst darf sich
 # nicht mitten im Lauf neu bauen, sonst reißt er sich weg). Dienste hinter einem

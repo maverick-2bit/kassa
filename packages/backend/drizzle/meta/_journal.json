@@ -351,6 +351,13 @@
       "when": 1790208000000,
       "tag": "0050_ticketing",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1790294400000,
+      "tag": "0051_einlass",
+      "breakpoints": true
     }
   ]
 }

@@ -15,10 +15,14 @@ export async function registerAuth(fastify: FastifyInstance, config: Config): Pr
     sign:   { expiresIn: config.JWT_EXPIRES_IN },
   })
 
-  // Geräte-Token (langlebig, z. B. KDS-Bildschirm) dürfen NUR ihre
-  // Geräte-Routen benutzen — überall sonst zählen sie als nicht angemeldet.
-  const geraetGesperrt = (request: FastifyRequest): boolean =>
-    request.user.typ === 'kds_geraet' && !request.url.startsWith('/api/kds/')
+  // Geräte-Token (langlebig, z. B. KDS-Bildschirm, Einlass-Scanner) dürfen NUR
+  // ihre Geräte-Routen benutzen — überall sonst zählen sie als nicht angemeldet.
+  const GERAETE_BEREICH = {
+    kds_geraet:     { pfad: '/api/kds/',     fehler: 'Geräte-Token gilt nur für das KDS' },
+    einlass_geraet: { pfad: '/api/einlass/', fehler: 'Geräte-Token gilt nur für den Einlass' },
+  } as const
+  const geraetBereich = (request: FastifyRequest) =>
+    request.user.typ ? GERAETE_BEREICH[request.user.typ] : undefined
 
   fastify.decorate('authenticate', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
@@ -26,8 +30,9 @@ export async function registerAuth(fastify: FastifyInstance, config: Config): Pr
     } catch {
       return reply.status(401).send({ fehler: 'Authentifizierung erforderlich' })
     }
-    if (geraetGesperrt(request)) {
-      return reply.status(403).send({ fehler: 'Geräte-Token gilt nur für das KDS' })
+    const bereich = geraetBereich(request)
+    if (bereich && !request.url.startsWith(bereich.pfad)) {
+      return reply.status(403).send({ fehler: bereich.fehler })
     }
   })
 
@@ -38,8 +43,10 @@ export async function registerAuth(fastify: FastifyInstance, config: Config): Pr
       } catch {
         return reply.status(401).send({ fehler: 'Authentifizierung erforderlich' })
       }
-      if (request.user.typ === 'kds_geraet') {
-        return reply.status(403).send({ fehler: 'Geräte-Token gilt nur für das KDS' })
+      // Geräte-Token haben keine Rollen/Berechtigungen — nie hier durchlassen
+      const bereich = geraetBereich(request)
+      if (bereich) {
+        return reply.status(403).send({ fehler: bereich.fehler })
       }
       if (!rollen.includes(request.user.rolle)) {
         return reply.status(403).send({ fehler: `Erforderliche Rolle: ${rollen.join(' oder ')}` })
@@ -55,8 +62,10 @@ export async function registerAuth(fastify: FastifyInstance, config: Config): Pr
       } catch {
         return reply.status(401).send({ fehler: 'Authentifizierung erforderlich' })
       }
-      if (request.user.typ === 'kds_geraet') {
-        return reply.status(403).send({ fehler: 'Geräte-Token gilt nur für das KDS' })
+      // Geräte-Token haben keine Rollen/Berechtigungen — nie hier durchlassen
+      const bereich = geraetBereich(request)
+      if (bereich) {
+        return reply.status(403).send({ fehler: bereich.fehler })
       }
       if (
         request.user.rolle !== 'admin' &&

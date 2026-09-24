@@ -6,6 +6,8 @@ import type { TicketAnzeigeStatus, TicketEventStatus } from '@kassa/shared'
 
 /** Port der Ticket-App im Docker-Betrieb (öffentliche Ticketseite). */
 export const TICKET_APP_PORT = 8086
+/** Port der Einlass-App (Scanner am Eingang) im Docker-Betrieb. */
+export const EINLASS_APP_PORT = 8087
 
 const zwei = (n: number) => String(n).padStart(2, '0')
 

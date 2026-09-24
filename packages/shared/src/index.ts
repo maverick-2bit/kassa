@@ -788,3 +788,24 @@ export type {
   TicketAusstellenAntwort,
   TicketOeffentlich,
 } from './schemas/ticket.js'
+
+// Einlass (Ticketing Release 2)
+export {
+  EinlassErgebnisArtSchema,
+  EINLASS_ZUGELASSEN,
+  EINLASS_ERGEBNIS_TITEL,
+  EinlassScanInputSchema,
+  EinlassGeraetAnlegenSchema,
+} from './schemas/einlass.js'
+export type {
+  EinlassErgebnisArt,
+  EinlassScanInput,
+  EinlassTicket,
+  EinlassErgebnis,
+  EinlassEvent,
+  EinlassGeraetAnlegen,
+  EinlassGeraet,
+  EinlassGeraetAngelegt,
+  EinlassIch,
+  EinlassLogEintrag,
+} from './schemas/einlass.js'

@@ -64,6 +64,7 @@ import { registerStripeWebhook }  from './routes/stripe-webhook.route.js'
 import { sbBestellungRoute }     from './routes/sb-bestellung.route.js'
 import { ticketingRoute } from './routes/ticketing.route.js'
 import { ticketshopRoute } from './routes/ticketshop.route.js'
+import { einlassRoute } from './routes/einlass.route.js'
 
 export interface ServerDeps {
   config:          Config
@@ -196,6 +197,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     await api.register(sbBestellungRoute,       { db: deps.db })
     await api.register(ticketingRoute,          { db: deps.db, config: deps.config })
     await api.register(ticketshopRoute,         { db: deps.db })
+    await api.register(einlassRoute,            { db: deps.db })
   }, { prefix: '/api' })
 
   await fastify.register(monitoringRoute, {

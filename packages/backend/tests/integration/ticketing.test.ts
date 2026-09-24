@@ -284,6 +284,13 @@ describe('Ticketing (Integration, echtes PostgreSQL)', () => {
     const proBand = Object.fromEntries(e.stand.proBand.map((b: { bezeichnung: string; anzahl: number }) => [b.bezeichnung, b.anzahl]))
     expect(proBand).toMatchObject({ 'Grün': 1, 'Gelb': 0, 'Rot': 0, 'ohne Band': 1 })
 
+    // Eventliste und Ticketart zählen mit (Regression: Drizzle setzte die Spalte
+    // in der Zähl-Unterabfrage unqualifiziert ein → immer 0)
+    const liste = (await srv.fastify.inject({ method: 'GET', url: '/api/ticketing/events', headers: authA() })).json() as
+      Array<{ id: string; tickets: number; besucher: number }>
+    expect(liste.find(x => x.id === eventId)).toMatchObject({ tickets: 6, besucher: 2 })
+    expect(e.arten[0]).toMatchObject({ bezeichnung: 'Test-Buffet', ausgegeben: 1 })
+
     // Einzelticket gilt nach außen als eingelöst, das Mehrfachticket bleibt gültig
     const einzel = (await srv.fastify.inject({ method: 'GET', url: `/api/ticketshop/ticket/${einzelTicket.code}` })).json()
     const crew   = (await srv.fastify.inject({ method: 'GET', url: `/api/ticketshop/ticket/${crewTickets[0]!.code}` })).json()

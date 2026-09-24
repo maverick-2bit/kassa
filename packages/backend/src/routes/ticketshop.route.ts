@@ -15,11 +15,22 @@ import { TICKET_CODE_REGEX } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import { holeOeffentlichesTicket, holeTicketDruckdaten } from '../services/ticket.service.js'
 import { erzeugeTicketPdf } from '../services/ticket-pdf.service.js'
+import { getClientIp } from '../services/audit.service.js'
 
 export interface TicketshopRouteOptions { db: Db }
 
 const CodeParam = z.object({ code: z.string().regex(TICKET_CODE_REGEX) })
-const oeffentlichLimit = { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }
+
+/**
+ * Limit JE GAST, nicht je Absender: das Backend sieht als Absender nur den
+ * nginx der Ticket-App — ohne eigenen Schlüssel teilten sich ALLE Gäste einen
+ * Zähler, und beim Einlass-Ansturm (Hunderte öffnen gleichzeitig ihr Ticket)
+ * bekämen echte Gäste 429. Die Client-IP kommt aus X-Forwarded-For; dass sie
+ * fälschbar ist, stört hier nicht — die Codes sind ohnehin nicht erratbar.
+ */
+const oeffentlichLimit = {
+  config: { rateLimit: { max: 60, timeWindow: '1 minute', keyGenerator: (req: FastifyRequest) => `gast:${getClientIp(req)}` } },
+}
 
 /**
  * Adresse der Ticket-App aus der Anfrage (hinter nginx/Caddy) — Rückfall für den

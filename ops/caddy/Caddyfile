@@ -54,3 +54,8 @@ abholmonitor.{$KASSA_DOMAIN} {
 tickets.{$KASSA_DOMAIN} {
 	reverse_proxy tickets:80
 }
+
+# Einlass-App: Ticket-Scanner fürs Personal (Kamera braucht HTTPS)
+einlass.{$KASSA_DOMAIN} {
+	reverse_proxy einlass:80
+}

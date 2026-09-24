@@ -12,11 +12,15 @@
  *  POST     /ticketing/tickets/:ticketId/stornieren
  *  POST     /ticketing/tickets/senden                Tickets per E-Mail verschicken
  *  GET      /ticketing/tickets/pdf?ids=a,b           PDF der gewählten Tickets
+ *  GET/POST /ticketing/einlass-geraete               Scanner-Geräte auflisten / anlegen (Token + QR-Link)
+ *  POST     /ticketing/einlass-geraete/:id/sperren   verlorenes Gerät sofort sperren
+ *  GET      /ticketing/events/:eventId/einlass-log   Protokoll aller Scans
  */
 
 import type { FastifyPluginAsync, FastifyReply } from 'fastify'
 import { z } from 'zod'
 import {
+  EinlassGeraetAnlegenSchema,
   TicketArtInputSchema,
   TicketArtUpdateSchema,
   TicketAusstellenInputSchema,
@@ -24,6 +28,7 @@ import {
   TicketEinstellungenSchema,
   TicketEventInputSchema,
   TicketEventUpdateSchema,
+  type EinlassGeraetAngelegt,
   type TicketAusstellenAntwort,
 } from '@kassa/shared'
 import type { Db } from '../db/client.js'
@@ -50,12 +55,20 @@ import {
 import { erzeugeTicketPdf } from '../services/ticket-pdf.service.js'
 import { isEmailAktiv, sendeTicketEmail } from '../services/email.service.js'
 import { getClientIp, logAudit } from '../services/audit.service.js'
+import {
+  EinlassError,
+  legeGeraetAn,
+  listeEinlassLog,
+  listeGeraete,
+  widerrufeGeraet,
+} from '../services/einlass.service.js'
 
 export interface TicketingRouteOptions { db: Db; config: Config }
 
 const EventParam  = z.object({ eventId:  z.string().uuid() })
 const ArtParam    = z.object({ artId:    z.string().uuid() })
 const TicketParam = z.object({ ticketId: z.string().uuid() })
+const GeraetParam = z.object({ geraetId: z.string().uuid() })
 
 const SendenSchema = z.object({
   ticketIds: z.array(z.string().uuid()).min(1).max(200),
@@ -98,7 +111,45 @@ export const ticketingRoute: FastifyPluginAsync<TicketingRouteOptions> = async (
   fastify.put('/ticketing/einstellungen', guard, async (request, reply) => {
     const body = TicketEinstellungenSchema.safeParse(request.body)
     if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
-    return setzeTicketEinstellungen(db, request.user.mandantId, body.data.ticketBasisUrl)
+    return setzeTicketEinstellungen(db, request.user.mandantId, body.data)
+  })
+
+  // ---- Einlass-Geräte ----
+  fastify.get('/ticketing/einlass-geraete', guard, async (request) => listeGeraete(db, request.user.mandantId))
+
+  fastify.post('/ticketing/einlass-geraete', guard, async (request, reply) => {
+    const body = EinlassGeraetAnlegenSchema.safeParse(request.body)
+    if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
+    const geraet = await legeGeraetAn(db, request.user.mandantId, body.data.name)
+    // Langlebig wie beim KDS (Eventbetrieb), aber einzeln sperrbar: sub = Geräte-ID,
+    // jeder Aufruf prüft einlass_geraete.widerrufen_at.
+    const token = fastify.jwt.sign(
+      { sub: geraet.id, mandantId: request.user.mandantId, rolle: 'kellner', name: geraet.name, berechtigungen: [], typ: 'einlass_geraet' },
+      { expiresIn: '3650d' },
+    )
+    const { einlassBasisUrl } = await holeTicketEinstellungen(db, request.user.mandantId)
+    const antwort: EinlassGeraetAngelegt = {
+      geraet, token,
+      url: einlassBasisUrl ? `${einlassBasisUrl}/?token=${encodeURIComponent(token)}` : null,
+    }
+    return reply.status(201).send(antwort)
+  })
+
+  fastify.post('/ticketing/einlass-geraete/:geraetId/sperren', guard, async (request, reply) => {
+    const p = GeraetParam.safeParse(request.params)
+    if (!p.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
+    try { return await widerrufeGeraet(db, request.user.mandantId, p.data.geraetId) }
+    catch (err) {
+      if (err instanceof EinlassError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      throw err
+    }
+  })
+
+  fastify.get('/ticketing/events/:eventId/einlass-log', guard, async (request, reply) => {
+    const p = EventParam.safeParse(request.params)
+    if (!p.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
+    try { return await listeEinlassLog(db, request.user.mandantId, p.data.eventId) }
+    catch (err) { return fehler(reply, err) }
   })
 
   // ---- Events ----
