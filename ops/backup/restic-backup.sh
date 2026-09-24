@@ -37,7 +37,9 @@ sekunden_bis_stunde() {
 # es bricht an der vorhandenen config ab (z. B. falsches Passwort).
 LETZTE_MELDUNG=""
 repo_sicherstellen() {
-  restic snapshots >/dev/null 2>&1 && return 0
+  # --retry-lock: läuft gerade ein Aufräumen (auch von Hand), kurz warten statt
+  # „nicht erreichbar" anzunehmen
+  restic snapshots --retry-lock 1m >/dev/null 2>&1 && return 0
   if LETZTE_MELDUNG="$(restic init 2>&1)"; then
     log "Repository neu initialisiert: $(echo "$LETZTE_MELDUNG" | head -n 1)"
     return 0
@@ -49,9 +51,11 @@ backup_lauf() {
   # Holt eine beim Start gescheiterte Initialisierung nach
   repo_sicherstellen || true
   log "Starte Backup von /data/db-backups + /data/dep-backups ..."
-  if restic backup /data/db-backups /data/dep-backups --tag kassa --host kassa; then
+  # --retry-lock: eine gerade laufende Prüfung/Wiederherstellung von Hand bremst
+  # den Lauf nur, statt ihn scheitern zu lassen
+  if restic backup --retry-lock 10m /data/db-backups /data/dep-backups --tag kassa --host kassa; then
     log "Backup ok — wende Retention an ..."
-    restic forget \
+    restic forget --retry-lock 10m \
       --keep-daily   "${RESTIC_KEEP_DAILY:-14}" \
       --keep-weekly  "${RESTIC_KEEP_WEEKLY:-8}" \
       --keep-monthly "${RESTIC_KEEP_MONTHLY:-84}" \
