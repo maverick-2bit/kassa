@@ -189,6 +189,8 @@ async function zahlungMoeglich(deps: TicketShopDeps, m: ShopMandant): Promise<bo
 }
 
 export function maskiereEmail(email: string): string {
+  // Nach der Datenschutz-Löschung ist die Adresse leer
+  if (!email.includes('@')) return '(gelöscht)'
   const [lokal = '', domain = ''] = email.split('@')
   return `${lokal.slice(0, 1)}…@${domain}`
 }

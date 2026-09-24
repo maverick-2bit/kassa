@@ -91,7 +91,7 @@ export function bandAnzeige(b: TicketBandRow): TicketBandAnzeige {
   return { bezeichnung: b.bezeichnung, farbe: b.farbe, altersText: bandAltersText(b), hinweis: b.hinweis }
 }
 
-function zuBand(b: TicketBandRow): TicketBand {
+export function zuBand(b: TicketBandRow): TicketBand {
   return {
     id: b.id, bezeichnung: b.bezeichnung, farbe: b.farbe, alterVon: b.alterVon,
     alterBis: b.alterBis, hinweis: b.hinweis, reihenfolge: b.reihenfolge,
