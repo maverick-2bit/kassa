@@ -20,7 +20,7 @@ import { ShopBestellungInputSchema } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import type { Config } from '../config.js'
 import type { BelegServiceDeps } from '../services/beleg.service.js'
-import { getClientIp } from '../services/audit.service.js'
+import { ipSchluessel } from '../auth/rate-limit.js'
 import { erzeugeTicketPdf } from '../services/ticket-pdf.service.js'
 import { holeTicketDruckdaten } from '../services/ticket.service.js'
 import {
@@ -48,14 +48,15 @@ const EventParam       = z.object({ eventId: z.string().uuid() })
 const VeranstalterParam = z.object({ mandantId: z.string().uuid() })
 
 /**
- * Limit je Gast (Client-IP), nicht je nginx — sonst teilten sich alle Käufer
- * einen Zähler. In Tests (ein Absender für alles) praktisch aus, wie global.
+ * Limit je Gast (Client-IP + App-nginx, siehe auth/rate-limit.ts), nicht je
+ * nginx allein — sonst teilten sich alle Käufer einen Zähler. In Tests (ein
+ * Absender für alles) praktisch aus, wie global.
  */
 const limitFuer = (config: Config) => (max: number) => ({
   config: { rateLimit: {
     max: config.NODE_ENV === 'test' ? 10_000 : max,
     timeWindow: '1 minute',
-    keyGenerator: (req: FastifyRequest) => `shop:${getClientIp(req)}`,
+    keyGenerator: ipSchluessel,
   } },
 })
 
