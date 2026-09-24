@@ -10,6 +10,7 @@ import type { Db } from '../../src/db/client.js'
 import type { Berechtigung, Rolle } from '@kassa/shared'
 import type { FinanzOnlineClient } from '@kassa/rksv'
 import type { Config } from '../../src/config.js'
+import type { ShopStripe } from '../../src/services/ticketshop.service.js'
 
 export const TEST_MASTER     = 'test-passphrase-long-enough'
 export const TEST_JWT_SECRET = 'test-jwt-secret-key-very-long-and-secret-12345'
@@ -35,6 +36,8 @@ export interface BuildTestServerOptions {
   finanzOnlineClient?: FinanzOnlineClient
   /** Einzelne Config-Werte überschreiben (z. B. SMTP für Mail-Tests) */
   config?: Partial<Config>
+  /** Stripe-Zugriffe des Ticketshops ersetzen (Bezahlseite ohne Netz) */
+  ticketshopStripe?: ShopStripe
   /** Globales Rate-Limit (Anfragen/Minute je Client) — Standard im Test: praktisch aus */
   rateLimitMax?: number
 }
@@ -64,6 +67,7 @@ export async function buildTestServer(db: Db, opts: BuildTestServerOptions = {})
     // → 0,1 GB frei → drei Monitoring-Tests kippten ohne Bug). 300 von 500 GB
     // frei = deterministisch „ok".
     statfsFn: async () => ({ bsize: 1, blocks: 500 * 1024 ** 3, bavail: 300 * 1024 ** 3 }),
+    ...(opts.ticketshopStripe ? { ticketshopStripe: opts.ticketshopStripe } : {}),
     ...(opts.rateLimitMax !== undefined && { rateLimitMax: opts.rateLimitMax }),
     setupDeps: {
       db,

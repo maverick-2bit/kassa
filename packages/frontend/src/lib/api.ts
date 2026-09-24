@@ -149,6 +149,9 @@ import type {
   EinlassGeraet,
   EinlassGeraetAngelegt,
   EinlassLogEintrag,
+  TicketBestellungAdmin,
+  TicketShopEinstellungen,
+  TicketShopEinstellungenAntwort,
 } from '@kassa/shared'
 import { getToken, handleUnauthorized } from './auth.js'
 
@@ -1829,6 +1832,16 @@ export const ticketingApi = {
     request('POST', `/api/ticketing/tickets/${ticketId}/stornieren`),
   senden:        (ticketIds: string[], email: string): Promise<{ erfolgreich: boolean; fehler?: string }> =>
     request('POST', '/api/ticketing/tickets/senden', { ticketIds, email }),
+
+  // Ticketshop (Online-Verkauf)
+  shopEinstellungen:      (): Promise<TicketShopEinstellungenAntwort> =>
+    request('GET', '/api/ticketing/shop-einstellungen'),
+  setzeShopEinstellungen: (input: TicketShopEinstellungen): Promise<TicketShopEinstellungenAntwort> =>
+    request('PUT', '/api/ticketing/shop-einstellungen', input),
+  bestellungen:           (eventId: string): Promise<TicketBestellungAdmin[]> =>
+    request('GET', `/api/ticketing/events/${eventId}/bestellungen`),
+  bestellungSenden:       (bestellungId: string, email?: string): Promise<{ erfolgreich: boolean; fehler?: string }> =>
+    request('POST', `/api/ticketing/bestellungen/${bestellungId}/senden`, email ? { email } : {}),
 }
 
 /** PDF der gewählten Tickets in neuem Tab öffnen (authentifizierter Abruf). */

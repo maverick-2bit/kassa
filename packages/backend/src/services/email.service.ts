@@ -544,15 +544,78 @@ export async function sendeBelegzweigEmail(
 // Ticket-E-Mail
 // ---------------------------------------------------------------------------
 
+/** Online-Kauf (Ticketshop): Bestellübersicht + Kassenbeleg für die Ticket-E-Mail */
+export interface TicketKaufInfo {
+  summeCent:  number
+  positionen: Array<{ bezeichnung: string; menge: number; preisCent: number }>
+  /** Bestellseite — dort sind die Tickets jederzeit wieder abrufbar */
+  bestellUrl: string | null
+  /** RKSV-Beleg; mit dem Maschinencode ist die Mail ein vollständiger elektronischer Beleg */
+  beleg: null | {
+    belegNummer: number
+    belegDatum:  string
+    firmenname:  string
+    uid:         string
+    steuer:      Array<{ label: string; nettoCent: number; ustCent: number; bruttoCent: number }>
+    maschinenlesbareCode: string
+    /** A4-Rechnung zum Drucken/Speichern */
+    rechnungUrl: string | null
+  }
+}
+
+const euro = (cent: number) => `€ ${(cent / 100).toFixed(2).replace('.', ',')}`
+
+function kaufBloecke(kauf: TicketKaufInfo): { oben: string; unten: string } {
+  const zeilen = kauf.positionen.map(p => `
+        <tr>
+          <td style="padding:4px 0;font-size:13px;color:#374151">${p.menge} × ${esc(p.bezeichnung)}</td>
+          <td style="padding:4px 0;font-size:13px;color:#374151;text-align:right;white-space:nowrap">${p.preisCent === 0 ? 'kostenlos' : euro(p.preisCent * p.menge)}</td>
+        </tr>`).join('')
+  const oben = `
+    <div style="padding:6px 28px 14px">
+      <table style="width:100%;border-collapse:collapse">
+        ${zeilen}
+        <tr>
+          <td style="padding:8px 0 0;border-top:1px solid #e5e7eb;font-size:14px;font-weight:700;color:#1a2027">Gesamt</td>
+          <td style="padding:8px 0 0;border-top:1px solid #e5e7eb;font-size:14px;font-weight:700;color:#1a2027;text-align:right">${euro(kauf.summeCent)}</td>
+        </tr>
+      </table>
+      ${kauf.bestellUrl ? `<div style="margin-top:10px;font-size:12px;color:#6b7280">Ihre Bestellung jederzeit wieder aufrufen: <a href="${esc(kauf.bestellUrl)}" style="color:#1f2a52">${esc(kauf.bestellUrl)}</a></div>` : ''}
+    </div>`
+
+  const b = kauf.beleg
+  if (!b) return { oben, unten: '' }
+  const datum = new Date(b.belegDatum).toLocaleString('de-AT', {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Vienna',
+  })
+  const steuer = b.steuer.map(z => `
+          <tr>
+            <td style="padding:2px 0">${esc(z.label)}</td>
+            <td style="padding:2px 0;text-align:right">netto ${euro(z.nettoCent)}</td>
+            <td style="padding:2px 0;text-align:right">MwSt ${euro(z.ustCent)}</td>
+          </tr>`).join('')
+  const unten = `
+    <div style="border-top:1px solid #e5e7eb;padding:16px 28px;background:#f9fafb">
+      <div style="font-size:13px;font-weight:700;color:#1a2027">Beleg Nr. ${b.belegNummer} · ${esc(datum)}</div>
+      <div style="font-size:12px;color:#6b7280;margin-top:2px">${esc(b.firmenname)} · UID ${esc(b.uid)} · bezahlt mit Karte/online</div>
+      <table style="width:100%;border-collapse:collapse;margin-top:8px;font-size:11px;color:#6b7280">${steuer}</table>
+      ${b.rechnungUrl ? `<div style="margin-top:10px"><a href="${esc(b.rechnungUrl)}" style="font-size:12px;color:#1f2a52">Rechnung (A4) öffnen</a></div>` : ''}
+      <div style="margin-top:10px;font-size:9px;color:#9ca3af;font-family:Consolas,monospace;word-break:break-all">${esc(b.maschinenlesbareCode)}</div>
+    </div>`
+  return { oben, unten }
+}
+
 /**
  * Tickets per E-Mail: je Ticket QR-Code (eingebettetes PNG — Vektor-QR zeigen
  * viele Mail-Programme nicht an) + Link zur Ticketseite, dazu alle Tickets als
  * PDF im Anhang zum Ausdrucken. Alle Tickets müssen zum selben Event gehören.
+ * Mit `kauf` (Ticketshop) kommen Bestellübersicht und Kassenbeleg dazu.
  */
 export async function sendeTicketEmail(
   empfaenger: string,
   ticketsDaten: TicketPdfDaten[],
   config: Config,
+  kauf?: TicketKaufInfo,
 ): Promise<void> {
   const erstes = ticketsDaten[0]
   if (!erstes) throw new Error('Keine Tickets zum Versenden')
@@ -596,6 +659,7 @@ export async function sendeTicketEmail(
   const fuss = event.veranstalter === erstes.verkaeufer
     ? `Veranstalter &amp; Verkäufer: ${esc(erstes.verkaeufer)}`
     : `Veranstalter: ${esc(event.veranstalter)} · Verkauf: ${esc(erstes.verkaeufer)}`
+  const kaufHtml = kauf ? kaufBloecke(kauf) : { oben: '', unten: '' }
 
   const html = `<!DOCTYPE html>
 <html lang="de">
@@ -610,10 +674,12 @@ export async function sendeTicketEmail(
       ${event.hinweis ? `<div style="display:inline-block;margin-top:12px;background:#d4a72c;color:#1a1a1a;font-size:13px;font-weight:700;padding:5px 12px;border-radius:999px">${esc(event.hinweis)}</div>` : ''}
     </div>
     <div style="padding:18px 28px 4px;font-size:14px;color:#374151">
-      ${anzahlText} für <strong>${esc(event.titel)}</strong>. Am Einlass einfach den QR-Code vorzeigen —
+      ${kauf ? 'Vielen Dank für Ihre Bestellung! ' : ''}${anzahlText} für <strong>${esc(event.titel)}</strong>. Am Einlass einfach den QR-Code vorzeigen —
       am Handy oder ausgedruckt (PDF im Anhang).
     </div>
+    ${kaufHtml.oben}
     ${ticketBloecke}
+    ${kaufHtml.unten}
     <div style="border-top:1px solid #e5e7eb;padding:14px 28px;font-size:11px;color:#9ca3af;text-align:center">${fuss}</div>
   </div>
 </body>
@@ -626,6 +692,13 @@ export async function sendeTicketEmail(
     ...ticketsDaten.map(t => `${ticketTitel(t)}: ${t.url}`),
     '',
     ticketGueltigkeitsHinweis(erstes.typ).titel,
+    ...(kauf ? [
+      '',
+      ...kauf.positionen.map(p => `${p.menge} × ${p.bezeichnung}: ${euro(p.preisCent * p.menge)}`),
+      `Gesamt: ${euro(kauf.summeCent)}`,
+      ...(kauf.beleg ? [`Beleg Nr. ${kauf.beleg.belegNummer} · ${kauf.beleg.firmenname} · UID ${kauf.beleg.uid}`] : []),
+      ...(kauf.bestellUrl ? [`Bestellung: ${kauf.bestellUrl}`] : []),
+    ] : []),
   ].join('\n')
 
   await transporter.sendMail({

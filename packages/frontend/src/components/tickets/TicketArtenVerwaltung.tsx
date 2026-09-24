@@ -57,6 +57,11 @@ export function TicketArtenVerwaltung({ event }: { event: TicketEventDetail }) {
               <p className="mt-0.5 text-sm text-ink-muted">
                 {a.preisCent === 0 ? 'kostenlos' : formatPreis(a.preisCent)} · {MWST_LABELS[a.mwstSatz]} · max. {a.maxProBestellung} je Bestellung
               </p>
+              {a.preisCent > 0 && a.mwstSatz === 'ermaessigt1' && (
+                <p className="mt-1 text-xs font-medium text-amber-700">
+                  10 % ist für Eintrittskarten unüblich (meist 13 %, VIP-Karten 20 %) — bitte den Steuersatz prüfen.
+                </p>
+              )}
               <div className="mt-2 flex items-center gap-2">
                 <div className="h-1.5 w-40 overflow-hidden rounded-full bg-panel-2">
                   <div className="h-full bg-brand-500"
@@ -98,7 +103,8 @@ function TicketArtFormular({ eventId, art, onFertig, onAbbrechen }: {
   const [bezeichnung,  setBezeichnung]  = useState(art?.bezeichnung ?? '')
   const [beschreibung, setBeschreibung] = useState(art?.beschreibung ?? '')
   const [preis,        setPreis]        = useState(art ? (art.preisCent / 100).toFixed(2).replace('.', ',') : '')
-  const [mwst,         setMwst]         = useState<MwStSatz>(art?.mwstSatz ?? 'ermaessigt1')
+  // Eintritt zu Kultur-, Musik- und Sportveranstaltungen: 13 % — der häufigste Fall
+  const [mwst,         setMwst]         = useState<MwStSatz>(art?.mwstSatz ?? 'ermaessigt2')
   const [kontingent,   setKontingent]   = useState(art?.kontingent?.toString() ?? '')
   const [maxBestellung, setMaxBestellung] = useState(String(art?.maxProBestellung ?? 10))
   const [verkaufAb,    setVerkaufAb]    = useState(zuDatetimeLokal(art?.verkaufAb))
@@ -140,7 +146,7 @@ function TicketArtFormular({ eventId, art, onFertig, onAbbrechen }: {
         <Field label="Preis (€)" hint="0 = kostenlos">
           <Input inputMode="decimal" value={preis} onChange={e => setPreis(e.target.value)} placeholder="0,00" />
         </Field>
-        <Field label="MwSt">
+        <Field label="MwSt" hint="Eintritt meist 13 % (Kultur, Musik, Sport), VIP-Karten 20 % — im Zweifel Steuerberatung fragen">
           <Select value={mwst} onChange={e => setMwst(e.target.value as MwStSatz)}>
             {(Object.keys(MWST_LABELS) as MwStSatz[]).map(k => <option key={k} value={k}>{MWST_LABELS[k]}</option>)}
           </Select>

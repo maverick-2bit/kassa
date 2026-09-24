@@ -65,6 +65,8 @@ import { registerStripeWebhook }  from './routes/stripe-webhook.route.js'
 import { sbBestellungRoute }     from './routes/sb-bestellung.route.js'
 import { ticketingRoute } from './routes/ticketing.route.js'
 import { ticketshopRoute } from './routes/ticketshop.route.js'
+import { ticketverkaufRoute } from './routes/ticketverkauf.route.js'
+import type { ShopStripe } from './services/ticketshop.service.js'
 import { einlassRoute } from './routes/einlass.route.js'
 
 export interface ServerDeps {
@@ -77,6 +79,8 @@ export interface ServerDeps {
   dbBackupRetention: number
   /** Nur für Tests: Plattenplatz-Messung ersetzen (hermetisch statt echte Platte). */
   statfsFn?:       StatfsFn
+  /** Nur für Tests: Stripe-Zugriffe des Ticketshops ersetzen (kein Netz). */
+  ticketshopStripe?: ShopStripe
   /** Nur für Tests: globales Rate-Limit (Anfragen/Minute je Client) statt des Standards. */
   rateLimitMax?:   number
 }
@@ -159,7 +163,10 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   await registerTerminalRoutes(fastify, { deps: { db: deps.db, belegDeps: deps.belegDeps } })
 
   // Stripe-Webhook (öffentlich, eigener Raw-Body-Parser) — außerhalb des /api-JSON-Bereichs
-  await registerStripeWebhook(fastify, { deps: { db: deps.db, belegDeps: deps.belegDeps, config: deps.config } })
+  await registerStripeWebhook(fastify, { deps: {
+    db: deps.db, belegDeps: deps.belegDeps, config: deps.config,
+    ...(deps.ticketshopStripe ? { ticketshopStripe: deps.ticketshopStripe } : {}),
+  } })
 
   await fastify.register(async (api) => {
     // Offene Routen (kein Login nötig)
@@ -214,8 +221,12 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     await api.register(dienstplanRoute,         { db: deps.db })
     await api.register(selfcheckoutRoute,       { db: deps.db })
     await api.register(sbBestellungRoute,       { db: deps.db })
-    await api.register(ticketingRoute,          { db: deps.db, config: deps.config })
+    await api.register(ticketingRoute,          { db: deps.db, config: deps.config, belegDeps: deps.belegDeps })
     await api.register(ticketshopRoute,         { db: deps.db })
+    await api.register(ticketverkaufRoute,      {
+      db: deps.db, config: deps.config, belegDeps: deps.belegDeps,
+      ...(deps.ticketshopStripe ? { stripe: deps.ticketshopStripe } : {}),
+    })
     await api.register(einlassRoute,            { db: deps.db })
   }, { prefix: '/api' })
 

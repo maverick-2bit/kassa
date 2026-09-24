@@ -9,7 +9,9 @@
  * App behält den normalen JSON-Parser. Die mandantId MUSS aus der URL kommen — die
  * Signaturprüfung braucht das (mandant-spezifische) Secret, bevor der Payload
  * vertrauenswürdig ist. Bei `checkout.session.completed` wird die Gast-Bestellung
- * idempotent finalisiert (RKSV-Beleg + Bonierung).
+ * idempotent finalisiert (RKSV-Beleg + Bonierung). Ticket-Bestellungen
+ * (metadata.ticketBestellungId) gehen an den Ticketshop — dort zählen auch
+ * verzögerte Zahlungen und abgelaufene Bezahlseiten (Reservierung freigeben).
  */
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
@@ -24,14 +26,28 @@ import {
   type StripeKonfig,
 } from '../services/stripe.service.js'
 import { finalisiereGastBestellung, type GastServiceDeps } from '../services/gast-bestellung.service.js'
+import { verarbeiteShopWebhook, type ShopStripe } from '../services/ticketshop.service.js'
 
-export interface StripeWebhookDeps { db: Db; belegDeps: BelegServiceDeps; config: Config }
+export interface StripeWebhookDeps {
+  db: Db; belegDeps: BelegServiceDeps; config: Config
+  /** Nur Tests: Stripe-Zugriffe des Ticketshops ersetzen */
+  ticketshopStripe?: ShopStripe
+}
+
+/** Checkout-Ereignisse, die der Ticketshop auswertet (Zahlung, verzögerte Zahlung, Ablauf) */
+const SHOP_EREIGNISSE = new Set([
+  'checkout.session.completed',
+  'checkout.session.async_payment_succeeded',
+  'checkout.session.async_payment_failed',
+  'checkout.session.expired',
+])
 
 async function verarbeiteWebhook(
   request: FastifyRequest,
   reply:   FastifyReply,
   konfig:  StripeKonfig | null,
   deps:    StripeWebhookDeps,
+  mandantIdAusUrl: string | null,
 ): Promise<FastifyReply> {
   if (!konfig) return reply.status(503).send({ fehler: 'Stripe nicht konfiguriert' })
 
@@ -44,6 +60,22 @@ async function verarbeiteWebhook(
   } catch (err) {
     request.log.warn({ err }, 'Stripe-Webhook-Signatur ungültig')
     return reply.status(400).send({ fehler: 'Signatur ungültig' })
+  }
+
+  // Ticketshop: Bestellung trägt metadata.ticketBestellungId
+  const session = event.data.object as { id?: string; payment_status?: string | null; metadata?: Record<string, string> | null }
+  if (SHOP_EREIGNISSE.has(event.type) && session.metadata?.ticketBestellungId) {
+    try {
+      await verarbeiteShopWebhook(
+        { db: deps.db, belegDeps: deps.belegDeps, config: deps.config, ...(deps.ticketshopStripe ? { stripe: deps.ticketshopStripe } : {}) },
+        mandantIdAusUrl, event.type, session,
+      )
+    } catch (err) {
+      // 500 → Stripe wiederholt; das Abschließen ist über den Status-Claim idempotent.
+      request.log.error({ err }, 'Ticket-Bestellung nach Stripe-Ereignis nicht verarbeitet')
+      return reply.status(500).send({ fehler: 'Verarbeitung fehlgeschlagen' })
+    }
+    return reply.send({ received: true })
   }
 
   if (event.type === 'checkout.session.completed') {
@@ -75,12 +107,12 @@ export async function registerStripeWebhook(
       const p = z.object({ mandantId: z.string().uuid() }).safeParse(request.params)
       if (!p.success) return reply.status(400).send({ fehler: 'Ungültige Mandant-ID' })
       const konfig = await ladeStripeKonfig(opts.deps.db, p.data.mandantId, opts.deps.config)
-      return verarbeiteWebhook(request, reply, konfig, opts.deps)
+      return verarbeiteWebhook(request, reply, konfig, opts.deps, p.data.mandantId)
     })
 
     // Globaler Fallback (ein Env-Konto für alle) — verifiziert mit den Env-Keys.
     stripe.post('/api/stripe/webhook', async (request, reply) => {
-      return verarbeiteWebhook(request, reply, globaleStripeKonfig(opts.deps.config), opts.deps)
+      return verarbeiteWebhook(request, reply, globaleStripeKonfig(opts.deps.config), opts.deps, null)
     })
   })
 }

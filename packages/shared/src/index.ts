@@ -809,3 +809,34 @@ export type {
   EinlassIch,
   EinlassLogEintrag,
 } from './schemas/einlass.js'
+
+// Ticketshop (Ticketing Release 3)
+export {
+  TICKETSHOP_RESERVIERUNG_MINUTEN,
+  TICKETSHOP_KAUFHINWEIS_VORSCHLAG,
+  ShopTicketEingabeSchema,
+  ShopRechnungSchema,
+  ShopBestellungInputSchema,
+  TicketShopEinstellungenSchema,
+  TICKET_BESTELLUNG_STATUS_LABELS,
+  TicketBestellungSendenSchema,
+} from './schemas/ticketshop.js'
+export type {
+  ShopTicketEingabe,
+  ShopRechnung,
+  ShopBestellungInput,
+  ShopArtStatus,
+  ShopTicketArt,
+  ShopRechtliches,
+  ShopEvent,
+  ShopEventKurz,
+  ShopVeranstalter,
+  ShopBestellungAntwort,
+  ShopBestellStatus,
+  ShopBestellung,
+  TicketShopEinstellungen,
+  TicketShopEinstellungenAntwort,
+  TicketBestellungStatus,
+  TicketBestellungAdmin,
+  TicketBestellungSenden,
+} from './schemas/ticketshop.js'
