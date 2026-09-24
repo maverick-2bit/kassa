@@ -1,0 +1,30 @@
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+
+/* ---------------------------------------------------------------------------
+ * Einlass-App — bewusst dunkel: Eingänge sind abends oft dunkel, ein heller
+ * Bildschirm blendet Personal und Gäste. Das Ergebnisfeld ist dafür grell.
+ * ------------------------------------------------------------------------- */
+@theme {
+  --color-grund:  #0b1220;
+  --color-flaeche:#141d2e;
+  --color-rand:   #253048;
+  --color-text:   #e8edf6;
+  --color-leise:  #93a0b8;
+
+  --font-sans: "Inter Variable", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+html, body, #root {
+  height: 100%;
+}
+body {
+  margin: 0;
+  background: var(--color-grund);
+  color: var(--color-text);
+  color-scheme: dark;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+}

@@ -77,6 +77,8 @@ export const mandanten = pgTable('mandanten', {
    * Links und QR-Codes in Ticket-E-Mails bauen darauf auf. null = nicht eingerichtet.
    */
   ticketBasisUrl:           varchar('ticket_basis_url', { length: 300 }),
+  /** Öffentliche Adresse der Einlass-App — für den Einrichtungs-QR der Scanner-Handys */
+  einlassBasisUrl:          varchar('einlass_basis_url', { length: 300 }),
 
   /**
    * Ab diesem Belegbetrag muss ein Storno freigegeben werden (PIN eines
@@ -1545,6 +1547,8 @@ export const tickets = pgTable('tickets', {
   /** Erster Einlass — zählt für die Besucherzahl (Mehrfachtickets genau einmal) */
   ersterEinlassAt:  timestamp('erster_einlass_at', { withTimezone: true }),
   letzterEinlassAt: timestamp('letzter_einlass_at', { withTimezone: true }),
+  /** Name des Einlass-Geräts beim ersten Einlass („bereits eingelöst an Einlass 2") */
+  ersterEinlassGeraet: varchar('erster_einlass_geraet', { length: 60 }),
   einlassAnzahl:    integer('einlass_anzahl').notNull().default(0),
   ausgestelltVon:   uuid('ausgestellt_von').references(() => users.id, { onDelete: 'set null' }),
   createdAt:    timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1558,3 +1562,42 @@ export type TicketEventRow = typeof ticketEvents.$inferSelect
 export type TicketBandRow  = typeof ticketBaender.$inferSelect
 export type TicketArtRow   = typeof ticketArten.$inferSelect
 export type TicketRow      = typeof tickets.$inferSelect
+
+// ---------------------------------------------------------------------------
+// Einlass — Scanner-Geräte (einzeln sperrbar) + Protokoll jedes Scans
+// ---------------------------------------------------------------------------
+
+export const einlassGeraete = pgTable('einlass_geraete', {
+  id:             uuid('id').primaryKey().defaultRandom(),
+  mandantId:      uuid('mandant_id').notNull().references(() => mandanten.id),
+  /** „Einlass 1", „Handy Tom" — steht im Protokoll und in „bereits eingelöst an …" */
+  name:           varchar('name', { length: 60 }).notNull(),
+  erstelltAt:     timestamp('erstellt_at', { withTimezone: true }).notNull().defaultNow(),
+  zuletztAktivAt: timestamp('zuletzt_aktiv_at', { withTimezone: true }),
+  /** Gesetzt = gesperrt: der Geräte-Token gilt ab sofort nicht mehr */
+  widerrufenAt:   timestamp('widerrufen_at', { withTimezone: true }),
+}, (t) => ({
+  mandantIdx: index('einlass_geraete_mandant_idx').on(t.mandantId),
+}))
+
+export const ticketEinlassLog = pgTable('ticket_einlass_log', {
+  id:          uuid('id').primaryKey().defaultRandom(),
+  mandantId:   uuid('mandant_id').notNull().references(() => mandanten.id),
+  eventId:     uuid('event_id').notNull().references(() => ticketEvents.id, { onDelete: 'cascade' }),
+  ticketId:    uuid('ticket_id').references(() => tickets.id, { onDelete: 'set null' }),
+  geraetId:    uuid('geraet_id').references(() => einlassGeraete.id, { onDelete: 'set null' }),
+  /** Snapshot des Gerätenamens (bleibt lesbar, auch wenn das Gerät gelöscht wird) */
+  geraetName:  varchar('geraet_name', { length: 60 }),
+  /** Erkannter Ticket-Code bzw. gekürzter Rohinhalt eines fremden QR-Codes */
+  code:        varchar('code', { length: 64 }).notNull(),
+  ergebnis:    varchar('ergebnis', { length: 30 }).notNull(),
+  offline:     boolean('offline').notNull().default(false),
+  zeitpunkt:   timestamp('zeitpunkt', { withTimezone: true }).notNull().defaultNow(),
+  empfangenAt: timestamp('empfangen_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  eventZeitIdx: index('ticket_einlass_log_event_zeit_idx').on(t.eventId, t.zeitpunkt),
+  ticketIdx:    index('ticket_einlass_log_ticket_idx').on(t.ticketId),
+}))
+
+export type EinlassGeraetRow    = typeof einlassGeraete.$inferSelect
+export type TicketEinlassLogRow = typeof ticketEinlassLog.$inferSelect

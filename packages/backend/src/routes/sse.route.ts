@@ -25,11 +25,17 @@ export const sseRoute: FastifyPluginAsync = async (fastify) => {
         return reply.status(401).send({ fehler: 'Token fehlt' })
       }
 
-      let payload: { mandantId: string }
+      let payload: { mandantId: string; typ?: string }
       try {
-        payload = fastify.jwt.verify<{ mandantId: string }>(token)
+        payload = fastify.jwt.verify<{ mandantId: string; typ?: string }>(token)
       } catch {
         return reply.status(401).send({ fehler: 'Token ungültig' })
+      }
+      // Einlass-Scanner brauchen den Kassen-Ereignisstrom nicht — ein
+      // abfotografierter Einrichtungs-QR darf keine Verkäufe mitlesen.
+      // (Das KDS-Gerät bleibt zugelassen: es bekommt seine Bons über SSE.)
+      if (payload.typ === 'einlass_geraet') {
+        return reply.status(403).send({ fehler: 'Geräte-Token gilt nur für den Einlass' })
       }
 
       const { mandantId } = payload

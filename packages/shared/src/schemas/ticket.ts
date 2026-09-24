@@ -306,7 +306,9 @@ export type TicketSendenInput = z.infer<typeof TicketSendenInputSchema>
 
 export const TicketEinstellungenSchema = z.object({
   /** Öffentliche Adresse der Ticket-App, z. B. https://tickets.example.at */
-  ticketBasisUrl: z.string().trim().url('Vollständige Adresse inkl. https://').max(300).nullable(),
+  ticketBasisUrl:  z.string().trim().url('Vollständige Adresse inkl. https://').max(300).nullable(),
+  /** Öffentliche Adresse der Einlass-App, z. B. https://einlass.example.at */
+  einlassBasisUrl: z.string().trim().url('Vollständige Adresse inkl. https://').max(300).nullable().optional(),
 })
 export type TicketEinstellungen = z.infer<typeof TicketEinstellungenSchema>
 

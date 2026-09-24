@@ -10,11 +10,13 @@ import { TicketEventFormular } from '../components/tickets/TicketEventFormular'
 import { TicketListe } from '../components/tickets/TicketListe'
 import { TicketArtenVerwaltung } from '../components/tickets/TicketArtenVerwaltung'
 import { BaenderEditor } from '../components/tickets/BaenderEditor'
+import { EinlassProtokoll } from '../components/tickets/EinlassProtokoll'
 
-type Reiter = 'tickets' | 'arten' | 'baender' | 'event'
+type Reiter = 'tickets' | 'einlass' | 'arten' | 'baender' | 'event'
 
 const REITER: Array<[Reiter, string]> = [
   ['tickets', 'Tickets'],
+  ['einlass', 'Einlass'],
   ['arten',   'Ticketarten'],
   ['baender', 'Bänder'],
   ['event',   'Event'],
@@ -92,6 +94,7 @@ export function TicketEventPage() {
       </div>
 
       {reiter === 'tickets' && <TicketListe event={event} />}
+      {reiter === 'einlass' && <EinlassProtokoll event={event} />}
       {reiter === 'arten'   && <TicketArtenVerwaltung event={event} />}
       {reiter === 'baender' && <BaenderEditor event={event} />}
       {reiter === 'event' && (

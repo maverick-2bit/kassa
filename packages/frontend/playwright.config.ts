@@ -78,5 +78,14 @@ export default defineConfig({
       reuseExistingServer: false,
       timeout: 120_000,
     },
+    {
+      // Einlass-App (Scanner fürs Personal) — Preview auf 5182, leitet nur
+      // /api/einlass weiter (siehe einlass/vite.config.ts).
+      command: 'npx vite build && npx vite preview --port 5182 --strictPort --host 127.0.0.1',
+      cwd: resolve(here, '../einlass'),
+      url: 'http://127.0.0.1:5182',
+      reuseExistingServer: false,
+      timeout: 120_000,
+    },
   ],
 })

@@ -13,11 +13,12 @@ export interface JwtPayload {
   name:           string
   berechtigungen: Berechtigung[]
   /**
-   * Geräte-Token (z. B. fest verbauter KDS-Bildschirm): langlebig, aber auf
-   * seine Geräte-Routen beschränkt — die authenticate/require*-Decorators
-   * lehnen ihn überall sonst ab.
+   * Geräte-Token (fest verbauter KDS-Bildschirm, Einlass-Scanner): langlebig,
+   * aber auf seine Geräte-Routen beschränkt — die authenticate/require*-
+   * Decorators lehnen ihn überall sonst ab. Beim Einlass-Gerät ist `sub` die
+   * Geräte-ID (einzeln sperrbar über einlass_geraete.widerrufen_at).
    */
-  typ?:           'kds_geraet'
+  typ?:           'kds_geraet' | 'einlass_geraet'
 }
 
 declare module '@fastify/jwt' {

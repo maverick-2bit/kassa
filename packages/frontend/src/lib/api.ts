@@ -146,6 +146,9 @@ import type {
   TicketEventInput,
   TicketEventUebersicht,
   TicketEventUpdate,
+  EinlassGeraet,
+  EinlassGeraetAngelegt,
+  EinlassLogEintrag,
 } from '@kassa/shared'
 import { getToken, handleUnauthorized } from './auth.js'
 
@@ -1777,11 +1780,25 @@ export const kasseErweiterungApi = {
 // Ticketing (Modul)
 // ---------------------------------------------------------------------------
 
+export interface TicketAdressen {
+  ticketBasisUrl:  string | null
+  einlassBasisUrl: string | null
+}
+
 export const ticketingApi = {
-  einstellungen:      (): Promise<{ ticketBasisUrl: string | null }> =>
+  einstellungen:      (): Promise<TicketAdressen> =>
     request('GET', '/api/ticketing/einstellungen'),
-  setzeEinstellungen: (ticketBasisUrl: string | null): Promise<{ ticketBasisUrl: string | null }> =>
-    request('PUT', '/api/ticketing/einstellungen', { ticketBasisUrl }),
+  setzeEinstellungen: (adressen: TicketAdressen): Promise<TicketAdressen> =>
+    request('PUT', '/api/ticketing/einstellungen', adressen),
+
+  einlassGeraete:      (): Promise<EinlassGeraet[]> =>
+    request('GET', '/api/ticketing/einlass-geraete'),
+  einlassGeraetAnlegen: (name: string): Promise<EinlassGeraetAngelegt> =>
+    request('POST', '/api/ticketing/einlass-geraete', { name }),
+  einlassGeraetSperren: (id: string): Promise<EinlassGeraet> =>
+    request('POST', `/api/ticketing/einlass-geraete/${id}/sperren`),
+  einlassLog:          (eventId: string): Promise<EinlassLogEintrag[]> =>
+    request('GET', `/api/ticketing/events/${eventId}/einlass-log`),
 
   events:        (): Promise<TicketEventUebersicht[]> =>
     request('GET', '/api/ticketing/events'),

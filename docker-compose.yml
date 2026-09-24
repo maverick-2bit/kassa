@@ -141,11 +141,13 @@ services:
     depends_on:
       backend:
         condition: service_healthy
-      # Übergangs-Brücke: Updater vor v0.7.173 starten nur ihre fest verdrahtete
-      # Dienstliste (ohne „tickets"). Als Abhängigkeit eines Dienstes aus dieser
-      # Liste wird die Ticket-App trotzdem mitgebaut und -gestartet. Bewusst am
-      # selten genutzten Abholmonitor, nicht an der Haupt-App.
+      # Übergangs-Brücke: Updater vor v0.8.0 starten nur ihre fest verdrahtete
+      # Dienstliste (ohne „tickets"/„einlass"). Als Abhängigkeiten eines Dienstes
+      # aus dieser Liste werden die neuen Apps trotzdem mitgebaut und -gestartet.
+      # Bewusst am selten genutzten Abholmonitor, nicht an der Haupt-App.
       tickets:
+        condition: service_started
+      einlass:
         condition: service_started
     ports:
       - "${ABHOLMONITOR_PORT:-8085}:80"
@@ -163,6 +165,39 @@ services:
         condition: service_healthy
     ports:
       - "${TICKETS_PORT:-8086}:80"
+
+  # ── Einlass-App (Vite → nginx) — Ticket-Scanner fürs Personal am Eingang ────
+  # Leitet nur /api/einlass/ weiter (nur mit Einlass-Geräte-Token nutzbar).
+  # Kamera-Scan am Handy braucht HTTPS → über Caddy oder den Tunnel betreiben.
+  einlass:
+    build:
+      context:    .
+      dockerfile: packages/einlass/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${EINLASS_PORT:-8087}:80"
+
+  # ── Cloudflare Tunnel — OPTIONAL, nur mit Profil „tunnel" ───────────────────
+  # Macht Ticketseite und Einlass unter festen HTTPS-Adressen erreichbar, ohne
+  # Portfreigabe und egal hinter welchem Router/LTE der Kassen-PC gerade steht.
+  # Einrichten: in Cloudflare (Zero Trust → Networks → Tunnels) einen Tunnel
+  # anlegen, Token in .env als CLOUDFLARE_TUNNEL_TOKEN, dort die Public
+  # Hostnames eintragen (tickets.<domain> → http://tickets:80,
+  # einlass.<domain> → http://einlass:80). Aktivieren: COMPOSE_PROFILES=tunnel
+  # in der .env — dann starten ihn auch Updates automatisch mit.
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    profiles: ["tunnel"]
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      - tickets
+      - einlass
 
   # ── Off-Site-Backup (restic → S3-kompatibel) ────────────────────────────────
   # Schiebt die vom Backend erzeugten DB- und DEP-Sicherungen verschlüsselt und
