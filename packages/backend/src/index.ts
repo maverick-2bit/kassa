@@ -12,6 +12,7 @@ import { starteDbBackupCron }      from './services/db-backup.cron.js'
 import { starteAutoAbschlussCron } from './services/auto-abschluss.cron.js'
 import { starteDruckerKeepAliveCron } from './services/drucker-keepalive.cron.js'
 import { starteTicketshopCron } from './services/ticketshop.cron.js'
+import { starteTicketDatenschutzCron } from './services/ticket-datenschutz.cron.js'
 import { erstelleStubFinanzOnlineClient } from './services/finanz-online.stub.js'
 
 async function main(): Promise<void> {
@@ -62,6 +63,7 @@ async function main(): Promise<void> {
     masterPassphrase: config.MASTER_PASSPHRASE,
     ...(rksvOptionen && { finanzOnlineClient: rksvOptionen.finanzOnlineClient }),
   }, config, server.log)
+  const stopTicketDatenschutz = starteTicketDatenschutzCron(db, server.log)
 
   // Letzte Auffanglinie für verirrte Fehler — protokollieren statt stillem Absturz
   process.on('unhandledRejection', (reason) => {
@@ -93,6 +95,7 @@ async function main(): Promise<void> {
       stopAutoCron()
       stopKeepAlive()
       stopTicketshop()
+      stopTicketDatenschutz()
       await server.close()   // keine neuen Requests, laufende abwarten
       await sql.end({ timeout: 5 }) // DB-Pool drainen
       server.log.info('Sauber heruntergefahren.')

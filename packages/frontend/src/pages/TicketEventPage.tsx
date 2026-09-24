@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { QRCodeSVG } from 'qrcode.react'
-import { TICKET_EVENT_STATUS_LABELS, type TicketEinlassStand, type TicketEventStatus } from '@kassa/shared'
+import { TICKET_EVENT_STATUS_LABELS, type TicketEinlassStand, type TicketEventDetail, type TicketEventStatus } from '@kassa/shared'
 import { ticketingApi } from '../lib/api'
 import { getAuth } from '../lib/auth'
 import { EVENT_STATUS_STIL, fehlerText, formatEventDatum } from '../lib/ticketing'
@@ -116,6 +116,7 @@ export function TicketEventPage() {
               onAbbrechen={() => setReiter('tickets')}
             />
           </div>
+          <DatenschutzKarte event={event} />
           <div className="rounded-xl border border-red-200 bg-red-50/50 p-4">
             <p className="text-sm font-medium text-ink">Event löschen</p>
             <p className="mt-0.5 text-xs text-ink-muted">
@@ -128,6 +129,57 @@ export function TicketEventPage() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+const DATUM = new Intl.DateTimeFormat('de-AT', { day: '2-digit', month: '2-digit', year: 'numeric' })
+
+/**
+ * DSGVO: Personendaten (Namen, Geburtsdaten, E-Mails) werden X Tage nach dem
+ * Event automatisch gelöscht; „Jetzt löschen" geht erst nach dem Event — bis
+ * dahin braucht der Einlass die Geburtsdaten fürs Band.
+ */
+function DatenschutzKarte({ event }: { event: TicketEventDetail }) {
+  const qc = useQueryClient()
+  const [meldung, setMeldung] = useState<string | null>(null)
+  const ende     = new Date(event.ende ?? event.beginn)
+  const loeschAm = new Date(ende.getTime() + event.datenLoeschenNachTagen * 86_400_000)
+  const vorbei   = Date.now() > ende.getTime()
+
+  const loeschen = useMutation({
+    mutationFn: () => ticketingApi.personendatenLoeschen(event.id),
+    onSuccess:  (r) => {
+      setMeldung(`Gelöscht: Personendaten an ${r.tickets} Tickets und ${r.bestellungen} Bestellungen.`)
+      void qc.invalidateQueries({ queryKey: ['ticket-event', event.id] })
+      void qc.invalidateQueries({ queryKey: ['ticket-liste', event.id] })
+    },
+    onError: (err) => setMeldung(fehlerText(err)),
+  })
+
+  return (
+    <div className="rounded-xl border border-line bg-panel p-4">
+      <p className="text-sm font-medium text-ink">Datenschutz</p>
+      {event.datenGeloeschtAt ? (
+        <p className="mt-0.5 text-xs text-ink-muted">
+          Namen, Geburtsdaten und E-Mail-Adressen wurden am {DATUM.format(new Date(event.datenGeloeschtAt))} gelöscht.
+          Tickets, Beträge und Einlasszeiten bleiben für die Auswertung.
+        </p>
+      ) : (
+        <>
+          <p className="mt-0.5 text-xs text-ink-muted">
+            Namen, Geburtsdaten und E-Mail-Adressen von Gästen und Käufern werden am <strong>{DATUM.format(loeschAm)}</strong>{' '}
+            automatisch gelöscht ({event.datenLoeschenNachTagen} Tage nach dem Event, im Formular oben einstellbar).
+            Tickets, Beträge und Einlasszeiten bleiben.
+          </p>
+          <Button size="sm" variant="secondary" className="mt-3" disabled={!vorbei} loading={loeschen.isPending}
+            onClick={() => { if (window.confirm('Personendaten dieses Events jetzt endgültig löschen?')) loeschen.mutate() }}>
+            Jetzt löschen
+          </Button>
+          {!vorbei && <p className="mt-1 text-[11px] text-ink-subtle">Erst nach dem Event möglich — bis dahin braucht der Einlass die Geburtsdaten.</p>}
+        </>
+      )}
+      {meldung && <p className="mt-2 text-xs text-ink">{meldung}</p>}
     </div>
   )
 }

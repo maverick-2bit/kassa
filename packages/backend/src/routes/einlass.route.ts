@@ -5,6 +5,8 @@
  *  GET  /einlass/events                   Events mit Einlass (Test/veröffentlicht, laufend/kommend)
  *  GET  /einlass/events/:eventId/stand    Besucherzahl & Co. (Mehrfachtickets einmal gezählt)
  *  POST /einlass/scan                     QR-Inhalt/Code prüfen und atomar einlösen
+ *  GET  /einlass/events/:eventId/offline-liste[?seit=]  Tickets für den Offline-Betrieb (Codes nur als Hash)
+ *  POST /einlass/sync                     offline entschiedene Scans nachreichen (wiederholbar)
  *
  * Der Geräte-Token wird bei jedem Aufruf gegen einlass_geraete geprüft — ein
  * gesperrtes Gerät (verlorenes Handy) ist sofort draußen, obwohl sein Token
@@ -13,21 +15,24 @@
 
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
-import { EinlassScanInputSchema, type EinlassIch } from '@kassa/shared'
+import { EinlassScanInputSchema, EinlassSyncInputSchema, type EinlassIch } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import type { EinlassGeraetRow } from '../db/schema.js'
 import {
   EinlassError,
   holeFirmenname,
+  holeOfflineListe,
   listeEinlassEvents,
   pruefeGeraet,
   scanne,
+  synchronisiere,
 } from '../services/einlass.service.js'
 import { TicketError, holeEinlassStand, ladeBaender, ladeEvent } from '../services/ticket.service.js'
 
 export interface EinlassRouteOptions { db: Db }
 
 const EventParam = z.object({ eventId: z.string().uuid() })
+const SeitQuery  = z.object({ seit: z.string().datetime({ offset: true }).optional() })
 
 /**
  * Limit JE GERÄT: alle Scanner kommen über denselben nginx — ohne eigenen
@@ -87,6 +92,31 @@ export const einlassRoute: FastifyPluginAsync<EinlassRouteOptions> = async (fast
     if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
     try {
       return await scanne(db, geraetVon(request), body.data)
+    } catch (err) {
+      if (err instanceof TicketError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      throw err
+    }
+  })
+
+  // ---- Offline-Einlass ----
+  fastify.get('/einlass/events/:eventId/offline-liste', guard, async (request, reply) => {
+    const p = EventParam.safeParse(request.params)
+    const q = SeitQuery.safeParse(request.query)
+    if (!p.success || !q.success) return reply.status(400).send({ fehler: 'Ungültige Anfrage' })
+    try {
+      const liste = await holeOfflineListe(db, geraetVon(request), p.data.eventId, q.data.seit ? new Date(q.data.seit) : null)
+      return reply.header('Cache-Control', 'no-store').send(liste)
+    } catch (err) {
+      if (err instanceof TicketError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      throw err
+    }
+  })
+
+  fastify.post('/einlass/sync', guard, async (request, reply) => {
+    const body = EinlassSyncInputSchema.safeParse(request.body)
+    if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
+    try {
+      return await synchronisiere(db, geraetVon(request), body.data)
     } catch (err) {
       if (err instanceof TicketError) return reply.status(err.httpStatus).send({ fehler: err.message })
       throw err

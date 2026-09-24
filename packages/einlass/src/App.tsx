@@ -1,6 +1,19 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { EinlassEvent, EinlassIch } from '@kassa/shared'
-import { NichtAngemeldet, abmelden, einlassApi, leseEventId, leseToken, merkeEventId, merkeToken } from './lib/api'
+import {
+  KeineVerbindung,
+  NichtAngemeldet,
+  abmelden,
+  einlassApi,
+  leseEvent,
+  leseEventId,
+  leseIch,
+  leseToken,
+  merkeEvent,
+  merkeEventId,
+  merkeIch,
+  merkeToken,
+} from './lib/api'
 import { Einrichtung } from './Einrichtung'
 import { EventWahl } from './EventWahl'
 import { Scanner } from './Scanner'
@@ -28,16 +41,27 @@ export function App() {
 
     try {
       const ich = await einlassApi.ich()
+      merkeIch(ich)
       const gemerkt = leseEventId()
       if (gemerkt) {
         const event = (await einlassApi.events()).find(e => e.id === gemerkt)
-        if (event) { setPhase({ art: 'scanner', ich, event }); return }
+        if (event) { merkeEvent(event); setPhase({ art: 'scanner', ich, event }); return }
         merkeEventId(null)
+        merkeEvent(null)
       }
       setPhase({ art: 'eventwahl', ich })
     } catch (err) {
-      if (err instanceof NichtAngemeldet) setPhase({ art: 'einrichtung', hinweis: err.message })
-      else setPhase({ art: 'einrichtung', hinweis: err instanceof Error ? err.message : 'Verbindung fehlgeschlagen' })
+      if (err instanceof NichtAngemeldet) { setPhase({ art: 'einrichtung', hinweis: err.message }); return }
+      if (err instanceof KeineVerbindung) {
+        // Ohne Netz geöffnet (Akku leer, neu gestartet …): mit dem gemerkten Gerät
+        // und Event weiter — die Offline-Liste liegt auf dem Gerät.
+        const ich = leseIch()
+        const event = leseEvent()
+        if (ich && event && leseEventId() === event.id) { setPhase({ art: 'scanner', ich, event }); return }
+        setPhase({ art: 'einrichtung', hinweis: 'Keine Verbindung — für den ersten Start braucht das Gerät Netz.' })
+        return
+      }
+      setPhase({ art: 'einrichtung', hinweis: err instanceof Error ? err.message : 'Verbindung fehlgeschlagen' })
     }
   }, [])
 
@@ -52,7 +76,7 @@ export function App() {
       return (
         <EventWahl
           ich={phase.ich}
-          onGewaehlt={(event) => { merkeEventId(event.id); setPhase({ art: 'scanner', ich: phase.ich, event }) }}
+          onGewaehlt={(event) => { merkeEventId(event.id); merkeEvent(event); setPhase({ art: 'scanner', ich: phase.ich, event }) }}
           onAbmelden={() => { abmelden(); setPhase({ art: 'einrichtung' }) }}
         />
       )
@@ -61,7 +85,7 @@ export function App() {
         <Scanner
           ich={phase.ich}
           event={phase.event}
-          onEventWechseln={() => { merkeEventId(null); setPhase({ art: 'eventwahl', ich: phase.ich }) }}
+          onEventWechseln={() => { merkeEventId(null); merkeEvent(null); setPhase({ art: 'eventwahl', ich: phase.ich }) }}
           onAbgemeldet={(hinweis) => setPhase({ art: 'einrichtung', hinweis })}
         />
       )

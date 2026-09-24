@@ -2,7 +2,8 @@ import { EINLASS_ERGEBNIS_TITEL, type EinlassErgebnis } from '@kassa/shared'
 import { datumZeit, geburtsdatumText, schriftAuf, uhrzeit } from './lib/format'
 
 export type Anzeige =
-  | { art: 'ergebnis'; ergebnis: EinlassErgebnis }
+  /** offline: ohne Verbindung mit der Liste von `listeVon` entschieden */
+  | { art: 'ergebnis'; ergebnis: EinlassErgebnis; offline: boolean; listeVon?: string | null }
   | { art: 'keineVerbindung' }
   | { art: 'fehler'; text: string }
 
@@ -26,12 +27,15 @@ export function Ergebnis({ anzeige, onWeiter }: { anzeige: Anzeige; onWeiter: ()
 
   const { ergebnis: e } = anzeige
   const t = e.ticket
+  const offlineHinweis = anzeige.offline
+    ? `OFFLINE geprüft${anzeige.listeVon ? ` · Liste von ${uhrzeit(anzeige.listeVon)} Uhr` : ''}`
+    : null
 
   if (e.ergebnis === 'zugelassen' || e.ergebnis === 'mehrfach') {
     const mehrfach = e.ergebnis === 'mehrfach'
     const farbe = mehrfach ? '#4338ca' : (t?.band?.farbe ?? '#15803d')
     return (
-      <Flaeche farbe={farbe} onWeiter={onWeiter}>
+      <Flaeche farbe={farbe} onWeiter={onWeiter} hinweis={offlineHinweis}>
         <p className="text-3xl font-black">✓ {mehrfach ? 'MEHRFACHTICKET' : 'EINLASS'}</p>
         {mehrfach && t?.rolle && <p className="mt-3 text-6xl font-black uppercase leading-none">{t.rolle}</p>}
         {!mehrfach && t?.band && (
@@ -77,16 +81,23 @@ export function Ergebnis({ anzeige, onWeiter }: { anzeige: Anzeige; onWeiter: ()
     detail = `Gilt für: ${e.anderesEvent.titel}, ${datumZeit(e.anderesEvent.beginn)}`
   }
   return (
-    <Flaeche farbe="#b91c1c" onWeiter={onWeiter}>
+    <Flaeche farbe="#b91c1c" onWeiter={onWeiter} hinweis={offlineHinweis}>
       <p className="text-4xl font-black">✗ KEIN EINLASS</p>
       <p className="mt-4 text-5xl font-black leading-tight">{EINLASS_ERGEBNIS_TITEL[e.ergebnis]}</p>
       {detail && <p className="mt-3 text-2xl font-semibold">{detail}</p>}
       {t && <p className="mt-5 text-xl opacity-90">{t.bezeichnung}{t.name ? ` · ${t.name}` : ''}</p>}
+      {anzeige.offline && e.ergebnis === 'unbekannt' && (
+        <p className="mt-5 text-lg opacity-90">
+          Nicht in der Offline-Liste — vielleicht gerade erst gekauft. Sobald wieder Netz da ist, erneut scannen.
+        </p>
+      )}
     </Flaeche>
   )
 }
 
-function Flaeche({ farbe, onWeiter, children }: { farbe: string; onWeiter: () => void; children: React.ReactNode }) {
+function Flaeche({ farbe, onWeiter, hinweis, children }: {
+  farbe: string; onWeiter: () => void; hinweis?: string | null; children: React.ReactNode
+}) {
   return (
     <button
       type="button"
@@ -95,6 +106,11 @@ function Flaeche({ farbe, onWeiter, children }: { farbe: string; onWeiter: () =>
       style={{ background: farbe, color: schriftAuf(farbe) }}
       aria-live="assertive"
     >
+      {hinweis && (
+        <p className="absolute left-0 right-0 top-[max(1rem,env(safe-area-inset-top))] mx-auto w-fit rounded-full bg-black/35 px-4 py-1.5 text-sm font-bold text-white">
+          {hinweis}
+        </p>
+      )}
       <div>{children}</div>
       <p className="absolute bottom-6 left-0 right-0 text-sm opacity-70">Tippen für den nächsten Gast</p>
     </button>

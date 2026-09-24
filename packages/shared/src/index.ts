@@ -808,7 +808,9 @@ export {
   EINLASS_ERGEBNIS_TITEL,
   EinlassScanInputSchema,
   EinlassGeraetAnlegenSchema,
+  EinlassSyncInputSchema,
 } from './schemas/einlass.js'
+export { sha256Hex, ticketCodeHash } from './sha256.js'
 export type {
   EinlassErgebnisArt,
   EinlassScanInput,
@@ -820,6 +822,11 @@ export type {
   EinlassGeraetAngelegt,
   EinlassIch,
   EinlassLogEintrag,
+  EinlassOfflineTicket,
+  EinlassOfflineListe,
+  EinlassSyncInput,
+  EinlassSyncErgebnis,
+  EinlassSyncAntwort,
 } from './schemas/einlass.js'
 
 // Ticketshop (Ticketing Release 3)

@@ -1526,7 +1526,7 @@ export const ticketArten = pgTable('ticket_arten', {
   bezeichnung:      varchar('bezeichnung', { length: 120 }).notNull(),
   beschreibung:     text('beschreibung'),
   preisCent:        integer('preis_cent').notNull().default(0),
-  mwstSatz:         varchar('mwst_satz', { length: 20 }).notNull().default('ermaessigt1'),
+  mwstSatz:         varchar('mwst_satz', { length: 20 }).notNull().default('ermaessigt2'),
   /** Anzahl verfügbarer Tickets; null = unbegrenzt */
   kontingent:       integer('kontingent'),
   maxProBestellung: integer('max_pro_bestellung').notNull().default(10),
@@ -1561,7 +1561,7 @@ export const tickets = pgTable('tickets', {
   /** reserviert | gueltig | storniert */
   status:       varchar('status', { length: 20 }).notNull().default('gueltig'),
   preisCent:    integer('preis_cent').notNull().default(0),
-  mwstSatz:     varchar('mwst_satz', { length: 20 }).notNull().default('ermaessigt1'),
+  mwstSatz:     varchar('mwst_satz', { length: 20 }).notNull().default('ermaessigt2'),
   /** Erster Einlass — zählt für die Besucherzahl (Mehrfachtickets genau einmal) */
   ersterEinlassAt:  timestamp('erster_einlass_at', { withTimezone: true }),
   letzterEinlassAt: timestamp('letzter_einlass_at', { withTimezone: true }),
@@ -1577,6 +1577,7 @@ export const tickets = pgTable('tickets', {
   codeIdx:        uniqueIndex('tickets_code_idx').on(t.code),
   eventStatusIdx: index('tickets_event_status_idx').on(t.eventId, t.status),
   bestellungIdx:  index('tickets_bestellung_idx').on(t.bestellungId),
+  eventUpdatedIdx: index('tickets_event_updated_idx').on(t.eventId, t.updatedAt),
 }))
 
 /** Snapshot je Ticketart in einer Shop-Bestellung */
@@ -1667,9 +1668,14 @@ export const ticketEinlassLog = pgTable('ticket_einlass_log', {
   offline:     boolean('offline').notNull().default(false),
   zeitpunkt:   timestamp('zeitpunkt', { withTimezone: true }).notNull().defaultNow(),
   empfangenAt: timestamp('empfangen_at', { withTimezone: true }).notNull().defaultNow(),
+  /** Offline-Scan: vom Gerät vergebene ID — macht das Nachreichen wiederholbar */
+  scanId:          uuid('scan_id'),
+  /** Offline-Scan: Entscheidung des Geräts ohne Verbindung (null = online geprüft) */
+  lokalesErgebnis: varchar('lokales_ergebnis', { length: 30 }),
 }, (t) => ({
   eventZeitIdx: index('ticket_einlass_log_event_zeit_idx').on(t.eventId, t.zeitpunkt),
   ticketIdx:    index('ticket_einlass_log_ticket_idx').on(t.ticketId),
+  scanIdx:      uniqueIndex('ticket_einlass_log_scan_idx').on(t.scanId).where(sql`${t.scanId} IS NOT NULL`),
 }))
 
 export type EinlassGeraetRow    = typeof einlassGeraete.$inferSelect

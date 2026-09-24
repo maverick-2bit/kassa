@@ -10,7 +10,8 @@
  * Einlass aber nur einmal — die Besucherzahl zählt sie damit genau einmal.
  */
 
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { createHash } from 'node:crypto'
+import { and, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm'
 import {
   EINLASS_ZUGELASSEN,
   ticketCodeAusScan,
@@ -19,6 +20,10 @@ import {
   type EinlassEvent,
   type EinlassGeraet,
   type EinlassLogEintrag,
+  type EinlassOfflineListe,
+  type EinlassSyncAntwort,
+  type EinlassSyncErgebnis,
+  type EinlassSyncInput,
   type EinlassTicket,
   type TicketEventStatus,
   type TicketTyp,
@@ -35,7 +40,7 @@ import {
   type TicketEventRow,
   type TicketRow,
 } from '../db/schema.js'
-import { alterUndBand, bandAnzeige, holeEinlassStand, ladeBaender, ladeEvent } from './ticket.service.js'
+import { alterUndBand, bandAnzeige, holeEinlassStand, ladeBaender, ladeEvent, zuBand } from './ticket.service.js'
 
 export class EinlassError extends Error {
   constructor(public readonly httpStatus: number, message: string) {
@@ -157,45 +162,37 @@ function zuEinlassTicket(t: TicketRow, event: TicketEventRow, baender: TicketBan
   }
 }
 
-export async function scanne(
-  db: Db,
-  geraet: Pick<EinlassGeraetRow, 'id' | 'name' | 'mandantId'>,
-  input: { eventId: string; inhalt: string },
-): Promise<EinlassErgebnis> {
+type Tx = Parameters<Parameters<Db['transaction']>[0]>[0]
+
+interface Einloesung {
+  ergebnis:      EinlassErgebnisArt
+  ticket:        TicketRow | null
+  anderesEvent?: { titel: string; beginn: string }
+}
+
+/**
+ * Kern der Einlösung — ohne Protokoll. Online ist `zeitpunkt` jetzt, beim
+ * nachgereichten Offline-Scan der Moment am Eingang. `updatedAt` ist immer
+ * die echte Zeit: daran hängt der Abgleich der Offline-Listen.
+ */
+async function loeseEin(
+  db: Db | Tx,
+  geraet: Pick<EinlassGeraetRow, 'name' | 'mandantId'>,
+  event: TicketEventRow,
+  code: string | null,
+  zeitpunkt: Date,
+): Promise<Einloesung> {
   const mandantId = geraet.mandantId
-  const event     = await ladeEvent(db, mandantId, input.eventId)
-  const baender   = await ladeBaender(db, event.id)
-  const code      = ticketCodeAusScan(input.inhalt)
-
-  const protokolliere = async (ergebnis: EinlassErgebnisArt, ticketId: string | null) => {
-    await db.insert(ticketEinlassLog).values({
-      mandantId, eventId: event.id, ticketId, geraetId: geraet.id, geraetName: geraet.name,
-      code: code ?? input.inhalt.slice(0, 64), ergebnis,
-    })
-  }
-  const antwort = async (
-    ergebnis: EinlassErgebnisArt, t: TicketRow | null, extra: Partial<EinlassErgebnis> = {},
-  ): Promise<EinlassErgebnis> => {
-    await protokolliere(ergebnis, t?.id ?? null)
-    return {
-      ergebnis,
-      zugelassen: EINLASS_ZUGELASSEN.has(ergebnis),
-      ticket:     t ? zuEinlassTicket(t, event, baender) : null,
-      ...extra,
-      stand:      await holeEinlassStand(db, event, baender),
-    }
-  }
-
-  if (!code) return antwort('unbekannt', null)
+  if (!code) return { ergebnis: 'unbekannt', ticket: null }
 
   // Das Event selbst muss Einlass zulassen — ein abgesagtes Event löst NICHTS ein.
   if (event.status === 'abgesagt' || event.status === 'entwurf') {
     const [t] = await db.select().from(tickets)
       .where(and(eq(tickets.code, code), eq(tickets.eventId, event.id))).limit(1)
-    return antwort(event.status === 'abgesagt' ? 'abgesagt' : 'nicht_freigegeben', t ?? null)
+    return { ergebnis: event.status === 'abgesagt' ? 'abgesagt' : 'nicht_freigegeben', ticket: t ?? null }
   }
 
-  const jetzt = new Date()
+  const geaendert = new Date()
   const dasTicket = and(
     eq(tickets.code, code), eq(tickets.eventId, event.id),
     eq(tickets.mandantId, mandantId), eq(tickets.status, 'gueltig'),
@@ -203,39 +200,196 @@ export async function scanne(
 
   // 1× gültig: nur einlösen, wenn noch nie eingelöst (atomar, siehe Kopfkommentar)
   const [einzel] = await db.update(tickets).set({
-    ersterEinlassAt: jetzt, letzterEinlassAt: jetzt, einlassAnzahl: 1,
-    ersterEinlassGeraet: geraet.name, updatedAt: jetzt,
+    ersterEinlassAt: zeitpunkt, letzterEinlassAt: zeitpunkt, einlassAnzahl: 1,
+    ersterEinlassGeraet: geraet.name, updatedAt: geaendert,
   }).where(and(dasTicket, eq(tickets.typ, 'einzel'), isNull(tickets.ersterEinlassAt))).returning()
-  if (einzel) return antwort('zugelassen', einzel)
+  if (einzel) return { ergebnis: 'zugelassen', ticket: einzel }
 
-  // Mehrfachticket: jeder Eintritt zählt hoch, der erste Einlass bleibt stehen
+  // Mehrfachticket: jeder Eintritt zählt hoch, der erste Einlass bleibt stehen.
+  // Nachgereichte Offline-Eintritte können älter sein als der letzte Online-Eintritt.
+  const zeit = sql`${zeitpunkt.toISOString()}::timestamptz`
   const [mehrfach] = await db.update(tickets).set({
-    ersterEinlassAt:     sql`coalesce(${tickets.ersterEinlassAt}, ${jetzt.toISOString()}::timestamptz)`,
+    ersterEinlassAt:     sql`least(coalesce(${tickets.ersterEinlassAt}, ${zeit}), ${zeit})`,
     ersterEinlassGeraet: sql`coalesce(${tickets.ersterEinlassGeraet}, ${geraet.name})`,
-    letzterEinlassAt:    jetzt,
+    letzterEinlassAt:    sql`greatest(coalesce(${tickets.letzterEinlassAt}, ${zeit}), ${zeit})`,
     einlassAnzahl:       sql`${tickets.einlassAnzahl} + 1`,
-    updatedAt:           jetzt,
+    updatedAt:           geaendert,
   }).where(and(dasTicket, eq(tickets.typ, 'mehrfach'))).returning()
-  if (mehrfach) return antwort('mehrfach', mehrfach)
+  if (mehrfach) return { ergebnis: 'mehrfach', ticket: mehrfach }
 
   // Warum nicht? — Ticket unabhängig vom Event nachschlagen
   const [t] = await db.select().from(tickets).where(eq(tickets.code, code)).limit(1)
-  if (!t || t.mandantId !== mandantId) return antwort('unbekannt', null)   // fremde Mandanten nie offenlegen
+  if (!t || t.mandantId !== mandantId) return { ergebnis: 'unbekannt', ticket: null }   // fremde Mandanten nie offenlegen
   if (t.eventId !== event.id) {
     const [anderes] = await db.select({ titel: ticketEvents.titel, beginn: ticketEvents.beginn })
       .from(ticketEvents).where(eq(ticketEvents.id, t.eventId)).limit(1)
-    // Das Ticket gehört zu einem anderen Event — dessen Bänder gelten hier nicht
-    await protokolliere('falsches_event', t.id)
     return {
-      ergebnis: 'falsches_event', zugelassen: false,
-      ticket: { ...zuEinlassTicket(t, event, []), band: null, alter: null },
+      ergebnis: 'falsches_event', ticket: t,
       ...(anderes ? { anderesEvent: { titel: anderes.titel, beginn: anderes.beginn.toISOString() } } : {}),
-      stand: await holeEinlassStand(db, event, baender),
     }
   }
-  if (t.status === 'storniert')  return antwort('storniert', t)
-  if (t.status === 'reserviert') return antwort('nicht_bezahlt', t)
-  return antwort('bereits_eingeloest', t)
+  if (t.status === 'storniert')  return { ergebnis: 'storniert', ticket: t }
+  if (t.status === 'reserviert') return { ergebnis: 'nicht_bezahlt', ticket: t }
+  return { ergebnis: 'bereits_eingeloest', ticket: t }
+}
+
+/** Ticket für die Anzeige — bei „anderes Event" ohne Band/Alter (dessen Bänder gelten hier nicht). */
+function ticketFuerAnzeige(r: Einloesung, event: TicketEventRow, baender: TicketBandRow[]): EinlassTicket | null {
+  if (!r.ticket) return null
+  if (r.ergebnis === 'falsches_event') return { ...zuEinlassTicket(r.ticket, event, []), band: null, alter: null }
+  return zuEinlassTicket(r.ticket, event, baender)
+}
+
+export async function scanne(
+  db: Db,
+  geraet: Pick<EinlassGeraetRow, 'id' | 'name' | 'mandantId'>,
+  input: { eventId: string; inhalt: string },
+): Promise<EinlassErgebnis> {
+  const event   = await ladeEvent(db, geraet.mandantId, input.eventId)
+  const baender = await ladeBaender(db, event.id)
+  const code    = ticketCodeAusScan(input.inhalt)
+
+  const r = await loeseEin(db, geraet, event, code, new Date())
+  await db.insert(ticketEinlassLog).values({
+    mandantId: geraet.mandantId, eventId: event.id, ticketId: r.ticket?.id ?? null,
+    geraetId: geraet.id, geraetName: geraet.name,
+    code: code ?? input.inhalt.slice(0, 64), ergebnis: r.ergebnis,
+  })
+  return {
+    ergebnis:   r.ergebnis,
+    zugelassen: EINLASS_ZUGELASSEN.has(r.ergebnis),
+    ticket:     ticketFuerAnzeige(r, event, baender),
+    ...(r.anderesEvent ? { anderesEvent: r.anderesEvent } : {}),
+    stand:      await holeEinlassStand(db, event, baender),
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Offline-Einlass: Liste fürs Gerät + Nachreichen der Scans
+// ---------------------------------------------------------------------------
+
+/**
+ * Liste der Tickets eines Events für den Offline-Betrieb. Statt des Codes nur
+ * dessen SHA-256 — wer ein Einlass-Handy findet, kann daraus keine gültigen
+ * QR-Codes bauen. Reservierte (noch unbezahlte) Tickets fehlen bewusst.
+ * Mit `seit` nur die seither geänderten Tickets (Abgleich im laufenden Betrieb).
+ */
+export async function holeOfflineListe(
+  db: Db, geraet: Pick<EinlassGeraetRow, 'mandantId'>, eventId: string, seit: Date | null,
+): Promise<EinlassOfflineListe> {
+  // Zeitstempel VOR dem Lesen: was währenddessen geändert wird, kommt beim nächsten Abgleich
+  const erstelltAt = new Date()
+  const event   = await ladeEvent(db, geraet.mandantId, eventId)
+  const baender = await ladeBaender(db, event.id)
+  const bedingungen = [eq(tickets.eventId, event.id), inArray(tickets.status, ['gueltig', 'storniert'])]
+  if (seit) bedingungen.push(gt(tickets.updatedAt, seit))
+  const rows = await db.select().from(tickets).where(and(...bedingungen))
+
+  return {
+    eventId:      event.id,
+    erstelltAt:   erstelltAt.toISOString(),
+    vollstaendig: seit === null,
+    event:        { titel: event.titel, beginn: event.beginn.toISOString(), status: event.status as TicketEventStatus },
+    baender:      baender.map(zuBand),
+    stand:        await holeEinlassStand(db, event, baender),
+    tickets:      rows.map(t => ({
+      h:                   createHash('sha256').update(t.code, 'utf8').digest('hex'),
+      typ:                 t.typ as TicketTyp,
+      rolle:               t.rolle,
+      bezeichnung:         t.bezeichnung,
+      name:                t.name,
+      geburtsdatum:        t.geburtsdatum,
+      status:              t.status as 'gueltig' | 'storniert',
+      ersterEinlassAt:     t.ersterEinlassAt?.toISOString() ?? null,
+      ersterEinlassGeraet: t.ersterEinlassGeraet,
+      einlassAnzahl:       t.einlassAnzahl,
+    })),
+  }
+}
+
+/** Online-Einlass und nachgereichter Offline-Scan desselben Geräts so nah beieinander = derselbe Einlass */
+const GLEICHER_EINLASS_MS = 60_000
+
+/**
+ * Offline entschiedene Scans nachreichen. Eingelassene werden jetzt wirklich
+ * eingelöst (mit dem Zeitpunkt am Eingang); ist das Ticket inzwischen woanders
+ * eingelöst oder storniert, ist das ein KONFLIKT — der Gast ist schon drin,
+ * das Protokoll zeigt es dem Veranstalter. Abgewiesene werden nur protokolliert.
+ *
+ * Wiederholbar: die Scan-ID wird zuerst im Protokoll beansprucht (eindeutiger
+ * Index), erst dann eingelöst — ein zweites Nachreichen derselben Scans (Netz
+ * riss nach dem Senden ab) löst nichts doppelt ein, auch nicht gleichzeitig.
+ */
+export async function synchronisiere(
+  db: Db, geraet: Pick<EinlassGeraetRow, 'id' | 'name' | 'mandantId'>, input: EinlassSyncInput,
+): Promise<EinlassSyncAntwort> {
+  const event   = await ladeEvent(db, geraet.mandantId, input.eventId)
+  const baender = await ladeBaender(db, event.id)
+  const jetzt   = new Date()
+  const scans   = [...input.scans].sort((a, b) => Date.parse(a.zeitpunkt) - Date.parse(b.zeitpunkt))
+
+  const ergebnisse: EinlassSyncErgebnis[] = []
+  for (const scan of scans) {
+    // Uhr des Geräts vorgehend? Nie „in der Zukunft" einlassen
+    const zeitpunkt   = new Date(Math.min(Date.parse(scan.zeitpunkt), jetzt.getTime()))
+    const code        = ticketCodeAusScan(scan.inhalt)
+    const eingelassen = EINLASS_ZUGELASSEN.has(scan.lokal)
+
+    const neu = await db.transaction(async (tx): Promise<EinlassSyncErgebnis | null> => {
+      const [anspruch] = await tx.insert(ticketEinlassLog).values({
+        mandantId: geraet.mandantId, eventId: event.id, geraetId: geraet.id, geraetName: geraet.name,
+        code: code ?? scan.inhalt.slice(0, 64), ergebnis: scan.lokal, offline: true, zeitpunkt,
+        scanId: scan.scanId, lokalesErgebnis: scan.lokal,
+      }).onConflictDoNothing().returning({ id: ticketEinlassLog.id })
+      if (!anspruch) return null   // schon nachgereicht
+
+      let r: Einloesung
+      if (eingelassen) {
+        r = await loeseEin(tx, geraet, event, code, zeitpunkt)
+        // Online-Antwort ging unterwegs verloren (Zeitlimit), das Gerät entschied
+        // denselben Scan offline noch einmal: gleiches Gerät, gleiche Minute →
+        // derselbe Einlass, kein Konflikt. Eine echte zweite Nutzung am selben
+        // Gerät weist schon dessen eigene Liste ab.
+        const t = r.ticket
+        if (r.ergebnis === 'bereits_eingeloest' && t?.ersterEinlassAt && t.ersterEinlassGeraet === geraet.name
+            && Math.abs(t.ersterEinlassAt.getTime() - zeitpunkt.getTime()) < GLEICHER_EINLASS_MS) {
+          r = { ...r, ergebnis: 'zugelassen' }
+        }
+      } else {
+        // Abgewiesen bleibt abgewiesen — nur fürs Protokoll dem Ticket zuordnen
+        const [t] = code
+          ? await tx.select().from(tickets).where(and(eq(tickets.code, code), eq(tickets.eventId, event.id))).limit(1)
+          : []
+        r = { ergebnis: scan.lokal, ticket: t ?? null }
+      }
+      await tx.update(ticketEinlassLog).set({ ergebnis: r.ergebnis, ticketId: r.ticket?.id ?? null })
+        .where(eq(ticketEinlassLog.id, anspruch.id))
+      return {
+        scanId: scan.scanId, ergebnis: r.ergebnis, lokal: scan.lokal,
+        konflikt: eingelassen && !EINLASS_ZUGELASSEN.has(r.ergebnis),
+        ticket: ticketFuerAnzeige(r, event, baender),
+      }
+    })
+    ergebnisse.push(neu ?? await syncErgebnisAusLog(db, scan.scanId, event, baender))
+  }
+  return { ergebnisse, stand: await holeEinlassStand(db, event, baender) }
+}
+
+/** Schon nachgereichter Scan: Ergebnis so zurückgeben, wie es damals festgehalten wurde. */
+async function syncErgebnisAusLog(
+  db: Db, scanId: string, event: TicketEventRow, baender: TicketBandRow[],
+): Promise<EinlassSyncErgebnis> {
+  const [zeile] = await db.select({ log: ticketEinlassLog, ticket: tickets })
+    .from(ticketEinlassLog)
+    .leftJoin(tickets, eq(tickets.id, ticketEinlassLog.ticketId))
+    .where(eq(ticketEinlassLog.scanId, scanId)).limit(1)
+  const ergebnis = zeile!.log.ergebnis as EinlassErgebnisArt
+  const lokal    = (zeile!.log.lokalesErgebnis ?? ergebnis) as EinlassErgebnisArt
+  return {
+    scanId, ergebnis, lokal,
+    konflikt: EINLASS_ZUGELASSEN.has(lokal) && !EINLASS_ZUGELASSEN.has(ergebnis),
+    ticket:   zeile!.ticket ? ticketFuerAnzeige({ ergebnis, ticket: zeile!.ticket }, event, baender) : null,
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -262,6 +416,10 @@ export async function listeEinlassLog(
     ergebnis:   log.ergebnis as EinlassErgebnisArt,
     code:       log.code,
     offline:    log.offline,
+    lokal:      (log.lokalesErgebnis as EinlassErgebnisArt | null) ?? null,
+    konflikt:   log.lokalesErgebnis !== null
+      && EINLASS_ZUGELASSEN.has(log.lokalesErgebnis as EinlassErgebnisArt)
+      && !EINLASS_ZUGELASSEN.has(log.ergebnis as EinlassErgebnisArt),
     ticket:     ticket?.bezeichnung
       ? { bezeichnung: ticket.bezeichnung, typ: ticket.typ as TicketTyp, name: ticket.name }
       : null,

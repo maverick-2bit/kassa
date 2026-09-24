@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type {
+  TicketBand,
   TicketBandAnzeige,
   TicketEinlassStand,
   TicketEventStatus,
@@ -125,6 +126,74 @@ export interface EinlassLogEintrag {
   ergebnis:    EinlassErgebnisArt
   code:        string
   offline:     boolean
+  /** Offline-Scan: was das Gerät ohne Verbindung entschieden hat */
+  lokal:       EinlassErgebnisArt | null
+  /** Offline eingelassen, der Server hätte abgewiesen (z. B. Kopie an zwei Eingängen) */
+  konflikt:    boolean
   /** Ticket-Titel + Name, wenn das Ticket bekannt ist */
   ticket:      { bezeichnung: string; typ: TicketTyp; name: string | null } | null
+}
+
+// ---------------------------------------------------------------------------
+// Offline-Einlass (Release 4)
+// ---------------------------------------------------------------------------
+
+/**
+ * Ein Ticket in der Offline-Liste des Scanners. Statt des Codes steht nur
+ * dessen SHA-256 auf dem Gerät (`ticketCodeHash`) — wer ein Einlass-Handy
+ * findet, kann daraus keine gültigen QR-Codes bauen.
+ */
+export interface EinlassOfflineTicket {
+  /** SHA-256 des Ticket-Codes (hex) */
+  h:                   string
+  typ:                 TicketTyp
+  rolle:               string | null
+  bezeichnung:         string
+  name:                string | null
+  geburtsdatum:        string | null
+  status:              'gueltig' | 'storniert'
+  ersterEinlassAt:     string | null
+  ersterEinlassGeraet: string | null
+  einlassAnzahl:       number
+}
+
+export interface EinlassOfflineListe {
+  eventId:      string
+  /** Serverzeit der Liste — beim nächsten Abgleich als ?seit= zurückgeben */
+  erstelltAt:   string
+  /** true = komplette Liste; false = nur seit `seit` geänderte Tickets */
+  vollstaendig: boolean
+  event:        { titel: string; beginn: string; status: TicketEventStatus }
+  baender:      TicketBand[]
+  stand:        TicketEinlassStand
+  tickets:      EinlassOfflineTicket[]
+}
+
+/** Scans, die ein Gerät ohne Verbindung entschieden hat — kommen gesammelt nach. */
+export const EinlassSyncInputSchema = z.object({
+  eventId: z.string().uuid(),
+  scans: z.array(z.object({
+    /** Vom Gerät vergeben — macht das Nachreichen wiederholbar (kein doppeltes Einlösen) */
+    scanId:    z.string().uuid(),
+    inhalt:    z.string().trim().min(1).max(500),
+    zeitpunkt: z.string().datetime({ offset: true }),
+    /** Entscheidung des Geräts ohne Verbindung */
+    lokal:     EinlassErgebnisArtSchema,
+  })).min(1).max(500),
+})
+export type EinlassSyncInput = z.infer<typeof EinlassSyncInputSchema>
+
+export interface EinlassSyncErgebnis {
+  scanId:   string
+  /** Beurteilung durch den Server (bei lokal abgewiesenen Scans = die lokale Entscheidung) */
+  ergebnis: EinlassErgebnisArt
+  lokal:    EinlassErgebnisArt
+  /** Gerät hat eingelassen, der Server hätte abgewiesen */
+  konflikt: boolean
+  ticket:   EinlassTicket | null
+}
+
+export interface EinlassSyncAntwort {
+  ergebnisse: EinlassSyncErgebnis[]
+  stand:      TicketEinlassStand
 }

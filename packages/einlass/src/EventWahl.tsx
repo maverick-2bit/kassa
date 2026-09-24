@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { EinlassEvent, EinlassIch } from '@kassa/shared'
 import { einlassApi } from './lib/api'
 import { datumZeit } from './lib/format'
+import { raeumeAuf, warteschlange } from './lib/speicher'
 
 export function EventWahl({ ich, onGewaehlt, onAbmelden }: {
   ich: EinlassIch
@@ -12,8 +13,22 @@ export function EventWahl({ ich, onGewaehlt, onAbmelden }: {
   const [fehler, setFehler] = useState<string | null>(null)
 
   useEffect(() => {
-    einlassApi.events().then(setEvents).catch(err => setFehler(err instanceof Error ? err.message : 'Fehler'))
+    einlassApi.events()
+      .then(liste => {
+        setEvents(liste)
+        // Offline-Listen vorbeier Events vom Gerät (Datensparsamkeit) — außer dort warten noch Scans
+        void raeumeAuf(new Set(liste.map(e => e.id))).catch(() => { /* ohne IndexedDB nichts zu tun */ })
+      })
+      .catch(err => setFehler(err instanceof Error ? err.message : 'Fehler'))
   }, [])
+
+  async function abmeldenPruefen() {
+    const offen = await warteschlange().then(w => w.length).catch(() => 0)
+    const frage = offen > 0
+      ? `Achtung: ${offen} offline geprüfte Scans wurden noch nicht übertragen und gehen beim Abmelden verloren. Trotzdem abmelden?`
+      : 'Dieses Gerät abmelden? Danach muss es neu eingerichtet werden.'
+    if (window.confirm(frage)) onAbmelden()
+  }
 
   return (
     <main className="mx-auto max-w-md px-5 py-6">
@@ -46,7 +61,7 @@ export function EventWahl({ ich, onGewaehlt, onAbmelden }: {
         ))}
       </div>
 
-      <button type="button" onClick={() => { if (window.confirm('Dieses Gerät abmelden? Danach muss es neu eingerichtet werden.')) onAbmelden() }}
+      <button type="button" onClick={() => void abmeldenPruefen()}
         className="mt-8 w-full text-center text-sm text-leise underline">
         Gerät abmelden
       </button>
