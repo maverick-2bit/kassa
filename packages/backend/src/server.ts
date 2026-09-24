@@ -7,6 +7,7 @@ import type { Db } from './db/client.js'
 import type { SetupServiceDeps } from './services/setup.service.js'
 import type { BelegServiceDeps } from './services/beleg.service.js'
 import type { StatfsFn } from './services/monitoring.service.js'
+import { fehlerHandler } from './fehler-handler.js'
 import { registerAuth } from './auth/plugin.js'
 import { rateLimitSchluessel } from './auth/rate-limit.js'
 import { setupRoute } from './routes/setup.route.js'
@@ -83,17 +84,26 @@ export interface ServerDeps {
   ticketshopStripe?: ShopStripe
   /** Nur für Tests: globales Rate-Limit (Anfragen/Minute je Client) statt des Standards. */
   rateLimitMax?:   number
+  /** Nur für Tests: Log-Zeilen abfangen statt nach stdout zu schreiben. */
+  logStream?:      { write: (zeile: string) => void }
 }
 
 export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   const fastify = Fastify({
     logger: {
       level: deps.config.LOG_LEVEL,
+      ...(deps.logStream && { stream: deps.logStream }),
     },
     disableRequestLogging: deps.config.NODE_ENV === 'test',
     // Werbefolien-Uploads (Base64-Bilder) brauchen mehr als das 1-MiB-Default
     bodyLimit: 4 * 1024 * 1024,
   })
+
+  // Globaler Fehler-Handler — MUSS vor allen Plugins/Routen stehen: Fastify
+  // vererbt ihn nur an Plugin-Kontexte, die danach entstehen. Am Ende von
+  // buildServer galt er für keine einzige Route, und der Fastify-Standard
+  // schickte interne Meldungen (SQL, Parameter) an den Client.
+  fastify.setErrorHandler(fehlerHandler)
 
   await fastify.register(cors, {
     origin: deps.config.CORS_ORIGIN.split(',').map(s => s.trim()),
@@ -237,13 +247,6 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     depBackupMaxStunden: deps.config.DEP_BACKUP_MAX_AGE_STUNDEN,
     dbBackupDir:         deps.dbBackupDir,
     statfsFn:            deps.statfsFn,
-  })
-
-  // Globaler Fehler-Handler — fängt alle unbehandelten Fehler ab
-  fastify.setErrorHandler((error, request, reply) => {
-    fastify.log.error({ err: error, url: request.url, method: request.method }, 'Unbehandelter Serverfehler')
-    if (reply.sent) return
-    return reply.status(500).send({ fehler: 'Interner Serverfehler' })
   })
 
   return fastify

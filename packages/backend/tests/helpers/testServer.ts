@@ -40,6 +40,8 @@ export interface BuildTestServerOptions {
   ticketshopStripe?: ShopStripe
   /** Globales Rate-Limit (Anfragen/Minute je Client) — Standard im Test: praktisch aus */
   rateLimitMax?: number
+  /** Log-Zeilen abfangen (dazu config.LOG_LEVEL setzen — Standard im Test: 'fatal') */
+  logStream?: { write: (zeile: string) => void }
 }
 
 export async function buildTestServer(db: Db, opts: BuildTestServerOptions = {}): Promise<TestServer> {
@@ -69,6 +71,7 @@ export async function buildTestServer(db: Db, opts: BuildTestServerOptions = {})
     statfsFn: async () => ({ bsize: 1, blocks: 500 * 1024 ** 3, bavail: 300 * 1024 ** 3 }),
     ...(opts.ticketshopStripe ? { ticketshopStripe: opts.ticketshopStripe } : {}),
     ...(opts.rateLimitMax !== undefined && { rateLimitMax: opts.rateLimitMax }),
+    ...(opts.logStream && { logStream: opts.logStream }),
     setupDeps: {
       db,
       masterPassphrase: TEST_MASTER,
