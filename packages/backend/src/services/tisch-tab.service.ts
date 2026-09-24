@@ -18,7 +18,7 @@ import { bonierFehlschlaege } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import { artikel, auditLogs, kassen, modifikatoren, tabEreignisse, tischTabs } from '../db/schema.js'
 import type { BelegServiceDeps } from './beleg.service.js'
-import { erstelleBarzahlungsbeleg } from './beleg.service.js'
+import { BelegError, erstelleBarzahlungsbeleg } from './beleg.service.js'
 import { ladeRezepte, wendeBestandteilDeltasAn } from './bestandteil.service.js'
 import { bonierBestellung } from './bonier.service.js'
 import { pruefeStornoFreigabe, type FreigabeKontext } from './freigabe.service.js'
@@ -839,47 +839,200 @@ export async function verschiebePositionen(
   })
 }
 
+// ---------------------------------------------------------------------------
+// Rechnung teilen (Split)
+// ---------------------------------------------------------------------------
+
+type Tx = Parameters<Parameters<Db['transaction']>[0]>[0]
+
+/** Ein Teilbeleg je Zahler: Belegpositionen mit dem Preis der Tab-Position. */
+export interface SplitTeilbeleg {
+  positionen: BarzahlungsbelegInput['positionen']
+  zahlung:    BarzahlungsbelegInput['zahlung']
+}
+
+function euro(cent: number): string {
+  return `${(cent / 100).toFixed(2).replace('.', ',')} €`
+}
+
+/**
+ * Schlüssel einer Split-Position: Artikel + Optionen (mit Anzahl) + Preis. Der
+ * Preis gehört dazu — er ist Teil dessen, was bestellt wurde (Options-Aufpreis,
+ * Happy Hour, Preis zum Bestellzeitpunkt), und genau er kommt auf den Teilbeleg.
+ */
+function splitSchluessel(p: TabPosition): string {
+  const mods = (p.modifikatoren ?? []).map(m => `${m.modifikatorId}*${m.menge ?? 1}`).sort().join(',')
+  return `${p.artikelId}::${mods}::${p.preisBruttoCent}`
+}
+
+/**
+ * Prüft eine Aufteilung gegen den Tab — rein rechnerisch, VOR jedem Beleg:
+ * jede Zahler-Position muss es so am Tisch geben, alle Zahler zusammen decken
+ * den Tab exakt ab (nichts vergessen, nichts dazu), und jeder Zahler zahlt genau
+ * seine Summe. Liefert je Zahler die Belegpositionen — mit dem Preis der
+ * Tab-Position, nicht dem aus der Anfrage oder dem Artikelstamm.
+ */
+export function pruefeAufteilung(
+  tabPositionen: TabPosition[],
+  zahlungen:     TischTabSplittenInput['zahlungen'],
+): SplitTeilbeleg[] {
+  // Noch zu verteilende Menge je Schlüssel (gleiche Position aus mehreren Runden zusammen)
+  const offen = new Map<string, { menge: number; position: TabPosition }>()
+  for (const p of tabPositionen) {
+    const k  = splitSchluessel(p)
+    const ex = offen.get(k)
+    if (ex) ex.menge += p.menge
+    else offen.set(k, { menge: p.menge, position: p })
+  }
+
+  const teilbelege = zahlungen.map((z, i): SplitTeilbeleg => {
+    const zahler = `Zahler ${i + 1}`
+    let summeCent = 0
+    const positionen = z.positionen.map(p => {
+      const eintrag = offen.get(splitSchluessel(p))
+      if (!eintrag) {
+        throw new TischTabError(400, `${zahler}: „${p.bezeichnung}" steht so nicht (mehr) auf dem Tisch — bitte neu laden`)
+      }
+      if (p.menge > eintrag.menge) {
+        throw new TischTabError(400, `${zahler}: „${p.bezeichnung}" ist öfter aufgeteilt als bestellt`)
+      }
+      eintrag.menge -= p.menge
+      const t = eintrag.position
+      summeCent += t.preisBruttoCent * p.menge
+      return {
+        artikelId:              t.artikelId,
+        menge:                  p.menge,
+        einzelpreisBreuttoCent: t.preisBruttoCent,
+        ...(t.modifikatoren?.length
+          ? { bezeichnungZusatz: t.modifikatoren.map(m => m.name).join(', ').slice(0, 200) }
+          : {}),
+      }
+    })
+    const gezahltCent = z.zahlung.barCent + z.zahlung.karteCent + z.zahlung.sonstigeCent
+    if (gezahltCent !== summeCent) {
+      throw new TischTabError(400, `${zahler}: Zahlung ${euro(gezahltCent)} passt nicht zur Summe ${euro(summeCent)}`)
+    }
+    return { positionen, zahlung: z.zahlung }
+  })
+
+  const vergessen = [...offen.values()].filter(e => e.menge > 0)
+  if (vergessen.length > 0) {
+    throw new TischTabError(400,
+      `Nicht alles aufgeteilt: ${vergessen.map(e => `${e.menge}× ${e.position.bezeichnung}`).join(', ')}`)
+  }
+  return teilbelege
+}
+
+/**
+ * Kann die Kasse die Teilbelege jetzt ausstellen? Prüft VOR dem ersten Beleg,
+ * woran die Belegerstellung sonst erst mitten im Split scheitern würde: Kasse
+ * in Betrieb, SEE-Zertifikat gültig, alle Artikel des Tabs noch aktiv. (Die
+ * Belegerstellung prüft das noch einmal selbst — scheitert sie dennoch, rollt
+ * die Transaktion alle Teilbelege zurück.)
+ */
+async function pruefeBelegbereit(
+  tx:         Tx,
+  kasseId:    string,
+  mandantId:  string,
+  positionen: TabPosition[],
+): Promise<void> {
+  const [kasse] = await tx
+    .select({ status: kassen.status, seeGueltigBis: kassen.seeGueltigBis })
+    .from(kassen)
+    .where(and(eq(kassen.id, kasseId), eq(kassen.mandantId, mandantId)))
+    .limit(1)
+  if (!kasse) throw new TischTabError(404, 'Kasse nicht gefunden')
+  if (kasse.status !== 'aktiv') throw new TischTabError(409, `Kasse ist ${kasse.status}, keine neuen Belege möglich`)
+  if (kasse.seeGueltigBis <= new Date()) {
+    throw new TischTabError(409,
+      `SEE-Zertifikat ist abgelaufen (${kasse.seeGueltigBis.toISOString().slice(0, 10)}). Die Kasse kann keine Belege mehr ausstellen.`)
+  }
+
+  const artikelIds = [...new Set(positionen.map(p => p.artikelId))]
+  if (artikelIds.length === 0) return
+  const aktiv = await tx
+    .select({ id: artikel.id })
+    .from(artikel)
+    .where(and(inArray(artikel.id, artikelIds), eq(artikel.mandantId, mandantId), eq(artikel.aktiv, true)))
+  const aktivIds = new Set(aktiv.map(a => a.id))
+  const weg = [...new Set(positionen.filter(p => !aktivIds.has(p.artikelId)).map(p => p.bezeichnung))]
+  if (weg.length > 0) {
+    throw new TischTabError(409,
+      `Nicht mehr verfügbar: ${weg.join(', ')} — Artikel wieder aktivieren oder vom Tisch nehmen`)
+  }
+}
+
+/**
+ * Rechnung teilen: je Zahler ein eigener RKSV-Beleg — ALLES ODER NICHTS.
+ *
+ *  1. Tab sperren (FOR UPDATE): ein doppelt abgeschickter Split wartet und
+ *     findet danach „bereits bezahlt", statt ein zweites Mal zu buchen.
+ *  2. ALLE Zahler prüfen, bevor der erste Beleg entsteht (pruefeAufteilung,
+ *     pruefeBelegbereit).
+ *  3. Teilbelege in DIESER Transaktion erstellen, dann den Tab schließen.
+ *     Scheitert irgendetwas — auch unerwartet beim n-ten Beleg —, rollt alles
+ *     zurück: kein Beleg, Belegnummer/Umsatzzähler/Signaturkette unverändert,
+ *     Tab offen. Ein erneuter Versuch bucht nichts doppelt.
+ *
+ * Preise kommen aus der Tab-Position (inkl. Options-Aufpreis) wie bei bezahleTab —
+ * die Anfrage legt nur fest, wer was zahlt.
+ */
 export async function splitteUndBezahleTab(
   id: string,
   input: TischTabSplittenInput,
   mandantId: string,
   deps: TischTabServiceDeps,
 ): Promise<{ tab: TischTabResponse; belegIds: string[] }> {
-  const [existing] = await deps.db
-    .select()
-    .from(tischTabs)
-    .where(and(eq(tischTabs.id, id), eq(tischTabs.mandantId, mandantId)))
-    .limit(1)
-  if (!existing) throw new TischTabError(404, 'Tisch-Tab nicht gefunden')
-  if (existing.status !== 'offen') throw new TischTabError(409, 'Tisch-Tab ist bereits bezahlt')
+  return deps.db.transaction(async (tx) => {
+    const [existing] = await tx
+      .select()
+      .from(tischTabs)
+      .where(and(eq(tischTabs.id, id), eq(tischTabs.mandantId, mandantId)))
+      .for('update')
+      .limit(1)
+    if (!existing) throw new TischTabError(404, 'Tisch-Tab nicht gefunden')
+    if (existing.status !== 'offen') throw new TischTabError(409, 'Tisch-Tab ist bereits bezahlt')
 
-  const belegIds: string[] = []
-  for (const zahlung of input.zahlungen) {
-    const beleg = await erstelleBarzahlungsbeleg({
-      kasseId:    existing.kasseId,
-      positionen: zahlung.positionen.map(p => ({ artikelId: p.artikelId, menge: p.menge })),
-      zahlung:    zahlung.zahlung,
-    }, deps.belegDeps, { skipLagerstand: true })  // Tisch: Lager läuft über Positionsänderung
-    belegIds.push(beleg.id)
-  }
+    const tabPositionen = (existing.positionen as TabPosition[]) ?? []
+    const teilbelege    = pruefeAufteilung(tabPositionen, input.zahlungen)
+    await pruefeBelegbereit(tx, existing.kasseId, mandantId, tabPositionen)
 
-  const [row] = await deps.db
-    .update(tischTabs)
-    .set({ status: 'bezahlt', geschlossenAm: new Date(), updatedAt: new Date() })
-    .where(eq(tischTabs.id, id))
-    .returning()
-  if (!row) throw new TischTabError(500, 'Tab konnte nicht geschlossen werden')
+    // Mit tx als db öffnet die Belegerstellung statt einer eigenen Transaktion
+    // einen Savepoint (drizzle: verschachteltes transaction()). Die Kassensperre
+    // hält so bis zum COMMIT — die Teilbelege bekommen aufeinanderfolgende
+    // Nummern, und ein Rollback nimmt sie alle mit. Der Split nutzt keinen
+    // Kunden und keinen Rabatt, die Belegerstellung braucht hier nur Abfragen.
+    const belegDeps: BelegServiceDeps = { ...deps.belegDeps, db: tx as unknown as Db }
+    const belegIds: string[] = []
+    for (const [i, teil] of teilbelege.entries()) {
+      try {
+        const beleg = await erstelleBarzahlungsbeleg({
+          kasseId:    existing.kasseId,
+          positionen: teil.positionen,
+          zahlung:    teil.zahlung,
+        }, belegDeps, { skipLagerstand: true })  // Tisch: Lager läuft über Positionsänderung
+        belegIds.push(beleg.id)
+      } catch (err) {
+        if (err instanceof BelegError) throw new TischTabError(err.httpStatus, `Zahler ${i + 1}: ${err.message}`)
+        throw err
+      }
+    }
 
-  const gesamtCent = input.zahlungen.reduce(
-    (s, z) => s + z.positionen.reduce((ps, p) => ps + p.preisBruttoCent * p.menge, 0), 0
-  )
-  await logEreignis(id, mandantId, 'gesplittet', {
-    anzahlZahler: input.zahlungen.length,
-    belegIds,
-    gesamtCent,
-  }, deps.db)
+    const jetzt = new Date()
+    const [row] = await tx
+      .update(tischTabs)
+      .set({ status: 'bezahlt', geschlossenAm: jetzt, updatedAt: jetzt })
+      .where(eq(tischTabs.id, id))
+      .returning()
+    if (!row) throw new TischTabError(500, 'Tab konnte nicht geschlossen werden')
 
-  return { tab: toResponse(row), belegIds }
+    await tx.insert(tabEreignisse).values({
+      tabId: id, mandantId, typ: 'gesplittet',
+      details: { anzahlZahler: teilbelege.length, belegIds, gesamtCent: berechneGesamtCent(tabPositionen) },
+    })
+
+    return { tab: toResponse(row), belegIds }
+  })
 }
 
 // ---------------------------------------------------------------------------
