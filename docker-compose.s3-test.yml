@@ -1,0 +1,46 @@
+# =============================================================================
+# Lokales S3-Ziel (SeaweedFS) zum TESTEN des Off-Site-Backups — OHNE Cloud-Account.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.s3-test.yml up -d --build
+#   ./ops/backup/test-backup.sh
+#
+# Macht den restic-Backup-Service gegen ein lokales S3 laufen; restic legt Bucket
+# und Repository beim ersten Start selbst an. NUR für Test/Entwicklung — niemals
+# als echtes, dauerhaftes Backup-Ziel verwenden (läuft auf derselben Box).
+#
+# Früher MinIO: dessen Images sind 2026 erst von Docker Hub, dann auch von
+# quay.io verschwunden (öffentlich nicht mehr abrufbar). SeaweedFS (Apache-2.0)
+# ist gepflegt und liegt auf Docker Hub; die Version ist bewusst festgenagelt.
+# =============================================================================
+services:
+  s3:
+    image: chrislusf/seaweedfs:4.47
+    restart: unless-stopped
+    # Master + Volume + Filer + S3-Gateway in einem Prozess. Zugang aus
+    # s3-test-zugang.json (ohne Datei wäre das S3 offen für jeden). Kleine
+    # Volumes (64 MB statt 1 GB): die Anzahl leitet SeaweedFS aus dem freien
+    # Plattenplatz ab — so reicht es auch auf knappen CI-Runnern.
+    command: server -s3 -s3.config=/etc/seaweedfs/s3.json -master.volumeSizeLimitMB=64
+    volumes:
+      - s3_daten:/data
+      - ./ops/backup/s3-test-zugang.json:/etc/seaweedfs/s3.json:ro
+
+  # restic-Backup-Service auf das lokale S3 zeigen lassen (überschreibt RESTIC_*).
+  # Kein Warten per Healthcheck nötig: das Backup-Skript wiederholt die
+  # Initialisierung, bis das Ziel antwortet (wie nach einem Stromausfall, wenn
+  # der Router langsamer hochfährt als der Kassen-PC).
+  backup:
+    depends_on:
+      backend:
+        condition: service_started
+      s3:
+        condition: service_started
+    environment:
+      RESTIC_REPOSITORY:     s3:http://s3:8333/kassa-backup
+      RESTIC_PASSWORD:       test-restic-passwort
+      AWS_ACCESS_KEY_ID:     kassa-test
+      AWS_SECRET_ACCESS_KEY: kassa-test-geheim
+      AWS_DEFAULT_REGION:    us-east-1
+
+volumes:
+  s3_daten:

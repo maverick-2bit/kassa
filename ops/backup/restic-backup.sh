@@ -32,7 +32,22 @@ sekunden_bis_stunde() {
   echo "$diff"
 }
 
+# Repository sicherstellen: erreichbar → fertig, sonst anlegen (bei S3 legt
+# restic init auch das Bucket an). Ein bestehendes Repo überschreibt init nie —
+# es bricht an der vorhandenen config ab (z. B. falsches Passwort).
+LETZTE_MELDUNG=""
+repo_sicherstellen() {
+  restic snapshots >/dev/null 2>&1 && return 0
+  if LETZTE_MELDUNG="$(restic init 2>&1)"; then
+    log "Repository neu initialisiert: $(echo "$LETZTE_MELDUNG" | head -n 1)"
+    return 0
+  fi
+  return 1
+}
+
 backup_lauf() {
+  # Holt eine beim Start gescheiterte Initialisierung nach
+  repo_sicherstellen || true
   log "Starte Backup von /data/db-backups + /data/dep-backups ..."
   if restic backup /data/db-backups /data/dep-backups --tag kassa --host kassa; then
     log "Backup ok — wende Retention an ..."
@@ -47,11 +62,23 @@ backup_lauf() {
   fi
 }
 
-# Repository initialisieren, falls leer/neu
-if ! restic snapshots >/dev/null 2>&1; then
-  log "Repository nicht gefunden — initialisiere ..."
-  restic init || log "WARN: restic init fehlgeschlagen (existiert das Repo schon mit anderem Passwort?)"
-fi
+# Beim Start kann das Ziel noch fehlen (Router bootet nach einem Stromausfall
+# langsamer als der PC, lokales Test-S3 fährt noch hoch) — daher bis zu 5 min
+# wiederholen. Vorher gab es genau EINEN Versuch: scheiterte der, blieb ein
+# neues Repo ungeöffnet und jeder Tageslauf schlug fehl. Danach holt jeder
+# geplante Lauf die Initialisierung nach.
+versuch=0
+until repo_sicherstellen; do
+  versuch=$((versuch + 1))
+  if [ "$versuch" -eq 1 ]; then
+    log "Repository noch nicht erreichbar/angelegt — versuche es bis zu 5 min lang ..."
+  fi
+  if [ "$versuch" -ge 60 ]; then
+    log "WARN: Repository nach 5 min nicht bereit (Ziel erreichbar? Repo mit anderem Passwort?). Letzte Meldung: ${LETZTE_MELDUNG}"
+    break
+  fi
+  sleep 5
+done
 
 log "Off-Site-Backup aktiv. Repo: ${RESTIC_REPOSITORY}. Täglicher Lauf um ~${BACKUP_STUNDE:-4}:00 (Containerzeit)."
 

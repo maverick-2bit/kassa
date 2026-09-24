@@ -1,0 +1,14 @@
+{
+  "identities": [
+    {
+      "name": "kassa-test",
+      "credentials": [
+        {
+          "accessKey": "kassa-test",
+          "secretKey": "kassa-test-geheim"
+        }
+      ],
+      "actions": ["Admin", "Read", "List", "Tagging", "Write"]
+    }
+  ]
+}
