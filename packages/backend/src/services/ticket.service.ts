@@ -446,7 +446,9 @@ export async function listeTickets(
   const baender = await ladeBaender(db, eventId)
   const { ticketBasisUrl } = await ladeMandant(db, mandantId)
 
-  const bedingungen = [eq(tickets.eventId, eventId), eq(tickets.mandantId, mandantId)]
+  // Reservierte Tickets (Online-Zahlung läuft noch) gibt es erst nach der Zahlung —
+  // bis dahin stehen sie nur unter „Bestellungen".
+  const bedingungen = [eq(tickets.eventId, eventId), eq(tickets.mandantId, mandantId), sql`${tickets.status} <> 'reserviert'`]
   const suche = filter.suche?.trim()
   if (suche) {
     const muster = `%${suche.replace(/[%_\\]/g, m => `\\${m}`)}%`
@@ -470,7 +472,8 @@ export async function stelleTicketsAus(
 
   let bezeichnung: string
   let ticketArtId: string | null = null
-  let mwstSatz = 'ermaessigt1'
+  // Nur für Mehrfachtickets ohne Ticketart; kostenlos, der Satz ist dann ohne Wirkung
+  let mwstSatz = 'ermaessigt2'
   if (input.typ === 'einzel' || input.ticketArtId) {
     const art = await ladeTicketArt(db, mandantId, input.ticketArtId!)
     if (art.eventId !== eventId) throw new TicketError(400, 'Die Ticketart gehört zu einem anderen Event')

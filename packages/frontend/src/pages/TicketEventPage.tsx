@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { TICKET_EVENT_STATUS_LABELS, type TicketEinlassStand } from '@kassa/shared'
+import { QRCodeSVG } from 'qrcode.react'
+import { TICKET_EVENT_STATUS_LABELS, type TicketEinlassStand, type TicketEventStatus } from '@kassa/shared'
 import { ticketingApi } from '../lib/api'
 import { getAuth } from '../lib/auth'
 import { EVENT_STATUS_STIL, fehlerText, formatEventDatum } from '../lib/ticketing'
@@ -11,11 +12,14 @@ import { TicketListe } from '../components/tickets/TicketListe'
 import { TicketArtenVerwaltung } from '../components/tickets/TicketArtenVerwaltung'
 import { BaenderEditor } from '../components/tickets/BaenderEditor'
 import { EinlassProtokoll } from '../components/tickets/EinlassProtokoll'
+import { TicketBestellungen } from '../components/tickets/TicketBestellungen'
+import { Modal } from '../components/ui/Modal'
 
-type Reiter = 'tickets' | 'einlass' | 'arten' | 'baender' | 'event'
+type Reiter = 'tickets' | 'bestellungen' | 'einlass' | 'arten' | 'baender' | 'event'
 
 const REITER: Array<[Reiter, string]> = [
   ['tickets', 'Tickets'],
+  ['bestellungen', 'Bestellungen'],
   ['einlass', 'Einlass'],
   ['arten',   'Ticketarten'],
   ['baender', 'Bänder'],
@@ -81,8 +85,9 @@ export function TicketEventPage() {
       </div>
 
       <EinlassKacheln stand={event.stand} />
+      <ShopLink eventId={event.id} status={event.status} />
 
-      <div className="flex gap-1 border-b border-line">
+      <div className="flex gap-1 overflow-x-auto border-b border-line">
         {REITER.map(([id, titel]) => (
           <button
             key={id} type="button" onClick={() => setReiter(id)}
@@ -94,6 +99,7 @@ export function TicketEventPage() {
       </div>
 
       {reiter === 'tickets' && <TicketListe event={event} />}
+      {reiter === 'bestellungen' && <TicketBestellungen event={event} />}
       {reiter === 'einlass' && <EinlassProtokoll event={event} />}
       {reiter === 'arten'   && <TicketArtenVerwaltung event={event} />}
       {reiter === 'baender' && <BaenderEditor event={event} />}
@@ -122,6 +128,49 @@ export function TicketEventPage() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+/** Link zum Verkauf dieses Events — zum Teilen und als QR für Plakat/Flyer. */
+function ShopLink({ eventId, status }: { eventId: string; status: TicketEventStatus }) {
+  const { data } = useQuery({ queryKey: ['ticket-einstellungen'], queryFn: ticketingApi.einstellungen })
+  const [qrOffen, setQrOffen] = useState(false)
+  const [kopiert, setKopiert] = useState(false)
+  if (!data) return null
+
+  if (status === 'entwurf' || status === 'abgesagt') {
+    return (
+      <p className="rounded-xl border border-line bg-panel px-4 py-2.5 text-xs text-ink-muted">
+        Online-Verkauf: {status === 'abgesagt'
+          ? 'abgesagt — der Shop verkauft nichts mehr.'
+          : 'im Shop sichtbar, sobald der Status „Veröffentlicht“ ist (zum Ausprobieren: „Test“).'}
+      </p>
+    )
+  }
+  if (!data.ticketBasisUrl) {
+    return (
+      <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
+        Online-Verkauf: Ticket-Adresse fehlt — unter „Alle Events“ → Adressen eintragen.
+      </p>
+    )
+  }
+  const url = `${data.ticketBasisUrl}/e/${eventId}`
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-panel px-4 py-2.5 text-xs">
+      <span className="font-medium text-ink">Online-Verkauf{status === 'test' ? ' (Test — nur über diesen Link)' : ''}:</span>
+      <a href={url} target="_blank" rel="noreferrer" className="font-mono text-brand-600 hover:underline">{url}</a>
+      <button type="button" className="text-brand-600 hover:underline"
+        onClick={() => { void navigator.clipboard?.writeText(url); setKopiert(true); setTimeout(() => setKopiert(false), 2000) }}>
+        {kopiert ? '✓ kopiert' : 'kopieren'}
+      </button>
+      <button type="button" className="text-brand-600 hover:underline" onClick={() => setQrOffen(true)}>QR-Code</button>
+      <Modal open={qrOffen} onClose={() => setQrOffen(false)} title="QR-Code zum Ticketkauf" size="sm">
+        <div className="flex flex-col items-center gap-3">
+          <div className="rounded-lg bg-white p-4"><QRCodeSVG value={url} size={240} level="M" /></div>
+          <p className="break-all text-center font-mono text-xs text-ink-muted">{url}</p>
+        </div>
+      </Modal>
     </div>
   )
 }

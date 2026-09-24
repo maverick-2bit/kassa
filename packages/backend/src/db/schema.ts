@@ -79,6 +79,13 @@ export const mandanten = pgTable('mandanten', {
   ticketBasisUrl:           varchar('ticket_basis_url', { length: 300 }),
   /** Öffentliche Adresse der Einlass-App — für den Einrichtungs-QR der Scanner-Handys */
   einlassBasisUrl:          varchar('einlass_basis_url', { length: 300 }),
+  /** Ticketshop: Kasse für die RKSV-Belege der Online-Verkäufe (null = Verkauf aus) */
+  ticketVerkaufKasseId:     uuid('ticket_verkauf_kasse_id').references((): AnyPgColumn => kassen.id, { onDelete: 'set null' }),
+  ticketAgbUrl:             varchar('ticket_agb_url', { length: 300 }),
+  ticketDatenschutzUrl:     varchar('ticket_datenschutz_url', { length: 300 }),
+  ticketImpressumUrl:       varchar('ticket_impressum_url', { length: 300 }),
+  /** Hinweis im Kaufformular (z. B. Rücktrittsrecht bei Veranstaltungen mit fixem Termin) */
+  ticketKaufhinweis:        text('ticket_kaufhinweis'),
 
   /**
    * Ab diesem Belegbetrag muss ein Storno freigegeben werden (PIN eines
@@ -1551,17 +1558,72 @@ export const tickets = pgTable('tickets', {
   ersterEinlassGeraet: varchar('erster_einlass_geraet', { length: 60 }),
   einlassAnzahl:    integer('einlass_anzahl').notNull().default(0),
   ausgestelltVon:   uuid('ausgestellt_von').references(() => users.id, { onDelete: 'set null' }),
+  /** Online gekauft: zugehörige Shop-Bestellung (null = intern ausgestellt) */
+  bestellungId:     uuid('bestellung_id').references((): AnyPgColumn => ticketBestellungen.id, { onDelete: 'set null' }),
   createdAt:    timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt:    timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
   codeIdx:        uniqueIndex('tickets_code_idx').on(t.code),
   eventStatusIdx: index('tickets_event_status_idx').on(t.eventId, t.status),
+  bestellungIdx:  index('tickets_bestellung_idx').on(t.bestellungId),
 }))
 
-export type TicketEventRow = typeof ticketEvents.$inferSelect
-export type TicketBandRow  = typeof ticketBaender.$inferSelect
-export type TicketArtRow   = typeof ticketArten.$inferSelect
-export type TicketRow      = typeof tickets.$inferSelect
+/** Snapshot je Ticketart in einer Shop-Bestellung */
+export interface TicketBestellPosition {
+  ticketArtId: string
+  bezeichnung: string
+  menge:       number
+  preisCent:   number
+  mwstSatz:    string
+}
+
+/** Rechnung auf Firma (optional beim Online-Kauf) */
+export interface TicketBestellRechnung {
+  firma:   string
+  strasse: string
+  plz:     string
+  ort:     string
+  land:    string
+  uid:     string | null
+}
+
+/**
+ * Online-Bestellung im Ticketshop. Während der Zahlung hält sie ihre Tickets
+ * (Status „reserviert") im Kontingent fest; läuft die Reservierung ab, werden
+ * die reservierten Tickets gelöscht — sie waren nie gültig und nie sichtbar.
+ */
+export const ticketBestellungen = pgTable('ticket_bestellungen', {
+  id:              uuid('id').primaryKey().defaultRandom(),
+  mandantId:       uuid('mandant_id').notNull().references(() => mandanten.id),
+  eventId:         uuid('event_id').notNull().references(() => ticketEvents.id, { onDelete: 'cascade' }),
+  /** zahlung | finalisiere | bezahlt | abgelaufen | abgebrochen */
+  status:          varchar('status', { length: 20 }).notNull().default('zahlung'),
+  name:            varchar('name', { length: 200 }).notNull(),
+  email:           varchar('email', { length: 254 }).notNull(),
+  rechnung:        jsonb('rechnung').$type<TicketBestellRechnung>(),
+  positionen:      jsonb('positionen').$type<TicketBestellPosition[]>().notNull(),
+  summeCent:       integer('summe_cent').notNull(),
+  reserviertBis:   timestamp('reserviert_bis', { withTimezone: true }).notNull(),
+  stripeSessionId: varchar('stripe_session_id', { length: 255 }),
+  /** Adresse der Ticket-App bei der Bestellung — Rückfall für Links ohne eingerichtete Ticket-Adresse */
+  basisUrl:        varchar('basis_url', { length: 300 }),
+  belegId:         uuid('beleg_id').references(() => belege.id, { onDelete: 'set null' }),
+  agbAkzeptiertAt: timestamp('agb_akzeptiert_at', { withTimezone: true }).notNull(),
+  bezahltAt:       timestamp('bezahlt_at', { withTimezone: true }),
+  emailGesendetAt: timestamp('email_gesendet_at', { withTimezone: true }),
+  emailFehler:     varchar('email_fehler', { length: 500 }),
+  createdAt:       timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:       timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  eventIdx: index('ticket_bestellungen_event_idx').on(t.eventId, t.createdAt),
+  offenIdx: index('ticket_bestellungen_offen_idx').on(t.status, t.reserviertBis),
+}))
+
+export type TicketEventRow      = typeof ticketEvents.$inferSelect
+export type TicketBandRow       = typeof ticketBaender.$inferSelect
+export type TicketArtRow        = typeof ticketArten.$inferSelect
+export type TicketRow           = typeof tickets.$inferSelect
+export type TicketBestellungRow = typeof ticketBestellungen.$inferSelect
 
 // ---------------------------------------------------------------------------
 // Einlass — Scanner-Geräte (einzeln sperrbar) + Protokoll jedes Scans

@@ -11,6 +11,7 @@ import { Input } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
 import { TicketEventFormular } from '../components/tickets/TicketEventFormular'
 import { EinlassGeraete } from '../components/tickets/EinlassGeraete'
+import { OnlineVerkauf } from '../components/tickets/OnlineVerkauf'
 
 export function TicketEventsPage() {
   const qc = useQueryClient()
@@ -50,6 +51,7 @@ export function TicketEventsPage() {
       </div>
 
       <AdressenKarte />
+      <OnlineVerkauf />
       <EinlassGeraete einlassAdresseFehlt={!einstellungen?.einlassBasisUrl} />
 
       {isLoading ? (

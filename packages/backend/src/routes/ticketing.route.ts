@@ -15,6 +15,9 @@
  *  GET/POST /ticketing/einlass-geraete               Scanner-Geräte auflisten / anlegen (Token + QR-Link)
  *  POST     /ticketing/einlass-geraete/:id/sperren   verlorenes Gerät sofort sperren
  *  GET      /ticketing/events/:eventId/einlass-log   Protokoll aller Scans
+ *  GET/PUT  /ticketing/shop-einstellungen            Online-Verkauf: Verkaufskasse, AGB/Datenschutz/Impressum
+ *  GET      /ticketing/events/:eventId/bestellungen  Online-Bestellungen eines Events
+ *  POST     /ticketing/bestellungen/:id/senden       Tickets + Beleg erneut mailen (optional andere Adresse)
  */
 
 import type { FastifyPluginAsync, FastifyReply } from 'fastify'
@@ -28,11 +31,22 @@ import {
   TicketEinstellungenSchema,
   TicketEventInputSchema,
   TicketEventUpdateSchema,
+  TicketBestellungSendenSchema,
+  TicketShopEinstellungenSchema,
   type EinlassGeraetAngelegt,
   type TicketAusstellenAntwort,
 } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import type { Config } from '../config.js'
+import type { BelegServiceDeps } from '../services/beleg.service.js'
+import {
+  TicketShopError,
+  holeShopEinstellungen,
+  listeBestellungen,
+  pruefeBestellungDesMandanten,
+  sendeBestellEmail,
+  setzeShopEinstellungen,
+} from '../services/ticketshop.service.js'
 import {
   TicketError,
   aktualisiereEvent,
@@ -63,9 +77,10 @@ import {
   widerrufeGeraet,
 } from '../services/einlass.service.js'
 
-export interface TicketingRouteOptions { db: Db; config: Config }
+export interface TicketingRouteOptions { db: Db; config: Config; belegDeps: BelegServiceDeps }
 
 const EventParam  = z.object({ eventId:  z.string().uuid() })
+const BestellungParam = z.object({ bestellungId: z.string().uuid() })
 const ArtParam    = z.object({ artId:    z.string().uuid() })
 const TicketParam = z.object({ ticketId: z.string().uuid() })
 const GeraetParam = z.object({ geraetId: z.string().uuid() })
@@ -289,5 +304,47 @@ export const ticketingRoute: FastifyPluginAsync<TicketingRouteOptions> = async (
       .header('Content-Type', 'application/pdf')
       .header('Content-Disposition', `inline; filename="Tickets-${codes.length}.pdf"`)
       .send(pdf)
+  })
+
+  // ---- Ticketshop (Online-Verkauf) ----
+  const shopDeps = { db, config, belegDeps: opts.belegDeps }
+
+  function shopFehler(reply: FastifyReply, err: unknown) {
+    if (err instanceof TicketShopError) return reply.status(err.httpStatus).send({ fehler: err.message })
+    return fehler(reply, err)
+  }
+
+  fastify.get('/ticketing/shop-einstellungen', guard, async (request) =>
+    holeShopEinstellungen(shopDeps, request.user.mandantId))
+
+  fastify.put('/ticketing/shop-einstellungen', guard, async (request, reply) => {
+    const body = TicketShopEinstellungenSchema.safeParse(request.body)
+    if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
+    try {
+      const antwort = await setzeShopEinstellungen(shopDeps, request.user.mandantId, body.data)
+      await logAudit(db, {
+        mandantId: request.user.mandantId, userId: request.user.sub, aktion: 'einstellungen.geaendert',
+        details: { bereich: 'ticketshop', verkaufKasseId: antwort.verkaufKasseId }, ipAdresse: getClientIp(request),
+      }, fastify.log)
+      return antwort
+    } catch (err) { return shopFehler(reply, err) }
+  })
+
+  fastify.get('/ticketing/events/:eventId/bestellungen', guard, async (request, reply) => {
+    const p = EventParam.safeParse(request.params)
+    if (!p.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
+    return listeBestellungen(db, request.user.mandantId, p.data.eventId)
+  })
+
+  fastify.post('/ticketing/bestellungen/:bestellungId/senden', guard, async (request, reply) => {
+    const p = BestellungParam.safeParse(request.params)
+    const body = TicketBestellungSendenSchema.safeParse(request.body ?? {})
+    if (!p.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
+    if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
+    try {
+      await pruefeBestellungDesMandanten(db, request.user.mandantId, p.data.bestellungId)
+      const ergebnis = await sendeBestellEmail(shopDeps, p.data.bestellungId, body.data.email)
+      return reply.status(ergebnis.erfolgreich ? 200 : 502).send(ergebnis)
+    } catch (err) { return shopFehler(reply, err) }
   })
 }

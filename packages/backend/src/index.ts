@@ -11,6 +11,7 @@ import { starteDepSicherungsCron } from './services/dep-sicherung.cron.js'
 import { starteDbBackupCron }      from './services/db-backup.cron.js'
 import { starteAutoAbschlussCron } from './services/auto-abschluss.cron.js'
 import { starteDruckerKeepAliveCron } from './services/drucker-keepalive.cron.js'
+import { starteTicketshopCron } from './services/ticketshop.cron.js'
 import { erstelleStubFinanzOnlineClient } from './services/finanz-online.stub.js'
 
 async function main(): Promise<void> {
@@ -56,6 +57,11 @@ async function main(): Promise<void> {
   const stopDbCron   = starteDbBackupCron(db, config.DATABASE_URL, config.DB_BACKUP_DIR, config.DB_BACKUP_RETENTION, server.log)
   const stopAutoCron = starteAutoAbschlussCron(db, config, server.log)
   const stopKeepAlive = starteDruckerKeepAliveCron(db, server.log)
+  const stopTicketshop = starteTicketshopCron(db, {
+    db,
+    masterPassphrase: config.MASTER_PASSPHRASE,
+    ...(rksvOptionen && { finanzOnlineClient: rksvOptionen.finanzOnlineClient }),
+  }, config, server.log)
 
   // Letzte Auffanglinie für verirrte Fehler — protokollieren statt stillem Absturz
   process.on('unhandledRejection', (reason) => {
@@ -86,6 +92,7 @@ async function main(): Promise<void> {
       stopDbCron()
       stopAutoCron()
       stopKeepAlive()
+      stopTicketshop()
       await server.close()   // keine neuen Requests, laufende abwarten
       await sql.end({ timeout: 5 }) // DB-Pool drainen
       server.log.info('Sauber heruntergefahren.')

@@ -109,6 +109,67 @@ export async function erstelleCheckoutSession(input: CheckoutInput, konfig: Stri
   return { id: session.id, url: session.url }
 }
 
+// ---------------------------------------------------------------------------
+// Ticketshop — Checkout mit Ablaufzeit (= Ende der Kontingent-Reservierung)
+// ---------------------------------------------------------------------------
+
+export interface TicketCheckoutInput {
+  bestellungId: string
+  positionen:   CheckoutPosition[]
+  /** Käufer-Adresse: Stripe füllt sie vor und schickt dorthin die Zahlungsbestätigung */
+  email:        string
+  successUrl:   string
+  cancelUrl:    string
+  /** Bezahlseite läuft hier ab — danach ist keine Zahlung mehr möglich (Stripe: 30 min bis 24 h) */
+  laeuftAbAt:   Date
+}
+
+/**
+ * Checkout-Session für eine Ticket-Bestellung. Der Metadaten-Schlüssel
+ * `ticketBestellungId` (statt `bestellungId` der Gast-Bestellung) lenkt den
+ * Webhook in den Ticketshop.
+ */
+export async function erstelleTicketCheckoutSession(
+  input: TicketCheckoutInput, konfig: StripeKonfig,
+): Promise<{ id: string; url: string }> {
+  const session = await client(konfig).checkout.sessions.create({
+    mode: 'payment',
+    line_items: input.positionen.map(p => ({
+      quantity: p.menge,
+      price_data: { currency: 'eur', unit_amount: p.preisBruttoCent, product_data: { name: p.bezeichnung } },
+    })),
+    customer_email: input.email,
+    locale:         'de',
+    success_url:    input.successUrl,
+    cancel_url:     input.cancelUrl,
+    expires_at:     Math.floor(input.laeuftAbAt.getTime() / 1000),
+    metadata:            { ticketBestellungId: input.bestellungId },
+    payment_intent_data: { metadata: { ticketBestellungId: input.bestellungId } },
+  })
+  if (!session.url) throw new Error('Stripe-Checkout-Session ohne URL')
+  return { id: session.id, url: session.url }
+}
+
+export interface CheckoutSessionStand {
+  status:  'open' | 'complete' | 'expired'
+  /** Geld ist da (bei verzögerten Zahlarten wie SEPA erst Tage nach „complete") */
+  bezahlt: boolean
+}
+
+/** Stand einer Checkout-Session direkt bei Stripe erfragen (Aufräum-Job: bezahlt oder verfallen?). */
+export async function holeCheckoutSessionStand(id: string, konfig: StripeKonfig): Promise<CheckoutSessionStand> {
+  const s = await client(konfig).checkout.sessions.retrieve(id)
+  return {
+    status:  s.status ?? 'open',
+    bezahlt: s.payment_status === 'paid' || s.payment_status === 'no_payment_required',
+  }
+}
+
+/** Offene Bezahlseite sofort schließen (Käufer hat abgebrochen → Tickets gleich wieder frei). */
+export async function beendeCheckoutSession(id: string, konfig: StripeKonfig): Promise<void> {
+  await client(konfig).checkout.sessions.expire(id)
+}
+
 /** Verifiziert die Webhook-Signatur gegen den rohen Request-Body (wirft bei Fälschung). */
 export function verifiziereWebhook(rawBody: Buffer, signature: string, konfig: StripeKonfig): Stripe.Event {
   return client(konfig).webhooks.constructEvent(rawBody, signature, konfig.webhookSecret)
