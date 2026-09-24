@@ -1842,6 +1842,9 @@ export const ticketingApi = {
     request('GET', `/api/ticketing/events/${eventId}/bestellungen`),
   bestellungSenden:       (bestellungId: string, email?: string): Promise<{ erfolgreich: boolean; fehler?: string }> =>
     request('POST', `/api/ticketing/bestellungen/${bestellungId}/senden`, email ? { email } : {}),
+
+  personendatenLoeschen:  (eventId: string): Promise<{ tickets: number; bestellungen: number }> =>
+    request('POST', `/api/ticketing/events/${eventId}/personendaten-loeschen`),
 }
 
 /** PDF der gewählten Tickets in neuem Tab öffnen (authentifizierter Abruf). */

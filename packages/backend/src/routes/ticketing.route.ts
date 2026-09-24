@@ -16,6 +16,7 @@
  *  POST     /ticketing/einlass-geraete/:id/sperren   verlorenes Gerät sofort sperren
  *  GET      /ticketing/events/:eventId/einlass-log   Protokoll aller Scans
  *  GET/PUT  /ticketing/shop-einstellungen            Online-Verkauf: Verkaufskasse, AGB/Datenschutz/Impressum
+ *  POST     /ticketing/events/:eventId/personendaten-loeschen  Namen/Geburtsdaten/E-Mails sofort löschen (nach dem Event)
  *  GET      /ticketing/events/:eventId/bestellungen  Online-Bestellungen eines Events
  *  POST     /ticketing/bestellungen/:id/senden       Tickets + Beleg erneut mailen (optional andere Adresse)
  */
@@ -39,6 +40,7 @@ import {
 import type { Db } from '../db/client.js'
 import type { Config } from '../config.js'
 import type { BelegServiceDeps } from '../services/beleg.service.js'
+import { loeschePersonendatenJetzt } from '../services/ticket-datenschutz.service.js'
 import {
   TicketShopError,
   holeShopEinstellungen,
@@ -328,6 +330,21 @@ export const ticketingRoute: FastifyPluginAsync<TicketingRouteOptions> = async (
       }, fastify.log)
       return antwort
     } catch (err) { return shopFehler(reply, err) }
+  })
+
+  // ---- Datenschutz ----
+  fastify.post('/ticketing/events/:eventId/personendaten-loeschen', guard, async (request, reply) => {
+    const p = EventParam.safeParse(request.params)
+    if (!p.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
+    try {
+      const r = await loeschePersonendatenJetzt(db, request.user.mandantId, p.data.eventId)
+      await logAudit(db, {
+        mandantId: request.user.mandantId, userId: request.user.sub, aktion: 'einstellungen.geaendert',
+        details: { bereich: 'ticketing', aktion: 'personendaten_geloescht', eventId: p.data.eventId, ...r },
+        ipAdresse: getClientIp(request),
+      }, fastify.log)
+      return r
+    } catch (err) { return fehler(reply, err) }
   })
 
   fastify.get('/ticketing/events/:eventId/bestellungen', guard, async (request, reply) => {
