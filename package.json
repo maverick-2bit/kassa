@@ -19,7 +19,7 @@
   "packageManager": "pnpm@9.15.0",
   "pnpm": {
     "overrides": {
-      "fast-uri": "^3.1.4",
+      "fast-uri": "^3.1.5",
       "find-my-way": "^9.7.0"
     }
   }
