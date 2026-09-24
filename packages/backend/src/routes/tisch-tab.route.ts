@@ -29,7 +29,8 @@ import {
   type TischTabServiceDeps,
 } from '../services/tisch-tab.service.js'
 import { tryDruckeBeleg } from '../services/drucker.service.js'
-import { FreigabeError } from '../services/freigabe.service.js'
+import { FreigabeError, freigabeKontextAus } from '../services/freigabe.service.js'
+import { PinGesperrtError, sendePinGesperrt } from '../services/pin-bremse.js'
 
 export interface TischTabRouteOptions {
   deps: TischTabServiceDeps
@@ -78,6 +79,7 @@ export const tischTabRoute: FastifyPluginAsync<TischTabRouteOptions> = async (fa
           userId:   (request.user as { id?: string }).id ?? null,
           userName: request.user.name,
           ...(parsed.data.freigabePin ? { freigabePin: parsed.data.freigabePin } : {}),
+          freigabe: freigabeKontextAus(request),
         },
       )
       // stornoBon nur mitschicken, wenn der Korrekturbon NICHT zugestellt wurde —
@@ -86,6 +88,7 @@ export const tischTabRoute: FastifyPluginAsync<TischTabRouteOptions> = async (fa
     } catch (err) {
       if (err instanceof FreigabeError)
         return reply.status(err.httpStatus).send({ fehler: err.message, code: err.code, abCent: err.abCent })
+      if (err instanceof PinGesperrtError) return sendePinGesperrt(reply, err)
       if (err instanceof TischTabError) return reply.status(err.httpStatus).send({ fehler: err.message })
       throw err
     }
@@ -106,11 +109,13 @@ export const tischTabRoute: FastifyPluginAsync<TischTabRouteOptions> = async (fa
         userName: request.user.name,
         ...(body.data.grund ? { grund: body.data.grund } : {}),
         ...(body.data.freigabePin ? { freigabePin: body.data.freigabePin } : {}),
+        freigabe: freigabeKontextAus(request),
       })
       return reply.send(tab)
     } catch (err) {
       if (err instanceof FreigabeError)
         return reply.status(err.httpStatus).send({ fehler: err.message, code: err.code, abCent: err.abCent })
+      if (err instanceof PinGesperrtError) return sendePinGesperrt(reply, err)
       if (err instanceof TischTabError) return reply.status(err.httpStatus).send({ fehler: err.message })
       throw err
     }
@@ -121,7 +126,7 @@ export const tischTabRoute: FastifyPluginAsync<TischTabRouteOptions> = async (fa
     const parsed = TischTabBezahlenInputSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     try {
-      const result = await bezahleTab(id, parsed.data, request.user.mandantId, opts.deps)
+      const result = await bezahleTab(id, parsed.data, request.user.mandantId, opts.deps, freigabeKontextAus(request))
       // Auto-Druck des Bons (fire-and-forget; No-Op wenn kein Drucker konfiguriert)
       tryDruckeBeleg(opts.deps.db, result.belegId, fastify.log)
       return reply.send(result)
@@ -131,6 +136,7 @@ export const tischTabRoute: FastifyPluginAsync<TischTabRouteOptions> = async (fa
       if (err instanceof FreigabeError) {
         return reply.status(err.httpStatus).send({ fehler: err.message, code: err.code, abCent: err.abCent })
       }
+      if (err instanceof PinGesperrtError) return sendePinGesperrt(reply, err)
       throw err
     }
   })

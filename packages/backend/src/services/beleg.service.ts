@@ -45,7 +45,7 @@ import { ArtikelPositionSchema } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import { artikel, belege, kassen, kategorien, mandanten, modifikatoren, seriennummern } from '../db/schema.js'
 import { erstelleKunde, ladeKundeSnapshot } from './kunde.service.js'
-import { pruefeRabattFreigabe } from './freigabe.service.js'
+import { pruefeRabattFreigabe, type FreigabeKontext } from './freigabe.service.js'
 import { logAudit } from './audit.service.js'
 import { dekrementiereBestandteile, ladeRezepte } from './bestandteil.service.js'
 import { decryptPrivateKey, encryptPrivateKey } from '../crypto/master-key.js'
@@ -299,6 +299,8 @@ export async function erstelleBarzahlungsbeleg(
      * Rabatt-Freigabeschwelle dazu, ist hier aber nicht mehr sichtbar.
      */
     zusatzNachlassCent?: number
+    /** Wer anfragt — für die PIN-Bremse, falls ein Freigabe-PIN mitkommt */
+    freigabeKontext?: FreigabeKontext
   } = {},
 ): Promise<BelegResponse> {
   // Kunden-Snapshot vor der Transaktion auflösen (neuer Kunde wird hier angelegt)
@@ -474,6 +476,7 @@ export async function erstelleBarzahlungsbeleg(
         if (kasseRow) {
           const freigeber = await pruefeRabattFreigabe(
             deps.db, kasseRow.mandantId, gesamtNachlassCent, basisCent, input.freigabePin,
+            opts.freigabeKontext ? { ...opts.freigabeKontext, kasseId: input.kasseId } : null,
           )
           if (freigeber) {
             await logAudit(deps.db, {

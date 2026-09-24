@@ -44,9 +44,11 @@ import { and, eq, inArray } from 'drizzle-orm'
 import { artikel, belege, kassen, kategorien, mandanten } from '../db/schema.js'
 import {
   pruefeStornoFreigabe,
+  freigabeKontextAus,
   FreigabeError,
   type Freigeber,
 } from '../services/freigabe.service.js'
+import { PinGesperrtError, sendePinGesperrt } from '../services/pin-bremse.js'
 import { logAudit, getClientIp } from '../services/audit.service.js'
 import type { Config } from '../config.js'
 import { isEmailAktiv, sendeTagesabschlussEmail } from '../services/email.service.js'
@@ -102,6 +104,8 @@ async function fuehreAus<T extends { id: string }>(
     if (err instanceof FreigabeError) {
       return reply.status(err.httpStatus).send({ fehler: err.message, code: err.code, abCent: err.abCent })
     }
+    // Zu viele falsche Freigabe-PINs — 429 mit Restzeit, der Beleg entsteht nicht
+    if (err instanceof PinGesperrtError) return sendePinGesperrt(reply, err)
     fastify.log.error({ err }, 'Beleg-Erstellung unerwartet fehlgeschlagen')
     return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
   }
@@ -198,7 +202,8 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
     const parsed = BarzahlungsbelegInputSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     if (!(await pruefeKasseScope(request, reply, opts.deps, parsed.data.kasseId))) return
-    return fuehreAus(fastify, reply, opts.deps, () => erstelleBarzahlungsbeleg(parsed.data, opts.deps), 201,
+    const freigabeKontext = freigabeKontextAus(request, parsed.data.kasseId)
+    return fuehreAus(fastify, reply, opts.deps, () => erstelleBarzahlungsbeleg(parsed.data, opts.deps, { freigabeKontext }), 201,
       {
         skipAutodruck: parsed.data.keinAutodruck ?? false,
         onErstellt: () => tryBonierDirektverkauf(opts.deps, parsed.data, fastify.log),
@@ -232,11 +237,13 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
       try {
         freigeber = await pruefeStornoFreigabe(
           opts.deps.db, request.user.mandantId, betragCent, parsed.data.freigabePin,
+          freigabeKontextAus(request, parsed.data.kasseId),
         )
       } catch (err) {
         if (err instanceof FreigabeError) {
           return reply.status(err.httpStatus).send({ fehler: err.message, code: err.code, abCent: err.abCent })
         }
+        if (err instanceof PinGesperrtError) return sendePinGesperrt(reply, err)
         throw err
       }
     }

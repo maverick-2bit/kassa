@@ -3,10 +3,18 @@
  * Wird vom fetch-Wrapper gelesen, um den Authorization-Header zu setzen.
  */
 
-import type { Berechtigung, LoginResponse, MandantModul } from '@kassa/shared'
+import type { Berechtigung, LoginResponse, MandantModul, PinLaenge } from '@kassa/shared'
 
 const KEY_TOKEN = 'kassa:token'
 const KEY_AUTH  = 'kassa:auth'
+/**
+ * Geräte-Merkmal der PIN-Bremse: bleibt beim Abmelden bewusst liegen — es
+ * belegt „hier war schon jemand angemeldet", damit ein Fremder dieses Gerät
+ * nicht per falscher PINs aussperren kann. Kein Anmelde-Token.
+ */
+const KEY_GERAET     = 'kassa:geraet'
+/** PIN-Länge des Betriebs — das PIN-Feld braucht sie schon vor dem Login */
+const KEY_PIN_LAENGE = 'kassa:pinLaenge'
 
 export interface AuthState {
   token:   string
@@ -33,6 +41,40 @@ export function setAuth(login: LoginResponse): void {
     user:    login.user,
     mandant: login.mandant,
     kassen:  login.kassen,
+  }))
+  if (login.geraetToken) localStorage.setItem(KEY_GERAET, login.geraetToken)
+  if (login.mandant.pinLaenge) merkePinLaenge(login.mandant.pinLaenge)
+}
+
+/** Geräte-Merkmal fürs Mitschicken bei PIN-Login und Stempeln (undefined = fremdes Gerät). */
+export function getGeraetToken(): string | undefined {
+  return localStorage.getItem(KEY_GERAET) ?? undefined
+}
+
+/** Zuletzt bekannte PIN-Länge des Betriebs (4, solange nichts anderes bekannt ist). */
+export function gemerktePinLaenge(): PinLaenge {
+  return localStorage.getItem(KEY_PIN_LAENGE) === '6' ? 6 : 4
+}
+
+export function merkePinLaenge(laenge: number): void {
+  localStorage.setItem(KEY_PIN_LAENGE, laenge === 6 ? '6' : '4')
+}
+
+/** PIN-Länge für angemeldete Seiten (Stempeluhr, Benutzerverwaltung). */
+export function pinLaenge(): PinLaenge {
+  const ausAnmeldung = getAuth()?.mandant.pinLaenge
+  return ausAnmeldung === 6 || ausAnmeldung === 4 ? ausAnmeldung : gemerktePinLaenge()
+}
+
+/** Nach einer Umstellung in der Benutzerverwaltung — ohne Re-Login. */
+export function updateMandantPinLaenge(laenge: PinLaenge): void {
+  merkePinLaenge(laenge)
+  const auth = getAuth()
+  if (!auth) return
+  localStorage.setItem(KEY_AUTH, JSON.stringify({
+    user:    auth.user,
+    mandant: { ...auth.mandant, pinLaenge: laenge },
+    kassen:  auth.kassen,
   }))
 }
 

@@ -1,7 +1,15 @@
-import type { Berechtigung, LoginResponse } from '@kassa/shared'
+import type { Berechtigung, LoginResponse, PinLaenge } from '@kassa/shared'
 
 const KEY_TOKEN = 'kellner:token'
 const KEY_AUTH  = 'kellner:auth'
+/**
+ * Geräte-Merkmal der PIN-Bremse: bleibt beim Abmelden bewusst liegen — es
+ * belegt „auf diesem Handy war schon jemand angemeldet", damit ein Fremder es
+ * nicht per falscher PINs aussperren kann. Kein Anmelde-Token.
+ */
+const KEY_GERAET     = 'kellner:geraet'
+/** PIN-Länge des Betriebs — das PIN-Feld braucht sie schon vor dem Login */
+const KEY_PIN_LAENGE = 'kellner:pinLaenge'
 
 export interface AuthState {
   token:   string
@@ -29,6 +37,22 @@ export function setAuth(login: LoginResponse): void {
     mandant: login.mandant,
     kassen:  login.kassen,
   }))
+  if (login.geraetToken) localStorage.setItem(KEY_GERAET, login.geraetToken)
+  if (login.mandant.pinLaenge) merkePinLaenge(login.mandant.pinLaenge)
+}
+
+/** Geräte-Merkmal fürs Mitschicken beim PIN-Login (undefined = fremdes Gerät). */
+export function getGeraetToken(): string | undefined {
+  return localStorage.getItem(KEY_GERAET) ?? undefined
+}
+
+/** Zuletzt bekannte PIN-Länge des Betriebs (4, solange nichts anderes bekannt ist). */
+export function gemerktePinLaenge(): PinLaenge {
+  return localStorage.getItem(KEY_PIN_LAENGE) === '6' ? 6 : 4
+}
+
+export function merkePinLaenge(laenge: number): void {
+  localStorage.setItem(KEY_PIN_LAENGE, laenge === 6 ? '6' : '4')
 }
 
 export function clearAuth(): void {

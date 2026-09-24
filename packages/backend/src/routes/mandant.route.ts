@@ -9,21 +9,28 @@
  *
  *  PATCH /api/mandanten/stammdaten
  *    → Belegfußtext ändern (erfordert Berechtigung "einstellungen")
+ *
+ *  GET   /api/mandanten/pin-laenge   (Admin) → Länge + PINs je Länge
+ *  PATCH /api/mandanten/pin-laenge   (Admin) → 4 oder 6 Ziffern
  */
 
 import type { FastifyPluginAsync } from 'fastify'
-import { eq } from 'drizzle-orm'
+import { and, eq, isNotNull, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import type { Db } from '../db/client.js'
 import type { Config } from '../config.js'
-import { mandanten } from '../db/schema.js'
+import { mandanten, users } from '../db/schema.js'
 import {
   MandantFreigabenUpdateSchema,
   MandantModuleUpdateSchema,
+  MandantPinLaengeUpdateSchema,
   MandantStammdatenUpdateSchema,
+  type MandantPinLaenge,
 } from '@kassa/shared'
 import { encryptPrivateKey } from '../crypto/master-key.js'
 import { globaleStripeKonfig, ladeStripeKonfig, testeStripeVerbindung } from '../services/stripe.service.js'
+import { getClientIp, logAudit } from '../services/audit.service.js'
+import { alsPinLaenge } from '../services/pin-laenge.js'
 
 export interface MandantRouteOptions { db: Db; config: Config }
 
@@ -38,6 +45,23 @@ const MandantStripeUpdateSchema = z.object({
   secretKey:     stripeKeyFeld(/^sk_/, 'Secret Key beginnt mit sk_'),
   webhookSecret: stripeKeyFeld(/^whsec_/, 'Webhook Secret beginnt mit whsec_'),
 })
+
+/** PIN-Länge des Mandanten + aktive Benutzer mit PIN je Länge. */
+async function pinLaengeStand(db: Db, mandantId: string): Promise<MandantPinLaenge | null> {
+  const [m] = await db
+    .select({ pinLaenge: mandanten.pinLaenge })
+    .from(mandanten)
+    .where(eq(mandanten.id, mandantId))
+    .limit(1)
+  if (!m) return null
+  const zeilen = await db
+    .select({ laenge: users.pinLaenge, anzahl: sql<number>`count(*)::int` })
+    .from(users)
+    .where(and(eq(users.mandantId, mandantId), eq(users.aktiv, true), isNotNull(users.pinHash)))
+    .groupBy(users.pinLaenge)
+  const anzahl = (laenge: number) => zeilen.find(z => z.laenge === laenge)?.anzahl ?? 0
+  return { pinLaenge: alsPinLaenge(m.pinLaenge), pinsMit4: anzahl(4), pinsMit6: anzahl(6) }
+}
 
 /** Status-DTO (keine Klartext-Secrets) für die Stripe-Einstellungen. */
 function stripeStatusDto(row: { sec: string | null; wh: string | null }, mandantId: string, config: Config) {
@@ -188,6 +212,50 @@ export const mandantRoute: FastifyPluginAsync<MandantRouteOptions> = async (fast
 
     if (!row) return reply.status(404).send({ fehler: 'Mandant nicht gefunden' })
     return reply.send(row)
+  })
+
+  // ---- GET /mandanten/pin-laenge ----
+  // Admin wie die Benutzerverwaltung: nach einer Umstellung müssen dort die
+  // PINs neu vergeben werden.
+  const adminOnly = { onRequest: [fastify.requireRolle('admin')] }
+
+  fastify.get('/mandanten/pin-laenge', adminOnly, async (request, reply) => {
+    const stand = await pinLaengeStand(opts.db, request.user.mandantId)
+    if (!stand) return reply.status(404).send({ fehler: 'Mandant nicht gefunden' })
+    return reply.send(stand)
+  })
+
+  // ---- PATCH /mandanten/pin-laenge ----
+  // Nach dem Wechsel zählen PINs der anderen Länge nicht mehr (siehe
+  // services/pin-laenge.ts). Admins kommen per E-Mail + Passwort weiter hinein.
+  fastify.patch('/mandanten/pin-laenge', adminOnly, async (request, reply) => {
+    const body = MandantPinLaengeUpdateSchema.safeParse(request.body)
+    if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
+
+    const vorher = await pinLaengeStand(opts.db, request.user.mandantId)
+    if (!vorher) return reply.status(404).send({ fehler: 'Mandant nicht gefunden' })
+    if (vorher.pinLaenge === body.data.pinLaenge) return reply.send(vorher)
+
+    await opts.db
+      .update(mandanten)
+      .set({ pinLaenge: body.data.pinLaenge, updatedAt: new Date() })
+      .where(eq(mandanten.id, request.user.mandantId))
+
+    await logAudit(opts.db, {
+      mandantId: request.user.mandantId,
+      userId:    request.user.sub,
+      aktion:    'einstellungen.geaendert',
+      details:   {
+        bereich:        'pin_laenge',
+        vorher:         vorher.pinLaenge,
+        nachher:        body.data.pinLaenge,
+        ungueltigePins: body.data.pinLaenge === 6 ? vorher.pinsMit4 : vorher.pinsMit6,
+      },
+      ipAdresse: getClientIp(request as Parameters<typeof getClientIp>[0]),
+      userAgent: (request.headers['user-agent'] as string | undefined) ?? null,
+    }, request.log)
+
+    return reply.send(await pinLaengeStand(opts.db, request.user.mandantId))
   })
 
   // ---- GET /mandanten/stammdaten ----

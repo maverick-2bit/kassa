@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { GeraetTokenSchema, PinSchema } from './auth.js'
 
 export const Arbeitszeit_QuelleSchema = z.enum(['pin', 'admin'])
 export type ArbeitszeiteQuelle = z.infer<typeof Arbeitszeit_QuelleSchema>
@@ -41,7 +42,9 @@ export type ArbeitszeitResponse = z.infer<typeof ArbeitszeitResponseSchema>
 // PIN-Stempel-Endpoint
 export const StempelInputSchema = z.object({
   kasseId: z.string().uuid(),
-  pin:     z.string().min(3).max(8),
+  pin:     PinSchema,
+  /** Geräte-Merkmal der Kasse (siehe GeraetTokenSchema) — eigener Fehlversuchs-Topf */
+  geraetToken: GeraetTokenSchema.optional(),
 })
 export type StempelInput = z.infer<typeof StempelInputSchema>
 

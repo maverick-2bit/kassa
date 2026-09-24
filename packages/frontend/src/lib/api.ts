@@ -152,6 +152,9 @@ import type {
   TicketBestellungAdmin,
   TicketShopEinstellungen,
   TicketShopEinstellungenAntwort,
+  MandantPinLaenge,
+  MandantPinLaengeUpdate,
+  PinInfo,
 } from '@kassa/shared'
 import { getToken, handleUnauthorized } from './auth.js'
 
@@ -169,6 +172,10 @@ export class ApiError extends Error {
      * nachfragen muss, statt nur eine rote Meldung anzuzeigen.
      */
     public code?: string,
+    /** PIN-Bremse ('pin_gesperrt'): Restzeit der Sperre in Sekunden */
+    public wartenSekunden?: number,
+    /** 'pin_laenge': gültige PIN-Länge des Betriebs */
+    public pinLaenge?: number,
   ) {
     super(message)
   }
@@ -201,8 +208,14 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     const message = typeof fehler === 'string'
       ? fehler
       : Array.isArray(fehler) ? JSON.stringify(fehler) : `HTTP ${res.status}`
-    const code = (data as { code?: unknown })?.code
-    throw new ApiError(res.status, message, typeof code === 'string' ? code : undefined)
+    const { code, wartenSekunden, pinLaenge } = (data ?? {}) as { code?: unknown; wartenSekunden?: unknown; pinLaenge?: unknown }
+    throw new ApiError(
+      res.status,
+      message,
+      typeof code === 'string' ? code : undefined,
+      typeof wartenSekunden === 'number' ? wartenSekunden : undefined,
+      typeof pinLaenge === 'number' ? pinLaenge : undefined,
+    )
   }
   return data as T
 }
@@ -457,6 +470,9 @@ export const authApi = {
     request<LoginResponse>('POST', '/api/auth/login', input),
   pinLogin: (input: PinLoginInput) =>
     request<LoginResponse>('POST', '/api/auth/pin-login', input),
+  /** Öffentlich: Ziffernzahl der PINs des Betriebs (4 oder 6) — fürs PIN-Feld vor dem Login */
+  pinInfo:  (kasseId: string) =>
+    request<PinInfo>('GET', `/api/auth/pin-info?kasseId=${encodeURIComponent(kasseId)}`),
   me:       () =>
     request<{ user: LoginResponse['user']; mandant: LoginResponse['mandant']; kassen: LoginResponse['kassen'] }>(
       'GET', '/api/auth/me'),
@@ -1230,6 +1246,10 @@ export const mandantApi = {
     request<MandantFreigaben>('GET', '/api/mandanten/freigaben'),
   patchFreigaben: (input: MandantFreigabenUpdate): Promise<MandantFreigaben> =>
     request<MandantFreigaben>('PATCH', '/api/mandanten/freigaben', input),
+  getPinLaenge: (): Promise<MandantPinLaenge> =>
+    request<MandantPinLaenge>('GET', '/api/mandanten/pin-laenge'),
+  patchPinLaenge: (input: MandantPinLaengeUpdate): Promise<MandantPinLaenge> =>
+    request<MandantPinLaenge>('PATCH', '/api/mandanten/pin-laenge', input),
 }
 
 // ---------------------------------------------------------------------------

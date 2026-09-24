@@ -10,12 +10,20 @@
  * „freigabe" (oder ein Admin) seinen PIN eingeben. Geprüft wird IMMER im
  * Backend — eine Oberfläche, die den Dialog überspringt, kommt trotzdem nicht
  * vorbei.
+ *
+ * Die PIN-Prüfung läuft unter der PIN-Bremse (services/pin-bremse.ts) — sonst
+ * wäre der Freigabe-Dialog ein bequemes Orakel für die Chef-PIN, und die gilt
+ * auch für den PIN-Login als Admin.
  */
 
 import bcrypt from 'bcryptjs'
 import { and, eq, isNotNull } from 'drizzle-orm'
+import type { FastifyBaseLogger, FastifyRequest } from 'fastify'
 import type { Db } from '../db/client.js'
 import { mandanten, users } from '../db/schema.js'
+import { getClientIp } from './audit.service.js'
+import { pruefeMitBremse, toepfeFuerFreigabe } from './pin-bremse.js'
+import { alsPinLaenge } from './pin-laenge.js'
 
 /** Maschinenlesbarer Code, damit die Oberfläche den PIN-Dialog öffnen kann. */
 export const FREIGABE_CODE = 'freigabe_erforderlich'
@@ -38,6 +46,30 @@ export interface Freigeber {
   name:   string
 }
 
+/**
+ * Wer die Freigabe anfragt — für die PIN-Bremse (eigener Fehlversuchs-Topf je
+ * angemeldetem Benutzer) und das Audit einer ausgelösten Sperre.
+ */
+export interface FreigabeKontext {
+  /** JWT-sub des Anfragenden; null = unbekannt (dann nur der Mandanten-Topf) */
+  anfragerId: string | null
+  kasseId?:   string | null
+  ipAdresse?: string | null
+  userAgent?: string | null
+  log?:       FastifyBaseLogger
+}
+
+/** Kontext einer angemeldeten Anfrage (authenticate ist gelaufen → request.user gesetzt). */
+export function freigabeKontextAus(request: FastifyRequest, kasseId?: string | null): FreigabeKontext {
+  return {
+    anfragerId: request.user?.sub ?? null,
+    kasseId:    kasseId ?? null,
+    ipAdresse:  getClientIp(request as Parameters<typeof getClientIp>[0]),
+    userAgent:  (request.headers['user-agent'] as string | undefined) ?? null,
+    log:        request.log,
+  }
+}
+
 /** Cent → „12,34 €" (deutsches Format; die Meldung landet direkt in der Kassa). */
 function euro(cent: number): string {
   return `${(cent / 100).toFixed(2).replace('.', ',')} €`
@@ -50,15 +82,17 @@ function euro(cent: number): string {
  * @returns den Freigeber, wenn eine Freigabe nötig WAR und erteilt wurde;
  *          null, wenn keine nötig war (Schwelle 0 oder Betrag darunter).
  * @throws  FreigabeError wenn eine Freigabe nötig ist und PIN fehlt/falsch ist.
+ * @throws  PinGesperrtError nach zu vielen falschen Freigabe-PINs (HTTP 429)
  */
 export async function pruefeStornoFreigabe(
   db:         Db,
   mandantId:  string,
   betragCent: number,
-  pin?:       string,
+  pin:        string | undefined,
+  kontext:    FreigabeKontext | null,
 ): Promise<Freigeber | null> {
   const [m] = await db
-    .select({ abCent: mandanten.stornoFreigabeAbCent })
+    .select({ abCent: mandanten.stornoFreigabeAbCent, pinLaenge: mandanten.pinLaenge })
     .from(mandanten)
     .where(eq(mandanten.id, mandantId))
     .limit(1)
@@ -75,11 +109,7 @@ export async function pruefeStornoFreigabe(
     )
   }
 
-  const freigeber = await findeFreigeber(db, mandantId, pin)
-  if (!freigeber) {
-    throw new FreigabeError('Freigabe-PIN ist nicht gültig.', abCent)
-  }
-  return freigeber
+  return pruefeFreigabePin(db, mandantId, pin, m?.pinLaenge, abCent, kontext)
 }
 
 /**
@@ -97,7 +127,8 @@ export async function pruefeRabattFreigabe(
   mandantId:    string,
   nachlassCent: number,
   basisCent:    number,
-  pin?:         string,
+  pin:          string | undefined,
+  kontext:      FreigabeKontext | null,
 ): Promise<Freigeber | null> {
   if (nachlassCent <= 0) return null
 
@@ -105,6 +136,7 @@ export async function pruefeRabattFreigabe(
     .select({
       abProzent: mandanten.rabattFreigabeAbProzent,
       abCent:    mandanten.rabattFreigabeAbCent,
+      pinLaenge: mandanten.pinLaenge,
     })
     .from(mandanten)
     .where(eq(mandanten.id, mandantId))
@@ -123,21 +155,54 @@ export async function pruefeRabattFreigabe(
     throw new FreigabeError(`Rabatt ab ${grenze} muss freigegeben werden.`, abCent)
   }
 
-  const freigeber = await findeFreigeber(db, mandantId, pin)
-  if (!freigeber) {
-    throw new FreigabeError('Freigabe-PIN ist nicht gültig.', abCent)
+  return pruefeFreigabePin(db, mandantId, pin, m?.pinLaenge, abCent, kontext)
+}
+
+/**
+ * Prüft den Freigabe-PIN unter der PIN-Bremse.
+ *
+ * Eine Eingabe in falscher Länge kann keinen PIN treffen — sie wird ohne
+ * Prüfung abgelehnt und zählt nicht als Fehlversuch (die Meldung nennt dafür
+ * die richtige Länge, hilfreich direkt nach einer Umstellung auf 6 Ziffern).
+ */
+async function pruefeFreigabePin(
+  db:        Db,
+  mandantId: string,
+  pin:       string,
+  pinLaenge: number | undefined,
+  abCent:    number,
+  kontext:   FreigabeKontext | null,
+): Promise<Freigeber> {
+  const laenge = alsPinLaenge(pinLaenge)
+  if (pin.length !== laenge || !/^\d+$/.test(pin)) {
+    throw new FreigabeError(`Freigabe-PIN ist nicht gültig — PINs haben ${laenge} Ziffern.`, abCent)
   }
+
+  const anfragerId = kontext?.anfragerId ?? null
+  const freigeber = await pruefeMitBremse(db, {
+    quelle:        'freigabe',
+    mandantId,
+    toepfe:        toepfeFuerFreigabe(mandantId, anfragerId),
+    meldungFalsch: 'Freigabe-PIN ist nicht gültig.',
+    userId:        anfragerId,
+    ...(kontext?.kasseId   ? { kasseId:   kontext.kasseId }   : {}),
+    ...(kontext?.ipAdresse ? { ipAdresse: kontext.ipAdresse } : {}),
+    ...(kontext?.userAgent ? { userAgent: kontext.userAgent } : {}),
+    ...(kontext?.log       ? { log:       kontext.log }       : {}),
+  }, () => findeFreigeber(db, mandantId, pin, laenge))
+
+  if (!freigeber) throw new FreigabeError('Freigabe-PIN ist nicht gültig.', abCent)
   return freigeber
 }
 
 /**
  * Sucht den Benutzer zum PIN — nur Admins und Träger der Berechtigung
- * „freigabe" kommen infrage.
+ * „freigabe" kommen infrage, und nur PINs in der Länge des Betriebs.
  *
  * Wie beim PIN-Login wird über alle Kandidaten gehasht statt den PIN
  * nachzuschlagen: bcrypt-Hashes sind nicht rückwärts durchsuchbar.
  */
-async function findeFreigeber(db: Db, mandantId: string, pin: string): Promise<Freigeber | null> {
+async function findeFreigeber(db: Db, mandantId: string, pin: string, pinLaenge: number): Promise<Freigeber | null> {
   const kandidaten = await db
     .select({
       id:             users.id,
@@ -151,6 +216,7 @@ async function findeFreigeber(db: Db, mandantId: string, pin: string): Promise<F
       eq(users.mandantId, mandantId),
       eq(users.aktiv, true),
       isNotNull(users.pinHash),
+      eq(users.pinLaenge, pinLaenge),
     ))
 
   for (const k of kandidaten) {

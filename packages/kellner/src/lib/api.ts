@@ -29,10 +29,17 @@ export class ApiError extends Error {
     message: string,
     /** Maschinenlesbarer Fehlercode, z. B. 'freigabe_erforderlich'. */
     public code?: string,
+    /** PIN-Bremse ('pin_gesperrt'): Restzeit der Sperre in Sekunden */
+    public wartenSekunden?: number,
+    /** 'pin_laenge': gültige PIN-Länge des Betriebs */
+    public pinLaenge?: number,
   ) {
     super(message)
   }
 }
+
+/** Anmelde-Aufrufe: ein 401 heißt dort „PIN falsch", nicht „Sitzung abgelaufen". */
+const ANMELDE_PFADE = ['/api/auth/pin-login']
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const token = getToken()
@@ -48,7 +55,10 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   })
 
-  if (res.status === 401) {
+  // Beim PIN-Login bedeutet 401 nur „PIN falsch" — früher löschte schon EIN
+  // Tippfehler hier die Kassen-Zuordnung, und das Handy musste den Geräte-QR
+  // neu scannen.
+  if (res.status === 401 && !ANMELDE_PFADE.includes(path)) {
     clearAuth()
     clearKasseIdentity()
     onUnauthorized?.()
@@ -58,12 +68,16 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     const text = await res.text().catch(() => '')
     let msg = `HTTP ${res.status}`
     let code: string | undefined
+    let wartenSekunden: number | undefined
+    let pinLaenge: number | undefined
     try {
-      const body = JSON.parse(text) as { fehler?: string; code?: string }
+      const body = JSON.parse(text) as { fehler?: string; code?: string; wartenSekunden?: unknown; pinLaenge?: unknown }
       msg  = body.fehler ?? msg
       code = body.code
+      if (typeof body.wartenSekunden === 'number') wartenSekunden = body.wartenSekunden
+      if (typeof body.pinLaenge === 'number') pinLaenge = body.pinLaenge
     } catch { /* ignore */ }
-    throw new ApiError(res.status, msg, code)
+    throw new ApiError(res.status, msg, code, wartenSekunden, pinLaenge)
   }
   return res.json() as Promise<T>
 }
@@ -73,8 +87,11 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 // ---------------------------------------------------------------------------
 
 export const authApi = {
-  pinLogin: (input: { kasseId: string; pin: string }) =>
+  pinLogin: (input: { kasseId: string; pin: string; geraetToken?: string }) =>
     request<LoginResponse>('POST', '/api/auth/pin-login', input),
+  /** Öffentlich: Ziffernzahl der PINs des Betriebs (4 oder 6) — fürs PIN-Feld vor dem Login */
+  pinInfo:  (kasseId: string) =>
+    request<{ pinLaenge: 4 | 6 }>('GET', `/api/auth/pin-info?kasseId=${encodeURIComponent(kasseId)}`),
 }
 
 // ---------------------------------------------------------------------------
