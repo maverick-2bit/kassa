@@ -16,6 +16,11 @@
 #   Kellner       https://kellner.<domain>
 #   SB-Terminal   https://terminal.<domain>?kasseId=<uuid>
 #   Abholmonitor  https://abholmonitor.<domain>?kasseId=<uuid>
+#
+# Ziel ist jeweils Port 8090 der App — der Caddy-Eingang: Nur dort übernimmt
+# der App-nginx die Client-IP aus X-Forwarded-For (Caddy verwirft dabei jeden
+# vom Client mitgeschickten Wert). Auf Port 80 zählte Caddy selbst als Client
+# und alle Besucher teilten sich einen Rate-Limit-Zähler.
 # =============================================================================
 
 {
@@ -23,39 +28,39 @@
 }
 
 kasse.{$KASSA_DOMAIN} {
-	reverse_proxy frontend:80
+	reverse_proxy frontend:8090
 }
 
 kds.{$KASSA_DOMAIN} {
-	reverse_proxy kds:80
+	reverse_proxy kds:8090
 }
 
 kundendisplay.{$KASSA_DOMAIN} {
-	reverse_proxy kundendisplay:80
+	reverse_proxy kundendisplay:8090
 }
 
 gast.{$KASSA_DOMAIN} {
-	reverse_proxy gast:80
+	reverse_proxy gast:8090
 }
 
 kellner.{$KASSA_DOMAIN} {
-	reverse_proxy kellner:80
+	reverse_proxy kellner:8090
 }
 
 terminal.{$KASSA_DOMAIN} {
-	reverse_proxy terminal:80
+	reverse_proxy terminal:8090
 }
 
 abholmonitor.{$KASSA_DOMAIN} {
-	reverse_proxy abholmonitor:80
+	reverse_proxy abholmonitor:8090
 }
 
 # Ticket-App: öffentliche Ticketseite (Link + QR in der Ticket-E-Mail)
 tickets.{$KASSA_DOMAIN} {
-	reverse_proxy tickets:80
+	reverse_proxy tickets:8090
 }
 
 # Einlass-App: Ticket-Scanner fürs Personal (Kamera braucht HTTPS)
 einlass.{$KASSA_DOMAIN} {
-	reverse_proxy einlass:80
+	reverse_proxy einlass:8090
 }

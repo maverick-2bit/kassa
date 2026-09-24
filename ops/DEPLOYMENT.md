@@ -231,6 +231,34 @@ Caddy holt automatisch Let's-Encrypt-Zertifikate und routet jede App auf ihre
 Subdomain (`https://kasse.example.com`, `https://terminal.example.com`, …).
 `CORS_ORIGIN=https://kasse.example.com` setzen.
 
+### Client-IP und Rate-Limit
+
+Das Backend bremst jeden Client auf 300 Anfragen/Minute (Login 10/Minute).
+Angemeldete Geräte — Kasse, Kellner-Handy, KDS, Einlass-Scanner — zählen je
+Anmeldung, alle anderen (Gast-App, SB-Terminal, Ticketseite, Login) je
+Client-IP. Die Client-IP bestimmt der nginx jeder App je **Eingang**; mitgeschickte
+`X-Forwarded-For`-/`X-Real-IP`-Header zählen nie:
+
+| Weg | Ziel-Port der App | Client-IP stammt aus |
+|---|---|---|
+| direkt im LAN (`http://<box>:8083` …) | 80 | Absender der Verbindung |
+| Caddy (Profil `proxy`) | 8090 — steht so im `ops/caddy/Caddyfile` | `X-Forwarded-For` (von Caddy gesetzt) |
+| Cloudflare-Tunnel (Profil `tunnel`) | **8091** — in Cloudflare als `http://tickets:8091` usw. eintragen | `CF-Connecting-IP` |
+
+- **Docker Desktop (Windows/macOS)** reicht die IP von LAN-Geräten nicht in die
+  Container durch — alle erscheinen als Gateway-Adresse (z. B. `172.18.0.1`,
+  am Test-PC nachgemessen), direkt wie über Caddy. Angemeldete Geräte trennt das
+  Backend trotzdem sauber (je Anmeldung); anonyme LAN-Clients teilen sich je App
+  einen Zähler. Echte Besucher-IPs gibt es dort nur über den Cloudflare-Tunnel,
+  auf Linux-Hosts (Docker Engine) auch im LAN.
+- Wer ins Limit läuft, steht im Backend-Log: `Rate-Limit überschritten` mit
+  Schlüssel und Pfad (höchstens einmal je Minute und Schlüssel).
+- Nach einem Update, das die `Caddyfile` ändert, Caddy einmal neu starten
+  (`docker compose --profile proxy up -d --force-recreate caddy`) — Caddy liest
+  die Datei nur beim Start.
+- Prüfen lässt sich die ganze Kette auf jedem Rechner mit Docker:
+  `sh ops/nginx/client-ip-test/test.sh` (läuft auch in CI).
+
 ## 7b. Optional: Gast-Onlinebestellung mit Stripe
 
 Gast scannt den Tisch-QR → bestellt am Handy → zahlt online (Stripe Checkout) →

@@ -185,9 +185,12 @@ services:
   # Portfreigabe und egal hinter welchem Router/LTE der Kassen-PC gerade steht.
   # Einrichten: in Cloudflare (Zero Trust → Networks → Tunnels) einen Tunnel
   # anlegen, Token in .env als CLOUDFLARE_TUNNEL_TOKEN, dort die Public
-  # Hostnames eintragen (tickets.<domain> → http://tickets:80,
-  # einlass.<domain> → http://einlass:80). Aktivieren: COMPOSE_PROFILES=tunnel
+  # Hostnames eintragen (tickets.<domain> → http://tickets:8091,
+  # einlass.<domain> → http://einlass:8091). Aktivieren: COMPOSE_PROFILES=tunnel
   # in der .env — dann starten ihn auch Updates automatisch mit.
+  # Port 8091 ist der Tunnel-Eingang der Apps: nur dort gilt CF-Connecting-IP
+  # als Client-IP. Auf Port 80 zählte der Tunnel selbst als Client — alle
+  # Besucher teilten sich dann einen Rate-Limit-Zähler (Ticketseite: 60/min).
   tunnel:
     image: cloudflare/cloudflared:latest
     restart: unless-stopped
