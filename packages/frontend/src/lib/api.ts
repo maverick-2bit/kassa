@@ -920,7 +920,7 @@ export const tischTabApi = {
     request<TabPositionenAntwort>('PUT', `/api/tisch-tabs/${id}/positionen`,
       { positionen, ...(freigabePin ? { freigabePin } : {}) }),
   verwerfe: (id: string, grund?: string, freigabePin?: string) =>
-    request<TischTabResponse>('POST', `/api/tisch-tabs/${id}/verwerfen`,
+    request<TabPositionenAntwort>('POST', `/api/tisch-tabs/${id}/verwerfen`,
       { ...(grund ? { grund } : {}), ...(freigabePin ? { freigabePin } : {}) }),
   bezahle: (id: string, input: TischTabBezahlenInput) =>
     request<{ tab: TischTabResponse; belegId: string }>('POST', `/api/tisch-tabs/${id}/bezahlen`, input),
@@ -1222,9 +1222,10 @@ export const lieferApi = {
 }
 
 /**
- * Antwort des Positions-Updates. `stornoBon` steht NUR drin, wenn beim Storno
- * einer Position der Korrekturbon ein Ziel nicht erreicht hat — dann muss der
- * Kellner es erfahren, sonst bereitet die Station weiter zu.
+ * Antwort des Positions-Updates und des Verwerfens. `stornoBon` steht NUR drin,
+ * wenn beim Storno (einer Position oder des ganzen Tisches) der Korrekturbon
+ * ein Ziel nicht erreicht hat — dann muss der Kellner es erfahren, sonst
+ * bereitet die Station weiter zu.
  */
 export interface TabPositionenAntwort extends TischTabResponse {
   stornoBon?: {

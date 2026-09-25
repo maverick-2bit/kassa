@@ -450,6 +450,9 @@ async function verarbeiteStorno(
 /**
  * Gesamten offenen Tab verwerfen: alle Positionen stornieren (inkl. Storno-Bon
  * an die Küche), Tab schließen. Der Tab verschwindet aus der offenen Liste.
+ *
+ * @returns den verworfenen Tab und — wie beim Positions-Storno — den nicht
+ *          zugestellten Korrekturbon (null = zugestellt oder nichts zu bonieren).
  */
 export async function verwerfeTab(
   id: string,
@@ -460,7 +463,7 @@ export async function verwerfeTab(
     freigabe?: FreigabeKontext
     log?: FastifyBaseLogger
   },
-): Promise<TischTabResponse> {
+): Promise<{ tab: TischTabResponse; stornoBon: StornoBonErgebnis | null }> {
   const [existing] = await deps.db
     .select()
     .from(tischTabs)
@@ -503,11 +506,13 @@ export async function verwerfeTab(
     ...(kontext?.grund    ? { grund: kontext.grund } : {}),
   }, deps.db)
 
-  if (stornoItems.length > 0) {
-    await verarbeiteStorno(row, stornoItems, mandantId, deps, kontext)
-  }
+  // Kommt der Korrekturbon nicht an, bereitet die Station den ganzen Tisch weiter
+  // zu — das Ergebnis darf hier nicht verschwinden.
+  const stornoBon = stornoItems.length > 0
+    ? await verarbeiteStorno(row, stornoItems, mandantId, deps, kontext)
+    : null
 
-  return toResponse(row)
+  return { tab: toResponse(row), stornoBon }
 }
 
 export async function bezahleTab(
