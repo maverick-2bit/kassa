@@ -113,6 +113,9 @@ async function verwerfeTische(request: APIRequestContext, auth: Record<string, s
 
 /** Liegt das Element an seinem Mittelpunkt zuoberst (also bedienbar)? */
 async function zuoberst(el: Locator) {
+  // Mit vielen Warengruppen wird die Kasse breiter als 1280 px — Klicks rechts
+  // scrollen sie seitwärts, die Kopfleiste steht dann links außerhalb des Bildes
+  await el.scrollIntoViewIfNeeded()
   return el.evaluate((e) => {
     const r = e.getBoundingClientRect()
     const oben = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
@@ -122,6 +125,7 @@ async function zuoberst(el: Locator) {
 
 /** Deckt an seinem Mittelpunkt ein Dialog das Element ab (Hintergrund oder Dialogfenster)? */
 async function unterDialog(el: Locator) {
+  await el.scrollIntoViewIfNeeded()
   return el.evaluate((e) => {
     const r = e.getBoundingClientRect()
     const oben = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
