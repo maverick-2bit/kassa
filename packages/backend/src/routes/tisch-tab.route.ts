@@ -105,7 +105,7 @@ export const tischTabRoute: FastifyPluginAsync<TischTabRouteOptions> = async (fa
     }).safeParse(request.body ?? {})
     if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
     try {
-      const tab = await verwerfeTab(id, request.user.mandantId, opts.deps, {
+      const { tab, stornoBon } = await verwerfeTab(id, request.user.mandantId, opts.deps, {
         userId:   (request.user as { id?: string }).id ?? null,
         userName: request.user.name,
         ...(body.data.grund ? { grund: body.data.grund } : {}),
@@ -113,7 +113,8 @@ export const tischTabRoute: FastifyPluginAsync<TischTabRouteOptions> = async (fa
         freigabe: freigabeKontextAus(request),
         log:      request.log,
       })
-      return reply.send(tab)
+      // Wie bei /positionen: stornoBon nur, wenn der Korrekturbon NICHT zugestellt wurde
+      return reply.send(stornoBon ? { ...tab, stornoBon } : tab)
     } catch (err) {
       if (err instanceof FreigabeError)
         return reply.status(err.httpStatus).send({ fehler: err.message, code: err.code, abCent: err.abCent })

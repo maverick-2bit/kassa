@@ -7,9 +7,10 @@
  * POST /verwerfen → Status 'verworfen', Tab raus aus der offenen Liste,
  * Storno-Bon für alle Positionen, Lagerstand zurückgebucht.
  *
- * Scheitert der Korrekturbon, steht der Grund im stornoBon-Ergebnis — nur
- * Fachmeldungen im Wortlaut. Ein DB-Fehler („Failed query: <SQL> params: …")
- * kommt als 'Interner Serverfehler' an, die Einzelheiten stehen im Log.
+ * Scheitert der Korrekturbon — beim Positions-Storno wie beim Verwerfen —, steht
+ * der Grund im stornoBon-Ergebnis, nur Fachmeldungen im Wortlaut. Ein DB-Fehler
+ * („Failed query: <SQL> params: …") kommt als 'Interner Serverfehler' an, die
+ * Einzelheiten stehen im Log.
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
@@ -245,6 +246,52 @@ describe('Tab-Storno + Verwerfen (Integration, echtes PostgreSQL)', () => {
     }
   })
 
+  it('Verwerfen mit zugestelltem Korrekturbon: Antwort trägt KEIN stornoBon-Feld', async () => {
+    const tabId = await erstelleTabMit(1, 'T10')
+    empfangen = []
+
+    const res = await srv.fastify.inject({
+      method: 'POST', url: `/api/tisch-tabs/${tabId}/verwerfen`, headers: auth(), payload: {},
+    })
+    expect(res.statusCode).toBe(200)
+    await vi.waitFor(() => { expect(empfangen.length).toBeGreaterThan(0) })
+    // Bon ist angekommen → die Kasse soll NICHT warnen
+    expect(res.json().stornoBon).toBeUndefined()
+  })
+
+  it('Verwerfen bei totem Drucker: Tab verworfen, Antwort meldet den Korrekturbon', async () => {
+    // Verwerfen storniert den ganzen Tisch. Früher trug die Antwort nur den Tab —
+    // fiel der Bonierdrucker aus, bereitete die Station alles weiter zu und
+    // niemand erfuhr es.
+    const tabId = await erstelleTabMit(3, 'T11')
+
+    const port = (fakeDrucker.address() as net.AddressInfo).port
+    await idb.db.update(bonierdrucker).set({ port: 9 }).where(eq(bonierdrucker.port, port))
+    try {
+      const res = await srv.fastify.inject({
+        method: 'POST', url: `/api/tisch-tabs/${tabId}/verwerfen`, headers: auth(), payload: {},
+      })
+      // Der Ausfall des Bons blockiert das Verwerfen nicht
+      expect(res.statusCode).toBe(200)
+      expect(res.json().status).toBe('verworfen')
+
+      const stornoBon = res.json().stornoBon
+      expect(stornoBon).toBeDefined()
+      expect(stornoBon.fehler).toHaveLength(1)
+      expect(stornoBon.fehler[0].ziel).toBe('Küche (Fake)')
+      expect(stornoBon.fehler[0].fehler).toBeTruthy()
+      // Zum Nachsenden: alle Positionen des verworfenen Tisches
+      expect(stornoBon.positionen).toEqual([{ artikelId: schnitzelId, menge: 3 }])
+    } finally {
+      await idb.db.update(bonierdrucker).set({ port }).where(eq(bonierdrucker.port, 9))
+    }
+
+    const offene = (await srv.fastify.inject({
+      method: 'GET', url: `/api/tisch-tabs?kasseId=${kasseId}`, headers: auth(),
+    })).json()
+    expect(offene.some((t: { id: string }) => t.id === tabId)).toBe(false)
+  })
+
   /**
    * Echter DB-Fehler mitten im Korrekturbon: Die Bonierdrucker-Sichtbarkeit
    * liest nur der Bonier-Service. Der Storno davor (Tab, Lager, Audit) läuft
@@ -284,7 +331,7 @@ describe('Tab-Storno + Verwerfen (Integration, echtes PostgreSQL)', () => {
     expect(eintraege[0]!.reqId).toBeDefined()
   })
 
-  it('Verwerfen mit DB-Fehler beim Korrekturbon: Tab verworfen, Einzelheiten im Log', async () => {
+  it('Verwerfen mit DB-Fehler beim Korrekturbon: Tab verworfen, allgemeine Meldung, Einzelheiten im Log', async () => {
     const tabId = await erstelleTabMit(1, 'T7')
     log.leeren()
 
@@ -294,6 +341,10 @@ describe('Tab-Storno + Verwerfen (Integration, echtes PostgreSQL)', () => {
 
     expect(res.statusCode).toBe(200)
     expect(res.json().status).toBe('verworfen')
+    expect(res.json().stornoBon).toEqual({
+      fehler:     [{ ziel: 'Küche/Schank', ip: '', fehler: 'Interner Serverfehler', istBackup: false }],
+      positionen: [{ artikelId: schnitzelId, menge: 1 }],
+    })
     expect(res.body).not.toMatch(INTERNE_DETAILS)
     const eintraege = log.korrekturbonFehler()
     expect(eintraege).toHaveLength(1)

@@ -6,7 +6,6 @@ import type {
   BelegResponse,
   BonierungErgebnis,
   BonierungInput,
-  BonierZielFehler,
   ModifikatorAuswahl,
   ModifikatorGruppe,
   RabattInput,
@@ -17,11 +16,12 @@ import type {
 } from '@kassa/shared'
 import { aktionsPreisCent, aktiverRabattProzent, aktiveAktion, bonierFehlschlaege } from '@kassa/shared'
 import type { AktiveAktion } from '@kassa/shared'
-import { artikelApi, belegApi, bonierApi, druckerApi, kategorieApi, modifikatorApi, posConfigApi, preisregelApi, tischTabApi, zvtApi, ApiError, type TabPositionenAntwort } from '../lib/api'
+import { artikelApi, belegApi, bonierApi, druckerApi, kategorieApi, modifikatorApi, posConfigApi, preisregelApi, tischTabApi, zvtApi, ApiError } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { hasModul, gaengeAnzahl } from '../lib/auth'
 import { formatPreis } from '../lib/format'
 import { DruckproblemeBanner } from '../components/DruckproblemeBanner'
+import { BonierFehlerLeiste, korrekturbonFehler, type BonierFehler } from '../components/BonierFehlerLeiste'
 import { warenkorbSummeCent, positionsPreisCent, rabattBetragCent } from '../lib/warenkorb'
 import {
   summeMitPosRabattenCent,
@@ -82,9 +82,7 @@ export function TischTabPage() {
    * eine Bestellung, die nicht in der Küche ankommt, darf nicht nach 3 Sekunden
    * verschwinden wie die grüne Bestätigung.
    */
-  const [bonierFehler, setBonierFehler]             = useState<
-    { ziele: BonierZielFehler[]; nachsenden: BonierungInput } | null
-  >(null)
+  const [bonierFehler, setBonierFehler]             = useState<BonierFehler | null>(null)
   const [rabatt, setRabatt]                         = useState<RabattInput | null>(null)
   const [rabattOffen, setRabattOffen]               = useState(false)
   const [posRabatteOffen, setPosRabatteOffen]       = useState(false)
@@ -314,35 +312,6 @@ export function TischTabPage() {
     return true
   }
 
-  /**
-   * Korrekturbon nach einem Positions-Storno: Das Backend sendet ihn
-   * automatisch an Küche/Schank — kommt er NICHT an, steht dort weiter das
-   * stornierte Gericht auf der Liste. Dann dieselbe Leiste wie beim Bonieren.
-   */
-  const meldeStornoBonFehler = (antwort: TabPositionenAntwort): void => {
-    if (!antwort.stornoBon) { setBonierFehler(null); return }
-    setBonierFehler({
-      ziele: antwort.stornoBon.fehler,
-      nachsenden: {
-        kasseId:    identity.kasseId,
-        tabId:      tabId!,
-        tisch:      antwort.tischNummer,
-        kellner:    antwort.kellner,
-        positionen: antwort.stornoBon.positionen,
-        ohneLagerabzug: true,
-        storno:     true,   // Korrekturbon, kein Bestellbon
-      },
-    })
-  }
-
-  const nachsendenMutation = useMutation({
-    mutationFn: (input: BonierungInput) => bonierApi.bonieren(input),
-    // Erneut bewerten: klappt es jetzt, verschwindet die Meldung; klappt nur ein
-    // Teil, bleibt sie mit den verbliebenen Zielen stehen.
-    onSuccess: (ergebnis, input) => { meldeBonierFehler(ergebnis, input) },
-    onError:   (err) => setFehler(err instanceof Error ? err.message : String(err)),
-  })
-
   const parkenMutation = useMutation({
     mutationFn: async () => {
       let ergebnis: BonierungErgebnis | null = null
@@ -489,7 +458,10 @@ export function TischTabPage() {
       setFehler(null)
       setFreigabeAnfrage(null)
       setFreigabePinEingabe('')
-      meldeStornoBonFehler(antwort)
+      // Korrekturbon: Das Backend sendet ihn selbst an Küche/Schank — kommt er
+      // NICHT an, steht dort weiter das stornierte Gericht auf der Liste. Dann
+      // dieselbe Leiste wie beim Bonieren.
+      setBonierFehler(korrekturbonFehler(antwort, tabId))
     },
     onError: (err, variables) => {
       if (err instanceof ApiError && err.code === 'freigabe_erforderlich') {
@@ -509,9 +481,14 @@ export function TischTabPage() {
 
   const verwerfenMutation = useMutation({
     mutationFn: ({ freigabePin }: { freigabePin?: string }) => tischTabApi.verwerfe(tabId!, undefined, freigabePin),
-    onSuccess: () => {
+    onSuccess: (antwort) => {
       qc.invalidateQueries({ queryKey: ['tisch-tabs'] })
-      navigate('/tische')
+      // Der Tab ist jetzt zu — hier gibt es nichts mehr zu tun. Kam der
+      // Korrekturbon nicht an, nimmt die Tischübersicht die Leiste mit, sonst
+      // bereitet die Station den ganzen Tisch weiter zu. Ohne tabId: Nachsenden
+      // braucht nur Kasse, Tisch und Positionen, nicht den geschlossenen Tab.
+      const bonierFehler = korrekturbonFehler(antwort)
+      navigate('/tische', bonierFehler ? { state: { bonierFehler } } : undefined)
     },
     onError: (err) => {
       if (err instanceof ApiError && err.code === 'freigabe_erforderlich') {
@@ -1002,44 +979,10 @@ export function TischTabPage() {
               </div>
             )}
 
-            {/* Küchenbon nicht zugestellt — bleibt stehen, bis nachgesendet oder
-                weggeklickt. Die Positionen sind gebucht, nur der Bon fehlt. */}
+            {/* Küchen- oder Korrekturbon nicht zugestellt — bleibt stehen, bis
+                nachgesendet oder weggeklickt. Gebucht ist schon, nur der Bon fehlt. */}
             {bonierFehler && (
-              <div className="rounded border-2 border-red-400 bg-red-50 p-3 space-y-2">
-                <p className="text-xs font-bold text-red-800">
-                  ⚠ Bon NICHT angekommen — bitte prüfen
-                </p>
-                <ul className="space-y-1 text-xs text-red-700">
-                  {bonierFehler.ziele.map((z, i) => (
-                    <li key={`${z.ziel}-${i}`}>
-                      <span className="font-semibold">{z.ziel}</span>
-                      {z.istBackup && ' (Zweitdrucker)'}
-                      {z.ip && ` · ${z.ip}`}
-                      <span className="block text-red-600">{z.fehler}</span>
-                    </li>
-                  ))}
-                </ul>
-                <p className="text-xs text-red-700">
-                  Die Artikel sind am Tisch gebucht. Nachsenden oder in der Küche Bescheid geben.
-                </p>
-                <div className="flex gap-2">
-                  <Button
-                    variant="secondary"
-                    className="flex-1 text-xs"
-                    loading={nachsendenMutation.isPending}
-                    onClick={() => nachsendenMutation.mutate(bonierFehler.nachsenden)}
-                  >
-                    Nochmal senden
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    className="text-xs"
-                    onClick={() => setBonierFehler(null)}
-                  >
-                    Verstanden
-                  </Button>
-                </div>
-              </div>
+              <BonierFehlerLeiste fehler={bonierFehler} onAenderung={setBonierFehler} />
             )}
 
             {/* Warenkorb-Aktion: „Parken" bucht die neuen Positionen auf den Tisch

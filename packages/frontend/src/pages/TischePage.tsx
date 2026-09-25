@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { TabPosition, TischTabErstellenInput, TischTabResponse } from '@kassa/shared'
 import { tischTabApi, tischplanApi } from '../lib/api'
@@ -11,6 +11,7 @@ import { Modal } from '../components/ui/Modal'
 import { TischplanAnsicht } from '../components/TischplanAnsicht'
 import { UmbuchenForm, ZusammenfuehrenForm, TeilUmbuchenForm } from '../components/tischAktionenForms'
 import { TischEtikettenModal } from '../components/TischEtikettenModal'
+import { BonierFehlerLeiste, type BonierFehler } from '../components/BonierFehlerLeiste'
 
 // ---------------------------------------------------------------------------
 // Haupt-Seite
@@ -21,7 +22,17 @@ type Ansicht = 'liste' | 'plan'
 export function TischePage() {
   const identity   = getKasseIdentity()!
   const navigate   = useNavigate()
+  const location   = useLocation()
   const qc         = useQueryClient()
+  // Von der Tischseite mitgebracht: Tisch verworfen, Korrekturbon nicht angekommen
+  const [bonierFehler, setBonierFehler] = useState<BonierFehler | null>(
+    () => (location.state as { bonierFehler?: BonierFehler } | null)?.bonierFehler ?? null,
+  )
+  // Den mitgebrachten State gleich aus dem Browser-Verlauf nehmen — nach einem
+  // Neuladen stünde die Leiste sonst wieder da, auch wenn längst nachgesendet.
+  useEffect(() => {
+    if (location.state) navigate(location.pathname, { replace: true, state: null })
+  }, [location.state, location.pathname, navigate])
   const [ansicht, setAnsicht]                 = useState<Ansicht>('liste')
   const [neuerTischOffen, setNeuerTischOffen] = useState(false)
   const [vorbelegterTisch, setVorbelegterTisch] = useState<string>('')
@@ -136,6 +147,15 @@ export function TischePage() {
           </Button>
         </div>
       </div>
+
+      {/* Der verworfene Tisch steht nicht mehr in der Liste — die Leiste muss
+          bleiben, bis nachgesendet oder weggeklickt, sonst bereitet die Station
+          ihn weiter zu. */}
+      {bonierFehler && (
+        <div className="mb-5">
+          <BonierFehlerLeiste fehler={bonierFehler} onAenderung={setBonierFehler} />
+        </div>
+      )}
 
       {tabsQuery.isLoading && <p className="text-sm text-ink-muted">Wird geladen…</p>}
       {tabsQuery.isError  && <p className="text-sm text-red-600">Fehler beim Laden der Tische.</p>}
