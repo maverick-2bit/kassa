@@ -28,7 +28,9 @@ function mockDb(opts: {
   let selIdx = 0
   const sel  = opts.selectQueue ?? []
 
-  return {
+  const db: Record<string, unknown> = {
+    // Anlegen/Ändern laufen samt Kassen-Zuordnung in einer Transaktion
+    transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(db),
     select: () => ({
       from: () => ({
         where: () => makeResult(sel[selIdx++] ?? []),
@@ -50,7 +52,8 @@ function mockDb(opts: {
     delete: () => ({
       where: () => Promise.resolve(),
     }),
-  } as unknown as Db
+  }
+  return db as unknown as Db
 }
 
 // ---------------------------------------------------------------------------
@@ -59,6 +62,7 @@ function mockDb(opts: {
 
 const USER_ID        = 'e0000000-0000-0000-0000-000000000001'
 const USER_UNBEKANNT = 'e0000000-0000-0000-0000-000000009999'
+const KASSE_FREMD    = 'fa000000-0000-0000-0000-000000000099'
 
 const userRow = (overrides: Record<string, unknown> = {}) => ({
   id:             USER_ID,
@@ -177,6 +181,26 @@ describe('POST /api/users', () => {
     await srv.close()
   })
 
+  it('404 wenn eine Kasse nicht zum Mandanten gehört', async () => {
+    // selectQueue[0]: E-Mail-Duplikat-Check → leer, [1]: Kassen des Mandanten → keine
+    const srv = await buildTestServer(mockDb({ selectQueue: [[], []] }))
+    const res = await srv.fastify.inject({
+      method:  'POST', url: '/api/users',
+      headers: srv.authHeader(),
+      payload: {
+        name:           'Kellner',
+        email:          'kellner@example.at',
+        passwort:       'sicher123!',
+        rolle:          'kellner',
+        berechtigungen: [],
+        kassenIds:      [KASSE_FREMD],
+      },
+    })
+    expect(res.statusCode).toBe(404)
+    expect(res.json()).toEqual({ fehler: 'Kasse nicht gefunden' })
+    await srv.close()
+  })
+
   it('400 bei fehlendem Pflichtfeld', async () => {
     const srv = await buildTestServer(mockDb())
     const res = await srv.fastify.inject({
@@ -219,6 +243,19 @@ describe('PUT /api/users/:id', () => {
       payload: { name: 'Test' },
     })
     expect(res.statusCode).toBe(404)
+    await srv.close()
+  })
+
+  it('404 wenn eine Kasse nicht zum Mandanten gehört', async () => {
+    // selectQueue[0]: Benutzer, [1]: Kassen des Mandanten → keine
+    const srv = await buildTestServer(mockDb({ selectQueue: [[userRow()], []] }))
+    const res = await srv.fastify.inject({
+      method:  'PUT', url: `/api/users/${USER_ID}`,
+      headers: srv.authHeader(),
+      payload: { kassenIds: [KASSE_FREMD] },
+    })
+    expect(res.statusCode).toBe(404)
+    expect(res.json()).toEqual({ fehler: 'Kasse nicht gefunden' })
     await srv.close()
   })
 })

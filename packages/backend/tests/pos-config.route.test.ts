@@ -11,6 +11,7 @@ import type { Db } from '../src/db/client.js'
 const KASSE_ID = 'fa000000-0000-0000-0000-000000000001'
 const KAT_ID   = 'ca000000-0000-0000-0000-000000000001'
 const ART_ID   = 'aa000000-0000-0000-0000-000000000001'
+const BD_ID    = 'bd000000-0000-0000-0000-000000000001'
 
 // ---------------------------------------------------------------------------
 // Mock-Hilfsfunktionen
@@ -52,9 +53,11 @@ function mockDb({ selects = [] }: DbQueues = {}): Db {
   let si = 0
   return {
     select: () => ({
-      from: () => ({
-        where: () => makeResult(selects[si++] ?? []),
-      }),
+      from: () => {
+        const q: any = { where: () => makeResult(selects[si++] ?? []) }
+        q.innerJoin = () => q
+        return q
+      },
     }),
     insert: () => ({
       values: () => makeInsertResult([]),
@@ -142,8 +145,8 @@ describe('GET /api/kassen/:kasseId/pos-config', () => {
 
 describe('PUT /api/kassen/:kasseId/pos-config', () => {
   it('204 setzt sichtbareKategorieIds', async () => {
-    // select kasse (ownership), dann transaction
-    const srv = await buildTestServer(mockDb({ selects: [[{ id: KASSE_ID }]] }))
+    // select kasse (ownership), select kategorien (Mandant), dann transaction
+    const srv = await buildTestServer(mockDb({ selects: [[{ id: KASSE_ID }], [{ id: KAT_ID }]] }))
     const res = await srv.fastify.inject({
       method:  'PUT',
       url:     `/api/kassen/${KASSE_ID}/pos-config`,
@@ -151,6 +154,32 @@ describe('PUT /api/kassen/:kasseId/pos-config', () => {
       payload: { sichtbareKategorieIds: [KAT_ID] },
     })
     expect(res.statusCode).toBe(204)
+    await srv.close()
+  })
+
+  it('404 wenn eine Warengruppe nicht zum Mandanten gehört', async () => {
+    const srv = await buildTestServer(mockDb({ selects: [[{ id: KASSE_ID }], []] }))
+    const res = await srv.fastify.inject({
+      method:  'PUT',
+      url:     `/api/kassen/${KASSE_ID}/pos-config`,
+      headers: srv.authHeader(),
+      payload: { sichtbareKategorieIds: [KAT_ID] },
+    })
+    expect(res.statusCode).toBe(404)
+    expect(res.json()).toEqual({ fehler: 'Warengruppe nicht gefunden' })
+    await srv.close()
+  })
+
+  it('404 wenn ein Bonierdrucker nicht zum Mandanten gehört', async () => {
+    const srv = await buildTestServer(mockDb({ selects: [[{ id: KASSE_ID }], []] }))
+    const res = await srv.fastify.inject({
+      method:  'PUT',
+      url:     `/api/kassen/${KASSE_ID}/pos-config`,
+      headers: srv.authHeader(),
+      payload: { sichtbareBonierdruckerIds: [BD_ID] },
+    })
+    expect(res.statusCode).toBe(404)
+    expect(res.json()).toEqual({ fehler: 'Bonierdrucker nicht gefunden' })
     await srv.close()
   })
 

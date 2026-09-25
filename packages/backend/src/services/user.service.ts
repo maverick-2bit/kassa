@@ -1,9 +1,9 @@
 import bcrypt from 'bcryptjs'
 import { randomBytes } from 'node:crypto'
-import { and, eq, isNotNull, ne } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, ne } from 'drizzle-orm'
 import type { Berechtigung, User as PublicUser, UserCreateInput, UserUpdateInput } from '@kassa/shared'
 import type { Db } from '../db/client.js'
-import { mandanten, userKassen, users } from '../db/schema.js'
+import { kassen, mandanten, userKassen, users } from '../db/schema.js'
 import { hashPassword, userZuDto } from './auth.service.js'
 import { alsPinLaenge } from './pin-laenge.js'
 
@@ -17,10 +17,29 @@ export class UserError extends Error {
 
 export interface UserServiceDeps { db: Db }
 
-async function setzeKassenZuordnung(db: Db, userId: string, kassenIds: string[]): Promise<void> {
-  await db.delete(userKassen).where(eq(userKassen.userId, userId))
+type Tx = Parameters<Parameters<Db['transaction']>[0]>[0]
+
+/**
+ * Die zugeordneten Kassen müssen dem Mandanten gehören. user_kassen kennt keinen
+ * Mandanten: eine fremde Kasse wurde klaglos zugeordnet (und stand dann in der
+ * Login-Antwort des Benutzers), eine unbekannte scheiterte erst am FK (500).
+ * Liefert die Kassen ohne Doppelte — ein doppeltes Paar verletzte den Primärschlüssel.
+ */
+async function pruefeKassenDesMandanten(db: Db, kassenIds: string[], mandantId: string): Promise<string[]> {
+  const ids = [...new Set(kassenIds)]
+  if (ids.length === 0) return ids
+  const eigene = await db
+    .select({ id: kassen.id })
+    .from(kassen)
+    .where(and(inArray(kassen.id, ids), eq(kassen.mandantId, mandantId)))
+  if (eigene.length !== ids.length) throw new UserError(404, 'Kasse nicht gefunden')
+  return ids
+}
+
+async function setzeKassenZuordnung(tx: Tx, userId: string, kassenIds: string[]): Promise<void> {
+  await tx.delete(userKassen).where(eq(userKassen.userId, userId))
   if (kassenIds.length > 0) {
-    await db.insert(userKassen).values(kassenIds.map(kasseId => ({ userId, kasseId })))
+    await tx.insert(userKassen).values(kassenIds.map(kasseId => ({ userId, kasseId })))
   }
 }
 
@@ -100,28 +119,35 @@ export async function createUser(
     await pruefePinEindeutig(deps.db, input.pin, mandantId)
   }
 
+  const kassenIds = await pruefeKassenDesMandanten(deps.db, input.kassenIds, mandantId)
+
   const passwordHash = await hashPassword(passwort)
   const pinHash      = input.pin ? await bcrypt.hash(input.pin, BCRYPT_COST) : null
 
   const berechtigungen: Berechtigung[] = input.rolle === 'admin' ? [] : input.berechtigungen
 
-  const [row] = await deps.db
-    .insert(users)
-    .values({
-      mandantId,
-      email,
-      passwordHash,
-      pinHash,
-      ...(input.pin ? { pinLaenge: input.pin.length } : {}),
-      name:           input.name,
-      rolle:          input.rolle,
-      berechtigungen,
-      aktiv:          true,
-    })
-    .returning()
-  if (!row) throw new UserError(500, 'User konnte nicht angelegt werden')
+  // Benutzer und Zuordnung gemeinsam — scheitert die Zuordnung, bleibt kein
+  // Benutzer ohne Kassen zurück
+  const row = await deps.db.transaction(async (tx) => {
+    const [neu] = await tx
+      .insert(users)
+      .values({
+        mandantId,
+        email,
+        passwordHash,
+        pinHash,
+        ...(input.pin ? { pinLaenge: input.pin.length } : {}),
+        name:           input.name,
+        rolle:          input.rolle,
+        berechtigungen,
+        aktiv:          true,
+      })
+      .returning()
+    if (!neu) throw new UserError(500, 'User konnte nicht angelegt werden')
 
-  await setzeKassenZuordnung(deps.db, row.id, input.kassenIds)
+    await setzeKassenZuordnung(tx, neu.id, kassenIds)
+    return neu
+  })
 
   return userZuDto(row, deps.db)
 }
@@ -138,6 +164,11 @@ export async function updateUser(
     .where(and(eq(users.id, id), eq(users.mandantId, mandantId)))
     .limit(1)
   if (!existing) throw new UserError(404, 'Benutzer nicht gefunden')
+
+  // Vor jeder Änderung prüfen: mit fremder Kasse bleibt der Benutzer ganz unverändert
+  const kassenIds = input.kassenIds === undefined
+    ? undefined
+    : await pruefeKassenDesMandanten(deps.db, input.kassenIds, mandantId)
 
   const updates: Partial<typeof users.$inferInsert> = { updatedAt: new Date() }
 
@@ -159,16 +190,19 @@ export async function updateUser(
     updates.pinHash = input.pin === null ? null : await bcrypt.hash(input.pin, BCRYPT_COST)
   }
 
-  const [row] = await deps.db
-    .update(users)
-    .set(updates)
-    .where(eq(users.id, id))
-    .returning()
-  if (!row) throw new UserError(500, 'Update fehlgeschlagen')
+  // Benutzer und Zuordnung gemeinsam — scheitert die neue Zuordnung, bleiben die
+  // alte und die übrigen Felder stehen
+  const row = await deps.db.transaction(async (tx) => {
+    const [geaendert] = await tx
+      .update(users)
+      .set(updates)
+      .where(eq(users.id, id))
+      .returning()
+    if (!geaendert) throw new UserError(500, 'Update fehlgeschlagen')
 
-  if (input.kassenIds !== undefined) {
-    await setzeKassenZuordnung(deps.db, id, input.kassenIds)
-  }
+    if (kassenIds !== undefined) await setzeKassenZuordnung(tx, id, kassenIds)
+    return geaendert
+  })
 
   return userZuDto(row, deps.db)
 }

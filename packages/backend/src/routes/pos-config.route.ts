@@ -13,7 +13,7 @@ import { ReihenfolgeUpdateSchema, FavoritenReihenfolgeUpdateSchema } from '@kass
 import { and, asc, eq, inArray } from 'drizzle-orm'
 import { KasseFavoritenUpdateSchema } from '@kassa/shared'
 import type { Db } from '../db/client.js'
-import { kassen, kassekategorieSichtbarkeit, kasseBonierdruckerSichtbarkeit, kasseFavoriten, artikel, kategorien } from '../db/schema.js'
+import { kassen, kassekategorieSichtbarkeit, kasseBonierdruckerSichtbarkeit, kasseFavoriten, artikel, bonierdrucker, kategorien } from '../db/schema.js'
 
 export interface PosConfigRouteOptions { db: Db }
 
@@ -57,15 +57,26 @@ export const posConfigRoute: FastifyPluginAsync<PosConfigRouteOptions> = async (
       .limit(1)
     if (!kasse) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
 
+    // Nur Warengruppen/Bonierdrucker des eigenen Mandanten (Altbestand aus der Zeit
+    // vor der Prüfung im PUT): die Konfigurationsseiten schicken die Listen beim
+    // Speichern zurück — eine fremde ID darin würde jedes Speichern abweisen
     const sichtbarkeit = await opts.db
       .select({ kategorieId: kassekategorieSichtbarkeit.kategorieId })
       .from(kassekategorieSichtbarkeit)
-      .where(eq(kassekategorieSichtbarkeit.kasseId, p.data.kasseId))
+      .innerJoin(kategorien, eq(kategorien.id, kassekategorieSichtbarkeit.kategorieId))
+      .where(and(
+        eq(kassekategorieSichtbarkeit.kasseId, p.data.kasseId),
+        eq(kategorien.mandantId, request.user.mandantId),
+      ))
 
     const bonierdruckerSicht = await opts.db
       .select({ bonierdruckerId: kasseBonierdruckerSichtbarkeit.bonierdruckerId })
       .from(kasseBonierdruckerSichtbarkeit)
-      .where(eq(kasseBonierdruckerSichtbarkeit.kasseId, p.data.kasseId))
+      .innerJoin(bonierdrucker, eq(bonierdrucker.id, kasseBonierdruckerSichtbarkeit.bonierdruckerId))
+      .where(and(
+        eq(kasseBonierdruckerSichtbarkeit.kasseId, p.data.kasseId),
+        eq(bonierdrucker.mandantId, request.user.mandantId),
+      ))
 
     return reply.send({
       sichtbareKategorieIds:     sichtbarkeit.map(r => r.kategorieId),
@@ -95,6 +106,32 @@ export const posConfigRoute: FastifyPluginAsync<PosConfigRouteOptions> = async (
       .limit(1)
     if (!kasse) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
 
+    // Warengruppen und Bonierdrucker müssen dem Mandanten gehören — die Sichtbarkeits-
+    // Tabellen kennen keinen: fremde IDs wurden klaglos gespeichert, unbekannte
+    // scheiterten erst am FK (500). Vor der Transaktion, damit die Anfrage ganz oder
+    // gar nicht wirkt; ohne Doppelte, die verletzten den Primärschlüssel.
+    const ohneDoppelte = (ids: string[] | undefined) => ids === undefined ? undefined : [...new Set(ids)]
+    const kategorieIds     = ohneDoppelte(body.data.sichtbareKategorieIds)
+    const bonierdruckerIds = ohneDoppelte(body.data.sichtbareBonierdruckerIds)
+    if (kategorieIds !== undefined && kategorieIds.length > 0) {
+      const bekannt = await opts.db
+        .select({ id: kategorien.id })
+        .from(kategorien)
+        .where(and(inArray(kategorien.id, kategorieIds), eq(kategorien.mandantId, request.user.mandantId)))
+      if (bekannt.length !== kategorieIds.length) {
+        return reply.status(404).send({ fehler: 'Warengruppe nicht gefunden' })
+      }
+    }
+    if (bonierdruckerIds !== undefined && bonierdruckerIds.length > 0) {
+      const bekannt = await opts.db
+        .select({ id: bonierdrucker.id })
+        .from(bonierdrucker)
+        .where(and(inArray(bonierdrucker.id, bonierdruckerIds), eq(bonierdrucker.mandantId, request.user.mandantId)))
+      if (bekannt.length !== bonierdruckerIds.length) {
+        return reply.status(404).send({ fehler: 'Bonierdrucker nicht gefunden' })
+      }
+    }
+
     await opts.db.transaction(async (tx) => {
       // Zahlungsarten + Darstellungsoptionen + Startseite
       const kassenPatch = {
@@ -113,13 +150,13 @@ export const posConfigRoute: FastifyPluginAsync<PosConfigRouteOptions> = async (
       }
 
       // Kategorie-Sichtbarkeit komplett ersetzen
-      if (body.data.sichtbareKategorieIds !== undefined) {
+      if (kategorieIds !== undefined) {
         await tx.delete(kassekategorieSichtbarkeit)
           .where(eq(kassekategorieSichtbarkeit.kasseId, p.data.kasseId))
 
-        if (body.data.sichtbareKategorieIds.length > 0) {
+        if (kategorieIds.length > 0) {
           await tx.insert(kassekategorieSichtbarkeit).values(
-            body.data.sichtbareKategorieIds.map(kategorieId => ({
+            kategorieIds.map(kategorieId => ({
               kasseId: p.data.kasseId,
               kategorieId,
             }))
@@ -128,13 +165,13 @@ export const posConfigRoute: FastifyPluginAsync<PosConfigRouteOptions> = async (
       }
 
       // Bonierdrucker-Sichtbarkeit komplett ersetzen (leer = alle)
-      if (body.data.sichtbareBonierdruckerIds !== undefined) {
+      if (bonierdruckerIds !== undefined) {
         await tx.delete(kasseBonierdruckerSichtbarkeit)
           .where(eq(kasseBonierdruckerSichtbarkeit.kasseId, p.data.kasseId))
 
-        if (body.data.sichtbareBonierdruckerIds.length > 0) {
+        if (bonierdruckerIds.length > 0) {
           await tx.insert(kasseBonierdruckerSichtbarkeit).values(
-            body.data.sichtbareBonierdruckerIds.map(bonierdruckerId => ({
+            bonierdruckerIds.map(bonierdruckerId => ({
               kasseId: p.data.kasseId,
               bonierdruckerId,
             }))

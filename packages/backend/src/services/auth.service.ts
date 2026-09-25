@@ -59,10 +59,16 @@ async function ladeKassenFuerUser(
     .from(userKassen)
     .where(eq(userKassen.userId, userId))
   if (zuordnungen.length === 0) return []
+  // Auch nach Mandant filtern: vor der Prüfung in setzeKassenZuordnung ließ sich
+  // eine fremde Kasse zuordnen (Altbestand) — sie stünde sonst in der Login-Antwort
   return db
     .select({ id: kassen.id, kassenId: kassen.kassenId, bezeichnung: kassen.bezeichnung, umgebung: kassen.umgebung })
     .from(kassen)
-    .where(and(inArray(kassen.id, zuordnungen.map(z => z.kasseId)), eq(kassen.status, 'aktiv')))
+    .where(and(
+      inArray(kassen.id, zuordnungen.map(z => z.kasseId)),
+      eq(kassen.mandantId, mandantId),
+      eq(kassen.status, 'aktiv'),
+    ))
 }
 
 export async function userZuDto(
@@ -73,12 +79,16 @@ export async function userZuDto(
     ? ALLE_BERECHTIGUNGEN
     : (row.berechtigungen as Berechtigung[]) ?? []
 
+  // Nur Kassen des eigenen Mandanten (Altbestand, siehe ladeKassenFuerUser): die
+  // Benutzerverwaltung schickt die Liste beim Speichern zurück — eine fremde Kasse
+  // darin würde jedes Speichern mit 404 abweisen
   const kassenZuordnungen = row.rolle === 'admin'
     ? [] // Admin-kassenIds wird leer gelassen, Frontend benutzt kassen aus Login-Response
     : (await db
         .select({ kasseId: userKassen.kasseId })
         .from(userKassen)
-        .where(eq(userKassen.userId, row.id))
+        .innerJoin(kassen, eq(kassen.id, userKassen.kasseId))
+        .where(and(eq(userKassen.userId, row.id), eq(kassen.mandantId, row.mandantId)))
       ).map(z => z.kasseId)
 
   return {
