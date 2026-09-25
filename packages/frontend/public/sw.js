@@ -2,7 +2,8 @@
  * Kassa Service Worker — Offline-Unterstützung
  *
  * Strategie:
- *  1. App-Shell (HTML/JS/CSS) → Cache-First
+ *  1. Seitenaufrufe (index.html) → Network-First mit Zeitlimit, Cache nur als
+ *     Offline-Rückfall; gehashte Assets (JS/CSS/Icons) → Cache-First
  *  2. POST /api/belege/* (offline) → IndexedDB-Queue + Background Sync
  *  3. ALLE GET /api/* → Network-First mit Cache-Fallback
  *
@@ -23,8 +24,9 @@ const API_CACHE           = CACHE_VERSION + '-api'
 const OFFLINE_QUEUE_STORE = 'offline-queue'
 const DB_NAME             = 'kassa-sw-db'
 const DB_VERSION          = 1
+const NETZ_ZEITLIMIT_MS   = 4000
 
-const SHELL_ASSETS = ['/', '/index.html']
+const SHELL_ASSETS = ['/index.html']
 
 // ---------------------------------------------------------------------------
 // IndexedDB
@@ -112,7 +114,12 @@ async function updateVersuche(id, versuche) {
 self.addEventListener('install', function(event) {
   event.waitUntil(
     caches.open(STATIC_CACHE)
-      .then(function(cache) { return cache.addAll(SHELL_ASSETS).catch(function() {}) })
+      // no-cache: beim Server nachfragen statt eine alte index.html aus dem
+      // HTTP-Cache des Browsers in den neuen Cache zu übernehmen
+      .then(function(cache) {
+        return cache.addAll(SHELL_ASSETS.map(function(url) { return new Request(url, { cache: 'no-cache' }) }))
+          .catch(function() {})
+      })
       .then(function() { return self.skipWaiting() })
   )
 })
@@ -163,8 +170,12 @@ self.addEventListener('fetch', function(event) {
   // diesem alten Bundle stammt, fragt der Browser immer wieder dieselbe URL an,
   // bekommt „unverändert" und installiert nie einen neuen SW — die Kassa käme
   // aus eigener Kraft nie wieder aus dem alten Stand heraus.
+  //
+  // Offline-Rückfall immer unter dem festen Schlüssel /index.html: auch eine
+  // offline erstmals aufgerufene Route (/verkauf, ?kasse=…) bekommt so die
+  // App-Hülle statt einer Fehlerseite. Hängt das WLAN, nach 4 s ebenfalls.
   if (request.mode === 'navigate') {
-    event.respondWith(networkFirst(request, STATIC_CACHE))
+    event.respondWith(seiteNetzZuerst(request))
     return
   }
 
@@ -205,6 +216,44 @@ async function networkFirst(request, cacheName) {
       status: 503, headers: { 'Content-Type': 'application/json' }
     })
   }
+}
+
+// Seitenaufruf: Netz zuerst. cache: 'no-cache' = beim Server nachfragen (304
+// genügt) statt einer index.html, die der Browser heuristisch noch für frisch
+// hält (nginx schickte früher kein Cache-Control). Zeitlimit/offline → App-
+// Hülle aus dem Cache; ohne Cache-Eintrag weiter aufs Netz warten.
+function seiteNetzZuerst(request) {
+  var netz = fetch(amHttpCacheVorbei(request)).then(function(response) {
+    if (response.ok) {
+      var kopie = response.clone()
+      caches.open(STATIC_CACHE).then(function(cache) { cache.put('/index.html', kopie) })
+    }
+    return response
+  })
+  return mitZeitlimit(netz, NETZ_ZEITLIMIT_MS).catch(function() {
+    return caches.match('/index.html').then(function(cached) { return cached || netz })
+  })
+}
+
+// Browser, die eine Navigations-Anfrage nicht mit geänderten Optionen kopieren
+// können (der Konstruktor wirft dort), holen sie unverändert — dann sorgt allein
+// nginx (Cache-Control: no-cache) für die frische Seite.
+function amHttpCacheVorbei(request) {
+  try {
+    return new Request(request, { cache: 'no-cache' })
+  } catch (e) {
+    return request
+  }
+}
+
+function mitZeitlimit(promise, ms) {
+  return new Promise(function(resolve, reject) {
+    var t = setTimeout(function() { reject(new Error('Zeitlimit')) }, ms)
+    promise.then(
+      function(v)   { clearTimeout(t); resolve(v) },
+      function(err) { clearTimeout(t); reject(err) }
+    )
+  })
 }
 
 async function cacheFirst(request) {

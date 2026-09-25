@@ -811,6 +811,7 @@ export {
   EinlassSyncInputSchema,
 } from './schemas/einlass.js'
 export { sha256Hex, ticketCodeHash } from './sha256.js'
+export { istNeuereVersion, istNeuererServiceWorker } from './version.js'
 export type {
   EinlassErgebnisArt,
   EinlassScanInput,
