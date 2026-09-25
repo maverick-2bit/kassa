@@ -277,7 +277,7 @@ export async function aktualisiereReservierung(
     .where(and(eq(reservierungen.id, id), eq(reservierungen.mandantId, mandantId)))
     .returning()
 
-  if (!row) throw new Error('Reservierung nicht gefunden')
+  if (!row) throw new ReservierungError(404, 'Reservierung nicht gefunden')
   return toDto(row)
 }
 
@@ -291,7 +291,7 @@ export async function loescheReservierung(
     .where(and(eq(reservierungen.id, id), eq(reservierungen.mandantId, mandantId)))
     .returning({ id: reservierungen.id })
 
-  if (result.length === 0) throw new Error('Reservierung nicht gefunden')
+  if (result.length === 0) throw new ReservierungError(404, 'Reservierung nicht gefunden')
 }
 
 // ---------------------------------------------------------------------------
@@ -312,7 +312,7 @@ export async function ladeOnlineBuchungInfo(
     .where(eq(kassen.id, kasseId))
     .limit(1)
 
-  if (!row) throw new Error('Kasse nicht gefunden')
+  if (!row) throw new ReservierungError(404, 'Kasse nicht gefunden')
 
   const [mandant] = await db
     .select({ firmenname: mandanten.firmenname, modulReservierungenAktiv: mandanten.modulReservierungenAktiv })
@@ -340,8 +340,8 @@ export async function erstelleOnlineReservierung(
     .where(eq(kassen.id, kasseId))
     .limit(1)
 
-  if (!kasse) throw new Error('Kasse nicht gefunden')
-  if (!kasse.onlineBuchungAktiv) throw new Error('Online-Buchung nicht aktiviert')
+  if (!kasse) throw new ReservierungError(404, 'Kasse nicht gefunden')
+  if (!kasse.onlineBuchungAktiv) throw new ReservierungError(403, 'Online-Buchung nicht aktiviert')
 
   const [mandant] = await db
     .select({ modulReservierungenAktiv: mandanten.modulReservierungenAktiv })
@@ -349,7 +349,7 @@ export async function erstelleOnlineReservierung(
     .where(eq(mandanten.id, kasse.mandantId))
     .limit(1)
 
-  if (!mandant?.modulReservierungenAktiv) throw new Error('Reservierungs-Modul nicht aktiviert')
+  if (!mandant?.modulReservierungenAktiv) throw new ReservierungError(403, 'Reservierungs-Modul nicht aktiviert')
 
   return erstelleReservierung(db, kasse.mandantId, { ...input, kasseId }, 'online')
 }
@@ -369,9 +369,9 @@ export async function storniereViaToken(
     .where(and(eq(reservierungen.kasseId, kasseId), eq(reservierungen.onlineToken, onlineToken)))
     .limit(1)
 
-  if (!row) throw new Error('Reservierung nicht gefunden')
-  if (row.status === 'storniert') throw new Error('Bereits storniert')
-  if (row.status === 'erschienen') throw new Error('Stornierung nicht mehr möglich')
+  if (!row) throw new ReservierungError(404, 'Reservierung nicht gefunden')
+  if (row.status === 'storniert') throw new ReservierungError(409, 'Bereits storniert')
+  if (row.status === 'erschienen') throw new ReservierungError(409, 'Stornierung nicht mehr möglich')
 
   await db
     .update(reservierungen)

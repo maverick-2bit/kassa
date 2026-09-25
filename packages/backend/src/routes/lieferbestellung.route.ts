@@ -25,7 +25,9 @@ import {
   listeBestellungen,
   aktualisiereBestellungStatus,
   druckeLieferbestellung,
+  LieferbestellungError,
 } from '../services/lieferbestellung.service.js'
+import { DruckerError } from '../services/drucker.service.js'
 import { LieferbestellungUpdateSchema } from '@kassa/shared'
 import { pruefeKasseGehoertZuMandant } from '../auth/scope.js'
 
@@ -83,7 +85,8 @@ export const lieferbestellungRoute: FastifyPluginAsync<LieferbestellungRouteOpti
       )
       return reply.send(updated)
     } catch (err) {
-      return reply.status(404).send({ fehler: err instanceof Error ? err.message : 'Fehler' })
+      if (err instanceof LieferbestellungError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      throw err
     }
   })
 
@@ -96,11 +99,10 @@ export const lieferbestellungRoute: FastifyPluginAsync<LieferbestellungRouteOpti
       await druckeLieferbestellung(opts.db, p.data.id, request.user.mandantId)
       return reply.send({ erfolgreich: true })
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Druckfehler'
-      const status = msg.includes('nicht gefunden') ? 404
-        : msg.includes('nicht konfiguriert') ? 409
-        : 500
-      return reply.status(status).send({ fehler: msg })
+      if (err instanceof LieferbestellungError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      // Drucker nicht erreichbar / Timeout
+      if (err instanceof DruckerError)          return reply.status(err.httpStatus).send({ fehler: err.message })
+      throw err
     }
   })
 
@@ -174,8 +176,8 @@ export const lieferbestellungRoute: FastifyPluginAsync<LieferbestellungRouteOpti
       )
       return reply.status(201).send(bestellung)
     } catch (err) {
-      fastify.log.error({ err }, 'Webhook-Verarbeitung fehlgeschlagen')
-      return reply.status(500).send({ fehler: err instanceof Error ? err.message : 'Fehler' })
+      if (err instanceof LieferbestellungError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      throw err
     }
   })
 }

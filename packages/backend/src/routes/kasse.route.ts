@@ -8,7 +8,7 @@ import type { Db } from '../db/client.js'
 import { belege, kassen } from '../db/schema.js'
 import { z } from 'zod'
 import { FinanzOnlineCredentialsSchema, KasseBezeichnungUpdateSchema, SeeConfigUpdateSchema, WeitereKasseInputSchema, type KasseListeItem, type WeitereKasseResponse } from '@kassa/shared'
-import { ATrustHsmEinheit } from '@kassa/rksv'
+import { ATrustHsmEinheit, ATrustHsmError } from '@kassa/rksv'
 import { X509Certificate } from 'node:crypto'
 import { decryptPrivateKey, encryptPrivateKey } from '../crypto/master-key.js'
 import { legeWeitereKasseAn } from '../services/kasse.service.js'
@@ -145,8 +145,10 @@ export const kasseRoute: FastifyPluginAsync<KasseRouteOptions> = async (fastify,
       const result = await legeWeitereKasseAn(request.user.mandantId, parsed.data, opts.setupDeps)
       return reply.status(result.erfolgreich ? 201 : 400).send(result)
     } catch (err) {
+      // Erwartbare Fehler kommen als erfolgreich=false mit Schritten — das hier ist
+      // DB/Krypto: Einzelheiten (SQL, Parameter) nur ins Log
       fastify.log.error({ err }, 'Kasse anlegen unerwartet fehlgeschlagen')
-      const meldung = err instanceof Error ? err.message : String(err)
+      const meldung = 'Interner Serverfehler'
       const response: WeitereKasseResponse = {
         erfolgreich: false,
         schritte: [{ schritt: 'eingabe-validierung', status: 'fehler', meldung, zeitstempel: new Date().toISOString() }],
@@ -344,7 +346,9 @@ export const kasseRoute: FastifyPluginAsync<KasseRouteOptions> = async (fastify,
       const [zda, zert] = await Promise.all([einheit.zdaId(), einheit.zertifikat()])
       return reply.send({ erfolgreich: true, zdaId: zda, zertifikatSn: zert.seriennummerHex })
     } catch (err) {
-      return reply.send({ erfolgreich: false, fehler: err instanceof Error ? err.message : String(err) })
+      // A-Trust nicht erreichbar / Zugang abgelehnt: das Testergebnis für den Admin
+      if (!(err instanceof ATrustHsmError)) throw err
+      return reply.send({ erfolgreich: false, fehler: err.message })
     }
   })
 
@@ -397,7 +401,8 @@ export const kasseRoute: FastifyPluginAsync<KasseRouteOptions> = async (fastify,
 
       return reply.send({ erfolgreich: true, zdaId: zda, zertifikatSn: zert.seriennummerHex })
     } catch (err) {
-      return reply.status(502).send({ erfolgreich: false, fehler: err instanceof Error ? err.message : String(err) })
+      if (!(err instanceof ATrustHsmError)) throw err
+      return reply.status(502).send({ erfolgreich: false, fehler: err.message })
     }
   })
 }

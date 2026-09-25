@@ -24,6 +24,7 @@ import {
   aktualisiereArbeitszeit,
   loescheArbeitszeit,
   ladeAktuelleSchichten,
+  ZeiterfassungError,
 } from '../services/zeiterfassung.service.js'
 import { getClientIp } from '../services/audit.service.js'
 import { PinGesperrtError, sendePinGesperrt } from '../services/pin-bremse.js'
@@ -62,12 +63,8 @@ export const zeiterfassungRoute: FastifyPluginAsync<ZeiterfassungRouteOptions> =
     } catch (err) {
       if (err instanceof PinGesperrtError) return sendePinGesperrt(reply, err)
       if (err instanceof PinLaengeError) return sendePinLaengeFehler(reply, err)
-      const msg = err instanceof Error ? err.message : 'Fehler'
-      const status = msg.includes('nicht gefunden') ? 404
-        : msg.includes('nicht aktiviert') ? 403
-        : msg.includes('PIN') ? 401
-        : 500
-      return reply.status(status).send({ fehler: msg })
+      if (err instanceof ZeiterfassungError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      throw err
     }
   })
 
@@ -102,7 +99,8 @@ export const zeiterfassungRoute: FastifyPluginAsync<ZeiterfassungRouteOptions> =
       const res = await erstelleArbeitszeit(opts.db, request.user.mandantId, body.data)
       return reply.status(201).send(res)
     } catch (err) {
-      return reply.status(404).send({ fehler: err instanceof Error ? err.message : 'Fehler' })
+      if (err instanceof ZeiterfassungError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      throw err
     }
   })
 
@@ -118,7 +116,8 @@ export const zeiterfassungRoute: FastifyPluginAsync<ZeiterfassungRouteOptions> =
       const res = await aktualisiereArbeitszeit(opts.db, p.data.id, request.user.mandantId, body.data)
       return reply.send(res)
     } catch (err) {
-      return reply.status(404).send({ fehler: err instanceof Error ? err.message : 'Fehler' })
+      if (err instanceof ZeiterfassungError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      throw err
     }
   })
 
@@ -131,7 +130,8 @@ export const zeiterfassungRoute: FastifyPluginAsync<ZeiterfassungRouteOptions> =
       await loescheArbeitszeit(opts.db, p.data.id, request.user.mandantId)
       return reply.status(204).send()
     } catch (err) {
-      return reply.status(404).send({ fehler: err instanceof Error ? err.message : 'Fehler' })
+      if (err instanceof ZeiterfassungError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      throw err
     }
   })
 }
