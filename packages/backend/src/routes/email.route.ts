@@ -11,7 +11,7 @@ import { eq, and } from 'drizzle-orm'
 import type { Config } from '../config.js'
 import type { Db } from '../db/client.js'
 import { belege, kassen, mandanten } from '../db/schema.js'
-import { isEmailAktiv, sendeBelegEmail } from '../services/email.service.js'
+import { EmailVersandError, isEmailAktiv, sendeBelegEmail } from '../services/email.service.js'
 
 export interface EmailRouteOptions { db: Db; config: Config }
 
@@ -87,10 +87,9 @@ export const emailRoute: FastifyPluginAsync<EmailRouteOptions> = async (fastify,
       )
       return reply.send({ erfolgreich: true })
     } catch (err) {
+      if (!(err instanceof EmailVersandError)) throw err
       fastify.log.error({ err }, 'E-Mail-Versand fehlgeschlagen')
-      return reply.status(502).send({
-        fehler: `E-Mail konnte nicht gesendet werden: ${err instanceof Error ? err.message : String(err)}`,
-      })
+      return reply.status(err.httpStatus).send({ fehler: `E-Mail konnte nicht gesendet werden: ${err.message}` })
     }
   })
 }

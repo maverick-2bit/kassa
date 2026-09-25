@@ -29,7 +29,7 @@ import {
 } from '../services/inventur.service.js'
 import { resolveZielDrucker, sendBytes, DruckerError } from '../services/drucker.service.js'
 import { baueInventurBon } from '../services/escpos/layout.js'
-import { isEmailAktiv, sendeInventurEmail } from '../services/email.service.js'
+import { EmailVersandError, isEmailAktiv, sendeInventurEmail } from '../services/email.service.js'
 
 export interface InventurRouteOptions { db: Db; config: Config }
 
@@ -164,18 +164,19 @@ export const inventurRoute: FastifyPluginAsync<InventurRouteOptions> = async (fa
           druckerIp: config.ip, druckerTyp: 'inventur', erfolg: true,
         })
       } catch (druckFehler) {
-        const meldung = druckFehler instanceof Error ? druckFehler.message : String(druckFehler)
+        // Nur der Drucker selbst ist ein Druckfehler — ein DB-Fehler beim Protokoll nicht
+        if (!(druckFehler instanceof DruckerError)) throw druckFehler
         await db.insert(druckLog).values({
           mandantId: request.user.mandantId, kasseId: body.data.kasseId,
-          druckerIp: config.ip, druckerTyp: 'inventur', erfolg: false, fehlerText: meldung,
+          druckerIp: config.ip, druckerTyp: 'inventur', erfolg: false, fehlerText: druckFehler.message,
         })
-        return reply.status(502).send({ fehler: `Druck fehlgeschlagen: ${meldung}` })
+        return reply.status(502).send({ fehler: `Druck fehlgeschlagen: ${druckFehler.message}` })
       }
       return reply.send({ erfolgreich: true })
     } catch (err) {
       if (err instanceof InventurError) return reply.status(err.httpStatus).send({ fehler: err.message })
       if (err instanceof DruckerError)  return reply.status(err.httpStatus).send({ fehler: err.message })
-      return reply.status(502).send({ fehler: `Druck fehlgeschlagen: ${err instanceof Error ? err.message : String(err)}` })
+      throw err
     }
   })
 
@@ -208,8 +209,9 @@ export const inventurRoute: FastifyPluginAsync<InventurRouteOptions> = async (fa
       }, opts.config)
       return reply.send({ erfolgreich: true })
     } catch (err) {
-      if (err instanceof InventurError) return reply.status(err.httpStatus).send({ fehler: err.message })
-      return reply.status(502).send({ fehler: `E-Mail fehlgeschlagen: ${err instanceof Error ? err.message : String(err)}` })
+      if (err instanceof InventurError)     return reply.status(err.httpStatus).send({ fehler: err.message })
+      if (err instanceof EmailVersandError) return reply.status(err.httpStatus).send({ fehler: `E-Mail fehlgeschlagen: ${err.message}` })
+      throw err
     }
   })
 }

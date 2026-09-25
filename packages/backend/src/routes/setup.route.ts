@@ -57,8 +57,10 @@ export const setupRoute: FastifyPluginAsync<SetupRoutePluginOptions> = async (fa
       }
       return reply.status(201).send(result)
     } catch (err) {
+      // Erwartbare Fehler kommen als erfolgreich=false mit Schritten — das hier ist
+      // DB/Krypto: Einzelheiten (SQL, Parameter) nur ins Log, die Route ist öffentlich
       fastify.log.error({ err }, 'Setup unerwartet fehlgeschlagen')
-      const meldung = err instanceof Error ? err.message : String(err)
+      const meldung = 'Interner Serverfehler'
       const response: SetupResponse = {
         erfolgreich: false,
         schritte: [{

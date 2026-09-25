@@ -5,7 +5,7 @@
  * Ohne SMTP-Konfiguration gibt isEmailAktiv() false zurück.
  */
 
-import nodemailer from 'nodemailer'
+import nodemailer, { type SendMailOptions } from 'nodemailer'
 import {
   esc,
   eventZeitText,
@@ -19,8 +19,20 @@ export function isEmailAktiv(config: Config): boolean {
   return !!config.SMTP_HOST && !!config.SMTP_USER && !!config.SMTP_PASS
 }
 
+/**
+ * Der Mailserver hat den Versand abgelehnt oder war nicht erreichbar (Anmeldung,
+ * Verbindung, Empfänger …). Seine Meldung ist für die Oberfläche gedacht — anders
+ * als Fehler beim Zusammenstellen der Mail (DB, PDF), die nur ins Log gehören.
+ */
+export class EmailVersandError extends Error {
+  readonly httpStatus = 502
+  constructor(ursache: unknown) {
+    super(ursache instanceof Error ? ursache.message : String(ursache), { cause: ursache })
+  }
+}
+
 function erstelleTransporter(config: Config) {
-  return nodemailer.createTransport({
+  const transporter = nodemailer.createTransport({
     host:   config.SMTP_HOST!,
     port:   config.SMTP_PORT,
     secure: config.SMTP_PORT === 465,
@@ -29,6 +41,15 @@ function erstelleTransporter(config: Config) {
       pass: config.SMTP_PASS!,
     },
   })
+  return {
+    async sendMail(mail: SendMailOptions): Promise<void> {
+      try {
+        await transporter.sendMail(mail)
+      } catch (err) {
+        throw new EmailVersandError(err)
+      }
+    },
+  }
 }
 
 export interface BelegEmailDaten {

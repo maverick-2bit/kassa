@@ -2,8 +2,10 @@
  * Update-Hinweis — zwei Erkennungswege, bewusst KEIN Auto-Reload (könnte einen
  * laufenden Verkauf unterbrechen; der Kassier entscheidet):
  *
- *  1. controllerchange: Ein neuer Service Worker hat die Kontrolle übernommen,
- *     während die Seite offen war (schneller Pfad direkt nach einem Deploy).
+ *  1. controllerchange: Der Service Worker einer NEUEREN Version hat die
+ *     Kontrolle übernommen, während die Seite offen war (schneller Pfad direkt
+ *     nach einem Deploy). Übernimmt der SW der eigenen Version — der Normalfall
+ *     beim ersten Laden nach einem Update —, ist das kein Hinweis wert.
  *  2. Bundle-Drift: Das Backend meldet eine neuere installierte Version als
  *     dieses Bundle (__APP_VERSION__). Deckt Kiosk-Kassen ab, deren Seite
  *     dauerhaft offen steht — dort feuert der SW-Update-Check von allein nie.
@@ -13,6 +15,7 @@
 
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { istNeuererServiceWorker } from '@kassa/shared'
 import { systemApi } from '../lib/api'
 
 /**
@@ -48,9 +51,11 @@ export function UpdateHinweis() {
 
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return
-    // Nur echte Updates melden: beim Erst-Install gibt es noch keinen Controller.
-    const hatteController = !!navigator.serviceWorker.controller
-    const onChange = () => { if (hatteController) setUpdateBereit(true) }
+    const onChange = () => {
+      if (istNeuererServiceWorker(navigator.serviceWorker.controller?.scriptURL, __APP_VERSION__)) {
+        setUpdateBereit(true)
+      }
+    }
     navigator.serviceWorker.addEventListener('controllerchange', onChange)
     return () => navigator.serviceWorker.removeEventListener('controllerchange', onChange)
   }, [])

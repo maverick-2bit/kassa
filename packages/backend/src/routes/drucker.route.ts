@@ -201,8 +201,7 @@ export const druckerRoute: FastifyPluginAsync<DruckerRouteOptions> = async (fast
     } catch (err) {
       if (err instanceof DruckerError)
         return reply.status(err.httpStatus).send({ fehler: err.message })
-      fastify.log.error({ err }, 'Reprint fehlgeschlagen')
-      return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
+      throw err
     }
   })
 
@@ -284,17 +283,17 @@ export const druckerRoute: FastifyPluginAsync<DruckerRouteOptions> = async (fast
       })
       return reply.send({ erfolgreich: true })
     } catch (err) {
+      // Nur der Drucker selbst ist ein Druckfehler — ein DB-Fehler beim Protokoll nicht
+      if (!(err instanceof DruckerError)) throw err
       await opts.db.insert(druckLog).values({
         mandantId:  request.user.mandantId,
         kasseId:    kasse.id,
         druckerIp:  config.ip,
         druckerTyp: 'test',
         erfolg:     false,
-        fehlerText: err instanceof Error ? err.message : String(err),
+        fehlerText: err.message,
       }).catch(() => {})
-      if (err instanceof DruckerError)
-        return reply.status(err.httpStatus).send({ fehler: err.message })
-      return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
+      return reply.status(err.httpStatus).send({ fehler: err.message })
     }
   })
 
@@ -366,17 +365,17 @@ export const druckerRoute: FastifyPluginAsync<DruckerRouteOptions> = async (fast
       })
       return reply.send({ erfolgreich: true, anzahl: tische.length })
     } catch (err) {
+      // Nur der Drucker selbst ist ein Druckfehler — ein DB-Fehler beim Protokoll nicht
+      if (!(err instanceof DruckerError)) throw err
       await opts.db.insert(druckLog).values({
         mandantId:  request.user.mandantId,
         kasseId:    kasse.id,
         druckerIp:  config.ip,
         druckerTyp: 'tisch-etikett',
         erfolg:     false,
-        fehlerText: err instanceof Error ? err.message : String(err),
+        fehlerText: err.message,
       }).catch(() => {})
-      if (err instanceof DruckerError)
-        return reply.status(err.httpStatus).send({ fehler: err.message })
-      return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
+      return reply.status(err.httpStatus).send({ fehler: err.message })
     }
   })
 }

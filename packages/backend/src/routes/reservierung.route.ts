@@ -97,7 +97,7 @@ export const reservierungRoute: FastifyPluginAsync<ReservierungRouteOptions> = a
       return reply.status(201).send(res)
     } catch (err) {
       if (err instanceof ReservierungError) return reply.status(err.httpStatus).send({ fehler: err.message })
-      return reply.status(404).send({ fehler: err instanceof Error ? err.message : 'Fehler' })
+      throw err
     }
   })
 
@@ -135,7 +135,7 @@ export const reservierungRoute: FastifyPluginAsync<ReservierungRouteOptions> = a
       return reply.send(res)
     } catch (err) {
       if (err instanceof ReservierungError) return reply.status(err.httpStatus).send({ fehler: err.message })
-      return reply.status(404).send({ fehler: err instanceof Error ? err.message : 'Fehler' })
+      throw err
     }
   })
 
@@ -148,7 +148,8 @@ export const reservierungRoute: FastifyPluginAsync<ReservierungRouteOptions> = a
       await loescheReservierung(opts.db, p.data.id, request.user.mandantId)
       return reply.status(204).send()
     } catch (err) {
-      return reply.status(404).send({ fehler: err instanceof Error ? err.message : 'Fehler' })
+      if (err instanceof ReservierungError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      throw err
     }
   })
 

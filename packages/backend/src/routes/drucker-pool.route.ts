@@ -18,7 +18,7 @@ import {
   loescheDrucker,
   testdruckDrucker,
 } from '../services/drucker-pool.service.js'
-import { aktualisiereStatus, getDruckerStatus } from '../services/drucker.service.js'
+import { aktualisiereStatus, getDruckerStatus, DruckerError } from '../services/drucker.service.js'
 import { drucker } from '../db/schema.js'
 import { and, eq } from 'drizzle-orm'
 
@@ -77,7 +77,8 @@ export const druckerPoolRoute: FastifyPluginAsync<DruckerPoolRouteOptions> = asy
       await testdruckDrucker(row.ip, row.port, row.timeoutSek)
       return reply.send({ erfolgreich: true })
     } catch (err) {
-      return reply.send({ erfolgreich: false, fehler: err instanceof Error ? err.message : 'Verbindungsfehler' })
+      if (!(err instanceof DruckerError)) throw err
+      return reply.send({ erfolgreich: false, fehler: err.message })
     }
   })
 

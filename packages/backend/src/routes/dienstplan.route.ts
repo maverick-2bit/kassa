@@ -16,6 +16,7 @@ import {
   erstelleSchicht,
   aktualisiereSchicht,
   loescheSchicht,
+  DienstplanError,
 } from '../services/dienstplan.service.js'
 
 export interface DienstplanRouteOptions { db: Db }
@@ -55,7 +56,8 @@ export const dienstplanRoute: FastifyPluginAsync<DienstplanRouteOptions> = async
       const schicht = await erstelleSchicht(opts.db, request.user.mandantId, body.data)
       return reply.status(201).send(schicht)
     } catch (err) {
-      return reply.status(404).send({ fehler: err instanceof Error ? err.message : 'Fehler' })
+      if (err instanceof DienstplanError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      throw err
     }
   })
 
@@ -70,7 +72,8 @@ export const dienstplanRoute: FastifyPluginAsync<DienstplanRouteOptions> = async
       const schicht = await aktualisiereSchicht(opts.db, p.data.id, request.user.mandantId, body.data)
       return reply.send(schicht)
     } catch (err) {
-      return reply.status(404).send({ fehler: err instanceof Error ? err.message : 'Fehler' })
+      if (err instanceof DienstplanError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      throw err
     }
   })
 
@@ -82,7 +85,8 @@ export const dienstplanRoute: FastifyPluginAsync<DienstplanRouteOptions> = async
       await loescheSchicht(opts.db, p.data.id, request.user.mandantId)
       return reply.status(204).send()
     } catch (err) {
-      return reply.status(404).send({ fehler: err instanceof Error ? err.message : 'Fehler' })
+      if (err instanceof DienstplanError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      throw err
     }
   })
 }
