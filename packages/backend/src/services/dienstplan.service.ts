@@ -4,6 +4,13 @@ import { dienstplanSchichten, users } from '../db/schema.js'
 import type { DienstplanSchichtInput, DienstplanSchichtUpdate, DienstplanStatus } from '@kassa/shared'
 import { pruefeKasseGehoertZuMandant } from '../auth/scope.js'
 
+/** Fachfehler mit HTTP-Status — die Route gibt Status und Meldung weiter. */
+export class DienstplanError extends Error {
+  constructor(public readonly httpStatus: number, message: string) {
+    super(message)
+  }
+}
+
 function minutenZwischen(von: string, bis: string): number {
   const [vh, vm] = von.split(':').map(Number)
   const [bh, bm] = bis.split(':').map(Number)
@@ -63,7 +70,7 @@ export async function erstelleSchicht(
   input:     DienstplanSchichtInput,
 ) {
   const ok = await pruefeKasseGehoertZuMandant(db, input.kasseId, mandantId)
-  if (!ok) throw new Error('Kasse nicht gefunden')
+  if (!ok) throw new DienstplanError(404, 'Kasse nicht gefunden')
 
   const [user] = await db
     .select({ name: users.name, aktiv: users.aktiv })
@@ -71,8 +78,8 @@ export async function erstelleSchicht(
     .where(and(eq(users.id, input.userId), eq(users.mandantId, mandantId)))
     .limit(1)
 
-  if (!user) throw new Error('Benutzer nicht gefunden')
-  if (!user.aktiv) throw new Error('Benutzer ist deaktiviert')
+  if (!user) throw new DienstplanError(404, 'Benutzer nicht gefunden')
+  if (!user.aktiv) throw new DienstplanError(409, 'Benutzer ist deaktiviert')
 
   const [row] = await db
     .insert(dienstplanSchichten)
@@ -112,7 +119,7 @@ export async function aktualisiereSchicht(
     .where(and(eq(dienstplanSchichten.id, id), eq(dienstplanSchichten.mandantId, mandantId)))
     .returning()
 
-  if (!row) throw new Error('Schicht nicht gefunden')
+  if (!row) throw new DienstplanError(404, 'Schicht nicht gefunden')
   return toDto(row)
 }
 
@@ -122,5 +129,5 @@ export async function loescheSchicht(db: Db, id: string, mandantId: string) {
     .where(and(eq(dienstplanSchichten.id, id), eq(dienstplanSchichten.mandantId, mandantId)))
     .returning({ id: dienstplanSchichten.id })
 
-  if (!row) throw new Error('Schicht nicht gefunden')
+  if (!row) throw new DienstplanError(404, 'Schicht nicht gefunden')
 }

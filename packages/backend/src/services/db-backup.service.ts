@@ -8,6 +8,15 @@ import { asc, desc, eq } from 'drizzle-orm'
 import type { Db }       from '../db/client.js'
 import { dbSicherungen } from '../db/schema.js'
 
+/**
+ * Die Sicherung selbst ist gescheitert (pg_dump nicht startbar oder mit Fehler
+ * beendet). Die Meldung steht auch am Sicherungs-Eintrag und ist für den Admin
+ * gedacht — anders als DB- oder Dateisystem-Fehler rundherum.
+ */
+export class DbSicherungError extends Error {
+  readonly httpStatus = 500
+}
+
 export async function erstelleDbSicherung(
   db:          Db,
   databaseUrl: string,
@@ -84,7 +93,7 @@ export async function erstelleDbSicherung(
     ...(fehler !== undefined ? { fehler } : {}),
   }).returning()
 
-  if (spawnFehler) throw new Error(spawnFehler)
+  if (spawnFehler) throw new DbSicherungError(spawnFehler)
 
   return rows[0]!
 }

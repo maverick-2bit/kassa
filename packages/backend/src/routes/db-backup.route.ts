@@ -6,6 +6,7 @@ import {
   listeDbSicherungen,
   ladeDbSicherungDatei,
   bereinigeSicherungen,
+  DbSicherungError,
 } from '../services/db-backup.service.js'
 
 export interface DbBackupRouteOptions {
@@ -41,8 +42,10 @@ export const dbBackupRoute: FastifyPluginAsync<DbBackupRouteOptions> = async (fa
       await bereinigeSicherungen(opts.db, opts.retention)
       return reply.status(201).send(s)
     } catch (err) {
+      // pg_dump-Meldung (steht auch am Sicherungs-Eintrag) — alles andere ohne Interna
+      if (!(err instanceof DbSicherungError)) throw err
       fastify.log.error({ err }, 'Manueller DB-Backup fehlgeschlagen')
-      return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
+      return reply.status(err.httpStatus).send({ fehler: err.message })
     }
   })
 

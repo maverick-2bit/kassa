@@ -46,7 +46,8 @@ export const buchungRoute: FastifyPluginAsync<BuchungRouteOptions> = async (fast
       const info = await ladeOnlineBuchungInfo(opts.db, p.data.kasseId)
       return reply.send(info)
     } catch (err) {
-      return reply.status(404).send({ fehler: err instanceof Error ? err.message : 'Fehler' })
+      if (err instanceof ReservierungError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      throw err
     }
   })
 
@@ -83,7 +84,8 @@ export const buchungRoute: FastifyPluginAsync<BuchungRouteOptions> = async (fast
         id: t.id, bezeichnung: t.bezeichnung, bereichName: t.bereichName, plaetze: t.plaetze,
       })))
     } catch (err) {
-      return reply.status(404).send({ fehler: err instanceof Error ? err.message : 'Fehler' })
+      if (err instanceof ReservierungError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      throw err
     }
   })
 
@@ -128,13 +130,9 @@ export const buchungRoute: FastifyPluginAsync<BuchungRouteOptions> = async (fast
         onlineToken: res.onlineToken,
       })
     } catch (err) {
-      // Doppelbelegung / nicht freigegebener Tisch kommen als ReservierungError
+      // Kasse fehlt, Buchung/Modul aus, Doppelbelegung, nicht freigegebener Tisch
       if (err instanceof ReservierungError) return reply.status(err.httpStatus).send({ fehler: err.message })
-      const msg    = err instanceof Error ? err.message : 'Fehler'
-      const status = msg.includes('nicht gefunden') ? 404
-        : msg.includes('nicht aktiviert') ? 403
-        : 500
-      return reply.status(status).send({ fehler: msg })
+      throw err
     }
   })
 
@@ -147,9 +145,8 @@ export const buchungRoute: FastifyPluginAsync<BuchungRouteOptions> = async (fast
       await storniereViaToken(opts.db, p.data.kasseId, p.data.token)
       return reply.send({ erfolgreich: true })
     } catch (err) {
-      const msg    = err instanceof Error ? err.message : 'Fehler'
-      const status = msg.includes('nicht gefunden') ? 404 : 409
-      return reply.status(status).send({ fehler: msg })
+      if (err instanceof ReservierungError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      throw err
     }
   })
 }

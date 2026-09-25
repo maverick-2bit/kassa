@@ -16,7 +16,7 @@ import {
   erstelleGutscheinJournalCsv,
   GutscheinError,
 } from '../services/gutschein.service.js'
-import { sendBytes, druckerConfigVonKasse } from '../services/drucker.service.js'
+import { sendBytes, druckerConfigVonKasse, DruckerError } from '../services/drucker.service.js'
 import { baueGutscheinBon } from '../services/escpos/layout.js'
 import { uuidParam } from './uuid-param.js'
 
@@ -200,16 +200,17 @@ export const gutscheinRoute: FastifyPluginAsync<GutscheinRouteOptions> = async (
       })
       return reply.send({ erfolgreich: true })
     } catch (err) {
-      const meldung = err instanceof Error ? err.message : String(err)
+      // Nur der Drucker selbst ist ein Druckfehler — ein DB-Fehler beim Protokoll nicht
+      if (!(err instanceof DruckerError)) throw err
       await opts.db.insert(druckLog).values({
         mandantId:  request.user.mandantId,
         kasseId:    kasse.id,
         druckerIp:  config.ip,
         druckerTyp: 'gutschein',
         erfolg:     false,
-        fehlerText: meldung,
+        fehlerText: err.message,
       })
-      return reply.status(502).send({ fehler: `Druck fehlgeschlagen: ${meldung}` })
+      return reply.status(502).send({ fehler: `Druck fehlgeschlagen: ${err.message}` })
     }
   })
 }

@@ -14,6 +14,7 @@ import {
   TagesabschlussQuerySchema,
   type BarzahlungsbelegInput,
 } from '@kassa/shared'
+import { ATrustHsmError, FonSoapError } from '@kassa/rksv'
 import {
   erstelleBarzahlungsbeleg,
   erstelleStornobeleg,
@@ -35,7 +36,7 @@ import {
   holeTagesabschluss,
   TagesabschlussError,
 } from '../services/tagesabschluss.service.js'
-import { tryDruckeBeleg, druckerConfigVonKasse, sendBytes } from '../services/drucker.service.js'
+import { tryDruckeBeleg, druckerConfigVonKasse, sendBytes, DruckerError } from '../services/drucker.service.js'
 import { bonierBestellung } from '../services/bonier.service.js'
 import { baueZBon, baueKassensturzBon } from '../services/escpos/layout.js'
 import { listeKassenbuchBuchungen } from '../services/kassenbuch.service.js'
@@ -106,8 +107,7 @@ async function fuehreAus<T extends { id: string }>(
     }
     // Zu viele falsche Freigabe-PINs — 429 mit Restzeit, der Beleg entsteht nicht
     if (err instanceof PinGesperrtError) return sendePinGesperrt(reply, err)
-    fastify.log.error({ err }, 'Beleg-Erstellung unerwartet fehlgeschlagen')
-    return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
+    throw err
   }
 }
 
@@ -303,8 +303,7 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
       return reply.send(await holeSeeStatus(parsed.data.kasseId, opts.deps))
     } catch (err) {
       if (err instanceof BelegError) return reply.status(err.httpStatus).send({ fehler: err.message })
-      fastify.log.error({ err }, 'SEE-Status fehlgeschlagen')
-      return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
+      throw err
     }
   })
 
@@ -313,11 +312,11 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     if (!(await pruefeKasseScope(request, reply, opts.deps, parsed.data.kasseId))) return
     try {
+      // Die FinanzOnline-Meldung scheitert nicht-fatal (Ergebnis steht in fonMeldung)
       return reply.send(await meldeSeeAusfall(parsed.data.kasseId, opts.deps, parsed.data.credentials))
     } catch (err) {
       if (err instanceof BelegError) return reply.status(err.httpStatus).send({ fehler: err.message })
-      fastify.log.error({ err }, 'SEE-Ausfall melden fehlgeschlagen')
-      return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
+      throw err
     }
   })
 
@@ -331,8 +330,13 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
       return reply.status(201).send(ergebnis)
     } catch (err) {
       if (err instanceof BelegError) return reply.status(err.httpStatus).send({ fehler: err.message })
-      fastify.log.error({ err }, 'SEE-Wiederherstellung fehlgeschlagen')
-      return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
+      // A-Trust signiert weiterhin nicht (nicht erreichbar/HTTP-Fehler): Der Ausfall
+      // bleibt bestehen, der Kassier braucht den Grund.
+      if (err instanceof ATrustHsmError) {
+        fastify.log.warn({ err }, 'SEE-Wiederherstellung: A-Trust signiert weiterhin nicht')
+        return reply.status(502).send({ fehler: err.message })
+      }
+      throw err
     }
   })
 
@@ -348,8 +352,7 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
       return reply.send(await holeFoRegistrierungStatus(parsed.data.kasseId, opts.deps))
     } catch (err) {
       if (err instanceof BelegError) return reply.status(err.httpStatus).send({ fehler: err.message })
-      fastify.log.error({ err }, 'FO-Status fehlgeschlagen')
-      return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
+      throw err
     }
   })
 
@@ -368,8 +371,12 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
       return reply.send(await registriereKasseBeiFinanzOnline(parsed.data.kasseId, parsed.data.credentials, opts.deps))
     } catch (err) {
       if (err instanceof BelegError) return reply.status(err.httpStatus).send({ fehler: err.message })
-      fastify.log.error({ err }, 'FO-Registrierung (Nachtrag) fehlgeschlagen')
-      return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
+      // FinanzOnline nicht erreichbar / HTTP-Fehler beim Login oder bei der Registrierung
+      if (err instanceof FonSoapError) {
+        fastify.log.warn({ err }, 'FO-Registrierung (Nachtrag): FinanzOnline nicht erreichbar')
+        return reply.status(502).send({ fehler: err.message })
+      }
+      throw err
     }
   })
 
@@ -403,8 +410,7 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
       if (err instanceof TagesabschlussError) {
         return reply.status(err.httpStatus).send({ fehler: err.message })
       }
-      fastify.log.error({ err }, 'Tagesabschluss unerwartet fehlgeschlagen')
-      return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
+      throw err
     }
   })
 
@@ -427,8 +433,7 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
         .send(json)
     } catch (err) {
       if (err instanceof BelegError) return reply.status(err.httpStatus).send({ fehler: err.message })
-      fastify.log.error({ err }, 'DEP7-Export fehlgeschlagen')
-      return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
+      throw err
     }
   })
 
@@ -447,8 +452,7 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
         .send(json)
     } catch (err) {
       if (err instanceof BelegError) return reply.status(err.httpStatus).send({ fehler: err.message })
-      fastify.log.error({ err }, 'DEP131-Export fehlgeschlagen')
-      return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
+      throw err
     }
   })
 
@@ -509,8 +513,8 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
       await sendBytes(bytes, druckerConfig)
       return reply.send({ erfolgreich: true })
     } catch (err) {
-      fastify.log.error({ err }, 'Kassensturz-Druck fehlgeschlagen')
-      return reply.status(502).send({ fehler: err instanceof Error ? err.message : String(err) })
+      if (err instanceof DruckerError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      throw err
     }
   })
 
@@ -593,8 +597,8 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
       if (err instanceof TagesabschlussError) {
         return reply.status(err.httpStatus).send({ fehler: err.message })
       }
-      fastify.log.error({ err }, 'Z-Bon-Druck fehlgeschlagen')
-      return reply.status(502).send({ fehler: err instanceof Error ? err.message : String(err) })
+      if (err instanceof DruckerError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      throw err
     }
   })
 }

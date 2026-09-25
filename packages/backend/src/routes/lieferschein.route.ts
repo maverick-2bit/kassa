@@ -23,7 +23,7 @@ import {
 import { uuidParam } from './uuid-param.js'
 import { resolveZielDrucker, sendBytes, DruckerError, type DruckerConfig } from '../services/drucker.service.js'
 import { baueLieferscheinBon, baueRechnungBon, type BelegzweigPosition } from '../services/escpos/layout.js'
-import { isEmailAktiv, sendeBelegzweigEmail } from '../services/email.service.js'
+import { EmailVersandError, isEmailAktiv, sendeBelegzweigEmail } from '../services/email.service.js'
 
 export interface LiferscheinRouteOptions { db: Db; config: Config }
 
@@ -61,11 +61,12 @@ export const lieferscheinRoute: FastifyPluginAsync<LiferscheinRouteOptions> = as
         mandantId, kasseId, druckerIp: config.ip, druckerTyp, erfolg: true,
       })
     } catch (err) {
-      const meldung = err instanceof Error ? err.message : String(err)
+      // Nur der Drucker selbst ist ein Druckfehler — ein DB-Fehler beim Protokoll nicht
+      if (!(err instanceof DruckerError)) throw err
       await opts.db.insert(druckLog).values({
-        mandantId, kasseId, druckerIp: config.ip, druckerTyp, erfolg: false, fehlerText: meldung,
+        mandantId, kasseId, druckerIp: config.ip, druckerTyp, erfolg: false, fehlerText: err.message,
       })
-      throw new DruckerError(502, `Druck fehlgeschlagen: ${meldung}`)
+      throw new DruckerError(502, `Druck fehlgeschlagen: ${err.message}`)
     }
   }
 
@@ -222,8 +223,9 @@ export const lieferscheinRoute: FastifyPluginAsync<LiferscheinRouteOptions> = as
       }, opts.config)
       return reply.send({ erfolgreich: true })
     } catch (err) {
-      if (err instanceof LiferscheinError) return reply.status(err.httpStatus).send({ fehler: err.message })
-      return reply.status(502).send({ fehler: `E-Mail fehlgeschlagen: ${err instanceof Error ? err.message : String(err)}` })
+      if (err instanceof LiferscheinError)  return reply.status(err.httpStatus).send({ fehler: err.message })
+      if (err instanceof EmailVersandError) return reply.status(err.httpStatus).send({ fehler: `E-Mail fehlgeschlagen: ${err.message}` })
+      throw err
     }
   })
 
@@ -276,8 +278,9 @@ export const lieferscheinRoute: FastifyPluginAsync<LiferscheinRouteOptions> = as
       }, opts.config)
       return reply.send({ erfolgreich: true })
     } catch (err) {
-      if (err instanceof LiferscheinError) return reply.status(err.httpStatus).send({ fehler: err.message })
-      return reply.status(502).send({ fehler: `E-Mail fehlgeschlagen: ${err instanceof Error ? err.message : String(err)}` })
+      if (err instanceof LiferscheinError)  return reply.status(err.httpStatus).send({ fehler: err.message })
+      if (err instanceof EmailVersandError) return reply.status(err.httpStatus).send({ fehler: `E-Mail fehlgeschlagen: ${err.message}` })
+      throw err
     }
   })
 }

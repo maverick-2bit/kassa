@@ -13,6 +13,7 @@ import { z } from 'zod'
 import { and, eq, isNotNull } from 'drizzle-orm'
 import type { Db } from '../db/client.js'
 import { artikel } from '../db/schema.js'
+import { fachfehlerStatus } from '../fehler-handler.js'
 import {
   erstelleArtikel,
   listeArtikel,
@@ -69,7 +70,15 @@ export const artikelRoute: FastifyPluginAsync<ArtikelRouteOptions> = async (fast
         await erstelleArtikel(opts.db, artikelParsed.data)
         erstellt++
       } catch (err) {
-        fehlzeilen.push({ index: i, fehler: err instanceof Error ? err.message : 'Unbekannt' })
+        // Fachfehler (4xx, z. B. fremder Bestandteil) mit ihrer Meldung — alles andere
+        // nur ins Log, sonst stünden SQL und Eingabewerte in der Importliste
+        const status = fachfehlerStatus(err)
+        if (err instanceof Error && status !== undefined && status < 500) {
+          fehlzeilen.push({ index: i, fehler: err.message })
+        } else {
+          request.log.error({ err, zeile: i }, 'Artikel-Import: Zeile unerwartet fehlgeschlagen')
+          fehlzeilen.push({ index: i, fehler: 'Interner Serverfehler' })
+        }
       }
     }
 
