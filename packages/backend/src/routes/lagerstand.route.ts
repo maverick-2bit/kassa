@@ -8,7 +8,7 @@ import { druckLog, mandanten } from '../db/schema.js'
 import { bulkLagerstandAktualisieren } from '../services/lagerstand.service.js'
 import { resolveZielDrucker, sendBytes, DruckerError } from '../services/drucker.service.js'
 import { baueWareneingangBon } from '../services/escpos/layout.js'
-import { isEmailAktiv, sendeWareneingangEmail } from '../services/email.service.js'
+import { EmailVersandError, isEmailAktiv, sendeWareneingangEmail } from '../services/email.service.js'
 
 export interface LagerstandRouteOptions {
   db:     Db
@@ -65,17 +65,18 @@ export const lagerstandRoute: FastifyPluginAsync<LagerstandRouteOptions> = async
           druckerIp: config.ip, druckerTyp: 'wareneingang', erfolg: true,
         })
       } catch (druckFehler) {
-        const meldung = druckFehler instanceof Error ? druckFehler.message : String(druckFehler)
+        // Nur der Drucker selbst ist ein Druckfehler — ein DB-Fehler beim Protokoll nicht
+        if (!(druckFehler instanceof DruckerError)) throw druckFehler
         await db.insert(druckLog).values({
           mandantId: request.user.mandantId, kasseId: body.data.kasseId,
-          druckerIp: config.ip, druckerTyp: 'wareneingang', erfolg: false, fehlerText: meldung,
+          druckerIp: config.ip, druckerTyp: 'wareneingang', erfolg: false, fehlerText: druckFehler.message,
         })
-        return reply.status(502).send({ fehler: `Druck fehlgeschlagen: ${meldung}` })
+        return reply.status(502).send({ fehler: `Druck fehlgeschlagen: ${druckFehler.message}` })
       }
       return reply.send({ erfolgreich: true })
     } catch (err) {
       if (err instanceof DruckerError) return reply.status(err.httpStatus).send({ fehler: err.message })
-      return reply.status(502).send({ fehler: `Druck fehlgeschlagen: ${err instanceof Error ? err.message : String(err)}` })
+      throw err
     }
   })
 
@@ -100,7 +101,8 @@ export const lagerstandRoute: FastifyPluginAsync<LagerstandRouteOptions> = async
       }, opts.config)
       return reply.send({ erfolgreich: true })
     } catch (err) {
-      return reply.status(502).send({ fehler: `E-Mail fehlgeschlagen: ${err instanceof Error ? err.message : String(err)}` })
+      if (err instanceof EmailVersandError) return reply.status(err.httpStatus).send({ fehler: `E-Mail fehlgeschlagen: ${err.message}` })
+      throw err
     }
   })
 }

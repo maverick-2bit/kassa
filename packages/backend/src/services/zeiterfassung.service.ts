@@ -10,8 +10,16 @@ import type {
   StempelResponse,
 } from '@kassa/shared'
 import type { GeraetVertrauenSigner } from '../auth/geraet-vertrauen.js'
+import { pruefeKasseGehoertZuMandant } from '../auth/scope.js'
 import { pruefeMitBremse, toepfeFuerGeraet } from './pin-bremse.js'
 import { pruefePinLaenge } from './pin-laenge.js'
+
+/** Fachfehler mit HTTP-Status — die Route gibt Status und Meldung weiter. */
+export class ZeiterfassungError extends Error {
+  constructor(public readonly httpStatus: number, message: string) {
+    super(message)
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Hilfsfunktionen
@@ -72,8 +80,8 @@ export async function stempeln(
     .where(eq(kassen.id, kasseId))
     .limit(1)
 
-  if (!kasse) throw new Error('Kasse nicht gefunden')
-  if (!kasse.modulZeiterfassungAktiv) throw new Error('Zeiterfassungs-Modul nicht aktiviert')
+  if (!kasse) throw new ZeiterfassungError(404, 'Kasse nicht gefunden')
+  if (!kasse.modulZeiterfassungAktiv) throw new ZeiterfassungError(403, 'Zeiterfassungs-Modul nicht aktiviert')
 
   // Falsche Länge kann keinen PIN treffen → ohne Prüfung und ohne Fehlversuch ablehnen
   pruefePinLaenge(pin, kasse.pinLaenge)
@@ -106,7 +114,7 @@ export async function stempeln(
     }
     return null
   })
-  if (!gefundenerUser) throw new Error('PIN ungültig')
+  if (!gefundenerUser) throw new ZeiterfassungError(401, 'PIN ungültig')
 
   // Offene Schicht prüfen
   const [offene] = await db
@@ -198,13 +206,17 @@ export async function erstelleArbeitszeit(
   mandantId: string,
   input:     ArbeitszeitInput,
 ): Promise<ArbeitszeitResponse> {
+  // Fremde Kasse landete sonst in der Zeile, eine unbekannte als FK-Verletzung (500)
+  const ok = await pruefeKasseGehoertZuMandant(db, input.kasseId, mandantId)
+  if (!ok) throw new ZeiterfassungError(404, 'Kasse nicht gefunden')
+
   // Username auflösen
   const [user] = await db
     .select({ name: users.name })
     .from(users)
     .where(and(eq(users.id, input.userId), eq(users.mandantId, mandantId)))
     .limit(1)
-  if (!user) throw new Error('Benutzer nicht gefunden')
+  if (!user) throw new ZeiterfassungError(404, 'Benutzer nicht gefunden')
 
   const [row] = await db.insert(arbeitszeiten).values({
     mandantId,
@@ -218,7 +230,7 @@ export async function erstelleArbeitszeit(
     ...(input.notiz        && { notiz:        input.notiz            }),
   }).returning()
 
-  if (!row) throw new Error('Eintrag konnte nicht gespeichert werden')
+  if (!row) throw new ZeiterfassungError(500, 'Eintrag konnte nicht gespeichert werden')
   return toDto(row)
 }
 
@@ -240,7 +252,7 @@ export async function aktualisiereArbeitszeit(
     .where(and(eq(arbeitszeiten.id, id), eq(arbeitszeiten.mandantId, mandantId)))
     .returning()
 
-  if (!row) throw new Error('Eintrag nicht gefunden')
+  if (!row) throw new ZeiterfassungError(404, 'Eintrag nicht gefunden')
   return toDto(row)
 }
 
@@ -254,7 +266,7 @@ export async function loescheArbeitszeit(
     .where(and(eq(arbeitszeiten.id, id), eq(arbeitszeiten.mandantId, mandantId)))
     .returning({ id: arbeitszeiten.id })
 
-  if (result.length === 0) throw new Error('Eintrag nicht gefunden')
+  if (result.length === 0) throw new ZeiterfassungError(404, 'Eintrag nicht gefunden')
 }
 
 // Wer ist aktuell eingestempelt?

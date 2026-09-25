@@ -60,8 +60,7 @@ export const berichtRoute: FastifyPluginAsync<BerichtRouteOptions> = async (fast
       if (err instanceof BerichtError) {
         return reply.status(err.httpStatus).send({ fehler: err.message })
       }
-      fastify.log.error({ err }, 'Umsatzbericht unerwartet fehlgeschlagen')
-      return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
+      throw err
     }
   })
 
@@ -89,8 +88,7 @@ export const berichtRoute: FastifyPluginAsync<BerichtRouteOptions> = async (fast
       if (err instanceof BerichtError) {
         return reply.status(err.httpStatus).send({ fehler: err.message })
       }
-      fastify.log.error({ err }, 'Artikelbericht unerwartet fehlgeschlagen')
-      return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
+      throw err
     }
   })
 
@@ -111,8 +109,7 @@ export const berichtRoute: FastifyPluginAsync<BerichtRouteOptions> = async (fast
       return reply.send(bericht)
     } catch (err) {
       if (err instanceof BerichtError) return reply.status(err.httpStatus).send({ fehler: err.message })
-      fastify.log.error({ err }, 'Warengruppenbericht unerwartet fehlgeschlagen')
-      return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
+      throw err
     }
   })
 
@@ -133,8 +130,7 @@ export const berichtRoute: FastifyPluginAsync<BerichtRouteOptions> = async (fast
       return reply.send(bericht)
     } catch (err) {
       if (err instanceof BerichtError) return reply.status(err.httpStatus).send({ fehler: err.message })
-      fastify.log.error({ err }, 'Stundenbericht unerwartet fehlgeschlagen')
-      return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
+      throw err
     }
   })
 
@@ -149,8 +145,7 @@ export const berichtRoute: FastifyPluginAsync<BerichtRouteOptions> = async (fast
       return reply.send(bericht)
     } catch (err) {
       if (err instanceof BerichtError) return reply.status(err.httpStatus).send({ fehler: err.message })
-      fastify.log.error({ err }, 'Kellnerbericht unerwartet fehlgeschlagen')
-      return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
+      throw err
     }
   })
 
@@ -163,8 +158,7 @@ export const berichtRoute: FastifyPluginAsync<BerichtRouteOptions> = async (fast
       return reply.send(bericht)
     } catch (err) {
       if (err instanceof BerichtError) return reply.status(err.httpStatus).send({ fehler: err.message })
-      fastify.log.error({ err }, 'Kassenvergleich unerwartet fehlgeschlagen')
-      return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
+      throw err
     }
   })
 
@@ -177,8 +171,7 @@ export const berichtRoute: FastifyPluginAsync<BerichtRouteOptions> = async (fast
       return reply.send(bericht)
     } catch (err) {
       if (err instanceof BerichtError) return reply.status(err.httpStatus).send({ fehler: err.message })
-      fastify.log.error({ err }, 'Küchen-Bericht unerwartet fehlgeschlagen')
-      return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
+      throw err
     }
   })
 
@@ -197,8 +190,7 @@ export const berichtRoute: FastifyPluginAsync<BerichtRouteOptions> = async (fast
         .send(csv)
     } catch (err) {
       if (err instanceof BerichtError) return reply.status(err.httpStatus).send({ fehler: err.message })
-      fastify.log.error({ err }, 'Buchungsjournal-Export unerwartet fehlgeschlagen')
-      return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
+      throw err
     }
   })
 }

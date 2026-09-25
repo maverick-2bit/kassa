@@ -57,7 +57,7 @@ import {
   type TicketEventRow,
 } from '../db/schema.js'
 import { erstelleBarzahlungsbeleg, holeBeleg, type BelegServiceDeps } from './beleg.service.js'
-import { isEmailAktiv, sendeTicketEmail, type TicketKaufInfo } from './email.service.js'
+import { EmailVersandError, isEmailAktiv, sendeTicketEmail, type TicketKaufInfo } from './email.service.js'
 import {
   beendeCheckoutSession,
   erstelleTicketCheckoutSession,
@@ -715,7 +715,7 @@ export async function sendeBestellEmail(
       .where(and(eq(tickets.bestellungId, id), eq(tickets.status, 'gueltig')))
       .orderBy(asc(tickets.createdAt), asc(tickets.code))).map(t => t.code)
     const daten = await holeTicketDruckdaten(deps.db, codes, basis)
-    if (daten.length === 0) throw new Error('Keine gültigen Tickets in dieser Bestellung')
+    if (daten.length === 0) throw new TicketShopError(409, 'Keine gültigen Tickets in dieser Bestellung')
 
     const kauf: TicketKaufInfo = {
       summeCent:  b.summeCent,
@@ -741,9 +741,15 @@ export async function sendeBestellEmail(
     await merke(null)
     return { erfolgreich: true }
   } catch (err) {
-    const fehler = err instanceof Error ? err.message : String(err)
-    await merke(fehler)
-    return { erfolgreich: false, fehler }
+    // Meldung des Mailservers bzw. eigene Fachmeldung → an der Bestellung und im
+    // Ergebnis. Interne Fehler (DB, PDF) nicht im Wortlaut: nur vermerken und
+    // weiterwerfen, damit der Aufrufer (globaler Handler) sie protokolliert.
+    if (!(err instanceof EmailVersandError || err instanceof TicketShopError)) {
+      await merke('Versand fehlgeschlagen (interner Fehler)')
+      throw err
+    }
+    await merke(err.message)
+    return { erfolgreich: false, fehler: err.message }
   }
 }
 

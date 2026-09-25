@@ -69,7 +69,7 @@ import {
   storniereTicket,
 } from '../services/ticket.service.js'
 import { erzeugeTicketPdf } from '../services/ticket-pdf.service.js'
-import { isEmailAktiv, sendeTicketEmail } from '../services/email.service.js'
+import { EmailVersandError, isEmailAktiv, sendeTicketEmail } from '../services/email.service.js'
 import { getClientIp, logAudit } from '../services/audit.service.js'
 import {
   EinlassError,
@@ -116,8 +116,10 @@ export const ticketingRoute: FastifyPluginAsync<TicketingRouteOptions> = async (
       await sendeTicketEmail(email, daten, config)
       return { erfolgreich: true }
     } catch (err) {
+      // Die Tickets sind schon ausgestellt — daher kein 500, sondern ein Versandergebnis.
+      // Nur die Meldung des Mailservers geht an die Oberfläche, nichts Internes (PDF, QR).
       fastify.log.warn({ err }, 'Ticket-E-Mail konnte nicht gesendet werden')
-      return { erfolgreich: false, fehler: err instanceof Error ? err.message : 'Versand fehlgeschlagen' }
+      return { erfolgreich: false, fehler: err instanceof EmailVersandError ? err.message : 'Versand fehlgeschlagen' }
     }
   }
 

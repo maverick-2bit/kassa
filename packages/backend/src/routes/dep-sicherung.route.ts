@@ -36,15 +36,11 @@ export const depSicherungRoute: FastifyPluginAsync<DepSicherungRouteOptions> = a
     if (!(await pruefeKasseGehoertZuMandant(opts.db, parsed.data.kasseId, request.user.mandantId)))
       return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
 
-    try {
-      const sicherung = await erstelleDepSicherung(
-        opts.db, parsed.data.kasseId, request.user.mandantId, opts.backupDir, false,
-      )
-      return reply.status(201).send(sicherung)
-    } catch (err) {
-      fastify.log.error({ err }, 'Manuelle DEP-Sicherung fehlgeschlagen')
-      return reply.status(500).send({ fehler: err instanceof Error ? err.message : String(err) })
-    }
+    // Fehler (DB, Dateisystem) beantwortet der globale Handler — ohne Interna
+    const sicherung = await erstelleDepSicherung(
+      opts.db, parsed.data.kasseId, request.user.mandantId, opts.backupDir, false,
+    )
+    return reply.status(201).send(sicherung)
   })
 
   fastify.get('/dep-sicherungen/:id/download', guard, async (request, reply) => {

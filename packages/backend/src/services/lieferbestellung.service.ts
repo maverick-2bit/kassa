@@ -20,6 +20,13 @@ import type {
   LieferbestellungStatus,
 } from '@kassa/shared'
 
+/** Fachfehler mit HTTP-Status — die Route gibt Status und Meldung weiter. */
+export class LieferbestellungError extends Error {
+  constructor(public readonly httpStatus: number, message: string) {
+    super(message)
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Payload-Normalisierung (Provider-spezifisch)
 // ---------------------------------------------------------------------------
@@ -219,7 +226,7 @@ export async function erstelleBestellung(
     .from(kassen)
     .where(eq(kassen.id, kasseId))
     .limit(1)
-  if (!kasse) throw new Error('Kasse nicht gefunden')
+  if (!kasse) throw new LieferbestellungError(404, 'Kasse nicht gefunden')
 
   const norm = normalisiereWebhookPayload(provider, raw)
 
@@ -263,7 +270,7 @@ export async function erstelleBestellung(
     })
     .returning()
 
-  if (!row) throw new Error('Bestellung konnte nicht gespeichert werden')
+  if (!row) throw new LieferbestellungError(500, 'Bestellung konnte nicht gespeichert werden')
 
   // SSE-Push an alle verbundenen Clients dieses Mandanten
   emitKasseEvent(kasse.mandantId, {
@@ -337,7 +344,7 @@ export async function aktualisiereBestellungStatus(
     )
     .returning()
 
-  if (!row) throw new Error('Bestellung nicht gefunden')
+  if (!row) throw new LieferbestellungError(404, 'Bestellung nicht gefunden')
   return toDto(row)
 }
 
@@ -356,7 +363,7 @@ export async function druckeLieferbestellung(
     .from(lieferbestellungen)
     .where(and(eq(lieferbestellungen.id, id), eq(lieferbestellungen.mandantId, mandantId)))
     .limit(1)
-  if (!row) throw new Error('Bestellung nicht gefunden')
+  if (!row) throw new LieferbestellungError(404, 'Bestellung nicht gefunden')
 
   // Kasse laden
   const [kasse] = await db
@@ -371,10 +378,10 @@ export async function druckeLieferbestellung(
     .from(kassen)
     .where(eq(kassen.id, row.kasseId))
     .limit(1)
-  if (!kasse) throw new Error('Kasse nicht gefunden')
+  if (!kasse) throw new LieferbestellungError(404, 'Kasse nicht gefunden')
 
   const druckerConfig = druckerConfigVonKasse(kasse)
-  if (!druckerConfig) throw new Error('Drucker nicht konfiguriert oder deaktiviert')
+  if (!druckerConfig) throw new LieferbestellungError(409, 'Drucker nicht konfiguriert oder deaktiviert')
 
   // Mandant laden
   const [mandant] = await db
@@ -382,7 +389,7 @@ export async function druckeLieferbestellung(
     .from(mandanten)
     .where(eq(mandanten.id, mandantId))
     .limit(1)
-  if (!mandant) throw new Error('Mandant nicht gefunden')
+  if (!mandant) throw new LieferbestellungError(404, 'Mandant nicht gefunden')
 
   const bytes = baueLieferbestellungBon(
     toDto(row),
