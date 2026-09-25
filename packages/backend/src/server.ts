@@ -167,7 +167,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   await fastify.register(sseRoute)
 
   // Display-Routen: POST /api/display + GET /sse/display
-  await registerDisplayRoutes(fastify)
+  await registerDisplayRoutes(fastify, { db: deps.db })
 
   // SB-Terminal (öffentlich): /api/terminal/* + GET /sse/abholung
   await registerTerminalRoutes(fastify, { deps: { db: deps.db, belegDeps: deps.belegDeps } })

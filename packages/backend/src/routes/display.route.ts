@@ -7,7 +7,11 @@
 
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
+import type { Db } from '../db/client.js'
+import { pruefeKasseGehoertZuMandant } from '../auth/scope.js'
 import { emitDisplayEvent, onDisplayEvent, type DisplayEvent } from '../sse/display-event-bus.js'
+
+export interface DisplayRouteOptions { db: Db }
 
 const DisplayPositionSchema = z.object({
   bezeichnung: z.string(),
@@ -33,7 +37,7 @@ const DisplayPushSchema = z.object({
   ]),
 })
 
-export async function registerDisplayRoutes(fastify: FastifyInstance): Promise<void> {
+export async function registerDisplayRoutes(fastify: FastifyInstance, opts: DisplayRouteOptions): Promise<void> {
 
   // ── POST /api/display — Kassafrontend → Display ────────────────────────────
   fastify.post(
@@ -42,6 +46,11 @@ export async function registerDisplayRoutes(fastify: FastifyInstance): Promise<v
     async (request, reply) => {
       const parsed = DisplayPushSchema.safeParse(request.body)
       if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
+
+      // Der Kanal ist nur nach kasseId geschlüsselt (GET /sse/display ist öffentlich) —
+      // ohne Prüfung bespielte jeder Angemeldete das Kundendisplay fremder Kassen
+      if (!(await pruefeKasseGehoertZuMandant(opts.db, parsed.data.kasseId, request.user.mandantId)))
+        return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
 
       emitDisplayEvent(parsed.data.kasseId, parsed.data.event as DisplayEvent)
       return reply.send({ ok: true })
