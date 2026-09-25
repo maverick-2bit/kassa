@@ -7,6 +7,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import fastifyJwt from '@fastify/jwt'
 import type { Berechtigung, Rolle } from '@kassa/shared'
 import type { Config } from '../config.js'
+import { erstelleGeraetVertrauen } from './geraet-vertrauen.js'
 import './jwt.js'
 
 export async function registerAuth(fastify: FastifyInstance, config: Config): Promise<void> {
@@ -14,6 +15,9 @@ export async function registerAuth(fastify: FastifyInstance, config: Config): Pr
     secret: config.JWT_SECRET,
     sign:   { expiresIn: config.JWT_EXPIRES_IN },
   })
+
+  // Geräte-Merkmal für die PIN-Bremse — eigener Schlüssel, kein JWT (siehe geraet-vertrauen.ts)
+  fastify.decorate('geraetVertrauen', erstelleGeraetVertrauen(config.JWT_SECRET))
 
   // Geräte-Token (langlebig, z. B. KDS-Bildschirm, Einlass-Scanner) dürfen NUR
   // ihre Geräte-Routen benutzen — überall sonst zählen sie als nicht angemeldet.

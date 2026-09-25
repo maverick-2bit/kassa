@@ -1,12 +1,13 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { LoginInputSchema, type LoginInput, type Startseite } from '@kassa/shared'
-import { authApi, posConfigApi, setupApi } from '../lib/api'
-import { setAuth } from '../lib/auth'
+import { LoginInputSchema, PIN_LAENGE_CODE, type LoginInput, type Startseite } from '@kassa/shared'
+import { ApiError, authApi, posConfigApi, setupApi } from '../lib/api'
+import { gemerktePinLaenge, getGeraetToken, merkePinLaenge, setAuth } from '../lib/auth'
 import { getKasseIdentity, setKasseIdentity } from '../lib/kasse'
+import { restzeitText, usePinSperre } from '../lib/pin-sperre'
 import { Field } from '../components/ui/Field'
 import { Input } from '../components/ui/Input'
 import { Button } from '../components/ui/Button'
@@ -112,8 +113,25 @@ function PinLoginForm({ onNavigate }: { onNavigate: (pfad: string) => void }) {
   const [pin, setPin]         = useState('')
   const [fehler, setFehler]   = useState<string | null>(null)
   const inputRef              = useRef<HTMLInputElement>(null)
+  const sperre                = usePinSperre()
 
   const identity = getKasseIdentity()
+
+  // PIN-Länge des Betriebs (4 oder 6): zuletzt bekannte sofort, dann frisch vom
+  // Server — das Feld schickt nach der letzten Ziffer automatisch ab.
+  const [pinLaenge, setPinLaenge] = useState(gemerktePinLaenge)
+  const pinInfo = useQuery({
+    queryKey:  ['pin-info', identity?.kasseId],
+    queryFn:   () => authApi.pinInfo(identity!.kasseId),
+    enabled:   !!identity,
+    staleTime: 60_000,
+    retry:     false,
+  })
+  useEffect(() => {
+    if (!pinInfo.data) return
+    setPinLaenge(pinInfo.data.pinLaenge)
+    merkePinLaenge(pinInfo.data.pinLaenge)
+  }, [pinInfo.data])
 
   const mutation = useMutation({
     mutationFn: authApi.pinLogin,
@@ -130,19 +148,33 @@ function PinLoginForm({ onNavigate }: { onNavigate: (pfad: string) => void }) {
       onNavigate(pfad)
     },
     onError: (err) => {
-      setFehler(err instanceof Error ? err.message : 'PIN ungültig')
       setPin('')
       inputRef.current?.focus()
+      // Zu viele Fehlversuche: Countdown statt Meldung — bis dahin prüft der Server nichts
+      if (sperre.uebernimm(err)) { setFehler(null); return }
+      // Betrieb wurde auf eine andere PIN-Länge umgestellt → Feld anpassen
+      if (err instanceof ApiError && err.code === PIN_LAENGE_CODE && err.pinLaenge) {
+        setPinLaenge(err.pinLaenge === 6 ? 6 : 4)
+        merkePinLaenge(err.pinLaenge)
+        setFehler(`PINs haben jetzt ${err.pinLaenge} Ziffern — bitte erneut eingeben.`)
+        return
+      }
+      setFehler(err instanceof Error ? err.message : 'PIN ungültig')
     },
   })
 
+  /** Geräte-Merkmal mitschicken: ein Fremder kann dieses Gerät dann nicht aussperren */
+  const anmelden = (kasseId: string, eingabe: string) => {
+    const geraetToken = getGeraetToken()
+    mutation.mutate({ kasseId, pin: eingabe, ...(geraetToken ? { geraetToken } : {}) })
+  }
+
   const handleDigit = (d: string) => {
-    const next = (pin + d).slice(0, 4)
+    if (sperre.gesperrt) return
+    const next = (pin + d).slice(0, pinLaenge)
     setPin(next)
     setFehler(null)
-    if (next.length === 4 && identity) {
-      mutation.mutate({ kasseId: identity.kasseId, pin: next })
-    }
+    if (next.length === pinLaenge && identity) anmelden(identity.kasseId, next)
   }
 
   const handleDelete = () => setPin(p => p.slice(0, -1))
@@ -164,7 +196,7 @@ function PinLoginForm({ onNavigate }: { onNavigate: (pfad: string) => void }) {
 
       {/* PIN-Punkte */}
       <div className="flex justify-center gap-3 mb-6">
-        {[0, 1, 2, 3].map((i) => (
+        {Array.from({ length: pinLaenge }, (_, i) => (
           <div
             key={i}
             className={`h-4 w-4 rounded-full border-2 transition ${
@@ -175,6 +207,13 @@ function PinLoginForm({ onNavigate }: { onNavigate: (pfad: string) => void }) {
           />
         ))}
       </div>
+
+      {sperre.gesperrt && (
+        <div role="alert" className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 text-center">
+          Zu viele falsche PIN-Eingaben — wieder möglich in{' '}
+          <span className="font-semibold tabular-nums">{restzeitText(sperre.restSekunden)}</span>
+        </div>
+      )}
 
       {fehler && (
         <div className="mb-4 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700 text-center">
@@ -188,7 +227,7 @@ function PinLoginForm({ onNavigate }: { onNavigate: (pfad: string) => void }) {
           <button
             key={i}
             type="button"
-            disabled={mutation.isPending || d === ''}
+            disabled={mutation.isPending || sperre.gesperrt || d === ''}
             onClick={() => d === '⌫' ? handleDelete() : handleDigit(d)}
             className={`h-14 rounded-xl text-xl font-semibold transition ${
               d === ''
@@ -209,12 +248,11 @@ function PinLoginForm({ onNavigate }: { onNavigate: (pfad: string) => void }) {
         type="tel"
         value={pin}
         onChange={(e) => {
-          const v = e.target.value.replace(/\D/g, '').slice(0, 4)
+          if (sperre.gesperrt) return
+          const v = e.target.value.replace(/\D/g, '').slice(0, pinLaenge)
           setPin(v)
           setFehler(null)
-          if (v.length === 4 && identity) {
-            mutation.mutate({ kasseId: identity.kasseId, pin: v })
-          }
+          if (v.length === pinLaenge && identity) anmelden(identity.kasseId, v)
         }}
         className="sr-only"
         aria-hidden
@@ -260,7 +298,12 @@ function PasswortLoginForm({ onNavigate }: { onNavigate: (pfad: string) => void 
 
   return (
     <form
-      onSubmit={handleSubmit((data) => { setServerFehler(null); mutation.mutate(data) })}
+      onSubmit={handleSubmit((data) => {
+        setServerFehler(null)
+        // Auch der E-Mail-Login verlängert das Geräte-Merkmal (gleiches Gerät, gleicher Topf)
+        const geraetToken = getGeraetToken()
+        mutation.mutate({ ...data, ...(geraetToken ? { geraetToken } : {}) })
+      })}
       className="rounded-xl bg-panel shadow-sm border border-line p-6 space-y-4"
       noValidate
     >

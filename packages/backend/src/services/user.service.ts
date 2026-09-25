@@ -3,8 +3,9 @@ import { randomBytes } from 'node:crypto'
 import { and, eq, isNotNull, ne } from 'drizzle-orm'
 import type { Berechtigung, User as PublicUser, UserCreateInput, UserUpdateInput } from '@kassa/shared'
 import type { Db } from '../db/client.js'
-import { userKassen, users } from '../db/schema.js'
+import { mandanten, userKassen, users } from '../db/schema.js'
 import { hashPassword, userZuDto } from './auth.service.js'
+import { alsPinLaenge } from './pin-laenge.js'
 
 const BCRYPT_COST = 10
 
@@ -24,8 +25,25 @@ async function setzeKassenZuordnung(db: Db, userId: string, kassenIds: string[])
 }
 
 /**
+ * Neue PINs müssen die Länge des Betriebs haben (4 oder 6 Ziffern) — eine PIN
+ * in der anderen Länge wäre sofort ungültig, weil die Prüfungen sie ignorieren.
+ */
+async function pruefePinLaengeDesBetriebs(db: Db, pin: string, mandantId: string): Promise<void> {
+  const [m] = await db
+    .select({ pinLaenge: mandanten.pinLaenge })
+    .from(mandanten)
+    .where(eq(mandanten.id, mandantId))
+    .limit(1)
+  const laenge = alsPinLaenge(m?.pinLaenge)
+  if (pin.length !== laenge) {
+    throw new UserError(400, `PIN muss ${laenge} Ziffern haben (Einstellung des Betriebs)`)
+  }
+}
+
+/**
  * PIN ist pro Mandant eindeutig — bei der PIN-Eingabe muss eindeutig ein User
  * identifizierbar sein. Wird bcrypt-verglichen, da Hashes nicht direkt vergleichbar.
+ * Nur PINs derselben Länge können gleich sein.
  */
 async function pruefePinEindeutig(
   db: Db,
@@ -33,9 +51,11 @@ async function pruefePinEindeutig(
   mandantId: string,
   ausnehmenUserId?: string,
 ): Promise<void> {
-  const where = ausnehmenUserId
-    ? and(eq(users.mandantId, mandantId), eq(users.aktiv, true), isNotNull(users.pinHash), ne(users.id, ausnehmenUserId))
-    : and(eq(users.mandantId, mandantId), eq(users.aktiv, true), isNotNull(users.pinHash))
+  const basis = and(
+    eq(users.mandantId, mandantId), eq(users.aktiv, true), isNotNull(users.pinHash),
+    eq(users.pinLaenge, pin.length),
+  )
+  const where = ausnehmenUserId ? and(basis, ne(users.id, ausnehmenUserId)) : basis
 
   const kandidaten = await db.select({ id: users.id, pinHash: users.pinHash }).from(users).where(where)
 
@@ -75,7 +95,10 @@ export async function createUser(
     .limit(1)
   if (existing[0]) throw new UserError(409, 'E-Mail bereits vergeben')
 
-  if (input.pin) await pruefePinEindeutig(deps.db, input.pin, mandantId)
+  if (input.pin) {
+    await pruefePinLaengeDesBetriebs(deps.db, input.pin, mandantId)
+    await pruefePinEindeutig(deps.db, input.pin, mandantId)
+  }
 
   const passwordHash = await hashPassword(passwort)
   const pinHash      = input.pin ? await bcrypt.hash(input.pin, BCRYPT_COST) : null
@@ -89,6 +112,7 @@ export async function createUser(
       email,
       passwordHash,
       pinHash,
+      ...(input.pin ? { pinLaenge: input.pin.length } : {}),
       name:           input.name,
       rolle:          input.rolle,
       berechtigungen,
@@ -127,7 +151,11 @@ export async function updateUser(
 
   // PIN: null = PIN entfernen, string = neuen PIN setzen
   if (input.pin !== undefined) {
-    if (input.pin !== null) await pruefePinEindeutig(deps.db, input.pin, mandantId, id)
+    if (input.pin !== null) {
+      await pruefePinLaengeDesBetriebs(deps.db, input.pin, mandantId)
+      await pruefePinEindeutig(deps.db, input.pin, mandantId, id)
+      updates.pinLaenge = input.pin.length
+    }
     updates.pinHash = input.pin === null ? null : await bcrypt.hash(input.pin, BCRYPT_COST)
   }
 
