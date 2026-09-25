@@ -13,6 +13,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { KATEGORIE_FARBE_HEX, type AktiveAktion, type Artikel, type Kategorie, type KategorieFarbe, type ModifikatorAuswahl, type ModifikatorGruppe } from '@kassa/shared'
 import { formatPreis } from '../lib/format'
+import {
+  artikelDerKasse,
+  FAVORITEN_TAB_ID,
+  reiterGueltig,
+  sichtbareWarengruppen,
+  SONSTIGE_TAB_ID,
+  startReiter,
+  type ReiterLage,
+} from '../lib/artikel-reiter'
 import { ModifikatorModal } from './ModifikatorModal'
 import { Input } from './ui/Input'
 
@@ -34,8 +43,12 @@ interface Props {
   sichtbareKategorieIds?: string[] | undefined
   /** Artikelbilder anzeigen (default: true) */
   artikelbilderAktiv?:  boolean
-  /** Initialer Tab: Kategorie-ID oder '__favoriten__' (default: null = Alle) */
+  /** Ausdrücklich gewünschter Start-Reiter: Kategorie-ID oder '__favoriten__' (überstimmt die Kassen-Einstellung) */
   initialKategorieId?:  string | null
+  /** POS-Konfiguration: Artikelwahl öffnet mit den Favoriten (default: true) */
+  startFavoriten?:      boolean | undefined
+  /** POS-Konfiguration: sonst mit dieser Warengruppe (null = erste mit Artikeln) */
+  startKategorieId?:    string | null | undefined
   /** Optional: artikelId → Menge im Warenkorb (zeigt ein Mengen-Badge auf der Kachel) */
   mengenProArtikel?:    Map<string, number>
   /** Optional: gerade laufende Aktionen je Artikel — zeigt Badge + Aktionspreis */
@@ -50,16 +63,14 @@ interface Props {
 // Komponente
 // ---------------------------------------------------------------------------
 
-// Sentinel für den Favoriten-Tab
-const FAVORITEN_TAB_ID = '__favoriten__'
-
-export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClick, loading, sichtbareKategorieIds, artikelbilderAktiv = true, initialKategorieId = null, mengenProArtikel, aktionen, favoritenEintraege, artikelProZeile }: Props) {
-  // Kategorie-ID → Farbe, für den Akzentstreifen je Artikel (auch im „Alle"-Tab).
+export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClick, loading, sichtbareKategorieIds, artikelbilderAktiv = true, initialKategorieId = null, startFavoriten, startKategorieId, mengenProArtikel, aktionen, favoritenEintraege, artikelProZeile }: Props) {
+  // Kategorie-ID → Farbe, für den Akzentstreifen je Artikel (auch in Favoriten + Suche).
   const farbeProKategorie = useMemo(
     () => new Map(kategorien.map(k => [k.id, k.farbe] as const)),
     [kategorien],
   )
-  const [aktivKategorieId, setAktivKategorieId] = useState<string | null>(initialKategorieId)
+  // Vom Benutzer gewählter Reiter; null = noch keiner → Start-Reiter der Kasse
+  const [gewaehlterReiter, setGewaehlterReiter] = useState<string | null>(null)
   const [modArtikel, setModArtikel] = useState<Artikel | null>(null)
   const [suche, setSuche] = useState('')
 
@@ -68,19 +79,25 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
   const [fadeLinks,  setFadeLinks]  = useState(false)
   const [fadeRechts, setFadeRechts] = useState(false)
 
-  const aktiveKategorien = useMemo(() => {
-    const sorted = kategorien
-      .filter((k) => k.aktiv)
-      .sort((a, b) => a.reihenfolge - b.reihenfolge || a.name.localeCompare(b.name))
-    // Kassen-Sichtbarkeit: wenn IDs gesetzt, nur diese anzeigen
-    if (sichtbareKategorieIds && sichtbareKategorieIds.length > 0) {
-      return sorted.filter(k => sichtbareKategorieIds.includes(k.id))
-    }
-    return sorted
-  }, [kategorien, sichtbareKategorieIds])
+  const aktiveKategorien = useMemo(
+    () => sichtbareWarengruppen(kategorien, sichtbareKategorieIds),
+    [kategorien, sichtbareKategorieIds],
+  )
 
   // Rohstoffe/Bestandteile sind nur Lager, nicht direkt verkäuflich → aus dem Raster ausblenden.
-  const verkaufsartikel = useMemo(() => artikel.filter(a => !a.istBestandteil), [artikel])
+  // Und nur, was diese Kasse zeigen darf — auch in der Suche.
+  const verkaufsartikel = useMemo(
+    () => artikelDerKasse(artikel.filter(a => !a.istBestandteil), sichtbareKategorieIds),
+    [artikel, sichtbareKategorieIds],
+  )
+
+  // Artikel ohne (aktive) Warengruppe — eigener Reiter, nur wenn die Kasse alle zeigt
+  const sonstige = useMemo(() => {
+    const ids = new Set(aktiveKategorien.map(k => k.id))
+    return verkaufsartikel
+      .filter(a => !a.kategorieId || !ids.has(a.kategorieId))
+      .sort((a, b) => a.reihenfolge - b.reihenfolge || a.bezeichnung.localeCompare(b.bezeichnung))
+  }, [verkaufsartikel, aktiveKategorien])
 
   /**
    * Favoriten mit Platzhaltern (null): kommt eine Kassen-Liste, gilt exakt
@@ -111,6 +128,18 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
     return map
   }, [verkaufsartikel])
 
+  const lage = useMemo<ReiterLage>(() => ({
+    hatFavoriten: favoriten.length > 0,
+    hatSonstige:  sonstige.length > 0,
+    kategorieIds: aktiveKategorien.map(k => k.id),
+    kategorieIdsMitArtikeln: aktiveKategorien.filter(k => (anzahlProKategorie.get(k.id) ?? 0) > 0).map(k => k.id),
+  }), [favoriten, sonstige, aktiveKategorien, anzahlProKategorie])
+
+  // Gewählter Reiter, solange es ihn gibt — sonst der Start-Reiter der Kasse
+  const aktivKategorieId = reiterGueltig(gewaehlterReiter, lage)
+    ? gewaehlterReiter
+    : startReiter(lage, { startFavoriten, startKategorieId }, initialKategorieId)
+
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
@@ -138,16 +167,12 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
         .sort((a, b) => a.bezeichnung.localeCompare(b.bezeichnung))
     }
     if (aktivKategorieId === FAVORITEN_TAB_ID) return favoriten
-    if (aktivKategorieId === null) {
-      // "Alle"-Tab: nach reihenfolge sortieren
-      return [...verkaufsartikel].sort((a, b) => a.reihenfolge - b.reihenfolge || a.bezeichnung.localeCompare(b.bezeichnung))
-    }
+    if (aktivKategorieId === SONSTIGE_TAB_ID)  return sonstige
+    if (aktivKategorieId === null) return []
     return verkaufsartikel
       .filter(a => a.kategorieId === aktivKategorieId)
       .sort((a, b) => a.reihenfolge - b.reihenfolge || a.bezeichnung.localeCompare(b.bezeichnung))
-  }, [aktivKategorieId, verkaufsartikel, favoriten, suche])
-
-  const aktiveKategorie = aktiveKategorien.find((k) => k.id === aktivKategorieId)
+  }, [aktivKategorieId, verkaufsartikel, favoriten, sonstige, suche])
 
   // ---------------------------------------------------------------------------
 
@@ -191,7 +216,7 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
       </div>
 
       {/* ---- Kategorie-Leiste (bleibt oben) ---- */}
-      {(aktiveKategorien.length > 0 || favoriten.length > 0) && (
+      {(aktiveKategorien.length > 0 || favoriten.length > 0 || sonstige.length > 0) && (
         <div className="relative shrink-0 mb-3">
           {fadeLinks && (
             <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-8 z-10
@@ -206,22 +231,12 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
             {favoriten.length > 0 && (
               <TabBtn
                 aktiv={aktivKategorieId === FAVORITEN_TAB_ID}
-                onClick={() => setAktivKategorieId(
-                  aktivKategorieId === FAVORITEN_TAB_ID ? null : FAVORITEN_TAB_ID,
-                )}
+                onClick={() => setGewaehlterReiter(FAVORITEN_TAB_ID)}
                 farbeHex="#f59e0b"
               >
                 ⭐ Favoriten <Anzahl wert={favoriten.filter(f => f !== null).length} aktiv={aktivKategorieId === FAVORITEN_TAB_ID} />
               </TabBtn>
             )}
-
-            <TabBtn
-              aktiv={aktivKategorieId === null}
-              onClick={() => setAktivKategorieId(null)}
-              farbeHex="#16a34a"
-            >
-              Alle <Anzahl wert={verkaufsartikel.length} aktiv={aktivKategorieId === null} />
-            </TabBtn>
 
             {aktiveKategorien.map((k) => {
               const isAktiv = k.id === aktivKategorieId
@@ -230,7 +245,7 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
                 <TabBtn
                   key={k.id}
                   aktiv={isAktiv}
-                  onClick={() => setAktivKategorieId(isAktiv ? null : k.id)}
+                  onClick={() => setGewaehlterReiter(k.id)}
                   farbeHex={KATEGORIE_FARBE_HEX[k.farbe]}
                 >
                   {k.name}
@@ -238,6 +253,17 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
                 </TabBtn>
               )
             })}
+
+            {/* Artikel ohne (aktive) Warengruppe */}
+            {sonstige.length > 0 && (
+              <TabBtn
+                aktiv={aktivKategorieId === SONSTIGE_TAB_ID}
+                onClick={() => setGewaehlterReiter(SONSTIGE_TAB_ID)}
+                farbeHex="#64748b"
+              >
+                Sonstige <Anzahl wert={sonstige.length} aktiv={aktivKategorieId === SONSTIGE_TAB_ID} />
+              </TabBtn>
+            )}
           </div>
         </div>
       )}
@@ -419,6 +445,7 @@ function TabBtn({
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={aktiv}
       className="shrink-0 px-4 py-2.5 rounded-full text-sm font-medium transition
         min-h-[44px] flex items-center gap-1.5 hover:opacity-85"
       style={aktiv

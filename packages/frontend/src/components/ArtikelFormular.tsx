@@ -18,6 +18,7 @@ import { Field } from './ui/Field'
 import { Input } from './ui/Input'
 import { Select } from './ui/Select'
 import { Button } from './ui/Button'
+import { Schalter } from './ui/Schalter'
 import { FarbAuswahl } from './FarbAuswahl'
 import { formatPreis, parseEuroToCent } from '../lib/format'
 
@@ -380,17 +381,17 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
 
       {/* Favorit + Bonierdrucker */}
       <div className="rounded-lg border border-line p-3 space-y-3">
-        <label className="flex items-center gap-3 cursor-pointer">
-          <input
-            type="checkbox"
-            className="h-4 w-4 rounded border-line-strong text-amber-500 focus:ring-amber-400"
-            {...register('istFavorit')}
+        <div className="flex items-center gap-3">
+          <Schalter
+            an={watch('istFavorit')}
+            label="Favorit"
+            onChange={(an) => setValue('istFavorit', an, { shouldDirty: true })}
           />
           <div>
             <p className="text-sm font-medium text-ink">⭐ Favorit</p>
             <p className="text-xs text-ink-subtle">Erscheint im Favoriten-Tab der Kasse</p>
           </div>
-        </label>
+        </div>
 
         {bonierdrucker && bonierdrucker.length > 0 && (
           <Field label="Bonierdrucker (Override)" hint="Überschreibt den Drucker der Warengruppe">

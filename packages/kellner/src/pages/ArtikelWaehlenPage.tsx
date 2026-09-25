@@ -115,8 +115,14 @@ export function ArtikelWaehlenPage() {
 
   // Start-Reiter erst wählen, wenn Konfiguration UND Artikel da sind — sonst
   // gewinnt die erste Warengruppe, weil die Favoritenliste noch leer scheint.
+  // Welcher Reiter zuerst kommt, stellt die POS-Konfiguration je Kasse ein.
   if (aktivKat === null && !konfigQuery.isLoading && !artikelQuery.isLoading && !katQuery.isLoading && !favoritenQuery.isLoading) {
-    if (favoritenAktiv) setAktivKat(FAVORITEN_KAT)
+    const startKat = konfigQuery.data?.startKategorieId
+    const mitArtikeln = kategorien.filter(k => alleArtikel.some(a => a.kategorieId === k.id))
+    if (favoritenAktiv && (konfigQuery.data?.startFavoriten ?? true)) setAktivKat(FAVORITEN_KAT)
+    else if (startKat && kategorien.some(k => k.id === startKat)) setAktivKat(startKat)
+    else if (mitArtikeln.length > 0) setAktivKat(mitArtikeln[0]!.id)
+    else if (favoritenAktiv) setAktivKat(FAVORITEN_KAT)
     else if (kategorien.length > 0) setAktivKat(kategorien[0]!.id)
   }
 

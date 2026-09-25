@@ -195,6 +195,23 @@ function TabWarengruppen({
 
   const keineAktivieren = () => setKeineModus(true)
 
+  // Start-Reiter der Artikelwahl (Kasse, Tisch, Kellner-App)
+  const startMut = useMutation({
+    mutationFn: (wert: { startFavoriten: boolean; startKategorieId: string | null }) =>
+      posConfigApi.update(kasseId, wert),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['pos-config', kasseId] }),
+  })
+  const startWert = !posQuery.data || posQuery.data.startFavoriten
+    ? 'favoriten'
+    : (posQuery.data.startKategorieId ?? 'erste')
+  const startAendern = (wert: string) => startMut.mutate(
+    wert === 'favoriten' ? { startFavoriten: true,  startKategorieId: null }
+    : wert === 'erste'   ? { startFavoriten: false, startKategorieId: null }
+    :                      { startFavoriten: false, startKategorieId: wert },
+  )
+  const startGruppeAusgeblendet = startWert !== 'favoriten' && startWert !== 'erste'
+    && (!items.some(k => k.id === startWert && k.aktiv) || !istSichtbar(startWert))
+
   const toggleSichtbar = (id: string) => {
     let next: Set<string>
     if (keineModus) {
@@ -260,6 +277,35 @@ function TabWarengruppen({
           neue Auswahl fest (mindestens eine muss sichtbar sein). Solange gilt die bisherige Auswahl weiter.
         </p>
       )}
+
+      <div className="rounded-lg border border-line bg-panel-2 px-3 py-2.5 space-y-1">
+        <label className="flex flex-wrap items-center gap-2 text-sm text-ink">
+          <span className="font-medium">Artikelwahl öffnet mit</span>
+          <select
+            value={startWert}
+            onChange={e => startAendern(e.target.value)}
+            disabled={!posQuery.data || startMut.isPending}
+            aria-label="Artikelwahl öffnet mit"
+            className="rounded-md border border-line-strong bg-panel px-2 py-1 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand-500"
+          >
+            <option value="favoriten">⭐ Favoriten</option>
+            <option value="erste">Erste Warengruppe</option>
+            {items.filter(k => k.aktiv && istSichtbar(k.id)).map(k => (
+              <option key={k.id} value={k.id}>{k.name}</option>
+            ))}
+            {startGruppeAusgeblendet && (
+              <option value={startWert}>
+                {items.find(k => k.id === startWert)?.name ?? 'Unbekannte Warengruppe'} (ausgeblendet)
+              </option>
+            )}
+          </select>
+        </label>
+        <p className="text-xs text-ink-subtle">
+          Gilt an dieser Kasse für Direktverkauf, Tische und die Kellner-App. Gibt es keine Favoriten
+          (bzw. ist die Warengruppe ausgeblendet), öffnet die erste Warengruppe mit Artikeln.
+          {startGruppeAusgeblendet && ' Die gewählte Warengruppe ist an dieser Kasse gerade ausgeblendet.'}
+        </p>
+      </div>
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={items.map(k => k.id)} strategy={verticalListSortingStrategy}>

@@ -105,6 +105,36 @@ describe('Kellner-App-Konfiguration (Integration, echtes PostgreSQL)', () => {
     expect(res.kellnerFavoritenAktiv).toBe(true)
   })
 
+  it('Start-Reiter der Artikelwahl: Standard Favoriten, Warengruppe wählbar, unbekannte abgelehnt', async () => {
+    const lese = async () => (await srv.fastify.inject({
+      method: 'GET', url: `/api/kassen/${kasseId}/pos-config`, headers: auth(),
+    })).json()
+    expect(await lese()).toMatchObject({ startFavoriten: true, startKategorieId: null })
+
+    const kat = (await srv.fastify.inject({
+      method: 'POST', url: '/api/kategorien', headers: auth(), payload: { name: 'Getränke', farbe: 'blau' },
+    })).json()
+    expect((await srv.fastify.inject({
+      method: 'PUT', url: `/api/kassen/${kasseId}/pos-config`, headers: auth(),
+      payload: { startFavoriten: false, startKategorieId: kat.id },
+    })).statusCode).toBe(204)
+    expect(await lese()).toMatchObject({ startFavoriten: false, startKategorieId: kat.id })
+
+    // Unbekannte Warengruppe → 404, Einstellung bleibt
+    expect((await srv.fastify.inject({
+      method: 'PUT', url: `/api/kassen/${kasseId}/pos-config`, headers: auth(),
+      payload: { startKategorieId: '00000000-0000-4000-8000-000000000000' },
+    })).statusCode).toBe(404)
+    expect((await lese()).startKategorieId).toBe(kat.id)
+
+    // null = erste sichtbare Warengruppe
+    await srv.fastify.inject({
+      method: 'PUT', url: `/api/kassen/${kasseId}/pos-config`, headers: auth(),
+      payload: { startFavoriten: true, startKategorieId: null },
+    })
+    expect(await lese()).toMatchObject({ startFavoriten: true, startKategorieId: null })
+  })
+
   it('lehnt einen unbekannten Tischwahl-Modus ab', async () => {
     const res = await srv.fastify.inject({
       method: 'PUT', url: `/api/kassen/${kasseId}/pos-config`, headers: auth(),

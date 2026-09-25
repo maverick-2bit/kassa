@@ -101,6 +101,10 @@ export const PosKonfigSchema = z.object({
   kellnerTischwahl:      KellnerTischwahlEnum,
   /** Kellner-App: Favoriten als ersten Reiter in der Artikelwahl anzeigen */
   kellnerFavoritenAktiv: z.boolean(),
+  /** Artikelwahl (Kasse, Tisch, Kellner-App) öffnet mit den Favoriten */
+  startFavoriten:        z.boolean(),
+  /** Sonst mit dieser Warengruppe (null = erste sichtbare) */
+  startKategorieId:      z.string().uuid().nullable(),
 })
 export type PosKonfig = z.infer<typeof PosKonfigSchema>
 
@@ -114,6 +118,8 @@ export const PosKonfigUpdateSchema = z.object({
   kellnerModus:          KellnerModusEnum.optional(),
   kellnerTischwahl:      KellnerTischwahlEnum.optional(),
   kellnerFavoritenAktiv: z.boolean().optional(),
+  startFavoriten:        z.boolean().optional(),
+  startKategorieId:      z.string().uuid().nullable().optional(),
 })
 export type PosKonfigUpdate = z.infer<typeof PosKonfigUpdateSchema>
 
