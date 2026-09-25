@@ -142,20 +142,25 @@ function KasseKarte({ kasseId, titel, untertitel, pool, bonier, istGastro }: {
             </span>
           </label>
 
-          {/* Gast-Selbstbestellung mit Online-Zahlung */}
-          <label className="sm:col-span-2 flex items-start gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              className="mt-0.5 h-4 w-4 rounded border-line-strong text-brand-600 focus:ring-brand-500"
-              checked={cfg?.gastBestellungAktiv ?? false}
+          {/* Gast-Bestellung per Tisch-QR: aus | ohne Zahlung (Tab) | mit Online-Zahlung */}
+          <label className="block sm:col-span-2">
+            <span className="text-xs font-medium text-ink-muted">Gast-Bestellung per Tisch-QR</span>
+            <select
+              className="mt-1 block w-full rounded-md border border-line-strong px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500/40"
+              value={cfg?.gastModus ?? 'aus'}
               disabled={patchDrucker.isPending}
-              onChange={(e) => patchDrucker.mutate({ gastBestellungAktiv: e.target.checked })}
-            />
-            <span>
-              <span className="text-xs font-medium text-ink">Gast-Selbstbestellung mit Online-Zahlung</span>
-              <span className="mt-0.5 block text-[11px] text-ink-subtle">
-                Gast bestellt über den Tisch-QR und zahlt online (Stripe). Voraussetzung: Stripe-Keys am Server konfiguriert.
-              </span>
+              onChange={(e) => patchDrucker.mutate({ gastModus: e.target.value as DruckerConfig['gastModus'] })}
+            >
+              <option value="aus">Aus</option>
+              <option value="tab">Ohne Zahlung (offener Tisch)</option>
+              <option value="online">Mit Online-Zahlung (Stripe)</option>
+            </select>
+            <span className="mt-1 block text-[11px] text-ink-subtle">
+              {cfg?.gastModus === 'tab'
+                ? 'Die Bestellung erscheint als offener Tisch mit Kellner „Gast"; bezahlt wird beim Personal.'
+                : cfg?.gastModus === 'online'
+                  ? 'Gast zahlt sofort online; Beleg und Bonierung laufen automatisch. Voraussetzung: Stripe-Keys (Einstellungen → Gastro).'
+                  : 'Die Tisch-QR-Codes dieser Kasse nehmen keine Bestellungen an.'}
             </span>
           </label>
 

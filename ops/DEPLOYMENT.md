@@ -193,6 +193,11 @@ in **Einstellungen → RKSV → Signaturerstellungseinheit** auf A-Trust umstell
 Die `kasseId` und die Geräte-Links stehen fertig in **Einstellungen → SB-Terminal**
 (Terminal + Monitor) bzw. den jeweiligen Einstellungsbereichen zum Kopieren.
 
+Die Gast-Bestellung per Tisch-QR ist je Kasse schaltbar: **Einstellungen → Hardware →
+„Gast-Bestellung per Tisch-QR"** — *Aus* (neue Kassen), *Ohne Zahlung* (Bestellung landet
+als offener Tisch mit Kellner „Gast") oder *Mit Online-Zahlung* (Abschnitt 7b). Solange
+„Aus" gewählt ist, nimmt die Kasse über den QR-Code nichts an.
+
 Tablets/Displays am besten im **Kiosk-/Vollbildmodus** des Browsers betreiben.
 
 **Proxy-Modus (optional, HTTPS unter einer Domain)** — siehe Abschnitt 7.
@@ -294,8 +299,8 @@ Fehlen für einen Mandanten sowohl eigene als auch globale Keys, ist die Online-
 **nie in Produktion ohne Keys**).
 
 **Zusätzlich, unabhängig von Variante A/B:**
-- Pro Kasse freischalten: **Einstellungen → Hardware → „Gast-Selbstbestellung mit
-  Online-Zahlung"**, und die **Gast-Bestell-Basis-URL** auf die öffentliche Gast-App
+- Pro Kasse freischalten: **Einstellungen → Hardware → „Gast-Bestellung per Tisch-QR"
+  = „Mit Online-Zahlung (Stripe)"**, und die **Gast-Bestell-Basis-URL** auf die öffentliche Gast-App
   setzen (z. B. `https://gast.example.com`) — daraus wird der Tisch-QR gebaut und der
   Rücksprung nach der Zahlung.
 - Tisch-QRs drucken: **Tische → „Tischnummern drucken"** mit QR (Abschnitt Phase 1).
