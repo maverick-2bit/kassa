@@ -40,7 +40,7 @@ function fastifyStatus(error: unknown): number | undefined {
 }
 
 /** httpStatus — Fachfehler-Konvention der Services: Error mit Meldung für die Oberfläche. */
-function fachfehlerStatus(error: unknown): number | undefined {
+export function fachfehlerStatus(error: unknown): number | undefined {
   if (!(error instanceof Error)) return undefined
   const { httpStatus } = error as { httpStatus?: unknown }
   return istFehlerStatus(httpStatus) ? httpStatus : undefined

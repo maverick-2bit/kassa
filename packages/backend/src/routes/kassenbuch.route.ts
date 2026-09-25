@@ -110,8 +110,7 @@ export const kassenbuchRoute: FastifyPluginAsync<KassenbuchRouteOptions> = async
       if (err instanceof DruckerError) {
         return reply.status(err.httpStatus).send({ fehler: err.message })
       }
-      fastify.log.error({ err }, 'Kassenbuch-Druck fehlgeschlagen')
-      return reply.status(502).send({ fehler: err instanceof Error ? err.message : String(err) })
+      throw err
     }
   })
 }

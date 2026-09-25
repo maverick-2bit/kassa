@@ -17,7 +17,7 @@ import { gunzipSync } from 'node:zlib'
 import { desc } from 'drizzle-orm'
 import { erstelleIntegrationsDb, type IntegrationsDb } from './helpers/integrationsDb.js'
 import { dbSicherungen } from '../../src/db/schema.js'
-import { erstelleDbSicherung } from '../../src/services/db-backup.service.js'
+import { DbSicherungError, erstelleDbSicherung } from '../../src/services/db-backup.service.js'
 
 function pgDumpMajor(): number {
   const r = spawnSync('pg_dump', ['--version'], { encoding: 'utf8', shell: false })
@@ -68,7 +68,11 @@ describe.skipIf(!CLIENT_OK)('DB-Sicherung (pg_dump + node:zlib)', () => {
   it('Fehlerpfad: nicht existente Ziel-DB → throw + Protokollzeile erfolgreich=false', async () => {
     const kaputteUrl = idb.url.replace(/\/[^/]+$/, '/gibt_es_nicht_xyz')
 
-    await expect(erstelleDbSicherung(idb.db, kaputteUrl, backupDir, true)).rejects.toThrow()
+    // Fachfehler: Die pg_dump-Meldung ist für den Admin gedacht (POST /api/db-sicherungen
+    // gibt sie weiter), DB- und Dateisystem-Fehler rundherum nicht.
+    const fehler = await erstelleDbSicherung(idb.db, kaputteUrl, backupDir, true).catch((e: unknown) => e)
+    expect(fehler).toBeInstanceOf(DbSicherungError)
+    expect((fehler as Error).message).toMatch(/^pg_dump fehlgeschlagen/)
 
     const [letzte] = await idb.db.select().from(dbSicherungen)
       .orderBy(desc(dbSicherungen.erstelltAm)).limit(1)
