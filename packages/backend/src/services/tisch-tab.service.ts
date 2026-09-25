@@ -515,6 +515,21 @@ export async function verwerfeTab(
   return { tab: toResponse(row), stornoBon }
 }
 
+/**
+ * Tab bezahlen: ein RKSV-Beleg über den ganzen Tisch — GENAU EINMAL und
+ * ALLES ODER NICHTS.
+ *
+ *  1. Tab sperren (FOR UPDATE): eine doppelt abgeschickte Zahlung (Doppelklick,
+ *     Netz-Wiederholung) oder ein gleichzeitiger Split wartet und findet danach
+ *     „bereits bezahlt", statt ein zweites Mal zu buchen.
+ *  2. Beleg in DIESER Transaktion erstellen, dann den Tab schließen. Scheitert
+ *     danach noch etwas, rollt der Beleg mit zurück: Belegnummer, Umsatzzähler
+ *     und Signaturkette bleiben unverändert, der Tab bleibt offen.
+ *
+ * Nur die Rabatt-Freigabe (PIN-Prüfung + Audit) läuft außerhalb, auf der
+ * eigenen Verbindung der Belegerstellung — eine durch falsche PINs ausgelöste
+ * Sperre bleibt so im Audit-Log, obwohl die Zahlung zurückrollt.
+ */
 export async function bezahleTab(
   id: string,
   input: TischTabBezahlenInput,
@@ -523,79 +538,87 @@ export async function bezahleTab(
   /** Wer anfragt — für die PIN-Bremse, falls ein Freigabe-PIN (Rabatt) mitkommt */
   freigabeKontext?: FreigabeKontext,
 ): Promise<{ tab: TischTabResponse; belegId: string }> {
-  const [existing] = await deps.db
-    .select()
-    .from(tischTabs)
-    .where(and(eq(tischTabs.id, id), eq(tischTabs.mandantId, mandantId)))
-    .limit(1)
-  if (!existing) throw new TischTabError(404, 'Tisch-Tab nicht gefunden')
-  if (existing.status !== 'offen') throw new TischTabError(409, 'Tisch-Tab ist bereits bezahlt')
+  return deps.db.transaction(async (tx) => {
+    const [existing] = await tx
+      .select()
+      .from(tischTabs)
+      .where(and(eq(tischTabs.id, id), eq(tischTabs.mandantId, mandantId)))
+      .for('update')
+      .limit(1)
+    if (!existing) throw new TischTabError(404, 'Tisch-Tab nicht gefunden')
+    if (existing.status !== 'offen') throw new TischTabError(409, 'Tisch-Tab ist bereits bezahlt')
 
-  const positionen = (existing.positionen as TabPosition[]) ?? []
-  if (positionen.length === 0) throw new TischTabError(400, 'Keine Positionen im Tab')
+    const positionen = (existing.positionen as TabPosition[]) ?? []
+    if (positionen.length === 0) throw new TischTabError(400, 'Keine Positionen im Tab')
 
-  const belegPositionen: BarzahlungsbelegInput['positionen'] = positionen.map((p, i) => {
-    const posRabatt = input.positionRabatte?.find(r => r.positionIndex === i)
-    return {
-      artikelId:              p.artikelId,
-      menge:                  p.menge,
-      einzelpreisBreuttoCent: posRabatt?.einzelpreisBreuttoCent ?? p.preisBruttoCent,
-      ...(p.modifikatoren?.length
-        ? { bezeichnungZusatz: p.modifikatoren.map((m: { name: string }) => m.name).join(', ') }
-        : {}),
-    }
-  })
-
-  const trinkgeldCent = input.trinkgeldCent ?? 0
-  if (trinkgeldCent > 0) {
-    belegPositionen.push({
-      bezeichnung:     'Trinkgeld',
-      preisBruttoCent: trinkgeldCent,
-      mwstSatz:        'null',
-      menge:           1,
+    const belegPositionen: BarzahlungsbelegInput['positionen'] = positionen.map((p, i) => {
+      const posRabatt = input.positionRabatte?.find(r => r.positionIndex === i)
+      return {
+        artikelId:              p.artikelId,
+        menge:                  p.menge,
+        einzelpreisBreuttoCent: posRabatt?.einzelpreisBreuttoCent ?? p.preisBruttoCent,
+        ...(p.modifikatoren?.length
+          ? { bezeichnungZusatz: p.modifikatoren.map((m: { name: string }) => m.name).join(', ') }
+          : {}),
+      }
     })
-  }
 
-  const zahlungMitTrinkgeld = trinkgeldCent > 0
-    ? { ...input.zahlung, karteCent: input.zahlung.karteCent + trinkgeldCent }
-    : input.zahlung
+    const trinkgeldCent = input.trinkgeldCent ?? 0
+    if (trinkgeldCent > 0) {
+      belegPositionen.push({
+        bezeichnung:     'Trinkgeld',
+        preisBruttoCent: trinkgeldCent,
+        mwstSatz:        'null',
+        menge:           1,
+      })
+    }
 
-  // Positionsrabatte sind ab hier nur noch Preis-Overrides — für die
-  // Rabatt-Freigabeschwelle den Nachlass VOR dem Überschreiben festhalten.
-  const posNachlassCent = (input.positionRabatte ?? []).reduce((s, r) => {
-    const p = positionen[r.positionIndex]
-    if (!p) return s
-    return s + Math.max(0, (p.preisBruttoCent - r.einzelpreisBreuttoCent) * p.menge)
-  }, 0)
+    const zahlungMitTrinkgeld = trinkgeldCent > 0
+      ? { ...input.zahlung, karteCent: input.zahlung.karteCent + trinkgeldCent }
+      : input.zahlung
 
-  const beleg = await erstelleBarzahlungsbeleg({
-    kasseId:   existing.kasseId,
-    positionen: belegPositionen,
-    zahlung:    zahlungMitTrinkgeld,
-    ...(input.rabatt && { rabatt: input.rabatt }),
-    ...(input.freigabePin && { freigabePin: input.freigabePin }),
-  }, deps.belegDeps, {
-    skipLagerstand: true,   // Tisch: Lager läuft über Positionsänderung
-    zusatzNachlassCent: posNachlassCent,
-    ...(freigabeKontext ? { freigabeKontext } : {}),
+    // Positionsrabatte sind ab hier nur noch Preis-Overrides — für die
+    // Rabatt-Freigabeschwelle den Nachlass VOR dem Überschreiben festhalten.
+    const posNachlassCent = (input.positionRabatte ?? []).reduce((s, r) => {
+      const p = positionen[r.positionIndex]
+      if (!p) return s
+      return s + Math.max(0, (p.preisBruttoCent - r.einzelpreisBreuttoCent) * p.menge)
+    }, 0)
+
+    // Mit tx als db öffnet die Belegerstellung statt einer eigenen Transaktion
+    // einen Savepoint (drizzle: verschachteltes transaction()). Die Kassensperre
+    // hält so bis zum COMMIT, und ein Rollback nimmt den Beleg mit.
+    const txDb = tx as unknown as Db
+    const beleg = await erstelleBarzahlungsbeleg({
+      kasseId:   existing.kasseId,
+      positionen: belegPositionen,
+      zahlung:    zahlungMitTrinkgeld,
+      ...(input.rabatt && { rabatt: input.rabatt }),
+      ...(input.freigabePin && { freigabePin: input.freigabePin }),
+    }, { ...deps.belegDeps, db: txDb }, {
+      skipLagerstand: true,   // Tisch: Lager läuft über Positionsänderung
+      zusatzNachlassCent: posNachlassCent,
+      freigabeDb: deps.belegDeps.db,   // PIN-Prüfung + Audit außerhalb der Transaktion
+      ...(freigabeKontext ? { freigabeKontext } : {}),
+    })
+
+    const [row] = await tx
+      .update(tischTabs)
+      .set({ status: 'bezahlt', geschlossenAm: new Date(), belegId: beleg.id, updatedAt: new Date() })
+      .where(eq(tischTabs.id, id))
+      .returning()
+    if (!row) throw new TischTabError(500, 'Tab konnte nicht geschlossen werden')
+
+    await logEreignis(id, mandantId, 'bezahlt', {
+      belegId:      beleg.id,
+      gesamtCent:   berechneGesamtCent(positionen),
+      barCent:      input.zahlung.barCent,
+      karteCent:    input.zahlung.karteCent,
+      sonstigeCent: input.zahlung.sonstigeCent,
+    }, txDb)
+
+    return { tab: toResponse(row), belegId: beleg.id }
   })
-
-  const [row] = await deps.db
-    .update(tischTabs)
-    .set({ status: 'bezahlt', geschlossenAm: new Date(), belegId: beleg.id, updatedAt: new Date() })
-    .where(eq(tischTabs.id, id))
-    .returning()
-  if (!row) throw new TischTabError(500, 'Tab konnte nicht geschlossen werden')
-
-  await logEreignis(id, mandantId, 'bezahlt', {
-    belegId:      beleg.id,
-    gesamtCent:   berechneGesamtCent(positionen),
-    barCent:      input.zahlung.barCent,
-    karteCent:    input.zahlung.karteCent,
-    sonstigeCent: input.zahlung.sonstigeCent,
-  }, deps.db)
-
-  return { tab: toResponse(row), belegId: beleg.id }
 }
 
 export async function umbenneneTab(
