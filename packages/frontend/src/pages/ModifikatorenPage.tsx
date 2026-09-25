@@ -25,6 +25,8 @@ import { formatPreis, parseEuroToCent } from '../lib/format'
 import { Modal } from '../components/ui/Modal'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
+import { OptionenImportModal } from '../components/OptionenImportModal'
+import { exportOptionenVorlage } from '../lib/optionen-excel'
 
 // ---------------------------------------------------------------------------
 // Hilfsfunktionen
@@ -53,6 +55,7 @@ export function ModifikatorenPage() {
   const [bestandModal,       setBestandModal]       = useState<{ mod: Modifikator } | null>(null)
   const [zuweisungModal,     setZuweisungModal]     = useState<{ gruppe: ModifikatorGruppe } | null>(null)
   const [fehler,             setFehler]             = useState<string | null>(null)
+  const [importOpen,         setImportOpen]         = useState(false)
 
   // ── Queries ───────────────────────────────────────────────────────────────
   const gruppenQuery = useQuery({
@@ -157,11 +160,23 @@ export function ModifikatorenPage() {
             Varianten, Beilagen und Extras — z. B. Größe, Sauce, Garstufe
           </p>
         </div>
-        <Button
-          onClick={() => { setEditingGruppe(null); setGruppeModalOpen(true) }}
-        >
-          + Neue Gruppe
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            onClick={() => { void exportOptionenVorlage() }}
+            title="Leere Excel-Vorlage für den Optionen-Import herunterladen"
+          >
+            Vorlage
+          </Button>
+          <Button variant="secondary" onClick={() => setImportOpen(true)}>
+            Importieren
+          </Button>
+          <Button
+            onClick={() => { setEditingGruppe(null); setGruppeModalOpen(true) }}
+          >
+            + Neue Gruppe
+          </Button>
+        </div>
       </div>
 
       {fehler && (
@@ -257,6 +272,12 @@ export function ModifikatorenPage() {
           </div>
         </div>
       )}
+
+      <OptionenImportModal
+        open={importOpen}
+        artikel={artikel.data ?? []}
+        onClose={() => setImportOpen(false)}
+      />
 
       {/* Gruppen-Modal */}
       <GruppeFormModal

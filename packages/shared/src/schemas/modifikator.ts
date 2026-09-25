@@ -95,3 +95,35 @@ export const ModifikatorAuswahlSchema = z.object({
   menge:          z.number().int().positive().optional(),
 })
 export type ModifikatorAuswahl = z.infer<typeof ModifikatorAuswahlSchema>
+
+// ---------------------------------------------------------------------------
+// Excel-Import: Optionsgruppen samt Optionen und Artikel-Zuordnung
+// ---------------------------------------------------------------------------
+
+export const OptionenImportEintragSchema = z.object({
+  /** Artikelbezeichnung — Zuordnung über Name (+ Warengruppe), ohne Groß/klein */
+  artikel:     z.string().trim().min(1).max(200),
+  /** Warengruppe zur Unterscheidung gleichnamiger Artikel (leer = nur über den Namen) */
+  warengruppe: z.string().trim().max(100).default(''),
+  gruppe:      z.string().trim().min(1).max(100),
+  typ:         ModifikatorGruppeTypSchema.default('optional'),
+  maxAuswahl:  z.number().int().positive().nullable().default(null),
+  optionen:    z.array(z.object({
+    name:          z.string().trim().min(1).max(100),
+    aufschlagCent: z.number().int().default(0),
+  })).min(1).max(100),
+})
+export type OptionenImportEintrag = z.infer<typeof OptionenImportEintragSchema>
+
+export const OptionenImportSchema = z.object({
+  eintraege: z.array(OptionenImportEintragSchema).min(1).max(1000),
+})
+export type OptionenImport = z.infer<typeof OptionenImportSchema>
+
+export interface OptionenImportErgebnis {
+  gruppenNeu:             number
+  gruppenWiederverwendet: number
+  zuweisungenNeu:         number
+  /** Einträge, deren Artikel nicht (eindeutig) gefunden wurde — Index bezieht sich auf `eintraege` */
+  fehler: { index: number; artikel: string; warengruppe: string; fehler: string }[]
+}
