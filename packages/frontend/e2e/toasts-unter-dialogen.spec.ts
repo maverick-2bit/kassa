@@ -257,8 +257,11 @@ test('Kartenzahlung läuft: neue Karten liegen unter dem Dialog, Tipps darauf br
     await page.clock.runFor(1_000)
     const belegAntwort = await beleg
     expect(belegAntwort.ok()).toBe(true)
-    expect((await belegAntwort.json() as { summeKarteCent: number }).summeKarteCent).toBe(350)
-    // Digital-Modus zeigt den Beleg als Dialog — für den Rest der Prüfung schließen
+    const erstellt = await belegAntwort.json() as { belegNummer: number; summeKarteCent: number }
+    expect(erstellt.summeKarteCent).toBe(350)
+    // Bestätigung: im Druck-Modus eine Leiste, im Digital-Modus (Stand nach
+    // onboarding) der Beleg-Dialog — der liegt ebenfalls über den Karten; schließen
+    await expect(page.getByText(`Beleg #${erstellt.belegNummer} erstellt`)).toBeVisible()
     if (await page.getByRole('dialog').count() > 0) await page.keyboard.press('Escape')
     await expect(page.getByRole('dialog')).toHaveCount(0)
     expect(abbrueche).toBe(0)
