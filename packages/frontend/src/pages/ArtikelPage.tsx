@@ -17,10 +17,20 @@ import { formatPreis } from '../lib/format'
 import { Modal } from '../components/ui/Modal'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
+import { Schalter } from '../components/ui/Schalter'
 import { ArtikelFormular } from '../components/ArtikelFormular'
 import { KategorieFormular } from '../components/KategorieFormular'
 import { ArtikelImportModal } from '../components/ArtikelImportModal'
 import { exportArtikelVorlage } from '../lib/artikel-excel'
+import {
+  filtereArtikel,
+  naechsteSortierung,
+  sortiereArtikel,
+  STANDARD_SORTIERUNG,
+  type ArtikelSortSpalte,
+  type ArtikelSortierung,
+  type WarengruppenFilter,
+} from '../lib/artikel-liste'
 
 export function ArtikelPage() {
   const identity = getKasseIdentity()!
@@ -32,6 +42,10 @@ export function ArtikelPage() {
   const [modalOpen, setModalOpen]   = useState(false)
   const [editing, setEditing]       = useState<Artikel | null>(null)
   const [nurAktive, setNurAktive]   = useState(true)
+  const [sortierung, setSortierung] = useState<ArtikelSortierung>(STANDARD_SORTIERUNG)
+  const [wgFilter, setWgFilter]     = useState<WarengruppenFilter>('alle')
+  const [suche, setSuche]           = useState('')
+  const [listenFehler, setListenFehler] = useState<string | null>(null)
   const [mutationError, setError]   = useState<string | null>(null)
 
   // ---------------------------------------------------------------------------
@@ -98,23 +112,18 @@ export function ArtikelPage() {
   // ---------------------------------------------------------------------------
   // Sortierung: Artikel nach Warengruppe + Reihenfolge, Verschieben per ↑/↓
   // ---------------------------------------------------------------------------
-  const katOrder = useMemo(() => {
-    const m = new Map<string, number>()
-    for (const k of katList.data ?? []) m.set(k.id, k.reihenfolge)
-    return m
-  }, [katList.data])
+  // Kassen-Reihenfolge (Grundlage für ↑/↓, unabhängig von Spaltensortierung + Filter)
+  const artikelSortiert = useMemo(
+    () => sortiereArtikel(list.data ?? [], katList.data ?? [], STANDARD_SORTIERUNG),
+    [list.data, katList.data],
+  )
 
-  const artikelSortiert = useMemo(() => {
-    const arr = [...(list.data ?? [])]
-    arr.sort((a, b) => {
-      const ka = a.kategorieId ? (katOrder.get(a.kategorieId) ?? 9999) : 9999
-      const kb = b.kategorieId ? (katOrder.get(b.kategorieId) ?? 9999) : 9999
-      if (ka !== kb) return ka - kb
-      if (a.reihenfolge !== b.reihenfolge) return a.reihenfolge - b.reihenfolge
-      return a.bezeichnung.localeCompare(b.bezeichnung)
-    })
-    return arr
-  }, [list.data, katOrder])
+  // Angezeigte Liste: gefiltert + nach der gewählten Spalte sortiert
+  const artikelAnzeige = useMemo(
+    () => sortiereArtikel(filtereArtikel(list.data ?? [], wgFilter, suche), katList.data ?? [], sortierung),
+    [list.data, katList.data, wgFilter, suche, sortierung],
+  )
+  const standardSortiert = sortierung.spalte === 'standard'
 
   // Position jedes Artikels innerhalb seiner Warengruppe (für ↑/↓-Grenzen)
   const katPos = useMemo(() => {
@@ -182,6 +191,14 @@ export function ArtikelPage() {
   const deaktiviere = useMutation({
     mutationFn: artikelApi.deaktiviere,
     onSuccess: () => invalidateArtikel(),
+  })
+
+  const favoritMut = useMutation({
+    mutationFn: ({ id, istFavorit }: { id: string; istFavorit: boolean }) =>
+      artikelApi.update(id, { istFavorit }),
+    onSuccess: () => invalidateArtikel(),
+    onError: (err) => setListenFehler(`Favorit konnte nicht gespeichert werden: ${err instanceof Error ? err.message : String(err)}`),
+    onMutate: () => setListenFehler(null),
   })
 
   const handleSubmit = (input: ArtikelInput) => {
@@ -329,7 +346,29 @@ export function ArtikelPage() {
         </div>
 
         {/* Filter */}
-        <div className="mb-4 flex items-center gap-2">
+        <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2">
+          <input
+            type="search"
+            value={suche}
+            onChange={(e) => setSuche(e.target.value)}
+            placeholder="Suchen (Bezeichnung, Nummer)…"
+            aria-label="Artikel suchen"
+            className="w-56 rounded-md border border-line-strong bg-panel px-3 py-1.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand-500"
+          />
+          <select
+            value={wgFilter}
+            onChange={(e) => setWgFilter(e.target.value)}
+            aria-label="Nach Warengruppe filtern"
+            className="rounded-md border border-line-strong bg-panel px-3 py-1.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand-500"
+          >
+            <option value="alle">Alle Warengruppen</option>
+            {[...(katList.data ?? [])]
+              .sort((a, b) => a.reihenfolge - b.reihenfolge || a.name.localeCompare(b.name))
+              .map(k => (
+                <option key={k.id} value={k.id}>{k.name}{k.aktiv ? '' : ' (deaktiviert)'}</option>
+              ))}
+            <option value="ohne">— ohne Warengruppe —</option>
+          </select>
           <label className="inline-flex items-center gap-2 text-sm text-ink">
             <input
               type="checkbox"
@@ -339,7 +378,20 @@ export function ArtikelPage() {
             />
             Nur aktive Artikel anzeigen
           </label>
+          {(!standardSortiert || wgFilter !== 'alle' || suche) && (
+            <button
+              type="button"
+              onClick={() => { setSortierung(STANDARD_SORTIERUNG); setWgFilter('alle'); setSuche('') }}
+              className="text-xs text-brand-600 hover:underline"
+            >
+              Zurücksetzen
+            </button>
+          )}
         </div>
+
+        {listenFehler && (
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{listenFehler}</div>
+        )}
 
         {/* Liste */}
         <div className="rounded-lg bg-panel shadow-sm border border-line overflow-hidden">
@@ -358,30 +410,41 @@ export function ArtikelPage() {
             <table className="w-full text-sm">
               <thead className="bg-panel-2 text-left text-xs uppercase tracking-wide text-ink-muted">
                 <tr>
-                  <th className="px-2 py-2 font-semibold text-center" title="Reihenfolge innerhalb der Warengruppe">Sort.</th>
-                  <th className="px-4 py-2 font-semibold">Bezeichnung</th>
-                  <th className="px-4 py-2 font-semibold">Kategorie</th>
-                  <th className="px-4 py-2 font-semibold">Nummer</th>
-                  <th className="px-4 py-2 font-semibold">MwSt</th>
-                  <th className="px-4 py-2 font-semibold text-right">Preis</th>
-                  <th className="px-4 py-2 font-semibold text-right">Bestand</th>
-                  <th className="px-4 py-2 font-semibold">Status</th>
+                  <SortKopf spalte="standard" sort={sortierung} onSort={setSortierung} className="px-2 text-center"
+                    title="Kassen-Reihenfolge (Warengruppe, dann Position) — nur hier per ↑/↓ verschiebbar">Sort.</SortKopf>
+                  <SortKopf spalte="bezeichnung" sort={sortierung} onSort={setSortierung}>Bezeichnung</SortKopf>
+                  <SortKopf spalte="kategorie" sort={sortierung} onSort={setSortierung}>Kategorie</SortKopf>
+                  <SortKopf spalte="nummer" sort={sortierung} onSort={setSortierung}>Nummer</SortKopf>
+                  <SortKopf spalte="mwst" sort={sortierung} onSort={setSortierung}>MwSt</SortKopf>
+                  <SortKopf spalte="preis" sort={sortierung} onSort={setSortierung} className="px-4 text-right">Preis</SortKopf>
+                  <SortKopf spalte="bestand" sort={sortierung} onSort={setSortierung} className="px-4 text-right">Bestand</SortKopf>
+                  <SortKopf spalte="favorit" sort={sortierung} onSort={setSortierung} className="px-4 text-center"
+                    title="Favoriten erscheinen im Favoriten-Reiter der Kasse">Favorit</SortKopf>
+                  <SortKopf spalte="status" sort={sortierung} onSort={setSortierung}>Status</SortKopf>
                   <th className="px-4 py-2"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
-                {artikelSortiert.map((a) => {
+                {artikelAnzeige.length === 0 && (
+                  <tr>
+                    <td colSpan={10} className="px-4 py-6 text-center text-sm text-ink-muted">
+                      Keine Artikel für diesen Filter.
+                    </td>
+                  </tr>
+                )}
+                {artikelAnzeige.map((a) => {
                   const pos = katPos.get(a.id) ?? { idx: 0, anzahl: 1 }
+                  const verschiebeTitel = standardSortiert ? undefined : 'Verschieben nur in der Kassen-Reihenfolge (Spalte „Sort.“)'
                   return (
                   <tr key={a.id} className={a.aktiv ? '' : 'opacity-60'}>
                     <td className="px-2 py-2.5">
                       <div className="flex items-center justify-center gap-0.5">
-                        <button type="button" aria-label="Nach oben" disabled={pos.idx === 0 || reihenfolgeMut.isPending}
+                        <button type="button" aria-label="Nach oben" title={verschiebeTitel} disabled={!standardSortiert || pos.idx === 0 || reihenfolgeMut.isPending}
                           onClick={() => verschiebeArtikel(a, -1)}
                           className="flex h-6 w-6 items-center justify-center rounded text-ink-muted hover:text-brand-600 hover:bg-panel-2 disabled:opacity-25 disabled:hover:bg-transparent">
                           <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 5l5 7H5l5-7Z" /></svg>
                         </button>
-                        <button type="button" aria-label="Nach unten" disabled={pos.idx === pos.anzahl - 1 || reihenfolgeMut.isPending}
+                        <button type="button" aria-label="Nach unten" title={verschiebeTitel} disabled={!standardSortiert || pos.idx === pos.anzahl - 1 || reihenfolgeMut.isPending}
                           onClick={() => verschiebeArtikel(a, 1)}
                           className="flex h-6 w-6 items-center justify-center rounded text-ink-muted hover:text-brand-600 hover:bg-panel-2 disabled:opacity-25 disabled:hover:bg-transparent">
                           <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 15l-5-7h10l-5 7Z" /></svg>
@@ -415,6 +478,14 @@ export function ArtikelPage() {
                       ) : (
                         <span className="text-xs text-ink-subtle">—</span>
                       )}
+                    </td>
+                    <td className="px-4 py-2.5 text-center">
+                      <Schalter
+                        an={a.istFavorit}
+                        label={`${a.bezeichnung} als Favorit`}
+                        disabled={favoritMut.isPending && favoritMut.variables?.id === a.id}
+                        onChange={(istFavorit) => favoritMut.mutate({ id: a.id, istFavorit })}
+                      />
                     </td>
                     <td className="px-4 py-2.5">
                       {a.aktiv ? (
@@ -1278,6 +1349,36 @@ function ArtikelGruppenZuweisungModal({
 // ---------------------------------------------------------------------------
 
 import { KATEGORIE_FARBE_HEX, type KategorieFarbe } from '@kassa/shared'
+
+/** Sortierbare Spaltenüberschrift: Klick sortiert, erneuter Klick dreht die Richtung. */
+function SortKopf({
+  spalte, sort, onSort, className = 'px-4', title, children,
+}: {
+  spalte:     ArtikelSortSpalte
+  sort:       ArtikelSortierung
+  onSort:     (s: ArtikelSortierung) => void
+  className?: string
+  title?:     string
+  children:   React.ReactNode
+}) {
+  const aktiv = sort.spalte === spalte
+  const pfeil = spalte === 'standard' ? '' : sort.richtung === 'auf' ? ' ▲' : ' ▼'
+  return (
+    <th
+      className={`${className} py-2 font-semibold`}
+      aria-sort={aktiv && spalte !== 'standard' ? (sort.richtung === 'auf' ? 'ascending' : 'descending') : undefined}
+    >
+      <button
+        type="button"
+        title={title}
+        onClick={() => onSort(naechsteSortierung(sort, spalte))}
+        className={`uppercase tracking-wide hover:text-brand-600 ${aktiv ? 'text-brand-600' : ''}`}
+      >
+        {children}{aktiv ? pfeil : ''}
+      </button>
+    </th>
+  )
+}
 
 function FarbChip({ farbe }: { farbe: KategorieFarbe }) {
   // Hex-Palette statt Klassen-Map — trägt alle 20 Farben
