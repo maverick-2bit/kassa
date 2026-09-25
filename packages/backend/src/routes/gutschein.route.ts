@@ -18,7 +18,7 @@ import {
 } from '../services/gutschein.service.js'
 import { sendBytes, druckerConfigVonKasse, DruckerError } from '../services/drucker.service.js'
 import { baueGutscheinBon } from '../services/escpos/layout.js'
-import { uuidParam } from './uuid-param.js'
+import { uuidParam, uuidQuery } from './uuid-param.js'
 
 export interface GutscheinRouteOptions { db: Db }
 
@@ -28,7 +28,7 @@ export const gutscheinRoute: FastifyPluginAsync<GutscheinRouteOptions> = async (
   fastify.get('/gutscheine', auth, async (request, reply) => {
     const q       = request.query as Record<string, string>
     const status  = q['status']  as GutscheinStatus | undefined
-    const kundeId = q['kundeId'] as string | undefined
+    const kundeId = uuidQuery(q, 'kundeId')
     return reply.send(await listeGutscheine(opts.db, request.user.mandantId, {
       ...(status  ? { status  } : {}),
       ...(kundeId ? { kundeId } : {}),

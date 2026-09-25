@@ -20,7 +20,7 @@ import {
   holeSammelrechnung,
   LiferscheinError,
 } from '../services/lieferschein.service.js'
-import { uuidParam } from './uuid-param.js'
+import { uuidParam, uuidQuery } from './uuid-param.js'
 import { resolveZielDrucker, sendBytes, DruckerError, type DruckerConfig } from '../services/drucker.service.js'
 import { baueLieferscheinBon, baueRechnungBon, type BelegzweigPosition } from '../services/escpos/layout.js'
 import { EmailVersandError, isEmailAktiv, sendeBelegzweigEmail } from '../services/email.service.js'
@@ -90,8 +90,8 @@ export const lieferscheinRoute: FastifyPluginAsync<LiferscheinRouteOptions> = as
 
   fastify.get('/lieferscheine', auth, async (request, reply) => {
     const q         = request.query as Record<string, string>
-    const kundeId   = q['kundeId']   as string | undefined
-    const angebotId = q['angebotId'] as string | undefined
+    const kundeId   = uuidQuery(q, 'kundeId')
+    const angebotId = uuidQuery(q, 'angebotId')
     const status    = q['status']    as LiferscheinStatus | undefined
     const liste     = await listeLiferscheine(opts.db, request.user.mandantId, {
       ...(kundeId   ? { kundeId }   : {}),
@@ -154,10 +154,11 @@ export const lieferscheinRoute: FastifyPluginAsync<LiferscheinRouteOptions> = as
 
   /** Archiv: alle Sammelrechnungen (neueste zuerst) */
   fastify.get('/sammelrechnungen', auth, async (request, reply) => {
-    const q = request.query as Record<string, string>
+    const q       = request.query as Record<string, string>
+    const kundeId = uuidQuery(q, 'kundeId')
     return reply.send(await listeSammelrechnungen(opts.db, request.user.mandantId, {
-      ...(q['kundeId'] ? { kundeId: q['kundeId'] } : {}),
-      ...(q['limit']   ? { limit: parseInt(q['limit'], 10) } : {}),
+      ...(kundeId    ? { kundeId } : {}),
+      ...(q['limit'] ? { limit: parseInt(q['limit'], 10) } : {}),
     }))
   })
 

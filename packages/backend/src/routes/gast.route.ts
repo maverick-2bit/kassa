@@ -26,6 +26,7 @@ import {
   GastBestellungError,
   type GastServiceDeps,
 } from '../services/gast-bestellung.service.js'
+import { uuidQuery } from './uuid-param.js'
 
 export interface GastRouteOptions { db: Db; belegDeps: BelegServiceDeps; config: Config }
 
@@ -51,10 +52,11 @@ const CheckoutBody = BestellungBody.extend({
 export const gastRoute: FastifyPluginAsync<GastRouteOptions> = async (fastify, opts) => {
 
   // ── Speisekarte laden ───────────────────────────────────────────────────────
-  fastify.get<{ Querystring: { kasseId?: string } }>(
+  fastify.get(
     '/gast/karte',
     async (request, reply) => {
-      const { kasseId } = request.query
+      // kasseId aus dem Tisch-QR — verstümmelt → 400 „Ungültige ID“, nicht 500
+      const kasseId = uuidQuery(request.query, 'kasseId')
       if (!kasseId) return reply.status(400).send({ fehler: 'kasseId fehlt' })
 
       // Kasse ermitteln
