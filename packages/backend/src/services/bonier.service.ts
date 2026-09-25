@@ -53,14 +53,28 @@ export interface BonierOptionen {
   storno?: boolean
   /**
    * Nur drucken (KDS + Bonierdrucker), KEIN Lagerabzug. Für Tisch-Bonierungen
-   * (Parken/Sofort-Kassieren): dort ist der Lagerstand die alleinige Sache von
-   * aktualisiereStockDeltas (Positionsänderung) — sonst Doppel-Abzug.
+   * (Parken/Sofort-Kassieren, Gang abrufen, Nachschicken): dort ist der
+   * Lagerstand die alleinige Sache von aktualisiereStockDeltas
+   * (Positionsänderung) — sonst Doppel-Abzug.
    */
   ohneLagerabzug?: boolean
 }
 
+/**
+ * Die Bestellung ohne Steuer-Flags. ohneLagerabzug und storno stehen zwar in
+ * BonierungInput (so kommen sie über POST /bestellung/bonieren herein), wirken
+ * aber nur als BonierOptionen. `never` macht ein Flag im Input zum
+ * Compilerfehler — auch in einem ganzen BonierungInput-Objekt, nicht nur im
+ * Objekt-Literal. Vorher wurde es still ignoriert: Gang-Abruf und Nachschicken
+ * zogen so den Lagerstand ein zweites Mal ab.
+ */
+export type BonierBestellung = Omit<BonierungInput, 'ohneLagerabzug' | 'storno'> & {
+  ohneLagerabzug?: never
+  storno?:         never
+}
+
 export async function bonierBestellung(
-  input: BonierungInput,
+  input: BonierBestellung,
   deps:  BonierServiceDeps,
   optionen: BonierOptionen = {},
 ): Promise<BonierungErgebnis> {

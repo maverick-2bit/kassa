@@ -1150,13 +1150,18 @@ export async function logBonierEreignis(
 // Gänge-Steuerung (Coursing) — nächsten Gang feuern / Position nachschicken
 // ---------------------------------------------------------------------------
 
-/** „nichts zu bonieren" (Artikel ohne Station/Drucker) schlucken — wie im Frontend. */
+/**
+ * Boniert Positionen, die am Tisch schon gebucht sind (Gang abrufen, nachschicken):
+ * nur drucken, KEIN Lagerabzug — den hat aktualisiereStockDeltas beim Buchen
+ * erledigt. „nichts zu bonieren" (Artikel ohne Station/Drucker) schlucken — wie im
+ * Frontend.
+ */
 async function bonierTolerant(
   input: Parameters<typeof bonierBestellung>[0],
   db:    Db,
 ): Promise<void> {
   try {
-    await bonierBestellung(input, { db })
+    await bonierBestellung(input, { db }, { ohneLagerabzug: true })
   } catch (err) {
     const msg = err instanceof Error ? err.message : ''
     if (!/nichts zu bonieren/i.test(msg)) throw err
@@ -1206,7 +1211,6 @@ export async function rufeNaechstenGangAb(
       tisch:      `${row.tischNummer} · ${naechster}. Gang`.slice(0, 40),
       kellner:    row.kellner,
       positionen: gangPositionen.map(p => ({ artikelId: p.artikelId, menge: p.menge, gang: naechster })),
-      ohneLagerabzug: true,
     }, deps.db)
   } catch (err) {
     await gibGangFrei(id, mandantId, naechster, jetzt, deps)
@@ -1261,7 +1265,6 @@ export async function schickePositionNach(
     tisch:      label.slice(0, 40),
     kellner:    tab.kellner,
     positionen: [{ artikelId: p.artikelId, menge: p.menge, gang }],
-    ohneLagerabzug: true,
   }, deps.db)
   await logEreignis(id, mandantId, 'gang_nachgeschickt', { bezeichnung: p.bezeichnung, gang }, deps.db)
 }
