@@ -11,7 +11,7 @@
 
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
-import { desc, eq } from 'drizzle-orm'
+import { and, desc, eq } from 'drizzle-orm'
 import { Buffer } from 'node:buffer'
 import { StationSchema, BelegModusEnum } from '@kassa/shared'
 import type { Db } from '../db/client.js'
@@ -145,10 +145,12 @@ export const druckerRoute: FastifyPluginAsync<DruckerRouteOptions> = async (fast
     if (!(await pruefeKasseGehoertZuMandant(opts.db, params.data.id, request.user.mandantId)))
       return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
 
+    // Auch nach Mandant filtern: Bis resolveZielDrucker die Kasse immer prüfte,
+    // konnte ein fremder Mandant unter dieser kasseId protokollieren.
     const eintraege = await opts.db
       .select()
       .from(druckLog)
-      .where(eq(druckLog.kasseId, params.data.id))
+      .where(and(eq(druckLog.kasseId, params.data.id), eq(druckLog.mandantId, request.user.mandantId)))
       .orderBy(desc(druckLog.erstelltAt))
       .limit(50)
 

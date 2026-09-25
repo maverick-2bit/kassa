@@ -8,6 +8,7 @@ import type {
 } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import { tischplanBereiche, tischplanElemente } from '../db/schema.js'
+import { pruefeKasseGehoertZuMandant } from '../auth/scope.js'
 
 export class TischplanError extends Error {
   constructor(public readonly httpStatus: number, message: string) {
@@ -71,6 +72,11 @@ export async function erstelleBereich(
   mandantId: string,
   deps:      TischplanServiceDeps,
 ): Promise<TischplanBereich> {
+  // Der FK auf kassen.id kennt keinen Mandanten: eine fremde Kasse wurde klaglos
+  // gespeichert, eine unbekannte scheiterte erst an ihm (500).
+  if (!(await pruefeKasseGehoertZuMandant(deps.db, input.kasseId, mandantId)))
+    throw new TischplanError(404, 'Kasse nicht gefunden')
+
   const rows = await deps.db
     .insert(tischplanBereiche)
     .values({ kasseId: input.kasseId, mandantId, name: input.name, reihenfolge: 0 })
@@ -128,11 +134,20 @@ export async function erstelleElement(
   mandantId: string,
   deps:      TischplanServiceDeps,
 ): Promise<TischplanBereich['elemente'][number]> {
-  // Bereich-Ownership prüfen
+  if (!(await pruefeKasseGehoertZuMandant(deps.db, input.kasseId, mandantId)))
+    throw new TischplanError(404, 'Kasse nicht gefunden')
+
+  // Bereich-Ownership prüfen — auch die Kasse: listeBereiche liest Bereiche und
+  // Elemente über dieselbe kasseId, ein Element mit abweichender Kasse tauchte
+  // in keinem Tischplan auf.
   const [bereich] = await deps.db
     .select({ id: tischplanBereiche.id })
     .from(tischplanBereiche)
-    .where(and(eq(tischplanBereiche.id, input.bereichId), eq(tischplanBereiche.mandantId, mandantId)))
+    .where(and(
+      eq(tischplanBereiche.id,        input.bereichId),
+      eq(tischplanBereiche.mandantId, mandantId),
+      eq(tischplanBereiche.kasseId,   input.kasseId),
+    ))
     .limit(1)
 
   if (!bereich) throw new TischplanError(404, 'Bereich nicht gefunden')

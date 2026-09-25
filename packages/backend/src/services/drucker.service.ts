@@ -228,6 +228,11 @@ export function druckerConfigVonKasse(kasse: {
  * explizit gewählter Bibliotheks-Drucker ODER der Kassen-Bondrucker (der
  * Beleg-Modus zählt bei bewusster Wahl nicht — Dokumente ≠ Belege).
  * Wirft DruckerError 404/409 mit sprechender Meldung.
+ *
+ * Die Kasse wird IMMER geprüft, auch bei gewähltem Drucker: Die Aufrufer
+ * protokollieren die Ausgabe unter dieser kasseId im druck_log. Ungeprüft
+ * landete der Eintrag im Drucker-Log einer fremden Kasse, und eine unbekannte
+ * kasseId scheiterte erst am FK — nachdem schon gedruckt war.
  */
 export async function resolveZielDrucker(
   db:        Db,
@@ -235,14 +240,14 @@ export async function resolveZielDrucker(
   kasseId:   string,
   druckerId?: string,
 ): Promise<DruckerConfig> {
+  const [kasse] = await db.select().from(kassen).where(eq(kassen.id, kasseId)).limit(1)
+  if (!kasse || kasse.mandantId !== mandantId) throw new DruckerError(404, 'Kasse nicht gefunden')
   if (druckerId) {
     const [d] = await db.select().from(drucker).where(eq(drucker.id, druckerId)).limit(1)
     if (!d || d.mandantId !== mandantId) throw new DruckerError(404, 'Drucker nicht gefunden')
     if (!d.aktiv) throw new DruckerError(409, 'Drucker ist deaktiviert')
     return { ip: d.ip, port: d.port, breite: d.breiteZeichen, timeoutMs: d.timeoutSek * 1000 }
   }
-  const [kasse] = await db.select().from(kassen).where(eq(kassen.id, kasseId)).limit(1)
-  if (!kasse || kasse.mandantId !== mandantId) throw new DruckerError(404, 'Kasse nicht gefunden')
   const config = druckerConfigVonKasse(kasse, { ignoreBelegModus: true })
   if (!config) throw new DruckerError(409, 'Drucker nicht konfiguriert oder deaktiviert')
   return config
