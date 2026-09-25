@@ -7,8 +7,11 @@
  * Existenz fremder Ressourcen nicht erkennbar ist.
  */
 
+import { randomUUID } from 'node:crypto'
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
+import { count } from 'drizzle-orm'
 import type { FinanzOnlineClient } from '@kassa/rksv'
+import { arbeitszeiten } from '../../src/db/schema.js'
 import { buildTestServer, type TestServer } from '../helpers/testServer.js'
 import { erstelleIntegrationsDb, type IntegrationsDb } from './helpers/integrationsDb.js'
 
@@ -44,9 +47,15 @@ describe('Mandanten-Isolation (Integration, echtes PostgreSQL)', () => {
   let srv: TestServer
   let tokenA: string, tokenB: string
   let kasseA: string, kasseB: string
+  let userB: string
 
   const authA = () => ({ authorization: `Bearer ${tokenA}` })
   const authB = () => ({ authorization: `Bearer ${tokenB}` })
+
+  async function anzahlArbeitszeiten(): Promise<number> {
+    const [zeile] = await idb.db.select({ anzahl: count() }).from(arbeitszeiten)
+    return zeile!.anzahl
+  }
 
   beforeAll(async () => {
     idb = await erstelleIntegrationsDb()
@@ -68,7 +77,7 @@ describe('Mandanten-Isolation (Integration, echtes PostgreSQL)', () => {
       }
       const login = loginRes.json()
       if (ziel === 'A') { tokenA = login.token; kasseA = login.kassen[0].id }
-      else              { tokenB = login.token; kasseB = login.kassen[0].id }
+      else              { tokenB = login.token; kasseB = login.kassen[0].id; userB = login.user.id }
     }
   })
 
@@ -130,5 +139,32 @@ describe('Mandanten-Isolation (Integration, echtes PostgreSQL)', () => {
       method: 'GET', url: `/api/kassen/${kasseA}/status`, headers: authB(),
     })
     expect(res.statusCode).toBe(404)
+  })
+
+  it.each(['fremde', 'unbekannte'] as const)(
+    'Mandant B kann keine Arbeitszeit auf eine %s Kasse buchen (404, keine Zeile)',
+    async (fall) => {
+      const vorher = await anzahlArbeitszeiten()
+      const res = await srv.fastify.inject({
+        method: 'POST', url: '/api/zeiterfassung', headers: authB(),
+        payload: {
+          kasseId: fall === 'fremde' ? kasseA : randomUUID(),
+          userId:  userB,
+          beginn:  '2026-09-25T08:00:00.000Z',
+        },
+      })
+      expect(res.statusCode).toBe(404)
+      expect(res.json()).toEqual({ fehler: 'Kasse nicht gefunden' })
+      expect(await anzahlArbeitszeiten()).toBe(vorher)
+    },
+  )
+
+  it('Arbeitszeit auf der eigenen Kasse legt B weiterhin an (201)', async () => {
+    const res = await srv.fastify.inject({
+      method: 'POST', url: '/api/zeiterfassung', headers: authB(),
+      payload: { kasseId: kasseB, userId: userB, beginn: '2026-09-25T08:00:00.000Z' },
+    })
+    expect(res.statusCode).toBe(201)
+    expect(res.json().kasseId).toBe(kasseB)
   })
 })

@@ -10,6 +10,7 @@ import type {
   StempelResponse,
 } from '@kassa/shared'
 import type { GeraetVertrauenSigner } from '../auth/geraet-vertrauen.js'
+import { pruefeKasseGehoertZuMandant } from '../auth/scope.js'
 import { pruefeMitBremse, toepfeFuerGeraet } from './pin-bremse.js'
 import { pruefePinLaenge } from './pin-laenge.js'
 
@@ -205,6 +206,10 @@ export async function erstelleArbeitszeit(
   mandantId: string,
   input:     ArbeitszeitInput,
 ): Promise<ArbeitszeitResponse> {
+  // Fremde Kasse landete sonst in der Zeile, eine unbekannte als FK-Verletzung (500)
+  const ok = await pruefeKasseGehoertZuMandant(db, input.kasseId, mandantId)
+  if (!ok) throw new ZeiterfassungError(404, 'Kasse nicht gefunden')
+
   // Username auflösen
   const [user] = await db
     .select({ name: users.name })
