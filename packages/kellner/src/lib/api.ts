@@ -95,6 +95,20 @@ export const authApi = {
 }
 
 // ---------------------------------------------------------------------------
+// Installierte Version (Update-Hinweis)
+// ---------------------------------------------------------------------------
+
+export const systemApi = {
+  /**
+   * Öffentlich: installierte Version laut Backend — für den Update-Hinweis bei
+   * dauerhaft offener Seite. Läuft über request(), damit ein angemeldetes Handy
+   * mit seinem Token je Anmeldung zählt statt im gemeinsamen IP-Topf des
+   * Rate-Limits (Docker Desktop: alle LAN-Geräte mit derselben Adresse).
+   */
+  health: () => request<{ version?: unknown }>('GET', '/api/health'),
+}
+
+// ---------------------------------------------------------------------------
 // Kasse / Setup
 // ---------------------------------------------------------------------------
 
