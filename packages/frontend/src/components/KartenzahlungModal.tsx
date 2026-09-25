@@ -134,10 +134,13 @@ export function KartenzahlungModal({ open, kasseId, betragCent, onErfolg, onAbbr
   const ist_fehler = fehler !== null || (job && (job.status === 'fehler' || job.status === 'abgebrochen'))
   const ist_erfolg = job?.status === 'erfolg'
 
+  // Solange das Terminal arbeitet, bricht nur „Abbrechen" (oder ✕/Esc) ab —
+  // nicht ein Tipp daneben, etwa auf eine abgedunkelte Hinweis-Karte.
   return (
     <Modal
       open={open}
       onClose={schritt === 'trinkgeld' ? onAbbruch : ist_fehler ? handleSchliessen : handleAbbrechen}
+      closeOnBackdrop={!ist_aktiv}
       title="Kartenzahlung"
     >
       {/* ---- Schritt 1: Trinkgeld ---- */}
