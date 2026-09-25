@@ -301,6 +301,15 @@ export async function erstelleBarzahlungsbeleg(
     zusatzNachlassCent?: number
     /** Wer anfragt — für die PIN-Bremse, falls ein Freigabe-PIN mitkommt */
     freigabeKontext?: FreigabeKontext
+    /**
+     * Verbindung für Rabatt-Freigabe und deren Audit, wenn `deps.db` eine
+     * Transaktion des Aufrufers ist (Tisch: Beleg und Tab-Abschluss atomar).
+     * Beides muss außerhalb laufen: Die PIN-Bremse protokolliert eine
+     * ausgelöste Sperre und wirft DANN — ein Rollback nähme den Eintrag mit.
+     * Und logAudit schluckt Fehler, ein gescheiterter Insert bräche die
+     * Transaktion aber trotzdem ab.
+     */
+    freigabeDb?: Db
   } = {},
 ): Promise<BelegResponse> {
   // Kunden-Snapshot vor der Transaktion auflösen (neuer Kunde wird hier angelegt)
@@ -474,12 +483,13 @@ export async function erstelleBarzahlungsbeleg(
           .where(eq(kassen.id, input.kasseId))
           .limit(1)
         if (kasseRow) {
+          const freigabeDb = opts.freigabeDb ?? deps.db
           const freigeber = await pruefeRabattFreigabe(
-            deps.db, kasseRow.mandantId, gesamtNachlassCent, basisCent, input.freigabePin,
+            freigabeDb, kasseRow.mandantId, gesamtNachlassCent, basisCent, input.freigabePin,
             opts.freigabeKontext ? { ...opts.freigabeKontext, kasseId: input.kasseId } : null,
           )
           if (freigeber) {
-            await logAudit(deps.db, {
+            await logAudit(freigabeDb, {
               mandantId: kasseRow.mandantId,
               aktion:    'rabatt.freigegeben',
               details:   {
