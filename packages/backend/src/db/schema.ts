@@ -99,6 +99,12 @@ export const mandanten = pgTable('mandanten', {
    */
   rabattFreigabeAbProzent:  integer('rabatt_freigabe_ab_prozent').notNull().default(0),
   rabattFreigabeAbCent:     integer('rabatt_freigabe_ab_cent').notNull().default(0),
+  /**
+   * Länge aller PINs dieses Betriebs: 4 oder 6 Ziffern. Nach einem Wechsel
+   * gelten PINs der anderen Länge nicht mehr (users.pinLaenge) und müssen neu
+   * vergeben werden — ein Teilbestand kurzer PINs bliebe sonst ratbar.
+   */
+  pinLaenge:                integer('pin_laenge').notNull().default(4),
 
   // Pro-Mandant-Stripe-Konto (Gast-Onlinezahlung). AES-256-GCM-verschlüsselt
   // (Muster crypto/master-key.ts). Leer → globale Env-Keys als Fallback.
@@ -548,8 +554,13 @@ export const users = pgTable('users', {
   mandantId:      uuid('mandant_id').notNull().references(() => mandanten.id),
   email:          varchar('email', { length: 200 }).notNull(),
   passwordHash:   text('password_hash').notNull(),
-  /** bcrypt-Hash des 4-stelligen PINs — null = kein PIN gesetzt */
+  /** bcrypt-Hash des PINs — null = kein PIN gesetzt */
   pinHash:        text('pin_hash'),
+  /**
+   * Ziffernzahl des gesetzten PINs (4 oder 6; aus dem Hash nicht ablesbar).
+   * Weicht sie von mandanten.pinLaenge ab, zählt der PIN nicht mehr.
+   */
+  pinLaenge:      integer('pin_laenge').notNull().default(4),
   name:           text('name').notNull(),
   /** admin | kellner */
   rolle:          varchar('rolle', { length: 20 }).notNull().default('kellner'),

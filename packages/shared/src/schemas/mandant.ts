@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { PinLaengeSchema } from './auth.js'
 
 // ---------------------------------------------------------------------------
 // Mandanten-Module
@@ -93,6 +94,24 @@ export type MandantFreigaben = z.infer<typeof MandantFreigabenSchema>
 
 export const MandantFreigabenUpdateSchema = MandantFreigabenSchema.partial()
 export type MandantFreigabenUpdate = z.infer<typeof MandantFreigabenUpdateSchema>
+
+// ---------------------------------------------------------------------------
+// PIN-Länge — 4 oder 6 Ziffern für alle Benutzer des Betriebs
+// ---------------------------------------------------------------------------
+
+export const MandantPinLaengeSchema = z.object({
+  pinLaenge: PinLaengeSchema,
+  /**
+   * Aktive Benutzer mit PIN je Länge. Nach einem Wechsel gelten die PINs der
+   * anderen Länge nicht mehr — die Oberfläche nennt vorher, wie viele das trifft.
+   */
+  pinsMit4: z.number().int().min(0),
+  pinsMit6: z.number().int().min(0),
+})
+export type MandantPinLaenge = z.infer<typeof MandantPinLaengeSchema>
+
+export const MandantPinLaengeUpdateSchema = z.object({ pinLaenge: PinLaengeSchema })
+export type MandantPinLaengeUpdate = z.infer<typeof MandantPinLaengeUpdateSchema>
 
 // ---------------------------------------------------------------------------
 // Mandant-Stammdaten (Firmeninfo + Belegtext)

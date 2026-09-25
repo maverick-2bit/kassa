@@ -25,6 +25,9 @@ import {
   loescheArbeitszeit,
   ladeAktuelleSchichten,
 } from '../services/zeiterfassung.service.js'
+import { getClientIp } from '../services/audit.service.js'
+import { PinGesperrtError, sendePinGesperrt } from '../services/pin-bremse.js'
+import { PinLaengeError, sendePinLaengeFehler } from '../services/pin-laenge.js'
 
 export interface ZeiterfassungRouteOptions { db: Db }
 
@@ -42,15 +45,23 @@ const IdParam = z.object({ id: z.string().uuid() })
 export const zeiterfassungRoute: FastifyPluginAsync<ZeiterfassungRouteOptions> = async (fastify, opts) => {
   const guard = { onRequest: [fastify.authenticate] }
 
-  // ---- POST /zeiterfassung/stempeln (kein JWT) ----
+  // ---- POST /zeiterfassung/stempeln (kein JWT, aber unter der PIN-Bremse) ----
   fastify.post('/zeiterfassung/stempeln', async (request, reply) => {
     const body = StempelInputSchema.safeParse(request.body)
     if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
 
     try {
-      const result = await stempeln(opts.db, body.data.kasseId, body.data.pin)
+      const result = await stempeln(opts.db, body.data.kasseId, body.data.pin, {
+        ...(body.data.geraetToken ? { geraetToken: body.data.geraetToken } : {}),
+        geraetVertrauen: fastify.geraetVertrauen,
+        ipAdresse:       getClientIp(request as Parameters<typeof getClientIp>[0]),
+        userAgent:       (request.headers['user-agent'] as string | undefined) ?? null,
+        log:             request.log,
+      })
       return reply.send(result)
     } catch (err) {
+      if (err instanceof PinGesperrtError) return sendePinGesperrt(reply, err)
+      if (err instanceof PinLaengeError) return sendePinLaengeFehler(reply, err)
       const msg = err instanceof Error ? err.message : 'Fehler'
       const status = msg.includes('nicht gefunden') ? 404
         : msg.includes('nicht aktiviert') ? 403

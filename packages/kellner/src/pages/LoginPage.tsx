@@ -1,9 +1,11 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { authApi, kasseApi } from '../lib/api'
-import { setAuth } from '../lib/auth'
+import { PIN_LAENGE_CODE } from '@kassa/shared'
+import { ApiError, authApi, kasseApi } from '../lib/api'
+import { gemerktePinLaenge, getGeraetToken, merkePinLaenge, setAuth } from '../lib/auth'
 import { getKasseIdentity, setKasseIdentity } from '../lib/kasse'
+import { restzeitText, usePinSperre } from '../lib/pin-sperre'
 
 export function LoginPage() {
   const navigate    = useNavigate()
@@ -11,6 +13,7 @@ export function LoginPage() {
   const [pin, setPin]         = useState('')
   const [fehler, setFehler]   = useState<string | null>(null)
   const inputRef              = useRef<HTMLInputElement>(null)
+  const sperre                = usePinSperre()
 
   // Kassen laden für den Setup-Schritt (mandantId aus URL-Param)
   const urlParams  = new URLSearchParams(window.location.search)
@@ -25,6 +28,23 @@ export function LoginPage() {
 
   // Noch keine Kasse gewählt — Kasse wählen
   const [gewaehlteKasseId, setGewaehlteKasseId] = useState<string>('')
+  const effKasseId = identity?.kasseId ?? gewaehlteKasseId
+
+  // PIN-Länge des Betriebs (4 oder 6): zuletzt bekannte sofort, dann frisch vom
+  // Server — das Feld schickt nach der letzten Ziffer automatisch ab.
+  const [pinLaenge, setPinLaenge] = useState(gemerktePinLaenge)
+  const pinInfo = useQuery({
+    queryKey:  ['pin-info', effKasseId],
+    queryFn:   () => authApi.pinInfo(effKasseId),
+    enabled:   !!effKasseId,
+    staleTime: 60_000,
+    retry:     false,
+  })
+  useEffect(() => {
+    if (!pinInfo.data) return
+    setPinLaenge(pinInfo.data.pinLaenge)
+    merkePinLaenge(pinInfo.data.pinLaenge)
+  }, [pinInfo.data])
 
   const mutation = useMutation({
     mutationFn: authApi.pinLogin,
@@ -38,21 +58,33 @@ export function LoginPage() {
       navigate('/', { replace: true })
     },
     onError: (err) => {
-      setFehler(err instanceof Error ? err.message : 'PIN ungültig')
       setPin('')
       inputRef.current?.focus()
+      // Zu viele Fehlversuche: Countdown statt Meldung — bis dahin prüft der Server nichts
+      if (sperre.uebernimm(err)) { setFehler(null); return }
+      // Betrieb wurde auf eine andere PIN-Länge umgestellt → Feld anpassen
+      if (err instanceof ApiError && err.code === PIN_LAENGE_CODE && err.pinLaenge) {
+        setPinLaenge(err.pinLaenge === 6 ? 6 : 4)
+        merkePinLaenge(err.pinLaenge)
+        setFehler(`PINs haben jetzt ${err.pinLaenge} Ziffern — bitte erneut eingeben.`)
+        return
+      }
+      setFehler(err instanceof Error ? err.message : 'PIN ungültig')
     },
   })
 
+  /** Geräte-Merkmal mitschicken: ein Fremder kann dieses Handy dann nicht aussperren */
+  function anmelden(kasseId: string, eingabe: string) {
+    const geraetToken = getGeraetToken()
+    mutation.mutate({ kasseId, pin: eingabe, ...(geraetToken ? { geraetToken } : {}) })
+  }
+
   function handleDigit(d: string) {
-    const eff = identity?.kasseId ?? gewaehlteKasseId
-    if (!eff) return
-    const next = (pin + d).slice(0, 4)
+    if (!effKasseId || sperre.gesperrt) return
+    const next = (pin + d).slice(0, pinLaenge)
     setPin(next)
     setFehler(null)
-    if (next.length === 4) {
-      mutation.mutate({ kasseId: eff, pin: next })
-    }
+    if (next.length === pinLaenge) anmelden(effKasseId, next)
   }
 
   function handleDelete() { setPin(p => p.slice(0, -1)) }
@@ -156,7 +188,7 @@ export function LoginPage() {
 
         {/* PIN-Punkte */}
         <div className="flex justify-center gap-4">
-          {[0,1,2,3].map(i => (
+          {Array.from({ length: pinLaenge }, (_, i) => (
             <div
               key={i}
               className={`w-4 h-4 rounded-full transition-all ${
@@ -165,6 +197,14 @@ export function LoginPage() {
             />
           ))}
         </div>
+
+        {/* Sperre nach zu vielen Fehlversuchen */}
+        {sperre.gesperrt && (
+          <p role="alert" className="rounded-2xl border-2 border-amber-300 bg-amber-50 px-3 py-2 text-center text-sm font-medium text-amber-900">
+            Zu viele falsche PINs — wieder möglich in{' '}
+            <span className="font-black tabular-nums">{restzeitText(sperre.restSekunden)}</span>
+          </p>
+        )}
 
         {/* Fehler */}
         {fehler && (
@@ -179,14 +219,14 @@ export function LoginPage() {
               <button
                 key={i}
                 onClick={() => d === '⌫' ? handleDelete() : handleDigit(d)}
-                disabled={mutation.isPending}
+                disabled={mutation.isPending || sperre.gesperrt}
                 className={`h-16 rounded-2xl text-xl font-black transition active:scale-90 disabled:opacity-50 ${
                   d === '⌫'
                     ? 'bg-panel-2 text-ink-muted hover:bg-panel-2'
                     : 'bg-panel border-2 border-line text-ink hover:border-brand-400 hover:bg-brand-50'
                 }`}
               >
-                {mutation.isPending && pin.length === 4 ? '…' : d}
+                {mutation.isPending && pin.length === pinLaenge ? '…' : d}
               </button>
             )
           })}
@@ -199,11 +239,11 @@ export function LoginPage() {
           inputMode="numeric"
           value={pin}
           onChange={e => {
-            const v = e.target.value.replace(/\D/g, '').slice(0, 4)
+            if (sperre.gesperrt) return
+            const v = e.target.value.replace(/\D/g, '').slice(0, pinLaenge)
             setPin(v)
             setFehler(null)
-            const eff = identity?.kasseId ?? gewaehlteKasseId
-            if (v.length === 4 && eff) mutation.mutate({ kasseId: eff, pin: v })
+            if (v.length === pinLaenge && effKasseId) anmelden(effKasseId, v)
           }}
           className="sr-only"
           autoFocus

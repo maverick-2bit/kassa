@@ -1,13 +1,13 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { Berechtigung, User, UserCreateInput, UserUpdateInput } from '@kassa/shared'
+import type { Berechtigung, MandantPinLaenge, PinLaenge, User, UserCreateInput, UserUpdateInput } from '@kassa/shared'
 import {
   ALLE_BERECHTIGUNGEN,
   BERECHTIGUNG_LABELS,
   ROLLE_LABELS,
 } from '@kassa/shared'
-import { userApi } from '../lib/api'
-import { getAuth } from '../lib/auth'
+import { mandantApi, userApi } from '../lib/api'
+import { getAuth, pinLaenge as gespeichertePinLaenge, updateMandantPinLaenge } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
@@ -32,24 +32,37 @@ export function UserVerwaltungPage() {
     queryFn:  userApi.list,
   })
 
+  // PIN-Länge des Betriebs: bis die Abfrage da ist, gilt die aus der Anmeldung
+  const pinLaengeQuery = useQuery({
+    queryKey: ['mandant-pin-laenge'],
+    queryFn:  mandantApi.getPinLaenge,
+  })
+  const pinLaenge: PinLaenge = pinLaengeQuery.data?.pinLaenge ?? gespeichertePinLaenge()
+
   // Alle Kassen aus Login-Response (Admin sieht alle)
   const verfuegbareKassen = auth.kassen
 
+  /** Liste UND die PIN-Zählung der Längen-Karte — beide hängen an den Benutzern */
+  const neuLaden = () => {
+    void qc.invalidateQueries({ queryKey: ['users'] })
+    void qc.invalidateQueries({ queryKey: ['mandant-pin-laenge'] })
+  }
+
   const erstelleMutation = useMutation({
     mutationFn: userApi.create,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['users'] }); setNeuerUserOffen(false) },
+    onSuccess: () => { neuLaden(); setNeuerUserOffen(false) },
     onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
   })
 
   const updateMutation = useMutation({
     mutationFn: ({ id, input }: { id: string; input: UserUpdateInput }) => userApi.update(id, input),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['users'] }); setEditUser(null); setPinUser(null) },
+    onSuccess: () => { neuLaden(); setEditUser(null); setPinUser(null) },
     onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
   })
 
   const deactivateMutation = useMutation({
     mutationFn: userApi.deactivate,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+    onSuccess: () => neuLaden(),
     onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
   })
 
@@ -62,6 +75,17 @@ export function UserVerwaltungPage() {
 
       {fehler && (
         <div className="mb-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">{fehler}</div>
+      )}
+
+      {pinLaengeQuery.data && (
+        <PinLaengeKarte
+          stand={pinLaengeQuery.data}
+          onGeaendert={(neu) => {
+            updateMandantPinLaenge(neu.pinLaenge)
+            qc.setQueryData(['mandant-pin-laenge'], neu)
+            void qc.invalidateQueries({ queryKey: ['users'] })
+          }}
+        />
       )}
 
       {usersQuery.isLoading && <p className="text-sm text-ink-muted">Wird geladen…</p>}
@@ -115,12 +139,18 @@ export function UserVerwaltungPage() {
                     )}
                   </td>
                   <td className="px-4 py-3">
+                    {/* Nach einer Umstellung der PIN-Länge gilt die alte PIN nicht mehr */}
+                    {u.hatPin && u.pinLaenge !== pinLaenge && (
+                      <span className="mr-2 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                        PIN ungültig ({u.pinLaenge} Ziffern)
+                      </span>
+                    )}
                     <button
                       type="button"
                       onClick={() => { setFehler(null); setPinUser(u) }}
                       className="text-xs text-brand-600 hover:underline"
                     >
-                      {u.hatPin ? 'PIN ändern' : 'PIN setzen'}
+                      {u.hatPin && u.pinLaenge !== pinLaenge ? 'Neue PIN vergeben' : u.hatPin ? 'PIN ändern' : 'PIN setzen'}
                     </button>
                   </td>
                   <td className="px-4 py-3">
@@ -164,6 +194,7 @@ export function UserVerwaltungPage() {
       >
         <UserFormular
           verfuegbareKassen={verfuegbareKassen}
+          pinLaenge={pinLaenge}
           loading={erstelleMutation.isPending}
           fehler={fehler}
           onSubmit={(input) => { setFehler(null); erstelleMutation.mutate(input as UserCreateInput) }}
@@ -182,6 +213,7 @@ export function UserVerwaltungPage() {
           <UserFormular
             initialUser={editUser}
             verfuegbareKassen={verfuegbareKassen}
+            pinLaenge={pinLaenge}
             loading={updateMutation.isPending}
             fehler={fehler}
             onSubmit={(input) => {
@@ -202,6 +234,7 @@ export function UserVerwaltungPage() {
         {pinUser && (
           <PinFormular
             hatPin={pinUser.hatPin}
+            pinLaenge={pinLaenge}
             loading={updateMutation.isPending}
             fehler={fehler}
             onSubmit={(pin) => {
@@ -223,6 +256,8 @@ export function UserVerwaltungPage() {
 interface UserFormularProps {
   initialUser?:        User
   verfuegbareKassen:   { id: string; kassenId: string }[]
+  /** Ziffernzahl der PINs dieses Betriebs */
+  pinLaenge:           PinLaenge
   loading:             boolean
   fehler:              string | null
   onSubmit:            (input: UserCreateInput | UserUpdateInput) => void
@@ -230,7 +265,7 @@ interface UserFormularProps {
 }
 
 function UserFormular({
-  initialUser, verfuegbareKassen, loading, fehler, onSubmit, onAbbrechen,
+  initialUser, verfuegbareKassen, pinLaenge, loading, fehler, onSubmit, onAbbrechen,
 }: UserFormularProps) {
   const istNeu = !initialUser
   const [name,      setName]      = useState(initialUser?.name ?? '')
@@ -264,7 +299,7 @@ function UserFormular({
   const submit = () => {
     if (!name.trim()) return
     if (pinOnly) {
-      if (!/^\d{4}$/.test(pin)) return
+      if (pin.length !== pinLaenge || !/^\d+$/.test(pin)) return
       onSubmit({ name, rolle: 'kellner', berechtigungen, kassenIds, pin } as UserCreateInput)
       return
     }
@@ -310,14 +345,14 @@ function UserFormular({
 
       {pinOnly ? (
         <label className="block">
-          <span className="text-xs font-medium text-ink-muted">PIN * (4 Ziffern — damit meldet sich {name.trim() || 'die Person'} an)</span>
+          <span className="text-xs font-medium text-ink-muted">PIN * ({pinLaenge} Ziffern — damit meldet sich {name.trim() || 'die Person'} an)</span>
           <Input
             type="text"
             inputMode="numeric"
             value={pin}
-            onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+            onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, pinLaenge))}
             className="mt-0.5 w-32 text-center tracking-widest font-mono"
-            placeholder="z. B. 4711"
+            placeholder={pinLaenge === 6 ? 'z. B. 471108' : 'z. B. 4711'}
           />
         </label>
       ) : (
@@ -402,9 +437,10 @@ function UserFormular({
 // ---------------------------------------------------------------------------
 
 function PinFormular({
-  hatPin, loading, fehler, onSubmit, onAbbrechen,
+  hatPin, pinLaenge, loading, fehler, onSubmit, onAbbrechen,
 }: {
   hatPin:      boolean
+  pinLaenge:   PinLaenge
   loading:     boolean
   fehler:      string | null
   onSubmit:    (pin: string | null) => void
@@ -422,17 +458,17 @@ function PinFormular({
     <div className="space-y-4">
       <p className="text-sm text-ink-muted">
         {hatPin
-          ? 'Neuen 4-stelligen PIN setzen oder PIN entfernen (Feld leer lassen).'
-          : 'Einen 4-stelligen PIN vergeben. Der Kellner kann sich damit am POS anmelden.'}
+          ? `Neuen ${pinLaenge}-stelligen PIN setzen oder PIN entfernen (Feld leer lassen).`
+          : `Einen ${pinLaenge}-stelligen PIN vergeben. Der Kellner kann sich damit am POS anmelden.`}
       </p>
       <label className="block">
-        <span className="text-xs font-medium text-ink-muted">Neuer PIN (4 Ziffern)</span>
+        <span className="text-xs font-medium text-ink-muted">Neuer PIN ({pinLaenge} Ziffern)</span>
         <Input
           type="password"
           inputMode="numeric"
-          maxLength={4}
+          maxLength={pinLaenge}
           value={pin}
-          onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+          onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, pinLaenge))}
           placeholder={hatPin ? 'Leer lassen = PIN entfernen' : ''}
           className="mt-0.5"
           autoFocus
@@ -444,13 +480,13 @@ function PinFormular({
           <Input
             type="password"
             inputMode="numeric"
-            maxLength={4}
+            maxLength={pinLaenge}
             value={confirm}
-            onChange={e => setConfirm(e.target.value.replace(/\D/g, '').slice(0, 4))}
-            invalid={confirm.length === 4 && pin !== confirm}
+            onChange={e => setConfirm(e.target.value.replace(/\D/g, '').slice(0, pinLaenge))}
+            invalid={confirm.length === pinLaenge && pin !== confirm}
             className="mt-0.5"
           />
-          {confirm.length === 4 && pin !== confirm && (
+          {confirm.length === pinLaenge && pin !== confirm && (
             <p className="mt-0.5 text-xs text-red-600">PINs stimmen nicht überein.</p>
           )}
         </label>
@@ -464,11 +500,83 @@ function PinFormular({
           onClick={submit}
           loading={loading}
           className="flex-1"
-          disabled={pin.length > 0 && (pin.length !== 4 || pin !== confirm)}
+          disabled={pin.length > 0 && (pin.length !== pinLaenge || pin !== confirm)}
         >
           {pin.length === 0 ? (hatPin ? 'PIN entfernen' : 'Abbrechen') : 'PIN speichern'}
         </Button>
       </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// PIN-Länge des Betriebs (4 oder 6 Ziffern)
+// ---------------------------------------------------------------------------
+
+/**
+ * Umstellen macht alle PINs der anderen Länge ungültig — ein Rest kurzer PINs
+ * bliebe sonst ratbar. Deshalb vorher nennen, wen es trifft; die Liste markiert
+ * danach, wer eine neue PIN braucht.
+ */
+function PinLaengeKarte({ stand, onGeaendert }: {
+  stand:       MandantPinLaenge
+  onGeaendert: (neu: MandantPinLaenge) => void
+}) {
+  const [bestaetigen, setBestaetigen] = useState(false)
+  const [fehler, setFehler]           = useState<string | null>(null)
+  const ziel: PinLaenge   = stand.pinLaenge === 4 ? 6 : 4
+  const betroffen         = stand.pinLaenge === 4 ? stand.pinsMit4 : stand.pinsMit6
+  const veraltet          = stand.pinLaenge === 4 ? stand.pinsMit6 : stand.pinsMit4
+
+  const mutation = useMutation({
+    mutationFn: () => mandantApi.patchPinLaenge({ pinLaenge: ziel }),
+    onSuccess:  (neu) => { setBestaetigen(false); onGeaendert(neu) },
+    onError:    (err) => setFehler(err instanceof Error ? err.message : String(err)),
+  })
+
+  return (
+    <div className="mb-5 rounded-lg border border-line bg-panel p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-ink">PIN-Länge: {stand.pinLaenge} Ziffern</h2>
+          <p className="mt-0.5 text-xs text-ink-muted">
+            Gilt für alle Benutzer. 6 Ziffern sind rund hundertmal schwerer zu erraten.
+            Nach zu vielen falschen PINs sperrt die Kasse die PIN-Eingabe ohnehin kurz.
+          </p>
+          {veraltet > 0 && (
+            <p className="mt-1 text-xs font-medium text-amber-800">
+              {veraltet} {veraltet === 1 ? 'Benutzer hat' : 'Benutzer haben'} noch eine PIN mit {ziel} Ziffern — diese gilt nicht, bitte neu vergeben.
+            </p>
+          )}
+        </div>
+        <Button variant="secondary" onClick={() => { setFehler(null); setBestaetigen(true) }}>
+          Auf {ziel} Ziffern umstellen
+        </Button>
+      </div>
+
+      <Modal open={bestaetigen} onClose={() => setBestaetigen(false)} title={`PIN-Länge auf ${ziel} Ziffern umstellen?`}>
+        <div className="space-y-3 text-sm text-ink">
+          {betroffen > 0 ? (
+            <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-amber-900">
+              <strong>{betroffen} {betroffen === 1 ? 'PIN gilt' : 'PINs gelten'} danach nicht mehr</strong> (sie haben {stand.pinLaenge} Ziffern).
+              Die Betroffenen können sich erst wieder per PIN anmelden, stempeln oder freigeben,
+              wenn hier eine neue PIN mit {ziel} Ziffern vergeben ist — die Liste markiert sie.
+            </div>
+          ) : (
+            <p>Es ist noch keine PIN mit {stand.pinLaenge} Ziffern vergeben — niemand ist betroffen.</p>
+          )}
+          <p className="text-xs text-ink-muted">
+            Admins können sich weiterhin mit E-Mail und Passwort anmelden.
+          </p>
+          {fehler && <div className="rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">{fehler}</div>}
+          <div className="flex gap-2 pt-1">
+            <Button variant="secondary" onClick={() => setBestaetigen(false)} className="flex-1">Abbrechen</Button>
+            <Button onClick={() => mutation.mutate()} loading={mutation.isPending} className="flex-1">
+              Umstellen
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

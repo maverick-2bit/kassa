@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs'
-import { and, desc, eq, gte, isNull, lte } from 'drizzle-orm'
+import { and, desc, eq, gte, isNotNull, isNull, lte } from 'drizzle-orm'
+import type { FastifyBaseLogger } from 'fastify'
 import type { Db } from '../db/client.js'
 import { arbeitszeiten, kassen, mandanten, users } from '../db/schema.js'
 import type {
@@ -8,6 +9,9 @@ import type {
   ArbeitszeitUpdate,
   StempelResponse,
 } from '@kassa/shared'
+import type { GeraetVertrauenSigner } from '../auth/geraet-vertrauen.js'
+import { pruefeMitBremse, toepfeFuerGeraet } from './pin-bremse.js'
+import { pruefePinLaenge } from './pin-laenge.js'
 
 // ---------------------------------------------------------------------------
 // Hilfsfunktionen
@@ -41,14 +45,28 @@ function toDto(row: typeof arbeitszeiten.$inferSelect): ArbeitszeitResponse {
 // PIN-Stempel (kein JWT nötig)
 // ---------------------------------------------------------------------------
 
+/** Anfrage-Umfeld der Stempeluhr — Geräte-Merkmal + Audit der PIN-Bremse. */
+export interface StempelKontext {
+  geraetToken?:    string
+  geraetVertrauen: GeraetVertrauenSigner
+  ipAdresse:       string | null
+  userAgent:       string | null
+  log?:            FastifyBaseLogger
+}
+
 export async function stempeln(
   db:      Db,
   kasseId: string,
   pin:     string,
+  kontext: StempelKontext,
 ): Promise<StempelResponse> {
   // Kasse + Mandant laden
   const [kasse] = await db
-    .select({ mandantId: kassen.mandantId, modulZeiterfassungAktiv: mandanten.modulZeiterfassungAktiv })
+    .select({
+      mandantId:               kassen.mandantId,
+      modulZeiterfassungAktiv: mandanten.modulZeiterfassungAktiv,
+      pinLaenge:               mandanten.pinLaenge,
+    })
     .from(kassen)
     .innerJoin(mandanten, eq(kassen.mandantId, mandanten.id))
     .where(eq(kassen.id, kasseId))
@@ -57,20 +75,37 @@ export async function stempeln(
   if (!kasse) throw new Error('Kasse nicht gefunden')
   if (!kasse.modulZeiterfassungAktiv) throw new Error('Zeiterfassungs-Modul nicht aktiviert')
 
-  // Alle aktiven User des Mandanten mit pinHash laden
-  const alleUser = await db
-    .select({ id: users.id, name: users.name, pinHash: users.pinHash })
-    .from(users)
-    .where(and(eq(users.mandantId, kasse.mandantId), eq(users.aktiv, true)))
+  // Falsche Länge kann keinen PIN treffen → ohne Prüfung und ohne Fehlversuch ablehnen
+  pruefePinLaenge(pin, kasse.pinLaenge)
 
-  // PIN vergleichen
-  let gefundenerUser: { id: string; name: string } | null = null
-  for (const u of alleUser) {
-    if (u.pinHash && await bcrypt.compare(pin, u.pinHash)) {
-      gefundenerUser = { id: u.id, name: u.name }
-      break
+  // Die Stempeluhr braucht keine Anmeldung — ohne Bremse war sie das bequemste
+  // PIN-Orakel. Sie teilt die Töpfe mit dem PIN-Login (dieselben PINs).
+  const vertrauen = kontext.geraetVertrauen.pruefen(kontext.geraetToken, kasse.mandantId)
+  const gefundenerUser = await pruefeMitBremse(db, {
+    quelle:        'stempeln',
+    mandantId:     kasse.mandantId,
+    toepfe:        toepfeFuerGeraet(kasse.mandantId, kasseId, vertrauen),
+    meldungFalsch: 'PIN ungültig.',
+    kasseId,
+    ipAdresse:     kontext.ipAdresse,
+    userAgent:     kontext.userAgent,
+    ...(kontext.log ? { log: kontext.log } : {}),
+  }, async () => {
+    // Alle aktiven User des Mandanten mit PIN in der gültigen Länge
+    const alleUser = await db
+      .select({ id: users.id, name: users.name, pinHash: users.pinHash })
+      .from(users)
+      .where(and(
+        eq(users.mandantId, kasse.mandantId),
+        eq(users.aktiv, true),
+        isNotNull(users.pinHash),
+        eq(users.pinLaenge, kasse.pinLaenge),
+      ))
+    for (const u of alleUser) {
+      if (u.pinHash && await bcrypt.compare(pin, u.pinHash)) return { id: u.id, name: u.name }
     }
-  }
+    return null
+  })
   if (!gefundenerUser) throw new Error('PIN ungültig')
 
   // Offene Schicht prüfen

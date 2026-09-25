@@ -1,17 +1,21 @@
 /**
  * Auth-Routen
  *   POST /api/auth/login       E-Mail + Passwort → JWT
- *   POST /api/auth/pin-login   PIN → JWT
+ *   POST /api/auth/pin-login   PIN → JWT (unter der PIN-Bremse, siehe services/pin-bremse.ts)
+ *   GET  /api/auth/pin-info    PIN-Länge des Betriebs (öffentlich, vor dem Login)
  *   GET  /api/auth/me          Aktueller User (für Frontend-Refresh)
  */
 
 import type { FastifyPluginAsync } from 'fastify'
 import { and, eq } from 'drizzle-orm'
+import { z } from 'zod'
 import { LoginInputSchema, PinLoginInputSchema } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import { kassen, mandanten, users } from '../db/schema.js'
-import { AuthError, login, loginWithPin, userZuDto } from '../services/auth.service.js'
+import { AuthError, login, loginWithPin, userZuDto, type LoginDeps } from '../services/auth.service.js'
 import { logAudit, getClientIp } from '../services/audit.service.js'
+import { PinGesperrtError, sendePinGesperrt } from '../services/pin-bremse.js'
+import { alsPinLaenge, PinLaengeError, sendePinLaengeFehler } from '../services/pin-laenge.js'
 import { ipSchluessel } from '../auth/rate-limit.js'
 
 export interface AuthRouteOptions {
@@ -59,6 +63,12 @@ function lockoutLoeschen(email: string): void {
 // ---------------------------------------------------------------------------
 
 export const authRoute: FastifyPluginAsync<AuthRouteOptions> = async (fastify, opts) => {
+  const loginDeps: LoginDeps = {
+    db:              opts.db,
+    signToken:       (payload) => fastify.jwt.sign(payload),
+    geraetVertrauen: fastify.geraetVertrauen,
+  }
+
   fastify.post('/auth/login', loginRateLimit, async (request, reply) => {
     const parsed = LoginInputSchema.safeParse(request.body)
     if (!parsed.success) {
@@ -83,10 +93,7 @@ export const authRoute: FastifyPluginAsync<AuthRouteOptions> = async (fastify, o
     }
 
     try {
-      const result = await login(parsed.data, {
-        db:        opts.db,
-        signToken: (payload) => fastify.jwt.sign(payload),
-      })
+      const result = await login(parsed.data, loginDeps)
 
       lockoutLoeschen(email)
       await logAudit(opts.db, {
@@ -123,10 +130,7 @@ export const authRoute: FastifyPluginAsync<AuthRouteOptions> = async (fastify, o
     const ua = (request.headers['user-agent'] as string | undefined) ?? null
 
     try {
-      const result = await loginWithPin(parsed.data, {
-        db:        opts.db,
-        signToken: (payload) => fastify.jwt.sign(payload),
-      })
+      const result = await loginWithPin(parsed.data, loginDeps, { ipAdresse: ip, userAgent: ua, log: request.log })
 
       await logAudit(opts.db, {
         mandantId: result.user.mandantId,
@@ -138,6 +142,10 @@ export const authRoute: FastifyPluginAsync<AuthRouteOptions> = async (fastify, o
 
       return reply.send(result)
     } catch (err) {
+      // Zu viele Fehlversuche: keine PIN geprüft (bzw. dieser Fehlversuch hat
+      // gesperrt — der pin.gesperrt-Eintrag steht dann schon im Audit)
+      if (err instanceof PinGesperrtError) return sendePinGesperrt(reply, err)
+      if (err instanceof PinLaengeError) return sendePinLaengeFehler(reply, err)
       if (err instanceof AuthError) {
         await logAudit(opts.db, {
           aktion:    'pin_login.fehlschlag',
@@ -150,6 +158,21 @@ export const authRoute: FastifyPluginAsync<AuthRouteOptions> = async (fastify, o
       fastify.log.error({ err }, 'PIN-Login fehlgeschlagen')
       return reply.status(500).send({ fehler: 'Login fehlgeschlagen' })
     }
+  })
+
+  // Öffentlich: wie viele Ziffern das PIN-Feld braucht (4 oder 6). Verrät nur
+  // die Einstellung des Betriebs, nichts über einzelne PINs.
+  fastify.get('/auth/pin-info', async (request, reply) => {
+    const q = z.object({ kasseId: z.string().uuid() }).safeParse(request.query)
+    if (!q.success) return reply.status(400).send({ fehler: 'kasseId fehlt oder ist ungültig' })
+    const [row] = await opts.db
+      .select({ pinLaenge: mandanten.pinLaenge })
+      .from(kassen)
+      .innerJoin(mandanten, eq(kassen.mandantId, mandanten.id))
+      .where(eq(kassen.id, q.data.kasseId))
+      .limit(1)
+    if (!row) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
+    return reply.send({ pinLaenge: alsPinLaenge(row.pinLaenge) })
   })
 
   // Geschützte Route — liefert aktuelle User-/Mandant-/Kassen-Daten
@@ -171,6 +194,7 @@ export const authRoute: FastifyPluginAsync<AuthRouteOptions> = async (fastify, o
         modulGaengeAktiv:         mandanten.modulGaengeAktiv,
         modulTicketsAktiv:        mandanten.modulTicketsAktiv,
         gaengeAnzahl:             mandanten.gaengeAnzahl,
+        pinLaenge:                mandanten.pinLaenge,
       })
       .from(mandanten)
       .where(eq(mandanten.id, user.mandantId))
@@ -184,7 +208,7 @@ export const authRoute: FastifyPluginAsync<AuthRouteOptions> = async (fastify, o
 
     return reply.send({
       user:    await userZuDto(user, opts.db),
-      mandant,
+      mandant: mandant ? { ...mandant, pinLaenge: alsPinLaenge(mandant.pinLaenge) } : mandant,
       kassen:  kassenListe,
     })
   })

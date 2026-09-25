@@ -167,9 +167,13 @@ describe('Rate-Limit je Client (Integration, echtes PostgreSQL)', () => {
   })
 
   it('Login-Bremse zählt je Client-IP — ein mitgeschickter Token verschafft keinen eigenen Topf', async () => {
+    // Unbekannte Kasse: dort wird gar keine PIN geprüft — sonst griffe schon die
+    // PIN-Bremse (Sperre je Kasse ab dem 8. Fehlversuch, siehe pin-bremse.test)
+    // und nicht das Rate-Limit, um das es hier geht.
+    const unbekannteKasse = crypto.randomUUID()
     const pinLogin = (clientIp: string, headers: Record<string, string> = {}) => srv.fastify.inject({
       method: 'POST', url: '/api/auth/pin-login', ...ueberNginx(clientIp, headers),
-      payload: { kasseId: admin.kasseId, pin: '0000' },
+      payload: { kasseId: unbekannteKasse, pin: '0000' },
     })
     const ip = '192.168.192.80'
     for (let i = 0; i < 10; i++) expect((await pinLogin(ip)).statusCode).not.toBe(429)

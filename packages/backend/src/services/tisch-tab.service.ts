@@ -21,7 +21,7 @@ import type { BelegServiceDeps } from './beleg.service.js'
 import { erstelleBarzahlungsbeleg } from './beleg.service.js'
 import { ladeRezepte, wendeBestandteilDeltasAn } from './bestandteil.service.js'
 import { bonierBestellung } from './bonier.service.js'
-import { pruefeStornoFreigabe } from './freigabe.service.js'
+import { pruefeStornoFreigabe, type FreigabeKontext } from './freigabe.service.js'
 
 export interface TischTabServiceDeps {
   db:        Db
@@ -292,10 +292,14 @@ export async function aktualisierePositionen(
   mandantId: string,
   deps: TischTabServiceDeps,
   /** Für Storno-Bon + Audit: wer korrigiert (Kellner-App/Kasse) und warum */
-  kontext?: { userId?: string | null; userName?: string; grund?: string; freigabePin?: string },
+  kontext?: {
+    userId?: string | null; userName?: string; grund?: string; freigabePin?: string
+    /** Wer anfragt — für die PIN-Bremse, falls ein Freigabe-PIN mitkommt */
+    freigabe?: FreigabeKontext
+  },
 ): Promise<{ tab: TischTabResponse; stornoBon: StornoBonErgebnis | null }> {
   const [existing] = await deps.db
-    .select({ id: tischTabs.id, status: tischTabs.status, positionen: tischTabs.positionen })
+    .select({ id: tischTabs.id, kasseId: tischTabs.kasseId, status: tischTabs.status, positionen: tischTabs.positionen })
     .from(tischTabs)
     .where(and(eq(tischTabs.id, id), eq(tischTabs.mandantId, mandantId)))
     .limit(1)
@@ -329,7 +333,10 @@ export async function aktualisierePositionen(
   // 'freigabe_erforderlich', bevor irgendetwas persistiert ist.
   if (stornoItems.length > 0) {
     const stornoWertCent = stornoItems.reduce((s, i) => s + i.menge * i.preisBruttoCent, 0)
-    await pruefeStornoFreigabe(deps.db, mandantId, stornoWertCent, kontext?.freigabePin)
+    await pruefeStornoFreigabe(
+      deps.db, mandantId, stornoWertCent, kontext?.freigabePin,
+      kontext?.freigabe ? { ...kontext.freigabe, kasseId: existing.kasseId } : null,
+    )
   }
 
   const [row] = await deps.db
@@ -433,7 +440,10 @@ export async function verwerfeTab(
   id: string,
   mandantId: string,
   deps: TischTabServiceDeps,
-  kontext?: { userId?: string | null; userName?: string; grund?: string; freigabePin?: string },
+  kontext?: {
+    userId?: string | null; userName?: string; grund?: string; freigabePin?: string
+    freigabe?: FreigabeKontext
+  },
 ): Promise<TischTabResponse> {
   const [existing] = await deps.db
     .select()
@@ -449,7 +459,10 @@ export async function verwerfeTab(
   // Freigabeschwelle des Positions-Stornos umgangen, indem man statt der
   // Position einfach den ganzen Tab verwirft.
   const gesamtCent = positionen.reduce((s, p) => s + p.menge * p.preisBruttoCent, 0)
-  await pruefeStornoFreigabe(deps.db, mandantId, gesamtCent, kontext?.freigabePin)
+  await pruefeStornoFreigabe(
+    deps.db, mandantId, gesamtCent, kontext?.freigabePin,
+    kontext?.freigabe ? { ...kontext.freigabe, kasseId: existing.kasseId } : null,
+  )
 
   const [row] = await deps.db
     .update(tischTabs)
@@ -486,6 +499,8 @@ export async function bezahleTab(
   input: TischTabBezahlenInput,
   mandantId: string,
   deps: TischTabServiceDeps,
+  /** Wer anfragt — für die PIN-Bremse, falls ein Freigabe-PIN (Rabatt) mitkommt */
+  freigabeKontext?: FreigabeKontext,
 ): Promise<{ tab: TischTabResponse; belegId: string }> {
   const [existing] = await deps.db
     .select()
@@ -538,7 +553,11 @@ export async function bezahleTab(
     zahlung:    zahlungMitTrinkgeld,
     ...(input.rabatt && { rabatt: input.rabatt }),
     ...(input.freigabePin && { freigabePin: input.freigabePin }),
-  }, deps.belegDeps, { skipLagerstand: true, zusatzNachlassCent: posNachlassCent })  // Tisch: Lager läuft über Positionsänderung
+  }, deps.belegDeps, {
+    skipLagerstand: true,   // Tisch: Lager läuft über Positionsänderung
+    zusatzNachlassCent: posNachlassCent,
+    ...(freigabeKontext ? { freigabeKontext } : {}),
+  })
 
   const [row] = await deps.db
     .update(tischTabs)

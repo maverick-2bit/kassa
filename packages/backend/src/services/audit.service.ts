@@ -17,6 +17,7 @@ export type AuditAktion =
   | 'login.gesperrt'
   | 'pin_login.erfolg'
   | 'pin_login.fehlschlag'
+  | 'pin.gesperrt'
   | 'benutzer.erstellt'
   | 'benutzer.geaendert'
   | 'benutzer.geloescht'

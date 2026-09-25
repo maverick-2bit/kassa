@@ -48,6 +48,41 @@ export const BERECHTIGUNG_LABELS: Record<Berechtigung, string> = {
 }
 
 // ---------------------------------------------------------------------------
+// PIN
+// ---------------------------------------------------------------------------
+
+/**
+ * Erlaubte PIN-Längen — eine Einstellung je Mandant, gilt für alle Benutzer.
+ * Nach einem Wechsel zählen PINs der anderen Länge nicht mehr.
+ */
+export const PinLaengeSchema = z.union([z.literal(4), z.literal(6)])
+export type PinLaenge = z.infer<typeof PinLaengeSchema>
+
+/** PIN mit 4 oder 6 Ziffern — welche Länge gilt, prüft das Backend gegen den Mandanten. */
+export const PinSchema = z.string().regex(/^(\d{4}|\d{6})$/, 'PIN muss 4 oder 6 Ziffern haben')
+
+/**
+ * Fehlercode der PIN-Bremse (HTTP 429): zu viele falsche PIN-Eingaben, bis zum
+ * Ablauf der Sperre wird gar keine PIN geprüft. Der Body nennt `wartenSekunden`.
+ */
+export const PIN_GESPERRT_CODE = 'pin_gesperrt'
+
+/** Fehlercode (HTTP 400): PIN hat nicht die Länge des Betriebs; der Body nennt `pinLaenge`. */
+export const PIN_LAENGE_CODE = 'pin_laenge'
+
+/**
+ * Geräte-Vertrauen: signiertes Merkmal, das ein Gerät nach einer erfolgreichen
+ * Anmeldung bekommt (`geraetToken` in der Login-Antwort) und bei PIN-Eingaben
+ * mitschickt. Solche Geräte zählen Fehlversuche in einem eigenen Topf — ein
+ * Fremder ohne Merkmal kann sie nicht aussperren. KEIN Anmelde-Token.
+ */
+export const GeraetTokenSchema = z.string().max(512)
+
+/** Öffentlich (vor dem Login): wie viele Ziffern das PIN-Feld braucht. */
+export const PinInfoSchema = z.object({ pinLaenge: PinLaengeSchema })
+export type PinInfo = z.infer<typeof PinInfoSchema>
+
+// ---------------------------------------------------------------------------
 // User (Public-DTO — kein passwordHash, kein pinHash!)
 // ---------------------------------------------------------------------------
 
@@ -60,6 +95,8 @@ export const UserSchema = z.object({
   berechtigungen: z.array(BerechtigungSchema),
   kassenIds:      z.array(z.string().uuid()),
   hatPin:         z.boolean(),
+  /** Ziffernzahl des gesetzten PINs — weicht sie vom Betrieb ab, gilt der PIN nicht mehr. */
+  pinLaenge:      PinLaengeSchema,
   aktiv:          z.boolean(),
   createdAt:      z.string(),
 })
@@ -72,17 +109,22 @@ export type User = z.infer<typeof UserSchema>
 export const LoginInputSchema = z.object({
   email:    z.string().email('Ungültige E-Mail-Adresse'),
   passwort: z.string().min(1, 'Passwort erforderlich'),
+  /** Bisheriges Geräte-Merkmal — dann bleibt das Gerät dasselbe (derselbe Fehlversuchs-Topf). */
+  geraetToken: GeraetTokenSchema.optional(),
 })
 export type LoginInput = z.infer<typeof LoginInputSchema>
 
 export const PinLoginInputSchema = z.object({
   kasseId: z.string().uuid(),
-  pin:     z.string().length(4).regex(/^\d{4}$/, 'PIN muss genau 4 Ziffern sein'),
+  pin:     PinSchema,
+  geraetToken: GeraetTokenSchema.optional(),
 })
 export type PinLoginInput = z.infer<typeof PinLoginInputSchema>
 
 export const LoginResponseSchema = z.object({
   token:   z.string(),
+  /** Geräte-Merkmal fürs nächste Mal (im Gerät speichern, beim Abmelden NICHT löschen). */
+  geraetToken: z.string().optional(),
   user:    UserSchema,
   mandant: z.object({
     id:                  z.string().uuid(),
@@ -98,6 +140,8 @@ export const LoginResponseSchema = z.object({
     modulTicketsAktiv:        z.boolean(),
     /** Anzahl wählbarer Gänge (1..9) für den Gang-Wähler */
     gaengeAnzahl:             z.number().int(),
+    /** Ziffernzahl der PINs dieses Betriebs */
+    pinLaenge:                PinLaengeSchema,
   }),
   kassen: z.array(z.object({
     id:          z.string().uuid(),
@@ -125,7 +169,7 @@ export const UserCreateInputSchema = z.object({
   rolle:          RolleSchema,
   berechtigungen: z.array(BerechtigungSchema),
   kassenIds:      z.array(z.string().uuid()),
-  pin:            z.string().length(4).regex(/^\d{4}$/).optional(),
+  pin:            PinSchema.optional(),
 }).superRefine((u, ctx) => {
   const hatZugang = !!u.email && !!u.passwort
   if (!hatZugang && (u.email || u.passwort)) {
@@ -146,7 +190,7 @@ export const UserUpdateInputSchema = z.object({
   passwort:       z.string().min(8).optional(),
   berechtigungen: z.array(BerechtigungSchema).optional(),
   kassenIds:      z.array(z.string().uuid()).optional(),
-  pin:            z.string().length(4).regex(/^\d{4}$/).nullable().optional(),
+  pin:            PinSchema.nullable().optional(),
   aktiv:          z.boolean().optional(),
 })
 export type UserUpdateInput = z.infer<typeof UserUpdateInputSchema>

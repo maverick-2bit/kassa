@@ -8,6 +8,7 @@
 
 import bcrypt from 'bcryptjs'
 import { and, eq, inArray, isNotNull } from 'drizzle-orm'
+import type { FastifyBaseLogger } from 'fastify'
 import type {
   Berechtigung,
   LoginInput,
@@ -19,6 +20,9 @@ import type {
 import { ALLE_BERECHTIGUNGEN } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import { kassen, mandanten, userKassen, users } from '../db/schema.js'
+import type { GeraetVertrauenSigner } from '../auth/geraet-vertrauen.js'
+import { pruefeMitBremse, toepfeFuerGeraet } from './pin-bremse.js'
+import { alsPinLaenge, pruefePinLaenge } from './pin-laenge.js'
 
 const BCRYPT_COST = 10
 
@@ -86,6 +90,7 @@ export async function userZuDto(
     berechtigungen,
     kassenIds:      kassenZuordnungen,
     hatPin:         row.pinHash !== null,
+    pinLaenge:      alsPinLaenge(row.pinLaenge),
     aktiv:          row.aktiv,
     createdAt:      row.createdAt.toISOString(),
   }
@@ -98,11 +103,25 @@ export async function userZuDto(
 export interface LoginDeps {
   db:        Db
   signToken: (payload: { sub: string; mandantId: string; rolle: Rolle; name: string; berechtigungen: Berechtigung[] }) => string
+  /** Geräte-Merkmal der PIN-Bremse (jede erfolgreiche Anmeldung stellt es aus/verlängert es) */
+  geraetVertrauen: GeraetVertrauenSigner
 }
 
+/** Anfrage-Umfeld einer PIN-Anmeldung — fürs Audit der PIN-Bremse. */
+export interface PinLoginKontext {
+  ipAdresse: string | null
+  userAgent: string | null
+  log?:      FastifyBaseLogger
+}
+
+/**
+ * @param geraetId Gerät aus dem vorgelegten Merkmal — bleibt beim Verlängern
+ *                 erhalten (sonst gäbe jede Anmeldung einen frischen Topf)
+ */
 async function buildLoginResponse(
   user: typeof users.$inferSelect,
   deps: LoginDeps,
+  geraetId?: string,
 ): Promise<LoginResponse> {
   const [mandant] = await deps.db
     .select({
@@ -118,6 +137,7 @@ async function buildLoginResponse(
       modulGaengeAktiv:         mandanten.modulGaengeAktiv,
       modulTicketsAktiv:        mandanten.modulTicketsAktiv,
       gaengeAnzahl:             mandanten.gaengeAnzahl,
+      pinLaenge:                mandanten.pinLaenge,
     })
     .from(mandanten)
     .where(eq(mandanten.id, user.mandantId))
@@ -140,8 +160,9 @@ async function buildLoginResponse(
 
   return {
     token,
+    geraetToken: deps.geraetVertrauen.ausstellen(user.mandantId, geraetId),
     user:    await userZuDto(user, deps.db),
-    mandant,
+    mandant: { ...mandant, pinLaenge: alsPinLaenge(mandant.pinLaenge) },
     kassen:  kassenListe,
   }
 }
@@ -165,43 +186,72 @@ export async function login(
   const ok = await verifyPassword(input.passwort, user.passwordHash)
   if (!ok) throw new AuthError(401, 'E-Mail oder Passwort falsch')
 
-  return buildLoginResponse(user, deps)
+  const vertrauen = deps.geraetVertrauen.pruefen(input.geraetToken, user.mandantId)
+  return buildLoginResponse(user, deps, vertrauen?.geraetId)
+}
+
+/**
+ * Sucht den aktiven Benutzer zum PIN. Nur PINs in der Länge des Betriebs zählen
+ * (nach einem Wechsel 4 → 6 sind die alten ungültig).
+ *
+ * Über alle Kandidaten hashen statt nachschlagen: bcrypt-Hashes sind nicht
+ * rückwärts durchsuchbar.
+ */
+async function findeBenutzerZuPin(
+  db:        Db,
+  mandantId: string,
+  pin:       string,
+  pinLaenge: number,
+): Promise<typeof users.$inferSelect | null> {
+  const kandidaten = await db
+    .select()
+    .from(users)
+    .where(and(
+      eq(users.mandantId, mandantId),
+      eq(users.aktiv, true),
+      isNotNull(users.pinHash),
+      eq(users.pinLaenge, pinLaenge),
+    ))
+
+  for (const u of kandidaten) {
+    if (u.pinHash && await bcrypt.compare(pin, u.pinHash)) return u
+  }
+  await bcrypt.compare(pin, '$2a$10$invalidhashtopreventtimingleaks0000000000000000000000')
+  return null
 }
 
 export async function loginWithPin(
-  input: PinLoginInput,
-  deps:  LoginDeps,
+  input:   PinLoginInput,
+  deps:    LoginDeps,
+  kontext: PinLoginKontext,
 ): Promise<LoginResponse> {
   // Mandant aus übergebener Kasse ableiten — PIN ist pro Mandant eindeutig,
   // unabhängig davon ob der User dieser Kasse zugeordnet ist (Kasse-Wechsel folgt nach Login).
   const [kasse] = await deps.db
-    .select({ mandantId: kassen.mandantId })
+    .select({ mandantId: kassen.mandantId, pinLaenge: mandanten.pinLaenge })
     .from(kassen)
+    .innerJoin(mandanten, eq(kassen.mandantId, mandanten.id))
     .where(eq(kassen.id, input.kasseId))
     .limit(1)
   if (!kasse) throw new AuthError(401, 'PIN ungültig')
 
-  const kandidaten = await deps.db
-    .select()
-    .from(users)
-    .where(and(
-      eq(users.mandantId, kasse.mandantId),
-      eq(users.aktiv, true),
-      isNotNull(users.pinHash),
-    ))
+  // Falsche Länge kann keinen PIN treffen → ohne Prüfung und ohne Fehlversuch ablehnen
+  pruefePinLaenge(input.pin, kasse.pinLaenge)
 
-  // PIN gegen jeden Kandidaten prüfen
-  let gefunden: typeof users.$inferSelect | null = null
-  for (const u of kandidaten) {
-    if (u.pinHash && await bcrypt.compare(input.pin, u.pinHash)) {
-      gefunden = u
-      break
-    }
-  }
-  if (!gefunden) {
-    await bcrypt.compare(input.pin, '$2a$10$invalidhashtopreventtimingleaks0000000000000000000000')
-    throw new AuthError(401, 'PIN ungültig')
-  }
+  // Gerät mit gültigem Merkmal zählt im eigenen Topf — fremde Geräte je Kasse
+  const vertrauen = deps.geraetVertrauen.pruefen(input.geraetToken, kasse.mandantId)
 
-  return buildLoginResponse(gefunden, deps)
+  const gefunden = await pruefeMitBremse(deps.db, {
+    quelle:        'pin_login',
+    mandantId:     kasse.mandantId,
+    toepfe:        toepfeFuerGeraet(kasse.mandantId, input.kasseId, vertrauen),
+    meldungFalsch: 'PIN ungültig.',
+    kasseId:       input.kasseId,
+    ipAdresse:     kontext.ipAdresse,
+    userAgent:     kontext.userAgent,
+    ...(kontext.log ? { log: kontext.log } : {}),
+  }, () => findeBenutzerZuPin(deps.db, kasse.mandantId, input.pin, kasse.pinLaenge))
+  if (!gefunden) throw new AuthError(401, 'PIN ungültig')
+
+  return buildLoginResponse(gefunden, deps, vertrauen?.geraetId)
 }

@@ -35,5 +35,7 @@ declare module 'fastify' {
       (request: import('fastify').FastifyRequest, reply: import('fastify').FastifyReply) => Promise<void>
     requireBerechtigung: (berechtigung: Berechtigung) =>
       (request: import('fastify').FastifyRequest, reply: import('fastify').FastifyReply) => Promise<void>
+    /** Geräte-Merkmal der PIN-Bremse ausstellen/prüfen (kein Anmelde-Token) */
+    geraetVertrauen: import('./geraet-vertrauen.js').GeraetVertrauenSigner
   }
 }

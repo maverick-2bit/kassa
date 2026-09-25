@@ -10,7 +10,9 @@ import { useState, useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ArbeitszeitResponse, ArbeitszeitInput, ArbeitszeitUpdate } from '@kassa/shared'
 import { zeiterfassungApi, userApi } from '../lib/api'
+import { getGeraetToken, pinLaenge as pinLaengeDesBetriebs } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
+import { restzeitText, usePinSperre } from '../lib/pin-sperre'
 import { Button } from '../components/ui/Button'
 import { Modal } from '../components/ui/Modal'
 import { heuteLokalYMD } from '../lib/format'
@@ -109,6 +111,8 @@ function StempelTab() {
   const [pin, setPin]         = useState('')
   const [meldung, setMeldung] = useState<{ text: string; art: 'erfolg' | 'fehler' } | null>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const sperre   = usePinSperre()
+  const laenge   = pinLaengeDesBetriebs()
 
   const { data: aktuell = [] } = useQuery({
     queryKey: ['ze-aktuell'],
@@ -117,7 +121,11 @@ function StempelTab() {
   })
 
   const stempelMut = useMutation({
-    mutationFn: () => zeiterfassungApi.stempeln({ kasseId: identity.kasseId, pin }),
+    // Geräte-Merkmal mit: fremde Geräte können diese Stempeluhr nicht aussperren
+    mutationFn: () => {
+      const geraetToken = getGeraetToken()
+      return zeiterfassungApi.stempeln({ kasseId: identity.kasseId, pin, ...(geraetToken ? { geraetToken } : {}) })
+    },
     onSuccess: (data) => {
       const text = data.aktion === 'eingestempelt'
         ? `✓ ${data.userName} — Eingestempelt`
@@ -127,8 +135,10 @@ function StempelTab() {
       void queryClient.invalidateQueries({ queryKey: ['ze-aktuell'] })
     },
     onError: (err) => {
-      setMeldung({ text: err instanceof Error ? err.message : 'Fehler', art: 'fehler' })
       setPin('')
+      // Zu viele Fehlversuche: Countdown statt Meldung (siehe unten)
+      if (sperre.uebernimm(err)) { setMeldung(null); return }
+      setMeldung({ text: err instanceof Error ? err.message : 'Fehler', art: 'fehler' })
     },
     onSettled: () => {
       if (timerRef.current) clearTimeout(timerRef.current)
@@ -137,11 +147,12 @@ function StempelTab() {
   })
 
   const drucke = (taste: string) => {
+    if (sperre.gesperrt) return
     if (taste === '⌫') {
       setPin(p => p.slice(0, -1))
     } else if (taste === '✓') {
-      if (pin.length >= 3) stempelMut.mutate()
-    } else if (pin.length < 8) {
+      if (pin.length === laenge) stempelMut.mutate()
+    } else if (pin.length < laenge) {
       setPin(p => p + taste)
     }
   }
@@ -157,7 +168,7 @@ function StempelTab() {
         <div className="w-full max-w-xs bg-panel-2 border border-line rounded-xl px-6 py-4 text-center">
           <p className="text-xs text-ink-subtle mb-1">PIN eingeben</p>
           <div className="flex justify-center gap-3 mt-1">
-            {Array.from({ length: Math.max(pin.length, 4) }, (_, i) => (
+            {Array.from({ length: laenge }, (_, i) => (
               <div
                 key={i}
                 className={`w-4 h-4 rounded-full border-2 transition ${
@@ -174,7 +185,7 @@ function StempelTab() {
             <button
               key={t}
               onClick={() => drucke(t)}
-              disabled={stempelMut.isPending}
+              disabled={stempelMut.isPending || sperre.gesperrt}
               className={`
                 h-14 rounded-xl text-xl font-semibold transition select-none
                 ${t === '✓'
@@ -188,6 +199,13 @@ function StempelTab() {
             </button>
           ))}
         </div>
+
+        {sperre.gesperrt && (
+          <div role="alert" className="w-full max-w-xs rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium text-center text-amber-900">
+            Zu viele falsche PIN-Eingaben — wieder möglich in{' '}
+            <span className="font-semibold tabular-nums">{restzeitText(sperre.restSekunden)}</span>
+          </div>
+        )}
 
         {/* Meldung */}
         {meldung && (
