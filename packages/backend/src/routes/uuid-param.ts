@@ -1,9 +1,9 @@
 /**
- * uuid-Pfadparameter prüfen, bevor sie eine Datenbankabfrage erreichen.
+ * uuid-Pfad- und Query-Parameter prüfen, bevor sie eine Datenbankabfrage erreichen.
  *
- * Ungeprüft läuft z. B. GET /api/kunden/kein-uuid bis in Postgres, das mit
- * 22P02 („invalid input syntax for type uuid") abbricht — der Client bekäme
- * 500 { fehler: 'Interner Serverfehler' } für einen reinen Eingabefehler.
+ * Ungeprüft läuft z. B. GET /api/kunden/kein-uuid oder GET /api/gutscheine?kundeId=kein-uuid
+ * bis in Postgres, das mit 22P02 („invalid input syntax for type uuid") abbricht —
+ * der Client bekäme 500 { fehler: 'Interner Serverfehler' } für einen reinen Eingabefehler.
  *
  * Ungültig → UngueltigeIdError. Den beantwortet der globale Fehler-Handler wie
  * jeden Fachfehler mit httpStatus: 400 { fehler: 'Ungültige ID' } — dieselbe
@@ -27,6 +27,19 @@ export class UngueltigeIdError extends Error {
 /** uuid-Pfadparameter `name` (Standard: `:id`) aus request.params — oder UngueltigeIdError. */
 export function uuidParam(params: unknown, name = 'id'): string {
   const wert = Uuid.safeParse((params as Record<string, unknown> | undefined)?.[name])
+  if (!wert.success) throw new UngueltigeIdError()
+  return wert.data
+}
+
+/**
+ * Optionaler uuid-Query-Parameter `name` aus request.query: fehlt oder leer → undefined
+ * (wie bisher: kein Filter), sonst die uuid — oder UngueltigeIdError, auch wenn der
+ * Parameter mehrfach kommt (?kundeId=…&kundeId=… liefert ein Array).
+ */
+export function uuidQuery(query: unknown, name: string): string | undefined {
+  const roh = (query as Record<string, unknown> | undefined)?.[name]
+  if (roh === undefined || roh === '') return undefined
+  const wert = Uuid.safeParse(roh)
   if (!wert.success) throw new UngueltigeIdError()
   return wert.data
 }

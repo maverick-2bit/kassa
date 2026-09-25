@@ -31,7 +31,7 @@ import {
 import { tryDruckeBeleg } from '../services/drucker.service.js'
 import { FreigabeError, freigabeKontextAus } from '../services/freigabe.service.js'
 import { PinGesperrtError, sendePinGesperrt } from '../services/pin-bremse.js'
-import { uuidParam } from './uuid-param.js'
+import { uuidParam, uuidQuery } from './uuid-param.js'
 
 export interface TischTabRouteOptions {
   deps: TischTabServiceDeps
@@ -41,7 +41,7 @@ export const tischTabRoute: FastifyPluginAsync<TischTabRouteOptions> = async (fa
   const auth = { onRequest: [fastify.authenticate] }
 
   fastify.get('/tisch-tabs', auth, async (request, reply) => {
-    const { kasseId } = request.query as { kasseId?: string }
+    const kasseId = uuidQuery(request.query, 'kasseId')
     if (!kasseId) return reply.status(400).send({ fehler: 'kasseId fehlt' })
     const tabs = await listOffeneTabs(request.user.mandantId, kasseId, opts.deps)
     return reply.send(tabs)

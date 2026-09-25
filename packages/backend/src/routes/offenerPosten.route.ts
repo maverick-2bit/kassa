@@ -13,7 +13,7 @@ import {
   offenePostenStatistik,
   OffenerPostenError,
 } from '../services/offenerPosten.service.js'
-import { uuidParam } from './uuid-param.js'
+import { uuidParam, uuidQuery } from './uuid-param.js'
 
 export interface OffenerPostenRouteOptions { db: Db }
 
@@ -22,7 +22,7 @@ export const offenerPostenRoute: FastifyPluginAsync<OffenerPostenRouteOptions> =
 
   fastify.get('/offene-posten', auth, async (request, reply) => {
     const q        = request.query as Record<string, string>
-    const kundeId  = q['kundeId']  as string | undefined
+    const kundeId  = uuidQuery(q, 'kundeId')
     const status   = q['status']   as OffenerPostenStatus | undefined
     const liste    = await listeOffenePosten(opts.db, request.user.mandantId, {
       ...(kundeId ? { kundeId } : {}),
