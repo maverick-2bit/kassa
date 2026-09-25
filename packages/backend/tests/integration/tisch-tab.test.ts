@@ -5,8 +5,9 @@
  * Voll-Zahlung -> ein Beleg, Splitrechnung -> ein Beleg je Zahler mit korrekten
  * Beträgen (Summe == Tab-Summe), Status-Übergänge.
  *
- * Wichtig: Beim Split werden die Preise serverseitig aus der DB gezogen
- * (Service übergibt nur artikelId+menge an die Belegerstellung).
+ * Beim Split rechnen die Teilbelege mit dem Preis der Tab-Position (wie beim
+ * Bezahlen); Alles-oder-nichts, Options-Aufpreise und Fehlerfälle prüft
+ * tisch-tab-split.test.ts.
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
@@ -155,7 +156,7 @@ describe('Tisch-Tab + Splitrechnung (Integration, echtes PostgreSQL)', () => {
     expect(nochmal.statusCode).toBe(409)
   })
 
-  it('Splitrechnung: ein Beleg je Zahler, Summe == Tab-Summe (Preise aus DB)', async () => {
+  it('Splitrechnung: ein Beleg je Zahler, Summe == Tab-Summe', async () => {
     const tabId = await oeffneTab('Tisch 3')
     // Tab-Summe: 2×500 + 1×1490 = 2490
     await setzePositionen(tabId, [
