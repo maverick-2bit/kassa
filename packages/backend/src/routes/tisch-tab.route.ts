@@ -31,6 +31,7 @@ import {
 import { tryDruckeBeleg } from '../services/drucker.service.js'
 import { FreigabeError, freigabeKontextAus } from '../services/freigabe.service.js'
 import { PinGesperrtError, sendePinGesperrt } from '../services/pin-bremse.js'
+import { uuidParam } from './uuid-param.js'
 
 export interface TischTabRouteOptions {
   deps: TischTabServiceDeps
@@ -59,7 +60,7 @@ export const tischTabRoute: FastifyPluginAsync<TischTabRouteOptions> = async (fa
   })
 
   fastify.get('/tisch-tabs/:id', auth, async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const id = uuidParam(request.params)
     try {
       const tab = await getTab(id, request.user.mandantId, opts.deps)
       return reply.send(tab)
@@ -70,7 +71,7 @@ export const tischTabRoute: FastifyPluginAsync<TischTabRouteOptions> = async (fa
   })
 
   fastify.put('/tisch-tabs/:id/positionen', auth, async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const id = uuidParam(request.params)
     const parsed = TischTabPositionenUpdateSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     try {
@@ -97,7 +98,7 @@ export const tischTabRoute: FastifyPluginAsync<TischTabRouteOptions> = async (fa
   /** Gesamten offenen Tab verwerfen — Kellner-Berechtigung genügt (bewusste
    *  Entscheidung); Storno-Bon an die Stationen + Audit-Protokoll laufen im Service. */
   fastify.post('/tisch-tabs/:id/verwerfen', auth, async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const id = uuidParam(request.params)
     const body = z.object({
       grund:       z.string().trim().max(200).optional(),
       freigabePin: z.string().trim().min(4).max(12).optional(),
@@ -122,7 +123,7 @@ export const tischTabRoute: FastifyPluginAsync<TischTabRouteOptions> = async (fa
   })
 
   fastify.post('/tisch-tabs/:id/bezahlen', auth, async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const id = uuidParam(request.params)
     const parsed = TischTabBezahlenInputSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     try {
@@ -142,7 +143,7 @@ export const tischTabRoute: FastifyPluginAsync<TischTabRouteOptions> = async (fa
   })
 
   fastify.patch('/tisch-tabs/:id/kellner', auth, async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const id = uuidParam(request.params)
     const parsed = TischTabUmbenennenInputSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     try {
@@ -155,7 +156,7 @@ export const tischTabRoute: FastifyPluginAsync<TischTabRouteOptions> = async (fa
   })
 
   fastify.patch('/tisch-tabs/:id/tisch', auth, async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const id = uuidParam(request.params)
     const parsed = TischTabUmbuchenInputSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     try {
@@ -169,7 +170,7 @@ export const tischTabRoute: FastifyPluginAsync<TischTabRouteOptions> = async (fa
 
   // Mehrere Gruppen/Tabs in diesen (Ziel-)Tab zusammenführen
   fastify.post('/tisch-tabs/:id/zusammenfuehren', auth, async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const id = uuidParam(request.params)
     const parsed = TischTabZusammenfuehrenInputSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     try {
@@ -183,7 +184,7 @@ export const tischTabRoute: FastifyPluginAsync<TischTabRouteOptions> = async (fa
 
   // Teilweises Umbuchen: eine Teilmenge von Positionen auf einen anderen offenen Tisch
   fastify.post('/tisch-tabs/:id/verschieben', auth, async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const id = uuidParam(request.params)
     const parsed = TischTabVerschiebenInputSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     try {
@@ -196,7 +197,7 @@ export const tischTabRoute: FastifyPluginAsync<TischTabRouteOptions> = async (fa
   })
 
   fastify.get('/tisch-tabs/:id/verlauf', auth, async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const id = uuidParam(request.params)
     try {
       const verlauf = await getTabVerlauf(id, request.user.mandantId, opts.deps)
       return reply.send(verlauf)
@@ -207,7 +208,7 @@ export const tischTabRoute: FastifyPluginAsync<TischTabRouteOptions> = async (fa
   })
 
   fastify.post('/tisch-tabs/:id/splitten', auth, async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const id = uuidParam(request.params)
     const parsed = TischTabSplittenInputSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     try {
@@ -223,7 +224,7 @@ export const tischTabRoute: FastifyPluginAsync<TischTabRouteOptions> = async (fa
 
   // ── Gänge-Steuerung: nächsten Gang feuern ──────────────────────────────────
   fastify.post('/tisch-tabs/:id/gang-abrufen', auth, async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const id = uuidParam(request.params)
     try {
       const result = await rufeNaechstenGangAb(id, request.user.mandantId, opts.deps)
       return reply.send(result)
@@ -235,7 +236,7 @@ export const tischTabRoute: FastifyPluginAsync<TischTabRouteOptions> = async (fa
 
   // ── Gänge-Steuerung: eine (gesendete) Position erneut schicken ──────────────
   fastify.post('/tisch-tabs/:id/position-nachschicken', auth, async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const id = uuidParam(request.params)
     const parsed = z.object({ positionIndex: z.number().int().nonnegative() }).safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     try {

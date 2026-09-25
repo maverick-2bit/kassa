@@ -9,6 +9,7 @@ import {
   listeBelegeVonKunde,
   KundeError,
 } from '../services/kunde.service.js'
+import { uuidParam } from './uuid-param.js'
 
 export interface KundeRouteOptions { db: Db }
 
@@ -27,7 +28,7 @@ export const kundeRoute: FastifyPluginAsync<KundeRouteOptions> = async (fastify,
   })
 
   fastify.get('/kunden/:id', auth, async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const id = uuidParam(request.params)
     try {
       return reply.send(await holeKunde(opts.db, id, request.user.mandantId))
     } catch (err) {
@@ -49,7 +50,7 @@ export const kundeRoute: FastifyPluginAsync<KundeRouteOptions> = async (fastify,
   })
 
   fastify.put('/kunden/:id', auth, async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const id = uuidParam(request.params)
     const parsed = KundeUpdateSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     try {
@@ -61,13 +62,13 @@ export const kundeRoute: FastifyPluginAsync<KundeRouteOptions> = async (fastify,
   })
 
   fastify.get('/kunden/:id/belege', auth, async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const id = uuidParam(request.params)
     const liste = await listeBelegeVonKunde(opts.db, id, request.user.mandantId)
     return reply.send(liste)
   })
 
   fastify.delete('/kunden/:id', auth, async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const id = uuidParam(request.params)
     try {
       return reply.send(await aktualisiereKunde(opts.db, id, request.user.mandantId, { aktiv: false }))
     } catch (err) {

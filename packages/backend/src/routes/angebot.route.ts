@@ -8,6 +8,7 @@ import {
   aktualisiereAngebot,
   AngebotError,
 } from '../services/angebot.service.js'
+import { uuidParam } from './uuid-param.js'
 
 export interface AngebotRouteOptions { db: Db }
 
@@ -25,7 +26,7 @@ export const angebotRoute: FastifyPluginAsync<AngebotRouteOptions> = async (fast
   })
 
   fastify.get('/angebote/:id', auth, async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const id = uuidParam(request.params)
     try {
       return reply.send(await holeAngebot(opts.db, id, request.user.mandantId))
     } catch (err) {
@@ -47,7 +48,7 @@ export const angebotRoute: FastifyPluginAsync<AngebotRouteOptions> = async (fast
   })
 
   fastify.patch('/angebote/:id', auth, async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const id = uuidParam(request.params)
     const parsed = AngebotUpdateSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     try {

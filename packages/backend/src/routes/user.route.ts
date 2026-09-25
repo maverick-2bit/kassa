@@ -8,6 +8,7 @@ import {
   deactivateUser,
   UserError,
 } from '../services/user.service.js'
+import { uuidParam } from './uuid-param.js'
 
 export interface UserRouteOptions { db: Db }
 
@@ -32,7 +33,7 @@ export const userRoute: FastifyPluginAsync<UserRouteOptions> = async (fastify, o
   })
 
   fastify.put('/users/:id', adminOnly, async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const id = uuidParam(request.params)
     const parsed = UserUpdateInputSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     try {
@@ -45,7 +46,7 @@ export const userRoute: FastifyPluginAsync<UserRouteOptions> = async (fastify, o
   })
 
   fastify.delete('/users/:id', adminOnly, async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const id = uuidParam(request.params)
     try {
       const user = await deactivateUser(id, request.user.mandantId, request.user.sub, { db: opts.db })
       return reply.send(user)

@@ -91,8 +91,11 @@ function mockDbMultiInsert(opts: {
 // Test-Fixtures
 // ---------------------------------------------------------------------------
 
+const GS_ID        = 'a0000000-0000-0000-0000-000000000001'
+const GS_UNBEKANNT = 'a0000000-0000-0000-0000-000000009999'
+
 const gsRow = (overrides: Record<string, unknown> = {}) => ({
-  id:          'gs-0001',
+  id:          GS_ID,
   mandantId:   TEST_MANDANT_ID,
   code:        'GS-ABCD-EFGH',
   nummer:      1,
@@ -237,7 +240,7 @@ describe('POST /api/gutscheine/:id/einloesen', () => {
     })
     const srv = await buildTestServer(db)
     const res = await srv.fastify.inject({
-      method: 'POST', url: '/api/gutscheine/gs-0001/einloesen',
+      method: 'POST', url: `/api/gutscheine/${GS_ID}/einloesen`,
       headers: srv.authHeader(),
       payload: { einloesungCent: 5000 },
     })
@@ -249,7 +252,7 @@ describe('POST /api/gutscheine/:id/einloesen', () => {
   it('400 wenn Gutschein bereits storniert', async () => {
     const srv = await buildTestServer(mockDb({ selectQueue: [[gsRow({ status: 'storniert' })]] }))
     const res = await srv.fastify.inject({
-      method: 'POST', url: '/api/gutscheine/gs-0001/einloesen',
+      method: 'POST', url: `/api/gutscheine/${GS_ID}/einloesen`,
       headers: srv.authHeader(),
       payload: { einloesungCent: 100 },
     })
@@ -260,7 +263,7 @@ describe('POST /api/gutscheine/:id/einloesen', () => {
   it('400 wenn Einlösungsbetrag den Restwert übersteigt', async () => {
     const srv = await buildTestServer(mockDb({ selectQueue: [[gsRow({ betragCent: 1000 })]] }))
     const res = await srv.fastify.inject({
-      method: 'POST', url: '/api/gutscheine/gs-0001/einloesen',
+      method: 'POST', url: `/api/gutscheine/${GS_ID}/einloesen`,
       headers: srv.authHeader(),
       payload: { einloesungCent: 9999 },
     })
@@ -271,7 +274,7 @@ describe('POST /api/gutscheine/:id/einloesen', () => {
   it('404 bei unbekanntem Gutschein', async () => {
     const srv = await buildTestServer(mockDb({ selectQueue: [[]] }))
     const res = await srv.fastify.inject({
-      method: 'POST', url: '/api/gutscheine/gs-9999/einloesen',
+      method: 'POST', url: `/api/gutscheine/${GS_UNBEKANNT}/einloesen`,
       headers: srv.authHeader(),
       payload: { einloesungCent: 100 },
     })
@@ -295,7 +298,7 @@ describe('POST /api/gutscheine/:id/stornieren', () => {
     })
     const srv = await buildTestServer(db)
     const res = await srv.fastify.inject({
-      method: 'POST', url: '/api/gutscheine/gs-0001/stornieren',
+      method: 'POST', url: `/api/gutscheine/${GS_ID}/stornieren`,
       headers: srv.authHeader(),
     })
     expect(res.statusCode).toBe(200)
@@ -306,7 +309,7 @@ describe('POST /api/gutscheine/:id/stornieren', () => {
   it('400 wenn Gutschein bereits storniert', async () => {
     const srv = await buildTestServer(mockDb({ selectQueue: [[gsRow({ status: 'storniert' })]] }))
     const res = await srv.fastify.inject({
-      method: 'POST', url: '/api/gutscheine/gs-0001/stornieren',
+      method: 'POST', url: `/api/gutscheine/${GS_ID}/stornieren`,
       headers: srv.authHeader(),
     })
     expect(res.statusCode).toBe(400)
@@ -316,7 +319,7 @@ describe('POST /api/gutscheine/:id/stornieren', () => {
   it('400 wenn Gutschein bereits vollständig eingelöst', async () => {
     const srv = await buildTestServer(mockDb({ selectQueue: [[gsRow({ status: 'eingeloest' })]] }))
     const res = await srv.fastify.inject({
-      method: 'POST', url: '/api/gutscheine/gs-0001/stornieren',
+      method: 'POST', url: `/api/gutscheine/${GS_ID}/stornieren`,
       headers: srv.authHeader(),
     })
     expect(res.statusCode).toBe(400)

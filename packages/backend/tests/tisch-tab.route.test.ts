@@ -11,7 +11,7 @@ import { buildTestServer, TEST_MANDANT_ID } from './helpers/testServer.js'
 import type { Db } from '../src/db/client.js'
 
 const KASSE_ID = 'fa000000-0000-0000-0000-000000000001'
-const TAB_ID   = 'ta000000-0000-0000-0000-000000000001'
+const TAB_ID   = 'fb000000-0000-0000-0000-000000000001'
 
 // ---------------------------------------------------------------------------
 // Mock-Hilfsfunktionen

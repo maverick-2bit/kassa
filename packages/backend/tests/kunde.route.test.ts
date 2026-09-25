@@ -56,8 +56,11 @@ function mockDb(opts: {
 // Test-Fixtures
 // ---------------------------------------------------------------------------
 
+const KUNDE_ID        = 'c0000000-0000-0000-0000-000000000001'
+const KUNDE_UNBEKANNT = 'c0000000-0000-0000-0000-000000009999'
+
 const kundeRow = (overrides: Record<string, unknown> = {}) => ({
-  id:          'k-0001',
+  id:          KUNDE_ID,
   mandantId:   TEST_MANDANT_ID,
   nummer:      1,
   firma:       null,
@@ -126,7 +129,7 @@ describe('GET /api/kunden/:id', () => {
   it('gibt vorhandenen Kunden zurück', async () => {
     const srv = await buildTestServer(mockDb({ selectQueue: [[kundeRow()]] }))
     const res = await srv.fastify.inject({
-      method: 'GET', url: '/api/kunden/k-0001',
+      method: 'GET', url: `/api/kunden/${KUNDE_ID}`,
       headers: srv.authHeader(),
     })
     expect(res.statusCode).toBe(200)
@@ -137,7 +140,7 @@ describe('GET /api/kunden/:id', () => {
   it('404 wenn Kunde nicht im Mandanten', async () => {
     const srv = await buildTestServer(mockDb({ selectQueue: [[]] }))
     const res = await srv.fastify.inject({
-      method: 'GET', url: '/api/kunden/k-9999',
+      method: 'GET', url: `/api/kunden/${KUNDE_UNBEKANNT}`,
       headers: srv.authHeader(),
     })
     expect(res.statusCode).toBe(404)
@@ -206,7 +209,7 @@ describe('PUT /api/kunden/:id', () => {
       updateReturning: [updated],
     }))
     const res = await srv.fastify.inject({
-      method: 'PUT', url: '/api/kunden/k-0001',
+      method: 'PUT', url: `/api/kunden/${KUNDE_ID}`,
       headers: srv.authHeader(),
       payload: { vorname: 'Moritz' },
     })
@@ -218,7 +221,7 @@ describe('PUT /api/kunden/:id', () => {
   it('404 wenn Kunde nicht vorhanden', async () => {
     const srv = await buildTestServer(mockDb({ selectQueue: [[]] }))
     const res = await srv.fastify.inject({
-      method: 'PUT', url: '/api/kunden/k-9999',
+      method: 'PUT', url: `/api/kunden/${KUNDE_UNBEKANNT}`,
       headers: srv.authHeader(),
       payload: { vorname: 'Test' },
     })
@@ -240,7 +243,7 @@ describe('DELETE /api/kunden/:id', () => {
       updateReturning: [inaktiv],
     }))
     const res = await srv.fastify.inject({
-      method: 'DELETE', url: '/api/kunden/k-0001',
+      method: 'DELETE', url: `/api/kunden/${KUNDE_ID}`,
       headers: srv.authHeader(),
     })
     expect(res.statusCode).toBe(200)
