@@ -34,3 +34,18 @@ export function istNeuererServiceWorker(scriptUrl: string | undefined, seitenVer
   }
   return !!swVersion && istNeuereVersion(swVersion, seitenVersion)
 }
+
+/**
+ * Meldet das Backend (GET /api/health → `version`) eine NEUERE Version als die
+ * laufende Seite? Deckt Seiten ab, die dauerhaft offen stehen (Handy gesperrt,
+ * nie neu geladen): dort kommt kein `controllerchange`, und ohne HTTPS gibt es
+ * gar keinen Service Worker.
+ *
+ * Nur „neuer" zählt: Beim Update starten die Container nacheinander neu — eine
+ * schon neue Seite vor dem noch alten Backend ist kein Grund zum Neuladen (der
+ * Hinweis käme nach jedem Neuladen wieder). Die Angabe kommt ungeprüft aus dem
+ * Netz: alles außer einer Zeichenkette → kein Hinweis.
+ */
+export function istNeuereServerVersion(serverVersion: unknown, seitenVersion: string): boolean {
+  return typeof serverVersion === 'string' && istNeuereVersion(serverVersion, seitenVersion)
+}

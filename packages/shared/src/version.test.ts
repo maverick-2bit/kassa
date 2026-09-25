@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { istNeuereVersion, istNeuererServiceWorker } from './version.js'
+import { istNeuereServerVersion, istNeuereVersion, istNeuererServiceWorker } from './version.js'
 
 describe('istNeuereVersion', () => {
   it('vergleicht numerisch je Stelle, nicht als Text', () => {
@@ -36,5 +36,29 @@ describe('istNeuererServiceWorker', () => {
     expect(istNeuererServiceWorker(undefined, '0.8.7')).toBe(false)
     expect(istNeuererServiceWorker('https://kellner.example/sw.js', '0.8.7')).toBe(false)
     expect(istNeuererServiceWorker('kein url', '0.8.7')).toBe(false)
+  })
+})
+
+describe('istNeuereServerVersion', () => {
+  it('Backend meldet eine neuere Version → Update-Hinweis', () => {
+    expect(istNeuereServerVersion('0.8.18', '0.8.17')).toBe(true)
+    expect(istNeuereServerVersion('0.10.0', '0.9.9')).toBe(true)
+  })
+
+  it('gleiche Version → kein Hinweis (Normalfall, auch direkt nach dem Neuladen)', () => {
+    expect(istNeuereServerVersion('0.8.17', '0.8.17')).toBe(false)
+  })
+
+  it('älteres Backend → kein Hinweis (Seite schon neu, Backend startet noch)', () => {
+    expect(istNeuereServerVersion('0.8.16', '0.8.17')).toBe(false)
+  })
+
+  it('fehlende oder kaputte Angabe → kein Hinweis', () => {
+    expect(istNeuereServerVersion(undefined, '0.8.17')).toBe(false)
+    expect(istNeuereServerVersion(null, '0.8.17')).toBe(false)
+    expect(istNeuereServerVersion(818, '0.8.17')).toBe(false)
+    expect(istNeuereServerVersion({ version: '9.9.9' }, '0.8.17')).toBe(false)
+    expect(istNeuereServerVersion('', '0.8.17')).toBe(false)
+    expect(istNeuereServerVersion('<html>', '0.8.17')).toBe(false)
   })
 })
