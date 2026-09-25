@@ -13,7 +13,7 @@ import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { desc, eq } from 'drizzle-orm'
 import { Buffer } from 'node:buffer'
-import { StationSchema, BelegModusEnum } from '@kassa/shared'
+import { StationSchema, BelegModusEnum, GastModusEnum } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import { drucker, druckLog, kassen } from '../db/schema.js'
 import { pruefeBelegGehoertZuMandant, pruefeKasseGehoertZuMandant } from '../auth/scope.js'
@@ -45,7 +45,7 @@ const DruckerConfigInputSchema = z.object({
   belegModus:         BelegModusEnum.optional(),
   belegBasisUrl:      z.string().trim().max(255).nullable().optional(),
   gastBasisUrl:       z.string().trim().max(300).nullable().optional(),
-  gastBestellungAktiv: z.boolean().optional(),
+  gastModus:          GastModusEnum.optional(),
 })
 
 function kasseZuDruckerDto(kasse: typeof kassen.$inferSelect) {
@@ -59,7 +59,7 @@ function kasseZuDruckerDto(kasse: typeof kassen.$inferSelect) {
     belegModus:        kasse.belegModus,
     belegBasisUrl:     kasse.belegBasisUrl,
     gastBasisUrl:      kasse.gastBasisUrl,
-    gastBestellungAktiv: kasse.gastBestellungAktiv,
+    gastModus:         kasse.gastModus,
   }
 }
 
@@ -107,7 +107,7 @@ export const druckerRoute: FastifyPluginAsync<DruckerRouteOptions> = async (fast
     if (body.data.belegModus        !== undefined) update.belegModus        = body.data.belegModus
     if (body.data.belegBasisUrl     !== undefined) update.belegBasisUrl     = body.data.belegBasisUrl ?? null
     if (body.data.gastBasisUrl      !== undefined) update.gastBasisUrl      = body.data.gastBasisUrl ?? null
-    if (body.data.gastBestellungAktiv !== undefined) update.gastBestellungAktiv = body.data.gastBestellungAktiv
+    if (body.data.gastModus         !== undefined) update.gastModus         = body.data.gastModus
 
     const [updated] = await opts.db.update(kassen).set(update).where(eq(kassen.id, params.data.id)).returning()
     if (!updated) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })

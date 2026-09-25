@@ -1,10 +1,13 @@
 /**
  * Gast-Bestellsystem — öffentliche Routen (kein JWT nötig).
  *
- *   GET  /api/gast/karte?kasseId=<uuid>          Speisekarte laden
- *   POST /api/gast/bestellung                    Bestellung aufgeben (unbezahlt, → Tab)
- *   POST /api/gast/checkout                       Bestellung + Stripe-Checkout starten
+ *   GET  /api/gast/karte?kasseId=<uuid>          Speisekarte laden (Gast-Modus ≠ aus)
+ *   POST /api/gast/bestellung                    Bestellung aufgeben (unbezahlt, → Tab; nur Gast-Modus tab)
+ *   POST /api/gast/checkout                       Bestellung + Stripe-Checkout starten (nur Gast-Modus online)
  *   GET  /api/gast/bestellung/:id                 Bestell-/Zahlungsstatus (+ Beleg)
+ *
+ * Der Gast-Modus der Kasse (kassen.gastModus) wird hier erzwungen, nicht nur an die
+ * Gast-App gemeldet: die kasseId steht in jedem Tisch-QR.
  */
 
 import type { FastifyPluginAsync } from 'fastify'
@@ -19,6 +22,7 @@ import type { BelegServiceDeps } from '../services/beleg.service.js'
 import {
   erstelleGastBestellung,
   holeGastBestellungStatus,
+  gastModusSperre,
   GastBestellungError,
   type GastServiceDeps,
 } from '../services/gast-bestellung.service.js'
@@ -55,12 +59,14 @@ export const gastRoute: FastifyPluginAsync<GastRouteOptions> = async (fastify, o
 
       // Kasse ermitteln
       const [kasse] = await opts.db
-        .select({ id: kassen.id, mandantId: kassen.mandantId, bezeichnung: kassen.bezeichnung, kassenId: kassen.kassenId, gastBestellungAktiv: kassen.gastBestellungAktiv })
+        .select({ id: kassen.id, mandantId: kassen.mandantId, bezeichnung: kassen.bezeichnung, kassenId: kassen.kassenId, gastModus: kassen.gastModus })
         .from(kassen)
         .where(eq(kassen.id, kasseId))
         .limit(1)
 
       if (!kasse) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
+      const sperre = gastModusSperre(kasse.gastModus)
+      if (sperre) return reply.status(403).send({ fehler: sperre })
 
       // Sichtbare Kategorien für diese Kasse
       const sichtbareKategorieIds = await opts.db
@@ -116,7 +122,10 @@ export const gastRoute: FastifyPluginAsync<GastRouteOptions> = async (fastify, o
           id:          kasse.id,
           bezeichnung: kasse.bezeichnung ?? kasse.kassenId,
         },
-        gastBestellungAktiv: kasse.gastBestellungAktiv,
+        gastModus: kasse.gastModus,
+        // Für ältere, noch im Browser gecachte Gast-App-Stände (index.html ohne Cache-Control):
+        // sie wählen den Bezahlweg nur über dieses Feld.
+        gastBestellungAktiv: kasse.gastModus === 'online',
         kategorien: gefilterteKategorien,
         artikel:    verfuegbar,
       })
@@ -132,14 +141,16 @@ export const gastRoute: FastifyPluginAsync<GastRouteOptions> = async (fastify, o
 
       const { kasseId, tischNummer, positionen } = b.data
 
-      // Kasse + Mandant validieren
+      // Kasse + Mandant validieren; ohne Zahlung nur im Gast-Modus „tab"
       const [kasse] = await opts.db
-        .select({ id: kassen.id, mandantId: kassen.mandantId })
+        .select({ id: kassen.id, mandantId: kassen.mandantId, gastModus: kassen.gastModus })
         .from(kassen)
         .where(eq(kassen.id, kasseId))
         .limit(1)
 
       if (!kasse) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
+      const sperre = gastModusSperre(kasse.gastModus, 'tab')
+      if (sperre) return reply.status(403).send({ fehler: sperre })
 
       // Artikel-Preise und Verfügbarkeit aus der DB laden (nie vom Client übernehmen)
       const artikelIds = [...new Set(positionen.map(p => p.artikelId))]

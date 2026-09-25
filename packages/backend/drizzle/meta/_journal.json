@@ -379,6 +379,13 @@
       "when": 1790640000000,
       "tag": "0055_pin_bremse",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1790726400000,
+      "tag": "0056_gast_modus",
+      "breakpoints": true
     }
   ]
 }

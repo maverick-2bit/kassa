@@ -55,6 +55,16 @@ export const BelegModusEnum = z.enum(['drucken', 'digital', 'beides'])
 export type BelegModus = z.infer<typeof BelegModusEnum>
 
 /**
+ * Gast-Bestellung per Tisch-QR (Gast-App) je Kasse:
+ *   aus    → die Kasse nimmt keine Gast-Bestellungen an (Standard neuer Kassen)
+ *   tab    → Bestellung ohne Zahlung: landet als offener Tisch (Kellner „Gast"),
+ *            bezahlt wird beim Personal
+ *   online → Bestellung mit Online-Zahlung (Stripe), danach RKSV-Beleg + Bonierung
+ */
+export const GastModusEnum = z.enum(['aus', 'tab', 'online'])
+export type GastModus = z.infer<typeof GastModusEnum>
+
+/**
  * Tischauswahl beim Öffnen eines neuen Tisches in der Kellner-App:
  *   manuell → Nummer eintippen (bisheriges Verhalten)
  *   liste   → Tische je Bereich aus dem Tischplan als Liste antippen

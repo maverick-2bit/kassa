@@ -1004,6 +1004,8 @@ test('Kassenbuch: Einlage buchen erscheint in der Buchungsliste', async ({ page,
  * Gast-Bestellsystem-Journey: über die öffentliche Gast-API (kein Login, wie beim
  * QR-Scan am Tisch) eine Bestellung aufgeben und prüfen, dass daraus ein Tisch-Tab
  * (Kellner „Gast") auf der Tische-Seite entsteht. Deckt die Gast→Kasse-Integration ab.
+ * Der Gast-Modus der Kasse muss dafür auf „Ohne Zahlung" (tab) stehen — „Aus" weist ab;
+ * umgeschaltet wird über die Auswahl im Backoffice (Einstellungen → Hardware).
  */
 test('Gast-Bestellung: öffentliche Bestellung erzeugt einen Tisch-Tab', async ({ page, request }) => {
   const login = await ensureAuth(request)
@@ -1013,12 +1015,14 @@ test('Gast-Bestellung: öffentliche Bestellung erzeugt einen Tisch-Tab', async (
   // Kaffee-Artikel-ID holen (stammt aus dem Kassier-Test)
   const artikel = await (await request.get(`/api/artikel?mandantId=${mandantId}&nurAktive=true`, { headers: authHeader })).json()
   const kaffee = (artikel as { id: string; bezeichnung: string }[]).find(a => a.bezeichnung === 'Kaffee')!
-
-  // Öffentliche Gast-Bestellung (ohne Auth — wie der QR-Gast)
-  const best = await request.post('/api/gast/bestellung', {
+  const gastBestellung = () => request.post('/api/gast/bestellung', {
     data: { kasseId, tischNummer: 'GAST-TISCH-9', positionen: [{ artikelId: kaffee.id, menge: 2 }] },
   })
-  expect(best.ok()).toBe(true)
+
+  // Gast-Modus „aus" → die Kasse nimmt keine Gast-Bestellung an
+  const aus = await request.patch(`/api/kassen/${kasseId}/drucker`, { headers: authHeader, data: { gastModus: 'aus' } })
+  expect(aus.ok()).toBe(true)
+  expect((await gastBestellung()).status()).toBe(403)
 
   await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
     localStorage.setItem('kassa:token', d.token)
@@ -1031,6 +1035,19 @@ test('Gast-Bestellung: öffentliche Bestellung erzeugt einen Tisch-Tab', async (
     mandantId,
     kasseId,
   })
+
+  // Backoffice: „Ohne Zahlung" wählen (Karte der ersten Kasse = kasseId); der Hinweis
+  // wechselt erst, wenn die gespeicherte Konfiguration zurückkommt.
+  await page.goto('/einstellungen?bereich=hardware')
+  const modusAuswahl = page.getByLabel('Gast-Bestellung per Tisch-QR').first()
+  await expect(modusAuswahl).toHaveValue('aus', { timeout: 10_000 })
+  await modusAuswahl.selectOption('tab')
+  await expect(page.getByText('Die Bestellung erscheint als offener Tisch').first()).toBeVisible()
+  await expect(modusAuswahl).toHaveValue('tab')
+
+  // Öffentliche Gast-Bestellung (ohne Auth — wie der QR-Gast)
+  const best = await gastBestellung()
+  expect(best.ok()).toBe(true)
 
   // Auf der Tische-Seite erscheint der Gast-Tab
   await page.goto('/tische')
