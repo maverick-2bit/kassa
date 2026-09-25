@@ -17,7 +17,7 @@ interface Toast {
 
 let nextId = 0
 
-export function KdsToasts() {
+export function KdsToasts({ kassenAnsicht = false }: { kassenAnsicht?: boolean }) {
   const [toasts, setToasts]             = useState<Toast[]>([])
   const [gastBestellungen, setGastBest] = useState<GastBestellungEvent[]>([])
   const [zahlungen, setZahlungen]       = useState<ZahlungAngefordertEvent[]>([])
@@ -65,9 +65,12 @@ export function KdsToasts() {
   return (
     <>
       {/* SB-Terminal- und Gast-Bestellungen — persistent, oben rechts in EINEM
-          Stapel (zwei Stapel an derselben Stelle verdeckten einander) */}
+          Stapel (zwei Stapel an derselben Stelle verdeckten einander). An Kasse
+          und Tisch reicht ab lg die rechte Spalte bis unter die Kopfleiste — dort
+          sitzt der Stapel höher, über dem rechten Ende der Kopfleiste: Eine Karte
+          liegt dann über der Kundensuche, aber nicht über den Warenkorbzeilen. */}
       {(sbBestellungen.length > 0 || gastBestellungen.length > 0) && (
-        <div className="fixed top-20 right-4 z-40 flex flex-col gap-2 items-end">
+        <div className={`fixed right-4 z-40 flex flex-col gap-2 items-end ${kassenAnsicht ? 'top-20 lg:top-2' : 'top-20'}`}>
           {sbBestellungen.map((s) => (
             <div key={s.bestellungId} className="w-72 rounded-lg border-2 border-brand-400 shadow-lg bg-brand-50 text-sm overflow-hidden">
               <div className="bg-brand-500 px-3 py-2 flex items-center justify-between">

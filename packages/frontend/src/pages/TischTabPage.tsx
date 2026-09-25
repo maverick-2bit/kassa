@@ -637,97 +637,105 @@ export function TischTabPage() {
   if (!tab) return <p className="p-6 text-sm text-red-600">Tisch-Tab nicht gefunden.</p>
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-4">
-      {/* Belege, deren Bon nicht gedruckt wurde — auch am Tisch wird kassiert. */}
-      <div className="mb-3 empty:mb-0">
-        <DruckproblemeBanner kasseId={identity.kasseId} />
-      </div>
-
-      {/* Kopfzeile */}
-      <div className="mb-4 flex items-center gap-3">
-        <button
-          type="button"
-          onClick={() => navigate('/tische')}
-          className="text-sm text-ink-muted hover:text-ink"
-        >
-          ← Tische
-        </button>
-        <div className="h-4 w-px bg-line-strong" />
-        <h1 className="text-lg font-semibold text-ink">
-          Tisch {tab.tischNummer}
-        </h1>
-        <button
-          type="button"
-          onClick={() => { setFehler(null); setUmbenennenOffen(true) }}
-          className="group flex items-center gap-1 text-sm text-ink-muted hover:text-ink"
-          title="Partei umbenennen"
-        >
-          · {tab.kellner}
-          <svg className="h-3.5 w-3.5 opacity-0 group-hover:opacity-60 transition-opacity" viewBox="0 0 20 20" fill="currentColor">
-            <path d="M13.586 3.586a2 2 0 1 1 2.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/>
-          </svg>
-        </button>
-        <span className="text-xs text-ink-subtle">
-          Geöffnet {new Date(tab.geoffnetAm).toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' })} Uhr
-        </span>
-        <button
-          type="button"
-          onClick={() => setVerlaufOffen(true)}
-          className="ml-auto flex items-center gap-1.5 rounded-md border border-line bg-panel px-2.5 py-1 text-xs font-medium text-ink-muted hover:bg-panel-2 hover:text-ink transition"
-        >
-          <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
-            <path fillRule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16zm1-12a1 1 0 1 0-2 0v4a1 1 0 0 0 .293.707l2.828 2.829a1 1 0 1 0 1.415-1.415L11 9.586V6z" clipRule="evenodd"/>
-          </svg>
-          Verlauf
-        </button>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-4">
-        {/* Linke Seite: Artikel-Buttons */}
-        <section className="bg-panel rounded-lg shadow-sm border border-line
-                            flex flex-col lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)]">
-          <div className="px-4 pt-4 pb-2 shrink-0">
-            <h2 className="text-sm font-semibold text-ink">Artikel nachbestellen</h2>
-            {/* Gang-Wähler: neue Artikel erben den aktiven Gang (0 = Sofort) */}
-            {gaengeAktiv && (
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {[0, ...Array.from({ length: anzahlGaenge }, (_, i) => i + 1)].map(g => (
-                  <button
-                    key={g}
-                    type="button"
-                    onClick={() => setAktiverGang(g)}
-                    className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
-                      aktiverGang === g
-                        ? 'bg-brand-600 text-white shadow-sm'
-                        : 'border border-line-strong bg-panel text-ink-muted hover:bg-panel-2'
-                    }`}
-                  >
-                    {gangLabel(g)}
-                  </button>
-                ))}
-              </div>
-            )}
+    <div className="mx-auto max-w-7xl px-4 py-4 lg:h-full lg:flex lg:flex-col">
+      {/* Ab lg füllt der Tisch den Bildschirm (siehe Layout): rechts die Bestellung
+          über die volle Höhe, links alles andere — Hinweise, Kopfzeile und das
+          Artikel-Raster, das in sich scrollt. Die Knöpfe unten rechts bleiben im
+          Bild. minmax(0,1fr): eine lange Warengruppen-Leiste darf die Spalte
+          nicht breiter als den Bildschirm machen. */}
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_400px] lg:grid-rows-[minmax(0,1fr)] gap-4 lg:flex-1 lg:min-h-[28rem]">
+        <div className="flex flex-col">
+          {/* Belege, deren Bon nicht gedruckt wurde — auch am Tisch wird kassiert. */}
+          <div className="mb-3 empty:mb-0">
+            <DruckproblemeBanner kasseId={identity.kasseId} />
           </div>
-          <div className="flex-1 min-h-0 overflow-hidden px-4 pb-4">
-            <ArtikelGrid
-              artikel={artikelQuery.data ?? []}
-              kategorien={kategorienQuery.data ?? []}
-              artikelGruppen={artikelGruppenMap}
-              onArtikelClick={addArtikel}
-              loading={artikelQuery.isLoading}
-              sichtbareKategorieIds={posConfigQuery.data?.sichtbareKategorieIds}
-              artikelbilderAktiv={posConfigQuery.data?.artikelbilderAktiv ?? true}
-              aktionen={aktionenProArtikel}
-              favoritenEintraege={favoritenQuery.data?.eintraege}
-              artikelProZeile={posConfigQuery.data?.artikelProZeile}
-              startFavoriten={posConfigQuery.data?.startFavoriten}
-              startKategorieId={posConfigQuery.data?.startKategorieId}
-            />
-          </div>
-        </section>
 
-        {/* Rechte Seite: Tab + Warenkorb */}
-        <section className="bg-panel rounded-lg shadow-sm border border-line flex flex-col h-fit lg:sticky lg:top-20 max-h-[calc(100vh-6rem)]">
+          {/* Kopfzeile */}
+          <div className="mb-4 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => navigate('/tische')}
+              className="text-sm text-ink-muted hover:text-ink"
+            >
+              ← Tische
+            </button>
+            <div className="h-4 w-px bg-line-strong" />
+            <h1 className="text-lg font-semibold text-ink">
+              Tisch {tab.tischNummer}
+            </h1>
+            <button
+              type="button"
+              onClick={() => { setFehler(null); setUmbenennenOffen(true) }}
+              className="group flex items-center gap-1 text-sm text-ink-muted hover:text-ink"
+              title="Partei umbenennen"
+            >
+              · {tab.kellner}
+              <svg className="h-3.5 w-3.5 opacity-0 group-hover:opacity-60 transition-opacity" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M13.586 3.586a2 2 0 1 1 2.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/>
+              </svg>
+            </button>
+            <span className="text-xs text-ink-subtle">
+              Geöffnet {new Date(tab.geoffnetAm).toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' })} Uhr
+            </span>
+            <button
+              type="button"
+              onClick={() => setVerlaufOffen(true)}
+              className="ml-auto flex items-center gap-1.5 rounded-md border border-line bg-panel px-2.5 py-1 text-xs font-medium text-ink-muted hover:bg-panel-2 hover:text-ink transition"
+            >
+              <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16zm1-12a1 1 0 1 0-2 0v4a1 1 0 0 0 .293.707l2.828 2.829a1 1 0 1 0 1.415-1.415L11 9.586V6z" clipRule="evenodd"/>
+              </svg>
+              Verlauf
+            </button>
+          </div>
+
+          {/* Linke Seite: Artikel-Buttons */}
+          <section className="bg-panel rounded-lg shadow-sm border border-line flex flex-col lg:flex-1 lg:min-h-[15rem]">
+            <div className="px-4 pt-4 pb-2 shrink-0">
+              <h2 className="text-sm font-semibold text-ink">Artikel nachbestellen</h2>
+              {/* Gang-Wähler: neue Artikel erben den aktiven Gang (0 = Sofort) */}
+              {gaengeAktiv && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {[0, ...Array.from({ length: anzahlGaenge }, (_, i) => i + 1)].map(g => (
+                    <button
+                      key={g}
+                      type="button"
+                      onClick={() => setAktiverGang(g)}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                        aktiverGang === g
+                          ? 'bg-brand-600 text-white shadow-sm'
+                          : 'border border-line-strong bg-panel text-ink-muted hover:bg-panel-2'
+                      }`}
+                    >
+                      {gangLabel(g)}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="flex-1 min-h-0 overflow-hidden px-4 pb-4">
+              <ArtikelGrid
+                artikel={artikelQuery.data ?? []}
+                kategorien={kategorienQuery.data ?? []}
+                artikelGruppen={artikelGruppenMap}
+                onArtikelClick={addArtikel}
+                loading={artikelQuery.isLoading}
+                sichtbareKategorieIds={posConfigQuery.data?.sichtbareKategorieIds}
+                artikelbilderAktiv={posConfigQuery.data?.artikelbilderAktiv ?? true}
+                aktionen={aktionenProArtikel}
+                favoritenEintraege={favoritenQuery.data?.eintraege}
+                artikelProZeile={posConfigQuery.data?.artikelProZeile}
+                startFavoriten={posConfigQuery.data?.startFavoriten}
+                startKategorieId={posConfigQuery.data?.startKategorieId}
+              />
+            </div>
+          </section>
+        </div>
+
+        {/* Rechte Seite: Tab + Warenkorb. Reicht die Höhe nicht (Freigabe-PIN,
+            Bonier-Fehler, Hinweis über der Kopfleiste), scrollt ab lg die Spalte
+            selbst und der Aktionsbereich bleibt unten kleben. */}
+        <section className="bg-panel rounded-lg shadow-sm border border-line flex flex-col lg:overflow-y-auto">
           {/* Bestehende Positionen */}
           <div className="px-4 py-3 border-b border-line flex items-center justify-between gap-2">
             <h2 className="text-sm font-semibold text-ink">Laufende Bestellung</h2>
@@ -743,7 +751,9 @@ export function TischTabPage() {
               </button>
             )}
           </div>
-          <div className="overflow-y-auto flex-1 px-4 py-3 max-h-[30vh]">
+          {/* ab lg: nimmt, was die Spalte übrig lässt; wird es eng, geben diese
+              Liste und die neuen Positionen darunter anteilig nach */}
+          <div className="overflow-y-auto flex-auto px-4 py-3 max-h-[30vh] lg:max-h-none lg:min-h-[4.5rem]">
             {tab.positionen.length === 0 ? (
               <p className="text-xs text-ink-subtle text-center py-4">Noch keine Positionen.</p>
             ) : !gaengeAktiv ? (
@@ -864,7 +874,8 @@ export function TischTabPage() {
               <div className="px-4 py-2 bg-amber-50 border-y border-amber-200">
                 <p className="text-xs font-semibold text-amber-700">Neu (noch nicht gespeichert)</p>
               </div>
-              <div className="px-4 py-3 max-h-[25vh] overflow-y-auto">
+              {/* ab lg: gibt bei Platzmangel nach, eine Zeile bleibt sichtbar */}
+              <div className="px-4 py-3 max-h-[25vh] overflow-y-auto lg:min-h-[3.5rem]">
                 <ul className="space-y-1.5">
                   {korb.map((p, idx) => (
                     <li key={idx} className="flex items-center gap-2 text-sm">
@@ -909,7 +920,7 @@ export function TischTabPage() {
           )}
 
           {/* Aktionsbereich */}
-          <div className="px-4 py-3 border-t border-line bg-panel-2 space-y-3">
+          <div className="px-4 py-3 border-t border-line bg-panel-2 space-y-3 lg:sticky lg:bottom-0">
             <div className="flex items-center justify-between text-base font-bold text-ink">
               <span>Gesamt</span>
               <span>{formatPreis(gesamt)}</span>
