@@ -162,6 +162,22 @@ async function sichtbareKorbHoehe(page: Page) {
   })
 }
 
+/** Fläche (px²), mit der der Kartenstapel um „✓ Gesehen" die Warenkorb-Positionsliste überdeckt */
+async function karteUeberWarenkorb(page: Page) {
+  return page.evaluate(() => {
+    const knopf = [...document.querySelectorAll('button')].find(b => b.textContent?.includes('✓ Gesehen'))!
+    let stapel: HTMLElement | null = knopf
+    while (stapel && getComputedStyle(stapel).position !== 'fixed') stapel = stapel.parentElement
+    let liste: HTMLElement | null = document.querySelector<HTMLElement>('[title="Menge eingeben"]')!.parentElement
+    while (liste && !/(auto|scroll)/.test(getComputedStyle(liste).overflowY)) liste = liste.parentElement
+    const a = stapel!.getBoundingClientRect()
+    const b = liste!.getBoundingClientRect()
+    const x = Math.min(a.right, b.right) - Math.max(a.left, b.left)
+    const y = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top)
+    return x > 0 && y > 0 ? Math.round(x * y) : 0
+  })
+}
+
 test.describe('Kasse und Tisch füllen ab lg den Bildschirm', () => {
 
 test('Bar/Karte/Leeren/Bonieren und die Tisch-Knöpfe liegen ohne Scrollen im Bild — Admin mit vollem Menü und Kassier', async ({ browser, request }) => {
@@ -183,6 +199,8 @@ test('Bar/Karte/Leeren/Bonieren und die Tisch-Knöpfe liegen ohne Scrollen im Bi
   const artikel: { id: string; bezeichnung: string }[] = []
   let tabId: string | null      = null
   let kassierId: string | null  = null
+  let gastModusVorher: string | null = null
+  const gastTisch = `G${Date.now() % 100_000}`
 
   try {
     // 16 Warengruppen mit langen Namen: die Warengruppen-Leiste ist viel breiter als die Spalte
@@ -266,6 +284,23 @@ test('Bar/Karte/Leeren/Bonieren und die Tisch-Knöpfe liegen ohne Scrollen im Bi
       }
     }
 
+    // Gastbestellung per Tisch-QR: Die Karte oben rechts liegt an der Kasse über
+    // Kopfleiste und Kundensuche, nie über den Warenkorbzeilen — auch bei
+    // einzeiliger Kopfleiste (Kassier), wo der Warenkorb am höchsten beginnt
+    gastModusVorher = (await (await request.get(`/api/kassen/${kasseId}/drucker`, { headers: authHeader })).json() as { gastModus: string }).gastModus
+    expect((await request.patch(`/api/kassen/${kasseId}/drucker`, { headers: authHeader, data: { gastModus: 'tab' } })).ok()).toBe(true)
+    await kassa.setViewportSize({ width: 1024, height: 768 })
+    await warenkorbMit(kassa, 3)
+    expect((await request.post('/api/gast/bestellung', {
+      data: { kasseId, tischNummer: gastTisch, positionen: [{ artikelId: artikel[0]!.id, menge: 1 }] },
+    })).status()).toBe(201)
+    const gesehen = kassa.getByRole('button', { name: '✓ Gesehen' })
+    await expect(gesehen).toBeVisible()
+    expect(await karteUeberWarenkorb(kassa), 'Gast-Karte über den Warenkorbzeilen').toBe(0)
+    expect(await problemKnoepfe(kassa, KASSE_KNOEPFE), 'Kassier 1024×768 mit Gast-Karte').toEqual([])
+    await gesehen.click()
+    await expect(gesehen).toHaveCount(0)
+
     // Voller Warenkorb (12 Positionen): die Liste scrollt in sich, die Knöpfe bleiben
     await admin.setViewportSize({ width: 1024, height: 768 })
     await warenkorbMit(admin, 12)
@@ -308,6 +343,13 @@ test('Bar/Karte/Leeren/Bonieren und die Tisch-Knöpfe liegen ohne Scrollen im Bi
   } finally {
     // Aufräumen — spätere Specs teilen sich die Instanz
     if (tabId) await request.post(`/api/tisch-tabs/${tabId}/verwerfen`, { headers: authHeader, data: {} })
+    if (gastModusVorher !== null) {
+      await request.patch(`/api/kassen/${kasseId}/drucker`, { headers: authHeader, data: { gastModus: gastModusVorher } })
+      const tabs = await (await request.get(`/api/tisch-tabs?kasseId=${kasseId}`, { headers: authHeader })).json() as { id: string; tischNummer: string }[]
+      for (const t of tabs.filter(t => t.tischNummer === gastTisch)) {
+        await request.post(`/api/tisch-tabs/${t.id}/verwerfen`, { headers: authHeader, data: {} })
+      }
+    }
     if (kassierId) await request.delete(`/api/users/${kassierId}`, { headers: authHeader })
     for (const a of artikel) await request.delete(`/api/artikel/${a.id}`, { headers: authHeader })
     for (const k of kategorien) await request.delete(`/api/kategorien/${k}`, { headers: authHeader })

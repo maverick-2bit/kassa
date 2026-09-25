@@ -49,7 +49,7 @@ export function Layout() {
       <footer className="border-t border-line py-2 text-center">
         <StatusZeile />
       </footer>
-      <KdsToasts />
+      <KdsToasts kassenAnsicht={kassenAnsicht} />
       <KdsNachrichten />
     </div>
   )

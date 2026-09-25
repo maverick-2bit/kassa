@@ -307,20 +307,11 @@ test('Optionen-Dialog und „Neuer Kunde" im mitlaufenden Kassen-Abschnitt liege
     await page.goto('/kasse')
     await expect(page.getByPlaceholder(/Artikel suchen/)).toBeVisible()
 
-    // Karten oben links, oben mittig, oben rechts
-    expect((await request.post('/api/kds/nachricht', {
-      headers: auth, data: { text: kdsText, station: 'kueche', kasseIds: [] },
-    })).ok()).toBe(true)
-    expect((await request.post('/api/gast/bestellung', {
-      data: { kasseId, tischNummer: gastTisch, positionen: [{ artikelId: artikel.id, menge: 1 }] },
-    })).status()).toBe(201)
     const karten: Record<string, Locator> = {
       'Gast: ✓ Gesehen':   page.getByRole('button', { name: '✓ Gesehen' }),
       'KDS: ✓ Verstanden': page.getByRole('button', { name: '✓ Verstanden' }),
       'Kopfleiste':        page.getByRole('banner').getByRole('button', { name: 'Verkauf' }),
     }
-    for (const el of Object.values(karten)) await expect(el).toBeVisible()
-
     const pruefe = async () => {
       await expect(page.getByRole('dialog')).toBeVisible()
       const lage: Record<string, boolean> = {}
@@ -329,18 +320,30 @@ test('Optionen-Dialog und „Neuer Kunde" im mitlaufenden Kassen-Abschnitt liege
     }
     const alleUnterDialog = Object.fromEntries(Object.keys(karten).map(k => [k, true]))
 
-    // Optionen-Dialog (ArtikelGrid im sticky Artikel-Abschnitt)
-    const suche = page.getByPlaceholder(/Artikel suchen/)
-    await suche.fill(artikel.bezeichnung)
-    await page.getByRole('button', { name: artikel.bezeichnung }).first().click()
-    await expect(page.getByRole('dialog').getByText('Hafermilch')).toBeVisible()
+    // „Neuer Kunde" (KundePicker im Warenkorb) ist offen, während die Karten
+    // ankommen. Erst öffnen, dann melden: Der Warenkorb reicht ab lg bis unter
+    // die Kopfleiste, eine Karte oben rechts liegt dort über der Kundensuche.
+    await page.getByTitle('Neuen Kunden anlegen').click()
+    await expect(page.getByRole('dialog').getByRole('heading', { name: 'Neuer Kunde' })).toBeVisible()
+
+    // Karten oben links, oben mittig, oben rechts
+    expect((await request.post('/api/kds/nachricht', {
+      headers: auth, data: { text: kdsText, station: 'kueche', kasseIds: [] },
+    })).ok()).toBe(true)
+    expect((await request.post('/api/gast/bestellung', {
+      data: { kasseId, tischNummer: gastTisch, positionen: [{ artikelId: artikel.id, menge: 1 }] },
+    })).status()).toBe(201)
+    for (const el of Object.values(karten)) await expect(el).toBeVisible()
+
     expect(await pruefe()).toEqual(alleUnterDialog)
     await page.keyboard.press('Escape')
     await expect(page.getByRole('dialog')).toHaveCount(0)
 
-    // „Neuer Kunde" (KundePicker im sticky Warenkorb)
-    await page.getByTitle('Neuen Kunden anlegen').click()
-    await expect(page.getByRole('dialog').getByRole('heading', { name: 'Neuer Kunde' })).toBeVisible()
+    // Optionen-Dialog (ArtikelGrid im Artikel-Abschnitt) bei stehenden Karten
+    const suche = page.getByPlaceholder(/Artikel suchen/)
+    await suche.fill(artikel.bezeichnung)
+    await page.getByRole('button', { name: artikel.bezeichnung }).first().click()
+    await expect(page.getByRole('dialog').getByText('Hafermilch')).toBeVisible()
     expect(await pruefe()).toEqual(alleUnterDialog)
     await page.keyboard.press('Escape')
     await expect(page.getByRole('dialog')).toHaveCount(0)
