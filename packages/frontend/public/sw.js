@@ -223,7 +223,7 @@ async function networkFirst(request, cacheName) {
 // hält (nginx schickte früher kein Cache-Control). Zeitlimit/offline → App-
 // Hülle aus dem Cache; ohne Cache-Eintrag weiter aufs Netz warten.
 function seiteNetzZuerst(request) {
-  var netz = fetch(request, { cache: 'no-cache' }).then(function(response) {
+  var netz = fetch(amHttpCacheVorbei(request)).then(function(response) {
     if (response.ok) {
       var kopie = response.clone()
       caches.open(STATIC_CACHE).then(function(cache) { cache.put('/index.html', kopie) })
@@ -233,6 +233,17 @@ function seiteNetzZuerst(request) {
   return mitZeitlimit(netz, NETZ_ZEITLIMIT_MS).catch(function() {
     return caches.match('/index.html').then(function(cached) { return cached || netz })
   })
+}
+
+// Browser, die eine Navigations-Anfrage nicht mit geänderten Optionen kopieren
+// können (der Konstruktor wirft dort), holen sie unverändert — dann sorgt allein
+// nginx (Cache-Control: no-cache) für die frische Seite.
+function amHttpCacheVorbei(request) {
+  try {
+    return new Request(request, { cache: 'no-cache' })
+  } catch (e) {
+    return request
+  }
 }
 
 function mitZeitlimit(promise, ms) {

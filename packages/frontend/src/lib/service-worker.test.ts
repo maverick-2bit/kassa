@@ -37,8 +37,12 @@ class FakeCache {
   }
 }
 
-/** Lädt eine sw.js in eine nachgebaute SW-Umgebung (Version 1.2.3). */
-function ladeSw(datei: URL) {
+/**
+ * Lädt eine sw.js in eine nachgebaute SW-Umgebung (Version 1.2.3).
+ * navigationKopierbar: false = älterer Browser, dessen Request-Konstruktor
+ * eine Navigations-Anfrage mit geänderten Optionen nicht kopieren kann.
+ */
+function ladeSw(datei: URL, { navigationKopierbar = true } = {}) {
   const handler: Record<string, Handler[]> = {}
   const caches = new Map<string, FakeCache>()
   const fetch = vi.fn<(r: unknown, init?: RequestInit) => Promise<Response>>()
@@ -57,10 +61,19 @@ function ladeSw(datei: URL) {
       return undefined
     },
   }
-  // Relative URLs wie im Browser gegen die SW-Adresse auflösen
+  // Wie im Browser: relative URLs gegen die SW-Adresse auflösen; eine kopierte
+  // Navigations-Anfrage wird zu mode 'same-origin' (ältere Browser warfen)
+  function requestArgs(input: string | Request | Anfrage, init?: RequestInit): [string | Request, RequestInit | undefined] {
+    if (typeof input === 'string') return [new URL(input, BASIS).href, init]
+    if (input instanceof Request) return [input, init]
+    if (!navigationKopierbar) {
+      throw new TypeError("Cannot construct a Request with a Request whose mode is 'navigate' and a non-empty RequestInit.")
+    }
+    return [input.url, { ...init, mode: 'same-origin' }]
+  }
   class SwRequest extends Request {
-    constructor(input: string | Request, init?: RequestInit) {
-      super(typeof input === 'string' ? new URL(input, BASIS).href : input, init)
+    constructor(input: string | Request | Anfrage, init?: RequestInit) {
+      super(...requestArgs(input, init))
     }
   }
   const self = {
@@ -115,10 +128,22 @@ describe.each(APPS)('Service Worker $app', ({ datei, cache }) => {
 
     const { antwort } = sw.abrufen('/tab/7?kasse=bar', 'navigate')
     expect(await (await antwort!).text()).toBe('neue Seite')
-    expect(sw.fetch.mock.calls[0]![1]).toEqual({ cache: 'no-cache' })
+    const anfrage = sw.fetch.mock.calls[0]![0] as Request
+    expect(anfrage.url).toBe(BASIS + '/tab/7?kasse=bar')
+    expect(anfrage.cache).toBe('no-cache')
 
     await vi.waitFor(async () => expect(await gespeicherteSeite()).toBe('neue Seite'))
     expect(await sw.cacheStorage.match('/tab/7?kasse=bar')).toBeUndefined()
+  })
+
+  it('älterer Browser (Navigations-Anfrage nicht kopierbar): Seite trotzdem vom Netz', async () => {
+    sw = ladeSw(datei, { navigationKopierbar: false })
+    await (await sw.cacheStorage.open(cache)).put('/index.html', html('alte Seite'))
+    sw.fetch.mockResolvedValue(html('neue Seite'))
+
+    const { antwort } = sw.abrufen('/', 'navigate')
+    expect(await (await antwort!).text()).toBe('neue Seite')
+    expect((sw.fetch.mock.calls[0]![0] as Anfrage).mode).toBe('navigate')
   })
 
   it('offline: App-Hülle aus dem Cache — auch für eine nie besuchte URL', async () => {

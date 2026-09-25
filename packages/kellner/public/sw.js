@@ -41,6 +41,17 @@ self.addEventListener('activate', e => {
   )
 })
 
+// Browser, die eine Navigations-Anfrage nicht mit geänderten Optionen kopieren
+// können (der Konstruktor wirft dort), holen sie unverändert — dann sorgt allein
+// nginx (Cache-Control: no-cache) für die frische Seite.
+function amHttpCacheVorbei(request) {
+  try {
+    return new Request(request, { cache: 'no-cache' })
+  } catch (e) {
+    return request
+  }
+}
+
 function mitZeitlimit(promise, ms) {
   return new Promise((resolve, reject) => {
     const t = setTimeout(() => reject(new Error('Zeitlimit')), ms)
@@ -58,7 +69,7 @@ self.addEventListener('fetch', e => {
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/sse/')) return
 
   if (request.mode === 'navigate') {
-    const netz = fetch(request, { cache: 'no-cache' }).then(res => {
+    const netz = fetch(amHttpCacheVorbei(request)).then(res => {
       if (res.ok) {
         const clone = res.clone()
         caches.open(CACHE).then(c => c.put('/index.html', clone))
