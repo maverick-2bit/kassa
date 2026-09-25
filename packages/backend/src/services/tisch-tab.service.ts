@@ -1,4 +1,5 @@
 import { and, desc, eq, inArray, sql } from 'drizzle-orm'
+import type { FastifyBaseLogger } from 'fastify'
 import type {
   BarzahlungsbelegInput,
   ModifikatorAuswahl,
@@ -22,6 +23,7 @@ import { erstelleBarzahlungsbeleg } from './beleg.service.js'
 import { ladeRezepte, wendeBestandteilDeltasAn } from './bestandteil.service.js'
 import { bonierBestellung } from './bonier.service.js'
 import { pruefeStornoFreigabe, type FreigabeKontext } from './freigabe.service.js'
+import { fachfehlerStatus } from '../fehler-handler.js'
 
 export interface TischTabServiceDeps {
   db:        Db
@@ -296,6 +298,8 @@ export async function aktualisierePositionen(
     userId?: string | null; userName?: string; grund?: string; freigabePin?: string
     /** Wer anfragt — für die PIN-Bremse, falls ein Freigabe-PIN mitkommt */
     freigabe?: FreigabeKontext
+    /** Log der Anfrage — Einzelheiten, falls der Korrekturbon unerwartet scheitert */
+    log?: FastifyBaseLogger
   },
 ): Promise<{ tab: TischTabResponse; stornoBon: StornoBonErgebnis | null }> {
   const [existing] = await deps.db
@@ -384,7 +388,7 @@ async function verarbeiteStorno(
   stornoItems: Array<{ artikelId: string; bezeichnung: string; menge: number; preisBruttoCent: number }>,
   mandantId: string,
   deps: TischTabServiceDeps,
-  kontext?: { userId?: string | null; userName?: string; grund?: string },
+  kontext?: { userId?: string | null; userName?: string; grund?: string; log?: FastifyBaseLogger },
 ): Promise<StornoBonErgebnis | null> {
   await deps.db.insert(auditLogs).values({
     mandantId,
@@ -421,12 +425,23 @@ async function verarbeiteStorno(
     const fehler = bonierFehlschlaege(ergebnis)
     return fehler.length > 0 ? { fehler, positionen } : null
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    // „nichts zu bonieren" = kein Artikel hat Station oder Drucker. Dann gibt es
-    // auch nichts zu melden — kein Fehlerfall.
-    if (/nichts zu bonieren/i.test(msg)) return null
+    // Fachmeldungen (BonierError: Kasse/Artikel nicht mehr verfügbar …) gehen im
+    // Wortlaut an Kasse und Kellner-App, alles andere nur ins Log — ein DB-Fehler
+    // lautet „Failed query: <SQL> params: <Werte>". Der globale Fehler-Handler
+    // greift hier nicht: Der Storno ist gebucht, die Anfrage gelingt.
+    const status = fachfehlerStatus(err)
+    let meldung: string
+    if (err instanceof Error && status !== undefined && status < 500) {
+      // „nichts zu bonieren" = kein Artikel hat Station oder Drucker. Dann gibt es
+      // auch nichts zu melden — kein Fehlerfall.
+      if (/nichts zu bonieren/i.test(err.message)) return null
+      meldung = err.message
+    } else {
+      kontext?.log?.error({ err, tabId: tab.id }, 'Korrekturbon unerwartet fehlgeschlagen')
+      meldung = 'Interner Serverfehler'
+    }
     return {
-      fehler: [{ ziel: 'Küche/Schank', ip: '', fehler: msg, istBackup: false }],
+      fehler: [{ ziel: 'Küche/Schank', ip: '', fehler: meldung, istBackup: false }],
       positionen,
     }
   }
@@ -443,6 +458,7 @@ export async function verwerfeTab(
   kontext?: {
     userId?: string | null; userName?: string; grund?: string; freigabePin?: string
     freigabe?: FreigabeKontext
+    log?: FastifyBaseLogger
   },
 ): Promise<TischTabResponse> {
   const [existing] = await deps.db
