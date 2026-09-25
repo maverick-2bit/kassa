@@ -89,8 +89,9 @@ describe('Stripe-Webhook-Produktionspfad (Integration, echtes PostgreSQL)', () =
     })
     colaId = a.json().id
 
-    // Gast-Bestellung aktivieren + eigene (verschlüsselte) Stripe-Keys hinterlegen
-    await srv.fastify.inject({ method: 'PATCH', url: `/api/kassen/${kasseId}/drucker`, headers: auth(), payload: { gastBestellungAktiv: true } })
+    // Gast-Bestellung mit Online-Zahlung aktivieren + eigene (verschlüsselte) Stripe-Keys hinterlegen
+    const modus = await srv.fastify.inject({ method: 'PATCH', url: `/api/kassen/${kasseId}/drucker`, headers: auth(), payload: { gastModus: 'online' } })
+    expect(modus.json().gastModus).toBe('online')
     const patch = await srv.fastify.inject({
       method: 'PATCH', url: '/api/mandanten/stripe', headers: auth(),
       payload: { secretKey: SECRET_KEY, webhookSecret: WEBHOOK_SECRET },

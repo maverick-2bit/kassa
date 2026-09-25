@@ -194,8 +194,8 @@ export const kassen = pgTable('kassen', {
   belegBasisUrl:         varchar('beleg_basis_url', { length: 255 }),
   /** Basis-URL der Gast-Bestell-App für den Tisch-QR (leer = kein QR-Druck möglich) */
   gastBasisUrl:          varchar('gast_basis_url', { length: 300 }),
-  /** Gast-Selbstbestellung mit Online-Zahlung (Stripe) freigeschaltet */
-  gastBestellungAktiv:   boolean('gast_bestellung_aktiv').notNull().default(false),
+  /** Gast-Bestellung per Tisch-QR: aus | tab (ohne Zahlung → offener Tisch) | online (Zahlung per Stripe) — siehe GastModusEnum */
+  gastModus:             varchar('gast_modus', { length: 10 }).notNull().default('aus'),
 
   // KDS-Konfiguration (Küchen-Display-System)
   /** Mapping Stations-Slug → IP-Adresse, z. B. { kueche: "192.168.192.210" } */

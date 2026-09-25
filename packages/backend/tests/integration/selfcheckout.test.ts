@@ -69,9 +69,14 @@ describe('Self-Checkout (Integration, echtes PostgreSQL)', () => {
     })
     const artikelId = a.json().id
     await srv.fastify.inject({
+      method: 'PATCH', url: `/api/kassen/${kasseId}/drucker`, headers: auth(),
+      payload: { gastModus: 'tab' },
+    })
+    const bestellung = await srv.fastify.inject({
       method: 'POST', url: '/api/gast/bestellung',
       payload: { kasseId, tischNummer: TISCH, positionen: [{ artikelId, menge: 2 }] },
     })
+    if (bestellung.statusCode !== 201) throw new Error(`Gast-Bestellung (${bestellung.statusCode}): ${bestellung.body}`)
   })
 
   afterAll(async () => {

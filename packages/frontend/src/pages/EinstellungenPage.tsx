@@ -1749,7 +1749,7 @@ function StripeZahlungSektion() {
       </div>
 
       <p className="text-xs text-ink-subtle">
-        Zusätzlich muss je Kasse der Schalter „Gast-Selbstbestellung mit Online-Zahlung" (unter Hardware) aktiv sein.
+        Zusätzlich muss je Kasse unter Hardware → „Gast-Bestellung per Tisch-QR" der Modus „Mit Online-Zahlung" gewählt sein.
       </p>
     </section>
   )
@@ -1872,6 +1872,12 @@ function GastQrCodeSektion() {
         <p className="text-sm text-ink-muted mt-0.5">
           QR-Codes für Tische generieren — Gäste scannen und bestellen direkt.
         </p>
+        {kasseCfgQuery.data?.gastModus === 'aus' && (
+          <p className="text-[11px] text-amber-600 mt-1">
+            ⚠ Gast-Bestellung ist für diese Kasse aus — die QR-Codes nehmen keine Bestellungen an.
+            Modus wählen unter Einstellungen → Hardware („Gast-Bestellung per Tisch-QR").
+          </p>
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
