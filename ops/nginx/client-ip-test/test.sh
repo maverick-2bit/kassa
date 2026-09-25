@@ -7,6 +7,8 @@
 # Docker-Netz vor einem Echo-Backend; client.js prüft je App und Eingang, welche
 # Client-IP beim Backend ankommt (direkt :80, Caddy :8090, Tunnel :8091) und
 # dass gefälschte X-Real-IP / X-Forwarded-For / CF-Connecting-IP nichts bewirken.
+# Nebenbei: Cache-Header für index.html und sw.js (Service-Worker-Updates) — dafür
+# liefern die nginx einen Mini-Webroot (webroot/) statt ihrer Standardseite.
 #
 # Aufruf (Repo-Wurzel, Docker nötig):   sh ops/nginx/client-ip-test/test.sh
 # Läuft in CI als Job „nginx-client-ip". Räumt Container und Netz immer ab.
@@ -34,7 +36,8 @@ docker run -d --label "kassa-ipt=$NETZ" --name "$NETZ-backend" --network "$NETZ"
 
 for app in $APPS; do
   docker run -d --label "kassa-ipt=$NETZ" --name "$NETZ-$app" --network "$NETZ" --network-alias "$app" \
-    -v "$WURZEL/packages/$app/nginx.conf:/etc/nginx/conf.d/default.conf:ro" "$NGINX_IMG" >/dev/null
+    -v "$WURZEL/packages/$app/nginx.conf:/etc/nginx/conf.d/default.conf:ro" \
+    -v "$WURZEL/ops/nginx/client-ip-test/webroot:/usr/share/nginx/html:ro" "$NGINX_IMG" >/dev/null
 done
 
 # Echte Caddyfile; *.localhost bekommt Zertifikate von Caddys interner CA

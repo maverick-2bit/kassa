@@ -6,6 +6,7 @@
 //   :8090 Caddy   -> letzter X-Forwarded-For-Eintrag
 //   :8091 Tunnel  -> CF-Connecting-IP
 //   Caddy (echte Caddyfile) -> eigene Adresse, gefaelschte Header wirkungslos
+// Dazu Cache-Header: index.html und sw.js nie ungefragt aus dem HTTP-Cache.
 // Exit-Code 1, sobald eine Pruefung fehlschlaegt. Bewusst reines ASCII (wird
 // auch per Zwischenablage auf Test-PCs uebertragen).
 const http = require('http')
@@ -34,6 +35,33 @@ function hole(o) {
     req.on('timeout', () => req.destroy(new Error('timeout')))
     req.end()
   })
+}
+
+function holeKopf(host, pfad) {
+  return new Promise(fertig => {
+    const req = http.request({ host: host, port: 80, path: pfad, timeout: 8000 }, r => {
+      r.resume()
+      r.on('end', () => fertig({ status: r.statusCode, kopf: r.headers }))
+    })
+    req.on('error', e => fertig({ status: 0, fehler: e.message, kopf: {} }))
+    req.on('timeout', () => req.destroy(new Error('timeout')))
+    req.end()
+  })
+}
+
+// index.html und sw.js darf der Browser nie ungefragt aus seinem HTTP-Cache
+// nehmen (ohne Cache-Control haelt er sie heuristisch tagelang fuer frisch) --
+// sonst kommen neue Versionen bzw. Service-Worker-Updates erst spaeter an.
+const NO_CACHE = (kopf, cc) =>
+  /\bno-cache\b/.test(cc) && !/immutable|max-age=[1-9]/.test(cc) ? '' : 'soll no-cache'
+
+async function pruefeKopf(name, host, pfad, test) {
+  const r = await holeKopf(host, pfad)
+  const cc = r.kopf['cache-control'] || ''
+  const fehler = r.status !== 200 ? 'HTTP ' + r.status + (r.fehler ? ' ' + r.fehler : '') : test(r.kopf, cc)
+  ergebnisse.push(!fehler)
+  console.log((fehler ? 'FEHLER ' : 'OK     ') + name.padEnd(46) + ' -> cache-control: ' + (cc || '-') +
+    (fehler ? '  (' + fehler + ')' : ''))
 }
 
 const GEFAELSCHT = { 'x-real-ip': '6.6.6.6', 'x-forwarded-for': '6.6.6.7', 'cf-connecting-ip': '6.6.6.8' }
@@ -85,6 +113,18 @@ const CADDY = {
     await pruefe('Caddy ' + host + ' gefaelscht', { https: true, host: 'caddy', port: 443, servername: host,
       path: p, headers: Object.assign({ host: host }, GEFAELSCHT) }, eigen)
   }
+  // Cache-Header der Apps mit index.html-Regel bzw. Service Worker
+  for (const app of ['frontend', 'kellner', 'einlass', 'tickets']) {
+    await pruefeKopf(app + ' / (index.html)', app, '/', NO_CACHE)
+    await pruefeKopf(app + ' /tab/7 (Rueckfall auf index.html)', app, '/tab/7', NO_CACHE)
+  }
+  for (const app of ['frontend', 'kellner']) {
+    await pruefeKopf(app + ' /sw.js', app, '/sw.js', NO_CACHE)
+  }
+  // Das Frontend setzt no-cache per "expires": ein add_header in der location
+  // wuerde die Security-Header des server-Blocks fuer index.html abschalten
+  await pruefeKopf('frontend / behaelt CSP + X-Frame-Options', 'frontend', '/', kopf =>
+    kopf['content-security-policy'] && kopf['x-frame-options'] === 'DENY' ? '' : 'Security-Header fehlen')
   const ok = ergebnisse.filter(Boolean).length
   console.log('ERGEBNIS: ' + ok + '/' + ergebnisse.length + ' OK')
   process.exitCode = ok === ergebnisse.length ? 0 : 1
