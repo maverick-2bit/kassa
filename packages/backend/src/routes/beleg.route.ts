@@ -158,7 +158,7 @@ function tryBonierDirektverkauf(
       const rows = await deps.db
         .select()
         .from(artikel)
-        .where(and(inArray(artikel.id, artikelIds), eq(artikel.aktiv, true)))
+        .where(and(inArray(artikel.id, artikelIds), eq(artikel.mandantId, mandantId), eq(artikel.aktiv, true)))
       const flagged = rows.filter(a => a.bonierBeiDirektverkauf)
       if (flagged.length === 0) return
 
@@ -166,7 +166,7 @@ function tryBonierDirektverkauf(
       // Station ODER Bonierdrucker des Artikels bzw. der Warengruppe (Untergruppen erben von der
       // Elterngruppe), jeweils mit Kassen-Ausnahme.
       const hatKategorie = flagged.some(a => a.kategorieId !== null)
-      const kategorieZeilen = hatKategorie ? await ladeKategorieRoutingZeilen(deps.db, flagged[0]!.mandantId) : []
+      const kategorieZeilen = hatKategorie ? await ladeKategorieRoutingZeilen(deps.db, mandantId) : []
       const bonRouting = baueBonRouting(kategorieZeilen, await ladeKasseRoutingAusnahmen(deps.db, input.kasseId))
 
       const geroutet = new Set(

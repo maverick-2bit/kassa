@@ -115,7 +115,7 @@ export const gastRoute: FastifyPluginAsync<GastRouteOptions> = async (fastify, o
         .orderBy(asc(artikel.reihenfolge))
 
       // Rezept-Verfügbarkeit: zusammengesetzte Artikel sind ausverkauft, wenn ein Bestandteil fehlt.
-      const rezepte = await ladeRezepteAngereichert(opts.db, alleArtikel.map(a => a.id))
+      const rezepte = await ladeRezepteAngereichert(opts.db, kasse.mandantId, alleArtikel.map(a => a.id))
 
       // Nur verfügbare Artikel (Lagerstand > 0 oder kein Countdown); Rohstoffe ausblenden.
       const verfuegbar = alleArtikel
@@ -178,7 +178,7 @@ export const gastRoute: FastifyPluginAsync<GastRouteOptions> = async (fastify, o
         .where(and(eq(artikel.mandantId, kasse.mandantId), inArray(artikel.id, artikelIds)))
 
       const artikelMap = new Map(dbArtikel.map(a => [a.id, a]))
-      const rezepte    = await ladeRezepteAngereichert(opts.db, artikelIds)
+      const rezepte    = await ladeRezepteAngereichert(opts.db, kasse.mandantId, artikelIds)
 
       for (const p of positionen) {
         const a = artikelMap.get(p.artikelId)

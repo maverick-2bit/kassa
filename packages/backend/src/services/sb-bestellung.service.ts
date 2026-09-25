@@ -138,7 +138,7 @@ export async function holeTerminalSortiment(db: Db, kasseId: string): Promise<Te
     .orderBy(asc(artikel.reihenfolge))
 
   // Rezept-Verfügbarkeit: zusammengesetzte Artikel sind ausverkauft, wenn ein Bestandteil fehlt.
-  const rezepte = await ladeRezepteAngereichert(db, alleArtikel.map(a => a.id))
+  const rezepte = await ladeRezepteAngereichert(db, kasse.mandantId, alleArtikel.map(a => a.id))
 
   const sichtbareArtikel = alleArtikel.filter(a => {
     const effektivSichtbar =
@@ -215,7 +215,7 @@ export async function erstelleSbBestellung(
   const katSichtbar = new Map(sortimentKategorien.map(k => [k.id, k.terminalSichtbar]))
 
   // Rezept-Verfügbarkeit der bestellten Artikel
-  const rezepte = await ladeRezepteAngereichert(deps.db, artikelIds)
+  const rezepte = await ladeRezepteAngereichert(deps.db, kasse.mandantId, artikelIds)
 
   for (const p of input.positionen) {
     const a = byId.get(p.artikelId)

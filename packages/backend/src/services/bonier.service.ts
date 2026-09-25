@@ -363,7 +363,7 @@ export async function bonierBestellung(
     .filter(p => !optionen.sb || hatBonRouting(routingVon(artikelById.get(p.artikelId)!)))
     .map(p => ({ artikelId: p.artikelId, menge: p.menge }))
   const rezepte = bestandteilPositionen.length > 0
-    ? await ladeRezepte(deps.db, [...new Set(bestandteilPositionen.map(p => p.artikelId))])
+    ? await ladeRezepte(deps.db, kasse.mandantId, [...new Set(bestandteilPositionen.map(p => p.artikelId))])
     : new Map()
 
   if (zuDekrementieren.length > 0 || rezepte.size > 0) {
@@ -375,9 +375,9 @@ export async function bonierBestellung(
             lagerstandMenge: sql`GREATEST(0, COALESCE(${artikel.lagerstandMenge}, 0) - ${menge})`,
             updatedAt:       new Date(),
           })
-          .where(eq(artikel.id, a.id))
+          .where(and(eq(artikel.id, a.id), eq(artikel.mandantId, kasse.mandantId)))
       }
-      await dekrementiereBestandteile(tx, bestandteilPositionen, rezepte)
+      await dekrementiereBestandteile(tx, kasse.mandantId, bestandteilPositionen, rezepte)
     })
 
     // Lagerstand-Warnungen emittieren wenn Bestand ≤ Mindestbestand nach Dekrement

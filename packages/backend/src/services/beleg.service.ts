@@ -101,8 +101,12 @@ interface BelegDaten {
 interface SigniereInput {
   kasseId:  string
   belegTyp: BelegTyp
-  /** Statisch (für Spezialbelege ohne Daten-Lookup) oder Callback (für Storno/Barzahlung) */
-  belegDaten: BelegDaten | ((tx: Tx) => Promise<BelegDaten>)
+  /**
+   * Statisch (für Spezialbelege ohne Daten-Lookup) oder Callback (für Storno/Barzahlung).
+   * mandantId = Mandant der gesperrten Kasse — Stammdaten-Lookups (Artikel,
+   * Warengruppen, Seriennummern, Rezepte) MÜSSEN darauf eingeschränkt sein.
+   */
+  belegDaten: BelegDaten | ((tx: Tx, mandantId: string) => Promise<BelegDaten>)
   /** Wenn true: validiert Zahlungssumme == Belegtotal (Pflicht bei Barzahlung & Storno) */
   validatePayment: boolean
   /** Verweis auf Original-Beleg (nur für Stornobeleg) */
@@ -123,7 +127,7 @@ interface SigniereInput {
    */
   ausserBetrieb?: boolean
   /** Läuft NACH dem Beleg-Insert in derselben Tx (z. B. Seriennummern als verkauft markieren). */
-  nachPersist?: (tx: Tx, belegId: string) => Promise<void>
+  nachPersist?: (tx: Tx, belegId: string, mandantId: string) => Promise<void>
 }
 
 /** mandanten.status nach der Übergabe an eine andere Kassa: keine neuen Belege mehr */
@@ -220,7 +224,7 @@ async function signiereImTxKern(
 
     // BelegDaten ggf. erst jetzt aufbauen (Artikel- oder Verweis-Lookup)
     const { positionen, zahlung } = typeof input.belegDaten === 'function'
-      ? await input.belegDaten(tx)
+      ? await input.belegDaten(tx, kasse.mandantId)
       : input.belegDaten
 
     // SEE wiederherstellen
@@ -404,7 +408,7 @@ async function signiereImTxKern(
     }
     await tx.update(kassen).set(kasseUpdate).where(eq(kassen.id, kasse.id))
 
-    if (input.nachPersist) await input.nachPersist(tx, persisted.id)
+    if (input.nachPersist) await input.nachPersist(tx, persisted.id, kasse.mandantId)
 
     // Besonderheiten für das Audit-Log — erst nach der Transaktion geschrieben (siehe signiereImTx)
     if (ausfallNeuErkannt) {
@@ -490,21 +494,30 @@ export async function erstelleBarzahlungsbeleg(
     validatePayment: true,
     kundeId,
     kundeSnapshot,
-    belegDaten: async (tx) => {
+    belegDaten: async (tx, mandantId) => {
       // Artikel-Positionen (mit artikelId) vs. freie Positionen trennen
       const artikelPositionen = input.positionen.filter(p => ArtikelPositionSchema.safeParse(p).success)
       const freiePositionen   = input.positionen.filter(p => !ArtikelPositionSchema.safeParse(p).success)
 
+      // Nur Artikel des Kassen-Mandanten: Ein fremder Artikel verhält sich wie ein
+      // unbekannter (404, bevor signiert wird). Sonst stünden Bezeichnung, Preis und
+      // MwSt-Satz eines anderen Mandanten auf dem signierten Beleg — Artikel-IDs sind
+      // nicht geheim (die öffentliche Gast-Speisekarte liefert sie aus).
       const artikelIds  = [...new Set(artikelPositionen.map(p => (p as { artikelId: string }).artikelId))]
       const artikelRows = artikelIds.length > 0
-        ? await tx.select().from(artikel).where(and(inArray(artikel.id, artikelIds), eq(artikel.aktiv, true)))
+        ? await tx.select().from(artikel).where(and(
+            inArray(artikel.id, artikelIds),
+            eq(artikel.mandantId, mandantId),
+            eq(artikel.aktiv, true),
+          ))
         : []
       if (artikelRows.length !== artikelIds.length) {
         throw new BelegError(404, 'Mindestens ein Artikel ist nicht (mehr) verfügbar')
       }
       const artikelById = new Map(artikelRows.map(a => [a.id, a]))
 
-      // Kategorie-Infos laden (für Bonierdrucker-Check UND Warengruppen-Reporting)
+      // Kategorie-Infos laden (für Bonierdrucker-Check UND Warengruppen-Reporting).
+      // Eine fremde Warengruppe am eigenen Artikel (ungeprüfte Stammdaten) zählt wie keine.
       const katergorieIds = [...new Set(
         artikelRows.map(a => a.kategorieId).filter((id): id is string => id !== null),
       )]
@@ -515,12 +528,12 @@ export async function erstelleBarzahlungsbeleg(
         const katRows = await tx
           .select({ id: kategorien.id, name: kategorien.name })
           .from(kategorien)
-          .where(inArray(kategorien.id, katergorieIds))
+          .where(and(inArray(kategorien.id, katergorieIds), eq(kategorien.mandantId, mandantId)))
         for (const k of katRows) katNameMap.set(k.id, k.name)
       }
       if (artikelRows.length > 0) {
         const kategorieZeilen = katergorieIds.length > 0
-          ? await ladeKategorieRoutingZeilen(tx, artikelRows[0]!.mandantId)
+          ? await ladeKategorieRoutingZeilen(tx, mandantId)
           : []
         bonRouting = baueBonRouting(kategorieZeilen, await ladeKasseRoutingAusnahmen(tx, input.kasseId))
       }
@@ -552,7 +565,7 @@ export async function erstelleBarzahlungsbeleg(
             menge:              p.menge,
             einzelpreisBreutto: preis,
             mwstSatz:           a.mwstSatz as MwStSatz,
-            ...(a.kategorieId && {
+            ...(a.kategorieId && katNameMap.has(a.kategorieId) && {
               kategorieId:   a.kategorieId,
               kategorieName: katNameMap.get(a.kategorieId),
             }),
@@ -572,6 +585,7 @@ export async function erstelleBarzahlungsbeleg(
           .select({ sn: seriennummern.seriennummer })
           .from(seriennummern)
           .where(and(
+            eq(seriennummern.mandantId, mandantId),
             eq(seriennummern.artikelId, p.artikelId),
             inArray(seriennummern.seriennummer, p.seriennummern),
             eq(seriennummern.status, 'verfuegbar'),
@@ -683,26 +697,27 @@ export async function erstelleBarzahlungsbeleg(
               lagerstandMenge: sql`GREATEST(0, COALESCE(${artikel.lagerstandMenge}, 0) - ${p.menge})`,
               updatedAt:       new Date(),
             })
-            .where(eq(artikel.id, a.id))
+            .where(and(eq(artikel.id, a.id), eq(artikel.mandantId, mandantId)))
         }
         direktBestandteilPositionen.push({ artikelId: a.id, menge: p.menge })
       }
       // Rezept-Bestandteile der direkt kassierten Positionen abbuchen
       if (direktBestandteilPositionen.length > 0) {
-        const rezepte = await ladeRezepte(tx, [...new Set(direktBestandteilPositionen.map(p => p.artikelId))])
-        await dekrementiereBestandteile(tx, direktBestandteilPositionen, rezepte)
+        const rezepte = await ladeRezepte(tx, mandantId, [...new Set(direktBestandteilPositionen.map(p => p.artikelId))])
+        await dekrementiereBestandteile(tx, mandantId, direktBestandteilPositionen, rezepte)
       }
       // (Modifikator-Lagerstand: nie automatisch, bleibt manuell per Wareneingang/Inventur)
 
       return { positionen, zahlung: input.zahlung }
     },
-    nachPersist: async (tx, belegId) => {
+    nachPersist: async (tx, belegId, mandantId) => {
       // Verkaufte Seriennummern aus dem Pool nehmen und dem Beleg zuordnen
       for (const mark of serialMarks) {
         await tx
           .update(seriennummern)
           .set({ status: 'verkauft', belegId, verkauftAm: new Date() })
           .where(and(
+            eq(seriennummern.mandantId, mandantId),
             eq(seriennummern.artikelId, mark.artikelId),
             inArray(seriennummern.seriennummer, mark.serials),
           ))

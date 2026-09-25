@@ -38,10 +38,12 @@ export interface BestandteilAngereichert {
 
 /**
  * Lädt die Rezepte (Bestandteile) der gegebenen Verkaufsartikel — schlanke Form.
+ * Nur Rezepte des Mandanten: die IDs kommen oft direkt vom Client.
  * Rückgabe: Map verkaufsartikelId → Bestandteile[].
  */
 export async function ladeRezepte(
   db: DbOrTx,
+  mandantId: string,
   verkaufsartikelIds: string[],
 ): Promise<Map<string, RezeptBestandteil[]>> {
   const map = new Map<string, RezeptBestandteil[]>()
@@ -53,7 +55,10 @@ export async function ladeRezepte(
       menge:                artikelBestandteile.menge,
     })
     .from(artikelBestandteile)
-    .where(inArray(artikelBestandteile.verkaufsartikelId, verkaufsartikelIds))
+    .where(and(
+      eq(artikelBestandteile.mandantId, mandantId),
+      inArray(artikelBestandteile.verkaufsartikelId, verkaufsartikelIds),
+    ))
   for (const r of rows) {
     const list = map.get(r.verkaufsartikelId) ?? []
     list.push({ bestandteilArtikelId: r.bestandteilArtikelId, menge: r.menge })
@@ -64,10 +69,12 @@ export async function ladeRezepte(
 
 /**
  * Lädt die Rezepte angereichert um Bezeichnung + Lagerstand des Bestandteil-Artikels
- * (für DTO + abgeleitete Verfügbarkeit). Rückgabe: Map verkaufsartikelId → Bestandteile[].
+ * (für DTO + abgeleitete Verfügbarkeit). Rezept und Bestandteil müssen dem
+ * Mandanten gehören. Rückgabe: Map verkaufsartikelId → Bestandteile[].
  */
 export async function ladeRezepteAngereichert(
   db: DbOrTx,
+  mandantId: string,
   verkaufsartikelIds: string[],
 ): Promise<Map<string, BestandteilAngereichert[]>> {
   const map = new Map<string, BestandteilAngereichert[]>()
@@ -83,7 +90,11 @@ export async function ladeRezepteAngereichert(
     })
     .from(artikelBestandteile)
     .innerJoin(artikel, eq(artikel.id, artikelBestandteile.bestandteilArtikelId))
-    .where(inArray(artikelBestandteile.verkaufsartikelId, verkaufsartikelIds))
+    .where(and(
+      eq(artikelBestandteile.mandantId, mandantId),
+      eq(artikel.mandantId, mandantId),
+      inArray(artikelBestandteile.verkaufsartikelId, verkaufsartikelIds),
+    ))
   for (const r of rows) {
     const list = map.get(r.verkaufsartikelId) ?? []
     list.push({
@@ -164,11 +175,13 @@ export async function schreibeRezept(
 
 /**
  * Bucht den Bestandteil-Bedarf aus Verkaufs-Positionen (artikelId × menge) atomar
- * vom Lagerstand ab (GREATEST(0, …), nur lagerstandAktiv). Für Positive-Abbuchung
- * an den Direktverkauf-/Bonier-Hooks. Artikel ohne Rezept werden ignoriert.
+ * vom Lagerstand ab (GREATEST(0, …), nur lagerstandAktiv, nur Artikel des Mandanten).
+ * Für Positive-Abbuchung an den Direktverkauf-/Bonier-Hooks. Artikel ohne Rezept
+ * werden ignoriert.
  */
 export async function dekrementiereBestandteile(
   tx: DbOrTx,
+  mandantId: string,
   positionen: { artikelId: string; menge: number }[],
   rezepte: Map<string, RezeptBestandteil[]>,
 ): Promise<void> {
@@ -181,7 +194,7 @@ export async function dekrementiereBestandteile(
         lagerstandMenge: sql`GREATEST(0, COALESCE(${artikel.lagerstandMenge}, 0) - ${menge})`,
         updatedAt:       new Date(),
       })
-      .where(and(eq(artikel.id, bestandteilId), eq(artikel.lagerstandAktiv, true)))
+      .where(and(eq(artikel.id, bestandteilId), eq(artikel.mandantId, mandantId), eq(artikel.lagerstandAktiv, true)))
   }
 }
 
@@ -189,9 +202,11 @@ export async function dekrementiereBestandteile(
  * Wendet vorzeichenbehaftete Artikel-Deltas auf die Bestandteile an (Tisch-Fluss):
  * delta > 0 = Abzug (mehr bestellt), delta < 0 = Rückbuchung (storniert). Read-then-write
  * mit Math.max(0, …) — gespiegelt zur Artikel-Logik in aktualisiereStockDeltas.
+ * Nur Artikel des Mandanten.
  */
 export async function wendeBestandteilDeltasAn(
   db: DbOrTx,
+  mandantId: string,
   artikelDeltas: { artikelId: string; delta: number }[],
   rezepte: Map<string, RezeptBestandteil[]>,
 ): Promise<void> {
@@ -201,7 +216,7 @@ export async function wendeBestandteilDeltasAn(
   const rows = await db
     .select({ id: artikel.id, lagerstandAktiv: artikel.lagerstandAktiv, lagerstandMenge: artikel.lagerstandMenge })
     .from(artikel)
-    .where(inArray(artikel.id, ids))
+    .where(and(inArray(artikel.id, ids), eq(artikel.mandantId, mandantId)))
   for (const row of rows) {
     if (!row.lagerstandAktiv || row.lagerstandMenge === null) continue
     const delta = bedarf.get(row.id) ?? 0
@@ -209,7 +224,7 @@ export async function wendeBestandteilDeltasAn(
     const neueMenge = Math.max(0, row.lagerstandMenge - delta)
     await db.update(artikel)
       .set({ lagerstandMenge: neueMenge, updatedAt: new Date() })
-      .where(eq(artikel.id, row.id))
+      .where(and(eq(artikel.id, row.id), eq(artikel.mandantId, mandantId)))
   }
 }
 
