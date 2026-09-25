@@ -18,7 +18,6 @@ export function Layout() {
   return (
     <div className="min-h-screen flex flex-col">
       <OfflineStatusBar />
-      <UpdateHinweis />
       <SeeStatusBanner />
       <FoStatusBanner />
       <Header />
@@ -185,14 +184,17 @@ function Header() {
           <div className="flex items-center gap-3 shrink-0 h-8">
             <JahresbelegHeaderChip />
             <ThemeToggle />
-            {/* Klickbares Versions-Badge → Einstellungen → System (Aktualisierung) */}
-            <Link
-              to="/einstellungen?bereich=system"
-              title="Aktualisierung & System"
-              className="hidden sm:inline text-[10px] font-mono text-white/60 select-none bg-white/10 px-1.5 py-0.5 rounded hover:bg-white/20 hover:text-white transition"
-            >
-              ⟳ v{__APP_VERSION__}
-            </Link>
+            {/* Klickbares Versions-Badge → Einstellungen → System (Aktualisierung).
+                Steht eine neue Version bereit, tritt „Neu laden" an seine Stelle. */}
+            <UpdateHinweis>
+              <Link
+                to="/einstellungen?bereich=system"
+                title="Aktualisierung & System"
+                className="hidden sm:inline text-[10px] font-mono text-white/60 select-none bg-white/10 px-1.5 py-0.5 rounded hover:bg-white/20 hover:text-white transition"
+              >
+                ⟳ v{__APP_VERSION__}
+              </Link>
+            </UpdateHinweis>
             <div className="text-right text-xs">
               <p className="font-medium text-white">{auth.user.name}</p>
               <p className="text-white/60">{auth.mandant.firmenname}</p>

@@ -11,9 +11,16 @@
  *     dauerhaft offen steht — dort feuert der SW-Update-Check von allein nie.
  *     Der Poll stößt zugleich registration.update() an, damit der Reload
  *     anschließend wirklich das neue Bundle lädt.
+ *
+ * Sitzt in der Kopfleiste an der Stelle des Versions-Badges: Solange nichts
+ * ansteht, steht dort das Badge (children), sonst der Knopf „Neu laden".
+ * Bewusst nicht schwebend: Unten mittig lag der Hinweis am POS auf „Bar" und
+ * „Leeren" und über jedem Dialog — auch über der laufenden Kartenzahlung. Ein
+ * Fehlgriff lädt neu und verwirft den Warenkorb. Die Kopfleiste liegt unter
+ * allen Dialogen, verdeckt nichts und schiebt die Seite nicht nach unten.
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { istNeuererServiceWorker } from '@kassa/shared'
 import { systemApi } from '../lib/api'
@@ -45,7 +52,7 @@ async function aktualisieren(setLaeuft: (v: boolean) => void): Promise<void> {
   window.location.reload()
 }
 
-export function UpdateHinweis() {
+export function UpdateHinweis({ children }: { children: ReactNode }) {
   const [updateBereit, setUpdateBereit] = useState(false)
   const [laeuft, setLaeuft]             = useState(false)
 
@@ -75,23 +82,25 @@ export function UpdateHinweis() {
     void navigator.serviceWorker.getRegistration().then(r => r?.update())
   }, [bundleVeraltet])
 
-  if (!updateBereit && !bundleVeraltet) return null
-
+  // Platz in Knopfbreite (ab sm): Tritt der Knopf an die Stelle des Badges,
+  // bricht die Navigation nicht um — mitten im Verkauf verrutscht nichts.
   return (
-    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-3 rounded-xl border border-brand-300 bg-brand-50 px-4 py-2.5 shadow-lg">
-      <span className="text-sm font-medium text-brand-800">
-        {bundleVeraltet
-          ? `Version v${backendVersion} ist installiert — diese Ansicht läuft noch auf v${__APP_VERSION__}`
-          : 'Neue Version verfügbar'}
-      </span>
-      <button
-        type="button"
-        disabled={laeuft}
-        onClick={() => { void aktualisieren(setLaeuft) }}
-        className="rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
-      >
-        {laeuft ? 'Wird geladen…' : 'Jetzt aktualisieren'}
-      </button>
+    <div className="flex justify-center sm:min-w-26">
+      {!updateBereit && !bundleVeraltet ? children : (
+        <button
+          type="button"
+          data-testid="update-hinweis"
+          disabled={laeuft}
+          onClick={() => { void aktualisieren(setLaeuft) }}
+          title={`${bundleVeraltet
+            ? `Version v${backendVersion} ist installiert — diese Ansicht läuft noch auf v${__APP_VERSION__}`
+            : 'Neue Version verfügbar'}. Klick lädt die Kassa neu.`}
+          className="flex items-center gap-1 whitespace-nowrap rounded-md bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-800 transition hover:bg-blue-200 disabled:opacity-60"
+        >
+          <span aria-hidden="true">⟳</span>
+          {laeuft ? 'Lädt…' : 'Neu laden'}
+        </button>
+      )}
     </div>
   )
 }
