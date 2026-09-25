@@ -9,7 +9,8 @@
  * TCP-Verbindung zum Terminal läuft im Hintergrund — der Endpunkt blockiert nicht.
  */
 
-import { describe, it, expect } from 'vitest'
+import net, { type AddressInfo } from 'node:net'
+import { describe, it, expect, vi } from 'vitest'
 import { buildTestServer, TEST_MANDANT_ID } from './helpers/testServer.js'
 import type { Db } from '../src/db/client.js'
 
@@ -368,5 +369,53 @@ describe('POST /api/zvt/zahlung/:jobId/abbrechen', () => {
     expect(['abgebrochen', 'fehler']).toContain(body.status)
 
     await srv.close()
+  })
+
+  it('nach der Zahlung am Terminal: Job bleibt „erfolg" und kommt zurück — der Aufrufer muss buchen', async () => {
+    // Simuliertes Terminal (echtes TCP): quittiert die Autorisierung und meldet
+    // sofort die Completion — der Gast hat bezahlt, ehe „Abbrechen" ankommt
+    const terminal = net.createServer((sock) => {
+      sock.on('error', () => {})
+      sock.on('data', (d) => {
+        if (d[0] !== 0x06 || d[1] !== 0x01) return
+        sock.write(Buffer.from([0x80, 0x00, 0x00]))
+        // 06 0F: Ergebnis 00, Trace 00001234, Beleg-Nr. 0042
+        sock.write(Buffer.from([0x06, 0x0F, 0x0A, 0x27, 0x00, 0x29, 0x00, 0x00, 0x12, 0x34, 0x87, 0x00, 0x42]))
+      })
+    })
+    await new Promise<void>((r) => terminal.listen(0, '127.0.0.1', r))
+    const kasse = kasseRow({ zvtIp: '127.0.0.1', zvtPort: (terminal.address() as AddressInfo).port, zvtPasswort: null })
+    const srv = await buildTestServer(mockDb({ selects: [[kasse]] }))
+
+    try {
+      const { jobId } = (await srv.fastify.inject({
+        method:  'POST', url: '/api/zvt/zahlung',
+        headers: srv.authHeader(),
+        payload: { kasseId: KASSE_ID, betragCent: 1234 },
+      })).json()
+      await vi.waitFor(async () => {
+        const job = (await srv.fastify.inject({
+          method: 'GET', url: `/api/zvt/zahlung/${jobId}`, headers: srv.authHeader(),
+        })).json()
+        expect(job.status).toBe('erfolg')
+      })
+
+      const res = await srv.fastify.inject({
+        method:  'POST', url: `/api/zvt/zahlung/${jobId}/abbrechen`,
+        headers: srv.authHeader(),
+      })
+      expect(res.statusCode).toBe(200)
+      expect(res.json()).toMatchObject({
+        id: jobId, status: 'erfolg',
+        ergebnis: { traceNummer: '00001234', belegnummer: '0042' },
+      })
+      const danach = (await srv.fastify.inject({
+        method: 'GET', url: `/api/zvt/zahlung/${jobId}`, headers: srv.authHeader(),
+      })).json()
+      expect(danach.status).toBe('erfolg')
+    } finally {
+      await srv.close()
+      await new Promise<void>((r) => terminal.close(() => r()))
+    }
   })
 })

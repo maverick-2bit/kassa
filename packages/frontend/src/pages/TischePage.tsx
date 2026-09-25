@@ -28,6 +28,10 @@ export function TischePage() {
   const [bonierFehler, setBonierFehler] = useState<BonierFehler | null>(
     () => (location.state as { bonierFehler?: BonierFehler } | null)?.bonierFehler ?? null,
   )
+  // … oder: Tisch per Karte abgerechnet, obwohl der Kassier „Abbrechen" gedrückt hatte
+  const [zahlungsHinweis, setZahlungsHinweis] = useState<string | null>(
+    () => (location.state as { zahlungsHinweis?: string } | null)?.zahlungsHinweis ?? null,
+  )
   // Den mitgebrachten State gleich aus dem Browser-Verlauf nehmen — nach einem
   // Neuladen stünde die Leiste sonst wieder da, auch wenn längst nachgesendet.
   useEffect(() => {
@@ -154,6 +158,17 @@ export function TischePage() {
       {bonierFehler && (
         <div className="mb-5">
           <BonierFehlerLeiste fehler={bonierFehler} onAenderung={setBonierFehler} />
+        </div>
+      )}
+
+      {/* Der abgerechnete Tisch ist aus der Liste verschwunden, obwohl der Kassier
+          abbrechen wollte — ohne Hinweis hielte er das für einen Fehler */}
+      {zahlungsHinweis && (
+        <div className="mb-5 flex items-center gap-3 rounded border-2 border-amber-300 bg-amber-50 p-3">
+          <p className="flex-1 text-xs font-bold text-amber-900">⚠ {zahlungsHinweis}</p>
+          <Button variant="secondary" className="text-xs" onClick={() => setZahlungsHinweis(null)}>
+            Verstanden
+          </Button>
         </div>
       )}
 

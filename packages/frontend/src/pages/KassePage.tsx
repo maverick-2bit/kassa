@@ -40,7 +40,7 @@ import { Modal } from '../components/ui/Modal'
 import { Input } from '../components/ui/Input'
 import { BonAnzeige } from '../components/BonAnzeige'
 import { DruckproblemeBanner } from '../components/DruckproblemeBanner'
-import { KartenzahlungModal } from '../components/KartenzahlungModal'
+import { ABBRUCH_ZU_SPAET, KartenzahlungModal } from '../components/KartenzahlungModal'
 import { SerialAuswahlModal, type SerialPos } from '../components/SerialAuswahlModal'
 import { RabattModal } from '../components/RabattModal'
 import { BarRueckgeldModal } from '../components/BarRueckgeldModal'
@@ -139,6 +139,8 @@ export function KassePage() {
   const [fehler, setFehler] = useState<string | null>(null)
   const [zvtOffen, setZvtOffen] = useState(false)
   const [zvtBetrag, setZvtBetrag] = useState(0)
+  // „Abbrechen" kam zu spät, der Gast hatte schon bezahlt — bleibt bis zum Wegklicken
+  const [zvtHinweis, setZvtHinweis] = useState<string | null>(null)
   // Seriennummern-Auswahl (serialisierte Artikel) — Ref hält die Zuweisung über den ZVT-Flow hinweg
   const [serialModalOffen, setSerialModalOffen] = useState(false)
   const serialsRef = useRef<Map<number, string[]> | null>(null)
@@ -581,6 +583,7 @@ export function KassePage() {
   // ZVT-Modal übersteht (in zahlungRef gemerkt), am Ende wird der Beleg erstellt.
   const starteZahlung = (barCent: number, karteCent: number, alternativ = false) => {
     setFehler(null)
+    setZvtHinweis(null)
     if (korb.length === 0) {
       setFehler('Der Warenkorb ist leer.')
       return
@@ -643,6 +646,22 @@ export function KassePage() {
                 type="button"
                 onClick={() => setBestaetigterBeleg(null)}
                 className="text-green-700 hover:text-green-900 px-1"
+                aria-label="Ausblenden"
+              >
+                ×
+              </button>
+            </div>
+          )}
+          {/* „Abbrechen" kam zu spät: sonst hielte der Kassier den Beleg für einen Irrtum */}
+          {zvtHinweis && (
+            <div className="mb-3 bg-amber-50 border border-amber-300 text-amber-900
+                            rounded-lg px-4 py-3 flex items-center gap-3 text-sm font-medium">
+              <span className="text-lg">⚠</span>
+              <span>{zvtHinweis}</span>
+              <button
+                type="button"
+                onClick={() => setZvtHinweis(null)}
+                className="ml-auto text-amber-800 hover:text-amber-950 px-1"
                 aria-label="Ausblenden"
               >
                 ×
@@ -1372,8 +1391,9 @@ export function KassePage() {
         open={zvtOffen}
         kasseId={identity.kasseId}
         betragCent={zvtBetrag}
-        onErfolg={(_job, trinkgeldCent) => {
+        onErfolg={(_job, trinkgeldCent, nachAbbruch) => {
           setZvtOffen(false)
+          if (nachAbbruch) setZvtHinweis(ABBRUCH_ZU_SPAET)
           erstelleBeleg(zahlungRef.current.barCent, zahlungRef.current.karteCent, trinkgeldCent)
         }}
         onAbbruch={() => {

@@ -6,6 +6,7 @@
  *   2. Im Hintergrund: TCP-Connect (3s-Timeout) → Authorization → empfange Pakete
  *   3. Frontend pollt `getJob()` alle ~500 ms und zeigt Status
  *   4. `abbrechen()` schließt Socket sofort — keine Wartezeit auf Terminal-Timeout
+ *      (Folgen eines Abbruchs nach der Autorisierung: siehe dort)
  *
  * Jobs werden im Memory gehalten (Map). Beendete Jobs werden nach 10 Minuten
  * automatisch aufgeräumt.
@@ -95,6 +96,26 @@ export function getJob(id: string): ZvtJob | null {
   return jobs.get(id)?.job ?? null
 }
 
+/**
+ * Bricht einen laufenden Job ab. Ein schon beendeter Job bleibt unverändert und
+ * wird zurückgegeben — steht er auf 'erfolg', hat der Gast bereits bezahlt, und
+ * der Aufrufer MUSS buchen (KartenzahlungModal/-Overlay werten die Antwort aus).
+ *
+ * Echtes Terminal (TCP), Abbruch erst NACH der Autorisierung — geprüft mit einem
+ * simulierten Terminal (2026-09-26), nicht mit einem Hobex-Gerät: Die Kassa
+ * schickt 06 B0 und trennt sofort (destroy), der Job steht auf 'abgebrochen'.
+ *  - Hat das Terminal die Zahlung schon freigegeben, schließt es sie trotzdem ab:
+ *    seine Completion (06 0F) läuft auf die getrennte Verbindung (beim Terminal
+ *    EPIPE), die Kassa sieht sie nie.
+ *  - Kreuzen sich Completion und Abbruch, liest die Kassa die schon eingetroffene
+ *    Completion nicht mehr; das Trennen mit ungelesenen Daten wird zum Reset, und
+ *    sogar das 06 B0 kam im Versuch nicht mehr beim Terminal an.
+ * In beiden Fällen: Karte belastet, Job 'abgebrochen', kein Beleg — das Frontend
+ * kann es nicht erkennen. Ob das Terminal eine unquittierte Completion selbst
+ * storniert, ist gerätespezifisch. Abhilfe wäre, nach 06 B0 die Verbindung offen
+ * zu halten und die Antwort des Terminals abzuwarten (06 1E → 'abgebrochen',
+ * 06 0F → 'erfolg', 84 xx → Abbruch abgelehnt, weiter warten) statt zu trennen.
+ */
 export function abbrechen(id: string): ZvtJob | null {
   const state = jobs.get(id)
   if (!state) return null
