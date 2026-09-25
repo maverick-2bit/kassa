@@ -28,18 +28,21 @@ $COMPOSE exec -T "$SVC" sh -c '[ -n "${RESTIC_REPOSITORY:-}" ] && [ -n "${RESTIC
   || fail "RESTIC_REPOSITORY/RESTIC_PASSWORD nicht gesetzt — Off-Site-Backup deaktiviert"
 ok "RESTIC konfiguriert"
 
+# --retry-lock: Der Backup-Container sichert direkt nach dem Start und räumt
+# dann mit „forget --prune" auf — das sperrt das Repository exklusiv. Ohne
+# Warten schlug die Prüfung genau in diesem Fenster fehl (CI v0.8.6).
 echo "[3/6] Repository erreichbar (restic snapshots)?"
-$COMPOSE exec -T "$SVC" restic snapshots >/dev/null 2>&1 \
+$COMPOSE exec -T "$SVC" restic snapshots --retry-lock 2m >/dev/null 2>&1 \
   || fail "Repository nicht erreichbar/initialisiert (Zugangsdaten/Endpoint prüfen)"
 ok "Repository erreichbar"
 
 echo "[4/6] Backup-Lauf auslösen..."
-$COMPOSE exec -T "$SVC" restic backup /data/db-backups /data/dep-backups --tag test --host kassa \
+$COMPOSE exec -T "$SVC" restic backup --retry-lock 2m /data/db-backups /data/dep-backups --tag test --host kassa \
   || fail "restic backup fehlgeschlagen"
 ok "Backup erstellt"
 
 echo "[5/6] Restore-Probe (latest -> /tmp/restore-probe)..."
-$COMPOSE exec -T "$SVC" sh -c 'rm -rf /tmp/restore-probe && restic restore latest --target /tmp/restore-probe && ls /tmp/restore-probe/data >/dev/null' \
+$COMPOSE exec -T "$SVC" sh -c 'rm -rf /tmp/restore-probe && restic restore --retry-lock 2m latest --target /tmp/restore-probe && ls /tmp/restore-probe/data >/dev/null' \
   || fail "Restore fehlgeschlagen"
 ok "Restore erfolgreich"
 
