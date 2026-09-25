@@ -608,147 +608,160 @@ export function KassePage() {
   // ---------------------------------------------------------------------------
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-4">
-      {/* Belege, deren Bon nicht gedruckt wurde — steht ganz oben und bleibt,
-          bis nachgedruckt ist. Die grüne Bestätigung darunter sagt nur, dass der
-          Beleg ERSTELLT wurde; ob er aus dem Drucker kam, weiß erst diese Leiste. */}
-      <div className="mb-3 empty:mb-0">
-        <DruckproblemeBanner kasseId={identity.kasseId} />
-      </div>
+    <div className="mx-auto max-w-7xl px-4 py-4 lg:h-full lg:flex lg:flex-col">
+      {/* Ab lg füllt die Kasse den Bildschirm (siehe Layout): rechts der Warenkorb
+          über die volle Höhe, links alles, was sonst darüber stand. So rechnet
+          sich keine Leiste mehr auf den Warenkorb drauf — seine Zahlknöpfe unten
+          bleiben im Bild, Positionsliste und Artikel-Raster scrollen in sich.
+          minmax(0,1fr): eine lange Warengruppen-Leiste darf die Spalte nicht
+          breiter als den Bildschirm machen. */}
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_400px] lg:grid-rows-[minmax(0,1fr)] gap-4 lg:flex-1 lg:min-h-[28rem]">
+        <div className="flex flex-col">
+          {/* Belege, deren Bon nicht gedruckt wurde — steht ganz oben und bleibt,
+              bis nachgedruckt ist. Die grüne Bestätigung darunter sagt nur, dass der
+              Beleg ERSTELLT wurde; ob er aus dem Drucker kam, weiß erst diese Leiste. */}
+          <div className="mb-3 empty:mb-0">
+            <DruckproblemeBanner kasseId={identity.kasseId} />
+          </div>
 
-      {/* Beleg-erstellt-Bestätigung (Druck-Modus: kein Dialog, nur kurze Rückmeldung
-          + Options-Schaltfläche für einen anderen Ausgabeweg) */}
-      {bestaetigterBeleg && (
-        <div className="mb-3 bg-green-50 border border-green-300 text-green-800
-                        rounded-lg px-4 py-3 flex items-center gap-3 text-sm font-medium">
-          <span className="text-lg">✅</span>
-          <span>Beleg #{bestaetigterBeleg.belegNummer} erstellt</span>
-          <button
-            type="button"
-            onClick={() => setAusgabeDialogOffen(true)}
-            className="ml-auto rounded-md border border-green-400 bg-white/70 px-2.5 py-1
-                       text-xs font-semibold text-green-800 hover:bg-white"
-          >
-            Andere Ausgabe …
-          </button>
-          <button
-            type="button"
-            onClick={() => setBestaetigterBeleg(null)}
-            className="text-green-700 hover:text-green-900 px-1"
-            aria-label="Ausblenden"
-          >
-            ×
-          </button>
-        </div>
-      )}
-      {/* Offline-Beleg-gespeichert Toast */}
-      {offlineBelegGespeichert && (
-        <div className="mb-3 bg-amber-50 border border-amber-300 text-amber-800
-                        rounded-lg px-4 py-3 flex items-center gap-3 text-sm font-medium">
-          <span className="text-lg">📥</span>
-          <span>
-            Beleg offline gespeichert — wird automatisch übermittelt sobald die Verbindung wiederhergestellt ist
-          </span>
-        </div>
-      )}
-      {/* Offline-Indikator mit Queue-Stand */}
-      {!online && (
-        <div className="mb-3 bg-amber-100 border border-amber-400 text-amber-900
-                        rounded-lg px-4 py-2 flex items-center gap-2 text-xs">
-          <span>📡</span>
-          <span>Kasse arbeitet im Offline-Modus</span>
-          {queueCount > 0 && (
-            <span className="ml-auto font-semibold">
-              {queueCount} {queueCount === 1 ? 'Beleg' : 'Belege'} ausstehend
-            </span>
+          {/* Beleg-erstellt-Bestätigung (Druck-Modus: kein Dialog, nur kurze Rückmeldung
+              + Options-Schaltfläche für einen anderen Ausgabeweg) */}
+          {bestaetigterBeleg && (
+            <div className="mb-3 bg-green-50 border border-green-300 text-green-800
+                            rounded-lg px-4 py-3 flex items-center gap-3 text-sm font-medium">
+              <span className="text-lg">✅</span>
+              <span>Beleg #{bestaetigterBeleg.belegNummer} erstellt</span>
+              <button
+                type="button"
+                onClick={() => setAusgabeDialogOffen(true)}
+                className="ml-auto rounded-md border border-green-400 bg-white/70 px-2.5 py-1
+                           text-xs font-semibold text-green-800 hover:bg-white"
+              >
+                Andere Ausgabe …
+              </button>
+              <button
+                type="button"
+                onClick={() => setBestaetigterBeleg(null)}
+                className="text-green-700 hover:text-green-900 px-1"
+                aria-label="Ausblenden"
+              >
+                ×
+              </button>
+            </div>
           )}
-        </div>
-      )}
-      {/* Kontext-Leiste: Modus + Tisch + Kellner */}
-      <div className="mb-3 bg-panel rounded-lg shadow-sm border border-line px-3 py-2 flex flex-wrap items-center gap-3">
-        {/* Modus-Toggle */}
-        <div className="inline-flex rounded-md border border-line-strong overflow-hidden shrink-0">
-          <button
-            type="button"
-            onClick={() => { setModus('verkauf'); reset() }}
-            className={`px-3 py-1.5 text-sm font-medium transition ${
-              modus === 'verkauf'
-                ? 'bg-brand-600 text-white'
-                : 'bg-panel text-ink-muted hover:bg-panel-2'
-            }`}
-          >
-            Verkauf
-          </button>
-          <button
-            type="button"
-            onClick={() => { setModus('angebot'); reset() }}
-            className={`px-3 py-1.5 text-sm font-medium transition border-l border-line-strong ${
-              modus === 'angebot'
-                ? 'bg-amber-500 text-white'
-                : 'bg-panel text-ink-muted hover:bg-panel-2'
-            }`}
-          >
-            Angebot
-          </button>
-        </div>
-        <label className="inline-flex items-center gap-2 text-sm">
-          <span className="font-medium text-ink">Tisch</span>
-          <Input
-            value={tisch}
-            onChange={(e) => setTisch(e.target.value)}
-            placeholder="Schank"
-            title="Leer lassen für Direktverkauf an der Schank"
-            className="w-20 text-center"
-          />
-        </label>
-        <label className="inline-flex items-center gap-2 text-sm">
-          <span className="font-medium text-ink">Kellner</span>
-          <Input
-            value={kellner}
-            onChange={(e) => setKellner(e.target.value)}
-            className="w-40"
-          />
-        </label>
-      </div>
-
-      {hasBerechtigung('tische') && <OffeneTischeLeiste />}
-
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-4">
-        {/* ----- Linke Seite: Artikel-Buttons ----- */}
-        <section className="bg-panel rounded-lg shadow-sm border border-line
-                            flex flex-col lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)]">
-          <div className="px-4 pt-4 pb-2 shrink-0 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-ink">Artikel</h2>
-            <button
-              type="button"
-              onClick={() => { setFehler(null); setFreiePositionOffen(true) }}
-              className="text-xs font-medium text-brand-600 hover:text-brand-700 hover:underline"
-            >
-              + Sonstiges
-            </button>
+          {/* Offline-Beleg-gespeichert Toast */}
+          {offlineBelegGespeichert && (
+            <div className="mb-3 bg-amber-50 border border-amber-300 text-amber-800
+                            rounded-lg px-4 py-3 flex items-center gap-3 text-sm font-medium">
+              <span className="text-lg">📥</span>
+              <span>
+                Beleg offline gespeichert — wird automatisch übermittelt sobald die Verbindung wiederhergestellt ist
+              </span>
+            </div>
+          )}
+          {/* Offline-Indikator mit Queue-Stand */}
+          {!online && (
+            <div className="mb-3 bg-amber-100 border border-amber-400 text-amber-900
+                            rounded-lg px-4 py-2 flex items-center gap-2 text-xs">
+              <span>📡</span>
+              <span>Kasse arbeitet im Offline-Modus</span>
+              {queueCount > 0 && (
+                <span className="ml-auto font-semibold">
+                  {queueCount} {queueCount === 1 ? 'Beleg' : 'Belege'} ausstehend
+                </span>
+              )}
+            </div>
+          )}
+          {/* Kontext-Leiste: Modus + Tisch + Kellner. Die Feldbreiten brauchen „!“ —
+              Input bringt w-full mit, das sonst gewinnt; so bleibt die Leiste auch
+              in der schmalen linken Spalte (1024 px) einzeilig. */}
+          <div className="mb-3 bg-panel rounded-lg shadow-sm border border-line px-3 py-2 flex flex-wrap items-center gap-3">
+            {/* Modus-Toggle */}
+            <div className="inline-flex rounded-md border border-line-strong overflow-hidden shrink-0">
+              <button
+                type="button"
+                onClick={() => { setModus('verkauf'); reset() }}
+                className={`px-3 py-1.5 text-sm font-medium transition ${
+                  modus === 'verkauf'
+                    ? 'bg-brand-600 text-white'
+                    : 'bg-panel text-ink-muted hover:bg-panel-2'
+                }`}
+              >
+                Verkauf
+              </button>
+              <button
+                type="button"
+                onClick={() => { setModus('angebot'); reset() }}
+                className={`px-3 py-1.5 text-sm font-medium transition border-l border-line-strong ${
+                  modus === 'angebot'
+                    ? 'bg-amber-500 text-white'
+                    : 'bg-panel text-ink-muted hover:bg-panel-2'
+                }`}
+              >
+                Angebot
+              </button>
+            </div>
+            <label className="inline-flex items-center gap-2 text-sm">
+              <span className="font-medium text-ink">Tisch</span>
+              <Input
+                value={tisch}
+                onChange={(e) => setTisch(e.target.value)}
+                placeholder="Schank"
+                title="Leer lassen für Direktverkauf an der Schank"
+                className="w-20! text-center"
+              />
+            </label>
+            <label className="inline-flex items-center gap-2 text-sm">
+              <span className="font-medium text-ink">Kellner</span>
+              <Input
+                value={kellner}
+                onChange={(e) => setKellner(e.target.value)}
+                className="w-40!"
+              />
+            </label>
           </div>
-          <div className="flex-1 min-h-0 overflow-hidden px-4 pb-4">
-            <ArtikelGrid
-              artikel={artikelQuery.data ?? []}
-              kategorien={kategorienQuery.data ?? []}
-              artikelGruppen={artikelGruppenMap}
-              onArtikelClick={addArtikel}
-              loading={artikelQuery.isLoading}
-              sichtbareKategorieIds={posConfigQuery.data?.sichtbareKategorieIds}
-              artikelbilderAktiv={posConfigQuery.data?.artikelbilderAktiv ?? true}
-              initialKategorieId={initialKategorieId}
-              mengenProArtikel={mengenProArtikel}
-              aktionen={aktionenProArtikel}
-              favoritenEintraege={favoritenQuery.data?.eintraege}
-              artikelProZeile={posConfigQuery.data?.artikelProZeile}
-              startFavoriten={posConfigQuery.data?.startFavoriten}
-              startKategorieId={posConfigQuery.data?.startKategorieId}
-            />
-          </div>
-        </section>
 
-        {/* ----- Rechte Seite: Warenkorb + Zahlung ----- */}
-        <section className="bg-panel rounded-lg shadow-sm border border-line flex flex-col h-fit lg:sticky lg:top-20 max-h-[calc(100vh-6rem)]">
+          {hasBerechtigung('tische') && <OffeneTischeLeiste />}
+
+          {/* ----- Linke Seite: Artikel-Buttons ----- */}
+          <section className="bg-panel rounded-lg shadow-sm border border-line
+                              flex flex-col lg:flex-1 lg:min-h-[15rem]">
+            <div className="px-4 pt-4 pb-2 shrink-0 flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-ink">Artikel</h2>
+              <button
+                type="button"
+                onClick={() => { setFehler(null); setFreiePositionOffen(true) }}
+                className="text-xs font-medium text-brand-600 hover:text-brand-700 hover:underline"
+              >
+                + Sonstiges
+              </button>
+            </div>
+            <div className="flex-1 min-h-0 overflow-hidden px-4 pb-4">
+              <ArtikelGrid
+                artikel={artikelQuery.data ?? []}
+                kategorien={kategorienQuery.data ?? []}
+                artikelGruppen={artikelGruppenMap}
+                onArtikelClick={addArtikel}
+                loading={artikelQuery.isLoading}
+                sichtbareKategorieIds={posConfigQuery.data?.sichtbareKategorieIds}
+                artikelbilderAktiv={posConfigQuery.data?.artikelbilderAktiv ?? true}
+                initialKategorieId={initialKategorieId}
+                mengenProArtikel={mengenProArtikel}
+                aktionen={aktionenProArtikel}
+                favoritenEintraege={favoritenQuery.data?.eintraege}
+                artikelProZeile={posConfigQuery.data?.artikelProZeile}
+                startFavoriten={posConfigQuery.data?.startFavoriten}
+                startKategorieId={posConfigQuery.data?.startKategorieId}
+              />
+            </div>
+          </section>
+        </div>
+
+        {/* ----- Rechte Seite: Warenkorb + Zahlung -----
+            Reicht die Höhe nicht (Hinweis über der Kopfleiste, Kredit-Modus,
+            Fehlermeldung), scrollt ab lg die Spalte selbst und der Zahlteil
+            bleibt unten kleben — die Knöpfe verschwinden nie unter dem Falz. */}
+        <section className="bg-panel rounded-lg shadow-sm border border-line flex flex-col lg:overflow-y-auto">
           <div className="px-4 py-3 border-b border-line space-y-2">
             <h2 className="text-sm font-semibold text-ink">Warenkorb</h2>
             <KundePicker
@@ -762,8 +775,8 @@ export function KassePage() {
             />
           </div>
 
-          {/* Warenkorb-Positionen */}
-          <div className="flex-1 overflow-y-auto px-4 py-3 min-h-[10rem] max-h-[40vh]">
+          {/* Warenkorb-Positionen — ab lg nimmt die Liste, was die Spalte übrig lässt */}
+          <div className="flex-1 overflow-y-auto px-4 py-3 min-h-[10rem] max-h-[40vh] lg:min-h-[6rem] lg:max-h-none">
             {korb.length > 0 && (
               <div className="flex justify-end mb-2">
                 <button
@@ -867,7 +880,7 @@ export function KassePage() {
           </div>
 
           {/* Summen + Zahlung / Angebot */}
-          <div className="px-4 py-3 border-t border-line space-y-3 bg-panel-2">
+          <div className="px-4 py-3 border-t border-line space-y-3 bg-panel-2 lg:sticky lg:bottom-0">
             <div className="flex items-center justify-between text-sm text-ink-muted">
               <span>Zwischensumme</span>
               <span>{formatPreis(summeCent)}</span>

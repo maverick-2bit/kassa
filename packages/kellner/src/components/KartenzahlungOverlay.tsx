@@ -30,9 +30,10 @@ export function KartenzahlungOverlay({ kasseId, betragCent, onErfolg, onAbbruch 
   const [customAktiv, setCustomAktiv] = useState(false)
   const [job,         setJob]         = useState<ZvtJob | null>(null)
   const [fehler,      setFehler]      = useState<string | null>(null)
-  const pollRef   = useRef<number | null>(null)
-  const jobIdRef  = useRef<string | null>(null)
-  const fertigRef = useRef(false)
+  const pollRef    = useRef<number | null>(null)
+  const jobIdRef   = useRef<string | null>(null)
+  const fertigRef  = useRef(false)
+  const abfrageRef = useRef(false)   // eine Job-Abfrage ist unterwegs
 
   // ZVT starten sobald Schritt = 'zahlung'
   useEffect(() => {
@@ -56,6 +57,11 @@ export function KartenzahlungOverlay({ kasseId, betragCent, onErfolg, onAbbruch 
 
   function starteJobPolling(jobId: string) {
     const tick = async () => {
+      // Nie zwei Abfragen gleichzeitig: Antwortet das Backend langsamer als der
+      // 500-ms-Takt (WLAN), sahen sonst zwei Abfragen „erfolg" — onErfolg lief
+      // doppelt, der zweite Bezahl-Aufruf scheiterte nach erfolgreicher Zahlung.
+      if (abfrageRef.current || fertigRef.current) return
+      abfrageRef.current = true
       try {
         const j = await zvtApi.getJob(jobId)
         setJob(j)
@@ -73,6 +79,8 @@ export function KartenzahlungOverlay({ kasseId, betragCent, onErfolg, onAbbruch 
       } catch (err) {
         setFehler(err instanceof Error ? err.message : String(err))
         stopJobPolling()
+      } finally {
+        abfrageRef.current = false
       }
     }
     tick()

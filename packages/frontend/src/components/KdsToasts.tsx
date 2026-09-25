@@ -17,7 +17,7 @@ interface Toast {
 
 let nextId = 0
 
-export function KdsToasts() {
+export function KdsToasts({ kassenAnsicht = false }: { kassenAnsicht?: boolean }) {
   const [toasts, setToasts]             = useState<Toast[]>([])
   const [gastBestellungen, setGastBest] = useState<GastBestellungEvent[]>([])
   const [zahlungen, setZahlungen]       = useState<ZahlungAngefordertEvent[]>([])
@@ -57,11 +57,20 @@ export function KdsToasts() {
 
   if (toasts.length === 0 && gastBestellungen.length === 0 && zahlungen.length === 0 && sbBestellungen.length === 0) return null
 
+  // Alle Karten liegen mit z-40 UNTER jedem Dialog (Modal: z-50 unter <body>).
+  // Ein offener Dialog ist die laufende Aufgabe: Über „Zahlung am Terminal" führte
+  // „Zu den Bestellungen" von der Kasse weg, das Job-Polling endete — der Gast
+  // zahlte am Terminal, ein Beleg entstand nie. Hinter dem abgedunkelten
+  // Hintergrund bleiben die Karten sichtbar und stehen, bis sie bestätigt sind.
   return (
     <>
-      {/* SB-Terminal-Bestellungen — persistent, oben rechts */}
-      {sbBestellungen.length > 0 && (
-        <div className="fixed top-20 right-4 z-50 flex flex-col gap-2 items-end">
+      {/* SB-Terminal- und Gast-Bestellungen — persistent, oben rechts in EINEM
+          Stapel (zwei Stapel an derselben Stelle verdeckten einander). An Kasse
+          und Tisch reicht ab lg die rechte Spalte bis unter die Kopfleiste — dort
+          sitzt der Stapel höher, über dem rechten Ende der Kopfleiste: Eine Karte
+          liegt dann über der Kundensuche, aber nicht über den Warenkorbzeilen. */}
+      {(sbBestellungen.length > 0 || gastBestellungen.length > 0) && (
+        <div className={`fixed right-4 z-40 flex flex-col gap-2 items-end ${kassenAnsicht ? 'top-20 lg:top-2' : 'top-20'}`}>
           {sbBestellungen.map((s) => (
             <div key={s.bestellungId} className="w-72 rounded-lg border-2 border-brand-400 shadow-lg bg-brand-50 text-sm overflow-hidden">
               <div className="bg-brand-500 px-3 py-2 flex items-center justify-between">
@@ -92,41 +101,6 @@ export function KdsToasts() {
               </div>
             </div>
           ))}
-        </div>
-      )}
-
-      {/* Zahlungs-Anforderungen (Self-Checkout) — persistent, oben rechts */}
-      {zahlungen.length > 0 && (
-        <div className="fixed top-20 left-4 z-50 flex flex-col gap-2 items-start">
-          {zahlungen.map((z) => (
-            <div key={z.tabId} className="w-72 rounded-lg border-2 border-amber-400 shadow-lg bg-amber-50 text-sm overflow-hidden">
-              <div className="bg-amber-400 px-3 py-2 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-lg">💶</span>
-                  <span className="font-black text-amber-900 text-sm">Zahlung angefordert!</span>
-                </div>
-                <button onClick={() => setZahlungen(prev => prev.filter(x => x.tabId !== z.tabId))} className="text-amber-800 hover:text-amber-900 font-bold">×</button>
-              </div>
-              <div className="px-3 py-2.5 space-y-1">
-                <p className="font-semibold text-ink">Tisch: <span className="text-amber-700">{z.tischNummer}</span></p>
-                <p className="text-xs text-ink-muted">Offener Betrag: {formatPreis(z.summeCent)}</p>
-              </div>
-              <div className="px-3 pb-2.5">
-                <button
-                  onClick={() => setZahlungen(prev => prev.filter(x => x.tabId !== z.tabId))}
-                  className="w-full py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold transition"
-                >
-                  ✓ Übernommen
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Gast-Bestellungen — persistent, oben rechts */}
-      {gastBestellungen.length > 0 && (
-        <div className="fixed top-20 right-4 z-50 flex flex-col gap-2 items-end">
           {gastBestellungen.map((g, i) => (
             <div key={i} className="w-72 rounded-lg border-2 border-green-400 shadow-lg bg-green-50 text-sm overflow-hidden">
               <div className="bg-green-400 px-3 py-2 flex items-center justify-between">
@@ -153,9 +127,38 @@ export function KdsToasts() {
         </div>
       )}
 
+      {/* Zahlungs-Anforderungen (Self-Checkout) — persistent, oben links */}
+      {zahlungen.length > 0 && (
+        <div className="fixed top-20 left-4 z-40 flex flex-col gap-2 items-start">
+          {zahlungen.map((z) => (
+            <div key={z.tabId} className="w-72 rounded-lg border-2 border-amber-400 shadow-lg bg-amber-50 text-sm overflow-hidden">
+              <div className="bg-amber-400 px-3 py-2 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">💶</span>
+                  <span className="font-black text-amber-900 text-sm">Zahlung angefordert!</span>
+                </div>
+                <button onClick={() => setZahlungen(prev => prev.filter(x => x.tabId !== z.tabId))} className="text-amber-800 hover:text-amber-900 font-bold">×</button>
+              </div>
+              <div className="px-3 py-2.5 space-y-1">
+                <p className="font-semibold text-ink">Tisch: <span className="text-amber-700">{z.tischNummer}</span></p>
+                <p className="text-xs text-ink-muted">Offener Betrag: {formatPreis(z.summeCent)}</p>
+              </div>
+              <div className="px-3 pb-2.5">
+                <button
+                  onClick={() => setZahlungen(prev => prev.filter(x => x.tabId !== z.tabId))}
+                  className="w-full py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold transition"
+                >
+                  ✓ Übernommen
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Bestehende Toasts — unten rechts */}
       {toasts.length > 0 && (
-        <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 items-end">
+        <div className="fixed bottom-4 right-4 z-40 flex flex-col gap-2 items-end">
           {toasts.map((t) => t.typ === 'bonierbon' && t.bonierbon ? (
             <BonierbonToast
               key={t.id}

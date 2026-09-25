@@ -1,6 +1,6 @@
 {
   "name": "@kassa/einlass",
-  "version": "0.8.27",
+  "version": "0.8.29",
   "private": true,
   "type": "module",
   "scripts": {

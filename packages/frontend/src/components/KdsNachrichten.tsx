@@ -184,8 +184,13 @@ export function KdsNachrichten() {
     setNachrichten(prev => prev.filter(n => n.zeit !== zeit))
   }
 
+  // z-40: auch Küchen-Nachrichten liegen UNTER jedem Dialog (Modal: z-50). Der Ton
+  // kommt sofort, die Karte bleibt hinter dem abgedunkelten Hintergrund sichtbar,
+  // bis sie bestätigt ist; antworten geht, sobald der Dialog zu ist. Darüber
+  // verdeckte sie Dialog-Inhalt, und Esc im Antwortfeld schloss den Dialog mit
+  // (Modal lauscht auf window) — bei „Zahlung am Terminal" brach das die Zahlung ab.
   return (
-    <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 w-full max-w-sm px-4 pointer-events-none">
+    <div className="fixed top-4 left-1/2 -translate-x-1/2 z-40 flex flex-col gap-2 w-full max-w-sm px-4 pointer-events-none">
       {nachrichten.map(n => (
         <NachrichtKarte
           key={n.zeit}

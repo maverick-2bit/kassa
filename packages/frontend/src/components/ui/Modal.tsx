@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 
 interface ModalProps {
   open:    boolean
@@ -6,6 +7,9 @@ interface ModalProps {
   title:   string
   children: ReactNode
   size?: 'sm' | 'md' | 'lg' | 'xl'
+  /** false: ein Tipp auf den abgedunkelten Hintergrund schließt nicht (laufender
+   *  Vorgang wie die Terminal-Zahlung) — ✕ und Esc bleiben als bewusste Bedienung. */
+  closeOnBackdrop?: boolean
 }
 
 const sizeClass = {
@@ -15,7 +19,7 @@ const sizeClass = {
   xl: 'max-w-5xl',
 }
 
-export function Modal({ open, onClose, title, children, size = 'md' }: ModalProps) {
+export function Modal({ open, onClose, title, children, size = 'md', closeOnBackdrop = true }: ModalProps) {
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -25,10 +29,14 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
 
   if (!open) return null
 
-  return (
+  // Per Portal direkt unter <body>: so liegt jeder Dialog über der ganzen Seite,
+  // auch wenn er in einem sticky Abschnitt gerendert wird (eigener Stapelkontext —
+  // Optionen-Dialog und „Neuer Kunde" in der Kasse lagen sonst unter Kopfleiste
+  // und Hinweis-Karten). Die Hinweis-Karten liegen bewusst darunter (z-40).
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40"
-      onClick={onClose}
+      onClick={closeOnBackdrop ? onClose : undefined}
       role="dialog"
       aria-modal="true"
     >
@@ -51,6 +59,7 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
         </div>
         <div className="overflow-y-auto px-5 py-4">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
