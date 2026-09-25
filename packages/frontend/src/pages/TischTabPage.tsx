@@ -725,6 +725,8 @@ export function TischTabPage() {
                 aktionen={aktionenProArtikel}
                 favoritenEintraege={favoritenQuery.data?.eintraege}
                 artikelProZeile={posConfigQuery.data?.artikelProZeile}
+                startFavoriten={posConfigQuery.data?.startFavoriten}
+                startKategorieId={posConfigQuery.data?.startKategorieId}
               />
             </div>
           </section>

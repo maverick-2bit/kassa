@@ -136,6 +136,10 @@ export interface KellnerKonfig {
   artikelProZeile:       number
   /** An dieser Kasse sichtbare Warengruppen (leer = alle) */
   sichtbareKategorieIds: string[]
+  /** Artikelwahl öffnet mit den Favoriten (sofern hier aktiv) */
+  startFavoriten:        boolean
+  /** Sonst mit dieser Warengruppe (null = erste mit Artikeln) */
+  startKategorieId:      string | null
 }
 
 /** Favoriten-Eintrag dieser Kasse; artikelId null = Platzhalter (graue Kachel). */

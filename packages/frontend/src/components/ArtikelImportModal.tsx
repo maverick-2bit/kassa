@@ -6,15 +6,25 @@
  *   2. Vorschau: jede Zeile mit Status (gültig / ungültig / Warnung)
  *      – Kategorie-Spalte mit Dropdown zum Zuweisen / Korrigieren
  *      – Neue Warengruppen-Namen werden im Import automatisch angelegt
- *   3. Import: ggf. neue Kategorien anlegen, dann POST /api/artikel/bulk
+ *      – Gibt es den Artikel in derselben Warengruppe schon (auch deaktiviert
+ *        oder weiter oben in der Datei), fragt die Vorschau je Zeile:
+ *        überspringen (Standard), vorhandenen aktualisieren oder erneut anlegen
+ *   3. Import: ggf. neue Kategorien anlegen, dann POST /api/artikel/bulk,
+ *      „aktualisieren"-Zeilen per PUT /api/artikel/:id
  *   4. Erfolgsmeldung
  */
 
-import { useRef, useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMemo, useRef, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { Kategorie } from '@kassa/shared'
 import { artikelApi, kategorieApi } from '../lib/api'
 import { parseArtikelExcel, type GeparsterArtikel } from '../lib/artikel-excel'
+import {
+  aktualisierungAusImport,
+  findeDuplikate,
+  type DuplikatAktion,
+} from '../lib/artikel-import-duplikate'
+import { formatPreis } from '../lib/format'
 import { Modal } from './ui/Modal'
 import { Button } from './ui/Button'
 
@@ -32,7 +42,9 @@ export function ArtikelImportModal({ open, kategorien, mandantId, onClose }: Pro
   const fileInputRef   = useRef<HTMLInputElement>(null)
   const [schritt, setSchritt]       = useState<Schritt>('auswahl')
   const [zeilen, setZeilen]         = useState<GeparsterArtikel[]>([])
-  const [ergebnis, setErgebnis]     = useState<{ erstellt: number; fehlgeschlagen: number } | null>(null)
+  const [ergebnis, setErgebnis]     = useState<{
+    erstellt: number; aktualisiert: number; uebersprungen: number; fehlgeschlagen: number
+  } | null>(null)
   const [fehlerMsg, setFehlerMsg]   = useState<string | null>(null)
   const [isDragOver, setIsDragOver] = useState(false)
 
@@ -42,14 +54,48 @@ export function ArtikelImportModal({ open, kategorien, mandantId, onClose }: Pro
    */
   const [zeileKategorie, setZeileKategorie] = useState<Record<number, string>>({})
 
-  const gueltigeZeilen   = zeilen.filter(z => z.gueltig)
+  /** Entscheidung je doppelter Zeile; fehlt ein Eintrag, wird übersprungen. */
+  const [aktionen, setAktionen] = useState<Record<number, DuplikatAktion>>({})
+
+  // Vorhandene Artikel inkl. deaktivierter — für die Doppelten-Prüfung
+  const bestand = useQuery({
+    queryKey: ['artikel', mandantId, false],
+    queryFn:  () => artikelApi.list(mandantId, false),
+    enabled:  open,
+  })
+
+  const gueltigeZeilen   = useMemo(() => zeilen.filter(z => z.gueltig), [zeilen])
   const ungueltigeZeilen = zeilen.filter(z => !z.gueltig)
+
+  const duplikate = useMemo(() => findeDuplikate(
+    gueltigeZeilen
+      .filter(z => z.daten)
+      .map(z => ({ zeile: z.zeile, bezeichnung: z.daten!.bezeichnung, kategorie: zeileKategorie[z.zeile] ?? '' })),
+    bestand.data ?? [],
+    kategorien,
+  ), [gueltigeZeilen, zeileKategorie, bestand.data, kategorien])
+
+  /** „aktualisieren" gibt es nur, wenn ein vorhandener Artikel gefunden wurde. */
+  const aktionFuer = (zeile: number): DuplikatAktion | null => {
+    const d = duplikate.get(zeile)
+    if (!d) return null
+    const a = aktionen[zeile] ?? 'ueberspringen'
+    return a === 'aktualisieren' && !d.vorhanden ? 'ueberspringen' : a
+  }
+
+  const neuAnlegen    = gueltigeZeilen.filter(z => { const a = aktionFuer(z.zeile); return a === null || a === 'neu' })
+  const aktualisieren = gueltigeZeilen.filter(z => aktionFuer(z.zeile) === 'aktualisieren')
+  const ueberspringen = gueltigeZeilen.filter(z => aktionFuer(z.zeile) === 'ueberspringen')
+  const mitVorhandenem = gueltigeZeilen.filter(z => duplikate.get(z.zeile)?.vorhanden).length
+
+  const alleDuplikateAuf = (aktion: DuplikatAktion) =>
+    setAktionen(Object.fromEntries(Array.from(duplikate.keys()).map(zeile => [zeile, aktion])))
 
   /** Namen, die noch nicht als Kategorie existieren → werden beim Import neu angelegt. */
   const katNamenSet = new Set(kategorien.map(k => k.name.toLowerCase()))
   const neueKatNamen = Array.from(
     new Set(
-      gueltigeZeilen
+      neuAnlegen
         .map(z => zeileKategorie[z.zeile] ?? '')
         .filter(n => n && !katNamenSet.has(n.toLowerCase())),
     ),
@@ -74,7 +120,10 @@ export function ArtikelImportModal({ open, kategorien, mandantId, onClose }: Pro
         if (z.kategorieStr) initKat[z.zeile] = z.kategorieStr
       }
       setZeileKategorie(initKat)
+      setAktionen({})
       setSchritt('vorschau')
+      // Frisch prüfen — seit dem letzten Laden könnten Artikel dazugekommen sein
+      void bestand.refetch()
     } catch {
       setFehlerMsg('Datei konnte nicht gelesen werden. Bitte nur .xlsx-Dateien verwenden.')
     }
@@ -106,8 +155,8 @@ export function ArtikelImportModal({ open, kategorien, mandantId, onClose }: Pro
         katMap.set(neu.name.toLowerCase(), neu.id)
       }
 
-      // 2. Gültige Zeilen mit aktualisierter kategorieId aufbauen
-      const rows = gueltigeZeilen
+      // 2. Neu anzulegende Zeilen mit aktualisierter kategorieId aufbauen
+      const rows = neuAnlegen
         .filter(z => z.daten)
         .map(z => {
           const katName    = zeileKategorie[z.zeile] ?? ''
@@ -115,12 +164,30 @@ export function ArtikelImportModal({ open, kategorien, mandantId, onClose }: Pro
           return { ...z.daten!, kategorieId }
         })
 
-      return artikelApi.bulkImport(rows)
+      const neu = rows.length > 0
+        ? await artikelApi.bulkImport(rows)
+        : { erstellt: 0, fehlgeschlagen: 0 }
+
+      // 3. Vorhandene Artikel aktualisieren — Fehler einer Zeile blockieren die anderen nicht
+      let aktualisiert = 0
+      let fehlgeschlagen = neu.fehlgeschlagen
+      for (const z of aktualisieren) {
+        const vorhanden = duplikate.get(z.zeile)?.vorhanden
+        if (!vorhanden || !z.daten) continue
+        try {
+          await artikelApi.update(vorhanden.id, aktualisierungAusImport(vorhanden, z.daten))
+          aktualisiert++
+        } catch {
+          fehlgeschlagen++
+        }
+      }
+
+      return { erstellt: neu.erstellt, aktualisiert, uebersprungen: ueberspringen.length, fehlgeschlagen }
     },
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['artikel', mandantId] })
       qc.invalidateQueries({ queryKey: ['kategorien'] })
-      setErgebnis({ erstellt: data.erstellt, fehlgeschlagen: data.fehlgeschlagen })
+      setErgebnis(data)
       setSchritt('erfolg')
     },
     onError: (err) => {
@@ -137,6 +204,7 @@ export function ArtikelImportModal({ open, kategorien, mandantId, onClose }: Pro
     setErgebnis(null)
     setFehlerMsg(null)
     setZeileKategorie({})
+    setAktionen({})
     onClose()
   }
 
@@ -221,7 +289,39 @@ export function ArtikelImportModal({ open, kategorien, mandantId, onClose }: Pro
             {neueKatNamen.length > 0 && (
               <Chip farbe="blau">{neueKatNamen.length} neue Warengruppe{neueKatNamen.length > 1 ? 'n' : ''}</Chip>
             )}
+            {duplikate.size > 0 && (
+              <Chip farbe="gelb">{duplikate.size} bereits vorhanden</Chip>
+            )}
           </div>
+
+          {/* Doppelte Artikel: Abfrage, ob erneut importiert werden soll */}
+          {duplikate.size > 0 && (
+            <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 space-y-2">
+              <p>
+                <strong>
+                  {duplikate.size === 1
+                    ? '1 Artikel gibt es in derselben Warengruppe schon'
+                    : `${duplikate.size} Artikel gibt es in derselben Warengruppe schon`}
+                </strong>
+                {' '}(im Artikelstamm oder weiter oben in der Datei). Sollen sie erneut importiert werden?
+                Die Entscheidung lässt sich unten je Zeile ändern — ohne Auswahl werden sie übersprungen.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="secondary" onClick={() => alleDuplikateAuf('ueberspringen')}>
+                  Alle überspringen
+                </Button>
+                {mitVorhandenem > 0 && (
+                  <Button size="sm" variant="secondary" onClick={() => alleDuplikateAuf('aktualisieren')}
+                    title="Preis, MwSt, KDS-Station und Lagerführung aus der Datei übernehmen">
+                    Vorhandene aktualisieren
+                  </Button>
+                )}
+                <Button size="sm" variant="secondary" onClick={() => alleDuplikateAuf('neu')}>
+                  Alle erneut anlegen
+                </Button>
+              </div>
+            </div>
+          )}
 
           {/* Neue Warengruppen Hinweis */}
           {neueKatNamen.length > 0 && (
@@ -255,7 +355,7 @@ export function ArtikelImportModal({ open, kategorien, mandantId, onClose }: Pro
                       className={
                         !z.gueltig
                           ? 'bg-red-50'
-                          : z.warnungen.length > 0
+                          : z.warnungen.length > 0 || duplikate.has(z.zeile)
                           ? 'bg-amber-50'
                           : ''
                       }
@@ -292,6 +392,15 @@ export function ArtikelImportModal({ open, kategorien, mandantId, onClose }: Pro
                         </select>
                       </td>
                       <td className="px-3 py-2">
+                        {duplikate.has(z.zeile) && (
+                          <DuplikatStatus
+                            zeile={z.zeile}
+                            vorhanden={duplikate.get(z.zeile)!.vorhanden}
+                            dateiZeile={duplikate.get(z.zeile)!.dateiZeile}
+                            aktion={aktionFuer(z.zeile)!}
+                            onAktion={(a) => setAktionen(prev => ({ ...prev, [z.zeile]: a }))}
+                          />
+                        )}
                         {!z.gueltig ? (
                           <div className="space-y-0.5">
                             {z.fehler.map((f, i) => (
@@ -304,7 +413,7 @@ export function ArtikelImportModal({ open, kategorien, mandantId, onClose }: Pro
                               <p key={i} className="text-amber-600">⚠ {w}</p>
                             ))}
                           </div>
-                        ) : (
+                        ) : duplikate.has(z.zeile) ? null : (
                           <span className="text-green-600">✓ OK</span>
                         )}
                       </td>
@@ -328,16 +437,21 @@ export function ArtikelImportModal({ open, kategorien, mandantId, onClose }: Pro
           )}
 
           <div className="flex justify-between pt-1">
-            <Button variant="secondary" onClick={() => { setSchritt('auswahl'); setZeilen([]); setZeileKategorie({}) }}>
+            <Button variant="secondary" onClick={() => { setSchritt('auswahl'); setZeilen([]); setZeileKategorie({}); setAktionen({}) }}>
               Andere Datei
             </Button>
             <Button
               onClick={() => importMutation.mutate()}
               loading={importMutation.isPending}
-              disabled={gueltigeZeilen.length === 0}
+              disabled={
+                (neuAnlegen.length === 0 && aktualisieren.length === 0)
+                || bestand.isFetching || bestand.isError
+              }
+              title={bestand.isError ? 'Vorhandene Artikel konnten nicht geprüft werden' : undefined}
             >
-              {gueltigeZeilen.length} Artikel importieren
-              {neueKatNamen.length > 0 && ` + ${neueKatNamen.length} Warengruppe${neueKatNamen.length > 1 ? 'n' : ''}`}
+              {bestand.isFetching
+                ? 'Prüfe vorhandene Artikel…'
+                : importKnopfText(neuAnlegen.length, aktualisieren.length, neueKatNamen.length)}
             </Button>
           </div>
         </div>
@@ -356,6 +470,12 @@ export function ArtikelImportModal({ open, kategorien, mandantId, onClose }: Pro
               <p className="text-lg font-semibold text-ink">Import abgeschlossen</p>
               <p className="mt-1 text-sm text-ink-muted">
                 <span className="text-green-700 font-medium">{ergebnis.erstellt} Artikel</span> wurden erfolgreich angelegt.
+                {ergebnis.aktualisiert > 0 && (
+                  <span className="text-green-700"> {ergebnis.aktualisiert} vorhandene aktualisiert.</span>
+                )}
+                {ergebnis.uebersprungen > 0 && (
+                  <span> {ergebnis.uebersprungen} bereits vorhandene übersprungen.</span>
+                )}
                 {ergebnis.fehlgeschlagen > 0 && (
                   <span className="text-red-600"> {ergebnis.fehlgeschlagen} fehlgeschlagen.</span>
                 )}
@@ -377,8 +497,54 @@ export function ArtikelImportModal({ open, kategorien, mandantId, onClose }: Pro
 }
 
 // ---------------------------------------------------------------------------
-// Hilfsbaustein
+// Hilfsbausteine
 // ---------------------------------------------------------------------------
+
+function importKnopfText(neu: number, aktualisiert: number, neueKat: number): string {
+  const teile: string[] = []
+  if (neu > 0 || aktualisiert === 0) teile.push(`${neu} Artikel importieren`)
+  if (aktualisiert > 0) teile.push(`${aktualisiert} aktualisieren`)
+  let text = teile.join(' + ')
+  if (neueKat > 0) text += ` + ${neueKat} Warengruppe${neueKat > 1 ? 'n' : ''}`
+  return text
+}
+
+function DuplikatStatus({
+  zeile, vorhanden, dateiZeile, aktion, onAktion,
+}: {
+  zeile:       number
+  vorhanden?:  { bezeichnung: string; preisBruttoCent: number; aktiv: boolean; artikelnummer: string | null } | undefined
+  dateiZeile?: number | undefined
+  aktion:      DuplikatAktion
+  onAktion:    (a: DuplikatAktion) => void
+}) {
+  return (
+    <div className="mb-1 space-y-1">
+      {vorhanden && (
+        <p className="text-amber-700">
+          ⚠ Schon vorhanden: {vorhanden.bezeichnung} ({formatPreis(vorhanden.preisBruttoCent)}
+          {vorhanden.artikelnummer ? `, Nr. ${vorhanden.artikelnummer}` : ''}
+          {vorhanden.aktiv ? '' : ', deaktiviert'})
+        </p>
+      )}
+      {dateiZeile !== undefined && (
+        <p className="text-amber-700">⚠ Doppelt in der Datei (wie Zeile {dateiZeile})</p>
+      )}
+      <select
+        value={aktion}
+        onChange={e => onAktion(e.target.value as DuplikatAktion)}
+        aria-label={`Zeile ${zeile}: erneut importieren?`}
+        className="text-xs border border-amber-300 rounded px-1.5 py-0.5 bg-panel focus:outline-none focus:ring-1 focus:ring-amber-400"
+      >
+        <option value="ueberspringen">Überspringen</option>
+        {vorhanden && (
+          <option value="aktualisieren">{vorhanden.aktiv ? 'Vorhandenen aktualisieren' : 'Vorhandenen aktualisieren + aktivieren'}</option>
+        )}
+        <option value="neu">Erneut anlegen</option>
+      </select>
+    </div>
+  )
+}
 
 function Chip({
   farbe,
