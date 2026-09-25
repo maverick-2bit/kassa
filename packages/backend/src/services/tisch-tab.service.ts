@@ -199,6 +199,33 @@ async function aktualisiereStockDeltas(
 // Hilfsfunktionen
 // ---------------------------------------------------------------------------
 
+type Tx = Parameters<Parameters<Db['transaction']>[0]>[0]
+
+/**
+ * Lädt einen offenen Tab zum Ändern und sperrt ihn bis zum Ende der Transaktion
+ * (FOR UPDATE) — dieselbe Sperre wie bei bezahleTab, splitteUndBezahleTab und
+ * verschmelzeTabs. Läuft gerade ein Bezahlen, Teilen oder Verwerfen, wartet die
+ * Änderung, bis es fertig ist, und sieht dann dessen Status: 409 statt den
+ * geschlossenen Tab zu überschreiben. (Ohne Sperre wartete erst das
+ * UPDATE … WHERE id = … — und schrieb danach trotzdem: READ COMMITTED prüft
+ * nach dem Warten nur die id neu.)
+ *
+ * Solange die Sperre hält, nichts über deps.db schreiben, was auf den Tab
+ * verweist (Tab-Ereignis, Bonieren mit tabId): Der Fremdschlüssel wartet auf
+ * die Sperre, die Transaktion auf ihn.
+ */
+async function sperreOffenenTab(tx: Tx, id: string, mandantId: string): Promise<typeof tischTabs.$inferSelect> {
+  const [tab] = await tx
+    .select()
+    .from(tischTabs)
+    .where(and(eq(tischTabs.id, id), eq(tischTabs.mandantId, mandantId)))
+    .for('update')
+    .limit(1)
+  if (!tab) throw new TischTabError(404, 'Tisch-Tab nicht gefunden')
+  if (tab.status !== 'offen') throw new TischTabError(409, 'Tisch-Tab ist nicht mehr offen')
+  return tab
+}
+
 function berechneGesamtCent(positionen: TabPosition[]): number {
   return positionen.reduce((sum, p) => sum + p.preisBruttoCent * p.menge, 0)
 }
@@ -302,53 +329,56 @@ export async function aktualisierePositionen(
     log?: FastifyBaseLogger
   },
 ): Promise<{ tab: TischTabResponse; stornoBon: StornoBonErgebnis | null }> {
-  const [existing] = await deps.db
-    .select({ id: tischTabs.id, kasseId: tischTabs.kasseId, status: tischTabs.status, positionen: tischTabs.positionen })
-    .from(tischTabs)
-    .where(and(eq(tischTabs.id, id), eq(tischTabs.mandantId, mandantId)))
-    .limit(1)
-  if (!existing) throw new TischTabError(404, 'Tisch-Tab nicht gefunden')
-  if (existing.status !== 'offen') throw new TischTabError(409, 'Tisch-Tab ist nicht mehr offen')
+  // Unter Tab-Sperre: Storno und Freigabe werden gegen den Stand gerechnet, der
+  // wirklich gespeichert ist — auch wenn gerade bezahlt oder von einem zweiten
+  // Gerät geändert wird. Lager, Verlauf und Korrekturbon laufen erst nach dem
+  // COMMIT (der Bon geht übers Netz und darf die Sperre nicht halten).
+  const { row, altePositionen, stornoItems } = await deps.db.transaction(async (tx) => {
+    const existing = await sperreOffenenTab(tx, id, mandantId)
 
-  // altePositionen VOR dem Update sichern
-  const altePositionen = (existing.positionen as TabPosition[]) ?? []
+    // altePositionen VOR dem Update sichern
+    const altePositionen = (existing.positionen as TabPosition[]) ?? []
 
-  // Storno-Erkennung VOR dem Update: welche Positionen werden reduziert oder
-  // entfernt? Muss vorher passieren, weil die Freigabe-Prüfung den Vorgang
-  // ablehnen können muss, ohne dass schon etwas geschrieben wurde.
-  const neueMap = new Map(positionen.map(p => [p.artikelId, p]))
-  const stornoItems: Array<{ artikelId: string; bezeichnung: string; menge: number; preisBruttoCent: number }> = []
+    // Storno-Erkennung VOR dem Update: welche Positionen werden reduziert oder
+    // entfernt? Muss vorher passieren, weil die Freigabe-Prüfung den Vorgang
+    // ablehnen können muss, ohne dass schon etwas geschrieben wurde.
+    const neueMap = new Map(positionen.map(p => [p.artikelId, p]))
+    const stornoItems: Array<{ artikelId: string; bezeichnung: string; menge: number; preisBruttoCent: number }> = []
 
-  for (const alt of altePositionen) {
-    const neu = neueMap.get(alt.artikelId)
-    const neuMenge = neu?.menge ?? 0
-    if (neuMenge < alt.menge) {
-      stornoItems.push({
-        artikelId:       alt.artikelId,
-        bezeichnung:     alt.bezeichnung,
-        menge:           alt.menge - neuMenge,
-        preisBruttoCent: alt.preisBruttoCent,
-      })
+    for (const alt of altePositionen) {
+      const neu = neueMap.get(alt.artikelId)
+      const neuMenge = neu?.menge ?? 0
+      if (neuMenge < alt.menge) {
+        stornoItems.push({
+          artikelId:       alt.artikelId,
+          bezeichnung:     alt.bezeichnung,
+          menge:           alt.menge - neuMenge,
+          preisBruttoCent: alt.preisBruttoCent,
+        })
+      }
     }
-  }
 
-  // Freigabe-Schwelle: gleicher Mechanismus wie beim Beleg-Storno. Bewertet
-  // wird der Wert des STORNIERTEN Teils — nicht der Tab-Summe. Wirft 403 mit
-  // 'freigabe_erforderlich', bevor irgendetwas persistiert ist.
-  if (stornoItems.length > 0) {
-    const stornoWertCent = stornoItems.reduce((s, i) => s + i.menge * i.preisBruttoCent, 0)
-    await pruefeStornoFreigabe(
-      deps.db, mandantId, stornoWertCent, kontext?.freigabePin,
-      kontext?.freigabe ? { ...kontext.freigabe, kasseId: existing.kasseId } : null,
-    )
-  }
+    // Freigabe-Schwelle: gleicher Mechanismus wie beim Beleg-Storno. Bewertet
+    // wird der Wert des STORNIERTEN Teils — nicht der Tab-Summe. Wirft 403 mit
+    // 'freigabe_erforderlich', bevor irgendetwas persistiert ist. Über deps.db,
+    // nicht tx: Die PIN-Bremse protokolliert eine ausgelöste Sperre und wirft
+    // DANN — der Rollback dieser Transaktion nähme den Eintrag sonst mit.
+    if (stornoItems.length > 0) {
+      const stornoWertCent = stornoItems.reduce((s, i) => s + i.menge * i.preisBruttoCent, 0)
+      await pruefeStornoFreigabe(
+        deps.db, mandantId, stornoWertCent, kontext?.freigabePin,
+        kontext?.freigabe ? { ...kontext.freigabe, kasseId: existing.kasseId } : null,
+      )
+    }
 
-  const [row] = await deps.db
-    .update(tischTabs)
-    .set({ positionen, updatedAt: new Date() })
-    .where(eq(tischTabs.id, id))
-    .returning()
-  if (!row) throw new TischTabError(500, 'Update fehlgeschlagen')
+    const [row] = await tx
+      .update(tischTabs)
+      .set({ positionen, updatedAt: new Date() })
+      .where(eq(tischTabs.id, id))
+      .returning()
+    if (!row) throw new TischTabError(500, 'Update fehlgeschlagen')
+    return { row, altePositionen, stornoItems }
+  })
 
   // Lagerstand automatisch anpassen
   await aktualisiereStockDeltas(altePositionen, positionen, deps.db)
@@ -464,31 +494,32 @@ export async function verwerfeTab(
     log?: FastifyBaseLogger
   },
 ): Promise<{ tab: TischTabResponse; stornoBon: StornoBonErgebnis | null }> {
-  const [existing] = await deps.db
-    .select()
-    .from(tischTabs)
-    .where(and(eq(tischTabs.id, id), eq(tischTabs.mandantId, mandantId)))
-    .limit(1)
-  if (!existing) throw new TischTabError(404, 'Tisch-Tab nicht gefunden')
-  if (existing.status !== 'offen') throw new TischTabError(409, 'Tisch-Tab ist nicht mehr offen')
+  // Unter Tab-Sperre wie aktualisierePositionen: Ein gerade bezahlter Tab wird
+  // nicht mehr verworfen (kein Korrekturbon, keine Lager-Rückbuchung für Ware
+  // mit gültigem Beleg). Lager, Verlauf und Korrekturbon erst nach dem COMMIT.
+  const { row, positionen } = await deps.db.transaction(async (tx) => {
+    const existing = await sperreOffenenTab(tx, id, mandantId)
 
-  const positionen = (existing.positionen as TabPosition[]) ?? []
+    const positionen = (existing.positionen as TabPosition[]) ?? []
 
-  // Verwerfen = Storno ALLER Positionen. Ohne diese Prüfung würde die
-  // Freigabeschwelle des Positions-Stornos umgangen, indem man statt der
-  // Position einfach den ganzen Tab verwirft.
-  const gesamtCent = positionen.reduce((s, p) => s + p.menge * p.preisBruttoCent, 0)
-  await pruefeStornoFreigabe(
-    deps.db, mandantId, gesamtCent, kontext?.freigabePin,
-    kontext?.freigabe ? { ...kontext.freigabe, kasseId: existing.kasseId } : null,
-  )
+    // Verwerfen = Storno ALLER Positionen. Ohne diese Prüfung würde die
+    // Freigabeschwelle des Positions-Stornos umgangen, indem man statt der
+    // Position einfach den ganzen Tab verwirft. Über deps.db, nicht tx —
+    // eine ausgelöste PIN-Sperre bleibt so im Audit-Log.
+    const gesamtCent = positionen.reduce((s, p) => s + p.menge * p.preisBruttoCent, 0)
+    await pruefeStornoFreigabe(
+      deps.db, mandantId, gesamtCent, kontext?.freigabePin,
+      kontext?.freigabe ? { ...kontext.freigabe, kasseId: existing.kasseId } : null,
+    )
 
-  const [row] = await deps.db
-    .update(tischTabs)
-    .set({ status: 'verworfen', geschlossenAm: new Date(), updatedAt: new Date() })
-    .where(eq(tischTabs.id, id))
-    .returning()
-  if (!row) throw new TischTabError(500, 'Verwerfen fehlgeschlagen')
+    const [row] = await tx
+      .update(tischTabs)
+      .set({ status: 'verworfen', geschlossenAm: new Date(), updatedAt: new Date() })
+      .where(eq(tischTabs.id, id))
+      .returning()
+    if (!row) throw new TischTabError(500, 'Verwerfen fehlgeschlagen')
+    return { row, positionen }
+  })
 
   // Lagerstand zurückbuchen (verworfene Positionen wurden nie verkauft)
   await aktualisiereStockDeltas(positionen, [], deps.db)
@@ -627,27 +658,24 @@ export async function umbenneneTab(
   mandantId: string,
   deps: TischTabServiceDeps,
 ): Promise<TischTabResponse> {
-  const [existing] = await deps.db
-    .select({ id: tischTabs.id, status: tischTabs.status, kellner: tischTabs.kellner })
-    .from(tischTabs)
-    .where(and(eq(tischTabs.id, id), eq(tischTabs.mandantId, mandantId)))
-    .limit(1)
-  if (!existing) throw new TischTabError(404, 'Tisch-Tab nicht gefunden')
-  if (existing.status !== 'offen') throw new TischTabError(409, 'Tisch-Tab ist nicht mehr offen')
+  // Unter Tab-Sperre — ein bezahlter Tab behält den Kellner, auf den er kassiert wurde
+  return deps.db.transaction(async (tx) => {
+    const existing = await sperreOffenenTab(tx, id, mandantId)
 
-  const [row] = await deps.db
-    .update(tischTabs)
-    .set({ kellner: input.kellner, updatedAt: new Date() })
-    .where(eq(tischTabs.id, id))
-    .returning()
-  if (!row) throw new TischTabError(500, 'Umbenennung fehlgeschlagen')
+    const [row] = await tx
+      .update(tischTabs)
+      .set({ kellner: input.kellner, updatedAt: new Date() })
+      .where(eq(tischTabs.id, id))
+      .returning()
+    if (!row) throw new TischTabError(500, 'Umbenennung fehlgeschlagen')
 
-  await logEreignis(id, mandantId, 'kellner_umbenannt', {
-    von:  existing.kellner,
-    nach: input.kellner,
-  }, deps.db)
+    await logEreignis(id, mandantId, 'kellner_umbenannt', {
+      von:  existing.kellner,
+      nach: input.kellner,
+    }, tx as unknown as Db)
 
-  return toResponse(row)
+    return toResponse(row)
+  })
 }
 
 export async function umbucheTab(
@@ -656,27 +684,24 @@ export async function umbucheTab(
   mandantId: string,
   deps: TischTabServiceDeps,
 ): Promise<TischTabResponse> {
-  const [existing] = await deps.db
-    .select({ id: tischTabs.id, status: tischTabs.status, tischNummer: tischTabs.tischNummer })
-    .from(tischTabs)
-    .where(and(eq(tischTabs.id, id), eq(tischTabs.mandantId, mandantId)))
-    .limit(1)
-  if (!existing) throw new TischTabError(404, 'Tisch-Tab nicht gefunden')
-  if (existing.status !== 'offen') throw new TischTabError(409, 'Tisch-Tab ist nicht mehr offen')
+  // Unter Tab-Sperre — ein bezahlter Tab behält seine Tischnummer
+  return deps.db.transaction(async (tx) => {
+    const existing = await sperreOffenenTab(tx, id, mandantId)
 
-  const [row] = await deps.db
-    .update(tischTabs)
-    .set({ tischNummer: input.tischNummer, updatedAt: new Date() })
-    .where(eq(tischTabs.id, id))
-    .returning()
-  if (!row) throw new TischTabError(500, 'Umbuchung fehlgeschlagen')
+    const [row] = await tx
+      .update(tischTabs)
+      .set({ tischNummer: input.tischNummer, updatedAt: new Date() })
+      .where(eq(tischTabs.id, id))
+      .returning()
+    if (!row) throw new TischTabError(500, 'Umbuchung fehlgeschlagen')
 
-  await logEreignis(id, mandantId, 'tisch_gewechselt', {
-    von:  existing.tischNummer,
-    nach: input.tischNummer,
-  }, deps.db)
+    await logEreignis(id, mandantId, 'tisch_gewechselt', {
+      von:  existing.tischNummer,
+      nach: input.tischNummer,
+    }, tx as unknown as Db)
 
-  return toResponse(row)
+    return toResponse(row)
+  })
 }
 
 /**
@@ -886,8 +911,6 @@ export async function verschiebePositionen(
 // ---------------------------------------------------------------------------
 // Rechnung teilen (Split)
 // ---------------------------------------------------------------------------
-
-type Tx = Parameters<Parameters<Db['transaction']>[0]>[0]
 
 /** Ein Teilbeleg je Zahler: Belegpositionen mit dem Preis der Tab-Position. */
 export interface SplitTeilbeleg {
@@ -1144,51 +1167,88 @@ async function bonierTolerant(
  * Feuert den nächsten offenen Gang: kleinster `gang > 0` mit `gesendetAm == null`.
  * Boniert nur diese Positionen (ohne Lagerabzug — der lief beim Buchen) und markiert
  * sie als gesendet. Der Gang steht als Suffix im Tisch-Label auf dem Bon.
+ *
+ * Erst markieren — unter Tab-Sperre, in den gespeicherten Positionen —, dann
+ * bonieren: Bonieren geht übers Netz und darf die Sperre nicht halten. (Bisher
+ * schrieb der Abruf NACH dem Bonieren seine vorher gelesene Positionsliste
+ * zurück: eine Nachbestellung aus der Zwischenzeit war weg, ein inzwischen
+ * bezahlter Tab wurde überschrieben.) Scheitert das Bonieren, wird die
+ * Markierung zurückgenommen — der Gang bleibt abrufbar.
  */
 export async function rufeNaechstenGangAb(
   id: string, mandantId: string, deps: TischTabServiceDeps,
 ): Promise<{ tab: TischTabResponse; gang: number }> {
-  const [tab] = await deps.db
-    .select().from(tischTabs)
-    .where(and(eq(tischTabs.id, id), eq(tischTabs.mandantId, mandantId))).limit(1)
-  if (!tab) throw new TischTabError(404, 'Tisch-Tab nicht gefunden')
-  if (tab.status !== 'offen') throw new TischTabError(409, 'Tisch-Tab ist nicht mehr offen')
-
-  const positionen = (tab.positionen as TabPosition[]) ?? []
-  const offeneGaenge = positionen.filter(p => (p.gang ?? 0) > 0 && !p.gesendetAm).map(p => p.gang!)
-  if (offeneGaenge.length === 0) throw new TischTabError(409, 'Kein offener Gang zum Abrufen')
-  const naechster = Math.min(...offeneGaenge)
-
-  const gangPositionen = positionen.filter(p => (p.gang ?? 0) === naechster && !p.gesendetAm)
-  await bonierTolerant({
-    kasseId:    tab.kasseId,
-    tabId:      tab.id,
-    tisch:      `${tab.tischNummer} · ${naechster}. Gang`.slice(0, 40),
-    kellner:    tab.kellner,
-    positionen: gangPositionen.map(p => ({ artikelId: p.artikelId, menge: p.menge, gang: naechster })),
-    ohneLagerabzug: true,
-  }, deps.db)
-
   const jetzt = new Date().toISOString()
-  const neuePositionen = positionen.map(p =>
-    (p.gang ?? 0) === naechster && !p.gesendetAm ? { ...p, gesendetAm: jetzt } : p,
-  )
-  const [row] = await deps.db
-    .update(tischTabs)
-    .set({ positionen: neuePositionen, updatedAt: new Date() })
-    .where(eq(tischTabs.id, id)).returning()
+  const { row, naechster, gangPositionen } = await deps.db.transaction(async (tx) => {
+    const tab = await sperreOffenenTab(tx, id, mandantId)
+
+    const positionen = (tab.positionen as TabPosition[]) ?? []
+    const offeneGaenge = positionen.filter(p => (p.gang ?? 0) > 0 && !p.gesendetAm).map(p => p.gang!)
+    if (offeneGaenge.length === 0) throw new TischTabError(409, 'Kein offener Gang zum Abrufen')
+    const naechster = Math.min(...offeneGaenge)
+
+    const gangPositionen = positionen.filter(p => (p.gang ?? 0) === naechster && !p.gesendetAm)
+    const neuePositionen = positionen.map(p =>
+      (p.gang ?? 0) === naechster && !p.gesendetAm ? { ...p, gesendetAm: jetzt } : p,
+    )
+    const [row] = await tx
+      .update(tischTabs)
+      .set({ positionen: neuePositionen, updatedAt: new Date() })
+      .where(eq(tischTabs.id, id)).returning()
+    if (!row) throw new TischTabError(500, 'Gang konnte nicht markiert werden')
+    return { row, naechster, gangPositionen }
+  })
+
+  try {
+    await bonierTolerant({
+      kasseId:    row.kasseId,
+      tabId:      row.id,
+      tisch:      `${row.tischNummer} · ${naechster}. Gang`.slice(0, 40),
+      kellner:    row.kellner,
+      positionen: gangPositionen.map(p => ({ artikelId: p.artikelId, menge: p.menge, gang: naechster })),
+      ohneLagerabzug: true,
+    }, deps.db)
+  } catch (err) {
+    await gibGangFrei(id, mandantId, naechster, jetzt, deps)
+    throw err
+  }
   await logEreignis(id, mandantId, 'gang_gefeuert', { gang: naechster, positionen: gangPositionen.length }, deps.db)
-  return { tab: toResponse(row!), gang: naechster }
+  return { tab: toResponse(row), gang: naechster }
 }
 
-/** Schickt genau eine Position erneut an Küche/Schank (Re-Print) — Status unverändert. */
+/**
+ * Nimmt die Markierung eines Gangs zurück, dessen Bon nicht rausging — nur die
+ * Positionen dieses Abrufs (gleicher Zeitstempel) und nur, solange der Tab offen ist.
+ */
+async function gibGangFrei(
+  id: string, mandantId: string, gang: number, gesendetAm: string, deps: TischTabServiceDeps,
+): Promise<void> {
+  await deps.db.transaction(async (tx) => {
+    const [tab] = await tx
+      .select().from(tischTabs)
+      .where(and(eq(tischTabs.id, id), eq(tischTabs.mandantId, mandantId)))
+      .for('update').limit(1)
+    if (!tab || tab.status !== 'offen') return
+
+    const positionen = (tab.positionen as TabPosition[]) ?? []
+    const vomAbruf = (p: TabPosition) => (p.gang ?? 0) === gang && p.gesendetAm === gesendetAm
+    if (!positionen.some(vomAbruf)) return
+    await tx
+      .update(tischTabs)
+      .set({ positionen: positionen.map(p => vomAbruf(p) ? { ...p, gesendetAm: null } : p), updatedAt: new Date() })
+      .where(eq(tischTabs.id, id))
+  })
+}
+
+/**
+ * Schickt genau eine Position erneut an Küche/Schank (Re-Print) — Status unverändert.
+ * Nur bei offenem Tab; die Sperre gilt nur für die Prüfung (ein gerade laufendes
+ * Bezahlen oder Verwerfen wird abgewartet), gedruckt wird danach ohne Sperre.
+ */
 export async function schickePositionNach(
   id: string, positionIndex: number, mandantId: string, deps: TischTabServiceDeps,
 ): Promise<void> {
-  const [tab] = await deps.db
-    .select().from(tischTabs)
-    .where(and(eq(tischTabs.id, id), eq(tischTabs.mandantId, mandantId))).limit(1)
-  if (!tab) throw new TischTabError(404, 'Tisch-Tab nicht gefunden')
+  const tab = await deps.db.transaction(tx => sperreOffenenTab(tx, id, mandantId))
   const positionen = (tab.positionen as TabPosition[]) ?? []
   const p = positionen[positionIndex]
   if (!p) throw new TischTabError(404, 'Position nicht gefunden')
