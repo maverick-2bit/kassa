@@ -45,33 +45,36 @@ interface DbQueues {
 
 function mockDb({ selects = [], inserts = [], updates = [] }: DbQueues = {}): Db {
   let si = 0, ii = 0, ui = 0
-  // Selects innerhalb und außerhalb einer Transaktion teilen sich die Warteschlange
+  // Innerhalb und außerhalb einer Transaktion teilen sich die Warteschlangen
   const select = () => ({
     from: () => ({
       where: () => makeResult(selects[si++] ?? []),
     }),
   })
-  return {
-    select,
-    insert: () => ({
-      values: () => makeInsertResult(inserts[ii++] ?? []),
-    }),
-    update: () => ({
-      set: () => ({
-        where: () => ({
-          then:      (ok: any, err: any) => Promise.resolve([]).then(ok, err),
-          returning: () => Promise.resolve(updates[ui++] ?? []),
-        }),
+  const insert = () => ({
+    values: () => makeInsertResult(inserts[ii++] ?? []),
+  })
+  const update = () => ({
+    set: () => ({
+      where: () => ({
+        then:      (ok: any, err: any) => Promise.resolve([]).then(ok, err),
+        returning: () => Promise.resolve(updates[ui++] ?? []),
       }),
     }),
-    delete: () => ({
-      where: () => Promise.resolve([]),
-    }),
+  })
+  const del = () => ({
+    where: () => Promise.resolve([]),
+  })
+  return {
+    select,
+    insert,
+    update,
+    delete: del,
     transaction: async (fn: (tx: Db) => Promise<unknown>) => fn({
       select,
-      update: () => ({ set: () => ({ where: () => Promise.resolve([]) }) }),
-      delete: () => ({ where: () => Promise.resolve([]) }),
-      insert: () => ({ values: () => Promise.resolve([]) }),
+      update,
+      delete: del,
+      insert,
     } as unknown as Db),
   } as unknown as Db
 }
