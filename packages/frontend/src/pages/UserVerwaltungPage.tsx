@@ -351,7 +351,7 @@ function UserFormular({
             inputMode="numeric"
             value={pin}
             onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, pinLaenge))}
-            className="mt-0.5 w-32 text-center tracking-widest font-mono"
+            className="mt-0.5 w-36 text-center tracking-widest font-mono"
             placeholder={pinLaenge === 6 ? 'z. B. 471108' : 'z. B. 4711'}
           />
         </label>
