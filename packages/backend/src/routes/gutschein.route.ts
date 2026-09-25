@@ -18,6 +18,7 @@ import {
 } from '../services/gutschein.service.js'
 import { sendBytes, druckerConfigVonKasse, DruckerError } from '../services/drucker.service.js'
 import { baueGutscheinBon } from '../services/escpos/layout.js'
+import { uuidParam } from './uuid-param.js'
 
 export interface GutscheinRouteOptions { db: Db }
 
@@ -81,7 +82,7 @@ export const gutscheinRoute: FastifyPluginAsync<GutscheinRouteOptions> = async (
 
   /** Transaktionshistorie eines Gutscheins */
   fastify.get('/gutscheine/:id/buchungen', auth, async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const id = uuidParam(request.params)
     try {
       return reply.send(await listeGutscheinBuchungen(opts.db, id, request.user.mandantId))
     } catch (err) {
@@ -91,7 +92,7 @@ export const gutscheinRoute: FastifyPluginAsync<GutscheinRouteOptions> = async (
   })
 
   fastify.get('/gutscheine/:id', auth, async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const id = uuidParam(request.params)
     try {
       return reply.send(await holeGutscheinById(opts.db, id, request.user.mandantId))
     } catch (err) {
@@ -114,7 +115,7 @@ export const gutscheinRoute: FastifyPluginAsync<GutscheinRouteOptions> = async (
 
   /** Einlösen — gibt { gutschein, restGutschein? } zurück */
   fastify.post('/gutscheine/:id/einloesen', auth, async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const id = uuidParam(request.params)
     const parsed = GutscheinEinloesenSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     try {
@@ -126,7 +127,7 @@ export const gutscheinRoute: FastifyPluginAsync<GutscheinRouteOptions> = async (
   })
 
   fastify.post('/gutscheine/:id/stornieren', auth, async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const id = uuidParam(request.params)
     try {
       return reply.send(await storniereGutschein(opts.db, id, request.user.mandantId))
     } catch (err) {
@@ -144,7 +145,7 @@ export const gutscheinRoute: FastifyPluginAsync<GutscheinRouteOptions> = async (
   })
 
   fastify.post('/gutscheine/:id/drucken', auth, async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const id = uuidParam(request.params)
     const body = GutscheinDruckSchema.safeParse(request.body ?? {})
     if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
 

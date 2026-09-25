@@ -17,6 +17,7 @@ import {
   TischplanError,
   type TischplanServiceDeps,
 } from '../services/tischplan.service.js'
+import { uuidParam } from './uuid-param.js'
 
 export interface TischplanRouteOptions {
   deps: TischplanServiceDeps
@@ -50,7 +51,7 @@ export const tischplanRoute: FastifyPluginAsync<TischplanRouteOptions> = async (
 
   // PATCH /api/tischplan/bereiche/:id — nur Admin
   fastify.patch('/tischplan/bereiche/:id', adminOk, async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const id = uuidParam(request.params)
     const parsed = TischplanBereichAktualisierenSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     try {
@@ -64,7 +65,7 @@ export const tischplanRoute: FastifyPluginAsync<TischplanRouteOptions> = async (
 
   // DELETE /api/tischplan/bereiche/:id — nur Admin
   fastify.delete('/tischplan/bereiche/:id', adminOk, async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const id = uuidParam(request.params)
     try {
       await loescheBereich(id, request.user.mandantId, opts.deps)
       return reply.status(204).send()
@@ -89,7 +90,7 @@ export const tischplanRoute: FastifyPluginAsync<TischplanRouteOptions> = async (
 
   // PATCH /api/tischplan/elemente/:id — nur Admin
   fastify.patch('/tischplan/elemente/:id', adminOk, async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const id = uuidParam(request.params)
     const parsed = TischplanElementAktualisierenSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     try {
@@ -103,7 +104,7 @@ export const tischplanRoute: FastifyPluginAsync<TischplanRouteOptions> = async (
 
   // DELETE /api/tischplan/elemente/:id — nur Admin
   fastify.delete('/tischplan/elemente/:id', adminOk, async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const id = uuidParam(request.params)
     try {
       await loescheElement(id, request.user.mandantId, opts.deps)
       return reply.status(204).send()

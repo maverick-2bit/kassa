@@ -14,6 +14,7 @@ import { decryptPrivateKey, encryptPrivateKey } from '../crypto/master-key.js'
 import { legeWeitereKasseAn } from '../services/kasse.service.js'
 import type { SetupServiceDeps } from '../services/setup.service.js'
 import { BelegError, nimmKasseAusserBetrieb, type BelegServiceDeps } from '../services/beleg.service.js'
+import { uuidParam } from './uuid-param.js'
 
 export interface KasseRouteOptions { db: Db; setupDeps: SetupServiceDeps; belegDeps: BelegServiceDeps }
 
@@ -96,7 +97,7 @@ export const kasseRoute: FastifyPluginAsync<KasseRouteOptions> = async (fastify,
       return reply.status(403).send({ fehler: 'Keine Berechtigung' })
     }
 
-    const { id } = request.params as { id: string }
+    const id = uuidParam(request.params)
     const body = z.object({
       credentials: FinanzOnlineCredentialsSchema.optional(),
     }).safeParse(request.body ?? {})
@@ -163,7 +164,7 @@ export const kasseRoute: FastifyPluginAsync<KasseRouteOptions> = async (fastify,
    * Ablauf-Datum des SEE-Zertifikats — Frontend kann rechtzeitig warnen.
    */
   fastify.get('/kassen/:id/status', auth, async (request, reply) => {
-    const { id }      = request.params as { id: string }
+    const id          = uuidParam(request.params)
     const mandantId   = request.user.mandantId
 
     const [kasse] = await opts.db
@@ -204,7 +205,7 @@ export const kasseRoute: FastifyPluginAsync<KasseRouteOptions> = async (fastify,
    * Jahresbeleg-Fälligkeits-Banner verwendet.
    */
   fastify.get('/kassen/:kasseId/jahresbeleg-status', auth, async (request, reply) => {
-    const { kasseId } = request.params as { kasseId: string }
+    const kasseId     = uuidParam(request.params, 'kasseId')
     const mandantId   = request.user.mandantId
 
     // Ownership-Check + Jahre in Wiener Ortszeit (konsistent zur Beleg-Abfrage)
@@ -262,7 +263,7 @@ export const kasseRoute: FastifyPluginAsync<KasseRouteOptions> = async (fastify,
       return reply.status(403).send({ fehler: 'Keine Berechtigung' })
     }
 
-    const { id } = request.params as { id: string }
+    const id = uuidParam(request.params)
 
     const body = KasseBezeichnungUpdateSchema.safeParse(request.body)
     if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
@@ -314,8 +315,9 @@ export const kasseRoute: FastifyPluginAsync<KasseRouteOptions> = async (fastify,
   }
 
   /** GET /kassen/:id/see — aktuelle SEE-Konfiguration (ohne Geheimnisse) */
-  fastify.get<{ Params: { id: string } }>('/kassen/:id/see', auth, async (request, reply) => {
-    const kasse = await ladeKasse(request.params.id, request.user.mandantId)
+  fastify.get('/kassen/:id/see', auth, async (request, reply) => {
+    const id    = uuidParam(request.params)
+    const kasse = await ladeKasse(id, request.user.mandantId)
     if (!kasse) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
 
     return reply.send({
@@ -330,12 +332,13 @@ export const kasseRoute: FastifyPluginAsync<KasseRouteOptions> = async (fastify,
   })
 
   /** POST /kassen/:id/see/test — Verbindung zur A-Trust-Einheit pruefen (ohne zu speichern) */
-  fastify.post<{ Params: { id: string } }>('/kassen/:id/see/test', auth, async (request, reply) => {
+  fastify.post('/kassen/:id/see/test', auth, async (request, reply) => {
     if (!darfVerwalten(request.user)) return reply.status(403).send({ fehler: 'Keine Berechtigung' })
+    const id   = uuidParam(request.params)
     const body = SeeConfigUpdateSchema.safeParse(request.body ?? {})
     if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
 
-    const kasse = await ladeKasse(request.params.id, request.user.mandantId)
+    const kasse = await ladeKasse(id, request.user.mandantId)
     if (!kasse) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
 
     const zugang = atrustZugang(kasse, body.data)
@@ -359,12 +362,13 @@ export const kasseRoute: FastifyPluginAsync<KasseRouteOptions> = async (fastify,
    * noch gegen das fruehere Zertifikat — fuer den Echtbetrieb die SEE nur bei
    * Kassen-Neuanlage wechseln.
    */
-  fastify.patch<{ Params: { id: string } }>('/kassen/:id/see', auth, async (request, reply) => {
+  fastify.patch('/kassen/:id/see', auth, async (request, reply) => {
     if (!darfVerwalten(request.user)) return reply.status(403).send({ fehler: 'Keine Berechtigung' })
+    const id   = uuidParam(request.params)
     const body = SeeConfigUpdateSchema.safeParse(request.body)
     if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
 
-    const kasse = await ladeKasse(request.params.id, request.user.mandantId)
+    const kasse = await ladeKasse(id, request.user.mandantId)
     if (!kasse) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
 
     if (body.data.seeTyp === 'software') {

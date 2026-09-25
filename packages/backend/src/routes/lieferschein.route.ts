@@ -20,6 +20,7 @@ import {
   holeSammelrechnung,
   LiferscheinError,
 } from '../services/lieferschein.service.js'
+import { uuidParam } from './uuid-param.js'
 import { resolveZielDrucker, sendBytes, DruckerError, type DruckerConfig } from '../services/drucker.service.js'
 import { baueLieferscheinBon, baueRechnungBon, type BelegzweigPosition } from '../services/escpos/layout.js'
 import { EmailVersandError, isEmailAktiv, sendeBelegzweigEmail } from '../services/email.service.js'
@@ -102,7 +103,7 @@ export const lieferscheinRoute: FastifyPluginAsync<LiferscheinRouteOptions> = as
   })
 
   fastify.get('/lieferscheine/:id', auth, async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const id = uuidParam(request.params)
     try {
       return reply.send(await holeLiferschein(opts.db, id, request.user.mandantId))
     } catch (err) {
@@ -124,7 +125,7 @@ export const lieferscheinRoute: FastifyPluginAsync<LiferscheinRouteOptions> = as
   })
 
   fastify.patch('/lieferscheine/:id', auth, async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const id = uuidParam(request.params)
     const parsed = LiferscheinUpdateSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     try {
@@ -161,7 +162,7 @@ export const lieferscheinRoute: FastifyPluginAsync<LiferscheinRouteOptions> = as
   })
 
   fastify.get('/sammelrechnungen/:id', auth, async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const id = uuidParam(request.params)
     try {
       return reply.send(await holeSammelrechnung(opts.db, id, request.user.mandantId))
     } catch (err) {
@@ -175,7 +176,7 @@ export const lieferscheinRoute: FastifyPluginAsync<LiferscheinRouteOptions> = as
   // ---------------------------------------------------------------------------
 
   fastify.post('/lieferscheine/:id/drucken', auth, async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const id = uuidParam(request.params)
     const body = AusgabeBody.safeParse(request.body)
     if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
     try {
@@ -201,7 +202,7 @@ export const lieferscheinRoute: FastifyPluginAsync<LiferscheinRouteOptions> = as
   })
 
   fastify.post('/lieferscheine/:id/email', auth, async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const id = uuidParam(request.params)
     const body = EmailBody.safeParse(request.body)
     if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
     if (!isEmailAktiv(opts.config)) {
@@ -229,7 +230,7 @@ export const lieferscheinRoute: FastifyPluginAsync<LiferscheinRouteOptions> = as
   })
 
   fastify.post('/sammelrechnungen/:id/drucken', auth, async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const id = uuidParam(request.params)
     const body = AusgabeBody.safeParse(request.body)
     if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
     try {
@@ -255,7 +256,7 @@ export const lieferscheinRoute: FastifyPluginAsync<LiferscheinRouteOptions> = as
   })
 
   fastify.post('/sammelrechnungen/:id/email', auth, async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const id = uuidParam(request.params)
     const body = EmailBody.safeParse(request.body)
     if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
     if (!isEmailAktiv(opts.config)) {

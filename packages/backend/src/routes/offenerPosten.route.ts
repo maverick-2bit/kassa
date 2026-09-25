@@ -13,6 +13,7 @@ import {
   offenePostenStatistik,
   OffenerPostenError,
 } from '../services/offenerPosten.service.js'
+import { uuidParam } from './uuid-param.js'
 
 export interface OffenerPostenRouteOptions { db: Db }
 
@@ -37,7 +38,7 @@ export const offenerPostenRoute: FastifyPluginAsync<OffenerPostenRouteOptions> =
   })
 
   fastify.get('/offene-posten/:id', auth, async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const id = uuidParam(request.params)
     try {
       return reply.send(await holeOffenerPosten(opts.db, id, request.user.mandantId))
     } catch (err) {
@@ -59,7 +60,7 @@ export const offenerPostenRoute: FastifyPluginAsync<OffenerPostenRouteOptions> =
   })
 
   fastify.post('/offene-posten/:id/zahlung', auth, async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const id = uuidParam(request.params)
     const parsed = OffenerPostenZahlungSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     try {

@@ -57,8 +57,11 @@ function mockDb(opts: {
 // Test-Fixtures
 // ---------------------------------------------------------------------------
 
+const USER_ID        = 'e0000000-0000-0000-0000-000000000001'
+const USER_UNBEKANNT = 'e0000000-0000-0000-0000-000000009999'
+
 const userRow = (overrides: Record<string, unknown> = {}) => ({
-  id:             'u-0001',
+  id:             USER_ID,
   mandantId:      TEST_MANDANT_ID,
   email:          'test@example.at',
   passwordHash:   '$2a$10$fakehash',
@@ -199,7 +202,7 @@ describe('PUT /api/users/:id', () => {
       updateReturning: [updated],
     }))
     const res = await srv.fastify.inject({
-      method:  'PUT', url: '/api/users/u-0001',
+      method:  'PUT', url: `/api/users/${USER_ID}`,
       headers: srv.authHeader(),
       payload: { name: 'Geänderter Name' },
     })
@@ -211,7 +214,7 @@ describe('PUT /api/users/:id', () => {
   it('404 wenn User nicht im Mandanten', async () => {
     const srv = await buildTestServer(mockDb({ selectQueue: [[]] }))
     const res = await srv.fastify.inject({
-      method:  'PUT', url: '/api/users/u-9999',
+      method:  'PUT', url: `/api/users/${USER_UNBEKANNT}`,
       headers: srv.authHeader(),
       payload: { name: 'Test' },
     })
@@ -233,7 +236,7 @@ describe('DELETE /api/users/:id', () => {
       updateReturning: [inaktiv],
     }))
     const res = await srv.fastify.inject({
-      method:  'DELETE', url: '/api/users/u-0001',
+      method:  'DELETE', url: `/api/users/${USER_ID}`,
       headers: srv.authHeader(),
     })
     expect(res.statusCode).toBe(200)
@@ -255,7 +258,7 @@ describe('DELETE /api/users/:id', () => {
   it('404 wenn User nicht gefunden', async () => {
     const srv = await buildTestServer(mockDb({ selectQueue: [[]] }))
     const res = await srv.fastify.inject({
-      method:  'DELETE', url: '/api/users/u-9999',
+      method:  'DELETE', url: `/api/users/${USER_UNBEKANNT}`,
       headers: srv.authHeader(),
     })
     expect(res.statusCode).toBe(404)
