@@ -1155,14 +1155,9 @@ export async function logBonierEreignis(
  * nur drucken, KEIN Lagerabzug — den hat aktualisiereStockDeltas beim Buchen
  * erledigt. „nichts zu bonieren" (Artikel ohne Station/Drucker) schlucken — wie im
  * Frontend.
- *
- * Die Flags setzt allein diese Funktion, und zwar in den Optionen: bonierBestellung
- * liest die gleichnamigen Input-Felder nicht. Früher stand ohneLagerabzug hier im
- * Input, und jeder Abruf zog die Menge ein zweites Mal ab — der Typ lässt die
- * Felder deshalb gar nicht erst zu.
  */
 async function bonierTolerant(
-  input: Omit<Parameters<typeof bonierBestellung>[0], 'ohneLagerabzug' | 'storno'>,
+  input: Parameters<typeof bonierBestellung>[0],
   db:    Db,
 ): Promise<void> {
   try {

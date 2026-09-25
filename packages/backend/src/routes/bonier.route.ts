@@ -22,9 +22,12 @@ export const bonierRoute: FastifyPluginAsync<BonierRouteOptions> = async (fastif
     }
 
     try {
-      const ergebnis = await bonierBestellung(parsed.data, opts.deps, {
-        ...(parsed.data.ohneLagerabzug && { ohneLagerabzug: true }),
-        ...(parsed.data.storno && { storno: true }),
+      // Die Flags kommen im Body, wirken aber nur als Optionen — im Input lässt
+      // bonierBestellung sie nicht zu (BonierBestellung).
+      const { ohneLagerabzug, storno, ...bestellung } = parsed.data
+      const ergebnis = await bonierBestellung(bestellung, opts.deps, {
+        ...(ohneLagerabzug && { ohneLagerabzug: true }),
+        ...(storno && { storno: true }),
       })
       // 207 sobald IRGENDEIN Ziel den Bon nicht bekommen hat — Stationen wie
       // Bonierdrucker. Bis v0.7.142 wurden nur die Stationen geprüft, ein toter
