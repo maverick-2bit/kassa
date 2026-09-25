@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { BrowserRouter as Router, Navigate, Route, Routes, useNavigate } from 'react-router-dom'
+import { istNeuererServiceWorker } from '@kassa/shared'
 import { LoginPage }         from './pages/LoginPage'
 import { KdsNachrichten }    from './components/KdsNachrichten'
 import { TischePage }        from './pages/TischePage'
@@ -18,14 +19,21 @@ export function App() {
   )
 }
 
-/** Neuer SW hat übernommen (= neue Version deployed) → Hinweis, KEIN Auto-Reload. */
+/**
+ * SW einer NEUEREN Version hat übernommen (= neue Version deployed, diese Seite
+ * ist noch alt) → Hinweis, KEIN Auto-Reload. Dass nach einem Update der SW der
+ * eigenen Version übernimmt, ist dagegen der Normalfall und kein Hinweis wert.
+ */
 function UpdateHinweis() {
   const [updateBereit, setUpdateBereit] = useState(false)
 
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return
-    const hatteController = !!navigator.serviceWorker.controller
-    const onChange = () => { if (hatteController) setUpdateBereit(true) }
+    const onChange = () => {
+      if (istNeuererServiceWorker(navigator.serviceWorker.controller?.scriptURL, __APP_VERSION__)) {
+        setUpdateBereit(true)
+      }
+    }
     navigator.serviceWorker.addEventListener('controllerchange', onChange)
     return () => navigator.serviceWorker.removeEventListener('controllerchange', onChange)
   }, [])
