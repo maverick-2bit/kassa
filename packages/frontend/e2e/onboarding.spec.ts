@@ -1,4 +1,14 @@
-import { test, expect, type APIRequestContext } from '@playwright/test'
+import { test, expect, type APIRequestContext, type Page } from '@playwright/test'
+
+/**
+ * Artikelkachel an Kasse/Tisch: Es gibt keinen „Alle"-Reiter mehr, der Start-
+ * Reiter hängt an Favoriten/Warengruppen der Kasse → Kachel über die Suche holen.
+ */
+async function artikelKachel(page: Page, name: string | RegExp) {
+  const text = typeof name === 'string' ? name : name.source.replace(/[\\^$]/g, '')
+  await page.getByPlaceholder(/Artikel suchen/).fill(text)
+  return page.getByRole('button', { name }).first()
+}
 
 const ADMIN_EMAIL    = 'e2e-onboarding@test.at'
 const ADMIN_PASSWORT = 'e2e-passwort-12345'
@@ -125,7 +135,7 @@ test('Kassier-Flow: Artikel in den Warenkorb, Barzahlung erzeugt signierten Bele
   await page.goto('/kasse')
 
   // Artikel-Kachel anklicken → Warenkorb
-  await page.getByRole('button', { name: 'Kaffee' }).first().click()
+  await (await artikelKachel(page, 'Kaffee')).click()
 
   // Voll-Barzahlung mit einem Klick (großer „Bar (…)"-Button, wie an der Tischbuchung)
   await page.getByRole('button', { name: /^Bar \(/ }).click()
@@ -192,7 +202,7 @@ test('Rabatt + Modifikator: Aufschlag und 10%-Rabatt fließen korrekt in den sig
   await page.goto('/kasse')
 
   // Cola-Kachel anklicken -> Modifikator-Dialog (Artikel hat eine Pflicht-Gruppe)
-  await page.getByRole('button', { name: /Cola/ }).first().click()
+  await (await artikelKachel(page, /Cola/)).click()
 
   // Pflicht-Option "Groß" (+0,50) waehlen, dann hinzufuegen
   await page.getByRole('button', { name: /Groß/ }).click()
@@ -361,7 +371,7 @@ test('Warengruppen-Verteilung: Auswahl in der Matrix filtert die Tabs im Kassen-
   // (Kategorien „Heißgetränke"/„Kaltgetränke" stammen aus den Tests oben).
   // Erst auf eine Artikelkachel warten → Raster (inkl. Tabs) sicher geladen.
   await page.goto('/kasse')
-  await expect(page.getByRole('button', { name: 'Kaffee' }).first()).toBeVisible({ timeout: 15_000 })
+  await expect((await artikelKachel(page, 'Kaffee'))).toBeVisible({ timeout: 15_000 })
   await expect(page.getByRole('button', { name: 'Heißgetränke' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Kaltgetränke' })).toBeVisible()
 
@@ -383,7 +393,7 @@ test('Warengruppen-Verteilung: Auswahl in der Matrix filtert die Tabs im Kassen-
 
   // Kassen-Raster zeigt nur noch die gewählte Gruppe
   await page.goto('/kasse')
-  await expect(page.getByRole('button', { name: 'Kaffee' }).first()).toBeVisible({ timeout: 15_000 })
+  await expect((await artikelKachel(page, 'Kaffee'))).toBeVisible({ timeout: 15_000 })
   await expect(page.getByRole('button', { name: 'Heißgetränke' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Kaltgetränke' })).toHaveCount(0)
 
@@ -430,8 +440,8 @@ test('Tisch-Split: Rechnung auf 2 Zahler teilen schließt den Tab mit 2 Bons', a
   await expect(page.getByText('Laufende Bestellung')).toBeVisible({ timeout: 10_000 })
 
   // ---- 2× Kaffee in den Korb (Doppelklick auf die Kachel erhöht die Menge) ----
-  await page.getByRole('button', { name: 'Kaffee' }).first().click()
-  await page.getByRole('button', { name: 'Kaffee' }).first().click()
+  await (await artikelKachel(page, 'Kaffee')).click()
+  await (await artikelKachel(page, 'Kaffee')).click()
 
   // Parken bucht auf den Tisch (Artikel ohne KDS/Bonierdrucker → „nichts zu
   // bonieren" wird geschluckt, gespeichert wird trotzdem).
@@ -495,7 +505,7 @@ test('Gutschein: einlösen deckt die Rechnung voll, signierter Beleg entsteht', 
   })
 
   await page.goto('/kasse')
-  await page.getByRole('button', { name: 'Kaffee' }).first().click()
+  await (await artikelKachel(page, 'Kaffee')).click()
 
   // Gutschein einlösen
   await page.getByRole('button', { name: '+ Gutschein einlösen' }).click()
@@ -795,7 +805,7 @@ test('Kartenzahlung: per Karte bezahlen erzeugt einen Beleg mit Kartenumsatz', a
   })
 
   await page.goto('/kasse')
-  await page.getByRole('button', { name: 'Kaffee' }).first().click()
+  await (await artikelKachel(page, 'Kaffee')).click()
   // Großer „Karte (…)"-Button: voller Betrag läuft auf Karte (ein Klick, kein ZVT aktiv)
   await page.getByRole('button', { name: /^Karte \(/ }).click()
   await expect(page.getByText(/Beleg #\d+ erstellt/)).toBeVisible({ timeout: 20_000 })
@@ -829,7 +839,7 @@ test('Gemischte Zahlung: Bar + Karte aufteilen erzeugt einen Beleg mit bar UND k
   })
 
   await page.goto('/kasse')
-  await page.getByRole('button', { name: 'Kaffee' }).first().click()
+  await (await artikelKachel(page, 'Kaffee')).click()
   await page.getByRole('button', { name: /Bar \+ Karte aufteilen/ }).click()
   // „Hälfte" von 2,50 € = 1,25 € bar → Rest 1,25 € auf Karte
   await page.getByRole('button', { name: 'Hälfte' }).click()
@@ -1080,7 +1090,7 @@ test('Kunde auf Beleg: gewählter Kunde erscheint auf dem Bon', async ({ page, r
   })
 
   await page.goto('/kasse')
-  await page.getByRole('button', { name: 'Kaffee' }).first().click()
+  await (await artikelKachel(page, 'Kaffee')).click()
 
   // Kunde suchen + aus dem Dropdown wählen
   await page.getByPlaceholder('Kunde suchen…').fill('E2E-Beleg-Kunde')
@@ -1176,7 +1186,7 @@ test('Modifikator-Lagerstand: bonierte Option zieht den Varianten-Bestand ab', a
   await expect(page.getByText('Laufende Bestellung')).toBeVisible({ timeout: 10_000 })
 
   // Artikel mit Pflicht-Option auf den Tab: Option wählen → hinzufügen
-  await page.getByRole('button', { name: new RegExp(artName) }).first().click()
+  await (await artikelKachel(page, new RegExp(artName))).click()
   await page.getByRole('button', { name: new RegExp(optName) }).click()
   await page.getByRole('button', { name: /Hinzufügen/ }).click()
 
@@ -1711,7 +1721,7 @@ test('Angebot über die Kasse: im Angebot-Modus aus dem Warenkorb erstellen', as
   // Erst auf Angebot-Modus umschalten (leert den Korb), DANN Artikel hinzufügen
   await page.getByRole('button', { name: 'Angebot', exact: true }).click()
   await expect(page.getByText('Angebotssumme')).toBeVisible()
-  await page.getByRole('button', { name: art }).first().click()
+  await (await artikelKachel(page, art)).click()
 
   // Angebot aus dem Warenkorb erstellen → Erfolgs-Modal
   await page.getByRole('button', { name: 'Angebot erstellen' }).click()
@@ -1764,7 +1774,7 @@ test('Tisch umbuchen: gebuchten Tisch auf einen anderen Tisch verschieben', asyn
   await page.getByPlaceholder(/Terrasse 3, Bar/).fill(tischAlt)
   await page.getByRole('button', { name: 'Tisch öffnen' }).click()
   await expect(page.getByRole('heading', { name: `Tisch ${tischAlt}` })).toBeVisible({ timeout: 10_000 })
-  await page.getByRole('button', { name: art }).first().click()
+  await (await artikelKachel(page, art)).click()
   await page.getByRole('button', { name: 'Parken' }).click()
 
   // Umbuchen: „Tisch wechseln" → neuen Tisch eingeben → „Umbuchen"
@@ -2114,11 +2124,11 @@ test('Happy Hour pro Artikel: Regel wirkt nur auf den gewählten Artikel', async
     page.waitForResponse(r => r.url().includes('/api/preisregeln') && r.request().method() === 'GET'),
     page.goto('/kasse'),
   ])
-  await page.getByRole('button', { name: cola }).first().click()
+  await (await artikelKachel(page, cola)).click()
   await expect(page.getByText(/Happy Hour.*20%/)).toBeVisible()
   await expect(page.getByText('4,00').first()).toBeVisible()
 
-  await page.getByRole('button', { name: fanta }).first().click()
+  await (await artikelKachel(page, fanta)).click()
   // Nur Cola hat einen Rabatt → genau ein Badge, Summe 9,00 (4 + 5), nicht 8,00
   await expect(page.getByText(/Happy Hour.*20%/)).toHaveCount(1)
   await expect(page.getByText('9,00').first()).toBeVisible()
@@ -2288,7 +2298,7 @@ test('Seriennummern: an der Kasse verkaufen druckt sie auf den Beleg und markier
   await page.goto('/kasse')
 
   // Serialisierten Artikel in den Warenkorb
-  await page.getByRole('button', { name: art }).first().click()
+  await (await artikelKachel(page, art)).click()
 
   // „Bar (…)" öffnet zuerst die Seriennummern-Wahl (statt direkt zu kassieren)
   await page.getByRole('button', { name: /^Bar \(/ }).click()
@@ -2443,7 +2453,7 @@ test('Digitaler Beleg (digital): Dialog zeigt Akzeptiert/Nicht-akzeptiert, Akzep
   }, { token, authJson: JSON.stringify({ user: login.user, mandant: login.mandant, kassen: login.kassen }), mandantId, kasseId })
 
   await page.goto('/kasse')
-  await page.getByRole('button', { name: new RegExp(`Digi-${uid}`) }).first().click()
+  await (await artikelKachel(page, new RegExp(`Digi-${uid}`))).click()
   // Im Digital-Modus öffnet die Bar-Zahlung direkt den Foto-Beleg-Dialog
   await page.getByRole('button', { name: /^Bar \(/ }).click()
 
@@ -2517,9 +2527,9 @@ test('Gänge-Steuerung: Gänge buchen, nacheinander abrufen, durchgestrichen + n
 
   // 1. Gang wählen → Vorspeise buchen; 2. Gang wählen → Hauptgang buchen
   await page.getByRole('button', { name: '1. Gang', exact: true }).click()
-  await page.getByRole('button', { name: vorspeise }).first().click()
+  await (await artikelKachel(page, vorspeise)).click()
   await page.getByRole('button', { name: '2. Gang', exact: true }).click()
-  await page.getByRole('button', { name: hauptgang }).first().click()
+  await (await artikelKachel(page, hauptgang)).click()
   await page.getByRole('button', { name: 'Parken' }).click()
 
   // Beide Gang-Gruppen sichtbar, „1. Gang abrufen" bereit, nichts durchgestrichen
