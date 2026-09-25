@@ -132,6 +132,8 @@ export {
   ModifikatorAktualisierenSchema,
   ModifikatorAuswahlSchema,
   ArtikelGruppenZuweisungSchema,
+  OptionenImportSchema,
+  OptionenImportEintragSchema,
 } from './schemas/modifikator.js'
 export type {
   Modifikator,
@@ -143,6 +145,9 @@ export type {
   ModifikatorAktualisieren,
   ModifikatorAuswahl,
   ArtikelGruppenZuweisung,
+  OptionenImport,
+  OptionenImportEintrag,
+  OptionenImportErgebnis,
 } from './schemas/modifikator.js'
 
 // Kategorie

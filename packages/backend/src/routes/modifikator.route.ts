@@ -6,6 +6,7 @@ import {
   ModifikatorErstellenSchema,
   ModifikatorAktualisierenSchema,
   ArtikelGruppenZuweisungSchema,
+  OptionenImportSchema,
 } from '@kassa/shared'
 import {
   listeGruppen,
@@ -18,6 +19,7 @@ import {
   loescheModifikator,
   getGruppenFuerArtikel,
   setzeGruppenFuerArtikel,
+  importiereOptionen,
   ModifikatorError,
 } from '../services/modifikator.service.js'
 import type { Db } from '../db/client.js'
@@ -81,6 +83,14 @@ export const modifikatorRoute: FastifyPluginAsync<ModifikatorRouteOptions> = asy
       if (err instanceof ModifikatorError) return reply.status(err.httpStatus).send({ fehler: err.message })
       throw err
     }
+  })
+
+  // Excel-Import: Gruppen + Optionen + Artikel-Zuordnung in einem Schritt
+  fastify.post('/modifikator-gruppen/import', auth, async (request, reply) => {
+    const parsed = OptionenImportSchema.safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
+    const ergebnis = await importiereOptionen(parsed.data, request.user.mandantId, db)
+    return reply.send(ergebnis)
   })
 
   // -------------------------------------------------------------------------

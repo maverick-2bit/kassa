@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray } from 'drizzle-orm'
+import { and, asc, eq, inArray, max } from 'drizzle-orm'
 import type {
   ModifikatorGruppe,
   ModifikatorGruppeErstellen,
@@ -6,11 +6,14 @@ import type {
   ModifikatorErstellen,
   ModifikatorAktualisieren,
   ArtikelGruppenZuweisung,
+  OptionenImport,
+  OptionenImportErgebnis,
 } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import {
   artikel,
   artikelModifikatorGruppen,
+  kategorien,
   modifikatorGruppen,
   modifikatoren,
 } from '../db/schema.js'
@@ -303,4 +306,114 @@ export async function setzeGruppenFuerArtikel(
   }
 
   return getGruppenFuerArtikel(artikelId, mandantId, db)
+}
+
+// ---------------------------------------------------------------------------
+// Excel-Import
+// ---------------------------------------------------------------------------
+
+const klein = (s: string) => s.trim().toLocaleLowerCase('de')
+
+/** Inhaltsschlüssel einer Gruppe: gleiche Gruppen werden nur einmal angelegt. */
+function gruppenSchluessel(g: {
+  name: string; typ: string; maxAuswahl: number | null
+  optionen: { name: string; aufschlagCent: number }[]
+}): string {
+  return JSON.stringify([
+    klein(g.name), g.typ, g.maxAuswahl,
+    g.optionen.map(o => [klein(o.name), o.aufschlagCent]),
+  ])
+}
+
+/**
+ * Legt Optionsgruppen samt Optionen an und hängt sie an die genannten Artikel.
+ *
+ * - Artikel werden über Bezeichnung (+ Warengruppe, falls angegeben) gefunden,
+ *   nur aktive Artikel des Mandanten. Nicht oder mehrdeutig gefundene Einträge
+ *   landen in `fehler` und blockieren die anderen nicht.
+ * - Inhaltsgleiche Gruppen (Name, Typ, Max, Optionen in Reihenfolge) werden
+ *   wiederverwendet — auch bereits vorhandene aktive Gruppen. Ein zweiter
+ *   Import derselben Datei legt daher nichts doppelt an.
+ * - Zuordnungen werden ergänzt, bestehende bleiben erhalten.
+ * Alles in einer Transaktion: ein unerwarteter Fehler hinterlässt keine halben Gruppen.
+ */
+export async function importiereOptionen(
+  input: OptionenImport,
+  mandantId: string,
+  db: Db,
+): Promise<OptionenImportErgebnis> {
+  return db.transaction(async (tx) => {
+    const artikelRows = await tx
+      .select({ id: artikel.id, bezeichnung: artikel.bezeichnung, kategorie: kategorien.name })
+      .from(artikel)
+      .leftJoin(kategorien, eq(artikel.kategorieId, kategorien.id))
+      .where(and(eq(artikel.mandantId, mandantId), eq(artikel.aktiv, true)))
+
+    const nachName = new Map<string, { id: string; kategorie: string }[]>()
+    for (const a of artikelRows) {
+      const k = klein(a.bezeichnung)
+      const liste = nachName.get(k) ?? []
+      liste.push({ id: a.id, kategorie: klein(a.kategorie ?? '') })
+      nachName.set(k, liste)
+    }
+
+    // Vorhandene aktive Gruppen nach Inhalt — für Wiederverwendung
+    const vorhandene = new Map<string, string>()
+    for (const g of await fetchGruppenMitModifikatoren(mandantId, tx as unknown as Db)) {
+      if (!g.aktiv) continue
+      const aktiveOptionen = g.modifikatoren.filter(m => m.aktiv)
+      vorhandene.set(gruppenSchluessel({ ...g, optionen: aktiveOptionen }), g.id)
+    }
+
+    const ergebnis: OptionenImportErgebnis = {
+      gruppenNeu: 0, gruppenWiederverwendet: 0, zuweisungenNeu: 0, fehler: [],
+    }
+    const wiederverwendet = new Set<string>()
+
+    for (const [index, e] of input.eintraege.entries()) {
+      const kandidaten = (nachName.get(klein(e.artikel)) ?? [])
+        .filter(a => !e.warengruppe || a.kategorie === klein(e.warengruppe))
+      const fehler = (text: string) =>
+        ergebnis.fehler.push({ index, artikel: e.artikel, warengruppe: e.warengruppe, fehler: text })
+      if (kandidaten.length === 0) {
+        fehler(e.warengruppe ? 'Artikel in dieser Warengruppe nicht gefunden' : 'Artikel nicht gefunden')
+        continue
+      }
+      if (kandidaten.length > 1) {
+        fehler(`Artikel ${kandidaten.length}× vorhanden — bitte Warengruppe angeben`)
+        continue
+      }
+      const artikelId = kandidaten[0]!.id
+
+      const schluessel = gruppenSchluessel({ ...e, name: e.gruppe })
+      let gruppeId = vorhandene.get(schluessel)
+      if (gruppeId) {
+        if (!wiederverwendet.has(gruppeId)) { wiederverwendet.add(gruppeId); ergebnis.gruppenWiederverwendet++ }
+      } else {
+        const [g] = await tx.insert(modifikatorGruppen)
+          .values({ mandantId, name: e.gruppe, typ: e.typ, maxAuswahl: e.maxAuswahl })
+          .returning({ id: modifikatorGruppen.id })
+        gruppeId = g!.id
+        await tx.insert(modifikatoren).values(e.optionen.map((o, i) => ({
+          mandantId, gruppeId: gruppeId!, name: o.name, aufschlagCent: o.aufschlagCent, reihenfolge: i,
+        })))
+        vorhandene.set(schluessel, gruppeId)
+        // In dieser Sitzung neu angelegt → spätere Einträge zählen nicht als „wiederverwendet"
+        wiederverwendet.add(gruppeId)
+        ergebnis.gruppenNeu++
+      }
+
+      const [letzte] = await tx
+        .select({ max: max(artikelModifikatorGruppen.reihenfolge) })
+        .from(artikelModifikatorGruppen)
+        .where(eq(artikelModifikatorGruppen.artikelId, artikelId))
+      const neu = await tx.insert(artikelModifikatorGruppen)
+        .values({ artikelId, gruppeId, reihenfolge: (letzte?.max ?? -1) + 1 })
+        .onConflictDoNothing()
+        .returning({ artikelId: artikelModifikatorGruppen.artikelId })
+      ergebnis.zuweisungenNeu += neu.length
+    }
+
+    return ergebnis
+  })
 }

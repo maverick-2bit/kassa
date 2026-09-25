@@ -54,6 +54,8 @@ import type {
   ArtikelInput,
   ArtikelUpdate,
   ArtikelGruppenZuweisung,
+  OptionenImport,
+  OptionenImportErgebnis,
   ArtikelBerichtResponse,
   WarengruppeBerichtResponse,
   StundenBerichtResponse,
@@ -1015,6 +1017,8 @@ export const modifikatorApi = {
     request<ModifikatorGruppe[]>('GET', `/api/artikel/${artikelId}/modifikator-gruppen`),
   setzeGruppenFuerArtikel: (artikelId: string, input: ArtikelGruppenZuweisung) =>
     request<ModifikatorGruppe[]>('PUT', `/api/artikel/${artikelId}/modifikator-gruppen`, input),
+  importiere: (input: OptionenImport) =>
+    request<OptionenImportErgebnis>('POST', '/api/modifikator-gruppen/import', input),
 }
 
 export type { Modifikator, ModifikatorGruppe }
