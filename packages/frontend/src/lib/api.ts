@@ -155,6 +155,7 @@ import type {
   MandantPinLaenge,
   MandantPinLaengeUpdate,
   PinInfo,
+  GastModus,
 } from '@kassa/shared'
 import { getToken, handleUnauthorized } from './auth.js'
 
@@ -645,8 +646,8 @@ export interface DruckerConfig {
   belegBasisUrl:     string | null
   /** Basis-URL der Gast-Bestell-App für den Tisch-QR (null = kein QR-Druck möglich) */
   gastBasisUrl:      string | null
-  /** Gast-Selbstbestellung mit Online-Zahlung (Stripe) freigeschaltet */
-  gastBestellungAktiv: boolean
+  /** Gast-Bestellung per Tisch-QR: 'aus' | 'tab' (ohne Zahlung → offener Tisch) | 'online' (Stripe) */
+  gastModus:         GastModus
 }
 
 export interface DruckerStatus {

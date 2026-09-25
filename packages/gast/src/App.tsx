@@ -21,10 +21,11 @@ interface GastKategorie {
 }
 
 interface Karte {
-  kasse:               { id: string; bezeichnung: string }
-  gastBestellungAktiv?: boolean
-  kategorien:          GastKategorie[]
-  artikel:             GastArtikel[]
+  kasse:      { id: string; bezeichnung: string }
+  /** tab = Bestellung ohne Zahlung (→ offener Tisch), online = mit Online-Zahlung */
+  gastModus:  'tab' | 'online'
+  kategorien: GastKategorie[]
+  artikel:    GastArtikel[]
 }
 
 interface KorbItem {
@@ -122,16 +123,21 @@ export default function App() {
     }
     fetch(`/api/gast/karte?kasseId=${encodeURIComponent(kasseId)}`)
       .then(r => {
+        if (r.status === 403) return null   // Gast-Bestellung ist für diese Kasse aus
         if (!r.ok) throw new Error(`HTTP ${r.status}`)
         return r.json() as Promise<Karte>
       })
       .then(data => {
-        setKarte(data)
-        setAktivKat(data.kategorien[0]?.id ?? null)
-        // Rückkehr von Stripe? Sonst normale Speisekarte.
+        if (data) {
+          setKarte(data)
+          setAktivKat(data.kategorien[0]?.id ?? null)
+        }
+        // Rückkehr von Stripe? Status/Beleg auch dann zeigen, wenn der Betrieb die
+        // Gast-Bestellung inzwischen ausgeschaltet hat — sonst die Speisekarte.
         if (bestellung && abbruch) setPhase('abbruch')
         else if (bestellung)       setPhase('status')
-        else                       setPhase('karte')
+        else if (data)             setPhase('karte')
+        else { setFehler(t.nichtAktiv); setPhase('fehler') }
       })
       .catch(e => {
         setFehler(e instanceof Error ? e.message : t.fehlerLaden)
@@ -178,7 +184,7 @@ export default function App() {
 
   const gesamtCent  = korb.reduce((s, k) => s + k.artikel.preisBruttoCent * k.menge, 0)
   const gesamtMenge = korb.reduce((s, k) => s + k.menge, 0)
-  const bezahlModus = karte?.gastBestellungAktiv ?? false
+  const bezahlModus = karte?.gastModus === 'online'
   const trinkgeldCent = bezahlModus ? parseEuroCent(trinkgeldInput) : 0
   const gesamtMitTrinkgeld = gesamtCent + trinkgeldCent
 
@@ -189,7 +195,7 @@ export default function App() {
 
   const positionenBody = () => korb.map(k => ({ artikelId: k.artikel.id, menge: k.menge }))
 
-  // Alt-Modus: unbezahlte Bestellung → Tab beim Personal
+  // Gast-Modus „tab": unbezahlte Bestellung → offener Tisch beim Personal
   async function bestellungUnbezahlt() {
     setSenden(true)
     try {
@@ -198,6 +204,8 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ kasseId, tischNummer: tischNummer || 'Unbekannt', positionen: positionenBody() }),
       })
+      // 403: der Betrieb hat den Gast-Modus inzwischen geändert
+      if (res.status === 403) { alert(t.nichtAktiv); return }
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       setPhase('danke')
     } catch {
@@ -216,6 +224,7 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ kasseId, tischNummer: tischNummer || 'Unbekannt', positionen: positionenBody(), trinkgeldCent }),
       })
+      if (res.status === 403) { alert(t.nichtAktiv); return }
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const { bestellungId, checkoutUrl } = await res.json() as { bestellungId: string; checkoutUrl: string | null }
       if (checkoutUrl) {
@@ -234,11 +243,13 @@ export default function App() {
   }
 
   function absenden() {
-    if (karte?.gastBestellungAktiv) void bestellungBezahlen()
+    if (bezahlModus) void bestellungBezahlen()
     else void bestellungUnbezahlt()
   }
 
   function neueBestellung() {
+    // Karte fehlt nur, wenn die Gast-Bestellung nach der Zahlung ausgeschaltet wurde
+    if (!karte) { setFehler(t.nichtAktiv); setPhase('fehler'); return }
     setKorb([])
     setTrinkgeldInput('')
     setBestellStatus(null)

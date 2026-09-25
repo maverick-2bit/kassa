@@ -46,6 +46,21 @@ export interface GastBestellInput {
 /** Obergrenze fürs Trinkgeld (Defensive; die Route validiert bereits) */
 const TRINKGELD_MAX_CENT = 100_000
 
+/**
+ * Gast-Modus der Kasse erzwingen — die Gast-Routen sind öffentlich, und die kasseId
+ * steht in jedem Tisch-QR. Liefert die Meldung für ein 403, sonst null.
+ *   weg 'tab'    → Bestellung ohne Zahlung (POST /gast/bestellung)
+ *   weg 'online' → Bestellung mit Online-Zahlung (POST /gast/checkout)
+ *   ohne weg     → Gast-Bestellung überhaupt aktiv (GET /gast/karte)
+ */
+export function gastModusSperre(gastModus: string, weg?: 'tab' | 'online'): string | null {
+  if (gastModus !== 'tab' && gastModus !== 'online') return 'Gast-Bestellung ist für diese Kasse nicht aktiv'
+  if (!weg || gastModus === weg) return null
+  return weg === 'tab'
+    ? 'Diese Kasse nimmt Gast-Bestellungen nur mit Online-Zahlung an'
+    : 'Online-Zahlung ist für diese Kasse nicht aktiv'
+}
+
 /** Externer Status: der interne Claim-Zustand 'finalisiere' erscheint als 'zahlung'. */
 function externerStatus(status: string): 'zahlung' | 'bezahlt' | 'abgebrochen' {
   if (status === 'bezahlt' || status === 'abgebrochen') return status
@@ -62,7 +77,8 @@ export async function erstelleGastBestellung(
 ): Promise<{ bestellungId: string; checkoutUrl: string | null }> {
   const [kasse] = await deps.db.select().from(kassen).where(eq(kassen.id, input.kasseId)).limit(1)
   if (!kasse) throw new GastBestellungError(404, 'Kasse nicht gefunden')
-  if (!kasse.gastBestellungAktiv) throw new GastBestellungError(403, 'Gast-Bestellung ist für diese Kasse nicht aktiv')
+  const sperre = gastModusSperre(kasse.gastModus, 'online')
+  if (sperre) throw new GastBestellungError(403, sperre)
 
   // Wirksame Stripe-Konfiguration des Mandanten auflösen (eigene Keys > Env-Fallback > null)
   const stripeKonfig = await ladeStripeKonfig(deps.db, kasse.mandantId, deps.config)
