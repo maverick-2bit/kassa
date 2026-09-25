@@ -708,7 +708,7 @@ export function KassePage() {
                 onChange={(e) => setTisch(e.target.value)}
                 placeholder="Schank"
                 title="Leer lassen für Direktverkauf an der Schank"
-                className="w-20! text-center"
+                className="w-20 text-center"
               />
             </label>
             <label className="inline-flex items-center gap-2 text-sm">
@@ -716,7 +716,7 @@ export function KassePage() {
               <Input
                 value={kellner}
                 onChange={(e) => setKellner(e.target.value)}
-                className="w-40!"
+                className="w-40"
               />
             </label>
           </div>

@@ -419,7 +419,7 @@ function PreisregelForm({
             onChange={(e) => setSammelPreis(e.target.value)}
             placeholder="z. B. 7,50"
             inputMode="decimal"
-            className="w-24 text-right font-mono"
+            className="w-28 text-right font-mono"
           />
           <button
             type="button"

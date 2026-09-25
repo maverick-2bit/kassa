@@ -1060,7 +1060,7 @@ function ModifikatorFormular({
           value={lsStr}
           onChange={(e) => setLsStr(e.target.value)}
           placeholder="Leer = unbegrenzt"
-          className="mt-1 w-36"
+          className="mt-1 w-44"
         />
         <p className="mt-0.5 text-xs text-ink-subtle">
           Leer = kein Countdown, eine Zahl aktiviert den Lagerstand für diese Variante
@@ -1124,7 +1124,7 @@ function BestandSetzenModal({
             onChange={(e) => setWertStr(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && submit()}
             placeholder="Leer = kein Countdown"
-            className="mt-1 w-36"
+            className="mt-1 w-52"
           />
           <p className="mt-0.5 text-xs text-ink-subtle">
             Leer = kein Countdown (unbegrenzt)
