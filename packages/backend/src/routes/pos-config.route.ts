@@ -33,6 +33,8 @@ const PosConfigBodySchema = z.object({
   kellnerModus:          KellnerModusEnum.optional(),
   kellnerTischwahl:      KellnerTischwahlEnum.optional(),
   kellnerFavoritenAktiv: z.boolean().optional(),
+  startFavoriten:        z.boolean().optional(),
+  startKategorieId:      z.string().uuid().nullable().optional(),
 })
 
 export const posConfigRoute: FastifyPluginAsync<PosConfigRouteOptions> = async (fastify, opts) => {
@@ -51,6 +53,8 @@ export const posConfigRoute: FastifyPluginAsync<PosConfigRouteOptions> = async (
         kellnerModus:          kassen.kellnerModus,
         kellnerTischwahl:      kassen.kellnerTischwahl,
         kellnerFavoritenAktiv: kassen.kellnerFavoritenAktiv,
+        startFavoriten:        kassen.startFavoriten,
+        startKategorieId:      kassen.startKategorieId,
       })
       .from(kassen)
       .where(and(eq(kassen.id, p.data.kasseId), eq(kassen.mandantId, request.user.mandantId)))
@@ -88,6 +92,8 @@ export const posConfigRoute: FastifyPluginAsync<PosConfigRouteOptions> = async (
       kellnerModus:          kasse.kellnerModus,
       kellnerTischwahl:      kasse.kellnerTischwahl,
       kellnerFavoritenAktiv: kasse.kellnerFavoritenAktiv,
+      startFavoriten:        kasse.startFavoriten,
+      startKategorieId:      kasse.startKategorieId,
     })
   })
 
@@ -122,6 +128,15 @@ export const posConfigRoute: FastifyPluginAsync<PosConfigRouteOptions> = async (
         return reply.status(404).send({ fehler: 'Warengruppe nicht gefunden' })
       }
     }
+    const startKategorieId = body.data.startKategorieId
+    if (startKategorieId) {
+      const [bekannt] = await opts.db
+        .select({ id: kategorien.id })
+        .from(kategorien)
+        .where(and(eq(kategorien.id, startKategorieId), eq(kategorien.mandantId, request.user.mandantId)))
+        .limit(1)
+      if (!bekannt) return reply.status(404).send({ fehler: 'Warengruppe nicht gefunden' })
+    }
     if (bonierdruckerIds !== undefined && bonierdruckerIds.length > 0) {
       const bekannt = await opts.db
         .select({ id: bonierdrucker.id })
@@ -142,6 +157,8 @@ export const posConfigRoute: FastifyPluginAsync<PosConfigRouteOptions> = async (
         ...(body.data.kellnerModus          !== undefined && { kellnerModus:          body.data.kellnerModus }),
         ...(body.data.kellnerTischwahl      !== undefined && { kellnerTischwahl:      body.data.kellnerTischwahl }),
         ...(body.data.kellnerFavoritenAktiv !== undefined && { kellnerFavoritenAktiv: body.data.kellnerFavoritenAktiv }),
+        ...(body.data.startFavoriten        !== undefined && { startFavoriten:        body.data.startFavoriten }),
+        ...(startKategorieId                !== undefined && { startKategorieId }),
       }
       if (Object.keys(kassenPatch).length > 0) {
         await tx.update(kassen)

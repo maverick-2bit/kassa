@@ -87,6 +87,8 @@ test('Artikelverwaltung: Import-Doppelte, Sortierung, Favoriten-Schalter', async
     kasseId:   login.kassen[0]!.id,
   })
 
+  const kasseId = login.kassen[0]!.id
+
   const artikelDerWg = async () =>
     ((await (await request.get('/api/artikel?nurAktive=false', { headers: authHeader })).json()) as ArtikelDto[])
       .filter(a => a.kategorieId === kat.id)
@@ -137,7 +139,21 @@ test('Artikelverwaltung: Import-Doppelte, Sortierung, Favoriten-Schalter', async
     await schalter.click()
     await expect(schalter).toHaveAttribute('aria-checked', 'true')
     expect((await artikelDerWg()).find(a => a.id === vorhanden.id)?.istFavorit).toBe(true)
+
+    // ---- Kasse: kein „Alle"-Reiter, Start-Reiter aus der POS-Konfiguration ----
+    expect((await request.put(`/api/kassen/${kasseId}/pos-config`, {
+      headers: authHeader, data: { startFavoriten: false, startKategorieId: kat.id },
+    })).status()).toBe(204)
+    await page.goto('/kasse')
+    const wgReiter = page.getByRole('button', { name: new RegExp(`^${katName}`) })
+    await expect(wgReiter).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByRole('button', { name: /^Alle/ })).toHaveCount(0)
+    await page.getByRole('button', { name: /^⭐ Favoriten/ }).click()
+    await expect(page.getByRole('button', { name: /^⭐ Favoriten/ })).toHaveAttribute('aria-pressed', 'true')
   } finally {
+    await request.put(`/api/kassen/${kasseId}/pos-config`, {
+      headers: authHeader, data: { startFavoriten: true, startKategorieId: null },
+    })
     for (const a of await artikelDerWg()) {
       await request.delete(`/api/artikel/${a.id}`, { headers: authHeader })
     }

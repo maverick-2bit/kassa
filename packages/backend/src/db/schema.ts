@@ -218,6 +218,10 @@ export const kassen = pgTable('kassen', {
   kellnerTischwahl:      varchar('kellner_tischwahl', { length: 20 }).notNull().default('manuell'),
   /** Kellner-App: Favoriten als ersten Reiter in der Artikelwahl anzeigen */
   kellnerFavoritenAktiv: boolean('kellner_favoriten_aktiv').notNull().default(false),
+  /** Artikelwahl (Kasse, Tisch, Kellner-App): zuerst die Favoriten zeigen */
+  startFavoriten:        boolean('start_favoriten').notNull().default(true),
+  /** Artikelwahl: Start-Warengruppe, wenn nicht die Favoriten (null = erste sichtbare) */
+  startKategorieId:      uuid('start_kategorie_id').references((): AnyPgColumn => kategorien.id, { onDelete: 'set null' }),
 
   // ZVT-Kartenterminal-Konfiguration (Hobex/Payroc & kompatible über Standard-ZVT-Protokoll)
   zvtIp:                 varchar('zvt_ip',   { length: 64 }),

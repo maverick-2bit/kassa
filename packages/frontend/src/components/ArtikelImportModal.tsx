@@ -513,8 +513,8 @@ function DuplikatStatus({
   zeile, vorhanden, dateiZeile, aktion, onAktion,
 }: {
   zeile:       number
-  vorhanden?:  { bezeichnung: string; preisBruttoCent: number; aktiv: boolean; artikelnummer: string | null }
-  dateiZeile?: number
+  vorhanden?:  { bezeichnung: string; preisBruttoCent: number; aktiv: boolean; artikelnummer: string | null } | undefined
+  dateiZeile?: number | undefined
   aktion:      DuplikatAktion
   onAktion:    (a: DuplikatAktion) => void
 }) {
