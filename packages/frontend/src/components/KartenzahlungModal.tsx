@@ -23,9 +23,10 @@ export function KartenzahlungModal({ open, kasseId, betragCent, onErfolg, onAbbr
   const [job,           setJob]           = useState<ZvtJob | null>(null)
   const [fehler,        setFehler]        = useState<string | null>(null)
   const [busy,          setBusy]          = useState(false)
-  const pollRef   = useRef<number | null>(null)
-  const jobIdRef  = useRef<string | null>(null)
-  const fertigRef = useRef(false)
+  const pollRef    = useRef<number | null>(null)
+  const jobIdRef   = useRef<string | null>(null)
+  const fertigRef  = useRef(false)
+  const abfrageRef = useRef(false)   // eine Job-Abfrage ist unterwegs
 
   // Beim Öffnen: Zustand zurücksetzen
   useEffect(() => {
@@ -70,6 +71,11 @@ export function KartenzahlungModal({ open, kasseId, betragCent, onErfolg, onAbbr
 
   function starteJobPolling(jobId: string) {
     const tick = async () => {
+      // Nie zwei Abfragen gleichzeitig: Antwortet das Backend langsamer als der
+      // 500-ms-Takt (WLAN, ausgelastete Kasse), sahen sonst zwei Abfragen „erfolg" —
+      // onErfolg lief doppelt, es entstanden zwei Belege für eine Zahlung.
+      if (abfrageRef.current || fertigRef.current) return
+      abfrageRef.current = true
       try {
         const j = await zvtApi.getJob(jobId)
         setJob(j)
@@ -91,6 +97,8 @@ export function KartenzahlungModal({ open, kasseId, betragCent, onErfolg, onAbbr
         setFehler(err instanceof Error ? err.message : String(err))
         stopJobPolling()
         setBusy(false)
+      } finally {
+        abfrageRef.current = false
       }
     }
     tick()
@@ -134,10 +142,13 @@ export function KartenzahlungModal({ open, kasseId, betragCent, onErfolg, onAbbr
   const ist_fehler = fehler !== null || (job && (job.status === 'fehler' || job.status === 'abgebrochen'))
   const ist_erfolg = job?.status === 'erfolg'
 
+  // Solange das Terminal arbeitet, bricht nur „Abbrechen" (oder ✕/Esc) ab —
+  // nicht ein Tipp daneben, etwa auf eine abgedunkelte Hinweis-Karte.
   return (
     <Modal
       open={open}
       onClose={schritt === 'trinkgeld' ? onAbbruch : ist_fehler ? handleSchliessen : handleAbbrechen}
+      closeOnBackdrop={!ist_aktiv}
       title="Kartenzahlung"
     >
       {/* ---- Schritt 1: Trinkgeld ---- */}
