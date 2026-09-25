@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify'
+import { z } from 'zod'
 import {
   TischplanBereichErstellenSchema,
   TischplanBereichAktualisierenSchema,
@@ -27,9 +28,10 @@ export const tischplanRoute: FastifyPluginAsync<TischplanRouteOptions> = async (
 
   // GET /api/tischplan/bereiche?kasseId=...
   fastify.get('/tischplan/bereiche', auth, async (request, reply) => {
-    const { kasseId } = request.query as { kasseId?: string }
-    if (!kasseId) return reply.status(400).send({ fehler: 'kasseId fehlt' })
-    const bereiche = await listeBereiche(kasseId, request.user.mandantId, opts.deps)
+    // Ungeprüft lief „kein-uuid" bis in Postgres (22P02 → 500)
+    const q = z.object({ kasseId: z.string().uuid() }).safeParse(request.query)
+    if (!q.success) return reply.status(400).send({ fehler: 'kasseId fehlt oder ist ungültig' })
+    const bereiche = await listeBereiche(q.data.kasseId, request.user.mandantId, opts.deps)
     return reply.send(bereiche)
   })
 
