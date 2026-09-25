@@ -13,15 +13,26 @@ import { SeeStatusBanner } from './SeeStatusBanner'
 import { FoStatusBanner } from './FoStatusBanner'
 import { ErrorBoundary } from './ErrorBoundary'
 
+/**
+ * Kassier-Ansichten (Kasse, offener Tisch) füllen ab lg genau den Bildschirm:
+ * Kopfleiste und Statuszeile stehen fest, dazwischen teilt die Seite die Höhe
+ * selbst auf — Artikel-Raster und Warenkorb scrollen in sich, die Seite nicht.
+ * So liegen Bar/Karte/Leeren/Bonieren im Bild, egal wie hoch die Kopfleiste
+ * gerade ist (voll ausgebautes Menü bricht zweizeilig um) und ob darüber ein
+ * Hinweis steht; nichts gleitet beim Scrollen unter die Kopfleiste.
+ */
+const KASSEN_ANSICHT = /^\/(kasse|tische\/[^/]+)\/?$/
+
 export function Layout() {
   const location = useLocation()
+  const kassenAnsicht = KASSEN_ANSICHT.test(location.pathname)
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className={kassenAnsicht ? 'min-h-screen flex flex-col lg:h-dvh lg:min-h-0' : 'min-h-screen flex flex-col'}>
       <OfflineStatusBar />
       <SeeStatusBanner />
       <FoStatusBanner />
       <Header />
-      <main className="flex-1">
+      <main className={kassenAnsicht ? 'flex-1 lg:min-h-0 lg:overflow-y-auto' : 'flex-1'}>
         {/* ErrorBoundary pro Route: ein Defekt in einer Seite legt nicht die
             ganze Kasse lahm; Header/Nav bleiben bedienbar. resetKey=Pfad sorgt
             dafuer, dass der Fehler beim Wegnavigieren verschwindet. */}
