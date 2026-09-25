@@ -6,7 +6,8 @@
 //   :8090 Caddy   -> letzter X-Forwarded-For-Eintrag
 //   :8091 Tunnel  -> CF-Connecting-IP
 //   Caddy (echte Caddyfile) -> eigene Adresse, gefaelschte Header wirkungslos
-// Dazu Cache-Header: index.html und sw.js nie ungefragt aus dem HTTP-Cache.
+// Dazu Cache-Header: index.html und sw.js nie ungefragt aus dem HTTP-Cache,
+// gehashte Schriften dagegen ein Jahr.
 // Exit-Code 1, sobald eine Pruefung fehlschlaegt. Bewusst reines ASCII (wird
 // auch per Zwischenablage auf Test-PCs uebertragen).
 const http = require('http')
@@ -54,6 +55,10 @@ function holeKopf(host, pfad) {
 // sonst kommen neue Versionen bzw. Service-Worker-Updates erst spaeter an.
 const NO_CACHE = (kopf, cc) =>
   /\bno-cache\b/.test(cc) && !/immutable|max-age=[1-9]/.test(cc) ? '' : 'soll no-cache'
+// Gehashte Assets (Vite: /assets/<name>-<hash>.<ext>) aendern sich nie -- faellt
+// eine Endung aus der Asset-Regel, landet sie in "location /" und damit bei no-cache.
+const IMMUTABLE = (kopf, cc) =>
+  /\bimmutable\b/.test(cc) && !/\bno-cache\b/.test(cc) ? '' : 'soll immutable'
 
 async function pruefeKopf(name, host, pfad, test) {
   const r = await holeKopf(host, pfad)
@@ -87,6 +92,8 @@ const ZIELE = [
   ['kundendisplay', '/api/x'], ['kundendisplay', '/sse/display'], ['abholmonitor', '/sse/abholung'],
   ['tickets', '/api/ticketshop/x'], ['einlass', '/api/einlass/x'],
 ]
+// Alle Apps -- jede hat mindestens einen Weg zum Backend
+const APPS = [...new Set(ZIELE.map(([app]) => app))]
 // Subdomain der echten Caddyfile -> App + ein Backend-Pfad
 const CADDY = {
   kasse: ['frontend', '/api/x'], kds: ['kds', '/api/x'], kundendisplay: ['kundendisplay', '/api/x'],
@@ -113,18 +120,21 @@ const CADDY = {
     await pruefe('Caddy ' + host + ' gefaelscht', { https: true, host: 'caddy', port: 443, servername: host,
       path: p, headers: Object.assign({ host: host }, GEFAELSCHT) }, eigen)
   }
-  // Cache-Header der Apps mit index.html-Regel bzw. Service Worker
-  for (const app of ['frontend', 'kellner', 'einlass', 'tickets']) {
+  // Cache-Header: index.html in allen Apps, sw.js in den Apps mit Service Worker
+  for (const app of APPS) {
     await pruefeKopf(app + ' / (index.html)', app, '/', NO_CACHE)
     await pruefeKopf(app + ' /tab/7 (Rueckfall auf index.html)', app, '/tab/7', NO_CACHE)
+    await pruefeKopf(app + ' /assets/probe.woff2', app, '/assets/probe.woff2', IMMUTABLE)
   }
   for (const app of ['frontend', 'kellner']) {
     await pruefeKopf(app + ' /sw.js', app, '/sw.js', NO_CACHE)
   }
-  // Das Frontend setzt no-cache per "expires": ein add_header in der location
+  // Frontend und KDS setzen no-cache per "expires": ein add_header in der location
   // wuerde die Security-Header des server-Blocks fuer index.html abschalten
   await pruefeKopf('frontend / behaelt CSP + X-Frame-Options', 'frontend', '/', kopf =>
     kopf['content-security-policy'] && kopf['x-frame-options'] === 'DENY' ? '' : 'Security-Header fehlen')
+  await pruefeKopf('kds / behaelt X-Frame-Options + nosniff', 'kds', '/', kopf =>
+    kopf['x-frame-options'] === 'DENY' && kopf['x-content-type-options'] === 'nosniff' ? '' : 'Security-Header fehlen')
   const ok = ergebnisse.filter(Boolean).length
   console.log('ERGEBNIS: ' + ok + '/' + ergebnisse.length + ' OK')
   process.exitCode = ok === ergebnisse.length ? 0 : 1

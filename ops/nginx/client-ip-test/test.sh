@@ -7,8 +7,9 @@
 # Docker-Netz vor einem Echo-Backend; client.js prüft je App und Eingang, welche
 # Client-IP beim Backend ankommt (direkt :80, Caddy :8090, Tunnel :8091) und
 # dass gefälschte X-Real-IP / X-Forwarded-For / CF-Connecting-IP nichts bewirken.
-# Nebenbei: Cache-Header für index.html und sw.js (Service-Worker-Updates) — dafür
-# liefern die nginx einen Mini-Webroot (webroot/) statt ihrer Standardseite.
+# Nebenbei: Cache-Header für index.html und sw.js (Service-Worker-Updates) sowie
+# gehashte Schriften — dafür liefern die nginx einen Mini-Webroot (webroot/) statt
+# ihrer Standardseite.
 #
 # Aufruf (Repo-Wurzel, Docker nötig):   sh ops/nginx/client-ip-test/test.sh
 # Läuft in CI als Job „nginx-client-ip". Räumt Container und Netz immer ab.
