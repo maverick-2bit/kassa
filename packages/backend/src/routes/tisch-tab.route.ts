@@ -80,6 +80,7 @@ export const tischTabRoute: FastifyPluginAsync<TischTabRouteOptions> = async (fa
           userName: request.user.name,
           ...(parsed.data.freigabePin ? { freigabePin: parsed.data.freigabePin } : {}),
           freigabe: freigabeKontextAus(request),
+          log:      request.log,
         },
       )
       // stornoBon nur mitschicken, wenn der Korrekturbon NICHT zugestellt wurde —
@@ -110,6 +111,7 @@ export const tischTabRoute: FastifyPluginAsync<TischTabRouteOptions> = async (fa
         ...(body.data.grund ? { grund: body.data.grund } : {}),
         ...(body.data.freigabePin ? { freigabePin: body.data.freigabePin } : {}),
         freigabe: freigabeKontextAus(request),
+        log:      request.log,
       })
       return reply.send(tab)
     } catch (err) {

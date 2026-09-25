@@ -6,11 +6,15 @@
  * mit „*** STORNO ***"-Markierung an den Bonierdrucker des Artikels;
  * POST /verwerfen → Status 'verworfen', Tab raus aus der offenen Liste,
  * Storno-Bon für alle Positionen, Lagerstand zurückgebucht.
+ *
+ * Scheitert der Korrekturbon, steht der Grund im stornoBon-Ergebnis — nur
+ * Fachmeldungen im Wortlaut. Ein DB-Fehler („Failed query: <SQL> params: …")
+ * kommt als 'Interner Serverfehler' an, die Einzelheiten stehen im Log.
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import net from 'node:net'
-import { desc, eq } from 'drizzle-orm'
+import { desc, eq, sql } from 'drizzle-orm'
 import type { FinanzOnlineClient } from '@kassa/rksv'
 import { buildTestServer, type TestServer } from '../helpers/testServer.js'
 import { erstelleIntegrationsDb, type IntegrationsDb } from './helpers/integrationsDb.js'
@@ -26,20 +30,41 @@ function mockFoClient(): FinanzOnlineClient {
   } as unknown as FinanzOnlineClient
 }
 
+/** Nichts davon darf je bei Kasse oder Kellner-App ankommen. */
+const INTERNE_DETAILS = /Failed query|params:|select |kasse_bonierdrucker_sichtbarkeit/i
+
+/** Log-Zeilen des Test-Servers (pino-JSON) — gefiltert auf den Korrekturbon-Eintrag. */
+function logSammler() {
+  const zeilen: string[] = []
+  return {
+    stream: { write: (zeile: string) => { zeilen.push(zeile) } },
+    leeren: () => { zeilen.length = 0 },
+    korrekturbonFehler: () => zeilen
+      .map(z => JSON.parse(z) as { msg?: string; reqId?: string; tabId?: string; err?: { message?: string } })
+      .filter(e => e.msg === 'Korrekturbon unerwartet fehlgeschlagen'),
+  }
+}
+
 describe('Tab-Storno + Verwerfen (Integration, echtes PostgreSQL)', () => {
   let idb: IntegrationsDb
   let srv: TestServer
   let token: string
   let kasseId: string
   let schnitzelId: string
+  let brotId: string
   let fakeDrucker: net.Server
   let empfangen: Buffer[] = []
+  const log = logSammler()
 
   const auth = () => ({ authorization: `Bearer ${token}` })
 
   beforeAll(async () => {
     idb = await erstelleIntegrationsDb()
-    srv = await buildTestServer(idb.db, { finanzOnlineClient: mockFoClient() })
+    srv = await buildTestServer(idb.db, {
+      finanzOnlineClient: mockFoClient(),
+      config:    { LOG_LEVEL: 'error' },
+      logStream: log.stream,
+    })
 
     const setupRes = await srv.fastify.inject({
       method: 'POST', url: '/api/setup',
@@ -81,6 +106,15 @@ describe('Tab-Storno + Verwerfen (Integration, echtes PostgreSQL)', () => {
       lagerstandMenge: 20,
     }).returning()
     schnitzelId = a!.id
+
+    // Ohne Station und Drucker — für ihn gibt es keinen Korrekturbon
+    const [b] = await idb.db.insert(artikel).values({
+      mandantId,
+      bezeichnung: 'Brotkorb',
+      preisBruttoCent: 350,
+      mwstSatz: 'ermaessigt1',
+    }).returning()
+    brotId = b!.id
   })
 
   afterAll(async () => {
@@ -209,6 +243,106 @@ describe('Tab-Storno + Verwerfen (Integration, echtes PostgreSQL)', () => {
     } finally {
       await idb.db.update(bonierdrucker).set({ port }).where(eq(bonierdrucker.port, 9))
     }
+  })
+
+  /**
+   * Echter DB-Fehler mitten im Korrekturbon: Die Bonierdrucker-Sichtbarkeit
+   * liest nur der Bonier-Service. Der Storno davor (Tab, Lager, Audit) läuft
+   * durch, erst der Korrekturbon scheitert mit „Failed query: <SQL> params: …".
+   */
+  async function mitKaputterBonierAbfrage<T>(anfrage: () => Promise<T>): Promise<T> {
+    await idb.db.execute(sql.raw('ALTER TABLE kasse_bonierdrucker_sichtbarkeit RENAME TO kbs_weg'))
+    try {
+      return await anfrage()
+    } finally {
+      await idb.db.execute(sql.raw('ALTER TABLE kbs_weg RENAME TO kasse_bonierdrucker_sichtbarkeit'))
+    }
+  }
+
+  it('DB-Fehler beim Korrekturbon: allgemeine Meldung statt SQL, Einzelheiten im Log', async () => {
+    const tabId = await erstelleTabMit(3, 'T6')
+    log.leeren()
+
+    const put = await mitKaputterBonierAbfrage(() => srv.fastify.inject({
+      method: 'PUT', url: `/api/tisch-tabs/${tabId}/positionen`, headers: auth(),
+      payload: { positionen: [{ artikelId: schnitzelId, bezeichnung: 'Schnitzel', preisBruttoCent: 1450, menge: 1 }] },
+    }))
+
+    // Der Storno geht durch, der Korrekturbon bleibt nachsendbar — nur ohne SQL
+    expect(put.statusCode).toBe(200)
+    expect(put.json().stornoBon).toEqual({
+      fehler:     [{ ziel: 'Küche/Schank', ip: '', fehler: 'Interner Serverfehler', istBackup: false }],
+      positionen: [{ artikelId: schnitzelId, menge: 2 }],
+    })
+    expect(put.body).not.toMatch(INTERNE_DETAILS)
+
+    // Die Diagnose geht nicht verloren: SQL-Fehler im Log, der Anfrage zugeordnet
+    const eintraege = log.korrekturbonFehler()
+    expect(eintraege).toHaveLength(1)
+    expect(eintraege[0]!.err?.message).toContain('kasse_bonierdrucker_sichtbarkeit')
+    expect(eintraege[0]!.tabId).toBe(tabId)
+    expect(eintraege[0]!.reqId).toBeDefined()
+  })
+
+  it('Verwerfen mit DB-Fehler beim Korrekturbon: Tab verworfen, Einzelheiten im Log', async () => {
+    const tabId = await erstelleTabMit(1, 'T7')
+    log.leeren()
+
+    const res = await mitKaputterBonierAbfrage(() => srv.fastify.inject({
+      method: 'POST', url: `/api/tisch-tabs/${tabId}/verwerfen`, headers: auth(), payload: {},
+    }))
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json().status).toBe('verworfen')
+    expect(res.body).not.toMatch(INTERNE_DETAILS)
+    const eintraege = log.korrekturbonFehler()
+    expect(eintraege).toHaveLength(1)
+    expect(eintraege[0]!.err?.message).toContain('kasse_bonierdrucker_sichtbarkeit')
+  })
+
+  it('Fachmeldung beim Korrekturbon bleibt im Wortlaut', async () => {
+    // Artikel inzwischen deaktiviert → BonierError 404. Die Meldung ist für die
+    // Oberfläche geschrieben und sagt dem Kellner, warum der Bon fehlt.
+    const tabId = await erstelleTabMit(2, 'T8')
+    log.leeren()
+
+    await idb.db.update(artikel).set({ aktiv: false }).where(eq(artikel.id, schnitzelId))
+    try {
+      const put = await srv.fastify.inject({
+        method: 'PUT', url: `/api/tisch-tabs/${tabId}/positionen`, headers: auth(),
+        payload: { positionen: [{ artikelId: schnitzelId, bezeichnung: 'Schnitzel', preisBruttoCent: 1450, menge: 1 }] },
+      })
+      expect(put.statusCode).toBe(200)
+      expect(put.json().stornoBon).toEqual({
+        fehler:     [{ ziel: 'Küche/Schank', ip: '', fehler: 'Mindestens ein Artikel ist nicht (mehr) verfügbar', istBackup: false }],
+        positionen: [{ artikelId: schnitzelId, menge: 1 }],
+      })
+      expect(log.korrekturbonFehler()).toHaveLength(0)
+    } finally {
+      await idb.db.update(artikel).set({ aktiv: true }).where(eq(artikel.id, schnitzelId))
+    }
+  })
+
+  it('Storno ohne Station und Drucker: nichts zu bonieren → kein stornoBon', async () => {
+    const tab = (await srv.fastify.inject({
+      method: 'POST', url: '/api/tisch-tabs', headers: auth(),
+      payload: { kasseId, tischNummer: 'T9', kellner: 'Kellner Karl' },
+    })).json()
+    const brot = (menge: number) => ({
+      positionen: [{ artikelId: brotId, bezeichnung: 'Brotkorb', preisBruttoCent: 350, menge }],
+    })
+    const anlegen = await srv.fastify.inject({
+      method: 'PUT', url: `/api/tisch-tabs/${tab.id}/positionen`, headers: auth(), payload: brot(2),
+    })
+    expect(anlegen.statusCode).toBe(200)
+    log.leeren()
+
+    const put = await srv.fastify.inject({
+      method: 'PUT', url: `/api/tisch-tabs/${tab.id}/positionen`, headers: auth(), payload: brot(1),
+    })
+    expect(put.statusCode).toBe(200)
+    expect(put.json().stornoBon).toBeUndefined()
+    expect(log.korrekturbonFehler()).toHaveLength(0)
   })
 
   it('Verwerfen eines bezahlten Tabs → 409', async () => {
