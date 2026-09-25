@@ -23,6 +23,7 @@ function makeResult(data: unknown[]) {
                 Promise.resolve(data).then(ok, err)
   r.limit   = () => r
   r.orderBy = () => r
+  r.for     = () => r
   return r
 }
 
@@ -44,12 +45,14 @@ interface DbQueues {
 
 function mockDb({ selects = [], inserts = [], updates = [] }: DbQueues = {}): Db {
   let si = 0, ii = 0, ui = 0
-  return {
-    select: () => ({
-      from: () => ({
-        where: () => makeResult(selects[si++] ?? []),
-      }),
+  // Selects innerhalb und außerhalb einer Transaktion teilen sich die Warteschlange
+  const select = () => ({
+    from: () => ({
+      where: () => makeResult(selects[si++] ?? []),
     }),
+  })
+  return {
+    select,
     insert: () => ({
       values: () => makeInsertResult(inserts[ii++] ?? []),
     }),
@@ -65,6 +68,7 @@ function mockDb({ selects = [], inserts = [], updates = [] }: DbQueues = {}): Db
       where: () => Promise.resolve([]),
     }),
     transaction: async (fn: (tx: Db) => Promise<unknown>) => fn({
+      select,
       update: () => ({ set: () => ({ where: () => Promise.resolve([]) }) }),
       delete: () => ({ where: () => Promise.resolve([]) }),
       insert: () => ({ values: () => Promise.resolve([]) }),
