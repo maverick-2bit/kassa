@@ -8,7 +8,7 @@ import { tischTabApi, bonierApi, druckerApi, oeffentlicherBelegApi, zvtApi, ApiE
 import { getAuth, gaengeAktiv as istGaengeAktiv, gaengeAnzahl } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
-import { KartenzahlungOverlay } from '../components/KartenzahlungOverlay'
+import { ABBRUCH_ZU_SPAET, KartenzahlungOverlay } from '../components/KartenzahlungOverlay'
 import { DruckproblemeBanner } from '../components/DruckproblemeBanner'
 
 /** Anzeige-Label eines Gangs (0 = Sofort). */
@@ -169,6 +169,8 @@ export function TabPage() {
 
   // Kartenzahlung: ZVT-Konfiguration der Kasse + Overlay-Zustand
   const [karteOffen, setKarteOffen] = useState(false)
+  /** „Abbrechen" kam zu spät, der Gast hatte schon bezahlt — steht im Bezahlt-Bildschirm */
+  const [zahlungsHinweis, setZahlungsHinweis] = useState<string | null>(null)
   const zvtCfg = useQuery({
     queryKey: ['zvt', tabQuery.data?.kasseId],
     queryFn:  () => zvtApi.getConfig(tabQuery.data!.kasseId),
@@ -206,6 +208,7 @@ export function TabPage() {
   /** Karte: bei aktivem ZVT ans Terminal (Overlay mit Trinkgeld), sonst direkt buchen. */
   const handleKarte = () => {
     setBonierFehler(null)
+    setZahlungsHinweis(null)
     if (zvtCfg.data?.zvtAktiv) { setKarteOffen(true); return }
     bezahleMutation.mutate({ art: 'karte' })
   }
@@ -574,7 +577,7 @@ export function TabPage() {
 
           <div className="flex gap-2">
             <button
-              onClick={() => { setBonierFehler(null); bezahleMutation.mutate({ art: 'bar' }) }}
+              onClick={() => { setBonierFehler(null); setZahlungsHinweis(null); bezahleMutation.mutate({ art: 'bar' }) }}
               disabled={bezahleMutation.isPending}
               className="flex-1 py-4 rounded-2xl bg-green-600 text-white font-black text-base active:scale-95 transition disabled:opacity-50"
             >
@@ -596,7 +599,10 @@ export function TabPage() {
         <KartenzahlungOverlay
           kasseId={tab.kasseId}
           betragCent={tab.summeGesamtCent}
-          onErfolg={(trinkgeldCent) => bezahleMutation.mutate({ art: 'karte', trinkgeldCent })}
+          onErfolg={(trinkgeldCent, nachAbbruch) => {
+            setZahlungsHinweis(nachAbbruch ? ABBRUCH_ZU_SPAET : null)
+            bezahleMutation.mutate({ art: 'karte', trinkgeldCent })
+          }}
           onAbbruch={() => { setKarteOffen(false); setBonierFehler('Kartenzahlung abgebrochen — kein Beleg erstellt') }}
         />
       )}
@@ -613,6 +619,11 @@ export function TabPage() {
               <p className="text-2xl font-black text-ink">Bezahlt</p>
               <p className="text-xl font-mono font-bold text-ink">{formatPreis(bezahltBeleg.betragCent)}</p>
             </div>
+            {zahlungsHinweis && (
+              <p className="rounded-2xl border border-amber-300 bg-amber-50 p-3 mb-4 text-sm font-bold text-amber-900 text-center">
+                ⚠ {zahlungsHinweis}
+              </p>
+            )}
             {(modus === 'digital' || modus === 'beides') && fb && (
               <div className="bg-white text-gray-900 rounded-2xl px-5 py-4 mb-4 shadow-lg">
                 <div className="text-center border-b border-dashed border-gray-300 pb-2">

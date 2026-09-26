@@ -35,7 +35,7 @@ import { Button } from '../components/ui/Button'
 import { Modal } from '../components/ui/Modal'
 import { Input } from '../components/ui/Input'
 import { BonAnzeige } from '../components/BonAnzeige'
-import { KartenzahlungModal } from '../components/KartenzahlungModal'
+import { ABBRUCH_ZU_SPAET, KartenzahlungModal } from '../components/KartenzahlungModal'
 import { RabattModal } from '../components/RabattModal'
 import { BarRueckgeldModal } from '../components/BarRueckgeldModal'
 import { BarKarteSplitModal } from '../components/BarKarteSplitModal'
@@ -93,6 +93,8 @@ export function TischTabPage() {
   const [fehler, setFehler]                         = useState<string | null>(null)
   const [zvtOffen, setZvtOffen]                     = useState(false)
   const [zvtBetrag, setZvtBetrag]                   = useState(0)
+  /** „Abbrechen" kam zu spät, der Gast hatte schon bezahlt — reist mit in die Tischübersicht */
+  const [zahlungsHinweis, setZahlungsHinweis]       = useState<string | null>(null)
   const [umbuchenOffen, setUmbuchenOffen]           = useState(false)
   const [umbenennenOffen, setUmbenennenOffen]       = useState(false)
   const [splitOffen, setSplitOffen]                 = useState(false)
@@ -364,7 +366,8 @@ export function TischTabPage() {
   })
 
   const bezahlenMutation = useMutation({
-    mutationFn: async ({ bar, karte, trinkgeldCent = 0, freigabePin }: { bar: number; karte: number; trinkgeldCent?: number; freigabePin?: string }) => {
+    // hinweis: nur für die Anzeige danach (Tischübersicht), geht nicht ans Backend
+    mutationFn: async ({ bar, karte, trinkgeldCent = 0, freigabePin }: { bar: number; karte: number; trinkgeldCent?: number; freigabePin?: string; hinweis?: string }) => {
       if (korb.length > 0) {
         // Sofort-Kassieren am Tisch: die noch nicht bonierten Korb-Positionen an
         // Küche/Schank (KDS + Bonierdrucker) senden — ident zum Parken, damit
@@ -405,7 +408,7 @@ export function TischTabPage() {
         ...(freigabePin && { freigabePin }),
       })
     },
-    onSuccess: async ({ belegId }) => {
+    onSuccess: async ({ belegId }, { hinweis }) => {
       setZahlartLaeuft(null)
       qc.invalidateQueries({ queryKey: ['tisch-tabs'] })
       qc.invalidateQueries({ queryKey: ['belege'] })
@@ -419,7 +422,7 @@ export function TischTabPage() {
         const beleg = await belegApi.list(identity.kasseId, 1).then(l => l[0] ?? null)
         if (beleg && beleg.id === belegId) { setLetzterBon(beleg); return }
       }
-      navigate('/tische')
+      navigate('/tische', hinweis ? { state: { zahlungsHinweis: hinweis } } : undefined)
     },
     onError: (err, variables) => {
       setZahlartLaeuft(null)
@@ -444,7 +447,7 @@ export function TischTabPage() {
   const [freigabeAnfrage, setFreigabeAnfrage] = useState<
     | { art: 'korrektur'; positionen: TabPosition[] }
     | { art: 'verwerfen' }
-    | { art: 'bezahlen'; zahlung: { bar: number; karte: number; trinkgeldCent?: number }; meldung: string }
+    | { art: 'bezahlen'; zahlung: { bar: number; karte: number; trinkgeldCent?: number; hinweis?: string }; meldung: string }
     | null
   >(null)
   const [freigabePinEingabe, setFreigabePinEingabe] = useState('')
@@ -606,6 +609,7 @@ export function TischTabPage() {
   /** Bar bezahlen: Gesamtbetrag sofort buchen. */
   const handleBarBezahlen = () => {
     setFehler(null)
+    setZahlungsHinweis(null)
     if (gesamt <= 0) return
     setZahlartLaeuft('bar')
     bezahlenMutation.mutate({ bar: gesamt, karte: 0 })
@@ -614,6 +618,7 @@ export function TischTabPage() {
   /** Karte bezahlen: bei aktivem ZVT direkt ans Terminal, sonst sofort buchen. */
   const handleKarteBezahlen = () => {
     setFehler(null)
+    setZahlungsHinweis(null)
     if (gesamt <= 0) return
     if (zvtCfg.data?.zvtAktiv) {
       setZvtBetrag(gesamt)
@@ -626,7 +631,7 @@ export function TischTabPage() {
 
   const handleBonGeschlossen = () => {
     setLetzterBon(null)
-    navigate('/tische')
+    navigate('/tische', zahlungsHinweis ? { state: { zahlungsHinweis } } : undefined)
   }
 
   // ---------------------------------------------------------------------------
@@ -930,6 +935,10 @@ export function TischTabPage() {
               <div className="rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">{fehler}</div>
             )}
 
+            {zahlungsHinweis && (
+              <div className="rounded border border-amber-300 bg-amber-50 p-2 text-xs font-medium text-amber-900">⚠ {zahlungsHinweis}</div>
+            )}
+
             {geparkt && (
               <div className="rounded border border-green-200 bg-green-50 p-2 text-center text-xs font-semibold text-green-800">
                 ✓ Geparkt — auf den Tisch gebucht
@@ -1198,10 +1207,11 @@ export function TischTabPage() {
         open={zvtOffen}
         kasseId={identity.kasseId}
         betragCent={zvtBetrag}
-        onErfolg={(_job, trinkgeldCent) => {
+        onErfolg={(_job, trinkgeldCent, nachAbbruch) => {
           setZvtOffen(false)
           setZahlartLaeuft('karte')
-          bezahlenMutation.mutate({ bar: 0, karte: gesamt, trinkgeldCent })
+          setZahlungsHinweis(nachAbbruch ? ABBRUCH_ZU_SPAET : null)
+          bezahlenMutation.mutate({ bar: 0, karte: gesamt, trinkgeldCent, ...(nachAbbruch && { hinweis: ABBRUCH_ZU_SPAET }) })
         }}
         onAbbruch={() => {
           setZvtOffen(false)

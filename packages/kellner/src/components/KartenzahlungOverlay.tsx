@@ -4,7 +4,8 @@
  *
  * Schritt 1 „Trinkgeld": Presets / eigener Betrag / Kein.
  * Schritt 2 „Zahlung":   ZVT-Job starten (Betrag + Trinkgeld), 500ms-Polling,
- *                        Abbrechen ruft die Job-Abbruch-API.
+ *                        Abbrechen ruft die Job-Abbruch-API und wertet ihre
+ *                        Antwort aus (hatte der Gast schon bezahlt: buchen).
  * onErfolg(trinkgeldCent) → der Aufrufer bucht den Tab (karteCent = Betrag,
  * trinkgeldCent separat — das Backend schlägt es der Kartensumme zu).
  */
@@ -17,11 +18,25 @@ import { formatPreis } from '../lib/format'
 interface Props {
   kasseId:    string
   betragCent: number
-  onErfolg:   (trinkgeldCent: number) => void
+  /**
+   * Das Terminal hat bezahlt — der Aufrufer bucht. `nachAbbruch`: Der Kellner
+   * hatte „Abbrechen" getippt, der Gast aber schon bezahlt (ABBRUCH_ZU_SPAET).
+   */
+  onErfolg:   (trinkgeldCent: number, nachAbbruch: boolean) => void
   onAbbruch:  () => void
 }
 
+/** Hinweis für den Kellner, wenn „Abbrechen" erst nach der Zahlung am Terminal ankam */
+export const ABBRUCH_ZU_SPAET =
+  'Abbruch kam zu spät — der Gast hatte am Terminal schon bezahlt, der Tisch wird trotzdem abgerechnet.'
+
 const TRINKGELD_PRESETS = [50, 100, 200, 500, 1000]
+
+/**
+ * Ausgang der Zahlung, sobald er feststeht: 'erfolg'/'abbruch' = der Aufrufer ist
+ * informiert; 'fehler' = die Meldung steht im Overlay, „Schließen" meldet den Abbruch.
+ */
+type Ausgang = 'erfolg' | 'abbruch' | 'fehler'
 
 export function KartenzahlungOverlay({ kasseId, betragCent, onErfolg, onAbbruch }: Props) {
   const [schritt,     setSchritt]     = useState<'trinkgeld' | 'zahlung'>('trinkgeld')
@@ -30,57 +45,107 @@ export function KartenzahlungOverlay({ kasseId, betragCent, onErfolg, onAbbruch 
   const [customAktiv, setCustomAktiv] = useState(false)
   const [job,         setJob]         = useState<ZvtJob | null>(null)
   const [fehler,      setFehler]      = useState<string | null>(null)
+  const [bricheAb,    setBricheAb]    = useState(false)   // „Abbrechen" getippt, Antwort steht aus
   const pollRef    = useRef<number | null>(null)
   const jobIdRef   = useRef<string | null>(null)
-  const fertigRef  = useRef(false)
-  const abfrageRef = useRef(false)   // eine Job-Abfrage ist unterwegs
+  const ausgangRef = useRef<Ausgang | null>(null)
+  const abbruchRef = useRef(false)                 // der Kellner hat abgebrochen
+  const abfrageRef = useRef<string | null>(null)   // Job, dessen Abfrage gerade unterwegs ist
 
   // ZVT starten sobald Schritt = 'zahlung'
   useEffect(() => {
     if (schritt !== 'zahlung') return
-    fertigRef.current = false
+    jobIdRef.current   = null
+    ausgangRef.current = null
+    abbruchRef.current = false
     setFehler(null)
     setJob(null)
+    setBricheAb(false)
 
     let aktiv = true
     zvtApi.starteZahlung({ kasseId, betragCent: betragCent + trinkgeld })
       .then(({ jobId }) => {
-        if (!aktiv) return
+        if (!aktiv) {
+          // Overlay ist schon weg — das Terminal nicht unbeobachtet kassieren lassen
+          zvtApi.abbrechen(jobId).catch(() => {})
+          return
+        }
         jobIdRef.current = jobId
-        starteJobPolling(jobId)
+        // „Abbrechen" kam, bevor die jobId da war: jetzt nachholen
+        if (abbruchRef.current) void brecheJobAb(jobId)
+        else starteJobPolling(jobId)
       })
-      .catch((err) => { if (aktiv) setFehler(err instanceof Error ? err.message : String(err)) })
+      .catch((err) => {
+        if (!aktiv) return
+        if (abbruchRef.current) {
+          // Kein Job angelegt — es gibt nichts abzubrechen
+          ausgangRef.current = 'abbruch'
+          onAbbruch()
+          return
+        }
+        ausgangRef.current = 'fehler'
+        setFehler(err instanceof Error ? err.message : String(err))
+      })
 
-    return () => { aktiv = false; stopJobPolling() }
+    return () => {
+      aktiv = false
+      stopJobPolling()
+      // Overlay verschwindet, während das Terminal noch kassieren könnte (Zurück-
+      // Geste, Seite verlassen): Job abbrechen, sonst zahlt der Gast und niemand bucht
+      const jobId = jobIdRef.current
+      if (jobId && ausgangRef.current === null && !abbruchRef.current) {
+        zvtApi.abbrechen(jobId).catch(() => {})
+      }
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schritt])
+
+  /**
+   * Stand des Terminal-Jobs übernehmen — aus der Abfrage ebenso wie aus der
+   * Antwort auf „Abbrechen", genau einmal je Zahlung. Steht der Job auf „erfolg",
+   * ist die Karte belastet und der Tisch MUSS abgerechnet werden, auch wenn der
+   * Kellner gerade abbrechen wollte. true = der Ausgang steht fest.
+   */
+  function uebernimmJob(j: ZvtJob): boolean {
+    // Antwort zu einer früheren Zahlung oder nach feststehendem Ausgang: verwerfen
+    if (j.id !== jobIdRef.current || ausgangRef.current !== null) return true
+    setJob(j)
+    if (j.status === 'erfolg') {
+      ausgangRef.current = 'erfolg'
+      stopJobPolling()
+      onErfolg(trinkgeld, abbruchRef.current)
+      return true
+    }
+    if (j.status === 'abgebrochen' || j.status === 'fehler') {
+      stopJobPolling()
+      if (abbruchRef.current) {
+        ausgangRef.current = 'abbruch'
+        onAbbruch()
+      } else {
+        ausgangRef.current = 'fehler'
+        setFehler(j.fehler ?? (j.status === 'abgebrochen' ? 'Abgebrochen' : 'Fehler'))
+      }
+      return true
+    }
+    return false
+  }
 
   function starteJobPolling(jobId: string) {
     const tick = async () => {
       // Nie zwei Abfragen gleichzeitig: Antwortet das Backend langsamer als der
-      // 500-ms-Takt (WLAN), sahen sonst zwei Abfragen „erfolg" — onErfolg lief
-      // doppelt, der zweite Bezahl-Aufruf scheiterte nach erfolgreicher Zahlung.
-      if (abfrageRef.current || fertigRef.current) return
-      abfrageRef.current = true
+      // 500-ms-Takt (WLAN), stapelten sie sich sonst — und zwei „erfolg" ergaben
+      // früher einen zweiten Bezahl-Aufruf nach erfolgreicher Zahlung.
+      if (abfrageRef.current === jobId || ausgangRef.current !== null || abbruchRef.current) return
+      abfrageRef.current = jobId
       try {
-        const j = await zvtApi.getJob(jobId)
-        setJob(j)
-        if (j.status === 'erfolg') {
-          fertigRef.current = true
-          stopJobPolling()
-          onErfolg(trinkgeld)
-          return
-        }
-        if (j.status === 'abgebrochen' || j.status === 'fehler') {
-          fertigRef.current = true
-          stopJobPolling()
-          setFehler(j.fehler ?? (j.status === 'abgebrochen' ? 'Abgebrochen' : 'Fehler'))
-        }
+        uebernimmJob(await zvtApi.getJob(jobId))
       } catch (err) {
-        setFehler(err instanceof Error ? err.message : String(err))
+        // Stand unbekannt — kein Abbruch: „Schließen" bricht den Job ab und sieht nach
+        if (jobId !== jobIdRef.current || ausgangRef.current !== null || abbruchRef.current) return
         stopJobPolling()
+        setFehler(err instanceof Error ? err.message : String(err))
       } finally {
-        abfrageRef.current = false
+        if (abfrageRef.current === jobId) abfrageRef.current = null
       }
     }
     tick()
@@ -91,13 +156,54 @@ export function KartenzahlungOverlay({ kasseId, betragCent, onErfolg, onAbbruch 
     if (pollRef.current !== null) { clearInterval(pollRef.current); pollRef.current = null }
   }
 
-  async function handleAbbrechen() {
-    const jobId = jobIdRef.current
-    if (jobId && !fertigRef.current) {
-      try { await zvtApi.abbrechen(jobId) } catch { /* egal */ }
-    }
+  /** „Abbrechen", solange die Zahlung läuft oder startet */
+  function handleAbbrechen() {
+    if (ausgangRef.current !== null || abbruchRef.current) return
+    abbruchRef.current = true
+    setBricheAb(true)
     stopJobPolling()
+    // Ohne jobId läuft der Start noch — er holt den Abbruch nach
+    const jobId = jobIdRef.current
+    if (jobId) void brecheJobAb(jobId)
+  }
+
+  /**
+   * Job abbrechen und die Antwort auswerten: Hat der Gast schon bezahlt, lässt das
+   * Backend den Job auf „erfolg" — dann wird abgerechnet, nicht verworfen. Eine
+   * Abfrage, die noch unterwegs ist, kann dasselbe melden; es zählt die erste.
+   */
+  async function brecheJobAb(jobId: string) {
+    let j: ZvtJob | null = null
+    try { j = await zvtApi.abbrechen(jobId) } catch { /* unten nachfragen */ }
+    if (!j) {
+      try { j = await zvtApi.getJob(jobId) } catch { /* Stand unbekannt */ }
+    }
+    if (j && uebernimmJob(j)) return
+    if (jobId !== jobIdRef.current || ausgangRef.current !== null) return
+    if (j) {
+      // Das Terminal arbeitet noch, der Abbruch kam nicht an: weiter beobachten —
+      // erneut abbrechen geht jederzeit
+      abbruchRef.current = false
+      setBricheAb(false)
+      starteJobPolling(jobId)
+      return
+    }
+    // Weder Abbruch noch Stand zu bekommen (Backend weg): als Abbruch melden wie
+    // bisher — abrechnen ginge ohne Backend ohnehin nicht
+    ausgangRef.current = 'abbruch'
     onAbbruch()
+  }
+
+  /** „Schließen" unter einer Fehlermeldung */
+  function handleSchliessen() {
+    // Terminal hat abgelehnt oder der Start scheiterte: nichts mehr abzubrechen
+    if (ausgangRef.current === 'fehler') {
+      ausgangRef.current = 'abbruch'
+      onAbbruch()
+      return
+    }
+    // Sonst ist der Stand offen (Abfrage gescheitert): erst abbrechen und nachsehen
+    handleAbbrechen()
   }
 
   function handleTrinkgeldWeiter() {
@@ -113,6 +219,7 @@ export function KartenzahlungOverlay({ kasseId, betragCent, onErfolg, onAbbruch 
     : trinkgeld
   const istAktiv  = job && (job.status === 'verbinde' || job.status === 'autorisiere')
   const istFehler = fehler !== null
+  const istErfolg = job?.status === 'erfolg'
 
   return (
     <div className="fixed inset-0 z-50 bg-surface flex flex-col p-5 max-w-lg mx-auto overflow-y-auto">
@@ -214,7 +321,9 @@ export function KartenzahlungOverlay({ kasseId, betragCent, onErfolg, onAbbruch 
                 <p className="text-sm font-bold text-brand-800">
                   {job?.status === 'verbinde' ? 'Verbinde mit Terminal…' : 'Zahlung am Terminal'}
                 </p>
-                <p className="text-xs text-brand-600 mt-0.5">{job?.meldung ?? 'Bitte warten…'}</p>
+                <p className="text-xs text-brand-600 mt-0.5">
+                  {bricheAb ? 'Breche ab — frage beim Terminal nach …' : (job?.meldung ?? 'Bitte warten…')}
+                </p>
               </div>
             </div>
           )}
@@ -222,7 +331,15 @@ export function KartenzahlungOverlay({ kasseId, betragCent, onErfolg, onAbbruch 
           {!job && !istFehler && (
             <div className="rounded-2xl border border-line bg-panel p-5 flex items-center gap-3">
               <div className="w-6 h-6 border-4 border-brand-500 border-t-transparent rounded-full animate-spin shrink-0" />
-              <p className="text-sm font-bold text-ink-muted">Starte Zahlung…</p>
+              <p className="text-sm font-bold text-ink-muted">{bricheAb ? 'Breche ab …' : 'Starte Zahlung…'}</p>
+            </div>
+          )}
+
+          {/* Terminal hat bezahlt — der Tisch wird gerade abgerechnet */}
+          {istErfolg && (
+            <div className="rounded-2xl border border-green-300 bg-green-50 p-5 space-y-1">
+              <p className="text-sm font-bold text-green-800">✓ Zahlung erfolgreich — wird gebucht …</p>
+              {bricheAb && <p className="text-sm text-green-800">{ABBRUCH_ZU_SPAET}</p>}
             </div>
           )}
 
@@ -234,15 +351,16 @@ export function KartenzahlungOverlay({ kasseId, betragCent, onErfolg, onAbbruch 
 
           {istFehler ? (
             <button
-              onClick={handleAbbrechen}
+              onClick={handleSchliessen}
               className="w-full py-4 rounded-2xl border border-line-strong bg-panel text-ink font-black text-lg active:scale-95 transition"
             >
               Schließen
             </button>
-          ) : (
+          ) : !istErfolg && (
             <button
               onClick={handleAbbrechen}
-              className="w-full py-4 rounded-2xl border border-line-strong bg-panel text-ink font-black text-lg active:scale-95 transition"
+              disabled={bricheAb}
+              className="w-full py-4 rounded-2xl border border-line-strong bg-panel text-ink font-black text-lg active:scale-95 transition disabled:opacity-50"
             >
               Abbrechen
             </button>
