@@ -218,9 +218,9 @@ function AngebotDetailModal({ angebot, onClose, onUpdate, updating }: AngebotDet
           </p>
           <Button
             variant="secondary"
+            size="sm"
             onClick={() => serialPositionen.length > 0 ? setSerialModalOffen(true) : lieferscheinMutation.mutate(undefined)}
             loading={lieferscheinMutation.isPending}
-            className="text-xs px-2 py-1 h-auto"
           >
             → In Lieferschein übernehmen
           </Button>
