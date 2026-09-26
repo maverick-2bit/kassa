@@ -7,6 +7,11 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   children: ReactNode
 }
 
+/**
+ * Das Aussehen steht in index.css (`.btn`, `.btn-md`, `.btn-primary` …) in der
+ * components-Ebene: Utility-Klassen aus `className` gewinnen dort immer gegen
+ * die Vorgabe, gleich ob Schriftgröße, Polster oder Farbe.
+ */
 export function Button({
   variant = 'primary',
   size    = 'md',
@@ -16,27 +21,22 @@ export function Button({
   children,
   ...rest
 }: ButtonProps) {
-  const base =
-    'inline-flex items-center justify-center gap-2 rounded-md font-semibold shadow-sm transition ' +
-    'focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500 ' +
-    'disabled:opacity-60 disabled:cursor-not-allowed'
-
   const sizes = {
-    sm: 'px-3 py-1.5 text-xs',
-    md: 'px-4 py-2.5 text-sm',
+    sm: 'btn-sm',
+    md: 'btn-md',
   }
 
   const variants = {
-    primary:   'bg-brand-500 text-white hover:bg-brand-600',
-    secondary: 'bg-panel text-ink border border-line-strong hover:bg-panel-2',
-    danger:    'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500',
+    primary:   'btn-primary',
+    secondary: 'btn-secondary',
+    danger:    'btn-danger',
   }
 
   return (
     <button
       type="button"
       disabled={disabled || loading}
-      className={`${base} ${sizes[size]} ${variants[variant]} ${className}`}
+      className={`btn ${sizes[size]} ${variants[variant]} ${className}`}
       {...rest}
     >
       {loading && (

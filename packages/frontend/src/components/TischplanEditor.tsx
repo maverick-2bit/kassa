@@ -157,9 +157,10 @@ export function TischplanEditor() {
             className="w-36 h-8 text-xs"
           />
           <Button
+            size="sm"
             onClick={() => neuerBereichName.trim() && erstelleBereichMut.mutate(neuerBereichName.trim())}
             loading={erstelleBereichMut.isPending}
-            className="h-8 px-3 text-xs"
+            className="h-8"
           >
             +
           </Button>

@@ -96,6 +96,29 @@
   color-scheme: dark;
 }
 
+/* ---------------------------------------------------------------------------
+ * Knopf (components/ui/Button.tsx). Steht in der components-Ebene, damit jede
+ * Utility-Klasse aus dem className des Aufrufers (text-xs, px-2, bg-red-600 …)
+ * die Vorgabe überschreibt — die utilities-Ebene gewinnt immer. Als Utilities
+ * nebeneinander entschiede die Reihenfolge im erzeugten CSS: `.text-base` steht
+ * vor `.text-sm`, `.px-2` vor `.px-4`, `.bg-amber-500` vor `.bg-brand-500`, die
+ * Klasse des Aufrufers blieb dann wirkungslos.
+ * ------------------------------------------------------------------------- */
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-md font-semibold shadow-sm transition
+      focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500
+      disabled:opacity-60 disabled:cursor-not-allowed;
+  }
+  .btn-sm { @apply px-3 py-1.5 text-xs; }
+  .btn-md { @apply px-4 py-2.5 text-sm; }
+
+  /* Varianten nach .btn: danger ersetzt dessen Fokusring-Farbe (gleiche Spezifität, spätere Regel). */
+  .btn-primary   { @apply bg-brand-500 text-white hover:bg-brand-600; }
+  .btn-secondary { @apply bg-panel text-ink border border-line-strong hover:bg-panel-2; }
+  .btn-danger    { @apply bg-red-600 text-white hover:bg-red-700 focus:ring-red-500; }
+}
+
 @keyframes slide-in {
   from { opacity: 0; transform: translateX(1rem); }
   to   { opacity: 1; transform: translateX(0); }

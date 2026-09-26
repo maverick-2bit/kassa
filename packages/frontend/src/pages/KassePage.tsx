@@ -1000,7 +1000,7 @@ export function KassePage() {
                         onClick={() => zahleBar(ausgabeWaehlen)}
                         loading={belegMutation.isPending}
                         disabled={korb.length === 0}
-                        className="flex-1 py-3 text-base"
+                        className="flex-1 py-3"
                       >
                         Bar ({formatPreis(summeNachGutscheinCent)})
                       </Button>
@@ -1008,7 +1008,7 @@ export function KassePage() {
                         onClick={() => zahleKarte(ausgabeWaehlen)}
                         loading={belegMutation.isPending}
                         disabled={korb.length === 0}
-                        className="flex-1 py-3 text-base"
+                        className="flex-1 py-3"
                       >
                         Karte ({formatPreis(summeNachGutscheinCent)})
                       </Button>
@@ -1131,7 +1131,7 @@ export function KassePage() {
                   <Button
                     onClick={handleAngebotErstellen}
                     loading={angebotMutation.isPending}
-                    className="flex-1 bg-amber-500 hover:bg-amber-600 focus:ring-amber-400"
+                    className="flex-1"
                     disabled={korb.length === 0}
                   >
                     Angebot erstellen
