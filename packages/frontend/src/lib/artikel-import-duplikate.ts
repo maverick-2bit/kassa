@@ -5,12 +5,15 @@
  * schon gibt — im Artikelstamm (auch deaktiviert) oder weiter oben in derselben
  * Datei. Gleich = gleiche Bezeichnung (ohne Groß-/Kleinschreibung und
  * Mehrfach-Leerzeichen) in derselben Warengruppe; „keine Warengruppe" zählt als
- * eigene Gruppe.
+ * eigene Gruppe. „Dieselbe Warengruppe" heißt dieselbe GRUPPE: gleichnamige Gruppen unter
+ * verschiedenen Elterngruppen („Atriumbar › Alkoholfrei" / „Kellner Getränke › Alkoholfrei")
+ * sind verschieden — die Excel-Zelle darf dafür den Pfad „Atriumbar/Alkoholfrei" enthalten.
  *
  * Das Import-Modal fragt je Treffer, was passieren soll (Standard: überspringen).
  */
 
 import type { Artikel, ArtikelUpdate, ArtikelInput, Kategorie } from '@kassa/shared'
+import { loeseKategorieAuf } from './kategorie-baum'
 
 export type DuplikatAktion = 'ueberspringen' | 'aktualisieren' | 'neu'
 
@@ -29,21 +32,28 @@ export interface Duplikat {
 }
 
 const norm = (s: string) => s.trim().replace(/\s+/g, ' ').toLocaleLowerCase('de')
-const schluessel = (bezeichnung: string, kategorie: string) => `${norm(kategorie)}\u0000${norm(bezeichnung)}`
+const schluessel = (bezeichnung: string, kategorieSchluessel: string) => `${kategorieSchluessel}\u0000${norm(bezeichnung)}`
 
 export function findeDuplikate(
   zeilen:     readonly ImportZeileKurz[],
   vorhandene: readonly Artikel[],
   kategorien: readonly Kategorie[],
 ): Map<number, Duplikat> {
-  const katName = new Map(kategorien.map(k => [k.id, k.name]))
+  const bekannt = new Set(kategorien.map(k => k.id))
+
+  /** Identität der Warengruppe einer Import-Zeile: die aufgelöste Gruppe, sonst der eingetippte Text (neue/mehrdeutige Gruppe). */
+  const zeilenKategorie = (text: string): string => {
+    const t = text.trim()
+    if (t === '') return ''
+    const r = loeseKategorieAuf(kategorien, t)
+    return r.art === 'gefunden' ? `id:${r.kategorie.id}` : `${r.art}:${norm(t)}`
+  }
 
   const bestand = new Map<string, Artikel>()
   for (const a of vorhandene) {
-    // Artikel einer unbekannten Warengruppe lassen sich keinem Namen zuordnen
-    const kat = a.kategorieId ? katName.get(a.kategorieId) : ''
-    if (kat === undefined) continue
-    const k = schluessel(a.bezeichnung, kat)
+    // Artikel einer unbekannten Warengruppe lassen sich keiner Gruppe zuordnen
+    if (a.kategorieId && !bekannt.has(a.kategorieId)) continue
+    const k = schluessel(a.bezeichnung, a.kategorieId ? `id:${a.kategorieId}` : '')
     const bisher = bestand.get(k)
     if (!bisher || (!bisher.aktiv && a.aktiv)) bestand.set(k, a)
   }
@@ -51,7 +61,7 @@ export function findeDuplikate(
   const ergebnis   = new Map<number, Duplikat>()
   const ersteZeile = new Map<string, number>()
   for (const z of zeilen) {
-    const k = schluessel(z.bezeichnung, z.kategorie)
+    const k = schluessel(z.bezeichnung, zeilenKategorie(z.kategorie))
     const vorhanden  = bestand.get(k)
     const dateiZeile = ersteZeile.get(k)
     if (dateiZeile === undefined) ersteZeile.set(k, z.zeile)

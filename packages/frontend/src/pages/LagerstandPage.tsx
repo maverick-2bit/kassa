@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { Artikel } from '@kassa/shared'
+import { baumFlach, kategoriePfad } from '../lib/kategorie-baum'
 import { artikelApi, kategorieApi } from '../lib/api'
 import { getAuth } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
@@ -190,8 +191,8 @@ export function LagerstandPage() {
             className="flex-1 min-w-40 rounded-lg border border-brand-300 bg-panel px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
           >
             <option value="alle">Alle Artikel (ohne Kategorie)</option>
-            {(kategorienQuery.data ?? []).map(k => (
-              <option key={k.id} value={k.id}>{k.name}</option>
+            {baumFlach(kategorienQuery.data ?? []).map(({ kategorie: k }) => (
+              <option key={k.id} value={k.id}>{kategoriePfad(kategorienQuery.data ?? [], k.id)}</option>
             ))}
           </select>
           <button

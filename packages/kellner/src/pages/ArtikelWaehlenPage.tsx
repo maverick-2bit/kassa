@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
-import { farbeZuHex, type Artikel, type Kategorie, type ModifikatorGruppe, type ModifikatorAuswahl } from '@kassa/shared'
+import { baumFlach, erweitereSichtbarkeit, farbeZuHex, kategorieAnzeigeNamen, type Artikel, type Kategorie, type ModifikatorGruppe, type ModifikatorAuswahl } from '@kassa/shared'
 import { artikelApi, kategorieApi, modifikatorApi, tischTabApi, kellnerKonfigApi } from '../lib/api'
 import { getAuth, clearAuth, gaengeAktiv as istGaengeAktiv, gaengeAnzahl } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
@@ -27,23 +27,13 @@ function gangLabel(g: number): string {
 type Phase = 'artikel' | 'modifikatoren'
 
 /**
- * Warengruppen in Baum-Reihenfolge (Tiefensuche, Geschwister nach reihenfolge)
- * mit Reiter-Beschriftung „Eltern › Kind". Gruppen mit unbekanntem Elternteil
- * gelten als Hauptgruppe; Zyklen im Altbestand brechen die Suche ab.
+ * Warengruppen in Baum-Reihenfolge (Reihenfolge unter Geschwistern) mit Reiter-Beschriftung: der Name,
+ * bei Namensgleichheit der Pfad „Eltern › Kind" (mehrere Gruppen heißen z. B. „Alkoholfrei").
  */
 function kategorienImBaum(alle: Kategorie[]): { liste: Kategorie[]; label: Map<string, string> } {
-  const ids = new Set(alle.map(k => k.id))
-  const sortiert = (l: Kategorie[]) => [...l].sort((a, b) => a.reihenfolge - b.reihenfolge || a.name.localeCompare(b.name))
-  const liste: Kategorie[] = []
-  const label = new Map<string, string>()
-  const besuche = (k: Kategorie, praefix: string) => {
-    if (label.has(k.id)) return
-    label.set(k.id, praefix + k.name)
-    liste.push(k)
-    for (const kind of sortiert(alle.filter(x => x.parentId === k.id))) besuche(kind, `${praefix}${k.name} › `)
-  }
-  for (const w of sortiert(alle.filter(k => !k.parentId || !ids.has(k.parentId)))) besuche(w, '')
-  return { liste, label }
+  const anzeigeName = kategorieAnzeigeNamen(alle)
+  const liste = baumFlach(alle).map(e => e.kategorie)
+  return { liste, label: new Map(liste.map(k => [k.id, anzeigeName(k.id)] as const)) }
 }
 
 /** Pseudo-Kategorie-ID für den Favoriten-Reiter (kollidiert mit keiner UUID). */
@@ -110,7 +100,8 @@ export function ArtikelWaehlenPage() {
     staleTime: 10_000,
   })
 
-  const sichtbareKatIds = konfigQuery.data?.sichtbareKategorieIds ?? []
+  // Wie an der Kasse: Untergruppen einer sichtbaren Gruppe sind sichtbar, Vorfahren einer sichtbaren Untergruppe auch
+  const sichtbareKatIds = erweitereSichtbarkeit(katQuery.data ?? [], konfigQuery.data?.sichtbareKategorieIds ?? []) ?? []
   // Warengruppen-Sichtbarkeit dieser Kasse (leer = alle) — wie an der stationären Kasse
   // Untergruppen werden hier flach als eigene Reiter gezeigt („Bar › Alkoholfrei"),
   // in Baum-Reihenfolge (Kachel-Raster der Kasse gibt es in der Kellner-App nicht).

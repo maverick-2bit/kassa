@@ -2,7 +2,7 @@
  * PosKonfigPage — POS-Konfiguration pro Kasse
  *
  * Tabs:
- *   1. Warengruppen  — Reihenfolge (Drag & Drop, global) + Sichtbarkeit pro Kasse
+ *   1. Warengruppen  — Baum mit Reihenfolge UNTER GESCHWISTERN (Drag & Drop / ↑↓, global) + Sichtbarkeit pro Kasse
  *   2. Artikel       — Warengruppe wählen → Artikel-Reihenfolge (Drag & Drop, global)
  *   3. Favoriten     — Favoritenliste je Kasse (Kachel-Editor mit Platzhaltern)
  *   4. Zahlungsarten — pro Kasse An/Aus
@@ -12,6 +12,7 @@ import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import {
   DndContext,
   closestCenter,
+  type CollisionDetection,
   PointerSensor,
   TouchSensor,
   useSensor,
@@ -31,6 +32,11 @@ import { farbeZuHex, type Artikel, type Kategorie, type Startseite, type Kellner
 import { artikelApi, kategorieApi, posConfigApi, bonierdruckerApi, tischplanApi, kasseApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { Button } from '../components/ui/Button'
+import { baumFlach, erweitereSichtbarkeit, kategorieAnzeigeNamen, kategoriePfad } from '../lib/kategorie-baum'
+import { alleAktiv, sichtbarkeitsZustaende, toggle as toggleSichtbarkeit, waehleNur, type SichtbarkeitsZustand } from '../lib/sichtbarkeit'
+import {
+  elternSchluessel, geschwisterIds, reihenfolgeEintraege, verschiebeUnterGeschwistern, ziehUnterGeschwistern,
+} from '../lib/kategorie-reihenfolge'
 
 type Tab = 'warengruppen' | 'artikel' | 'favoriten' | 'zahlungsarten' | 'kellner'
 
@@ -46,6 +52,45 @@ const ZAHLUNGSARTEN = [
   { key: 'karte',    label: 'Kartenzahlung' },
   { key: 'sonstige', label: 'Sonstige' },
 ] as const
+
+// ---------------------------------------------------------------------------
+// Bedien-Element einer sortierbaren Zeile: ↑/↓-Tasten + Griff-Symbol
+// ---------------------------------------------------------------------------
+
+/**
+ * Eindeutige ↑/↓-Tasten (immer sichtbar, auch Touch) + Griff-Symbol als Hinweis, dass man die
+ * Zeile auch ziehen kann.
+ */
+function Griff({
+  onMoveUp, onMoveDown, istErster, istLetzter,
+}: {
+  onMoveUp?: (() => void) | undefined; onMoveDown?: (() => void) | undefined
+  istErster?: boolean | undefined; istLetzter?: boolean | undefined
+}) {
+  const pfeilKlasse = 'flex h-5 w-6 items-center justify-center rounded text-ink-muted hover:text-brand-600 hover:bg-panel-2 disabled:opacity-25 disabled:hover:bg-transparent disabled:hover:text-ink-muted'
+  return (
+    <div className="flex items-center gap-0.5">
+      {(onMoveUp || onMoveDown) && (
+        <div className="flex flex-col">
+          {/* onPointerDown stoppen, damit der Tastendruck keinen Drag startet */}
+          <button type="button" aria-label="Nach oben" disabled={istErster}
+            onPointerDown={e => e.stopPropagation()} onClick={onMoveUp} className={pfeilKlasse}>
+            <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 5l5 7H5l5-7Z" /></svg>
+          </button>
+          <button type="button" aria-label="Nach unten" disabled={istLetzter}
+            onPointerDown={e => e.stopPropagation()} onClick={onMoveDown} className={pfeilKlasse}>
+            <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 15l-5-7h10l-5 7Z" /></svg>
+          </button>
+        </div>
+      )}
+      <span aria-hidden className="text-ink-subtle select-none">
+        <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+          <path d="M7 4a1.3 1.3 0 1 1 0 2.6A1.3 1.3 0 0 1 7 4Zm6 0a1.3 1.3 0 1 1 0 2.6A1.3 1.3 0 0 1 13 4ZM7 8.7a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6Zm6 0a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6ZM7 13.4a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6Zm6 0a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6Z" />
+        </svg>
+      </span>
+    </div>
+  )
+}
 
 // ---------------------------------------------------------------------------
 // Sortierbare Zeile
@@ -75,31 +120,7 @@ function SortableItem({
     zIndex:  isDragging ? 10 : undefined,
   }
 
-  // Bedien-Element: eindeutige ↑/↓-Tasten (immer sichtbar, auch Touch) +
-  // Griff-Symbol als Hinweis, dass man die ganze Zeile auch ziehen kann.
-  const pfeilKlasse = 'flex h-5 w-6 items-center justify-center rounded text-ink-muted hover:text-brand-600 hover:bg-panel-2 disabled:opacity-25 disabled:hover:bg-transparent disabled:hover:text-ink-muted'
-  const handle = (
-    <div className="flex items-center gap-0.5">
-      {(onMoveUp || onMoveDown) && (
-        <div className="flex flex-col">
-          {/* onPointerDown stoppen, damit der Tastendruck keinen Drag startet */}
-          <button type="button" aria-label="Nach oben" disabled={istErster}
-            onPointerDown={e => e.stopPropagation()} onClick={onMoveUp} className={pfeilKlasse}>
-            <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 5l5 7H5l5-7Z" /></svg>
-          </button>
-          <button type="button" aria-label="Nach unten" disabled={istLetzter}
-            onPointerDown={e => e.stopPropagation()} onClick={onMoveDown} className={pfeilKlasse}>
-            <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 15l-5-7h10l-5 7Z" /></svg>
-          </button>
-        </div>
-      )}
-      <span aria-hidden className="text-ink-subtle select-none">
-        <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-          <path d="M7 4a1.3 1.3 0 1 1 0 2.6A1.3 1.3 0 0 1 7 4Zm6 0a1.3 1.3 0 1 1 0 2.6A1.3 1.3 0 0 1 13 4ZM7 8.7a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6Zm6 0a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6ZM7 13.4a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6Zm6 0a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6Z" />
-        </svg>
-      </span>
-    </div>
-  )
+  const handle = <Griff onMoveUp={onMoveUp} onMoveDown={onMoveDown} istErster={istErster} istLetzter={istLetzter} />
 
   // Ganze Zeile ist zusätzlich der Drag-Handle (Aktivierungsschwelle an den Sensoren).
   return (
@@ -116,8 +137,72 @@ function SortableItem({
 }
 
 // ---------------------------------------------------------------------------
-// Tab 1: Warengruppen-Reihenfolge + Kassen-Sichtbarkeit
+// Tab 1: Warengruppen — Baum, Reihenfolge unter Geschwistern + Kassen-Sichtbarkeit
 // ---------------------------------------------------------------------------
+
+/** Kollisionen nur unter Geschwistern: gezogen wird innerhalb derselben Elterngruppe, nie über Elterngruppen hinweg. */
+const nurGeschwister: CollisionDetection = (args) => {
+  const container = args.active.data.current?.sortable?.containerId
+  const kandidaten = args.droppableContainers.filter(c => c.data.current?.sortable?.containerId === container)
+  return closestCenter({ ...args, droppableContainers: kandidaten })
+}
+
+/** Block einer Warengruppe im Baum: Zeile (hier wird gezogen) + ihre Untergruppen — der ganze Teilbaum wandert mit. */
+function BaumBlock({
+  id, zeile, kinder,
+}: {
+  id:     string
+  zeile:  (griff: React.ReactNode) => React.ReactNode
+  kinder: React.ReactNode
+}) {
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id })
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex:  isDragging ? 10 : undefined,
+  }
+  return (
+    <div ref={setNodeRef} style={style} data-testid="wg-block">
+      <div ref={setActivatorNodeRef} {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing touch-none">
+        {zeile(null)}
+      </div>
+      {kinder}
+    </div>
+  )
+}
+
+/** Schalter „an dieser Kasse sichtbar" mit Halbzustand (nur einzelne Untergruppen sichtbar). */
+function SichtbarkeitsSchalter({
+  zustand, onClick, label, title,
+}: {
+  zustand: SichtbarkeitsZustand
+  onClick: () => void
+  label:   string
+  title:   string
+}) {
+  const an = zustand === 'an'
+  const teilweise = zustand === 'teilweise'
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={teilweise ? 'mixed' : an}
+      aria-label={label}
+      data-zustand={zustand}
+      onPointerDown={e => e.stopPropagation()}
+      onClick={onClick}
+      className={`relative inline-flex h-5 w-9 flex-shrink-0 rounded-full border-2 border-transparent transition-colors ${
+        an ? 'bg-brand-500' : teilweise ? 'bg-brand-300' : 'bg-panel-2'
+      }`}
+      title={title}
+    >
+      <span className={`inline-block h-4 w-4 rounded-full bg-panel shadow transition-transform ${
+        an ? 'translate-x-4' : teilweise ? 'translate-x-2' : 'translate-x-0'
+      }`} />
+    </button>
+  )
+}
 
 function TabWarengruppen({
   kategorien,
@@ -127,24 +212,26 @@ function TabWarengruppen({
   kasseId:    string
 }) {
   const qc = useQueryClient()
-  const [items, setItems] = useState(() =>
-    [...kategorien].sort((a, b) => a.reihenfolge - b.reihenfolge)
-  )
-  const [dirty, setDirty] = useState(false)
+  // Lokale Kopie mit noch nicht gespeicherten Reihenfolge-Änderungen. `reihenfolge` bleibt dabei IMMER die
+  // Position unter Geschwistern — geschrieben wird nur für die veränderten Geschwistermengen.
+  const [items, setItems] = useState<Kategorie[]>(kategorien)
+  const [geaenderteEltern, setGeaenderteEltern] = useState<Set<string>>(() => new Set())
+  const dirty = geaenderteEltern.size > 0
+  // Neuen Serverstand übernehmen (neue/umbenannte Gruppen, nach dem Speichern) — nie über ungespeicherte Änderungen
+  useEffect(() => { if (!dirty) setItems(kategorien) }, [kategorien]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sichtbarkeit aus POS-Config
   const posQuery = useQuery({
     queryKey: ['pos-config', kasseId],
     queryFn:  () => posConfigApi.get(kasseId),
   })
-  const [sichtbar, setSichtbar] = useState<Set<string>>(
-    () => new Set(posQuery.data?.sichtbareKategorieIds ?? [])
-  )
+  const [sichtbar, setSichtbar] = useState<string[]>(() => posQuery.data?.sichtbareKategorieIds ?? [])
   // Serverstand übernehmen, sobald (oder wann immer) er eintrifft — der frühere
   // useState-Trick lief nur beim Mount und verpasste später geladene Daten.
   useEffect(() => {
-    if (posQuery.data) setSichtbar(new Set(posQuery.data.sichtbareKategorieIds))
+    if (posQuery.data) setSichtbar(posQuery.data.sichtbareKategorieIds)
   }, [posQuery.data])
+  const [hinweis, setHinweis] = useState<string | null>(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -154,7 +241,7 @@ function TabWarengruppen({
   const reihenfolge = useMutation({
     mutationFn: (eintraege: { id: string; reihenfolge: number }[]) =>
       kategorieApi.updateReihenfolge(eintraege),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['kategorien'] }); setDirty(false) },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['kategorien'] }); setGeaenderteEltern(new Set()) },
   })
 
   const sichtbarkeitMut = useMutation({
@@ -163,37 +250,50 @@ function TabWarengruppen({
     onSuccess: () => qc.invalidateQueries({ queryKey: ['pos-config', kasseId] }),
   })
 
+  // Verschieben/Ziehen gilt nur INNERHALB der Geschwister (gleiche Elterngruppe)
+  const aenderung = (neu: readonly Kategorie[], betroffeneId: string) => {
+    if (neu === items) return
+    setGeaenderteEltern(prev => new Set(prev).add(elternSchluessel(items, betroffeneId)))
+    setItems([...neu])
+  }
+  const verschiebe = (id: string, delta: number) => aenderung(verschiebeUnterGeschwistern(items, id, delta), id)
+
   const handleDragEnd = (e: DragEndEvent) => {
     const { active, over } = e
     if (!over || active.id === over.id) return
-    setItems(prev => {
-      const oldIdx = prev.findIndex(i => i.id === active.id)
-      const newIdx = prev.findIndex(i => i.id === over.id)
-      return arrayMove(prev, oldIdx, newIdx)
-    })
-    setDirty(true)
+    aenderung(ziehUnterGeschwistern(items, String(active.id), String(over.id)), String(active.id))
   }
 
   const saveReihenfolge = () => {
-    reihenfolge.mutate(items.map((k, i) => ({ id: k.id, reihenfolge: i })))
+    reihenfolge.mutate(reihenfolgeEintraege(items, geaenderteEltern))
   }
 
-  // Server-Semantik: LEERE Liste = alle Warengruppen sichtbar (auch künftige).
-  // „Keine" ist darin nicht speicherbar (und null sichtbare Gruppen wären an
+  // Server-Semantik: LEERE Liste = alle Warengruppen sichtbar (auch künftige) — dann stehen alle
+  // Schalter auf „an". „Keine" ist darin nicht speicherbar (und null sichtbare Gruppen wären an
   // einer Kasse sinnlos) → keineModus ist ein reiner Auswahl-Neustart in der
   // Oberfläche: alles aus, gespeichert wird erst die erste wieder
   // eingeschaltete Gruppe. Abbruch/Kassenwechsel lässt den Serverstand unberührt.
+  // Die Sichtbarkeitslogik (Teilbaum, Halbzustand, letzte Gruppe bleibt) steht in lib/sichtbarkeit —
+  // gemeinsam mit der Matrix in den Einstellungen.
   const [keineModus, setKeineModus] = useState(false)
-  const alleAktiv = !keineModus && sichtbar.size === 0
-  const istSichtbar = (id: string) => !keineModus && (alleAktiv || sichtbar.has(id))
+  const alleAktivJetzt = !keineModus && alleAktiv(sichtbar)
+  const zustaende = useMemo(
+    () => keineModus ? new Map<string, SichtbarkeitsZustand>(kategorien.map(k => [k.id, 'aus'] as const)) : sichtbarkeitsZustaende(kategorien, sichtbar),
+    [kategorien, sichtbar, keineModus],
+  )
+  const zustandVon = (id: string): SichtbarkeitsZustand => zustaende.get(id) ?? 'aus'
+  const istSichtbar = (id: string) => zustandVon(id) !== 'aus'
+  const baum = useMemo(() => baumFlach(kategorien), [kategorien])
+  const anzeigeName = useMemo(() => kategorieAnzeigeNamen(kategorien), [kategorien])
 
   const alleAktivieren = () => {
     setKeineModus(false)
-    setSichtbar(new Set())
+    setHinweis(null)
+    setSichtbar([])
     sichtbarkeitMut.mutate([])
   }
 
-  const keineAktivieren = () => setKeineModus(true)
+  const keineAktivieren = () => { setHinweis(null); setKeineModus(true) }
 
   // Start-Reiter der Artikelwahl (Kasse, Tisch, Kellner-App)
   const startMut = useMutation({
@@ -210,50 +310,107 @@ function TabWarengruppen({
     :                      { startFavoriten: false, startKategorieId: wert },
   )
   const startGruppeAusgeblendet = startWert !== 'favoriten' && startWert !== 'erste'
-    && (!items.some(k => k.id === startWert && k.aktiv) || !istSichtbar(startWert))
+    && (!kategorien.some(k => k.id === startWert && k.aktiv) || !istSichtbar(startWert))
 
   const toggleSichtbar = (id: string) => {
-    let next: Set<string>
+    setHinweis(null)
     if (keineModus) {
       // Erste Gruppe nach dem Neustart → wird die neue (gespeicherte) Auswahl
       setKeineModus(false)
-      next = new Set([id])
-    } else if (alleAktiv) {
-      // Aus „alle" heraus eine ausblenden → explizite Liste ohne diese eine
-      if (items.length <= 1) return // die letzte Warengruppe bleibt sichtbar
-      next = new Set(items.map(k => k.id))
-      next.delete(id)
-    } else {
-      next = new Set(sichtbar)
-      if (next.has(id)) {
-        if (next.size <= 1) return // mindestens eine Warengruppe muss sichtbar bleiben
-        next.delete(id)
-      } else {
-        next.add(id)
-      }
-      // Wieder vollständig → zurück zur „alle"-Semantik (leer), damit neue
-      // Warengruppen an dieser Kasse automatisch sichtbar sind
-      if (next.size === items.length) next = new Set()
+      const next = waehleNur(kategorien, id)
+      setSichtbar(next)
+      sichtbarkeitMut.mutate(next)
+      return
     }
-    setSichtbar(next)
-    sichtbarkeitMut.mutate([...next])
+    const ergebnis = toggleSichtbarkeit(kategorien, sichtbar, id)
+    if (ergebnis.blockiert === 'letzte') {
+      setHinweis('Mindestens eine Warengruppe muss an dieser Kasse sichtbar bleiben.')
+      return
+    }
+    setSichtbar(ergebnis.liste)
+    sichtbarkeitMut.mutate(ergebnis.liste)
+  }
+
+  /** Geschwistermenge als sortierbare Liste; jeder Block trägt seine Untergruppen. */
+  const geschwister = (eltern: string | null, tiefe: number): React.ReactNode => {
+    const ids = eltern === null
+      ? baum.filter(e => e.tiefe === 0).map(e => e.kategorie.id)
+      : baum.filter(e => items.find(k => k.id === e.kategorie.id)?.parentId === eltern).map(e => e.kategorie.id)
+    // Reihenfolge der Geschwister kommt aus den lokalen `items` (inkl. ungespeicherter Änderungen)
+    const sortiert = ids
+      .map(id => items.find(k => k.id === id)!)
+      .sort((a, b) => a.reihenfolge - b.reihenfolge || a.name.localeCompare(b.name))
+    if (sortiert.length === 0) return null
+    return (
+      <SortableContext id={eltern ?? 'wurzel'} items={sortiert.map(k => k.id)} strategy={verticalListSortingStrategy}>
+        <div className={tiefe === 0 ? 'space-y-2' : 'mt-2 ml-5 space-y-2 border-l border-line pl-3'}>
+          {sortiert.map((k, i) => {
+            const pfad = kategoriePfad(items, k.id)
+            const zustand = zustandVon(k.id)
+            return (
+              <BaumBlock
+                key={k.id}
+                id={k.id}
+                zeile={() => (
+                  <div
+                    data-testid="wg-zeile"
+                    data-pfad={pfad}
+                    data-tiefe={tiefe}
+                    data-zustand={zustand}
+                    title={pfad}
+                    className="flex items-center gap-3 rounded-xl border border-line bg-panel px-3 py-2.5 shadow-sm"
+                  >
+                    <Griff
+                      onMoveUp={() => verschiebe(k.id, -1)}
+                      onMoveDown={() => verschiebe(k.id, +1)}
+                      istErster={i === 0}
+                      istLetzter={i === sortiert.length - 1}
+                    />
+                    <div
+                      className="h-3 w-3 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: farbeZuHex(k.farbe) ?? '#9ca3af' }}
+                    />
+                    <span className="flex-1 text-sm font-medium text-ink">{k.name}</span>
+                    {!k.aktiv && (
+                      <span className="text-xs text-ink-subtle italic">inaktiv</span>
+                    )}
+                    {/* Schalter Sichtbarkeit pro Kasse — gilt samt Untergruppen */}
+                    <SichtbarkeitsSchalter
+                      zustand={zustand}
+                      onClick={() => toggleSichtbar(k.id)}
+                      label={`${anzeigeName(k.id)} an dieser Kasse sichtbar`}
+                      title={zustand === 'an' ? 'In dieser Kasse sichtbar (samt Untergruppen)'
+                        : zustand === 'teilweise' ? 'Teilweise: nur einzelne Untergruppen sind sichtbar — diese Gruppe bleibt als Zugang sichtbar'
+                        : 'In dieser Kasse ausgeblendet'}
+                    />
+                  </div>
+                )}
+                kinder={geschwister(k.id, tiefe + 1)}
+              />
+            )
+          })}
+        </div>
+      </SortableContext>
+    )
   }
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm text-ink-muted">
-          Reihenfolge per Drag&nbsp;&amp;&nbsp;Drop anpassen (gilt für alle Kassen).
-          Sichtbarkeit ist pro Kasse einstellbar.
+          Reihenfolge per Drag&nbsp;&amp;&nbsp;Drop oder ↑/↓ anpassen — nur innerhalb derselben
+          Elterngruppe (gilt für alle Kassen). Sichtbarkeit ist pro Kasse einstellbar: Ein Schalter
+          gilt für die Gruppe <strong>samt Untergruppen</strong>; „teilweise" heißt, nur einzelne
+          Untergruppen sind sichtbar (die Gruppe bleibt dann als Zugang sichtbar).
         </p>
         <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={alleAktivieren}
-            disabled={alleAktiv || sichtbarkeitMut.isPending}
+            disabled={alleAktivJetzt || sichtbarkeitMut.isPending}
             title="Alle Warengruppen an dieser Kasse sichtbar machen — auch künftig angelegte"
             className="rounded-lg border border-line px-3 py-1.5 text-sm font-medium text-ink-muted hover:border-brand-400 hover:text-brand-700 transition disabled:opacity-40 disabled:hover:border-line disabled:hover:text-ink-muted"
           >
-            {alleAktiv ? '✓ Alle sichtbar' : 'Alle sichtbar'}
+            {alleAktivJetzt ? '✓ Alle sichtbar' : 'Alle sichtbar'}
           </button>
           <button
             onClick={keineAktivieren}
@@ -278,6 +435,12 @@ function TabWarengruppen({
         </p>
       )}
 
+      {hinweis && (
+        <p role="status" data-testid="wg-hinweis" className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          {hinweis}
+        </p>
+      )}
+
       <div className="rounded-lg border border-line bg-panel-2 px-3 py-2.5 space-y-1">
         <label className="flex flex-wrap items-center gap-2 text-sm text-ink">
           <span className="font-medium">Artikelwahl öffnet mit</span>
@@ -290,12 +453,12 @@ function TabWarengruppen({
           >
             <option value="favoriten">⭐ Favoriten</option>
             <option value="erste">Erste Warengruppe</option>
-            {items.filter(k => k.aktiv && istSichtbar(k.id)).map(k => (
-              <option key={k.id} value={k.id}>{k.name}</option>
+            {baum.filter(e => e.kategorie.aktiv && istSichtbar(e.kategorie.id)).map(({ kategorie: k }) => (
+              <option key={k.id} value={k.id}>{kategoriePfad(kategorien, k.id)}</option>
             ))}
             {startGruppeAusgeblendet && (
               <option value={startWert}>
-                {items.find(k => k.id === startWert)?.name ?? 'Unbekannte Warengruppe'} (ausgeblendet)
+                {kategoriePfad(kategorien, startWert) || 'Unbekannte Warengruppe'} (ausgeblendet)
               </option>
             )}
           </select>
@@ -307,43 +470,8 @@ function TabWarengruppen({
         </p>
       </div>
 
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <SortableContext items={items.map(k => k.id)} strategy={verticalListSortingStrategy}>
-          <div className="space-y-2">
-            {items.map((k, i) => (
-              <SortableItem key={k.id} id={k.id}
-                onMoveUp={() => { setItems(prev => arrayMove(prev, i, i - 1)); setDirty(true) }}
-                onMoveDown={() => { setItems(prev => arrayMove(prev, i, i + 1)); setDirty(true) }}
-                istErster={i === 0} istLetzter={i === items.length - 1}>
-                {(handle) => (
-                  <div className="flex items-center gap-3 rounded-xl border border-line bg-panel px-3 py-2.5 shadow-sm">
-                    {handle}
-                    <div
-                      className="h-3 w-3 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: farbeZuHex(k.farbe) ?? '#9ca3af' }}
-                    />
-                    <span className="flex-1 text-sm font-medium text-ink">{k.name}</span>
-                    {!k.aktiv && (
-                      <span className="text-xs text-ink-subtle italic">inaktiv</span>
-                    )}
-                    {/* Toggle Sichtbarkeit pro Kasse */}
-                    <button
-                      onClick={() => toggleSichtbar(k.id)}
-                      className={`relative inline-flex h-5 w-9 flex-shrink-0 rounded-full border-2 border-transparent transition-colors ${
-                        istSichtbar(k.id) ? 'bg-brand-500' : 'bg-panel-2'
-                      }`}
-                      title={istSichtbar(k.id) ? 'In dieser Kasse sichtbar' : 'In dieser Kasse ausgeblendet'}
-                    >
-                      <span className={`inline-block h-4 w-4 rounded-full bg-panel shadow transition-transform ${
-                        istSichtbar(k.id) ? 'translate-x-4' : 'translate-x-0'
-                      }`} />
-                    </button>
-                  </div>
-                )}
-              </SortableItem>
-            ))}
-          </div>
-        </SortableContext>
+      <DndContext sensors={sensors} collisionDetection={nurGeschwister} onDragEnd={handleDragEnd}>
+        {geschwister(null, 0)}
       </DndContext>
     </div>
   )
@@ -355,7 +483,10 @@ function TabWarengruppen({
 
 function TabArtikel({ kategorien, alleArtikel }: { kategorien: Kategorie[]; alleArtikel: Artikel[] }) {
   const qc = useQueryClient()
-  const [gewaehlteKatId, setGewaehlteKatId] = useState(kategorien[0]?.id ?? '')
+  // Warengruppen-Chips im Baum (Reihenfolge unter Geschwistern); gleichnamige Gruppen zeigen den Pfad
+  const aktiveImBaum = useMemo(() => baumFlach(kategorien).map(e => e.kategorie).filter(k => k.aktiv), [kategorien])
+  const anzeigeName  = useMemo(() => kategorieAnzeigeNamen(kategorien.filter(k => k.aktiv)), [kategorien])
+  const [gewaehlteKatId, setGewaehlteKatId] = useState(aktiveImBaum[0]?.id ?? '')
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(TouchSensor,   { activationConstraint: { delay: 200, tolerance: 8 } }),
@@ -400,17 +531,19 @@ function TabArtikel({ kategorien, alleArtikel }: { kategorien: Kategorie[]; alle
     <div className="space-y-4">
       {/* Kategorie-Auswahl */}
       <div className="flex gap-2 flex-wrap">
-        {kategorien.filter(k => k.aktiv).sort((a, b) => a.reihenfolge - b.reihenfolge).map(k => (
+        {aktiveImBaum.map(k => (
           <button
             key={k.id}
             onClick={() => handleKatWechsel(k.id)}
+            title={kategoriePfad(kategorien, k.id)}
+            data-testid="wg-chip"
             className={`px-3 py-1.5 rounded-full text-sm font-medium transition ${
               gewaehlteKatId === k.id
                 ? 'bg-brand-600 text-white'
                 : 'bg-panel-2 text-ink-muted hover:bg-panel-2'
             }`}
           >
-            {k.name}
+            {anzeigeName(k.id)}
           </button>
         ))}
       </div>
@@ -507,7 +640,11 @@ function TabFavoriten({ alleArtikel, kategorien, kasseId }: {
   })
 
   const artikelProZeile = posQuery.data?.artikelProZeile ?? 4
-  const sichtbareKatIds = posQuery.data?.sichtbareKategorieIds ?? []
+  // Wie an der Kasse: Untergruppen einer sichtbaren Gruppe sind sichtbar, Vorfahren einer sichtbaren Untergruppe auch
+  const sichtbareKatIds = useMemo(
+    () => erweitereSichtbarkeit(kategorien, posQuery.data?.sichtbareKategorieIds ?? []) ?? [],
+    [kategorien, posQuery.data],
+  )
   const artikelbilder   = posQuery.data?.artikelbilderAktiv ?? true
   const farbeProKategorie = useMemo(
     () => new Map(kategorien.map(k => [k.id, k.farbe] as const)),
@@ -528,7 +665,7 @@ function TabFavoriten({ alleArtikel, kategorien, kasseId }: {
   // ohne eigene Liste die globalen ★-Favoriten als Startvorschlag.
   useEffect(() => {
     if (items !== null || !favQuery.data || !posQuery.data) return
-    const katIds = posQuery.data.sichtbareKategorieIds
+    const katIds = erweitereSichtbarkeit(kategorien, posQuery.data.sichtbareKategorieIds) ?? []
     const sichtbar = (a: Artikel) =>
       katIds.length === 0 || (a.kategorieId !== null && katIds.includes(a.kategorieId))
     const byId = new Map(alleArtikel.map(a => [a.id, a] as const))
@@ -546,7 +683,7 @@ function TabFavoriten({ alleArtikel, kategorien, kasseId }: {
       .filter(a => a.istFavorit && a.aktiv && sichtbar(a))
       .sort((a, b) => a.favoritenReihenfolge - b.favoritenReihenfolge || a.bezeichnung.localeCompare(b.bezeichnung))
     setItems(global.map(a => ({ key: a.id, artikel: a })))
-  }, [items, favQuery.data, posQuery.data, alleArtikel])
+  }, [items, favQuery.data, posQuery.data, alleArtikel, kategorien])
 
   const preis = (c: number) => `€ ${(c / 100).toFixed(2).replace('.', ',')}`
 
@@ -1037,6 +1174,10 @@ function TabKellner({ kasseId }: { kasseId: string }) {
 
 // Farb-Punkte kommen aus der zentralen 20er-Hex-Palette (@kassa/shared).
 
+// Stabile Leer-Werte: eine neue [] je Render würde die Abgleich-Effekte der Tabs in eine Schleife schicken
+const KEINE_KATEGORIEN: Kategorie[] = []
+const KEINE_ARTIKEL: Artikel[] = []
+
 export function PosKonfigPage() {
   const identity = getKasseIdentity()!
   const [aktuellerTab, setAktuellerTab] = useState<Tab>('warengruppen')
@@ -1069,8 +1210,8 @@ export function PosKonfigPage() {
     { key: 'kellner',       label: 'Kellner-App' },
   ]
 
-  const kategorien  = kategorienQuery.data ?? []
-  const alleArtikel = artikelQuery.data    ?? []
+  const kategorien  = kategorienQuery.data ?? KEINE_KATEGORIEN
+  const alleArtikel = artikelQuery.data    ?? KEINE_ARTIKEL
   const isLoading   = kategorienQuery.isLoading || artikelQuery.isLoading
 
   return (
