@@ -14,6 +14,7 @@ import { useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { Artikel, OptionenImportErgebnis } from '@kassa/shared'
 import { kategorieApi, modifikatorApi } from '../lib/api'
+import { kategoriePfadNormalisiert, normalisiereKategoriePfad } from '../lib/kategorie-baum'
 import { formatPreis } from '../lib/format'
 import { parseOptionenExcel, type GeparsteGruppe } from '../lib/optionen-excel'
 import { Modal } from './ui/Modal'
@@ -43,12 +44,14 @@ export function OptionenImportModal({ open, artikel, onClose }: Props) {
   })
 
   // Vorschau-Status: gleiche Regeln wie der Server (aktive Artikel, Name + ggf. Warengruppe)
+  // Warengruppe als Name ODER Pfad („Atriumbar/Alkoholfrei") — gleichnamige Gruppen trennt nur der Pfad
   const katName = new Map((kategorien.data ?? []).map(k => [k.id, k.name.toLowerCase()]))
   const trefferZahl = (g: GeparsteGruppe) => artikel.filter(a =>
     a.aktiv
     && a.bezeichnung.trim().toLowerCase() === g.eintrag.artikel.toLowerCase()
     && (!g.eintrag.warengruppe
-      || (a.kategorieId ? katName.get(a.kategorieId) : '') === g.eintrag.warengruppe.toLowerCase()),
+      || (a.kategorieId ? katName.get(a.kategorieId) : '') === g.eintrag.warengruppe.toLowerCase()
+      || (a.kategorieId && kategoriePfadNormalisiert(kategorien.data ?? [], a.kategorieId) === normalisiereKategoriePfad(g.eintrag.warengruppe))),
   ).length
 
   const gueltig    = gruppen.filter(g => g.fehler.length === 0 && g.eintrag.optionen.length > 0)

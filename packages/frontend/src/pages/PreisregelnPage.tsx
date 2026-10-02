@@ -180,6 +180,10 @@ function PreisregelForm({
   const [kachelKategorie, setKachelKategorie] = useState<string>('alle')
   const [sammelPreis,     setSammelPreis]     = useState('')
 
+  // Warengruppen im Baum; gleichnamige Gruppen zeigen den Pfad (z. B. „Atriumbar › Alkoholfrei")
+  const kategorienImBaum = baumFlach(kategorien).map(e => e.kategorie)
+  const anzeigeName      = kategorieAnzeigeNamen(kategorien)
+
   const rabattZahl    = parseInt(rabatt) || 0
   const zeitfensterOk = zeitfenster.length > 0 && zeitfenster.every(zf => zf.von && zf.bis)
   const tageOk        = wochentage.length > 0 || datumTage.length > 0
