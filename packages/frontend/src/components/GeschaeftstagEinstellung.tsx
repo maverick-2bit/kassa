@@ -159,7 +159,9 @@ function Inhalt({
   const eingabeOk       = istTagesbeginn(beginn) && istKalenderDatum(datum)
   const ohneGleichen    = regel.filter(e => e.gueltigAb !== datum)
   const bisher          = eingabeOk ? beginnFuer(ohneGleichen, datum) : null
-  const keineAenderung  = eingabeOk && bisher === beginn
+  // „Keine Änderung" auch dann, wenn genau dieser Wechsel schon in der Liste steht (z. B. gleich nach dem Speichern)
+  const schonEingetragen = regel.some(e => e.gueltigAb === datum && e.beginn === beginn)
+  const keineAenderung  = eingabeOk && (bisher === beginn || schonEingetragen)
   const vorschau        = eingabeOk && !keineAenderung ? uebergangsVorschau(ohneGleichen, { gueltigAb: datum, beginn }) : null
   const dauerBisher     = vorschau ? dauerStunden(tagesGrenzen(ohneGleichen, vorschau.datum)) : null
   const aendertSich     = vorschau && dauerBisher !== null && Math.abs(vorschau.dauerStunden - dauerBisher) > 0.001
