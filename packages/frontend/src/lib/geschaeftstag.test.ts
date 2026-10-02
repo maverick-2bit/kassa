@@ -106,29 +106,29 @@ describe('Geschäftstag im Frontend', () => {
     meldeAn(speicher, { tagesRegel: [] })
     const setItem = vi.spyOn(localStorage, 'setItem')
 
-    updateMandantTagesRegel([])
+    expect(updateMandantTagesRegel([])).toBe(false)
     expect(setItem).not.toHaveBeenCalled()
 
-    updateMandantTagesRegel([
+    expect(updateMandantTagesRegel([
       { gueltigAb: '2026-12-01', beginn: '00:00' },
       { gueltigAb: '2026-01-01', beginn: '06:00' },
-    ])
+    ])).toBe(true)
     expect(setItem).toHaveBeenCalledTimes(1)
     expect(tagesRegel()).toEqual([
       { gueltigAb: '2026-01-01', beginn: '06:00' },
       { gueltigAb: '2026-12-01', beginn: '00:00' },
     ])
 
-    // gleicher Stand (andere Reihenfolge) → kein weiterer Schreibvorgang
-    updateMandantTagesRegel([
+    // gleicher Stand (andere Reihenfolge) → kein weiterer Schreibvorgang, Rückgabe false
+    expect(updateMandantTagesRegel([
       { gueltigAb: '2026-12-01', beginn: '00:00' },
       { gueltigAb: '2026-01-01', beginn: '06:00' },
-    ])
+    ])).toBe(false)
     expect(setItem).toHaveBeenCalledTimes(1)
   })
 
   it('updateMandantTagesRegel ohne Anmeldung tut nichts', () => {
-    updateMandantTagesRegel([{ gueltigAb: '2026-01-01', beginn: '06:00' }])
+    expect(updateMandantTagesRegel([{ gueltigAb: '2026-01-01', beginn: '06:00' }])).toBe(false)
     expect(speicher.size).toBe(0)
   })
 })

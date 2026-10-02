@@ -152,18 +152,22 @@ export function tagesRegel(): TagesRegel {
   return regel
 }
 
-/** Aktualisiert die Tagesbeginn-Historie im LocalStorage ohne Re-Login (nach einer Änderung oder beim Abgleich). */
-export function updateMandantTagesRegel(regel: readonly TagesbeginnEintrag[]): void {
+/**
+ * Aktualisiert die Tagesbeginn-Historie im LocalStorage ohne Re-Login (nach einer Änderung
+ * oder beim Abgleich). Liefert true, wenn sich etwas geändert hat.
+ */
+export function updateMandantTagesRegel(regel: readonly TagesbeginnEintrag[]): boolean {
   const auth = getAuth()
-  if (!auth) return
+  if (!auth) return false
   const neu = normalisiereRegel(regel)
   // Unverändert → nichts schreiben (jeder Abgleich im Hintergrund soll still bleiben)
-  if (JSON.stringify(normalisiereRegel(auth.mandant.tagesRegel ?? [])) === JSON.stringify(neu)) return
+  if (JSON.stringify(normalisiereRegel(auth.mandant.tagesRegel ?? [])) === JSON.stringify(neu)) return false
   localStorage.setItem(KEY_AUTH, JSON.stringify({
     user:    auth.user,
     mandant: { ...auth.mandant, tagesRegel: neu },
     kassen:  auth.kassen,
   }))
+  return true
 }
 
 /** Aktualisiert die Kassenbezeichnung im LocalStorage ohne Re-Login. */
