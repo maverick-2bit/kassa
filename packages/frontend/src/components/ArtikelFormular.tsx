@@ -147,6 +147,10 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
   const katVorgabe      = gewaehlteKat?.station ?? null
   const katFarbeHex     = gewaehlteKat ? farbeZuHex(gewaehlteKat.farbe) : undefined
 
+  // Wählbar: aktive Warengruppen — plus eine deaktivierte, in der der Artikel noch steckt
+  // (sonst stünde die Auswahl leer da und Speichern löste ihn still aus seiner Gruppe).
+  const waehlbar = (k: Kategorie) => k.aktiv || k.id === initial?.kategorieId
+
   useEffect(() => {
     reset({
       bezeichnung:        initial?.bezeichnung      ?? '',
@@ -170,10 +174,12 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
     setNeuerBestandteilId('')
   }, [initial, reset])
 
-  // Namens-Lookup + Kandidaten für die Rezept-Auswahl (sich selbst + bereits gewählte ausschließen)
+  // Namens-Lookup (über alle — auch ein deaktivierter Bestandteil behält seinen Namen) +
+  // Kandidaten für die Rezept-Auswahl: nur aktive Artikel, unabhängig davon, ob die Liste
+  // gerade Deaktiviertes zeigt (sich selbst + bereits gewählte ausschließen)
   const artikelNameById = new Map((alleArtikel ?? []).map(a => [a.id, a.bezeichnung] as const))
   const bestandteilKandidaten = (alleArtikel ?? [])
-    .filter(a => a.id !== initial?.id && !bestandteile.some(b => b.bestandteilArtikelId === a.id))
+    .filter(a => a.aktiv && a.id !== initial?.id && !bestandteile.some(b => b.bestandteilArtikelId === a.id))
     .sort((a, b) => a.bezeichnung.localeCompare(b.bezeichnung))
 
   const bestandteilHinzufuegen = () => {
@@ -335,14 +341,14 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
       </Field>
 
       <Field label="Warengruppe" hint="Gruppierung in der Kassen-Ansicht">
-        {kategorien && kategorien.filter(k => k.aktiv).length > 0 && (
+        {kategorien && kategorien.some(waehlbar) && (
           <Select {...register('kategorieId')}>
             <option value="">— ohne Warengruppe —</option>
             {/* Baumreihenfolge; Pfadlabel („Atriumbar › Alkoholfrei"), damit gleichnamige Gruppen unterscheidbar sind.
                 Die bisherige Gruppe des Artikels bleibt wählbar, auch wenn sie inzwischen deaktiviert ist. */}
             {baumFlach(kategorien)
               .map(e => e.kategorie)
-              .filter(k => k.aktiv || k.id === initial?.kategorieId)
+              .filter(waehlbar)
               .map((k) => (
                 <option key={k.id} value={k.id}>{kategoriePfad(kategorien, k.id)}{k.aktiv ? '' : ' (deaktiviert)'}</option>
               ))}
@@ -377,7 +383,7 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
           )
         )}
         {katFehler && <p className="mt-1 text-xs text-red-600">{katFehler}</p>}
-        {(!kategorien || kategorien.filter(k => k.aktiv).length === 0) && !neueKatOffen && (
+        {(!kategorien || !kategorien.some(waehlbar)) && !neueKatOffen && (
           <p className="mt-1 text-xs text-ink-subtle">Noch keine Warengruppe vorhanden — oben eine anlegen.</p>
         )}
       </Field>

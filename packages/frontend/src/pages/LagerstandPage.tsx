@@ -123,9 +123,10 @@ export function LagerstandPage() {
   const [filter, setFilter] = useState<'alle' | 'alarm'>('alle')
   const [suche, setSuche]   = useState('')
 
+  // Nur aktive: deaktivierte Artikel sollen keinen Lager-Alarm auslösen
   const { data: alleArtikel = [], isLoading } = useQuery({
-    queryKey: ['artikel', auth?.mandant.id, 'alle'],
-    queryFn:  () => artikelApi.list(auth!.mandant.id, false),
+    queryKey: ['artikel', auth?.mandant.id, true],
+    queryFn:  () => artikelApi.list(auth!.mandant.id, true),
     enabled:  !!auth,
   })
 
@@ -167,9 +168,10 @@ export function LagerstandPage() {
       return a.bezeichnung.localeCompare(b.bezeichnung)
     })
 
+  // Nur aktive: Auswahl für „Warengruppe in Lagerführung aufnehmen"
   const kategorienQuery = useQuery({
     queryKey: ['kategorien', identity?.kasseId],
-    queryFn:  () => kategorieApi.list(),
+    queryFn:  () => kategorieApi.list(true),
     enabled:  !!identity,
   })
 

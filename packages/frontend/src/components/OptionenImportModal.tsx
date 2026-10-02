@@ -37,9 +37,12 @@ export function OptionenImportModal({ open, artikel, onClose }: Props) {
   const [fehlerMsg, setFehlerMsg]   = useState<string | null>(null)
   const [isDragOver, setIsDragOver] = useState(false)
 
+  // Nur zum Nachschlagen der Gruppennamen: auch deaktivierte — der Server ordnet über die
+  // Warengruppe des aktiven Artikels zu, gleichgültig ob die Gruppe selbst aktiv ist.
+  // Eigener Key — ['kategorien'] ist „nur aktive".
   const kategorien = useQuery({
-    queryKey: ['kategorien'],
-    queryFn:  () => kategorieApi.list(),
+    queryKey: ['kategorien', 'alle'],
+    queryFn:  () => kategorieApi.list(false),
     enabled:  open,
   })
 

@@ -90,10 +90,14 @@ export function ArtikelPage() {
     queryFn:  () => artikelApi.list(identity.mandantId, nurAktive),
   })
 
+  // Stammdatenpflege: auch deaktivierte Warengruppen (ausgegraut, reaktivierbar).
+  // Eigener Key — ['kategorien'] ist überall sonst „nur aktive" (Kasse, Tisch, Auswahlfelder).
   const katList = useQuery({
-    queryKey: ['kategorien'],
+    queryKey: ['kategorien', 'alle'],
     queryFn:  () => kategorieApi.list(false),
   })
+  // Für den Excel-Import zählen nur aktive Warengruppen (Zuordnung, Auswahl, Neuanlage)
+  const aktiveKategorien = useMemo(() => (katList.data ?? []).filter(k => k.aktiv), [katList.data])
 
   const modGruppenQuery = useQuery({
     queryKey: ['modifikator-gruppen'],
@@ -188,6 +192,11 @@ export function ArtikelPage() {
     onSuccess: () => invalidateArtikel(),
   })
 
+  const reaktiviere = useMutation({
+    mutationFn: (id: string) => artikelApi.update(id, { aktiv: true }),
+    onSuccess: () => invalidateArtikel(),
+  })
+
   const favoritMut = useMutation({
     mutationFn: ({ id, istFavorit }: { id: string; istFavorit: boolean }) =>
       artikelApi.update(id, { istFavorit }),
@@ -222,6 +231,11 @@ export function ArtikelPage() {
 
   const katDeaktiviere = useMutation({
     mutationFn: kategorieApi.deaktiviere,
+    onSuccess: () => invalidateKategorien(),
+  })
+
+  const katReaktiviere = useMutation({
+    mutationFn: (id: string) => kategorieApi.update(id, { aktiv: true }),
     onSuccess: () => invalidateKategorien(),
   })
 
@@ -516,7 +530,7 @@ export function ArtikelPage() {
                       >
                         Optionen
                       </button>
-                      {a.aktiv && (
+                      {a.aktiv ? (
                         <button
                           type="button"
                           onClick={() => {
@@ -527,6 +541,15 @@ export function ArtikelPage() {
                           className="text-xs text-red-600 hover:underline"
                         >
                           Deaktivieren
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => reaktiviere.mutate(a.id)}
+                          disabled={reaktiviere.isPending}
+                          className="text-xs text-green-700 hover:underline disabled:opacity-50"
+                        >
+                          Reaktivieren
                         </button>
                       )}
                     </td>
@@ -620,7 +643,7 @@ export function ArtikelPage() {
                           >
                             Bearbeiten
                           </button>
-                          {k.aktiv && (
+                          {k.aktiv ? (
                             <button
                               type="button"
                               onClick={() => {
@@ -631,6 +654,15 @@ export function ArtikelPage() {
                               className="text-xs text-red-600 hover:underline"
                             >
                               Deaktivieren
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => katReaktiviere.mutate(k.id)}
+                              disabled={katReaktiviere.isPending}
+                              className="text-xs text-green-700 hover:underline disabled:opacity-50"
+                            >
+                              Reaktivieren
                             </button>
                           )}
                         </td>
@@ -880,7 +912,8 @@ export function ArtikelPage() {
       {/* Excel-Import Modal */}
       <ArtikelImportModal
         open={importModalOpen}
-        kategorien={katList.data ?? []}
+        // Nur aktive: der Name einer deaktivierten Warengruppe legt (wie bisher) eine neue an
+        kategorien={aktiveKategorien}
         mandantId={identity.mandantId}
         onClose={() => { setImportModalOpen(false); invalidateArtikel() }}
       />
