@@ -127,7 +127,10 @@ export function ArtikelAnordnungTab({ kategorien, alleArtikel, kasseId, kasseNam
   const kontext = `${modus}|${kasseId}|${katId}`
   const [entwurf, setEntwurf] = useState<Anordnung | null>(null)
   const [entwurfKontext, setEntwurfKontext] = useState('')
-  const [geaendert, setGeaendert] = useState(false)
+  const [geaendert, setGeaendertRoh] = useState(false)
+  // Die Seite erfährt es SOFORT im selben Ereignis (nicht erst per Effekt): ein Klick auf Kassen-Chip oder Reiter
+  // unmittelbar nach einer Änderung muss den Hinweis noch auslösen
+  const setGeaendert = (wert: boolean) => { setGeaendertRoh(wert); onGeaendertChange?.(wert) }
   useEffect(() => {
     if (!bereit) return
     if (entwurfKontext !== kontext) {
@@ -140,16 +143,15 @@ export function ArtikelAnordnungTab({ kategorien, alleArtikel, kasseId, kasseNam
   }, [bereit, kontext, entwurfKontext, geaendert, serverSchluessel]) // eslint-disable-line react-hooks/exhaustive-deps
   const entwurfGueltig = bereit && entwurf !== null && entwurfKontext === kontext
 
-  const aenderungGemeldet = geaendert && entwurfGueltig
-  useEffect(() => {
-    onGeaendertChange?.(aenderungGemeldet)
-    return () => onGeaendertChange?.(false)
-  }, [aenderungGemeldet]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Beim Verlassen des Reiters (Kassen-/Reiterwechsel) gibt es nichts Ungespeichertes mehr zu melden
+  useEffect(() => () => onGeaendertChange?.(false), []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const [meldung, setMeldung] = useState<string | null>(null)
+  // Ein Fehler vom letzten Speichern verschwindet, sobald wieder etwas geändert wird
+  const [fehlerAusblenden, setFehlerAusblenden] = useState(false)
   const [zuruecksetzenFrage, setZuruecksetzenFrage] = useState(false)
 
-  const aendere = (neu: Anordnung) => { setEntwurf(neu); setGeaendert(true); setMeldung(null) }
+  const aendere = (neu: Anordnung) => { setEntwurf(neu); setGeaendert(true); setMeldung(null); setFehlerAusblenden(true) }
 
   // Ungespeicherte Änderungen: Wechsel der Gruppe/Ebene fragt nach
   const [wechsel, setWechsel] = useState<(() => void) | null>(null)
@@ -176,7 +178,7 @@ export function ArtikelAnordnungTab({ kategorien, alleArtikel, kasseId, kasseNam
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: modus === 'kasse' ? ['kasse-artikel-layouts', kasseId] : ['artikel'] })
       setGeaendert(false)
-      setMeldung(modus === 'kasse' ? 'Anordnung für diese Kasse gespeichert.' : 'Standard-Layout gespeichert.')
+      setMeldung(modus === 'kasse' ? 'Gespeichert.' : 'Standard-Layout gespeichert.')
     },
   })
 
@@ -200,7 +202,7 @@ export function ArtikelAnordnungTab({ kategorien, alleArtikel, kasseId, kasseNam
     else setVorschauSpalten(n)
   }
 
-  const fehler = speichern.error ?? zuruecksetzen.error
+  const fehler = fehlerAusblenden ? null : (speichern.error ?? zuruecksetzen.error)
   const beschaeftigt = speichern.isPending || zuruecksetzen.isPending
   const gesperrt = !istAdmin || beschaeftigt
   const z = entwurfGueltig ? entwurf : null
@@ -357,7 +359,7 @@ export function ArtikelAnordnungTab({ kategorien, alleArtikel, kasseId, kasseNam
               size="sm"
               loading={speichern.isPending}
               disabled={!kannSpeichern || beschaeftigt}
-              onClick={() => z && speichern.mutate(z)}
+              onClick={() => { if (z) { setFehlerAusblenden(false); speichern.mutate(z) } }}
             >
               Speichern
             </Button>
@@ -372,7 +374,7 @@ export function ArtikelAnordnungTab({ kategorien, alleArtikel, kasseId, kasseNam
           >
             <span className="font-medium">Eigene Anordnung dieser Kasse für diese Warengruppe löschen? Es gilt dann wieder das Standard-Layout.</span>
             <Button data-testid="anordnung-zuruecksetzen-ja" size="sm" variant="danger" loading={zuruecksetzen.isPending}
-              onClick={() => zuruecksetzen.mutate()}>
+              onClick={() => { setFehlerAusblenden(false); zuruecksetzen.mutate() }}>
               Ja, zurücksetzen
             </Button>
             <Button size="sm" variant="secondary" onClick={() => setZuruecksetzenFrage(false)}>Abbrechen</Button>
