@@ -80,7 +80,8 @@ export type Artikel = z.infer<typeof ArtikelSchema>
 export const ArtikelInputSchema = z.object({
   mandantId:       z.string().uuid(),
   bezeichnung:     z.string().trim().min(1, 'Bezeichnung erforderlich').max(200),
-  preisBruttoCent: z.number().int().nonnegative('Preis darf nicht negativ sein'),
+  /** Cent; negativ erlaubt (Pfand-/Retourartikel wie „Becher retour") */
+  preisBruttoCent: z.number().int(),
   mwstSatz:        MwStSatzSchema,
   // artikelnummer wird serverseitig automatisch generiert – nie vom Client gesetzt
   station:         StationSchema.optional().nullable(),
@@ -104,7 +105,7 @@ export type ArtikelInput = z.infer<typeof ArtikelInputSchema>
 
 export const ArtikelUpdateSchema = z.object({
   bezeichnung:          z.string().trim().min(1).max(200).optional(),
-  preisBruttoCent:      z.number().int().nonnegative().optional(),
+  preisBruttoCent:      z.number().int().optional(),
   mwstSatz:             MwStSatzSchema.optional(),
   station:              StationSchema.optional().nullable(),
   farbe:                KategorieFarbeSchema.optional().nullable(),

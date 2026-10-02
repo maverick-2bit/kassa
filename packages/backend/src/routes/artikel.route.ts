@@ -53,6 +53,8 @@ const LayoutImportQuerySchema = z.object({
   dryRun:          BoolQuery('true'),
   fehlendeAnlegen: BoolQuery('true'),
   spaltenSetzen:   BoolQuery('true'),
+  /** Sauberer Neustart: Altbestand vorher LÖSCHEN (Standard aus) */
+  katalogLoeschen:   BoolQuery('false'),
 })
 
 export const artikelRoute: FastifyPluginAsync<ArtikelRouteOptions> = async (fastify, opts) => {

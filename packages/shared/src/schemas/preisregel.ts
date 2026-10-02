@@ -225,6 +225,8 @@ export function aktionsPreisCent(
   kategorieId: string | null,
   jetzt: Date = new Date(),
 ): number {
+  // Negativpreise (Pfand-Rückgabe) werden nie durch Aktionen verändert
+  if (basisPreisCent < 0)     return basisPreisCent
   const aktion = aktiveAktion(regeln, artikelId, kategorieId, jetzt)
   if (aktion === null)        return basisPreisCent
   if (aktion.typ === 'fix')   return aktion.preisCent

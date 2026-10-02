@@ -22,7 +22,7 @@ import { hasModul, gaengeAnzahl } from '../lib/auth'
 import { formatPreis } from '../lib/format'
 import { DruckproblemeBanner } from '../components/DruckproblemeBanner'
 import { BonierFehlerLeiste, korrekturbonFehler, type BonierFehler } from '../components/BonierFehlerLeiste'
-import { warenkorbSummeCent, positionsPreisCent, rabattBetragCent } from '../lib/warenkorb'
+import { warenkorbSummeCent, positionsPreisCent, gesamtRabattCent } from '../lib/warenkorb'
 import {
   summeMitPosRabattenCent,
   positionsSummeCent,
@@ -231,7 +231,12 @@ export function TischTabPage() {
   )
 
   const gesamtVorRabatt = tabSummeMitPosRabatten + korbSummeCent
-  const rabattCent = useMemo(() => rabattBetragCent(gesamtVorRabatt, rabatt), [rabatt, gesamtVorRabatt])
+  // Rabatt wie im Backend: je MwSt-Satz, Pfand-Rückgabe (negativ) wird nie rabattiert
+  const mwstVonArtikel = useMemo(() => new Map((artikelQuery.data ?? []).map(x => [x.id, x.mwstSatz as string])), [artikelQuery.data])
+  const rabattCent = useMemo(() => gesamtRabattCent([
+    ...(tab?.positionen ?? []).map((p, i) => ({ preisCent: posRabatte[i] ?? p.preisBruttoCent, menge: p.menge, mwstSatz: mwstVonArtikel.get(p.artikelId) ?? 'normal' })),
+    ...korb.map(k => ({ preisCent: k.preisCent, menge: k.menge, mwstSatz: k.artikel.mwstSatz as string })),
+  ], rabatt), [rabatt, tab, posRabatte, korb, mwstVonArtikel])
   const gesamt = gesamtVorRabatt - rabattCent
 
   // ---------------------------------------------------------------------------
@@ -260,7 +265,7 @@ export function TischTabPage() {
     setFehler(null)
     // Aktionen: Artikel-Basispreis ggf. senken, Modifikatoren zum vollen Preis dazu
     const regeln    = preisregelnQuery.data ?? []
-    const hhProzent = aktiverRabattProzent(regeln, a.id, a.kategorieId, new Date())
+    const hhProzent = a.preisBruttoCent < 0 ? 0 : aktiverRabattProzent(regeln, a.id, a.kategorieId, new Date())
     const basisCent = aktionsPreisCent(a.preisBruttoCent, regeln, a.id, a.kategorieId, new Date())
     const preisCent = positionsPreisCent(basisCent, modifikatoren)
     const gang = gaengeAktiv ? aktiverGang : 0

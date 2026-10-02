@@ -325,6 +325,66 @@ function gruppenSchluessel(g: {
   ])
 }
 
+/** Schlüssel (Inhalt) → ID der vorhandenen aktiven Optionsgruppen eines Mandanten. */
+export interface OptionenKontext {
+  vorhandene:      Map<string, string>
+  wiederverwendet: Set<string>
+}
+
+export async function ladeOptionenKontext(tx: Db | Parameters<Parameters<Db['transaction']>[0]>[0], mandantId: string): Promise<OptionenKontext> {
+  const vorhandene = new Map<string, string>()
+  for (const g of await fetchGruppenMitModifikatoren(mandantId, tx as unknown as Db)) {
+    if (!g.aktiv) continue
+    const aktiveOptionen = g.modifikatoren.filter(m => m.aktiv)
+    vorhandene.set(gruppenSchluessel({ ...g, optionen: aktiveOptionen }), g.id)
+  }
+  return { vorhandene, wiederverwendet: new Set() }
+}
+
+/** Inhaltsschlüssel einer Optionsgruppe (für die Vorab-Zählung im Layout-Import). */
+export { gruppenSchluessel as optionsgruppenSchluessel }
+
+/**
+ * Legt die Optionsgruppe an (oder nimmt eine inhaltsgleiche aktive wieder) und hängt sie an
+ * den Artikel; vorhandene Zuordnungen bleiben. Gemeinsamer Kern von Excel- und Layout-Import.
+ */
+export async function ordneOptionsgruppeZu(
+  tx: Db | Parameters<Parameters<Db['transaction']>[0]>[0],
+  mandantId: string,
+  kontext: OptionenKontext,
+  artikelId: string,
+  e: { name: string; typ: 'pflicht' | 'optional'; maxAuswahl: number | null; optionen: { name: string; aufschlagCent: number }[] },
+  zaehler: { gruppenNeu: number; gruppenWiederverwendet: number; zuweisungenNeu: number },
+): Promise<void> {
+  const schluessel = gruppenSchluessel(e)
+  let gruppeId = kontext.vorhandene.get(schluessel)
+  if (gruppeId) {
+    if (!kontext.wiederverwendet.has(gruppeId)) { kontext.wiederverwendet.add(gruppeId); zaehler.gruppenWiederverwendet++ }
+  } else {
+    const [g] = await tx.insert(modifikatorGruppen)
+      .values({ mandantId, name: e.name, typ: e.typ, maxAuswahl: e.maxAuswahl })
+      .returning({ id: modifikatorGruppen.id })
+    gruppeId = g!.id
+    await tx.insert(modifikatoren).values(e.optionen.map((o, i) => ({
+      mandantId, gruppeId: gruppeId!, name: o.name, aufschlagCent: o.aufschlagCent, reihenfolge: i,
+    })))
+    kontext.vorhandene.set(schluessel, gruppeId)
+    // In dieser Sitzung neu angelegt → spätere Einträge zählen nicht als „wiederverwendet"
+    kontext.wiederverwendet.add(gruppeId)
+    zaehler.gruppenNeu++
+  }
+
+  const [letzte] = await tx
+    .select({ max: max(artikelModifikatorGruppen.reihenfolge) })
+    .from(artikelModifikatorGruppen)
+    .where(eq(artikelModifikatorGruppen.artikelId, artikelId))
+  const neu = await tx.insert(artikelModifikatorGruppen)
+    .values({ artikelId, gruppeId, reihenfolge: (letzte?.max ?? -1) + 1 })
+    .onConflictDoNothing()
+    .returning({ artikelId: artikelModifikatorGruppen.artikelId })
+  zaehler.zuweisungenNeu += neu.length
+}
+
 /**
  * Legt Optionsgruppen samt Optionen an und hängt sie an die genannten Artikel.
  *
@@ -357,18 +417,11 @@ export async function importiereOptionen(
       nachName.set(k, liste)
     }
 
-    // Vorhandene aktive Gruppen nach Inhalt — für Wiederverwendung
-    const vorhandene = new Map<string, string>()
-    for (const g of await fetchGruppenMitModifikatoren(mandantId, tx as unknown as Db)) {
-      if (!g.aktiv) continue
-      const aktiveOptionen = g.modifikatoren.filter(m => m.aktiv)
-      vorhandene.set(gruppenSchluessel({ ...g, optionen: aktiveOptionen }), g.id)
-    }
+    const kontext = await ladeOptionenKontext(tx, mandantId)
 
     const ergebnis: OptionenImportErgebnis = {
       gruppenNeu: 0, gruppenWiederverwendet: 0, zuweisungenNeu: 0, fehler: [],
     }
-    const wiederverwendet = new Set<string>()
 
     for (const [index, e] of input.eintraege.entries()) {
       const kandidaten = (nachName.get(klein(e.artikel)) ?? [])
@@ -383,35 +436,7 @@ export async function importiereOptionen(
         fehler(`Artikel ${kandidaten.length}× vorhanden — bitte Warengruppe angeben`)
         continue
       }
-      const artikelId = kandidaten[0]!.id
-
-      const schluessel = gruppenSchluessel({ ...e, name: e.gruppe })
-      let gruppeId = vorhandene.get(schluessel)
-      if (gruppeId) {
-        if (!wiederverwendet.has(gruppeId)) { wiederverwendet.add(gruppeId); ergebnis.gruppenWiederverwendet++ }
-      } else {
-        const [g] = await tx.insert(modifikatorGruppen)
-          .values({ mandantId, name: e.gruppe, typ: e.typ, maxAuswahl: e.maxAuswahl })
-          .returning({ id: modifikatorGruppen.id })
-        gruppeId = g!.id
-        await tx.insert(modifikatoren).values(e.optionen.map((o, i) => ({
-          mandantId, gruppeId: gruppeId!, name: o.name, aufschlagCent: o.aufschlagCent, reihenfolge: i,
-        })))
-        vorhandene.set(schluessel, gruppeId)
-        // In dieser Sitzung neu angelegt → spätere Einträge zählen nicht als „wiederverwendet"
-        wiederverwendet.add(gruppeId)
-        ergebnis.gruppenNeu++
-      }
-
-      const [letzte] = await tx
-        .select({ max: max(artikelModifikatorGruppen.reihenfolge) })
-        .from(artikelModifikatorGruppen)
-        .where(eq(artikelModifikatorGruppen.artikelId, artikelId))
-      const neu = await tx.insert(artikelModifikatorGruppen)
-        .values({ artikelId, gruppeId, reihenfolge: (letzte?.max ?? -1) + 1 })
-        .onConflictDoNothing()
-        .returning({ artikelId: artikelModifikatorGruppen.artikelId })
-      ergebnis.zuweisungenNeu += neu.length
+      await ordneOptionsgruppeZu(tx, mandantId, kontext, kandidaten[0]!.id, { ...e, name: e.gruppe }, ergebnis)
     }
 
     return ergebnis

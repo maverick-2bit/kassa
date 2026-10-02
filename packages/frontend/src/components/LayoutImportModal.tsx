@@ -29,6 +29,9 @@ export function LayoutImportModal({ open, onClose }: Props) {
   const [layout, setLayout] = useState<unknown>(null)
   const [fehlendeAnlegen, setFehlendeAnlegen] = useState(true)
   const [spaltenSetzen, setSpaltenSetzen] = useState(true)
+  /** Sauberer Neustart: Altbestand LÖSCHEN (Standard aus) + Tipp-Bestätigung */
+  const [katalogLoeschen, setKatalogLoeschen] = useState(false)
+  const [bestaetigung, setBestaetigung] = useState('')
   const [bericht, setBericht] = useState<LayoutBericht | null>(null)
   const [laeuft, setLaeuft] = useState(false)
   const [fehler, setFehler] = useState<string | null>(null)
@@ -38,7 +41,7 @@ export function LayoutImportModal({ open, onClose }: Props) {
   const zuruecksetzen = useCallback(() => {
     anfrage.current++
     setSchritt('auswahl'); setDateiName(''); setLayout(null)
-    setFehlendeAnlegen(true); setSpaltenSetzen(true)
+    setFehlendeAnlegen(true); setSpaltenSetzen(true); setKatalogLoeschen(false); setBestaetigung('')
     setBericht(null); setLaeuft(false); setFehler(null)
     if (dateiRef.current) dateiRef.current.value = ''
   }, [])
@@ -47,11 +50,11 @@ export function LayoutImportModal({ open, onClose }: Props) {
 
   const fehlerText = (e: unknown) => (e instanceof Error ? e.message : 'Unbekannter Fehler')
 
-  const vorschau = useCallback(async (daten: unknown, anlegen: boolean, spalten: boolean) => {
+  const vorschau = useCallback(async (daten: unknown, anlegen: boolean, spalten: boolean, loeschen: boolean) => {
     const meine = ++anfrage.current
     setLaeuft(true); setFehler(null)
     try {
-      const b = await artikelApi.layoutImport(daten, { dryRun: true, fehlendeAnlegen: anlegen, spaltenSetzen: spalten })
+      const b = await artikelApi.layoutImport(daten, { dryRun: true, fehlendeAnlegen: anlegen, spaltenSetzen: spalten, katalogLoeschen: loeschen })
       if (meine !== anfrage.current) return
       setBericht(b); setSchritt('vorschau')
     } catch (e) {
@@ -64,10 +67,10 @@ export function LayoutImportModal({ open, onClose }: Props) {
 
   // Haken geändert → Vorschau neu rechnen
   useEffect(() => {
-    if (open && layout !== null && schritt === 'vorschau') void vorschau(layout, fehlendeAnlegen, spaltenSetzen)
+    if (open && layout !== null && schritt === 'vorschau') void vorschau(layout, fehlendeAnlegen, spaltenSetzen, katalogLoeschen)
     // nur auf die Haken reagieren
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fehlendeAnlegen, spaltenSetzen])
+  }, [fehlendeAnlegen, spaltenSetzen, katalogLoeschen])
 
   const dateiGewaehlt = async (datei: File | undefined) => {
     if (!datei) return
@@ -75,7 +78,7 @@ export function LayoutImportModal({ open, onClose }: Props) {
     try {
       const daten = JSON.parse(await datei.text()) as unknown
       setDateiName(datei.name); setLayout(daten)
-      await vorschau(daten, fehlendeAnlegen, spaltenSetzen)
+      await vorschau(daten, fehlendeAnlegen, spaltenSetzen, katalogLoeschen)
     } catch (e) {
       setFehler(e instanceof SyntaxError ? 'Die Datei ist kein gültiges JSON.' : fehlerText(e))
     }
@@ -86,7 +89,7 @@ export function LayoutImportModal({ open, onClose }: Props) {
     anfrage.current++
     setLaeuft(true); setFehler(null)
     try {
-      const b = await artikelApi.layoutImport(layout, { dryRun: false, fehlendeAnlegen, spaltenSetzen })
+      const b = await artikelApi.layoutImport(layout, { dryRun: false, fehlendeAnlegen, spaltenSetzen, katalogLoeschen })
       setBericht(b); setSchritt('erfolg')
       await qc.invalidateQueries()
     } catch (e) {
@@ -140,8 +143,16 @@ export function LayoutImportModal({ open, onClose }: Props) {
                          className="rounded border-line-strong text-brand-500 focus:ring-brand-500" />
                   Raster auf die Spaltenzahl des Layouts stellen (Artikel je Zeile, alle Kassen)
                 </label>
+                <label className="flex items-center gap-2 text-sm font-medium text-red-700">
+                  <input type="checkbox" checked={katalogLoeschen} disabled={laeuft}
+                         onChange={(e) => { setKatalogLoeschen(e.target.checked); setBestaetigung('') }}
+                         className="rounded border-red-400 text-red-600 focus:ring-red-500" />
+                  Sauberer Neustart: vorher ALLE bestehenden Artikel, Warengruppen und Optionen LÖSCHEN (nicht rückgängig)
+                </label>
               </div>
             )}
+
+            {schritt === 'vorschau' && katalogLoeschen && <LoeschWarnung bericht={bericht} bestaetigung={bestaetigung} onChange={setBestaetigung} />}
 
             <ul className="list-disc space-y-1 pl-5 text-sm text-ink" data-testid="layout-bericht">
               {bericht.zusammenfassung.map((z, i) => <li key={i}>{z}</li>)}
@@ -162,7 +173,7 @@ export function LayoutImportModal({ open, onClose }: Props) {
             <>
               <Button variant="secondary" onClick={schliessen}>Abbrechen</Button>
               {schritt === 'vorschau' && (
-                <Button onClick={() => { void anwenden() }} loading={laeuft} disabled={laeuft || !bericht}>
+                <Button onClick={() => { void anwenden() }} loading={laeuft} disabled={laeuft || !bericht || (katalogLoeschen && bestaetigung.trim() !== 'LOESCHEN')}>
                   Anwenden
                 </Button>
               )}
@@ -174,9 +185,42 @@ export function LayoutImportModal({ open, onClose }: Props) {
   )
 }
 
+/** Roter Warnblock beim „Sauberen Neustart": Zahlen aus dem dryRun, Anwenden erst nach Eintippen von LOESCHEN. */
+function LoeschWarnung({ bericht, bestaetigung, onChange }: { bericht: LayoutBericht; bestaetigung: string; onChange: (v: string) => void }) {
+  const g = bericht.katalogLoeschen.geloescht
+  return (
+    <div role="alert" data-testid="loesch-warnung" className="space-y-2 rounded-lg border-2 border-red-400 bg-red-50 p-3 text-sm text-red-800">
+      <p className="font-bold">Achtung: Das LÖSCHT den bisherigen Katalog — nicht rückgängig.</p>
+      <p>
+        Es werden gelöscht: <strong>{g.artikel}</strong> Artikel, <strong>{g.gruppen}</strong> Warengruppen, <strong>{g.optionsgruppen}</strong> Optionsgruppen
+        {' '}(dazu {g.seriennummern} Seriennummern und {g.inventurPositionen} Inventurpositionen dieser Artikel; {g.sichtbarkeiten} Gruppen-Zuordnungen und {g.kassenFavoriten} Kassen-Favoriten werden geleert, {g.preisregelnBereinigt} Preisregeln bereinigt).
+      </p>
+      {(bericht.katalogLoeschen.nurDeaktiviert.artikel.length > 0 || bericht.katalogLoeschen.nurDeaktiviert.gruppen.length > 0) && (
+        <p>
+          Nur deaktiviert statt gelöscht (laufende Vorgänge): {bericht.katalogLoeschen.nurDeaktiviert.artikel.length} Artikel, {bericht.katalogLoeschen.nurDeaktiviert.gruppen.length} Gruppen — Details unter „Problemfälle".
+        </p>
+      )}
+      <p>Belege, Tagesabschlüsse und der DEP-Export bleiben unberührt. Danach wird alles aus dem Layout <strong>neu angelegt — auch bei Wiederholung</strong>.</p>
+      <label className="block">
+        <span className="font-medium">Zur Bestätigung das Wort <strong>LOESCHEN</strong> eintippen:</span>
+        <input
+          value={bestaetigung}
+          onChange={(e) => onChange(e.target.value)}
+          aria-label="Bestätigung: LOESCHEN eintippen"
+          autoComplete="off"
+          className="mt-1 block w-48 rounded-md border border-red-400 bg-white px-2 py-1 text-ink focus:outline-none focus:ring-2 focus:ring-red-500"
+        />
+      </label>
+    </div>
+  )
+}
+
 function Probleme({ bericht }: { bericht: LayoutBericht }) {
   const p = bericht.probleme
+  const nd = bericht.katalogLoeschen.nurDeaktiviert
   const bloecke: { titel: string; zeilen: string[] }[] = [
+    { titel: `Nur deaktiviert statt gelöscht (${nd.artikel.length + nd.gruppen.length})`,
+      zeilen: [...nd.artikel.map(a => `Artikel ${a.name} — ${a.grund}`), ...nd.gruppen.map(g => `Gruppe ${g.name} — ${g.grund}`)] },
     { titel: `Mehrdeutig — nicht angefasst (${p.mehrdeutig.length})`,
       zeilen: p.mehrdeutig.map(m => `${m.pfad} › ${m.name}  (Kandidaten in: ${m.kandidaten.map(k => k.gruppe).join(', ')})`) },
     { titel: `Nicht gefunden / nicht angelegt (${p.nichtGefunden.length})`,

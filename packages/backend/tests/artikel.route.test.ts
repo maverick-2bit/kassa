@@ -157,12 +157,24 @@ describe('POST /api/artikel', () => {
     await srv.close()
   })
 
-  it('lehnt negativen Preis ab', async () => {
+  it('erlaubt negativen Preis (Pfand-Rückgabe wie „Becher retour")', async () => {
+    const srv = await buildTestServer(mockDb({ insertReturning: [artikelRow({ preisBruttoCent: -200 })] }))
+    const res = await srv.fastify.inject({
+      method: 'POST', url: '/api/artikel',
+      headers: srv.authHeader(),
+      payload: { bezeichnung: 'Becher retour', preisBruttoCent: -200, mwstSatz: 'null' },
+    })
+    expect(res.statusCode).toBe(201)
+    expect(res.json().preisBruttoCent).toBe(-200)
+    await srv.close()
+  })
+
+  it('lehnt nicht-ganzzahligen Preis ab', async () => {
     const srv = await buildTestServer(mockDb())
     const res = await srv.fastify.inject({
       method: 'POST', url: '/api/artikel',
       headers: srv.authHeader(),
-      payload: { bezeichnung: 'Test', preisBruttoCent: -100, mwstSatz: 'normal' },
+      payload: { bezeichnung: 'Test', preisBruttoCent: 1.5, mwstSatz: 'normal' },
     })
     expect(res.statusCode).toBe(400)
     await srv.close()

@@ -118,3 +118,49 @@ describe('zahlungsAufteilung', () => {
     }
   })
 })
+
+// ---------------------------------------------------------------------------
+// Negative Positionen und Retoure (Gesamtsumme < 0)
+// ---------------------------------------------------------------------------
+
+import { gesamtRabattCent, preisNachPositionsRabattCent as posRabatt, summeNachGutscheinCent as nachGutschein, rabattBetragCent as rabattBetrag, zahlungsAufteilung as aufteilung } from './warenkorb'
+
+describe('negative Positionen / Retoure', () => {
+  const cola    = { preisCent: 350, menge: 2, mwstSatz: 'normal' }
+  const becher  = { preisCent: -200, menge: 2, mwstSatz: 'null' }
+  const glas    = { preisCent: -50, menge: 1, mwstSatz: 'ermaessigt1' }
+
+  it('Summe darf negativ sein', () => {
+    expect(warenkorbSummeCent([becher, glas])).toBe(-450)
+    expect(warenkorbSummeCent([cola, becher, glas])).toBe(250)
+  })
+
+  it('Rabatt: nie auf Null/negative Basis; Prozent nur auf Sätze mit positiver Summe', () => {
+    expect(rabattBetrag(-450, { typ: 'prozent', prozent: 10 })).toBe(0)
+    expect(rabattBetrag(-450, { typ: 'betrag', betragCent: 100 })).toBe(0)
+    expect(gesamtRabattCent([becher, glas], { typ: 'prozent', prozent: 50 })).toBe(0)
+    // 10 % nur auf die 20-%-Summe (700) → 70, nicht auf die Nettosumme 250
+    expect(gesamtRabattCent([cola, becher, glas], { typ: 'prozent', prozent: 10 })).toBe(70)
+    // fixer Betrag: auf die Gesamtsumme (250) gedeckelt
+    expect(gesamtRabattCent([cola, becher, glas], { typ: 'betrag', betragCent: 5000 })).toBe(250)
+    expect(gesamtRabattCent([cola], null)).toBe(0)
+  })
+
+  it('Satz mit negativer Summe im selben Satz wird gegen positive Posten verrechnet (wie Backend)', () => {
+    const sechs = { preisCent: 600, menge: 1, mwstSatz: 'ermaessigt1' }
+    expect(gesamtRabattCent([sechs, glas], { typ: 'prozent', prozent: 10 })).toBe(55) // Satz-Summe 550
+  })
+
+  it('Positionsrabatt und Gutschein machen aus einem Negativpreis/-summe keine 0', () => {
+    expect(posRabatt(-200, { typ: 'prozent', prozent: 50 })).toBe(-200)
+    expect(posRabatt(-200, { typ: 'betrag', betragCent: 50 })).toBe(-200)
+    expect(nachGutschein(-450, 0)).toBe(-450)
+    expect(nachGutschein(1000, 300)).toBe(700)
+    expect(nachGutschein(200, 300)).toBe(0)
+  })
+
+  it('Rückzahlung: alles bar, kein Wechselgeld', () => {
+    expect(aufteilung(-450, 0)).toEqual({ barCentBeleg: -450, karteCentBeleg: 0, wechselgeldCent: 0 })
+    expect(aufteilung(-450, 1000)).toEqual({ barCentBeleg: -450, karteCentBeleg: 0, wechselgeldCent: 0 })
+  })
+})

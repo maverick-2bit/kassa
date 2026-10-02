@@ -39,8 +39,8 @@ export type RabattInput = z.infer<typeof RabattInputSchema>
 export const ArtikelPositionSchema = z.object({
   artikelId:              z.string().uuid(),
   menge:                  z.number().positive('Menge muss positiv sein'),
-  /** Preis-Override (Modifikatoren oder Rabatt; 0 = Artikel gratis) */
-  einzelpreisBreuttoCent: z.number().int().nonnegative().optional(),
+  /** Preis-Override (Modifikatoren oder Rabatt; 0 = Artikel gratis; negativ bei Pfand-Rückgabe) */
+  einzelpreisBreuttoCent: z.number().int().optional(),
   /** Bezeichnungs-Zusatz, z. B. "(groß, Ketchup)" */
   bezeichnungZusatz:      z.string().max(200).optional(),
   /** Gewählte Seriennummern aus dem Pool (bei serialisierten Artikeln) */
@@ -64,9 +64,10 @@ export const BarzahlungsbelegInputSchema = z.object({
   kasseId:    z.string().uuid(),
   positionen: z.array(BelegInputPositionSchema).min(1, 'Mindestens eine Position erforderlich'),
   zahlung: z.object({
-    barCent:      z.number().int().nonnegative(),
-    karteCent:    z.number().int().nonnegative(),
-    sonstigeCent: z.number().int().nonnegative(),
+    // Negativ nur bei einem Beleg unter 0 (Retoure, Pfand-Rückgabe) — der Service prüft das Vorzeichen
+    barCent:      z.number().int(),
+    karteCent:    z.number().int(),
+    sonstigeCent: z.number().int(),
   }),
   rabatt:     RabattInputSchema.optional(),
   /** Bestehenden Kunden zuordnen */

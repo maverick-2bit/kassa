@@ -11,7 +11,7 @@
  */
 
 import type { FastifyPluginAsync } from 'fastify'
-import { and, eq, asc, inArray } from 'drizzle-orm'
+import { and, eq, asc, gte, inArray } from 'drizzle-orm'
 import { z } from 'zod'
 import type { Db } from '../db/client.js'
 import type { Config } from '../config.js'
@@ -103,7 +103,8 @@ export const gastRoute: FastifyPluginAsync<GastRouteOptions> = async (fastify, o
           istBestandteil:  artikel.istBestandteil,
         })
         .from(artikel)
-        .where(and(eq(artikel.mandantId, kasse.mandantId), eq(artikel.aktiv, true)))
+        // Pfand-Rückgabe-Artikel (negativer Preis) sind nicht für Gäste bestellbar
+        .where(and(eq(artikel.mandantId, kasse.mandantId), eq(artikel.aktiv, true), gte(artikel.preisBruttoCent, 0)))
         .orderBy(asc(artikel.reihenfolge))
 
       // Rezept-Verfügbarkeit: zusammengesetzte Artikel sind ausverkauft, wenn ein Bestandteil fehlt.

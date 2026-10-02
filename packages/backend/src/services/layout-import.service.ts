@@ -21,9 +21,14 @@ import { randomUUID } from 'node:crypto'
 import { and, eq, sql } from 'drizzle-orm'
 import type { LayoutBericht, LayoutGruppe, LayoutImport, LayoutImportOptionen } from '@kassa/shared'
 import type { Db } from '../db/client.js'
-import { artikel, kassen, kasseFavoriten, kategorien } from '../db/schema.js'
+import {
+  artikel, kassekategorieSichtbarkeit, kassen, kasseFavoriten, kategorien,
+  artikelModifikatorGruppen, modifikatoren, modifikatorGruppen,
+} from '../db/schema.js'
 import type { DbOrTx } from './bestandteil.service.js'
 import { generiereArtikelNummer } from './artikel.service.js'
+import { ermittleLoeschPlan, fuehreLoeschungAus, type LoeschPlan } from './katalog-loeschen.service.js'
+import { ladeOptionenKontext, optionsgruppenSchluessel, ordneOptionsgruppeZu } from './modifikator.service.js'
 
 /** Farbe für Gruppen ohne gesetzte Farbe (Asello: „grau"). */
 export const STANDARD_GRUPPENFARBE = '#637685'
@@ -82,11 +87,31 @@ export interface KassaArtikel {
   istFavorit: boolean; favoritenReihenfolge: number
   aktiv: boolean; istBestandteil: boolean
 }
+export interface KassaOptionsgruppe {
+  id: string; name: string; typ: 'pflicht' | 'optional'; maxAuswahl: number | null
+  /** nur aktive Optionen, in Reihenfolge */
+  optionen: { name: string; aufschlagCent: number }[]
+}
 export interface KassaZustand {
   gruppen: KassaGruppe[]
   artikel: KassaArtikel[]
   kassen: { id: string; artikelProZeile: number }[]
   kassenFavoritenAnzahl: number
+  /** Aktive Optionsgruppen des Mandanten (fehlt = keine) */
+  optionsgruppen?: KassaOptionsgruppe[]
+  /** Artikel ↔ Optionsgruppe (fehlt = keine) */
+  zuordnungen?: { artikelId: string; gruppeId: string }[]
+  /** Zeilen in kasse_kategorie_sichtbarkeit der Kassen des Mandanten */
+  sichtbarkeitenAnzahl?: number
+  /** Nur bei katalogLoeschen: was gelöscht / nur deaktiviert würde */
+  loeschung?: LoeschPlan
+}
+
+/** Anzeigename einer Optionsgruppe: „Variante (mit Eis / mit Zitrone)" — unterscheidbar in der Verwaltung. */
+export function optionsgruppenName(gruppe: string, optionen: { name: string }[]): string {
+  const vorschau = optionen.slice(0, 2).map(o => o.name).join(' / ') + (optionen.length > 2 ? ' …' : '')
+  const name = `${gruppe} (${vorschau})`
+  return name.length <= 100 ? name : name.slice(0, 99) + '…'
 }
 
 export interface LayoutPlan {
@@ -94,7 +119,7 @@ export interface LayoutPlan {
   /** Eltern vor Kindern */
   neueGruppen: { id: string; name: string; parentId: string | null; farbe: string; reihenfolge: number
     station: string | null; bonierdruckerId: string | null; terminalSichtbar: boolean }[]
-  gruppenUpdates: { id: string; werte: { parentId?: string | null; farbe?: string; reihenfolge?: number } }[]
+  gruppenUpdates: { id: string; werte: { parentId?: string | null; farbe?: string; reihenfolge?: number; station?: string } }[]
   neueArtikel: { id: string; bezeichnung: string; preisBruttoCent: number; mwstSatz: string; kategorieId: string
     farbe: string | null; rasterPosition: number | null; reihenfolge: number
     istFavorit: boolean; favoritenReihenfolge: number }[]
@@ -102,6 +127,11 @@ export interface LayoutPlan {
     reihenfolge?: number; istFavorit?: boolean; favoritenReihenfolge?: number } }[]
   kassenFavoritenLoeschen: boolean
   kassenUpdates: { id: string; artikelProZeile: number }[]
+  /** Optionsgruppen je Artikel (artikelId = bestehender oder neu angelegter Artikel) */
+  optionen: { artikelId: string; name: string; typ: 'pflicht' | 'optional'; maxAuswahl: number | null
+    optionen: { name: string; aufschlagCent: number }[] }[]
+  /** katalogLoeschen: vorab auszuführende Löschung (inkl. Fallback-Deaktivierung) */
+  loeschung: LoeschPlan | null
 }
 
 // ---------------------------------------------------------------------------
@@ -168,7 +198,11 @@ const zaehle = <T>(items: Iterable<T>, schluessel: (t: T) => string | null): Map
 // Planung (rein)
 // ---------------------------------------------------------------------------
 
-export function planeLayout(zustand: KassaZustand, layout: LayoutImport, opts: LayoutImportOptionen): LayoutPlan {
+export function planeLayout(ist: KassaZustand, layout: LayoutImport, opts: LayoutImportOptionen): LayoutPlan {
+  // Sauberer Neustart: gematcht wird gegen einen LEEREN Katalog (Altbestand wird gelöscht, nicht wiederverwendet)
+  const zustand: KassaZustand = opts.katalogLoeschen
+    ? { ...ist, gruppen: [], artikel: [], optionsgruppen: [], zuordnungen: [] }
+    : ist
   const knotenListe = flacheKnoten(layout.gruppen)
   const gruppeById = new Map(zustand.gruppen.map(g => [g.id, g] as const))
   const aktiveGruppen = zustand.gruppen.filter(g => g.aktiv).sort((a, b) => a.reihenfolge - b.reihenfolge || a.id.localeCompare(b.id))
@@ -304,7 +338,7 @@ export function planeLayout(zustand: KassaZustand, layout: LayoutImport, opts: L
   const plan: LayoutPlan = {
     bericht: undefined as unknown as LayoutBericht,
     neueGruppen: [], gruppenUpdates: [], neueArtikel: [], artikelUpdates: [],
-    kassenFavoritenLoeschen: false, kassenUpdates: [],
+    kassenFavoritenLoeschen: false, kassenUpdates: [], optionen: [], loeschung: null,
   }
   let gruppenGeaendert = 0, gruppenUmgehaengt = 0
 
@@ -319,6 +353,8 @@ export function planeLayout(zustand: KassaZustand, layout: LayoutImport, opts: L
       if (g.parentId !== parentId) { werte.parentId = parentId; gruppenUmgehaengt++ }
       if (g.farbe !== farbe) werte.farbe = farbe
       if (g.reihenfolge !== k.position) werte.reihenfolge = k.position
+      // Station aus dem Layout nur setzen, wenn die Gruppe noch keine hat (bestehende Stationen bleiben)
+      if (g.station === null && k.layout.station) { werte.station = k.layout.station; k.werte.station = k.layout.station }
       if (Object.keys(werte).length > 0) { plan.gruppenUpdates.push({ id: g.id, werte }); gruppenGeaendert++ }
     } else {
       // Station/Bonierdrucker/Terminal von der häufigsten bisherigen Gruppe der Artikel erben
@@ -333,6 +369,8 @@ export function planeLayout(zustand: KassaZustand, layout: LayoutImport, opts: L
       k.werte = quelle
         ? { station: quelle.station, bonierdruckerId: quelle.bonierdruckerId, terminalSichtbar: quelle.terminalSichtbar }
         : (k.parent?.werte ?? { station: null, bonierdruckerId: null, terminalSichtbar: false })
+      // Layout-Station gewinnt, sonst die vererbte
+      if (k.layout.station) k.werte = { ...k.werte, station: k.layout.station }
       const id = randomUUID()
       k.ziel = { id, neu: true }
       plan.neueGruppen.push({ id, name: k.layout.name, parentId, farbe, reihenfolge: k.position, ...k.werte })
@@ -380,13 +418,12 @@ export function planeLayout(zustand: KassaZustand, layout: LayoutImport, opts: L
         if (Object.keys(werte).length > 0) { artikelUpdates.set(a.id, werte); artikelGeaendert++ }
       } else if (z.status === 'fehlt') {
         const satz = mwstZuSatz(z.artikel.mwst)
-        if (!opts.fehlendeAnlegen || !satz || z.artikel.preisCent < 0) {
+        if (!opts.fehlendeAnlegen || !satz) {
           nichtAngelegt++
           probleme.nichtGefunden.push({
             name: z.artikel.name, pfad: k.pfad,
             grund: !opts.fehlendeAnlegen ? 'nicht in der Kassa — Anlegen abgewählt'
-              : !satz ? `Steuersatz ${Math.round(z.artikel.mwst * 100)} % unbekannt — nicht angelegt`
-              : 'negativer Preis (Rückgabe/Pfand) — bitte von Hand anlegen',
+              : `Steuersatz ${Math.round(z.artikel.mwst * 100)} % unbekannt — nicht angelegt`,
           })
         } else {
           neu++
@@ -399,6 +436,41 @@ export function planeLayout(zustand: KassaZustand, layout: LayoutImport, opts: L
         }
       }
     }
+  }
+
+  // --- 4b. Optionen --------------------------------------------------------
+  const optionenZaehler = { gruppenNeu: 0, gruppenWiederverwendet: 0, zuordnungenNeu: 0, uebersprungen: 0 }
+  const optionenZeilen: LayoutPlan['optionen'] = []
+  {
+    const vorhandene = new Map((zustand.optionsgruppen ?? []).map(g => [optionsgruppenSchluessel(g), g.id] as const))
+    const vorhandenePaare = new Set((zustand.zuordnungen ?? []).map(z => `${z.artikelId}|${z.gruppeId}`))
+    const neuGruppen = new Map<string, string>()
+    const wiederverwendet = new Set<string>()
+    const gesehenePaare = new Set<string>()
+    for (const k of knotenListe) for (const z of k.zeilen) {
+      if (z.artikel.optionen.length === 0) continue
+      const artikelId = z.kassa?.id ?? z.neuId
+      if (!artikelId) { optionenZaehler.uebersprungen += z.artikel.optionen.length; continue }
+      for (const o of z.artikel.optionen) {
+        const eintrag = {
+          name: optionsgruppenName(o.gruppe, o.optionen), typ: (o.pflicht ? 'pflicht' : 'optional') as 'pflicht' | 'optional',
+          maxAuswahl: o.mehrfach ? null : 1, optionen: o.optionen.map(x => ({ name: x.name, aufschlagCent: x.aufschlagCent })),
+        }
+        optionenZeilen.push({ artikelId, ...eintrag })
+        const schluessel = optionsgruppenSchluessel(eintrag)
+        let gid = vorhandene.get(schluessel)
+        if (gid) {
+          if (!wiederverwendet.has(gid)) { wiederverwendet.add(gid); optionenZaehler.gruppenWiederverwendet++ }
+        } else {
+          gid = neuGruppen.get(schluessel)
+          if (!gid) { gid = `neu:${neuGruppen.size}`; neuGruppen.set(schluessel, gid); optionenZaehler.gruppenNeu++ }
+        }
+        const paar = `${artikelId}|${gid}`
+        if (!vorhandenePaare.has(paar) && !gesehenePaare.has(paar)) optionenZaehler.zuordnungenNeu++
+        gesehenePaare.add(paar)
+      }
+    }
+    plan.optionen = optionenZeilen
   }
 
   // --- 5. Favoriten --------------------------------------------------------
@@ -447,6 +519,11 @@ export function planeLayout(zustand: KassaZustand, layout: LayoutImport, opts: L
     }
     plan.kassenFavoritenLoeschen = zustand.kassenFavoritenAnzahl > 0
   }
+  const loesch = ist.loeschung
+  if (opts.katalogLoeschen && loesch) {
+    plan.loeschung = loesch
+    plan.kassenFavoritenLoeschen = ist.kassenFavoritenAnzahl > 0
+  }
   plan.artikelUpdates = [...artikelUpdates].map(([id, werte]) => ({ id, werte }))
   plan.neueArtikel = [...neueArtikel.values()]
 
@@ -470,7 +547,7 @@ export function planeLayout(zustand: KassaZustand, layout: LayoutImport, opts: L
   }
 
   // --- Bericht ---------------------------------------------------------------
-  const kassenFavoritenGeloescht = plan.kassenFavoritenLoeschen ? zustand.kassenFavoritenAnzahl : 0
+  const kassenFavoritenGeloescht = plan.kassenFavoritenLoeschen ? ist.kassenFavoritenAnzahl : 0
   const zaehler: LayoutBericht['zaehler'] = {
     gruppen: {
       imLayout: knotenListe.length,
@@ -482,6 +559,7 @@ export function planeLayout(zustand: KassaZustand, layout: LayoutImport, opts: L
     artikel: { imLayout: zeilen.length, zugeordnet, neu, mehrdeutig, nichtGefundenNichtAngelegt: nichtAngelegt, geaendert: artikelGeaendert },
     favoriten: { ...favoriten, kassenFavoritenGeloescht },
     kassen: { rasterAufSpaltenGesetzt: plan.kassenUpdates.length },
+    optionen: optionenZaehler,
   }
   const z = zaehler
   const zusammenfassung = [
@@ -495,10 +573,40 @@ export function planeLayout(zustand: KassaZustand, layout: LayoutImport, opts: L
       ? `Raster: ${z.kassen.rasterAufSpaltenGesetzt} Kasse(n) auf ${layout.spalten} Spalten gestellt.`
       : 'Raster: Spaltenanzahl unverändert.',
   ]
+  zusammenfassung.push(
+    `Optionen: ${z.optionen.gruppenNeu} Optionsgruppe(n) neu, ${z.optionen.gruppenWiederverwendet} wiederverwendet, ${z.optionen.zuordnungenNeu} Zuordnung(en) neu` +
+    (z.optionen.uebersprungen > 0 ? `, ${z.optionen.uebersprungen} übersprungen (Artikel mehrdeutig oder nicht angelegt).` : '.'),
+  )
+  if (opts.katalogLoeschen && loesch) {
+    const w = opts.dryRun ? 'würde löschen' : 'gelöscht'
+    zusammenfassung.unshift(
+      `Sauberer Neustart (nicht rückgängig): ${w}: ${loesch.artikelLoeschen} Artikel, ${loesch.gruppenLoeschen} Gruppen, ${loesch.optionsgruppen} Optionsgruppen, ` +
+      `${loesch.seriennummern} Seriennummern, ${loesch.inventurPositionen} Inventurpositionen; ${loesch.sichtbarkeiten} Kassen-Sichtbarkeiten und ${kassenFavoritenGeloescht} Kassen-Favoriten ${opts.dryRun ? 'würden geleert' : 'geleert'}, ` +
+      `${loesch.preisregeln.length} Preisregel(n) bereinigt. Belege, DEP und Archiv bleiben unberührt. Alles aus dem Layout wird NEU angelegt — auch bei Wiederholung.`,
+    )
+    if (loesch.artikelBehalten.length > 0 || loesch.gruppenBehalten.length > 0) {
+      zusammenfassung.push(
+        `Nur deaktiviert statt gelöscht (laufende Vorgänge): ${loesch.artikelBehalten.length} Artikel, ${loesch.gruppenBehalten.length} Gruppen — Details unter „Problemfälle".`,
+      )
+    }
+  }
   if (probleme.nichtZugeordneteKassaGruppen.length > 0) {
     zusammenfassung.push(`${probleme.nichtZugeordneteKassaGruppen.length} bestehende Kassa-Gruppe(n) ohne Gegenstück im Layout bleiben unverändert (ggf. aufräumen).`)
   }
-  plan.bericht = { dryRun: opts.dryRun, zusammenfassung, zaehler, probleme }
+  plan.bericht = { dryRun: opts.dryRun, zusammenfassung, zaehler, probleme,
+    katalogLoeschen: {
+      aktiv: opts.katalogLoeschen,
+      geloescht: {
+        artikel: loesch?.artikelLoeschen ?? 0, gruppen: loesch?.gruppenLoeschen ?? 0, optionsgruppen: loesch?.optionsgruppen ?? 0,
+        seriennummern: loesch?.seriennummern ?? 0, inventurPositionen: loesch?.inventurPositionen ?? 0,
+        sichtbarkeiten: loesch?.sichtbarkeiten ?? 0, kassenFavoriten: opts.katalogLoeschen ? kassenFavoritenGeloescht : 0,
+        preisregelnBereinigt: loesch?.preisregeln.length ?? 0,
+      },
+      nurDeaktiviert: {
+        artikel: (loesch?.artikelBehalten ?? []).map(a => ({ name: a.bezeichnung, grund: a.grund })),
+        gruppen: (loesch?.gruppenBehalten ?? []).map(g => ({ name: g.name, grund: g.grund })),
+      },
+    } }
   return plan
 }
 
@@ -506,13 +614,34 @@ export function planeLayout(zustand: KassaZustand, layout: LayoutImport, opts: L
 // Ausführung
 // ---------------------------------------------------------------------------
 
-async function ladeZustand(db: DbOrTx, mandantId: string): Promise<KassaZustand> {
+async function ladeZustand(db: DbOrTx, mandantId: string, katalogLoeschen: boolean): Promise<KassaZustand> {
   const gruppen = await db.select().from(kategorien).where(eq(kategorien.mandantId, mandantId))
   const artikelRows = await db.select().from(artikel).where(eq(artikel.mandantId, mandantId))
   const kassenRows = await db.select({ id: kassen.id, artikelProZeile: kassen.artikelProZeile })
     .from(kassen).where(eq(kassen.mandantId, mandantId))
   const [fav] = await db.select({ n: sql<number>`count(*)::int` }).from(kasseFavoriten).where(eq(kasseFavoriten.mandantId, mandantId))
+  const ogRows = await db.select().from(modifikatorGruppen)
+    .where(and(eq(modifikatorGruppen.mandantId, mandantId), eq(modifikatorGruppen.aktiv, true)))
+  const modRows = await db.select().from(modifikatoren)
+    .where(and(eq(modifikatoren.mandantId, mandantId), eq(modifikatoren.aktiv, true)))
+  const zuordnungen = await db
+    .select({ artikelId: artikelModifikatorGruppen.artikelId, gruppeId: artikelModifikatorGruppen.gruppeId })
+    .from(artikelModifikatorGruppen)
+    .innerJoin(artikel, eq(artikelModifikatorGruppen.artikelId, artikel.id))
+    .where(eq(artikel.mandantId, mandantId))
+  const [sicht] = await db.select({ n: sql<number>`count(*)::int` })
+    .from(kassekategorieSichtbarkeit)
+    .innerJoin(kassen, eq(kassekategorieSichtbarkeit.kasseId, kassen.id))
+    .where(eq(kassen.mandantId, mandantId))
   return {
+    optionsgruppen: ogRows.map(g => ({
+      id: g.id, name: g.name, typ: g.typ as 'pflicht' | 'optional', maxAuswahl: g.maxAuswahl,
+      optionen: modRows.filter(m => m.gruppeId === g.id).sort((a, b) => a.reihenfolge - b.reihenfolge)
+        .map(m => ({ name: m.name, aufschlagCent: m.aufschlagCent })),
+    })),
+    zuordnungen,
+    sichtbarkeitenAnzahl: sicht?.n ?? 0,
+    ...(katalogLoeschen && { loeschung: await ermittleLoeschPlan(db, mandantId) }),
     gruppen: gruppen.map(g => ({
       id: g.id, name: g.name, parentId: g.parentId, aktiv: g.aktiv, farbe: g.farbe, reihenfolge: g.reihenfolge,
       station: g.station, bonierdruckerId: g.bonierdruckerId, terminalSichtbar: g.terminalSichtbar,
@@ -530,6 +659,7 @@ async function ladeZustand(db: DbOrTx, mandantId: string): Promise<KassaZustand>
 
 async function schreibePlan(tx: DbOrTx, mandantId: string, plan: LayoutPlan): Promise<void> {
   const jetzt = new Date()
+  if (plan.loeschung) await fuehreLoeschungAus(tx, mandantId, plan.loeschung)
   // Neue Gruppen: Eltern vor Kindern (Self-FK)
   for (const g of plan.neueGruppen) {
     await tx.insert(kategorien).values({
@@ -556,7 +686,13 @@ async function schreibePlan(tx: DbOrTx, mandantId: string, plan: LayoutPlan): Pr
     await tx.update(artikel).set({ ...u.werte, updatedAt: jetzt })
       .where(and(eq(artikel.id, u.id), eq(artikel.mandantId, mandantId)))
   }
-  if (plan.kassenFavoritenLoeschen) {
+  if (plan.optionen.length > 0) {
+    // Nach der Deaktivierung leer → alles neu; sonst inhaltsgleiche aktive Gruppen wiederverwenden
+    const kontext = await ladeOptionenKontext(tx, mandantId)
+    const zaehler = { gruppenNeu: 0, gruppenWiederverwendet: 0, zuweisungenNeu: 0 }
+    for (const o of plan.optionen) await ordneOptionsgruppeZu(tx, mandantId, kontext, o.artikelId, o, zaehler)
+  }
+  if (plan.kassenFavoritenLoeschen && !plan.loeschung) {
     await tx.delete(kasseFavoriten).where(eq(kasseFavoriten.mandantId, mandantId))
   }
   for (const u of plan.kassenUpdates) {
@@ -578,7 +714,7 @@ export async function wendeLayoutAn(
   return db.transaction(async (tx) => {
     // Zwei gleichzeitige Importe desselben Mandanten würden doppelt anlegen
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${'layout-import:' + mandantId}))`)
-    const zustand = await ladeZustand(tx, mandantId)
+    const zustand = await ladeZustand(tx, mandantId, opts.katalogLoeschen)
     const plan = planeLayout(zustand, layout, opts)
     if (!opts.dryRun) await schreibePlan(tx, mandantId, plan)
     return plan.bericht

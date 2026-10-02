@@ -503,10 +503,10 @@ export const artikelApi = {
   lagerAktivieren: (kategorieId: string | null) =>
     request<{ aktiviert: number }>('POST', '/api/artikel/lager-aktivieren', { kategorieId }),
   /** Layout-Import (nur Admin): dryRun=true liefert nur den Bericht */
-  layoutImport: (layout: unknown, opts: { dryRun: boolean; fehlendeAnlegen: boolean; spaltenSetzen: boolean }) =>
+  layoutImport: (layout: unknown, opts: { dryRun: boolean; fehlendeAnlegen: boolean; spaltenSetzen: boolean; katalogLoeschen: boolean }) =>
     request<LayoutBericht>(
       'POST',
-      `/api/artikel/layout-import?dryRun=${opts.dryRun}&fehlendeAnlegen=${opts.fehlendeAnlegen}&spaltenSetzen=${opts.spaltenSetzen}`,
+      `/api/artikel/layout-import?dryRun=${opts.dryRun}&fehlendeAnlegen=${opts.fehlendeAnlegen}&spaltenSetzen=${opts.spaltenSetzen}&katalogLoeschen=${opts.katalogLoeschen}`,
       layout,
     ),
 }

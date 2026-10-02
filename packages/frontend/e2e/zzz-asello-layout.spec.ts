@@ -205,3 +205,123 @@ test('Asello-Layout: Untergruppen-Kacheln, Zurück, leere Felder, Hex-Farben, La
   expect(imSub[2]!.text).toContain(`${p} Imp A`)
   await expect(page.locator('[data-testid="artikel-kachel"]').nth(1).getByTestId('artikel-farbe')).toHaveCSS('background-color', 'rgb(170, 187, 204)')
 })
+
+
+// ---------------------------------------------------------------------------
+// Retoure: Pfand-Rückgabe (negativer Artikelpreis) → Gesamt unter 0 → bar zurück
+// ---------------------------------------------------------------------------
+
+test('Kasse: Becher retour (−2,00) in den Warenkorb → Gesamt negativ → Rückzahlung bar abschließen', async ({ page, request }) => {
+  await expect.poll(async () => (await request.get('/api/health')).status(), { timeout: 35_000, intervals: [500, 1000, 2000, 3000] }).toBe(200)
+  const login = await adminLogin(request)
+  const token = login.token
+  const auth = { Authorization: `Bearer ${token}` }
+  const p = `Neg${Date.now() % 1_000_000}`
+
+  const kat = await post<{ id: string }>(request, token, '/api/kategorien', { name: `${p} Pfand`, farbe: 'grau' })
+  const becher = await post<{ id: string; preisBruttoCent: number }>(request, token, '/api/artikel', {
+    bezeichnung: `${p} Becher retour`, preisBruttoCent: -200, mwstSatz: 'null', kategorieId: kat.id,
+  })
+  expect(becher.preisBruttoCent).toBe(-200)
+
+  await anmelden(page, login)
+  await page.goto('/kasse')
+  await page.getByPlaceholder(/Artikel suchen/).fill(`${p} Becher`)
+  await page.getByRole('button', { name: new RegExp(`^${p} Becher retour`) }).first().click()
+
+  // Gesamt: −2,00 € (Anzeige mit Minus), der Bar-Knopf zeigt den negativen Betrag, nicht 0
+  const zuZahlen = page.getByText('Zu zahlen').locator('..')
+  await expect(zuZahlen).toContainText(/[-−–]\s*(€\s*)?2,00|2,00\s*[-−–]/)
+  const barKnopf = page.getByRole('button', { name: /^Bar \(/ })
+  await expect(barKnopf).toContainText(/[-−–]/)
+  await barKnopf.click()
+  await expect(page.getByText(/Beleg #\d+ erstellt/)).toBeVisible()
+
+  // Beleg wurde mit negativem Gesamtbetrag gebucht
+  const liste = await (await request.get(`/api/belege?kasseId=${login.kassen[0]!.id}&limit=5`, { headers: auth })).json() as
+    { gesamtbetragCent: number; positionen: { bezeichnung: string; einzelpreisBreutto: number; menge: number }[] }[]
+  const retoure = liste.find(b => b.positionen.some(x => x.bezeichnung === `${p} Becher retour`))!
+  expect(retoure.gesamtbetragCent).toBe(-200)
+  expect(retoure.positionen[0]).toMatchObject({ einzelpreisBreutto: -200, menge: 1 })
+})
+
+// ---------------------------------------------------------------------------
+// Sauberer Neustart: Haken, rote Warnung, Tipp-Bestätigung, Ergebnis in der Kasse
+// (löscht den GESAMTEN Katalog der E2E-Instanz — deshalb als letzter Test der Suite)
+// ---------------------------------------------------------------------------
+
+test('Layout-Import Sauberer Neustart: rote Warnung, Anwenden erst nach LOESCHEN, Ergebnis in der Kasse', async ({ page, request }) => {
+  await expect.poll(async () => (await request.get('/api/health')).status(), { timeout: 35_000, intervals: [500, 1000, 2000, 3000] }).toBe(200)
+  const login = await adminLogin(request)
+  const token = login.token
+  const auth = { Authorization: `Bearer ${token}` }
+  const p = `Clean${Date.now() % 1_000_000}`
+
+  const alt = await post<{ id: string }>(request, token, '/api/kategorien', { name: `${p} Altgruppe`, farbe: 'rot' })
+  await post(request, token, '/api/artikel', { bezeichnung: `${p} Altartikel`, preisBruttoCent: 100, mwstSatz: 'normal', kategorieId: alt.id })
+
+  const layout = {
+    spalten: 3,
+    gruppen: [{
+      name: `${p} Neu`, farbe: '#336699', farbeGesetzt: true, reihenfolge: 1, station: 'schank', untergruppen: [],
+      artikel: [{
+        name: `${p} Neuartikel`, preisCent: 450, mwst: 0.2, slot: 2, farbe: null,
+        optionen: [{ gruppe: 'Variante', pflicht: false, mehrfach: false, optionen: [{ name: 'mit Eis', aufschlagCent: 0 }, { name: 'Ohne Soda', aufschlagCent: -200 }] }],
+      }],
+    }],
+    favoriten: [{ name: `${p} Neuartikel`, pfad: `${p} Neu` }],
+  }
+
+  await anmelden(page, login)
+  await page.goto('/artikel')
+  await page.getByRole('button', { name: 'Layout importieren (JSON)' }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.locator('input[type="file"]').setInputFiles({ name: 'layout.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(layout)) })
+  await expect(dialog.getByText(/Vorschau — noch nichts geändert/)).toBeVisible()
+
+  // Standard AUS: keine Warnung, Anwenden frei
+  const haken = dialog.getByLabel(/Sauberer Neustart/)
+  await expect(haken).not.toBeChecked()
+  await expect(dialog.getByTestId('loesch-warnung')).toHaveCount(0)
+  await expect(dialog.getByRole('button', { name: 'Anwenden' })).toBeEnabled()
+
+  // Haken an: Vorschau rechnet neu, roter Warnblock mit Zahlen, Anwenden gesperrt
+  await haken.check()
+  const warnung = dialog.getByTestId('loesch-warnung')
+  await expect(warnung).toBeVisible()
+  await expect(warnung).toContainText('LÖSCHT den bisherigen Katalog')
+  await expect(warnung).toContainText('auch bei Wiederholung')
+  await expect(warnung).toHaveClass(/border-red/)
+  const anwenden = dialog.getByRole('button', { name: 'Anwenden' })
+  await expect(anwenden).toBeDisabled()
+  const artikelAlle = async () => (await (await request.get('/api/artikel?nurAktive=false', { headers: auth })).json()) as { id: string; bezeichnung: string; aktiv: boolean }[]
+  expect((await artikelAlle()).some(a => a.bezeichnung === `${p} Altartikel`)).toBe(true)   // Vorschau löscht nichts
+
+  const eingabe = dialog.getByLabel('Bestätigung: LOESCHEN eintippen')
+  await eingabe.fill('loeschen')
+  await expect(anwenden).toBeDisabled()
+  await eingabe.fill('LOESCHEN')
+  await expect(anwenden).toBeEnabled()
+  await anwenden.click()
+  await expect(dialog.getByText('Layout angewendet')).toBeVisible()
+  await dialog.getByRole('button', { name: 'Fertig' }).click()
+
+  // Altbestand hart gelöscht, neuer Katalog mit Optionen und Station da
+  const nachher = await artikelAlle()
+  expect(nachher.some(a => a.bezeichnung === `${p} Altartikel`)).toBe(false)
+  expect(nachher.filter(a => a.aktiv).map(a => a.bezeichnung)).toEqual([`${p} Neuartikel`])
+  const kats = (await (await request.get('/api/kategorien', { headers: auth })).json()) as { name: string; station: string | null }[]
+  expect(kats.some(k => k.name === `${p} Altgruppe`)).toBe(false)
+  expect(kats.find(k => k.name === `${p} Neu`)).toMatchObject({ station: 'schank' })
+  const mods = (await (await request.get('/api/modifikator-gruppen', { headers: auth })).json()) as { name: string; modifikatoren: { name: string; aufschlagCent: number }[] }[]
+  expect(mods.map(m => m.name)).toEqual(['Variante (mit Eis / Ohne Soda)'])
+  expect(mods[0]!.modifikatoren.map(m => [m.name, m.aufschlagCent])).toEqual([['mit Eis', 0], ['Ohne Soda', -200]])
+
+  // Kasse zeigt den neuen Katalog (Slot-Lücke), nicht den alten
+  await page.goto('/kasse')
+  await page.getByRole('button', { name: new RegExp(`^${p} Neu \\d`) }).click()
+  const zellen = await raster(page)
+  expect(zellen.map(z => z.typ)).toEqual(['raster-leer', 'artikel-kachel'])
+  expect(zellen[1]!.text).toContain(`${p} Neuartikel`)
+  await expect(page.getByText(`${p} Altgruppe`)).toHaveCount(0)
+})

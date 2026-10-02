@@ -97,7 +97,7 @@ export async function erstelleGastBestellung(
 
   for (const p of input.positionen) {
     const a = byId.get(p.artikelId)
-    if (!a || !a.aktiv || a.istBestandteil) throw new GastBestellungError(400, 'Artikel nicht verfügbar')
+    if (!a || !a.aktiv || a.istBestandteil || a.preisBruttoCent < 0) throw new GastBestellungError(400, 'Artikel nicht verfügbar')
     if (a.lagerstandAktiv && (a.lagerstandMenge === null || a.lagerstandMenge < p.menge)) {
       throw new GastBestellungError(400, `„${a.bezeichnung}" ist nicht mehr in ausreichender Menge verfügbar`)
     }

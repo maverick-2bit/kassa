@@ -389,7 +389,7 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
                 : verfuegbar
               const zeigeBestand  = !istAusverkauft && restBestand !== null && restBestand > 0
               const mengeImKorb   = mengenProArtikel?.get(a.id) ?? 0
-              const aktion        = aktionen?.get(a.id) ?? null
+              const aktion        = a.preisBruttoCent < 0 ? null : (aktionen?.get(a.id) ?? null)
               const aktionsPreis  = aktion === null ? null
                 : aktion.typ === 'fix' ? aktion.preisCent
                 : Math.round(a.preisBruttoCent * (100 - aktion.prozent) / 100)

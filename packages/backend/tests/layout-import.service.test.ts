@@ -11,7 +11,7 @@ import {
 } from '../src/services/layout-import.service.js'
 import { flacherKassaZustand, ladeAselloLayout, testId, wendePlanAn } from './helpers/layout-kassa.js'
 
-const OPT: LayoutImportOptionen = { dryRun: false, fehlendeAnlegen: true, spaltenSetzen: true }
+const OPT: LayoutImportOptionen = { dryRun: false, fehlendeAnlegen: true, spaltenSetzen: true, katalogLoeschen: false }
 
 // ---------------------------------------------------------------------------
 describe('normalisiereName / namensPassung / mwstZuSatz', () => {
@@ -326,9 +326,12 @@ describe('Asello-Layout (53 Gruppen, 494 Artikel, 27 Favoriten) gegen flachen Vo
   it('fehlende Artikel: ohne Vorbestand werden alle 494 angelegt, danach ist der Lauf idempotent', () => {
     const leer = zustand([], [])
     const p1 = planeLayout(leer, layout, OPT)
-    // 2 Artikel haben negative Preise (Retourglas, Becher retour) — die legt der Import nicht an
-    expect(p1.neueArtikel).toHaveLength(492)
-    expect(p1.bericht.probleme.nichtGefunden.map(n => n.name).sort()).toEqual(['Becher retour', 'Retourglas'])
+    // inkl. der zwei Pfand-Rückgabe-Artikel mit negativem Preis (Retourglas, Becher retour)
+    expect(p1.neueArtikel).toHaveLength(494)
+    expect(p1.bericht.probleme.nichtGefunden).toEqual([])
+    expect(p1.neueArtikel.filter(a => a.preisBruttoCent < 0).map(a => [a.bezeichnung, a.preisBruttoCent, a.mwstSatz]).sort()).toEqual([
+      ['Becher retour', -200, 'null'], ['Retourglas', -50, 'ermaessigt1'],
+    ])
     expect(p1.neueGruppen).toHaveLength(53)
     expect(p1.neueArtikel.filter(a => a.istFavorit)).toHaveLength(27)
     const p2 = planeLayout(wendePlanAn(leer, p1), layout, OPT)
@@ -336,5 +339,132 @@ describe('Asello-Layout (53 Gruppen, 494 Artikel, 27 Favoriten) gegen flachen Vo
     expect(p2.neueGruppen).toEqual([])
     expect(p2.gruppenUpdates).toEqual([])
     expect(p2.artikelUpdates).toEqual([])
+  })
+})
+
+
+// ---------------------------------------------------------------------------
+// Station je Gruppe, Optionen je Artikel, Sauberer Neustart (katalogLoeschen)
+// ---------------------------------------------------------------------------
+
+import { optionsgruppenName } from '../src/services/layout-import.service.js'
+import type { LoeschPlan } from '../src/services/katalog-loeschen.service.js'
+
+const opt = (gruppe: string, optionen: [string, number][], pflicht = false, mehrfach = false) =>
+  ({ gruppe, pflicht, mehrfach, optionen: optionen.map(([name, aufschlagCent]) => ({ name, aufschlagCent })) })
+const artMitOpt = (name: string, slot: number, optionen: unknown[]) => ({ name, preisCent: 300, mwst: 0.2, slot, optionen })
+
+describe('Station je Gruppe', () => {
+  it('neue Gruppe: Layout-Station gewinnt gegen die Vererbung; ohne Angabe wird vererbt', () => {
+    const alt = kg('Schankalt', { station: 'kueche' })
+    const plan = planeLayout(zustand([alt], [ka('Bier', alt.id)]), mkLayout([
+      grp('Bar', '#111111', [], [], { station: 'schank' }),
+      grp('Schankalt2', '#222222', [['Bier', 1]]),
+    ]), OPT)
+    const bar = plan.neueGruppen.find(g => g.name === 'Bar')!
+    expect(bar.station).toBe('schank')
+    // Schankalt2 passt nicht zur Kassa-Gruppe Schankalt: neu, erbt (Artikel Bier liegt dort) kueche
+    expect(plan.neueGruppen.find(g => g.name === 'Schankalt2')!.station).toBe('kueche')
+    // Artikel erben dynamisch: keine station-Änderung an Artikeln
+    expect(plan.artikelUpdates.every(u => !('station' in u.werte))).toBe(true)
+  })
+
+  it('bestehende Gruppe: Layout-Station nur setzen, wenn sie noch keine hat', () => {
+    const ohne = kg('Wein'), mit = kg('Bier', { station: 'kueche' })
+    const plan = planeLayout(zustand([ohne, mit], []), mkLayout([
+      grp('Wein', '#111111', [], [], { station: 'schank' }), grp('Bier', '#222222', [], [], { station: 'schank' }),
+    ]), OPT)
+    const upd = new Map(plan.gruppenUpdates.map(u => [u.id, u.werte]))
+    expect(upd.get(ohne.id)?.station).toBe('schank')
+    expect(upd.get(mit.id)?.station).toBeUndefined()
+  })
+})
+
+describe('Optionen je Artikel', () => {
+  it('Mapping pflicht/mehrfach, Reihenfolge, negative Aufschläge, lesbarer Gruppenname', () => {
+    const l = mkLayout([grp('Bar', '#111111', [], [], {})])
+    l.gruppen[0]!.artikel = [artMitOpt('Spritzer', 1, [
+      opt('Variante', [['gespritzt', 0], ['Ohne Soda', -200], ['mit Eis', 50]], true, false),
+      opt('Optionen', [['Zitrone', 0]], false, true),
+    ]) as never]
+    const plan = planeLayout(zustand([], []), l, OPT)
+    const id = plan.neueArtikel[0]!.id
+    expect(plan.optionen).toEqual([
+      { artikelId: id, name: 'Variante (gespritzt / Ohne Soda …)', typ: 'pflicht', maxAuswahl: 1,
+        optionen: [{ name: 'gespritzt', aufschlagCent: 0 }, { name: 'Ohne Soda', aufschlagCent: -200 }, { name: 'mit Eis', aufschlagCent: 50 }] },
+      { artikelId: id, name: 'Optionen (Zitrone)', typ: 'optional', maxAuswahl: null, optionen: [{ name: 'Zitrone', aufschlagCent: 0 }] },
+    ])
+    expect(plan.bericht.zaehler.optionen).toEqual({ gruppenNeu: 2, gruppenWiederverwendet: 0, zuordnungenNeu: 2, uebersprungen: 0 })
+    expect(optionsgruppenName('Variante', [{ name: 'a' }])).toBe('Variante (a)')
+  })
+
+  it('inhaltsgleiche Gruppen nur einmal; bestehende wiederverwendet; zweiter Lauf = keine neuen Zuordnungen', () => {
+    const l = mkLayout([grp('Bar', '#111111', [], [], {})])
+    const gleich = () => opt('Variante', [['Still', 0], ['Prickelnd', 0]])
+    l.gruppen[0]!.artikel = [artMitOpt('Soda', 1, [gleich()]) as never, artMitOpt('Wasser', 2, [gleich()]) as never]
+    const p1 = planeLayout(zustand([], []), l, OPT)
+    expect(p1.bericht.zaehler.optionen).toMatchObject({ gruppenNeu: 1, gruppenWiederverwendet: 0, zuordnungenNeu: 2 })
+    const nach = wendePlanAn(zustand([], []), p1)
+    const p2 = planeLayout(nach, l, OPT)
+    expect(p2.bericht.zaehler.optionen).toMatchObject({ gruppenNeu: 0, gruppenWiederverwendet: 1, zuordnungenNeu: 0 })
+  })
+
+  it('mehrdeutige / nicht angelegte Artikel bekommen keine Optionen (werden gezählt)', () => {
+    const g1 = kg('A'), g2 = kg('B')
+    const l = mkLayout([grp('Bar', '#111111', [], [], {})])
+    l.gruppen[0]!.artikel = [artMitOpt('Cola', 1, [opt('Variante', [['x', 0]])]) as never]
+    const mehr = planeLayout(zustand([g1, g2], [ka('Cola', g1.id), ka('Cola', g2.id)]), l, OPT)
+    expect(mehr.bericht.zaehler.optionen).toMatchObject({ gruppenNeu: 0, zuordnungenNeu: 0, uebersprungen: 1 })
+    const nein = planeLayout(zustand([], []), l, { ...OPT, fehlendeAnlegen: false })
+    expect(nein.bericht.zaehler.optionen.uebersprungen).toBe(1)
+    expect(nein.optionen).toEqual([])
+  })
+})
+
+describe('Sauberer Neustart (katalogLoeschen)', () => {
+  const loesch = (extra: Partial<LoeschPlan> = {}): LoeschPlan => ({
+    artikelLoeschen: 2, gruppenLoeschen: 1, optionsgruppen: 3, seriennummern: 4, inventurPositionen: 5, sichtbarkeiten: 6,
+    artikelBehalten: [], gruppenBehalten: [], preisregeln: [], ...extra,
+  })
+
+  it('Altbestand wird NICHT wiederverwendet: alles neu, Löschplan und Zähler im Bericht', () => {
+    const g = kg('Bar'); const cola = ka('Cola', g.id)
+    const z = { ...zustand([g], [cola]), kassenFavoritenAnzahl: 2, loeschung: loesch() }
+    const l = mkLayout([grp('Bar', '#111111', [['Cola', 1]])])
+    const normal = planeLayout(z, l, OPT)
+    expect(normal.neueGruppen).toHaveLength(0)
+    const plan = planeLayout(z, l, { ...OPT, katalogLoeschen: true })
+    expect(plan.neueGruppen.map(x => x.name)).toEqual(['Bar'])
+    expect(plan.neueArtikel.map(x => x.bezeichnung)).toEqual(['Cola'])
+    expect(plan.artikelUpdates).toEqual([])
+    expect(plan.loeschung).toEqual(z.loeschung)
+    expect(plan.kassenFavoritenLoeschen).toBe(true)
+    expect(plan.bericht.katalogLoeschen).toMatchObject({ aktiv: true, geloescht: { artikel: 2, gruppen: 1, optionsgruppen: 3, seriennummern: 4, inventurPositionen: 5, sichtbarkeiten: 6, kassenFavoriten: 2 } })
+    expect(plan.bericht.zusammenfassung[0]).toMatch(/Sauberer Neustart.*gelöscht.*auch bei Wiederholung/)
+    expect(planeLayout(z, l, { ...OPT, katalogLoeschen: true, dryRun: true }).bericht.zusammenfassung[0]).toMatch(/würde löschen/)
+    // ohne Haken: keine Löschung, Bericht inaktiv
+    expect(normal.loeschung).toBeNull()
+    expect(normal.bericht.katalogLoeschen.aktiv).toBe(false)
+  })
+
+  it('Fallback: nur deaktivierte Artikel/Gruppen stehen mit Grund im Bericht', () => {
+    const z = { ...zustand([], []), loeschung: loesch({
+      artikelBehalten: [{ id: testId(), bezeichnung: 'Offener Tisch-Artikel', grund: 'offener Tisch' }],
+      gruppenBehalten: [{ id: testId(), name: 'Alt', grund: 'enthält Artikel mit laufenden Vorgängen' }],
+    }) }
+    const plan = planeLayout(z, mkLayout([grp('Bar', '#111111')]), { ...OPT, katalogLoeschen: true })
+    expect(plan.bericht.katalogLoeschen.nurDeaktiviert.artikel).toEqual([{ name: 'Offener Tisch-Artikel', grund: 'offener Tisch' }])
+    expect(plan.bericht.zusammenfassung.join(' ')).toMatch(/Nur deaktiviert statt gelöscht/)
+  })
+
+  it('zweiter Lauf OHNE katalogLoeschen ändert nichts mehr (auch Optionen)', () => {
+    const l = mkLayout([grp('Bar', '#111111', [['Cola', 1]])])
+    l.gruppen[0]!.artikel[0]!.optionen = [opt('Variante', [['a', 0]])] as never
+    const z0 = { ...zustand([], []), loeschung: loesch() }
+    const p1 = planeLayout(z0, l, { ...OPT, katalogLoeschen: true })
+    const nach = wendePlanAn(z0, p1)
+    const p2 = planeLayout(nach, l, OPT)
+    for (const k of ['neueGruppen', 'neueArtikel', 'gruppenUpdates', 'artikelUpdates', 'kassenUpdates'] as const) expect(p2[k]).toEqual([])
+    expect(p2.bericht.zaehler.optionen).toMatchObject({ gruppenNeu: 0, zuordnungenNeu: 0 })
   })
 })

@@ -122,8 +122,10 @@ export function rabattierterEinzelpreisCent(
 ): number | null {
   if (typ === 'prozent') {
     if (wert <= 0 || wert > 100) return null
+    if (basisCent <= 0) return basisCent   // Pfand-Rückgabe wird nicht rabattiert
     return Math.max(0, basisCent - Math.round(basisCent * wert / 100))
   }
   if (wert <= 0) return null
+  if (basisCent <= 0) return basisCent
   return Math.max(0, basisCent - wert)
 }

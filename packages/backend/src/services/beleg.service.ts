@@ -225,6 +225,11 @@ async function signiereImTx(
     if (input.validatePayment) {
       const total = gesamtBetragCent(signed.betraege)
       const zSum  = BigInt(zahlung.barCent + zahlung.karteCent + zahlung.sonstigeCent)
+      // Retoure/Rückgabe (Summe < 0): alle Anteile ≤ 0 (Bargeld zurück); sonst alle ≥ 0
+      const anteile = [zahlung.barCent, zahlung.karteCent, zahlung.sonstigeCent]
+      if (total < 0n ? anteile.some(a => a > 0) : anteile.some(a => a < 0)) {
+        throw new BelegError(400, 'Zahlungsanteile passen nicht zum Vorzeichen des Belegs')
+      }
       if (total !== zSum) {
         throw new BelegError(
           400,
@@ -460,8 +465,13 @@ export async function erstelleBarzahlungsbeleg(
           }
         } else {
           const satz = input.rabatt.mwstSatz ?? 'normal'
-          belegRabattCent = input.rabatt.betragCent
-          positionen.push({ bezeichnung: rabattLabel, menge: 1, einzelpreisBreutto: -input.rabatt.betragCent, mwstSatz: satz })
+          // Auf die Belegsumme gedeckelt; bei Summe ≤ 0 (Retoure) gibt es keinen Rabatt
+          const nettoCent = positionen.reduce((s, p) => s + p.einzelpreisBreutto * p.menge, 0)
+          const betragCent = Math.min(input.rabatt.betragCent, nettoCent)
+          if (betragCent > 0) {
+            belegRabattCent = betragCent
+            positionen.push({ bezeichnung: rabattLabel, menge: 1, einzelpreisBreutto: -betragCent, mwstSatz: satz })
+          }
         }
       }
 

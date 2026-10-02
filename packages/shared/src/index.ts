@@ -174,6 +174,7 @@ export type {
 // Layout-Import (Gruppenbaum + Raster + Farben + Favoriten aus JSON)
 export {
   LayoutArtikelSchema,
+  LayoutOptionsgruppeSchema,
   LayoutGruppeSchema,
   LayoutFavoritSchema,
   LayoutImportSchema,
@@ -181,6 +182,7 @@ export {
 } from './schemas/layout-import.js'
 export type {
   LayoutArtikel,
+  LayoutOptionsgruppe,
   LayoutGruppe,
   LayoutFavorit,
   LayoutImport,
