@@ -344,9 +344,12 @@ test('Multi-Kassen: anlegen, wechseln, außer Betrieb nehmen', async ({ page, re
 
 /**
  * Warengruppen-Verteilung wirkt im Kassen-Raster: In der Verteilungs-Matrix
- * (Einstellungen → Kassen) eine Warengruppe für die aktive Kasse anhaken →
- * das Kassen-Raster zeigt nur noch deren Tab; die anderen Gruppen-Tabs
- * verschwinden. Danach Reset (leer = alle sichtbar) via API.
+ * (Einstellungen → Kassen) steht bei leerer Liste („alle sichtbar") JEDE Gruppe angehakt;
+ * „Kaltgetränke" für die aktive Kasse abhaken → die gespeicherte Liste enthält alle ANDEREN
+ * Gruppen, das Kassen-Raster zeigt deren Tabs, aber nicht mehr „Kaltgetränke".
+ * Danach Reset (leer = alle sichtbar) via API.
+ * (Vor der Baum-/Sichtbarkeits-Logik war bei leerer Liste NICHTS angehakt und ein Klick wählte
+ * „nur diese"; jetzt gilt in Matrix und POS-Konfiguration dieselbe Logik — lib/sichtbarkeit.)
  */
 test('Warengruppen-Verteilung: Auswahl in der Matrix filtert die Tabs im Kassen-Raster', async ({ page, request }) => {
   const login = await ensureAuth(request)
@@ -375,23 +378,33 @@ test('Warengruppen-Verteilung: Auswahl in der Matrix filtert die Tabs im Kassen-
   await expect(page.getByRole('button', { name: 'Heißgetränke' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Kaltgetränke' })).toBeVisible()
 
-  // In der Verteilungs-Matrix „Heißgetränke" für die aktive (erste) Kasse anhaken
+  // In der Verteilungs-Matrix: leere Liste = „alle sichtbar" mit ALLEN Haken gesetzt
   await page.goto('/einstellungen?bereich=kassen')
   const matrix = page.locator('section', {
     has: page.getByRole('heading', { name: 'Warengruppen-Verteilung' }),
   })
   await expect(matrix.getByText('alle sichtbar').first()).toBeVisible()
-  // click() statt check(): die Checkbox ist React-kontrolliert und flippt erst,
-  // wenn die pos-config-Query geladen ist — check() würde den sofortigen
+  const kaltHaken = matrix.locator('tr', { hasText: 'Kaltgetränke' }).locator('input[type="checkbox"]').first()
+  const heissHaken = matrix.locator('tr', { hasText: 'Heißgetränke' }).locator('input[type="checkbox"]').first()
+  await expect(kaltHaken).toBeChecked()
+  await expect(heissHaken).toBeChecked()
+  // click() statt uncheck(): die Checkbox ist React-kontrolliert und flippt erst,
+  // wenn die pos-config-Query geladen ist — uncheck() würde den sofortigen
   // Zustandswechsel erzwingen und im Ladefenster scheitern. Das belastbare
-  // Erfolgssignal ist der Spaltenkopf („1 gewählt") nach dem Server-Refetch.
-  await matrix.locator('tr', { hasText: 'Heißgetränke' })
-    .locator('input[type="checkbox"]').first().click()
+  // Erfolgssignal ist der Spaltenkopf („N von M sichtbar") nach dem Server-Refetch.
+  await kaltHaken.click()
+  await expect(matrix.getByTestId('verteilung-status').first()).toContainText(/\d+ von \d+ sichtbar/, { timeout: 10_000 })
+  await expect(kaltHaken).not.toBeChecked()
+  await expect(heissHaken).toBeChecked()
 
-  // Spaltenkopf bestätigt die gespeicherte Auswahl (Server-Refetch abgeschlossen)
-  await expect(matrix.getByText('1 gewählt')).toBeVisible({ timeout: 10_000 })
+  // Gespeichert: alle Gruppen außer „Kaltgetränke"
+  const gruppen = await (await request.get('/api/kategorien', { headers: authHeader })).json() as { id: string; name: string }[]
+  const kaltId = gruppen.find(g => g.name === 'Kaltgetränke')!.id
+  const cfg = await (await request.get(`/api/kassen/${kasseId}/pos-config`, { headers: authHeader })).json() as { sichtbareKategorieIds: string[] }
+  expect(cfg.sichtbareKategorieIds).not.toContain(kaltId)
+  expect(cfg.sichtbareKategorieIds).toHaveLength(gruppen.length - 1)
 
-  // Kassen-Raster zeigt nur noch die gewählte Gruppe
+  // Kassen-Raster zeigt die übrigen Gruppen, aber nicht mehr „Kaltgetränke"
   await page.goto('/kasse')
   await expect((await artikelKachel(page, 'Kaffee'))).toBeVisible({ timeout: 15_000 })
   await expect(page.getByRole('button', { name: 'Heißgetränke' })).toBeVisible()

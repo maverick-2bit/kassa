@@ -3,7 +3,7 @@
  *
  * Sortierung + Filter der Artikelverwaltung (reine Funktionen, testbar).
  *
- * „standard" ist die Kassen-Reihenfolge: Warengruppen nach ihrer Reihenfolge,
+ * „standard" ist die Kassen-Reihenfolge: Warengruppen in Baumreihenfolge,
  * darin die Artikel nach ihrer Reihenfolge. Nur in dieser Ansicht lassen sich
  * Artikel per ↑/↓ verschieben. Alle anderen Spalten sortieren auf- oder
  * absteigend; Gleichstände fallen auf die Standard-Reihenfolge zurück, leere
@@ -11,6 +11,7 @@
  */
 
 import { MWST_LABELS, type Artikel, type Kategorie } from '@kassa/shared'
+import { baumFlach, kategorieAnzeigeNamen } from './kategorie-baum'
 
 export type ArtikelSortSpalte =
   | 'standard'
@@ -49,17 +50,15 @@ export function sortiereArtikel(
   kategorien: readonly Kategorie[],
   sort:       ArtikelSortierung,
 ): Artikel[] {
-  const katReihenfolge = new Map(kategorien.map(k => [k.id, k.reihenfolge]))
-  const katName        = new Map(kategorien.map(k => [k.id, k.name]))
+  // Warengruppen in BAUM-Reihenfolge (`reihenfolge` ist nur die Position unter Geschwistern — gleichnamige
+  // Gruppen unter verschiedenen Eltern tragen dieselbe Zahl und dürfen nicht vermischt werden)
+  const katPosition = new Map(baumFlach(kategorien).map((e, i) => [e.kategorie.id, i] as const))
+  const anzeigeName = kategorieAnzeigeNamen(kategorien)
 
   const standard = (a: Artikel, b: Artikel): number => {
-    const ka = a.kategorieId ? (katReihenfolge.get(a.kategorieId) ?? 9999) : 9999
-    const kb = b.kategorieId ? (katReihenfolge.get(b.kategorieId) ?? 9999) : 9999
+    const ka = a.kategorieId ? (katPosition.get(a.kategorieId) ?? 9999) : 9999
+    const kb = b.kategorieId ? (katPosition.get(b.kategorieId) ?? 9999) : 9999
     if (ka !== kb) return ka - kb
-    // Gleiche Reihenfolgezahl, verschiedene Warengruppen → nicht vermischen
-    if (a.kategorieId !== b.kategorieId) {
-      return text.compare(katName.get(a.kategorieId ?? '') ?? '', katName.get(b.kategorieId ?? '') ?? '')
-    }
     if (a.reihenfolge !== b.reihenfolge) return a.reihenfolge - b.reihenfolge
     return text.compare(a.bezeichnung, b.bezeichnung)
   }
@@ -68,7 +67,7 @@ export function sortiereArtikel(
   const schluessel = (a: Artikel): string | number | null => {
     switch (sort.spalte) {
       case 'bezeichnung': return a.bezeichnung
-      case 'kategorie':   return a.kategorieId ? (katName.get(a.kategorieId) ?? null) : null
+      case 'kategorie':   return a.kategorieId ? (anzeigeName(a.kategorieId) || null) : null
       case 'nummer':      return a.artikelnummer || null
       case 'mwst':        return MWST_LABELS[a.mwstSatz]
       case 'preis':       return a.preisBruttoCent

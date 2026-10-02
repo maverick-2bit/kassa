@@ -25,6 +25,7 @@ import {
   type DuplikatAktion,
 } from '../lib/artikel-import-duplikate'
 import { formatPreis } from '../lib/format'
+import { baumFlach, kategoriePfad, kategorieSchluessel, loeseKategorieAuf } from '../lib/kategorie-baum'
 import { Modal } from './ui/Modal'
 import { Button } from './ui/Button'
 
@@ -91,15 +92,30 @@ export function ArtikelImportModal({ open, kategorien, mandantId, onClose }: Pro
   const alleDuplikateAuf = (aktion: DuplikatAktion) =>
     setAktionen(Object.fromEntries(Array.from(duplikate.keys()).map(zeile => [zeile, aktion])))
 
+  /**
+   * Warengruppe einer Zeile: Name ODER Pfad („Atriumbar/Alkoholfrei"). Gleichnamige Gruppen unter
+   * verschiedenen Elterngruppen sind nur über den Pfad unterscheidbar — ein reiner Name, der auf mehrere
+   * Gruppen passt, ist MEHRDEUTIG und wird nie still einer davon zugeordnet.
+   */
+  const aufloesung = (text: string) => (text.trim() === '' ? null : loeseKategorieAuf(kategorien, text))
+
   /** Namen, die noch nicht als Kategorie existieren → werden beim Import neu angelegt. */
-  const katNamenSet = new Set(kategorien.map(k => k.name.toLowerCase()))
   const neueKatNamen = Array.from(
     new Set(
       neuAnlegen
         .map(z => zeileKategorie[z.zeile] ?? '')
-        .filter(n => n && !katNamenSet.has(n.toLowerCase())),
+        .filter(n => n && aufloesung(n)?.art === 'unbekannt'),
     ),
   )
+
+  /** Zu importierende Zeilen, deren Warengruppe auf mehrere Gruppen passt → erst in der Zeile wählen. */
+  const mehrdeutigeZeilen = neuAnlegen.filter(z => aufloesung(zeileKategorie[z.zeile] ?? '')?.art === 'mehrdeutig')
+
+  /** Auswahl je Zeile: Gruppen im Baum, Wert = Name bzw. Pfad (bei Namensgleichheit), Beschriftung = Pfad. */
+  const katOptionen = baumFlach(kategorien)
+    .map(e => e.kategorie)
+    .filter(k => k.aktiv)
+    .map(k => ({ id: k.id, wert: kategorieSchluessel(kategorien, k.id), label: kategoriePfad(kategorien, k.id) }))
 
   // ---------------------------------------------------------------------------
   // Datei einlesen
@@ -148,20 +164,23 @@ export function ArtikelImportModal({ open, kategorien, mandantId, onClose }: Pro
   const importMutation = useMutation({
     mutationFn: async () => {
       // 1. Neue Kategorien anlegen (falls nötig)
-      const katMap = new Map(kategorien.map(k => [k.name.toLowerCase(), k.id]))
+      const alleKategorien = [...kategorien]
 
       for (const name of neueKatNamen) {
         const neu = await kategorieApi.create({ name, farbe: 'grau', reihenfolge: 0, terminalSichtbar: false })
-        katMap.set(neu.name.toLowerCase(), neu.id)
+        alleKategorien.push(neu)
       }
 
       // 2. Neu anzulegende Zeilen mit aktualisierter kategorieId aufbauen
       const rows = neuAnlegen
         .filter(z => z.daten)
         .map(z => {
-          const katName    = zeileKategorie[z.zeile] ?? ''
-          const kategorieId = katName ? (katMap.get(katName.toLowerCase()) ?? null) : null
-          return { ...z.daten!, kategorieId }
+          const katName = zeileKategorie[z.zeile] ?? ''
+          const treffer = katName.trim() === '' ? null : loeseKategorieAuf(alleKategorien, katName)
+          if (treffer?.art === 'mehrdeutig') {
+            throw new Error(`Zeile ${z.zeile}: Warengruppe „${katName}" ist mehrdeutig — bitte in der Zeile die genaue Gruppe wählen`)
+          }
+          return { ...z.daten!, kategorieId: treffer?.art === 'gefunden' ? treffer.kategorie.id : null }
         })
 
       const neu = rows.length > 0
@@ -224,7 +243,8 @@ export function ArtikelImportModal({ open, kategorien, mandantId, onClose }: Pro
           <p className="text-sm text-ink-muted">
             Lade eine Excel-Datei (.xlsx) mit deinen Artikeldaten hoch.
             Verwende die <strong>Vorlage</strong> aus der Artikel-Verwaltung als Grundlage.
-            Neue Warengruppen werden beim Import automatisch angelegt.
+            Neue Warengruppen werden beim Import automatisch angelegt. Heißen mehrere Warengruppen gleich,
+            die Spalte Warengruppe mit dem Pfad füllen (z. B. <code>Atriumbar/Alkoholfrei</code>).
           </p>
 
           {/* Drop Zone */}
@@ -323,6 +343,16 @@ export function ArtikelImportModal({ open, kategorien, mandantId, onClose }: Pro
             </div>
           )}
 
+          {/* Mehrdeutige Warengruppen: nie still eine Gruppe wählen */}
+          {mehrdeutigeZeilen.length > 0 && (
+            <div role="alert" data-testid="import-mehrdeutig" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
+              <strong>{mehrdeutigeZeilen.length === 1 ? '1 Zeile hat' : `${mehrdeutigeZeilen.length} Zeilen haben`} eine mehrdeutige Warengruppe</strong>
+              {' '}— mehrere Gruppen heißen gleich (z. B. „Alkoholfrei" unter verschiedenen Elterngruppen). Bitte in der Spalte
+              Warengruppe die genaue Gruppe wählen; in der Excel-Datei lässt sie sich mit dem Pfad angeben, z. B.{' '}
+              <code>Atriumbar/Alkoholfrei</code>.
+            </div>
+          )}
+
           {/* Neue Warengruppen Hinweis */}
           {neueKatNamen.length > 0 && (
             <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700">
@@ -347,7 +377,13 @@ export function ArtikelImportModal({ open, kategorien, mandantId, onClose }: Pro
               <tbody className="divide-y divide-line">
                 {zeilen.map((z) => {
                   const aktuelleKat = zeileKategorie[z.zeile] ?? ''
-                  const istNeueKat  = aktuelleKat && !katNamenSet.has(aktuelleKat.toLowerCase())
+                  const aufg        = aufloesung(aktuelleKat)
+                  const istNeueKat  = aufg?.art === 'unbekannt'
+                  const istMehrdeutig = aufg?.art === 'mehrdeutig'
+                  // Anzeige-Wert: ein eindeutig aufgelöster Text (z. B. „Atriumbar / alkoholfrei") zeigt die passende Option
+                  const selectWert  = aufg?.art === 'gefunden'
+                    ? (katOptionen.find(o => o.id === aufg.kategorie.id)?.wert ?? aktuelleKat)
+                    : aktuelleKat
 
                   return (
                     <tr
@@ -372,22 +408,25 @@ export function ArtikelImportModal({ open, kategorien, mandantId, onClose }: Pro
                       </td>
                       <td className="px-3 py-2">
                         <select
-                          value={aktuelleKat}
+                          value={selectWert}
                           onChange={e => setZeileKategorie(prev => ({ ...prev, [z.zeile]: e.target.value }))}
-                          className="text-xs border border-line rounded px-1.5 py-0.5 bg-panel w-full max-w-[140px] focus:outline-none focus:ring-1 focus:ring-brand-400"
-                          title={istNeueKat ? `Neue Warengruppe: ${aktuelleKat}` : undefined}
+                          className={`text-xs border rounded px-1.5 py-0.5 bg-panel w-full max-w-[140px] focus:outline-none focus:ring-1 focus:ring-brand-400 ${
+                            istMehrdeutig ? 'border-amber-400' : 'border-line'
+                          }`}
+                          title={istNeueKat ? `Neue Warengruppe: ${aktuelleKat}` : istMehrdeutig ? `„${aktuelleKat}" passt auf mehrere Warengruppen — bitte wählen` : undefined}
+                          data-testid="import-warengruppe"
                         >
                           <option value="">— keine —</option>
-                          {kategorien
-                            .filter(k => k.aktiv)
-                            .sort((a, b) => a.name.localeCompare(b.name))
-                            .map(k => (
-                              <option key={k.id} value={k.name}>{k.name}</option>
-                            ))
-                          }
+                          {katOptionen.map(o => (
+                            <option key={o.id} value={o.wert}>{o.label}</option>
+                          ))}
                           {/* Unbekannte Namen als eigene Option anzeigen */}
                           {istNeueKat && (
                             <option value={aktuelleKat}>✦ {aktuelleKat} (neu)</option>
+                          )}
+                          {/* Mehrdeutige Namen: nie still eine Gruppe wählen */}
+                          {istMehrdeutig && (
+                            <option value={aktuelleKat}>⚠ {aktuelleKat} (mehrdeutig — bitte wählen)</option>
                           )}
                         </select>
                       </td>
@@ -446,12 +485,16 @@ export function ArtikelImportModal({ open, kategorien, mandantId, onClose }: Pro
               disabled={
                 (neuAnlegen.length === 0 && aktualisieren.length === 0)
                 || bestand.isFetching || bestand.isError
+                || mehrdeutigeZeilen.length > 0
               }
-              title={bestand.isError ? 'Vorhandene Artikel konnten nicht geprüft werden' : undefined}
+              title={bestand.isError ? 'Vorhandene Artikel konnten nicht geprüft werden'
+                : mehrdeutigeZeilen.length > 0 ? 'Mehrdeutige Warengruppen zuerst in der Tabelle wählen' : undefined}
             >
               {bestand.isFetching
                 ? 'Prüfe vorhandene Artikel…'
-                : importKnopfText(neuAnlegen.length, aktualisieren.length, neueKatNamen.length)}
+                : mehrdeutigeZeilen.length > 0
+                  ? `${mehrdeutigeZeilen.length} Warengruppe${mehrdeutigeZeilen.length > 1 ? 'n' : ''} mehrdeutig — bitte wählen`
+                  : importKnopfText(neuAnlegen.length, aktualisieren.length, neueKatNamen.length)}
             </Button>
           </div>
         </div>

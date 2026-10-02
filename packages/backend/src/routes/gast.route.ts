@@ -13,6 +13,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { and, eq, asc, gte, inArray } from 'drizzle-orm'
 import { z } from 'zod'
+import { baumFlach, erweitereSichtbarkeit, kategorieAnzeigeNamen } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import type { Config } from '../config.js'
 import { artikel, kategorien, kassen, kassekategorieSichtbarkeit, tischTabs } from '../db/schema.js'
@@ -80,15 +81,23 @@ export const gastRoute: FastifyPluginAsync<GastRouteOptions> = async (fastify, o
 
       // Alle aktiven Kategorien des Mandanten
       const alleKategorien = await opts.db
-        .select({ id: kategorien.id, name: kategorien.name, reihenfolge: kategorien.reihenfolge })
+        .select({ id: kategorien.id, name: kategorien.name, parentId: kategorien.parentId, reihenfolge: kategorien.reihenfolge })
         .from(kategorien)
         .where(and(eq(kategorien.mandantId, kasse.mandantId), eq(kategorien.aktiv, true)))
         .orderBy(asc(kategorien.reihenfolge))
 
-      // Filtern: nur sichtbare (oder alle wenn keine Einschränkung konfiguriert)
-      const gefilterteKategorien = sichtbareIds.size > 0
-        ? alleKategorien.filter(k => sichtbareIds.has(k.id))
-        : alleKategorien
+      // Filtern: nur sichtbare (oder alle wenn keine Einschränkung konfiguriert). Wie an der Kasse gilt
+      // die Auswahl samt Untergruppen (und deren Vorfahren als Zugang).
+      const sichtbarMitBaum = sichtbareIds.size > 0
+        ? new Set(erweitereSichtbarkeit(alleKategorien, [...sichtbareIds]))
+        : null
+      // Baumreihenfolge (`reihenfolge` ist nur die Position unter Geschwistern); gleichnamige Gruppen
+      // heißen mit Pfad („Atriumbar › Alkoholfrei"), damit Gäste sie unterscheiden können
+      const anzeigeName = kategorieAnzeigeNamen(alleKategorien)
+      const gefilterteKategorien = baumFlach(alleKategorien)
+        .map(e => e.kategorie)
+        .filter(k => !sichtbarMitBaum || sichtbarMitBaum.has(k.id))
+        .map(k => ({ id: k.id, name: anzeigeName(k.id), reihenfolge: k.reihenfolge }))
 
       // Aktive Artikel des Mandanten mit Lagerstand > 0 (oder kein Lagerstand)
       const alleArtikel = await opts.db

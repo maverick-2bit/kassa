@@ -304,9 +304,11 @@ export function ArtikelPage() {
   const openEditKat = (k: Kategorie) => { setEditingKat(k); setKatError(null); setKatModalOpen(true) }
 
   // Kategorie-Name für eine ID
+  // Name; bei Namensgleichheit (z. B. drei „Alkoholfrei") der volle Pfad
+  const anzeigeName = useMemo(() => kategorieAnzeigeNamen(katList.data ?? []), [katList.data])
   const katNameFuerId = (id: string | null) => {
     if (!id) return null
-    return katList.data?.find(k => k.id === id)?.name ?? null
+    return anzeigeName(id) || null
   }
 
   return (
@@ -372,8 +374,8 @@ export function ArtikelPage() {
             className="rounded-md border border-line-strong bg-panel px-3 py-1.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand-500"
           >
             <option value="alle">Alle Warengruppen</option>
-            {baumFlach(katList.data ?? []).map(({ kategorie: k, tiefe }) => (
-              <option key={k.id} value={k.id}>{'\u00a0\u00a0'.repeat(tiefe)}{tiefe > 0 ? '↳ ' : ''}{k.name}{k.aktiv ? '' : ' (deaktiviert)'}</option>
+            {baumFlach(katList.data ?? []).map(({ kategorie: k }) => (
+              <option key={k.id} value={k.id}>{kategoriePfad(katList.data ?? [], k.id)}{k.aktiv ? '' : ' (deaktiviert)'}</option>
             ))}
             <option value="ohne">— ohne Warengruppe —</option>
           </select>
@@ -599,7 +601,7 @@ export function ArtikelPage() {
                 <tbody className="divide-y divide-line">
                   {baumFlach(katList.data)
                     .map(({ kategorie: k, tiefe }) => (
-                      <tr key={k.id} className={k.aktiv ? '' : 'opacity-60'}>
+                      <tr key={k.id} className={k.aktiv ? '' : 'opacity-60'} title={kategoriePfad(katList.data, k.id)}>
                         <td className="px-4 py-2.5 font-medium text-ink" style={{ paddingLeft: `${1 + tiefe * 1.25}rem` }}>
                           {tiefe > 0 && <span aria-hidden className="mr-1 text-ink-subtle">↳</span>}{k.name}
                         </td>
@@ -1365,7 +1367,7 @@ function ArtikelGruppenZuweisungModal({
 // ---------------------------------------------------------------------------
 
 import { farbeZuHex, type KategorieFarbe } from '@kassa/shared'
-import { baumFlach } from '../lib/kategorie-baum'
+import { baumFlach, kategorieAnzeigeNamen, kategoriePfad } from '../lib/kategorie-baum'
 
 /** Sortierbare Spaltenüberschrift: Klick sortiert, erneuter Klick dreht die Richtung. */
 function SortKopf({

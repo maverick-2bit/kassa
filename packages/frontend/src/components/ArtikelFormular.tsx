@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import {
   ALLE_STATIONEN,
@@ -21,6 +21,7 @@ import { Button } from './ui/Button'
 import { Schalter } from './ui/Schalter'
 import { FarbAuswahl } from './FarbAuswahl'
 import { formatPreis, parseEuroToCent } from '../lib/format'
+import { baumFlach, kategoriePfad } from '../lib/kategorie-baum'
 
 type FormValues = {
   bezeichnung:          string
@@ -337,11 +338,13 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
         {kategorien && kategorien.filter(k => k.aktiv).length > 0 && (
           <Select {...register('kategorieId')}>
             <option value="">— ohne Warengruppe —</option>
-            {kategorien
-              .filter(k => k.aktiv)
-              .sort((a, b) => a.reihenfolge - b.reihenfolge || a.name.localeCompare(b.name))
+            {/* Baumreihenfolge; Pfadlabel („Atriumbar › Alkoholfrei"), damit gleichnamige Gruppen unterscheidbar sind.
+                Die bisherige Gruppe des Artikels bleibt wählbar, auch wenn sie inzwischen deaktiviert ist. */}
+            {baumFlach(kategorien)
+              .map(e => e.kategorie)
+              .filter(k => k.aktiv || k.id === initial?.kategorieId)
               .map((k) => (
-                <option key={k.id} value={k.id}>{k.name}</option>
+                <option key={k.id} value={k.id}>{kategoriePfad(kategorien, k.id)}{k.aktiv ? '' : ' (deaktiviert)'}</option>
               ))}
           </Select>
         )}

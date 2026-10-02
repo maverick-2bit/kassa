@@ -18,6 +18,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { LagerstandBulkInput } from '@kassa/shared'
 import { artikelApi, kategorieApi, lagerstandApi, modifikatorApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
+import { baumFlach, kategorieAnzeigeNamen } from '../lib/kategorie-baum'
 import { Button } from '../components/ui/Button'
 import { SeriennummernModal } from '../components/SeriennummernModal'
 import { AusgabeDialog } from '../components/AusgabeDialog'
@@ -88,17 +89,20 @@ export function WareneingangPage() {
   // ---------------------------------------------------------------------------
 
   const { artZeilen, varZeilen } = useMemo(() => {
-    const kategorienMap = new Map(
-      (kategorienQuery.data ?? []).map(k => [k.id, k.name]),
-    )
+    // Warengruppen in Baumreihenfolge; Beschriftung = Name, bei Namensgleichheit der Pfad
+    // (sonst würden gleichnamige Gruppen unter einer Überschrift zusammenfallen)
+    const alleKat       = kategorienQuery.data ?? []
+    const anzeigeName   = kategorieAnzeigeNamen(alleKat)
+    const katPosition   = new Map(baumFlach(alleKat).map((e, i) => [e.kategorie.id, i] as const))
+    const kategorienMap = new Map(alleKat.map(k => [k.id, anzeigeName(k.id)]))
 
     // Artikel mit aktivem Lagerstand
     const artRows: ArtikelZeile[] = (artikelQuery.data ?? [])
       .filter(a => a.lagerstandAktiv || a.seriennummernAktiv)
       .sort((a, b) => {
-        const ka = a.kategorieId ? (kategorienMap.get(a.kategorieId) ?? '') : ''
-        const kb = b.kategorieId ? (kategorienMap.get(b.kategorieId) ?? '') : ''
-        return ka.localeCompare(kb) || a.bezeichnung.localeCompare(b.bezeichnung)
+        const ka = a.kategorieId ? (katPosition.get(a.kategorieId) ?? -1) : -1
+        const kb = b.kategorieId ? (katPosition.get(b.kategorieId) ?? -1) : -1
+        return ka - kb || a.bezeichnung.localeCompare(b.bezeichnung)
       })
       .map(a => ({
         key:           `a:${a.id}`,

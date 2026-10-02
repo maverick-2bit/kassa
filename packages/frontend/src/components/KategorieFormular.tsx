@@ -14,7 +14,7 @@ import { Input } from './ui/Input'
 import { Select } from './ui/Select'
 import { Button } from './ui/Button'
 import { FarbAuswahl } from './FarbAuswahl'
-import { baumFlach, nachkommenIds } from '../lib/kategorie-baum'
+import { baumFlach, kategoriePfad, nachkommenIds } from '../lib/kategorie-baum'
 
 type FormValues = {
   name:            string
@@ -101,8 +101,8 @@ export function KategorieFormular({ initial, kategorien, bonierdrucker, onSubmit
         <Field label="Übergeordnete Gruppe" hint="Leer = Hauptgruppe (eigener Reiter). Mit Auswahl erscheint diese Gruppe als Kachel in der übergeordneten Gruppe.">
           <Select {...register('parentId')}>
             <option value="">— keine (Hauptgruppe) —</option>
-            {parentOptionen.map(({ kategorie: k, tiefe }) => (
-              <option key={k.id} value={k.id}>{'\u00a0\u00a0'.repeat(tiefe)}{tiefe > 0 ? '↳ ' : ''}{k.name}{k.aktiv ? '' : ' (deaktiviert)'}</option>
+            {parentOptionen.map(({ kategorie: k }) => (
+              <option key={k.id} value={k.id}>{kategoriePfad(kategorien ?? [], k.id)}{k.aktiv ? '' : ' (deaktiviert)'}</option>
             ))}
           </Select>
         </Field>

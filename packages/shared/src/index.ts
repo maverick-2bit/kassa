@@ -190,6 +190,33 @@ export type {
   LayoutImportOptionen,
 } from './schemas/layout-import.js'
 
+// Warengruppen-Baum: Reihenfolge, Pfade, Anzeige-Namen, Sichtbarkeit je Kasse
+export {
+  wurzelgruppen,
+  untergruppenVon,
+  geschwisterVon,
+  nachkommenIds,
+  pfadIds,
+  wurzelIdVon,
+  erweitereSichtbarkeit,
+  baumFlach,
+  KATEGORIE_PFAD_TRENNER,
+  kategoriePfadNamen,
+  kategoriePfad,
+  kategorieAnzeigeNamen,
+  kategorieAnzeigeName,
+  normalisiereKategoriePfad,
+  kategoriePfadNormalisiert,
+  loeseKategorieAuf,
+  kategorieSchluessel,
+} from './kategorie-baum.js'
+export type {
+  KategorieKnoten,
+  KategorieBenannt,
+  KategorieSortierbar,
+  KategorieAufloesung,
+} from './kategorie-baum.js'
+
 // Raster-Platzierung (Untergruppen-Kacheln, Slots, Leerfelder)
 export { baueRaster } from './raster.js'
 export type { RasterZelle, RasterArtikel } from './raster.js'

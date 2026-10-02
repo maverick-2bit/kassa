@@ -22,6 +22,7 @@ import {
   type MwStSatz,
   type Station,
 } from '@kassa/shared'
+import { baumFlach, kategorieSchluessel } from './kategorie-baum'
 
 // ---------------------------------------------------------------------------
 // Mappings MwSt
@@ -111,7 +112,8 @@ export async function exportArtikelVorlage(
 
   let dataRows: (string | number)[][]
   if (existingArtikel && existingArtikel.length > 0) {
-    const katMap = new Map((kategorien ?? []).map(k => [k.id, k.name]))
+    // Name; bei gleichnamigen Gruppen der Pfad „Atriumbar/Alkoholfrei" — so ordnet der Import wieder dieselbe Gruppe zu
+    const katMap = new Map((kategorien ?? []).map(k => [k.id, kategorieSchluessel(kategorien ?? [], k.id)]))
     dataRows = existingArtikel.map(a => [
       a.bezeichnung,
       (a.preisBruttoCent / 100).toFixed(2).replace('.', ','),
@@ -134,10 +136,10 @@ export async function exportArtikelVorlage(
 
   // ---- Listen-Blatt (für Dropdown-Validierung) ----
   // Spalten: A = MwSt-Sätze, B = KDS-Stationen, C = Kategorien
-  const aktiveKategorien = (kategorien ?? []).filter(k => k.aktiv).sort((a, b) => a.name.localeCompare(b.name))
+  const aktiveKategorien = baumFlach(kategorien ?? []).map(e => e.kategorie).filter(k => k.aktiv)
   const mwstWerte        = Object.values(MWST_LABELS)
   const stationWerte     = ALLE_STATIONEN.map(s => STATION_LABELS[s])
-  const katWerte         = aktiveKategorien.map(k => k.name)
+  const katWerte         = aktiveKategorien.map(k => kategorieSchluessel(kategorien ?? [], k.id))
 
   const maxLen   = Math.max(mwstWerte.length, stationWerte.length, katWerte.length)
   const listenRows: (string | '')[][] = []
