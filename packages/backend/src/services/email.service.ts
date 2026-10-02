@@ -247,6 +247,8 @@ export interface TagesabschlussEmailDaten {
   offeneTische?:           number
   /** true = vom Auto-Abschluss-Cron versendet (Betreff-Kennzeichnung) */
   automatisch?:            boolean
+  /** Ausgeschriebener Zeitraum des Geschäftstags — nur bei verschobenem Tagesbeginn (z. B. „Geschäftstag 02.10.2026, 06:00 – 03.10.2026, 06:00") */
+  zeitraumText?:           string
 }
 
 export async function sendeTagesabschlussEmail(
@@ -278,6 +280,7 @@ export async function sendeTagesabschlussEmail(
     <div style="background:#1d4ed8;padding:24px 28px">
       <h1 style="margin:0;color:#fff;font-size:20px">Tagesabschluss</h1>
       <p style="margin:4px 0 0;color:#bfdbfe;font-size:13px">${datumFormatiert} — Kasse ${daten.kassenId}</p>
+      ${daten.zeitraumText ? `<p style="margin:4px 0 0;color:#bfdbfe;font-size:12px">${daten.zeitraumText}</p>` : ''}
     </div>
     <div style="padding:20px 28px">
       <p style="margin:0 0 4px;font-size:13px;color:#6b7280">Betrieb</p>
@@ -349,7 +352,7 @@ export async function sendeTagesabschlussEmail(
     to:      empfaenger,
     subject: `Tagesabschluss ${daten.datum} — ${daten.firmenname}${daten.automatisch ? ' (automatisch)' : ''}`,
     html,
-    text:    `Tagesabschluss ${daten.datum}\n${daten.firmenname} / Kasse ${daten.kassenId}\n\nNetto-Umsatz: ${fmt(daten.nettoUmsatzCent)}\nBar: ${fmt(daten.barCent)}\nKarte: ${fmt(daten.karteCent)}\nBelege: ${daten.anzahlBarzahlungsbelege}\nStornos: ${daten.anzahlStornobelege}\n${(daten.offeneTische ?? 0) > 0 ? `Offene Tische: ${daten.offeneTische}\n` : ''}`,
+    text:    `Tagesabschluss ${daten.datum}\n${daten.firmenname} / Kasse ${daten.kassenId}\n${daten.zeitraumText ? `${daten.zeitraumText}\n` : ''}\nNetto-Umsatz: ${fmt(daten.nettoUmsatzCent)}\nBar: ${fmt(daten.barCent)}\nKarte: ${fmt(daten.karteCent)}\nBelege: ${daten.anzahlBarzahlungsbelege}\nStornos: ${daten.anzahlStornobelege}\n${(daten.offeneTische ?? 0) > 0 ? `Offene Tische: ${daten.offeneTische}\n` : ''}`,
   })
 }
 

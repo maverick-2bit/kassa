@@ -9,7 +9,9 @@ import type {
   KundeSnapshot,
 } from '@kassa/shared'
 import type { Db } from '../db/client.js'
+import { datumsBereich } from '../db/datum.js'
 import { gutscheine, gutscheinBuchungen, kunden } from '../db/schema.js'
+import { ladeTagesRegel } from './geschaeftstag.service.js'
 
 export class GutscheinError extends Error {
   constructor(public readonly httpStatus: number, message: string) {
@@ -433,6 +435,12 @@ export async function holeGutscheinJournal(
 ): Promise<GutscheinJournal> {
   if (von > bis) throw new GutscheinError(400, '"von" muss vor oder gleich "bis" liegen')
 
+  // von/bis sind GESCHÄFTSTAGE des Mandanten (Tagesbeginn 00:00 = Kalendertage, wie
+  // bisher) — so passt das Journal zu Tagesabschluss und Umsatzbericht. Als
+  // Zeitpunkt-Grenzen gegen die Spalte statt (created_at AT TIME ZONE …)::date: das
+  // ist index-tauglich und rechnet an den Zeitumstellungen identisch.
+  const regel = await ladeTagesRegel(db, mandantId)
+
   type JRow = {
     datum: string; typ: string; code: string; nummer: number
     betrag_cent: string; rest_cent_nach: string
@@ -454,8 +462,7 @@ export async function holeGutscheinJournal(
     LEFT JOIN gutscheine vg  ON vg.id = b.verknuepfter_gutschein_id
     LEFT JOIN belege be      ON be.id = b.beleg_id
     WHERE b.mandant_id = ${mandantId}
-      AND (b.created_at AT TIME ZONE 'Europe/Vienna')::date >= ${von}::date
-      AND (b.created_at AT TIME ZONE 'Europe/Vienna')::date <= ${bis}::date
+      AND ${datumsBereich(sql`b.created_at`, von, bis, regel)}
     ORDER BY b.created_at DESC
   `)
 

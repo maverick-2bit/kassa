@@ -1,19 +1,26 @@
 /**
  * Tagesabschluss-Service (Z-Bon)
  *
- * Aggregiert alle Barzahlungs- und Stornobelege eines Tages (Wiener Ortszeit)
- * für eine Kasse zu einem Tagesabschluss-Objekt.
+ * Aggregiert alle Barzahlungs- und Stornobelege eines Geschäftstags (Wiener
+ * Ortszeit) für eine Kasse zu einem Tagesabschluss-Objekt.
  *
  * Datum-Filter: Verwendet AT TIME ZONE 'Europe/Vienna' direkt in PostgreSQL,
  * damit Sommer-/Winterzeit korrekt berücksichtigt wird.
+ *
+ * Geschäftstag: Beginnt der Tag des Mandanten nicht um 00:00 (z. B. 06:00), läuft
+ * der Abschluss von 06:00 bis 06:00 des Folgetags — Schichten über Mitternacht
+ * liegen auf einem Tag. Der Z-Bon wird immer aus den Belegen gerechnet, nichts
+ * wird gespeichert: alte Abschlüsse ändern sich also nur, wenn man einen
+ * Stichtag in die Vergangenheit legt — und das lässt die Einstellung nicht zu.
  */
 
 import { and, eq, inArray, sql } from 'drizzle-orm'
-import { MWST_LABELS, type MwStSatz, type Tagesabschluss } from '@kassa/shared'
+import { MWST_LABELS, istKalendertag, tagesGrenzen, type MwStSatz, type Tagesabschluss } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import { tagesBereich } from '../db/datum.js'
 import { belege } from '../db/schema.js'
 import { pruefeKasseGehoertZuMandant } from '../auth/scope.js'
+import { ladeTagesRegel } from './geschaeftstag.service.js'
 
 /** Steuersätze in Prozent */
 const MWST_SAETZE: Record<MwStSatz, number> = {
@@ -48,6 +55,9 @@ export async function holeTagesabschluss(
   const gehoert = await pruefeKasseGehoertZuMandant(deps.db, kasseId, mandantId)
   if (!gehoert) throw new TagesabschlussError(404, 'Kasse nicht gefunden')
 
+  // Tagesbeginn des Mandanten (leer = 00:00 = Kalendertag, wie bisher)
+  const regel = await ladeTagesRegel(deps.db, mandantId)
+
   // Alle Barzahlungs- und Stornobelege des Tages laden. Bewusst als Zeilen und
   // nicht als SQL-Aggregat wie im Umsatzbericht: die Menge ist hier durch den
   // einen Tag natürlich begrenzt, und der Z-Bon soll so direkt wie möglich aus
@@ -59,7 +69,7 @@ export async function holeTagesabschluss(
       and(
         eq(belege.kasseId, kasseId),
         inArray(belege.belegTyp, ['Barzahlungsbeleg', 'Stornobeleg']),
-        tagesBereich(sql`${belege.belegDatum}`, datum),
+        tagesBereich(sql`${belege.belegDatum}`, datum, regel),
       ),
     )
 
@@ -111,6 +121,10 @@ export async function holeTagesabschluss(
       return { satzKey: k, label: MWST_LABELS[k], bruttoCent, nettoCent, ustCent }
     })
 
+  // Zeitraum nur ausweisen, wenn der Tag nicht 00:00–00:00 läuft — sonst bleibt
+  // die Antwort byte-identisch zu früher.
+  const grenzen = istKalendertag(regel, datum) ? null : tagesGrenzen(regel, datum)
+
   return {
     datum,
     kasseId,
@@ -121,5 +135,6 @@ export async function holeTagesabschluss(
     karteCent,
     sonstigCent,
     mwst,
+    ...(grenzen && { zeitraum: { von: grenzen.von.toISOString(), bis: grenzen.bis.toISOString() } }),
   }
 }

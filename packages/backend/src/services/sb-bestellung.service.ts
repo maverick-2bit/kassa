@@ -16,7 +16,7 @@ import type {
   TerminalBestellungStatus,
   TerminalSortiment,
 } from '@kassa/shared'
-import { formatSbNummer } from '@kassa/shared'
+import { formatSbNummer, heuteGeschaeftstag, istStandardRegel } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import {
   artikel,
@@ -34,6 +34,7 @@ import { berechneVerfuegbareMenge, ladeRezepteAngereichert } from './bestandteil
 import { starteZahlung, getJob, abbrechen } from './zvt/zvt.service.js'
 import { emitAbholungEvent } from '../sse/abholung-event-bus.js'
 import { emitKasseEvent } from '../sse/event-bus.js'
+import { ladeTagesRegel } from './geschaeftstag.service.js'
 
 export class SbBestellungError extends Error {
   constructor(public readonly httpStatus: number, message: string) {
@@ -49,6 +50,19 @@ export interface SbServiceDeps {
 /** Heutiges Datum (Server-Lokalzeit) als YYYY-MM-DD — Tageskreis der Bestellnummern */
 function heutigesDatum(): string {
   return new Date().toLocaleDateString('sv-SE')
+}
+
+/**
+ * Tageskreis der Bestellnummern und der „heutigen" Abholung eines Mandanten.
+ *
+ * Mit verschobenem Tagesbeginn (z. B. 06:00) läuft der Kreis über Mitternacht
+ * hinweg: die Nummern fangen nicht mitten im Betrieb wieder bei 1 an, und der
+ * Abholmonitor verliert nach Mitternacht keine offenen Bestellungen des Vorabends.
+ * Bei Tagesbeginn 00:00 bleibt alles wie bisher (Server-Datum).
+ */
+async function tageskreis(db: Db, mandantId: string): Promise<string> {
+  const regel = await ladeTagesRegel(db, mandantId)
+  return istStandardRegel(regel) ? heutigesDatum() : heuteGeschaeftstag(regel)
 }
 
 // ---------------------------------------------------------------------------
@@ -222,7 +236,7 @@ export async function erstelleSbBestellung(
   const [row] = await deps.db.insert(sbBestellungen).values({
     mandantId:  kasse.mandantId,
     kasseId:    kasse.id,
-    datum:      heutigesDatum(),
+    datum:      await tageskreis(deps.db, kasse.mandantId),
     positionen,
     summeCent,
     status:     'zahlung',
@@ -497,7 +511,7 @@ export async function sbAutoBereitNachBonErledigt(
 // ---------------------------------------------------------------------------
 
 export async function listeSbBestellungen(db: Db, mandantId: string, datum?: string): Promise<SbBestellung[]> {
-  const tag = datum ?? heutigesDatum()
+  const tag = datum ?? await tageskreis(db, mandantId)
   const rows = await db
     .select()
     .from(sbBestellungen)
@@ -513,7 +527,7 @@ export async function heutigeAbholungEintraege(db: Db, mandantId: string): Promi
     .from(sbBestellungen)
     .where(and(
       eq(sbBestellungen.mandantId, mandantId),
-      eq(sbBestellungen.datum, heutigesDatum()),
+      eq(sbBestellungen.datum, await tageskreis(db, mandantId)),
       inArray(sbBestellungen.status, ['offen', 'bereit']),
     ))
     .orderBy(asc(sbBestellungen.erstelltAt))

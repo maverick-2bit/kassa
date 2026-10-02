@@ -5,11 +5,21 @@
  * aggregiert sie nach Tag, Kalenderwoche oder Monat (Wiener Ortszeit).
  *
  * Datum-Filter: AT TIME ZONE 'Europe/Vienna' direkt in PostgreSQL.
+ *
+ * Geschäftstag: Alle „Tage" sind die Geschäftstage des Mandanten (Tagesbeginn
+ * 00:00 = Kalendertag, sonst z. B. 06:00 bis 06:00). Von/bis filtern auf
+ * Geschäftstag-Grenzen, und die Gruppierung nach Tag/Woche/Monat nimmt den
+ * Geschäftstag eines Belegs — so passen Tages- und Monatssummen zusammen. Die
+ * Stundenverlauf-Achse beginnt mit der Stunde des Tagesbeginns.
  */
 
 import { eq, sql } from 'drizzle-orm'
 import {
   MWST_LABELS,
+  beginnFuer,
+  geschaeftstagVon,
+  istStandardRegel,
+  stundenAchse,
   type ArtikelBerichtFilter,
   type ArtikelBerichtResponse,
   type BerichtFilter,
@@ -30,8 +40,9 @@ import {
   type WarengruppeBerichtResponse,
 } from '@kassa/shared'
 import type { Db } from '../db/client.js'
-import { datumsBereich } from '../db/datum.js'
+import { datumsBereich, geschaeftstagAusdruck } from '../db/datum.js'
 import { kassen } from '../db/schema.js'
+import { ladeTagesRegel } from './geschaeftstag.service.js'
 
 const MWST_SAETZE: Record<MwStSatz, number> = {
   normal:      20,
@@ -87,6 +98,9 @@ export async function holeUmsatzbericht(
     throw new BerichtError(400, '"von" muss vor oder gleich "bis" liegen')
   }
 
+  // Tagesbeginn des Mandanten (leer = 00:00 = Kalendertag, wie bisher)
+  const regel = await ladeTagesRegel(deps.db, mandantId)
+
   // Aggregation bewusst in SQL, nicht in JavaScript.
   //
   // Früher lud der Bericht JEDEN Beleg des Zeitraums als Zeile nach Node und
@@ -106,22 +120,26 @@ export async function holeUmsatzbericht(
   )`
 
   const wienerZeit = sql`(b.beleg_datum at time zone 'Europe/Vienna')`
+  // Tag/Woche/Monat des GESCHÄFTSTAGS: ein Beleg um 01:30 gehört bei Tagesbeginn
+  // 06:00 noch zum Vortag — samt dessen Woche und Monat. Ohne verschobenen
+  // Tagesbeginn ist das der Wiener Kalendertag, der Ausdruck bleibt dann wie früher.
+  const gruppenTag = istStandardRegel(regel) ? wienerZeit : geschaeftstagAusdruck(sql`b.beleg_datum`, regel)
   const periodeAusdruck =
-    filter.gruppierung === 'tag'   ? sql`to_char(${wienerZeit}, 'YYYY-MM-DD')`
-    : filter.gruppierung === 'monat' ? sql`to_char(${wienerZeit}, 'YYYY-MM')`
+    filter.gruppierung === 'tag'   ? sql`to_char(${gruppenTag}, 'YYYY-MM-DD')`
+    : filter.gruppierung === 'monat' ? sql`to_char(${gruppenTag}, 'YYYY-MM')`
     // ISO-Kalenderwoche: IYYY ist das ISO-Jahr (kann am Jahreswechsel vom
     // Kalenderjahr abweichen) — genau wie die frühere JS-Berechnung über den
     // Donnerstag der Woche.
-    : sql`to_char(${wienerZeit}, 'IYYY-"KW"IW')`
+    : sql`to_char(${gruppenTag}, 'IYYY-"KW"IW')`
 
   const bedingungen = [
     sql`b.kasse_id = ANY(ARRAY[${kasseIdArr}])`,
     sql`b.beleg_typ IN ('Barzahlungsbeleg','Stornobeleg')`,
-    datumsBereich(sql`b.beleg_datum`, filter.von, filter.bis),
+    datumsBereich(sql`b.beleg_datum`, filter.von, filter.bis, regel),
   ]
   if (filter.nurZielrechnungen) bedingungen.push(istZiel)
 
-  // Uhrzeit-Filter (Wiener Ortszeit). von <= bis: normales Fenster;
+  // Uhrzeit-Filter (Wiener Ortszeit — reine Uhrzeitbedingung, unabhängig vom Tagesbeginn). von <= bis: normales Fenster;
   // von > bis: über Mitternacht (z. B. 22:00–02:00 Nachtbetrieb).
   if (filter.zeitVon && filter.zeitBis) {
     const uhrzeit = sql`${wienerZeit}::time`
@@ -242,6 +260,8 @@ export async function holeArtikelBericht(
 
   if (filter.von > filter.bis) throw new BerichtError(400, '"von" muss vor oder gleich "bis" liegen')
 
+  const regel = await ladeTagesRegel(deps.db, mandantId)
+
   // Positionen per jsonb_array_elements auffalten und nach Bezeichnung aggregieren.
   // Stornobelege haben negative Einzelpreise → werden automatisch korrekt subtrahiert.
   const kasseIdArr = sql.join(angefragte.map(id => sql`${id}::uuid`), sql`, `)
@@ -254,7 +274,7 @@ export async function holeArtikelBericht(
          jsonb_array_elements(positionen) AS pos
     WHERE kasse_id = ANY(ARRAY[${kasseIdArr}])
       AND beleg_typ IN ('Barzahlungsbeleg','Stornobeleg')
-      AND ${datumsBereich(sql`beleg_datum`, filter.von, filter.bis)}
+      AND ${datumsBereich(sql`beleg_datum`, filter.von, filter.bis, regel)}
     GROUP BY pos->>'bezeichnung'
     ORDER BY umsatz_cent DESC
     LIMIT ${filter.limit}
@@ -290,6 +310,8 @@ export async function holeWarengruppeBericht(
 
   if (filter.von > filter.bis) throw new BerichtError(400, '"von" muss vor oder gleich "bis" liegen')
 
+  const regel = await ladeTagesRegel(deps.db, mandantId)
+
   const kasseIdArr = sql.join(angefragte.map(id => sql`${id}::uuid`), sql`, `)
   const rows = await deps.db.execute<{ kategorie_name: string; menge_summe: string; umsatz_cent: string }>(sql`
     SELECT
@@ -300,7 +322,7 @@ export async function holeWarengruppeBericht(
          jsonb_array_elements(positionen) AS pos
     WHERE kasse_id = ANY(ARRAY[${kasseIdArr}])
       AND beleg_typ IN ('Barzahlungsbeleg','Stornobeleg')
-      AND ${datumsBereich(sql`beleg_datum`, filter.von, filter.bis)}
+      AND ${datumsBereich(sql`beleg_datum`, filter.von, filter.bis, regel)}
     GROUP BY COALESCE(pos->>'kategorieName', 'Ohne Kategorie')
     ORDER BY umsatz_cent DESC
     LIMIT ${filter.limit}
@@ -331,6 +353,8 @@ export async function holeKellnerBericht(
   if (ungueltige.length > 0) throw new BerichtError(404, `Kasse(n) nicht gefunden: ${ungueltige.join(', ')}`)
   if (filter.von > filter.bis) throw new BerichtError(400, '"von" muss vor oder gleich "bis" liegen')
 
+  const regel = await ladeTagesRegel(deps.db, mandantId)
+
   const kasseIdArr = sql.join(angefragte.map(id => sql`${id}::uuid`), sql`, `)
 
   type KellnerRow = {
@@ -356,7 +380,7 @@ export async function holeKellnerBericht(
     LEFT JOIN tisch_tabs tt ON tt.beleg_id = b.id
     WHERE b.kasse_id = ANY(ARRAY[${kasseIdArr}])
       AND b.beleg_typ IN ('Barzahlungsbeleg', 'Stornobeleg')
-      AND ${datumsBereich(sql`b.beleg_datum`, filter.von, filter.bis)}
+      AND ${datumsBereich(sql`b.beleg_datum`, filter.von, filter.bis, regel)}
     GROUP BY COALESCE(tt.kellner, 'Direktverkauf')
     ORDER BY umsatz_cent DESC
   `)
@@ -402,6 +426,8 @@ export async function erstelleBuchungsjournalCsv(
   if (ungueltige.length > 0) throw new BerichtError(404, `Kasse(n) nicht gefunden: ${ungueltige.join(', ')}`)
   if (filter.von > filter.bis) throw new BerichtError(400, '"von" muss vor oder gleich "bis" liegen')
 
+  const regel = await ladeTagesRegel(deps.db, mandantId)
+
   const kasseIdArr = sql.join(angefragte.map(id => sql`${id}::uuid`), sql`, `)
 
   type JournalRow = {
@@ -437,10 +463,11 @@ export async function erstelleBuchungsjournalCsv(
     JOIN kassen k ON k.id = b.kasse_id
     WHERE b.kasse_id = ANY(ARRAY[${kasseIdArr}])
       AND b.beleg_typ IN ('Barzahlungsbeleg', 'Stornobeleg')
-      AND ${datumsBereich(sql`b.beleg_datum`, filter.von, filter.bis)}
+      AND ${datumsBereich(sql`b.beleg_datum`, filter.von, filter.bis, regel)}
     ORDER BY b.beleg_datum, b.beleg_nummer
   `)
 
+  const standardRegel = istStandardRegel(regel)
   const sep = ';'
   const header = [
     'Datum', 'Belegnummer', 'Belegtyp', 'KassenID',
@@ -449,7 +476,13 @@ export async function erstelleBuchungsjournalCsv(
   ].join(sep)
 
   const zeilen = rows.map(r => {
-    const datum   = WIENER_DATUM.format(new Date(r.beleg_datum))
+    // Buchungstag: bei Tagesbeginn ≠ 00:00 der GESCHÄFTSTAG des Belegs — nur so
+    // ergeben die Tagessummen der Buchhaltung dieselben Zahlen wie der Z-Bon. Der
+    // Beleg selbst behält seinen exakten Zeitstempel (RKSV). Ohne verschobenen
+    // Tagesbeginn: das Belegdatum wie bisher.
+    const datum   = WIENER_DATUM.format(standardRegel
+      ? new Date(r.beleg_datum)
+      : new Date(`${geschaeftstagVon(regel, new Date(r.beleg_datum))}T12:00:00Z`))
     const brutto  = (r.summe_bar_cent + r.summe_karte_cent + r.summe_sonstige_cent) / 100
 
     const n20basis  = r.betrag_normal_cent / 100
@@ -509,6 +542,8 @@ export async function holeStundenbericht(
     throw new BerichtError(400, '"von" muss vor oder gleich "bis" liegen')
   }
 
+  const regel = await ladeTagesRegel(deps.db, mandantId)
+
   const kasseIdArr = sql.join(angefragte.map(id => sql`${id}::uuid`), sql`, `)
 
   type StundenRow = {
@@ -533,7 +568,7 @@ export async function holeStundenbericht(
     FROM belege
     WHERE kasse_id = ANY(ARRAY[${kasseIdArr}])
       AND beleg_typ IN ('Barzahlungsbeleg', 'Stornobeleg')
-      AND ${datumsBereich(sql`beleg_datum`, filter.von, filter.bis)}
+      AND ${datumsBereich(sql`beleg_datum`, filter.von, filter.bis, regel)}
     GROUP BY stunde
     ORDER BY stunde
   `)
@@ -556,7 +591,10 @@ export async function holeStundenbericht(
     anzahlBelege: 0, anzahlStornos: 0,
     umsatzCent: 0, barCent: 0, karteCent: 0, sonstigCent: 0,
   }
-  const zeilen: StundenBerichtZeile[] = Array.from({ length: 24 }, (_, i) =>
+  // Die Achse beginnt mit der Stunde des Tagesbeginns (06:00 → 6, 7, …, 23, 0, …, 5);
+  // bei 00:00 ist das wie bisher 0 bis 23. Maßgeblich ist der Beginn am letzten Tag
+  // des Zeitraums. Die Stunden selbst bleiben Wiener Uhrzeit-Stunden.
+  const zeilen: StundenBerichtZeile[] = stundenAchse(beginnFuer(regel, filter.bis)).map(i =>
     stundenMap.get(i) ?? { stunde: i, ...leer }
   )
 
@@ -588,6 +626,8 @@ export async function holeKassenVergleich(
     throw new BerichtError(400, '"von" muss vor oder gleich "bis" liegen')
   }
 
+  const regel = await ladeTagesRegel(deps.db, mandantId)
+
   type VergleichRow = {
     kasse_id:       string
     kassen_id:      string
@@ -615,7 +655,7 @@ export async function holeKassenVergleich(
     LEFT JOIN belege b
       ON b.kasse_id = k.id
      AND b.beleg_typ IN ('Barzahlungsbeleg', 'Stornobeleg')
-     AND ${datumsBereich(sql`b.beleg_datum`, filter.von, filter.bis)}
+     AND ${datumsBereich(sql`b.beleg_datum`, filter.von, filter.bis, regel)}
     WHERE k.mandant_id = ${mandantId}::uuid
     GROUP BY k.id, k.kassen_id, k.bezeichnung
     ORDER BY k.kassen_id
@@ -666,8 +706,10 @@ export async function holeKuechenBericht(
     throw new BerichtError(400, '"von" muss vor oder gleich "bis" liegen')
   }
 
-  // Gemeinsamer Zeitraum-Filter: Bon-Erstellung am Wiener Kalendertag
-  const zeitraum = datumsBereich(sql`erstellt_at`, filter.von, filter.bis)
+  const regel = await ladeTagesRegel(deps.db, mandantId)
+
+  // Gemeinsamer Zeitraum-Filter: Bon-Erstellung am Geschäftstag (Wiener Zeit)
+  const zeitraum = datumsBereich(sql`erstellt_at`, filter.von, filter.bis, regel)
 
   type StationRow = {
     station: string; anzahl: string; avg_min: string; median_min: string; max_min: string
@@ -725,11 +767,17 @@ export async function holeKuechenBericht(
   // stundenweise, sonst tageweise. 'YYYY-MM-DD( HH24:00)' sortiert
   // lexikografisch chronologisch — der Frontend-Chart braucht keine Datums-Logik.
   const proStunde = filter.von === filter.bis
+  // Tageweise: je Geschäftstag (ohne verschobenen Tagesbeginn wie bisher je Kalendertag).
+  // Stundenweise bleibt der Wiener Uhrzeit-Takt — 'YYYY-MM-DD HH24:00' sortiert auch
+  // über Mitternacht hinweg chronologisch.
+  const verlaufBucket = proStunde || istStandardRegel(regel)
+    ? sql`date_trunc(${sql.raw(proStunde ? `'hour'` : `'day'`)}, erstellt_at AT TIME ZONE 'Europe/Vienna')`
+    : geschaeftstagAusdruck(sql`erstellt_at`, regel)
   type VerlaufRow = { t: string; station: string; anzahl: string; avg_min: string }
   const verlaufRows = await deps.db.execute<VerlaufRow>(sql`
     SELECT
       to_char(
-        date_trunc(${sql.raw(proStunde ? `'hour'` : `'day'`)}, erstellt_at AT TIME ZONE 'Europe/Vienna'),
+        ${verlaufBucket},
         ${sql.raw(proStunde ? `'YYYY-MM-DD HH24:00'` : `'YYYY-MM-DD'`)}
       )                                                                          AS t,
       station,
@@ -768,10 +816,13 @@ export async function holeKuechenBericht(
       anzahl:      parseInt(r.anzahl, 10),
       avgMinuten:  parseFloat(r.avg_min),
     })),
-    stunden: [...stundenRows].map(r => ({
-      stunde:     parseInt(r.stunde, 10),
-      anzahlBons: parseInt(r.anzahl, 10),
-    })),
+    // In der Reihenfolge der Tagesachse (ab der Stunde des Tagesbeginns)
+    stunden: (() => {
+      const achse = stundenAchse(beginnFuer(regel, filter.bis))
+      return [...stundenRows]
+        .map(r => ({ stunde: parseInt(r.stunde, 10), anzahlBons: parseInt(r.anzahl, 10) }))
+        .sort((a, b) => achse.indexOf(a.stunde) - achse.indexOf(b.stunde))
+    })(),
     granularitaet: proStunde ? 'stunde' as const : 'tag' as const,
     verlauf: [...verlaufRows].map(r => ({
       zeitpunkt:  r.t,

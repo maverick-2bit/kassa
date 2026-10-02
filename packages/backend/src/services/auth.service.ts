@@ -23,6 +23,7 @@ import { kassen, mandanten, userKassen, users } from '../db/schema.js'
 import type { GeraetVertrauenSigner } from '../auth/geraet-vertrauen.js'
 import { pruefeMitBremse, toepfeFuerGeraet } from './pin-bremse.js'
 import { alsPinLaenge, pruefePinLaenge } from './pin-laenge.js'
+import { ladeTagesRegel } from './geschaeftstag.service.js'
 
 const BCRYPT_COST = 10
 
@@ -168,11 +169,15 @@ async function buildLoginResponse(
     berechtigungen,
   })
 
+  const dto = await userZuDto(user, deps.db)
+  // Als LETZTE Abfrage: Tagesbeginn-Historie fürs Frontend („heute" = Geschäftstag)
+  const tagesRegel = await ladeTagesRegel(deps.db, user.mandantId)
+
   return {
     token,
     geraetToken: deps.geraetVertrauen.ausstellen(user.mandantId, geraetId),
-    user:    await userZuDto(user, deps.db),
-    mandant: { ...mandant, pinLaenge: alsPinLaenge(mandant.pinLaenge) },
+    user:    dto,
+    mandant: { ...mandant, pinLaenge: alsPinLaenge(mandant.pinLaenge), tagesRegel },
     kassen:  kassenListe,
   }
 }

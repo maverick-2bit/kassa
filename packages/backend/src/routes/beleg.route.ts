@@ -12,6 +12,7 @@ import {
   MonatsbelegInputSchema,
   JahresbelegInputSchema,
   TagesabschlussQuerySchema,
+  geschaeftstagText,
   type BarzahlungsbelegInput,
 } from '@kassa/shared'
 import { ATrustHsmError, FonSoapError } from '@kassa/rksv'
@@ -587,6 +588,7 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
             steuerCent: m.ustCent,
             bruttoCent: m.bruttoCent,
           })),
+          ...(ta.zeitraum && { zeitraumText: geschaeftstagText(ta.zeitraum.von, ta.zeitraum.bis) }),
         }, opts.config).catch((err) => {
           fastify.log.warn({ err }, 'Tagesabschluss-E-Mail konnte nicht gesendet werden')
         })

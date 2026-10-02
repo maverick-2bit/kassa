@@ -8,10 +8,12 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { and, eq, inArray, sql } from 'drizzle-orm'
+import { geschaeftstagVon, heuteGeschaeftstag, istStandardRegel } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import { datumsBereich } from '../db/datum.js'
 import { belege, kassen, mandanten } from '../db/schema.js'
 import { pruefeKasseGehoertZuMandant } from '../auth/scope.js'
+import { ladeTagesRegel } from '../services/geschaeftstag.service.js'
 
 export interface ExportRouteOptions { db: Db }
 
@@ -61,7 +63,11 @@ export const exportRoute: FastifyPluginAsync<ExportRouteOptions> = async (fastif
 
     // Beleg-Rohdaten laden (barzahlung + storno, kein Null/Monats/Jahresbeleg).
     // Datumsvergleich in Europe/Vienna — berücksichtigt Sommer-/Winterzeit korrekt.
-    const heuteWien = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Vienna' })
+    // von/bis sind Geschäftstage des Mandanten (Tagesbeginn 00:00 = Kalendertage, wie
+    // bisher); "heute" ist der aktuelle Geschäftstag.
+    const regel = await ladeTagesRegel(opts.db, request.user.mandantId)
+    const standardRegel = istStandardRegel(regel)
+    const heuteWien = heuteGeschaeftstag(regel)
     const von = q.data.vonDatum ?? `${heuteWien.slice(0, 4)}-01-01`
     const bis = q.data.bisDatum ?? heuteWien
 
@@ -71,7 +77,7 @@ export const exportRoute: FastifyPluginAsync<ExportRouteOptions> = async (fastif
       .where(and(
         eq(belege.kasseId, q.data.kasseId),
         inArray(belege.belegTyp, ['Barzahlungsbeleg', 'Stornobeleg']),
-        datumsBereich(sql`${belege.belegDatum}`, von, bis),
+        datumsBereich(sql`${belege.belegDatum}`, von, bis, regel),
       ))
       .orderBy(belege.belegDatum)
 
@@ -91,7 +97,12 @@ export const exportRoute: FastifyPluginAsync<ExportRouteOptions> = async (fastif
       // Werte werden daher direkt uebernommen — KEINE zusaetzliche Vorzeichen-
       // Multiplikation, sonst hoebe sich die Negation auf und der Storno erschiene
       // positiv (Umsatz wuerde verdoppelt statt aufgehoben).
-      const datum      = fmtDatum(new Date(beleg.belegDatum))
+      // Buchungstag: bei verschobenem Tagesbeginn der Geschäftstag des Belegs — die
+      // Tagessummen der Buchhaltung stimmen dann mit dem Z-Bon überein. Der Beleg
+      // selbst behält seinen exakten Zeitstempel (RKSV).
+      const datum      = fmtDatum(standardRegel
+        ? new Date(beleg.belegDatum)
+        : new Date(`${geschaeftstagVon(regel, new Date(beleg.belegDatum))}T12:00:00Z`))
       const nr         = String(beleg.belegNummer)
       const text       = beleg.belegTyp === 'Stornobeleg' ? `Storno Beleg #${nr}` : `Kassenbon #${nr}`
 
