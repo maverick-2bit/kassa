@@ -16,20 +16,15 @@ import { getKasseIdentity } from '../lib/kasse'
 import { Button } from '../components/ui/Button'
 import { Modal } from '../components/ui/Modal'
 import { useKasseEvents } from '../lib/sse'
-import { heuteLokalYMD } from '../lib/format'
+import { addTage, heuteKalendertag } from '../lib/geschaeftstag'
 
 // ---------------------------------------------------------------------------
 // Hilfsfunktionen
 // ---------------------------------------------------------------------------
 
+/** Reservierungen sind an den KALENDERtag gebunden, den der Gast gebucht hat — kein Geschäftstag. */
 function heuteISO(): string {
-  return heuteLokalYMD()   // LOKAL — toISOString wäre UTC (Vortag vor 2 Uhr früh)
-}
-
-function addTage(datum: string, tage: number): string {
-  const d = new Date(datum)
-  d.setDate(d.getDate() + tage)
-  return d.toISOString().slice(0, 10)
+  return heuteKalendertag()   // Wiener Kalendertag — toISOString wäre UTC (Vortag vor 2 Uhr früh)
 }
 
 function datumLabel(datum: string): string {

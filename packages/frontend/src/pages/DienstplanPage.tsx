@@ -4,10 +4,21 @@ import type { DienstplanSchichtResponse, DienstplanStatus } from '@kassa/shared'
 import { DIENSTPLAN_STATUS_LABELS } from '@kassa/shared'
 import { dienstplanApi, userApi } from '../lib/api'
 import { getAuth } from '../lib/auth'
+import { heuteGeschaeftstag } from '../lib/geschaeftstag'
 
 // ---------------------------------------------------------------------------
 // Hilfsfunktionen
 // ---------------------------------------------------------------------------
+
+/**
+ * „Heute" im Dienstplan ist der aktuelle GESCHÄFTSTAG als lokales Datum (Mitternacht):
+ * ein Dienst gehört zu seinem geplanten Datum — eine Nachtschicht von 22:00 bis 06:00
+ * steht unter ihrem Starttag, und um 01:00 nachts ist „heute" noch dieser Tag.
+ */
+function heuteDatum(): Date {
+  const [j, m, t] = heuteGeschaeftstag().split('-').map(Number)
+  return new Date(j!, m! - 1, t!)
+}
 
 function wochenBeginn(datum: Date): Date {
   const d = new Date(datum)
@@ -56,7 +67,7 @@ export function DienstplanPage() {
   const qc      = useQueryClient()
 
   const [kasseId,       setKasseId]       = useState(kassen[0]?.id ?? '')
-  const [wocheBeginn,   setWocheBeginn]   = useState(wochenBeginn(new Date()))
+  const [wocheBeginn,   setWocheBeginn]   = useState(wochenBeginn(heuteDatum()))
   const [showForm,      setShowForm]      = useState(false)
   const [editTarget,    setEditTarget]    = useState<DienstplanSchichtResponse | null>(null)
   const [defaultDatum,  setDefaultDatum]  = useState<string | null>(null)
@@ -77,7 +88,7 @@ export function DienstplanPage() {
 
   const geheVorwaerts = () => setWocheBeginn(addTage(wocheBeginn, 7))
   const geheZurueck   = () => setWocheBeginn(addTage(wocheBeginn, -7))
-  const geheHeute     = () => setWocheBeginn(wochenBeginn(new Date()))
+  const geheHeute     = () => setWocheBeginn(wochenBeginn(heuteDatum()))
 
   // Schichten nach Datum gruppieren
   const schichtenNachDatum: Record<string, DienstplanSchichtResponse[]> = {}
@@ -149,7 +160,7 @@ export function DienstplanPage() {
         {Array.from({ length: 7 }, (_, i) => {
           const datum = toYMD(addTage(wocheBeginn, i))
           const schichtenHeute = schichtenNachDatum[datum] ?? []
-          const istHeute = datum === toYMD(new Date())
+          const istHeute = datum === toYMD(heuteDatum())
           const d = addTage(wocheBeginn, i)
 
           return (
@@ -251,7 +262,7 @@ function SchichtFormModal({ kasseId, initial, defaultDatum, onClose, onSaved, on
     queryFn:  () => userApi.list(),
   })
 
-  const heute = toYMD(new Date())   // lokales Datum (toISOString wäre UTC → Vortag vor 2 Uhr früh)
+  const heute = toYMD(heuteDatum())   // aktueller Geschäftstag als lokales Datum (toISOString wäre UTC → Vortag vor 2 Uhr früh)
   const [userId,        setUserId]        = useState(initial?.userId ?? users[0]?.id ?? '')
   const [datum,         setDatum]         = useState(initial?.datum ?? defaultDatum ?? heute)
   const [beginnGeplant, setBeginnGeplant] = useState(initial?.beginnGeplant ?? '09:00')

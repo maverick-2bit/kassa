@@ -8,6 +8,7 @@ import {
 } from '@kassa/shared'
 import { mandantApi } from '../lib/api'
 import { updateMandantModule } from '../lib/auth'
+import { GeschaeftstagEinstellung } from '../components/GeschaeftstagEinstellung'
 
 // Reihenfolge + Icons der Module
 const MODULE_LISTE: { modul: MandantModul; icon: string }[] = [
@@ -116,6 +117,9 @@ export function MandantenEinstellungenPage() {
           ))}
         </div>
       ) : null}
+
+      {/* Geschäftstag: Tagesbeginn (nur Admin; die Komponente blendet sich sonst aus) */}
+      <GeschaeftstagEinstellung />
 
       {speichern.isError && (
         <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">

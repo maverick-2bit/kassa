@@ -1,23 +1,20 @@
 import { useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import type { KassenbuchResponse } from '@kassa/shared'
-import { KASSENBUCH_TYP_LABELS } from '@kassa/shared'
+import { KASSENBUCH_TYP_LABELS, geschaeftstagText } from '@kassa/shared'
 import { tagesabschlussApi, kassenbuchApi, mandantApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { getAuth, hasBerechtigung } from '../lib/auth'
 import { formatPreis } from '../lib/format'
+import { heuteGeschaeftstag } from '../lib/geschaeftstag'
 import { downloadZBonPdf } from '../lib/pdf'
 import { Button } from '../components/ui/Button'
-
-/** YYYY-MM-DD für heute in Wiener Lokalzeit */
-function heuteLokal(): string {
-  return new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Vienna' })
-}
 
 export function TagesabschlussPage() {
   const identity   = getKasseIdentity()!
   const auth       = getAuth()!
-  const [datum, setDatum] = useState<string>(heuteLokal())
+  // „Heute" ist der aktuelle GESCHÄFTSTAG: um 02:00 nachts bei Tagesbeginn 06:00 noch der Vortag
+  const [datum, setDatum] = useState<string>(heuteGeschaeftstag())
   const [druckfehler, setDruckfehler]   = useState<string | null>(null)
   const [druckErfolg, setDruckErfolg]   = useState(false)
   const [pdfLaedt, setPdfLaedt]         = useState(false)
@@ -78,7 +75,7 @@ export function TagesabschlussPage() {
       <div>
         <h1 className="text-2xl font-bold text-ink">Tagesabschluss (Z-Bon)</h1>
         <p className="mt-1 text-sm text-ink-muted">
-          Umsatzauswertung nach Zahlungsart und Steuersatz für einen Kassentag
+          Umsatzauswertung nach Zahlungsart und Steuersatz für einen Geschäftstag
         </p>
       </div>
 
@@ -92,7 +89,7 @@ export function TagesabschlussPage() {
             <input
               type="date"
               value={datum}
-              max={heuteLokal()}
+              max={heuteGeschaeftstag()}
               onChange={(e) => {
                 setDatum(e.target.value)
                 setDruckErfolg(false)
@@ -123,6 +120,13 @@ export function TagesabschlussPage() {
               <h2 className="text-sm font-semibold text-ink uppercase tracking-wide">
                 Übersicht — {formatDatumAnzeige(datum)}
               </h2>
+              {/* Verschobener Tagesbeginn: der Zeitraum steht ausgeschrieben da, damit klar ist,
+                  welche Belege zu diesem Abschluss gehören (sonst fehlt der Hinweis ganz) */}
+              {data.zeitraum && (
+                <p data-testid="tagesabschluss-zeitraum" className="mt-1 text-xs font-medium normal-case tracking-normal text-ink-muted">
+                  {geschaeftstagText(data.zeitraum.von, data.zeitraum.bis)}
+                </p>
+              )}
             </div>
 
             {data.anzahlBarzahlungsbelege === 0 && data.anzahlStornobelege === 0 ? (

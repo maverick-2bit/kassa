@@ -5,6 +5,7 @@
  * „PDF herunterladen" wird das ~300 kB große Bundle nachgeladen).
  */
 
+import { geschaeftstagText } from '@kassa/shared'
 import type { Tagesabschluss, KassenbuchResponse } from '@kassa/shared'
 import type { KassensturzDruckInput } from './api'
 
@@ -70,6 +71,11 @@ export async function downloadZBonPdf(
     pageW - mR, y - 4.5,
     { align: 'right' },
   )
+  // Verschobener Tagesbeginn: den Zeitraum des Geschäftstags ausschreiben
+  if (data.zeitraum) {
+    y += 4.5
+    doc.text(geschaeftstagText(data.zeitraum.von, data.zeitraum.bis), mL, y)
+  }
   doc.setTextColor(0)
   y += 8
 

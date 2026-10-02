@@ -157,6 +157,8 @@ import type {
   TicketShopEinstellungenAntwort,
   MandantPinLaenge,
   MandantPinLaengeUpdate,
+  TagesbeginnInput,
+  TagesbeginnStand,
   PinInfo,
   GastModus,
 } from '@kassa/shared'
@@ -1264,6 +1266,15 @@ export const mandantApi = {
     request<MandantPinLaenge>('GET', '/api/mandanten/pin-laenge'),
   patchPinLaenge: (input: MandantPinLaengeUpdate): Promise<MandantPinLaenge> =>
     request<MandantPinLaenge>('PATCH', '/api/mandanten/pin-laenge', input),
+  /** Geschäftstag: Tagesbeginn-Historie + aktueller Geschäftstag (jeder Angemeldete) */
+  getTagesbeginn: (): Promise<TagesbeginnStand> =>
+    request<TagesbeginnStand>('GET', '/api/mandanten/tagesbeginn'),
+  /** Neuer Tagesbeginn ab Stichtag (nur Admin) */
+  postTagesbeginn: (input: TagesbeginnInput): Promise<TagesbeginnStand> =>
+    request<TagesbeginnStand>('POST', '/api/mandanten/tagesbeginn', input),
+  /** Geplanten Wechsel zurücknehmen (nur Admin; nur Stichtage in der Zukunft) */
+  deleteTagesbeginn: (id: string): Promise<TagesbeginnStand> =>
+    request<TagesbeginnStand>('DELETE', `/api/mandanten/tagesbeginn/${encodeURIComponent(id)}`),
 }
 
 // ---------------------------------------------------------------------------

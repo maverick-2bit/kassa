@@ -17,19 +17,19 @@ import { berichtApi, kasseApi, tischTabApi, artikelApi, offenerPostenApi, kdsApi
 import { useServerHost } from '../lib/serverHost'
 import { getAuth, hasBerechtigung, hasModul } from '../lib/auth'
 import { formatPreis } from '../lib/format'
+import { addTage, gesternGeschaeftstag, heuteGeschaeftstag } from '../lib/geschaeftstag'
 
 // ---------------------------------------------------------------------------
 // Datum-Helfer
 // ---------------------------------------------------------------------------
 
+/** „Heute" ist der aktuelle GESCHÄFTSTAG — um 02:00 nachts bei Tagesbeginn 06:00 noch der Vortag. */
 function heute(): string {
-  return new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Vienna' })
+  return heuteGeschaeftstag()
 }
 
 function gestern(): string {
-  const d = new Date()
-  d.setDate(d.getDate() - 1)
-  return d.toLocaleDateString('sv-SE', { timeZone: 'Europe/Vienna' })
+  return gesternGeschaeftstag()
 }
 
 function trendPct(heute: number, gestern: number): { wert: string; positiv: boolean } | null {
@@ -683,11 +683,13 @@ function StundenVerlauf({ datum }: { datum: string }) {
   const aktiveZeilen = data.zeilen.filter(z => z.umsatzCent > 0)
   if (aktiveZeilen.length === 0) return null
 
-  const ersteStunde  = aktiveZeilen[0]!.stunde
-  const letzteStunde = aktiveZeilen[aktiveZeilen.length - 1]!.stunde
+  // Die Zeilen liegen auf der Tagesachse (ab der Stunde des Tagesbeginns, z. B. 6…23, 0…5):
+  // das Fenster um die aktiven Stunden wird daher nach POSITION geschnitten, nicht nach Uhrzeit
+  const ersteStelle  = data.zeilen.indexOf(aktiveZeilen[0]!)
+  const letzteStelle = data.zeilen.indexOf(aktiveZeilen[aktiveZeilen.length - 1]!)
   const angezeigt    = data.zeilen.slice(
-    Math.max(0, ersteStunde - 1),
-    Math.min(23, letzteStunde + 1) + 1,
+    Math.max(0, ersteStelle - 1),
+    Math.min(data.zeilen.length - 1, letzteStelle + 1) + 1,
   )
 
   return (
@@ -783,11 +785,7 @@ function TopArtikelWidget({ datum }: { datum: string }) {
 // ---------------------------------------------------------------------------
 
 function SiebentageVerlauf({ datum }: { datum: string }) {
-  const von7 = (() => {
-    const d = new Date(datum)
-    d.setDate(d.getDate() - 6)
-    return d.toLocaleDateString('sv-SE', { timeZone: 'Europe/Vienna' })
-  })()
+  const von7 = addTage(datum, -6)
 
   const { data, isLoading } = useQuery({
     queryKey:        ['dashboard-7tage', datum],
@@ -821,8 +819,9 @@ function SiebentageVerlauf({ datum }: { datum: string }) {
     : ''
 
   const wochentagLabel = (periode: string) => {
-    const d = new Date(periode)
-    return WOCHENTAGE[d.getDay()] ?? ''
+    // Kalendarisch (UTC-Mittag), nicht über die Ortszeit des Geräts
+    const d = new Date(`${periode}T12:00:00Z`)
+    return WOCHENTAGE[d.getUTCDay()] ?? ''
   }
 
   const heute7Sum = zeilen.reduce((s, z) => s + z.umsatzCent, 0)

@@ -3,7 +3,8 @@
  * Wird vom fetch-Wrapper gelesen, um den Authorization-Header zu setzen.
  */
 
-import type { Berechtigung, LoginResponse, MandantModul, PinLaenge } from '@kassa/shared'
+import { normalisiereRegel } from '@kassa/shared'
+import type { Berechtigung, LoginResponse, MandantModul, PinLaenge, TagesbeginnEintrag, TagesRegel } from '@kassa/shared'
 
 const KEY_TOKEN = 'kassa:token'
 const KEY_AUTH  = 'kassa:auth'
@@ -124,6 +125,43 @@ export function updateMandantModule(
   localStorage.setItem(KEY_AUTH, JSON.stringify({
     user:    auth.user,
     mandant: { ...auth.mandant, ...updates },
+    kassen:  auth.kassen,
+  }))
+}
+
+/**
+ * Tagesbeginn-Historie des Betriebs (Geschäftstag) aus der Anmeldung. Leer =
+ * Standard 00:00: der Geschäftstag ist der Kalendertag. Ältere gespeicherte
+ * Anmeldungen (vor v0.8.35) kennen das Feld nicht → ebenfalls leer.
+ *
+ * Wird oft gelesen (jedes „heute"), deshalb gemerkt, solange sich der
+ * gespeicherte Text nicht ändert.
+ */
+let regelMerker: { roh: string | null; regel: TagesRegel } | null = null
+export function tagesRegel(): TagesRegel {
+  const roh = localStorage.getItem(KEY_AUTH)
+  if (regelMerker && regelMerker.roh === roh) return regelMerker.regel
+  let regel: TagesRegel = []
+  try {
+    const mandant = (roh ? (JSON.parse(roh) as { mandant?: { tagesRegel?: TagesbeginnEintrag[] } }).mandant : undefined)
+    regel = normalisiereRegel(mandant?.tagesRegel ?? [])
+  } catch {
+    regel = []
+  }
+  regelMerker = { roh, regel }
+  return regel
+}
+
+/** Aktualisiert die Tagesbeginn-Historie im LocalStorage ohne Re-Login (nach einer Änderung oder beim Abgleich). */
+export function updateMandantTagesRegel(regel: readonly TagesbeginnEintrag[]): void {
+  const auth = getAuth()
+  if (!auth) return
+  const neu = normalisiereRegel(regel)
+  // Unverändert → nichts schreiben (jeder Abgleich im Hintergrund soll still bleiben)
+  if (JSON.stringify(normalisiereRegel(auth.mandant.tagesRegel ?? [])) === JSON.stringify(neu)) return
+  localStorage.setItem(KEY_AUTH, JSON.stringify({
+    user:    auth.user,
+    mandant: { ...auth.mandant, tagesRegel: neu },
     kassen:  auth.kassen,
   }))
 }

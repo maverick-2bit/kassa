@@ -8,20 +8,24 @@
 
 import { useState, useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { ArbeitszeitResponse, ArbeitszeitInput, ArbeitszeitUpdate } from '@kassa/shared'
+import { wienerZeit, type ArbeitszeitResponse, type ArbeitszeitInput, type ArbeitszeitUpdate } from '@kassa/shared'
 import { zeiterfassungApi, userApi } from '../lib/api'
 import { getGeraetToken, pinLaenge as pinLaengeDesBetriebs } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
 import { restzeitText, usePinSperre } from '../lib/pin-sperre'
 import { Button } from '../components/ui/Button'
 import { Modal } from '../components/ui/Modal'
-import { heuteLokalYMD } from '../lib/format'
+import { addTage, datumKurz, heuteGeschaeftstag, montagDerWoche } from '../lib/geschaeftstag'
 
 // ---------------------------------------------------------------------------
 // Hilfsfunktionen
 // ---------------------------------------------------------------------------
 
-function heuteISO() { return heuteLokalYMD() }   // LOKAL — toISOString wäre UTC (Vortag vor 2 Uhr)
+/**
+ * „Heute" ist der aktuelle GESCHÄFTSTAG: eine Nachtschicht von 18:00 bis 02:00 liegt
+ * komplett auf ihrem Starttag — um 01:00 nachts ist „heute" noch dieser Tag.
+ */
+function heuteISO() { return heuteGeschaeftstag() }
 
 function formatDauer(minuten: number | null): string {
   if (minuten === null) return '—'
@@ -35,27 +39,39 @@ function formatZeit(iso: string | null): string {
   return new Date(iso).toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' })
 }
 
-function formatDatum(iso: string): string {
-  return new Date(iso).toLocaleDateString('de-AT', { day: '2-digit', month: '2-digit', year: 'numeric' })
+/** Eine Schicht, die nach Mitternacht endet (Ende liegt auf einem späteren Wiener Kalendertag als der Beginn). */
+function endetAmFolgetag(az: ArbeitszeitResponse): boolean {
+  return az.ende !== null && wienerZeit(new Date(az.ende)).datum > wienerZeit(new Date(az.beginn)).datum
 }
 
-function wocheISO(datum: string, offset: number): string {
-  const d = new Date(datum)
-  d.setDate(d.getDate() + offset * 7)
-  return d.toISOString().slice(0, 10)
+/** Ende-Spalte: Uhrzeit, bei einer Schicht über Mitternacht mit „+1". */
+function EndeAnzeige({ az }: { az: ArbeitszeitResponse }) {
+  if (!az.ende) return <span className="text-green-600 font-semibold">aktiv</span>
+  return (
+    <>
+      {formatZeit(az.ende)}
+      {endetAmFolgetag(az) && <span className="ml-1 text-xs text-ink-subtle" title="Die Schicht endet nach Mitternacht, gehört aber zu ihrem Starttag">+1</span>}
+    </>
+  )
 }
 
-function montagDerWoche(datum: string): string {
-  const d = new Date(datum + 'T12:00:00')
-  const tag = d.getDay() || 7
-  d.setDate(d.getDate() - (tag - 1))
-  return d.toISOString().slice(0, 10)
-}
-
-function addTage(datum: string, n: number): string {
-  const d = new Date(datum)
-  d.setDate(d.getDate() + n)
-  return d.toISOString().slice(0, 10)
+/**
+ * Arbeitszeiten nach Geschäftstag gruppieren (neuester Tag zuerst, innerhalb des Tages nach Beginn).
+ * Eine Schicht über Mitternacht steht unter ihrem Starttag.
+ */
+function nachGeschaeftstag(azen: ArbeitszeitResponse[]): { tag: string; azen: ArbeitszeitResponse[]; nettoMin: number }[] {
+  const proTag = new Map<string, ArbeitszeitResponse[]>()
+  for (const az of azen) {
+    const liste = proTag.get(az.geschaeftstag) ?? []
+    liste.push(az)
+    proTag.set(az.geschaeftstag, liste)
+  }
+  return [...proTag.entries()]
+    .sort(([a], [b]) => (a < b ? 1 : a > b ? -1 : 0))
+    .map(([tag, liste]) => {
+      const sortiert = [...liste].sort((a, b) => (a.beginn < b.beginn ? -1 : a.beginn > b.beginn ? 1 : 0))
+      return { tag, azen: sortiert, nettoMin: sortiert.reduce((s, a) => s + (a.nettoMinuten ?? 0), 0) }
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -282,11 +298,11 @@ function UebersichtTab() {
     <div className="space-y-4">
       {/* Wochen-Navigation */}
       <div className="flex items-center gap-2">
-        <Button variant="secondary" size="sm" onClick={() => setWochenstart(d => wocheISO(d, -1))}>← Woche</Button>
+        <Button variant="secondary" size="sm" onClick={() => setWochenstart(d => addTage(d, -7))}>← Woche</Button>
         <Button variant="secondary" size="sm" onClick={() => setWochenstart(montagDerWoche(heuteISO()))}>Heute</Button>
-        <Button variant="secondary" size="sm" onClick={() => setWochenstart(d => wocheISO(d, 1))}>Woche →</Button>
+        <Button variant="secondary" size="sm" onClick={() => setWochenstart(d => addTage(d, 7))}>Woche →</Button>
         <span className="text-sm text-ink-muted ml-2">
-          {formatDatum(wochenstart)} – {formatDatum(wochenende)}
+          {datumKurz(wochenstart)} – {datumKurz(wochenende)}
         </span>
       </div>
 
@@ -309,7 +325,7 @@ function UebersichtTab() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-xs text-ink-subtle uppercase tracking-wide">
-                    <th className="px-4 py-2 text-left">Datum</th>
+                    <th className="px-4 py-2 text-left">Geschäftstag</th>
                     <th className="px-4 py-2 text-left">Beginn</th>
                     <th className="px-4 py-2 text-left">Ende</th>
                     <th className="px-4 py-2 text-left">Pause</th>
@@ -317,15 +333,25 @@ function UebersichtTab() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-line">
-                  {azen.map(az => (
-                    <tr key={az.id} className="hover:bg-panel-2">
-                      <td className="px-4 py-2 text-ink-muted">{formatDatum(az.beginn)}</td>
-                      <td className="px-4 py-2 font-mono">{formatZeit(az.beginn)}</td>
-                      <td className="px-4 py-2 font-mono">{az.ende ? formatZeit(az.ende) : <span className="text-green-600 font-semibold">aktiv</span>}</td>
-                      <td className="px-4 py-2 text-ink-muted">{az.pauseMinuten > 0 ? `${az.pauseMinuten}m` : '—'}</td>
-                      <td className="px-4 py-2 text-right font-mono font-semibold">{formatDauer(az.nettoMinuten)}</td>
-                    </tr>
-                  ))}
+                  {/* Gruppiert nach GESCHÄFTSTAG: eine Schicht über Mitternacht steht unter ihrem Starttag */}
+                  {nachGeschaeftstag(azen).flatMap(gruppe => [
+                    ...gruppe.azen.map(az => (
+                      <tr key={az.id} data-testid="ze-schicht" data-geschaeftstag={az.geschaeftstag} className="hover:bg-panel-2">
+                        <td className="px-4 py-2 text-ink-muted">{datumKurz(az.geschaeftstag)}</td>
+                        <td className="px-4 py-2 font-mono">{formatZeit(az.beginn)}</td>
+                        <td className="px-4 py-2 font-mono"><EndeAnzeige az={az} /></td>
+                        <td className="px-4 py-2 text-ink-muted">{az.pauseMinuten > 0 ? `${az.pauseMinuten}m` : '—'}</td>
+                        <td className="px-4 py-2 text-right font-mono font-semibold">{formatDauer(az.nettoMinuten)}</td>
+                      </tr>
+                    )),
+                    // Tagessumme nur, wenn der Tag mehrere Schichten hat
+                    ...(gruppe.azen.length > 1 ? [(
+                      <tr key={`summe-${gruppe.tag}`} className="bg-panel-2">
+                        <td className="px-4 py-1.5 text-xs text-ink-muted" colSpan={4}>Summe {datumKurz(gruppe.tag)}</td>
+                        <td className="px-4 py-1.5 text-right font-mono text-xs font-semibold">{formatDauer(gruppe.nettoMin)}</td>
+                      </tr>
+                    )] : []),
+                  ])}
                 </tbody>
               </table>
             </div>
@@ -390,7 +416,7 @@ function EintraegeTab() {
             <thead className="bg-panel-2 border-b border-line">
               <tr className="text-xs text-ink-muted uppercase tracking-wide">
                 <th className="px-4 py-2 text-left">Mitarbeiter</th>
-                <th className="px-4 py-2 text-left">Datum</th>
+                <th className="px-4 py-2 text-left">Geschäftstag</th>
                 <th className="px-4 py-2 text-left">Beginn</th>
                 <th className="px-4 py-2 text-left">Ende</th>
                 <th className="px-4 py-2 text-left">Netto</th>
@@ -402,11 +428,9 @@ function EintraegeTab() {
               {eintraege.map(az => (
                 <tr key={az.id} className="hover:bg-panel-2">
                   <td className="px-4 py-2 font-medium">{az.userName}</td>
-                  <td className="px-4 py-2 text-ink-muted">{formatDatum(az.beginn)}</td>
+                  <td className="px-4 py-2 text-ink-muted">{datumKurz(az.geschaeftstag)}</td>
                   <td className="px-4 py-2 font-mono">{formatZeit(az.beginn)}</td>
-                  <td className="px-4 py-2 font-mono">
-                    {az.ende ? formatZeit(az.ende) : <span className="text-green-600 font-semibold text-xs">aktiv</span>}
-                  </td>
+                  <td className="px-4 py-2 font-mono"><EndeAnzeige az={az} /></td>
                   <td className="px-4 py-2 font-mono font-semibold">{formatDauer(az.nettoMinuten)}</td>
                   <td className="px-4 py-2">
                     <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
