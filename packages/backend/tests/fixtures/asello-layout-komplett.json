@@ -1,0 +1,5591 @@
+{
+ "quelle": "Asello Produktexport 2026-10-02 + Favoriten Atriumbar (Bildschirm 2026-10-02)",
+ "spalten": 3,
+ "gruppen": [
+  {
+   "name": "Atriumbar",
+   "pfad": "Atriumbar",
+   "farbe": "#e76815",
+   "farbeGesetzt": true,
+   "reihenfolge": 1,
+   "artikel": [],
+   "untergruppen": [
+    {
+     "name": "Alkoholfrei",
+     "pfad": "Atriumbar/Alkoholfrei",
+     "farbe": "#60aa30",
+     "farbeGesetzt": true,
+     "reihenfolge": 1,
+     "artikel": [
+      {
+       "name": "0,3l Limo",
+       "nr": null,
+       "preisCent": 350,
+       "mwst": 0.2,
+       "farbe": "#463123",
+       "slot": 1,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "0,3l Soda",
+       "nr": null,
+       "preisCent": 200,
+       "mwst": 0.2,
+       "farbe": "#0072bb",
+       "slot": 2,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Red Bull",
+       "nr": null,
+       "preisCent": 400,
+       "mwst": 0.2,
+       "farbe": "#243e92",
+       "slot": 3,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "0,3l Saft pur/gesp.",
+       "nr": null,
+       "preisCent": 350,
+       "mwst": 0.2,
+       "farbe": "#ae792c",
+       "slot": 4,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "0,75 Soda prickelnd",
+       "nr": null,
+       "preisCent": 400,
+       "mwst": 0.2,
+       "farbe": "#0072bb",
+       "slot": 5,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "1/4 Wildberry Lillet Alkfrei",
+       "nr": null,
+       "preisCent": 500,
+       "mwst": 0.2,
+       "farbe": "#db3385",
+       "slot": 6,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Mojito alkoholfrei",
+       "nr": "0012",
+       "preisCent": 400,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 8,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Lm",
+       "nr": null,
+       "preisCent": 0,
+       "mwst": 0.13,
+       "farbe": null,
+       "slot": 9,
+       "individuell": true,
+       "variante": null
+      }
+     ],
+     "untergruppen": [
+      {
+       "name": "Limonaden",
+       "pfad": "Atriumbar/Alkoholfrei/Limonaden",
+       "farbe": "#99d1ca",
+       "farbeGesetzt": true,
+       "reihenfolge": 1,
+       "artikel": [
+        {
+         "name": "0,3l Almdudler",
+         "nr": null,
+         "preisCent": 350,
+         "mwst": 0.2,
+         "farbe": "#eca116",
+         "slot": 1,
+         "individuell": false,
+         "variante": "Produkt mit verschiedenen Varianten"
+        },
+        {
+         "name": "0,3l Cola",
+         "nr": null,
+         "preisCent": 350,
+         "mwst": 0.2,
+         "farbe": "#501f38",
+         "slot": 2,
+         "individuell": false,
+         "variante": "Produkt mit verschiedenen Varianten"
+        },
+        {
+         "name": "0,3l Himbeere Kracherl ",
+         "nr": null,
+         "preisCent": 350,
+         "mwst": 0.2,
+         "farbe": "#e993b9",
+         "slot": 3,
+         "individuell": false,
+         "variante": "Produkt mit verschiedenen Varianten"
+        },
+        {
+         "name": "0,3l Almdudler gesp.",
+         "nr": null,
+         "preisCent": 350,
+         "mwst": 0.2,
+         "farbe": "#eca116",
+         "slot": 4,
+         "individuell": false,
+         "variante": "Produkt mit verschiedenen Varianten"
+        },
+        {
+         "name": "0,3l Cola gesp.",
+         "nr": null,
+         "preisCent": 350,
+         "mwst": 0.2,
+         "farbe": "#501f38",
+         "slot": 5,
+         "individuell": false,
+         "variante": "Produkt mit verschiedenen Varianten"
+        },
+        {
+         "name": "0,3l Himbeere Kracherl gesp.",
+         "nr": null,
+         "preisCent": 350,
+         "mwst": 0.2,
+         "farbe": "#e993b9",
+         "slot": 6,
+         "individuell": false,
+         "variante": "Produkt mit verschiedenen Varianten"
+        },
+        {
+         "name": "0,3l Almdudler Wasser",
+         "nr": null,
+         "preisCent": 350,
+         "mwst": 0.2,
+         "farbe": "#eca116",
+         "slot": 7,
+         "individuell": false,
+         "variante": "Produkt mit verschiedenen Varianten"
+        },
+        {
+         "name": "0,3l Cola Wasser",
+         "nr": null,
+         "preisCent": 350,
+         "mwst": 0.2,
+         "farbe": "#501f38",
+         "slot": 8,
+         "individuell": false,
+         "variante": "Produkt mit verschiedenen Varianten"
+        },
+        {
+         "name": "0,3l Himbeere Kracherl Wasser",
+         "nr": null,
+         "preisCent": 350,
+         "mwst": 0.2,
+         "farbe": "#e993b9",
+         "slot": 9,
+         "individuell": false,
+         "variante": "Produkt mit verschiedenen Varianten"
+        },
+        {
+         "name": "0,3l Bitter Lemon",
+         "nr": null,
+         "preisCent": 350,
+         "mwst": 0.2,
+         "farbe": "#bba12a",
+         "slot": 10,
+         "individuell": false,
+         "variante": "Produkt mit verschiedenen Varianten"
+        },
+        {
+         "name": "0,3l Tonic Water",
+         "nr": null,
+         "preisCent": 350,
+         "mwst": 0.2,
+         "farbe": "#bba12a",
+         "slot": 11,
+         "individuell": false,
+         "variante": "Produkt mit verschiedenen Varianten"
+        },
+        {
+         "name": "Limo 0,33l",
+         "nr": null,
+         "preisCent": 350,
+         "mwst": 0.2,
+         "farbe": "#60aa30",
+         "slot": 12,
+         "individuell": false,
+         "variante": "Produkt mit verschiedenen Varianten"
+        }
+       ],
+       "untergruppen": []
+      },
+      {
+       "name": "Säfte",
+       "pfad": "Atriumbar/Alkoholfrei/Säfte",
+       "farbe": "#eca116",
+       "farbeGesetzt": true,
+       "reihenfolge": 2,
+       "artikel": [
+        {
+         "name": "0,3l Apfel-Saft",
+         "nr": null,
+         "preisCent": 350,
+         "mwst": 0.2,
+         "farbe": "#60aa30",
+         "slot": 1,
+         "individuell": false,
+         "variante": "Produkt mit verschiedenen Varianten"
+        },
+        {
+         "name": "0,3l Apfel-Saft gesp.",
+         "nr": null,
+         "preisCent": 350,
+         "mwst": 0.2,
+         "farbe": "#60aa30",
+         "slot": 2,
+         "individuell": false,
+         "variante": "Produkt mit verschiedenen Varianten"
+        },
+        {
+         "name": "0,3l Apfel-Saft Wasser",
+         "nr": null,
+         "preisCent": 350,
+         "mwst": 0.2,
+         "farbe": "#60aa30",
+         "slot": 3,
+         "individuell": false,
+         "variante": "Produkt mit verschiedenen Varianten"
+        },
+        {
+         "name": "0,5 Apfel-Saft Wasser",
+         "nr": null,
+         "preisCent": 450,
+         "mwst": 0.2,
+         "farbe": "#60aa30",
+         "slot": 4,
+         "individuell": false,
+         "variante": "Produkt mit verschiedenen Varianten"
+        },
+        {
+         "name": "0,3l O-Saft",
+         "nr": null,
+         "preisCent": 350,
+         "mwst": 0.2,
+         "farbe": "#ffde00",
+         "slot": 5,
+         "individuell": false,
+         "variante": "Produkt mit verschiedenen Varianten"
+        },
+        {
+         "name": "0,3l O-Saft gesp.",
+         "nr": null,
+         "preisCent": 350,
+         "mwst": 0.2,
+         "farbe": "#ffea87",
+         "slot": 6,
+         "individuell": false,
+         "variante": "Produkt mit verschiedenen Varianten"
+        },
+        {
+         "name": "0,3l O-Saft Wasser",
+         "nr": null,
+         "preisCent": 350,
+         "mwst": 0.2,
+         "farbe": "#ffea87",
+         "slot": 7,
+         "individuell": false,
+         "variante": "Produkt mit verschiedenen Varianten"
+        },
+        {
+         "name": "0,5l O-Saft Wasser",
+         "nr": null,
+         "preisCent": 450,
+         "mwst": 0.2,
+         "farbe": "#ffea87",
+         "slot": 8,
+         "individuell": false,
+         "variante": "Produkt mit verschiedenen Varianten"
+        }
+       ],
+       "untergruppen": []
+      }
+     ]
+    },
+    {
+     "name": "Bier",
+     "pfad": "Atriumbar/Bier",
+     "farbe": "#bba12a",
+     "farbeGesetzt": true,
+     "reihenfolge": 2,
+     "artikel": [
+      {
+       "name": "0,3l Bier",
+       "nr": null,
+       "preisCent": 400,
+       "mwst": 0.2,
+       "farbe": "#eca116",
+       "slot": 1,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "0,3l Zit. Radler",
+       "nr": null,
+       "preisCent": 400,
+       "mwst": 0.2,
+       "farbe": "#315f29",
+       "slot": 2,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "0,3l Soda Radler",
+       "nr": null,
+       "preisCent": 400,
+       "mwst": 0.2,
+       "farbe": "#60aa30",
+       "slot": 3,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "0,3l Alm. Radler",
+       "nr": null,
+       "preisCent": 400,
+       "mwst": 0.2,
+       "farbe": "#322c4d",
+       "slot": 4,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "0,5l Bier",
+       "nr": null,
+       "preisCent": 500,
+       "mwst": 0.2,
+       "farbe": "#eca116",
+       "slot": 6,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "0,3l Naturgold AF",
+       "nr": null,
+       "preisCent": 400,
+       "mwst": 0.2,
+       "farbe": "#ae792c",
+       "slot": 7,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      }
+     ],
+     "untergruppen": []
+    },
+    {
+     "name": "Spritzer",
+     "pfad": "Atriumbar/Spritzer",
+     "farbe": "#eca116",
+     "farbeGesetzt": true,
+     "reihenfolge": 3,
+     "artikel": [
+      {
+       "name": "weißer Spritzer",
+       "nr": null,
+       "preisCent": 400,
+       "mwst": 0.2,
+       "farbe": "#60aa30",
+       "slot": 1,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Sommerspritzer",
+       "nr": null,
+       "preisCent": 400,
+       "mwst": 0.2,
+       "farbe": "#60aa30",
+       "slot": 2,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "süßer Spritzer",
+       "nr": null,
+       "preisCent": 400,
+       "mwst": 0.2,
+       "farbe": "#60aa30",
+       "slot": 3,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Aperol-Spritzer",
+       "nr": null,
+       "preisCent": 500,
+       "mwst": 0.2,
+       "farbe": "#e76815",
+       "slot": 4,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Wildberry Special",
+       "nr": null,
+       "preisCent": 600,
+       "mwst": 0.2,
+       "farbe": "#db3385",
+       "slot": 5,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "1/4 Zweigelt Spritzer",
+       "nr": null,
+       "preisCent": 450,
+       "mwst": 0.2,
+       "farbe": "#8e2156",
+       "slot": 6,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Hugo-Cava",
+       "nr": null,
+       "preisCent": 600,
+       "mwst": 0.2,
+       "farbe": "#13b1a5",
+       "slot": 7,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Aperol-Cava",
+       "nr": null,
+       "preisCent": 600,
+       "mwst": 0.2,
+       "farbe": "#e76815",
+       "slot": 8,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "1/4 WB Spritzer",
+       "nr": null,
+       "preisCent": 450,
+       "mwst": 0.2,
+       "farbe": "#bba12a",
+       "slot": 10,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "1/4 GM Spritzer",
+       "nr": null,
+       "preisCent": 450,
+       "mwst": 0.2,
+       "farbe": "#bba12a",
+       "slot": 11,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "1/4 Säm. Spritzer",
+       "nr": null,
+       "preisCent": 450,
+       "mwst": 0.2,
+       "farbe": "#bba12a",
+       "slot": 12,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      }
+     ],
+     "untergruppen": []
+    },
+    {
+     "name": "Wein",
+     "pfad": "Atriumbar/Wein",
+     "farbe": "#ae792c",
+     "farbeGesetzt": true,
+     "reihenfolge": 4,
+     "artikel": [
+      {
+       "name": "1/8 GMuskateller",
+       "nr": null,
+       "preisCent": 450,
+       "mwst": 0.2,
+       "farbe": "#eca116",
+       "slot": 1,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Glas Sekt",
+       "nr": null,
+       "preisCent": 500,
+       "mwst": 0.2,
+       "farbe": "#13b1a5",
+       "slot": 2,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "1/8 Roter Zweigelt",
+       "nr": null,
+       "preisCent": 450,
+       "mwst": 0.2,
+       "farbe": "#7a2921",
+       "slot": 3,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "1/8 Sämling",
+       "nr": null,
+       "preisCent": 450,
+       "mwst": 0.2,
+       "farbe": "#bba12a",
+       "slot": 4,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Glas Prosecco",
+       "nr": null,
+       "preisCent": 500,
+       "mwst": 0.2,
+       "farbe": "#13b1a5",
+       "slot": 5,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "1/8 Weißburgunder",
+       "nr": null,
+       "preisCent": 450,
+       "mwst": 0.2,
+       "farbe": "#99887f",
+       "slot": 7,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Glas Rosé/Schilcher Frizzante",
+       "nr": "0013",
+       "preisCent": 500,
+       "mwst": 0.2,
+       "farbe": "#e993b9",
+       "slot": 8,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "1/8 Welsch.",
+       "nr": null,
+       "preisCent": 350,
+       "mwst": 0.2,
+       "farbe": "#bba12a",
+       "slot": 9,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      }
+     ],
+     "untergruppen": []
+    },
+    {
+     "name": "Flaschengetränke",
+     "pfad": "Atriumbar/Flaschengetränke",
+     "farbe": "#637685",
+     "farbeGesetzt": false,
+     "reihenfolge": 5,
+     "artikel": [
+      {
+       "name": "0,75l Muskateller+ Soda",
+       "nr": null,
+       "preisCent": 2700,
+       "mwst": 0.2,
+       "farbe": "#eca116",
+       "slot": 1,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "0,75l Sämling+ Soda",
+       "nr": null,
+       "preisCent": 2700,
+       "mwst": 0.2,
+       "farbe": "#bba12a",
+       "slot": 2,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "0,75l Weißburgunder+ Soda",
+       "nr": null,
+       "preisCent": 2700,
+       "mwst": 0.2,
+       "farbe": "#ae792c",
+       "slot": 3,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "1l Welschriesling + Soda",
+       "nr": null,
+       "preisCent": 2700,
+       "mwst": 0.2,
+       "farbe": "#e76815",
+       "slot": 4,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "0,75l Zweigelt+ Soda",
+       "nr": null,
+       "preisCent": 2700,
+       "mwst": 0.2,
+       "farbe": "#7a2921",
+       "slot": 5,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Fl. Soda spritzig 0,75l",
+       "nr": null,
+       "preisCent": 400,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 7,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "0,7l Schaumwein classic",
+       "nr": null,
+       "preisCent": 2500,
+       "mwst": 0.2,
+       "farbe": "#2fac66",
+       "slot": 8,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "0,7l Prosecco",
+       "nr": null,
+       "preisCent": 2500,
+       "mwst": 0.2,
+       "farbe": "#2fac66",
+       "slot": 11,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      }
+     ],
+     "untergruppen": []
+    },
+    {
+     "name": "Londrink & Cocktails",
+     "pfad": "Atriumbar/Londrink & Cocktails",
+     "farbe": "#db3385",
+     "farbeGesetzt": true,
+     "reihenfolge": 6,
+     "artikel": [
+      {
+       "name": "Longdrink",
+       "nr": null,
+       "preisCent": 500,
+       "mwst": 0.2,
+       "farbe": "#db3385",
+       "slot": 1,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Longdrink mit Red Bull",
+       "nr": null,
+       "preisCent": 550,
+       "mwst": 0.2,
+       "farbe": "#db3385",
+       "slot": 2,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Campari Soda",
+       "nr": null,
+       "preisCent": 500,
+       "mwst": 0.2,
+       "farbe": "#db3385",
+       "slot": 3,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Caipironja + Rum",
+       "nr": null,
+       "preisCent": 550,
+       "mwst": 0.2,
+       "farbe": "#9bcea4",
+       "slot": 4,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Cuba Libre",
+       "nr": null,
+       "preisCent": 550,
+       "mwst": 0.2,
+       "farbe": "#8e2156",
+       "slot": 5,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Gin Tonic",
+       "nr": null,
+       "preisCent": 550,
+       "mwst": 0.2,
+       "farbe": "#0072bb",
+       "slot": 6,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Mojito",
+       "nr": null,
+       "preisCent": 600,
+       "mwst": 0.2,
+       "farbe": "#60aa30",
+       "slot": 7,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Cocktail",
+       "nr": null,
+       "preisCent": 800,
+       "mwst": 0.2,
+       "farbe": "#e76815",
+       "slot": 8,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Screen Driver",
+       "nr": null,
+       "preisCent": 600,
+       "mwst": 0.2,
+       "farbe": "#bba12a",
+       "slot": 9,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Swimmingpool",
+       "nr": null,
+       "preisCent": 600,
+       "mwst": 0.2,
+       "farbe": "#9dc2e2",
+       "slot": 10,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Tequila Sunrise",
+       "nr": null,
+       "preisCent": 600,
+       "mwst": 0.2,
+       "farbe": "#e76815",
+       "slot": 11,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Vodka Lemon",
+       "nr": null,
+       "preisCent": 550,
+       "mwst": 0.2,
+       "farbe": "#2fac66",
+       "slot": 12,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Whiskey Bull",
+       "nr": null,
+       "preisCent": 550,
+       "mwst": 0.2,
+       "farbe": "#ad5425",
+       "slot": 13,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Shot",
+       "nr": "0019",
+       "preisCent": 300,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 14,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Eristoff Ice",
+       "nr": null,
+       "preisCent": 350,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 15,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Longdrink special",
+       "nr": null,
+       "preisCent": 400,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 16,
+       "individuell": false,
+       "variante": null
+      }
+     ],
+     "untergruppen": []
+    },
+    {
+     "name": "Kaffee",
+     "pfad": "Atriumbar/Kaffee",
+     "farbe": "#ad5425",
+     "farbeGesetzt": true,
+     "reihenfolge": 7,
+     "artikel": [
+      {
+       "name": "Espresso",
+       "nr": null,
+       "preisCent": 350,
+       "mwst": 0.2,
+       "farbe": "#9e75b2",
+       "slot": 19,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Verlängerter",
+       "nr": null,
+       "preisCent": 350,
+       "mwst": 0.2,
+       "farbe": "#2fac66",
+       "slot": 20,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      }
+     ],
+     "untergruppen": []
+    },
+    {
+     "name": "Speisen",
+     "pfad": "Atriumbar/Speisen",
+     "farbe": "#e76815",
+     "farbeGesetzt": true,
+     "reihenfolge": 8,
+     "artikel": [
+      {
+       "name": "Brez´n",
+       "nr": null,
+       "preisCent": 400,
+       "mwst": 0.1,
+       "farbe": "#ae792c",
+       "slot": 1,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Brisketsandwich klein",
+       "nr": null,
+       "preisCent": 500,
+       "mwst": 0.1,
+       "farbe": null,
+       "slot": 2,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Chickensandwich klein",
+       "nr": null,
+       "preisCent": 500,
+       "mwst": 0.1,
+       "farbe": null,
+       "slot": 3,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Pizzasch. Prosciutto",
+       "nr": null,
+       "preisCent": 400,
+       "mwst": 0.1,
+       "farbe": "#e31b13",
+       "slot": 6,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Mini Pizza Salami",
+       "nr": null,
+       "preisCent": 400,
+       "mwst": 0.1,
+       "farbe": "#b67691",
+       "slot": 7,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Burger",
+       "nr": null,
+       "preisCent": 400,
+       "mwst": 0.1,
+       "farbe": null,
+       "slot": 8,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Chickensandwich klein",
+       "nr": null,
+       "preisCent": 500,
+       "mwst": 0.1,
+       "farbe": null,
+       "slot": 9,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Chilli Con Carne",
+       "nr": null,
+       "preisCent": 700,
+       "mwst": 0.1,
+       "farbe": "#e76815",
+       "slot": 10,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Brez´n Aktion",
+       "nr": null,
+       "preisCent": 600,
+       "mwst": 0.1,
+       "farbe": "#ae792c",
+       "slot": 11,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Hot Dog klein",
+       "nr": null,
+       "preisCent": 400,
+       "mwst": 0.1,
+       "farbe": "#b67691",
+       "slot": 12,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Jetons",
+       "nr": null,
+       "preisCent": 2400,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 13,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Prosciutto Teller",
+       "nr": null,
+       "preisCent": 1000,
+       "mwst": 0.1,
+       "farbe": "#463123",
+       "slot": 14,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      }
+     ],
+     "untergruppen": []
+    },
+    {
+     "name": "Spezial",
+     "pfad": "Atriumbar/Spezial",
+     "farbe": "#637685",
+     "farbeGesetzt": false,
+     "reihenfolge": 9,
+     "artikel": [
+      {
+       "name": "Event Essen",
+       "nr": null,
+       "preisCent": 1100,
+       "mwst": 0.1,
+       "farbe": null,
+       "slot": 1,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Event Getränk",
+       "nr": null,
+       "preisCent": 300,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 2,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Pommes 1,6kg",
+       "nr": null,
+       "preisCent": 600,
+       "mwst": 0.1,
+       "farbe": null,
+       "slot": 3,
+       "individuell": false,
+       "variante": null
+      }
+     ],
+     "untergruppen": []
+    }
+   ]
+  },
+  {
+   "name": "Kellner Getränke",
+   "pfad": "Kellner Getränke",
+   "farbe": "#db3385",
+   "farbeGesetzt": true,
+   "reihenfolge": 2,
+   "artikel": [],
+   "untergruppen": [
+    {
+     "name": "Alkoholfrei",
+     "pfad": "Kellner Getränke/Alkoholfrei",
+     "farbe": "#0072bb",
+     "farbeGesetzt": true,
+     "reihenfolge": 1,
+     "artikel": [
+      {
+       "name": "0,3l Cola",
+       "nr": "0039",
+       "preisCent": 350,
+       "mwst": 0.2,
+       "farbe": "#463123",
+       "slot": 1,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "0,3l Soda",
+       "nr": "0040",
+       "preisCent": 200,
+       "mwst": 0.2,
+       "farbe": "#0072bb",
+       "slot": 2,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Apfelsaft 0,3l",
+       "nr": "0041",
+       "preisCent": 350,
+       "mwst": 0.2,
+       "farbe": "#e76815",
+       "slot": 3,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "0,3l Coke zero",
+       "nr": "0042",
+       "preisCent": 350,
+       "mwst": 0.2,
+       "farbe": "#272b31",
+       "slot": 4,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "0,75l Soda",
+       "nr": "0043",
+       "preisCent": 400,
+       "mwst": 0.2,
+       "farbe": "#0072bb",
+       "slot": 5,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "0,3l Orangensaft",
+       "nr": "0044",
+       "preisCent": 350,
+       "mwst": 0.2,
+       "farbe": "#bba12a",
+       "slot": 6,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "0,3l Almdudler",
+       "nr": "0045",
+       "preisCent": 350,
+       "mwst": 0.2,
+       "farbe": "#eca116",
+       "slot": 7,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Wildberry Special Alkfrei",
+       "nr": "0046",
+       "preisCent": 550,
+       "mwst": 0.2,
+       "farbe": "#db3385",
+       "slot": 8,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Red Bull",
+       "nr": "0047",
+       "preisCent": 400,
+       "mwst": 0.2,
+       "farbe": "#662483",
+       "slot": 9,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Wasserglas",
+       "nr": "0048",
+       "preisCent": 0,
+       "mwst": 0.2,
+       "farbe": "#838387",
+       "slot": 12,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Mojito alkoholfrei",
+       "nr": "0014",
+       "preisCent": 550,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 13,
+       "individuell": false,
+       "variante": null
+      }
+     ],
+     "untergruppen": []
+    },
+    {
+     "name": "Bier",
+     "pfad": "Kellner Getränke/Bier",
+     "farbe": "#eca116",
+     "farbeGesetzt": true,
+     "reihenfolge": 2,
+     "artikel": [
+      {
+       "name": "Bier 0,33l",
+       "nr": "0049",
+       "preisCent": 400,
+       "mwst": 0.2,
+       "farbe": "#bba12a",
+       "slot": 1,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Radler 0,33l",
+       "nr": "0050",
+       "preisCent": 400,
+       "mwst": 0.2,
+       "farbe": "#9bcea4",
+       "slot": 2,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Alkoholfrei 0,33l",
+       "nr": "0051",
+       "preisCent": 400,
+       "mwst": 0.2,
+       "farbe": "#60aa30",
+       "slot": 3,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "0,5l Bier",
+       "nr": "0052",
+       "preisCent": 500,
+       "mwst": 0.2,
+       "farbe": "#eca116",
+       "slot": 4,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Test Getränke",
+       "nr": null,
+       "preisCent": 0,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 6,
+       "individuell": false,
+       "variante": null
+      }
+     ],
+     "untergruppen": []
+    },
+    {
+     "name": "Spritzer und Co",
+     "pfad": "Kellner Getränke/Spritzer und Co",
+     "farbe": "#bba12a",
+     "farbeGesetzt": true,
+     "reihenfolge": 3,
+     "artikel": [
+      {
+       "name": "Spritzer",
+       "nr": "0053",
+       "preisCent": 400,
+       "mwst": 0.2,
+       "farbe": "#99887f",
+       "slot": 1,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "1/4 Aperol Frizzante",
+       "nr": "0056",
+       "preisCent": 600,
+       "mwst": 0.2,
+       "farbe": "#db3385",
+       "slot": 4,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Hugo Frizzante",
+       "nr": "0057",
+       "preisCent": 600,
+       "mwst": 0.2,
+       "farbe": "#13b1a5",
+       "slot": 5,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Wildberry Lillet",
+       "nr": "0058",
+       "preisCent": 600,
+       "mwst": 0.2,
+       "farbe": "#e993b9",
+       "slot": 6,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Mojito",
+       "nr": null,
+       "preisCent": 600,
+       "mwst": 0.2,
+       "farbe": "#3f9ccd",
+       "slot": 11,
+       "individuell": false,
+       "variante": null
+      }
+     ],
+     "untergruppen": []
+    },
+    {
+     "name": "Wein",
+     "pfad": "Kellner Getränke/Wein",
+     "farbe": "#99887f",
+     "farbeGesetzt": true,
+     "reihenfolge": 4,
+     "artikel": [
+      {
+       "name": "1/8 Gelber Muskateller",
+       "nr": "0059",
+       "preisCent": 450,
+       "mwst": 0.2,
+       "farbe": "#ffde00",
+       "slot": 1,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Glas Schaumwein",
+       "nr": "0060",
+       "preisCent": 500,
+       "mwst": 0.2,
+       "farbe": "#2fac66",
+       "slot": 2,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "1/8 Roter Zweigelt",
+       "nr": "0061",
+       "preisCent": 450,
+       "mwst": 0.2,
+       "farbe": "#501f38",
+       "slot": 3,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "1/8 Weißburgunder",
+       "nr": "0062",
+       "preisCent": 450,
+       "mwst": 0.2,
+       "farbe": "#bba12a",
+       "slot": 4,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Glas Schilcher Frizzante",
+       "nr": "0063",
+       "preisCent": 500,
+       "mwst": 0.2,
+       "farbe": "#752e53",
+       "slot": 5,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "1/8 Sämling",
+       "nr": "0064",
+       "preisCent": 450,
+       "mwst": 0.2,
+       "farbe": "#e76815",
+       "slot": 7,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Glas Prosecco",
+       "nr": "0065",
+       "preisCent": 500,
+       "mwst": 0.2,
+       "farbe": "#2fac66",
+       "slot": 8,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "1/8 Welsch.",
+       "nr": "0066",
+       "preisCent": 350,
+       "mwst": 0.2,
+       "farbe": "#315f29",
+       "slot": 10,
+       "individuell": false,
+       "variante": null
+      }
+     ],
+     "untergruppen": []
+    },
+    {
+     "name": "Kaffee",
+     "pfad": "Kellner Getränke/Kaffee",
+     "farbe": "#ad5425",
+     "farbeGesetzt": true,
+     "reihenfolge": 7,
+     "artikel": [
+      {
+       "name": "Kaffee",
+       "nr": "0067",
+       "preisCent": 350,
+       "mwst": 0.2,
+       "farbe": "#7a2921",
+       "slot": 1,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      }
+     ],
+     "untergruppen": []
+    },
+    {
+     "name": "Flascheinweine",
+     "pfad": "Kellner Getränke/Flascheinweine",
+     "farbe": "#637685",
+     "farbeGesetzt": false,
+     "reihenfolge": 8,
+     "artikel": [
+      {
+       "name": "Weinglas",
+       "nr": null,
+       "preisCent": 0,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 1,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Wasserglas",
+       "nr": null,
+       "preisCent": 0,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 2,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "0,75l Muskateller+ Soda",
+       "nr": null,
+       "preisCent": 2700,
+       "mwst": 0.2,
+       "farbe": "#eca116",
+       "slot": 3,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "0,7l Prosecco",
+       "nr": null,
+       "preisCent": 2500,
+       "mwst": 0.2,
+       "farbe": "#2fac66",
+       "slot": 4,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "0,75l Zweigelt+ Soda",
+       "nr": null,
+       "preisCent": 2700,
+       "mwst": 0.2,
+       "farbe": "#7a2921",
+       "slot": 5,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "0,75l Sämling+ Soda",
+       "nr": null,
+       "preisCent": 2700,
+       "mwst": 0.2,
+       "farbe": "#bba12a",
+       "slot": 6,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "0,7l Schaumwein classic",
+       "nr": null,
+       "preisCent": 2500,
+       "mwst": 0.2,
+       "farbe": "#2fac66",
+       "slot": 7,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "1l Welschriesling + Soda",
+       "nr": null,
+       "preisCent": 2700,
+       "mwst": 0.2,
+       "farbe": "#e76815",
+       "slot": 8,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "0,75l Weißburgunder+ Soda",
+       "nr": null,
+       "preisCent": 2700,
+       "mwst": 0.2,
+       "farbe": "#ae792c",
+       "slot": 9,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      }
+     ],
+     "untergruppen": []
+    }
+   ]
+  },
+  {
+   "name": "Kellner Speisen",
+   "pfad": "Kellner Speisen",
+   "farbe": "#60aa30",
+   "farbeGesetzt": true,
+   "reihenfolge": 3,
+   "artikel": [
+    {
+     "name": "Brez´n",
+     "nr": null,
+     "preisCent": 400,
+     "mwst": 0.1,
+     "farbe": "#99887f",
+     "slot": 1,
+     "individuell": false,
+     "variante": "Produkt mit verschiedenen Varianten"
+    },
+    {
+     "name": "Prosciutto Teller",
+     "nr": "0069",
+     "preisCent": 750,
+     "mwst": 0.1,
+     "farbe": "#db3385",
+     "slot": 2,
+     "individuell": false,
+     "variante": "Produkt mit verschiedenen Varianten"
+    },
+    {
+     "name": "Prosciutto Teller mit Brezn",
+     "nr": "0068",
+     "preisCent": 1000,
+     "mwst": 0.1,
+     "farbe": "#db3385",
+     "slot": 3,
+     "individuell": false,
+     "variante": "Produkt mit verschiedenen Varianten"
+    },
+    {
+     "name": "Test Essen",
+     "nr": null,
+     "preisCent": 0,
+     "mwst": 0.1,
+     "farbe": null,
+     "slot": 4,
+     "individuell": false,
+     "variante": "Produkt mit verschiedenen Varianten"
+    }
+   ],
+   "untergruppen": []
+  },
+  {
+   "name": "Grillen",
+   "pfad": "Grillen",
+   "farbe": "#60aa30",
+   "farbeGesetzt": true,
+   "reihenfolge": 4,
+   "artikel": [
+    {
+     "name": "Grill Demo",
+     "nr": null,
+     "preisCent": 115000,
+     "mwst": 0.1,
+     "farbe": null,
+     "slot": 1,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Grill Demo Extraportionen",
+     "nr": null,
+     "preisCent": 110,
+     "mwst": 0.1,
+     "farbe": null,
+     "slot": 2,
+     "individuell": false,
+     "variante": "Produkt mit verschiedenen Varianten"
+    },
+    {
+     "name": "Grillkurs Basis",
+     "nr": "9001",
+     "preisCent": 240000,
+     "mwst": 0.2,
+     "farbe": null,
+     "slot": 3,
+     "individuell": false,
+     "variante": "Produkt mit verschiedenen Varianten"
+    },
+    {
+     "name": "Grillkurs Fortgeschritten",
+     "nr": "9002",
+     "preisCent": 270000,
+     "mwst": 0.2,
+     "farbe": null,
+     "slot": 4,
+     "individuell": false,
+     "variante": "Produkt mit verschiedenen Varianten"
+    },
+    {
+     "name": "Grillkurs Profi",
+     "nr": "9003",
+     "preisCent": 300000,
+     "mwst": 0.2,
+     "farbe": null,
+     "slot": 5,
+     "individuell": false,
+     "variante": "Paket"
+    },
+    {
+     "name": "Grilltrainer Tagespauschale",
+     "nr": null,
+     "preisCent": 105600,
+     "mwst": 0.2,
+     "farbe": null,
+     "slot": 6,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Workshop Grillen",
+     "nr": null,
+     "preisCent": 360000,
+     "mwst": 0.2,
+     "farbe": null,
+     "slot": 7,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Grilltrainer Tagespauschale inkl. Equipment für Penny",
+     "nr": null,
+     "preisCent": 105600,
+     "mwst": 0.2,
+     "farbe": "#e31b13",
+     "slot": 8,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Trainer Tages-Pauschale inkl. LM",
+     "nr": null,
+     "preisCent": 0,
+     "mwst": 0,
+     "farbe": null,
+     "slot": 9,
+     "individuell": true,
+     "variante": null
+    }
+   ],
+   "untergruppen": [
+    {
+     "name": "Grillevent",
+     "pfad": "Grillen/Grillevent",
+     "farbe": "#e76815",
+     "farbeGesetzt": true,
+     "reihenfolge": 8,
+     "artikel": [
+      {
+       "name": "extra Grillstation",
+       "nr": null,
+       "preisCent": 60000,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 1,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Geschirrpauschale je Person",
+       "nr": null,
+       "preisCent": 400,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 2,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Gläserpauschale je Person",
+       "nr": null,
+       "preisCent": 400,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 3,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Grill-Equipment",
+       "nr": null,
+       "preisCent": 180000,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 4,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Personalkosten",
+       "nr": null,
+       "preisCent": 22000,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 5,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Grill-Equipment",
+       "nr": null,
+       "preisCent": 250000,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 6,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Grillmenü 1",
+       "nr": null,
+       "preisCent": 3800,
+       "mwst": 0.1,
+       "farbe": null,
+       "slot": 7,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Grillmenü 2",
+       "nr": null,
+       "preisCent": 0,
+       "mwst": 0.1,
+       "farbe": null,
+       "slot": 8,
+       "individuell": true,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Geschirrpauschale Penny bis zu 500 Personen",
+       "nr": null,
+       "preisCent": 6000,
+       "mwst": 0.2,
+       "farbe": "#e31b13",
+       "slot": 9,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "GläserRACK Verlust",
+       "nr": "0031",
+       "preisCent": 8500,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 10,
+       "individuell": false,
+       "variante": null
+      }
+     ],
+     "untergruppen": [
+      {
+       "name": "Grillmenü",
+       "pfad": "Grillen/Grillevent/Grillmenü",
+       "farbe": "#60aa30",
+       "farbeGesetzt": true,
+       "reihenfolge": 1,
+       "artikel": [
+        {
+         "name": "Steirischer Flammkuchen",
+         "nr": null,
+         "preisCent": 0,
+         "mwst": 0,
+         "farbe": "#ffea87",
+         "slot": 1,
+         "individuell": false,
+         "variante": "Produkt mit verschiedenen Varianten"
+        },
+        {
+         "name": "Klassicher Burger",
+         "nr": null,
+         "preisCent": 0,
+         "mwst": 0,
+         "farbe": "#ffea87",
+         "slot": 2,
+         "individuell": false,
+         "variante": "Produkt mit verschiedenen Varianten"
+        },
+        {
+         "name": "Fisch mit Tomatenragout und Toastbrot",
+         "nr": null,
+         "preisCent": 0,
+         "mwst": 0,
+         "farbe": "#ffea87",
+         "slot": 3,
+         "individuell": false,
+         "variante": "Produkt mit verschiedenen Varianten"
+        },
+        {
+         "name": "Risotto mit Garnelen",
+         "nr": null,
+         "preisCent": 0,
+         "mwst": 0,
+         "farbe": "#ffea87",
+         "slot": 4,
+         "individuell": false,
+         "variante": "Produkt mit verschiedenen Varianten"
+        },
+        {
+         "name": "Buffet",
+         "nr": null,
+         "preisCent": 0,
+         "mwst": 0.1,
+         "farbe": "#e31b13",
+         "slot": 5,
+         "individuell": true,
+         "variante": "Produkt mit verschiedenen Varianten"
+        },
+        {
+         "name": "HSP Huhn",
+         "nr": null,
+         "preisCent": 0,
+         "mwst": 0,
+         "farbe": "#e993b9",
+         "slot": 6,
+         "individuell": false,
+         "variante": "Produkt mit verschiedenen Varianten"
+        },
+        {
+         "name": "HSP Schweine",
+         "nr": null,
+         "preisCent": 0,
+         "mwst": 0,
+         "farbe": "#e993b9",
+         "slot": 7,
+         "individuell": false,
+         "variante": "Produkt mit verschiedenen Varianten"
+        },
+        {
+         "name": "HSP Rind",
+         "nr": null,
+         "preisCent": 0,
+         "mwst": 0,
+         "farbe": "#e993b9",
+         "slot": 8,
+         "individuell": false,
+         "variante": "Produkt mit verschiedenen Varianten"
+        },
+        {
+         "name": "HSP Wild",
+         "nr": null,
+         "preisCent": 0,
+         "mwst": 0,
+         "farbe": "#e993b9",
+         "slot": 9,
+         "individuell": false,
+         "variante": "Produkt mit verschiedenen Varianten"
+        },
+        {
+         "name": "HSP Lachs",
+         "nr": null,
+         "preisCent": 0,
+         "mwst": 0,
+         "farbe": "#e993b9",
+         "slot": 10,
+         "individuell": false,
+         "variante": "Produkt mit verschiedenen Varianten"
+        },
+        {
+         "name": "HSP Gemüsepfanne",
+         "nr": null,
+         "preisCent": 0,
+         "mwst": 0,
+         "farbe": "#9bcea4",
+         "slot": 11,
+         "individuell": false,
+         "variante": "Produkt mit verschiedenen Varianten"
+        },
+        {
+         "name": "HSP Baguette",
+         "nr": null,
+         "preisCent": 0,
+         "mwst": 0,
+         "farbe": "#9bcea4",
+         "slot": 12,
+         "individuell": false,
+         "variante": "Produkt mit verschiedenen Varianten"
+        },
+        {
+         "name": "HSP Ofenkartoffel",
+         "nr": null,
+         "preisCent": 0,
+         "mwst": 0,
+         "farbe": "#9bcea4",
+         "slot": 13,
+         "individuell": false,
+         "variante": "Produkt mit verschiedenen Varianten"
+        },
+        {
+         "name": "HSP gefüllte Snackpaprika",
+         "nr": null,
+         "preisCent": 0,
+         "mwst": 0,
+         "farbe": "#9bcea4",
+         "slot": 14,
+         "individuell": false,
+         "variante": "Produkt mit verschiedenen Varianten"
+        },
+        {
+         "name": "HSP gefüllte Zucchini",
+         "nr": null,
+         "preisCent": 0,
+         "mwst": 0,
+         "farbe": "#9bcea4",
+         "slot": 15,
+         "individuell": false,
+         "variante": "Produkt mit verschiedenen Varianten"
+        },
+        {
+         "name": "DESSERT Schokokuchen",
+         "nr": null,
+         "preisCent": 0,
+         "mwst": 0,
+         "farbe": "#87a6d7",
+         "slot": 16,
+         "individuell": false,
+         "variante": "Produkt mit verschiedenen Varianten"
+        },
+        {
+         "name": "DESSERT flambierte Erdbeeren",
+         "nr": null,
+         "preisCent": 0,
+         "mwst": 0,
+         "farbe": "#87a6d7",
+         "slot": 17,
+         "individuell": false,
+         "variante": "Produkt mit verschiedenen Varianten"
+        }
+       ],
+       "untergruppen": []
+      }
+     ]
+    },
+    {
+     "name": "Buffetvorschläge",
+     "pfad": "Grillen/Buffetvorschläge",
+     "farbe": "#662483",
+     "farbeGesetzt": true,
+     "reihenfolge": 19,
+     "artikel": [
+      {
+       "name": "Basis-Paket Getränke pro Person/ pro Stunde (min 4 Stunden)",
+       "nr": null,
+       "preisCent": 450,
+       "mwst": 0.2,
+       "farbe": "#0072bb",
+       "slot": 1,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Aperitif-Paket pro Person/ pro Stunde (min 4 Stunden)",
+       "nr": null,
+       "preisCent": 150,
+       "mwst": 0.2,
+       "farbe": "#0072bb",
+       "slot": 2,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Wein-Paket 0.7l  pro Person/ pro Stunde (min 4 Stunden)",
+       "nr": null,
+       "preisCent": 150,
+       "mwst": 0.2,
+       "farbe": "#0072bb",
+       "slot": 3,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Aufpreis-Paket +1 Paket  pro Person",
+       "nr": null,
+       "preisCent": 300,
+       "mwst": 0.2,
+       "farbe": "#246049",
+       "slot": 4,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Aufpreis-Paket +2 Paket  pro Person",
+       "nr": null,
+       "preisCent": 200,
+       "mwst": 0.2,
+       "farbe": "#246049",
+       "slot": 5,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Aufpreis-Paket +3 Paket  pro Person",
+       "nr": null,
+       "preisCent": 100,
+       "mwst": 0.2,
+       "farbe": "#246049",
+       "slot": 6,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Vorspeisen-Paket pro Person",
+       "nr": null,
+       "preisCent": 500,
+       "mwst": 0.2,
+       "farbe": "#db3385",
+       "slot": 7,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Suppen-Paket pro Person",
+       "nr": null,
+       "preisCent": 300,
+       "mwst": 0.2,
+       "farbe": "#db3385",
+       "slot": 8,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Salat-Paket pro Person",
+       "nr": null,
+       "preisCent": 500,
+       "mwst": 0.2,
+       "farbe": "#db3385",
+       "slot": 9,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Saucen-Paket pro Person",
+       "nr": null,
+       "preisCent": 200,
+       "mwst": 0.2,
+       "farbe": "#db3385",
+       "slot": 10,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Dessert-Paket pro Person",
+       "nr": null,
+       "preisCent": 500,
+       "mwst": 0.2,
+       "farbe": "#db3385",
+       "slot": 11,
+       "individuell": false,
+       "variante": null
+      }
+     ],
+     "untergruppen": []
+    }
+   ]
+  },
+  {
+   "name": "Equipment",
+   "pfad": "Equipment",
+   "farbe": "#ffde00",
+   "farbeGesetzt": true,
+   "reihenfolge": 5,
+   "artikel": [
+    {
+     "name": "Cocktailbar je Cocktail 1/3 Regel",
+     "nr": null,
+     "preisCent": 0,
+     "mwst": 0.2,
+     "farbe": null,
+     "slot": 1,
+     "individuell": false,
+     "variante": "Produkt mit verschiedenen Varianten"
+    },
+    {
+     "name": "Weinkühler 50 Stk.",
+     "nr": null,
+     "preisCent": 6000,
+     "mwst": 0.2,
+     "farbe": null,
+     "slot": 2,
+     "individuell": false,
+     "variante": "Produkt mit verschiedenen Varianten"
+    },
+    {
+     "name": "Reinigung Mehrwegbecher",
+     "nr": null,
+     "preisCent": 23,
+     "mwst": 0.2,
+     "farbe": null,
+     "slot": 3,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Küchenmiete je Stunde inkl. Betriebskosten",
+     "nr": null,
+     "preisCent": 1500,
+     "mwst": 0.2,
+     "farbe": null,
+     "slot": 4,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Barorganisation und -logistik",
+     "nr": null,
+     "preisCent": 30000,
+     "mwst": 0.2,
+     "farbe": null,
+     "slot": 5,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Barsets",
+     "nr": null,
+     "preisCent": 3000,
+     "mwst": 0.2,
+     "farbe": null,
+     "slot": 6,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Biertischgarnitur",
+     "nr": "0082",
+     "preisCent": 1800,
+     "mwst": 0.2,
+     "farbe": null,
+     "slot": 7,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Buffet-/ Arbeits- Tisch höhenverstellbar",
+     "nr": "0083",
+     "preisCent": 3000,
+     "mwst": 0.2,
+     "farbe": null,
+     "slot": 8,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Diesel je liter",
+     "nr": "0151",
+     "preisCent": 0,
+     "mwst": 0.2,
+     "farbe": null,
+     "slot": 9,
+     "individuell": true,
+     "variante": null
+    },
+    {
+     "name": "Druck Tischkarten und Preislisten",
+     "nr": null,
+     "preisCent": 150,
+     "mwst": 0.2,
+     "farbe": null,
+     "slot": 10,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Gläser Paket je Gast",
+     "nr": null,
+     "preisCent": 100,
+     "mwst": 0.2,
+     "farbe": null,
+     "slot": 11,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Kühlanhänger",
+     "nr": null,
+     "preisCent": 25000,
+     "mwst": 0.2,
+     "farbe": null,
+     "slot": 12,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Kühlschrank groß inkl. Transport",
+     "nr": null,
+     "preisCent": 5000,
+     "mwst": 0.2,
+     "farbe": null,
+     "slot": 13,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Kühlschrank klein inkl. Transport",
+     "nr": null,
+     "preisCent": 2500,
+     "mwst": 0.2,
+     "farbe": null,
+     "slot": 14,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Stehtisch",
+     "nr": "0078",
+     "preisCent": 1200,
+     "mwst": 0.2,
+     "farbe": null,
+     "slot": 15,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Stehtisch Hussen",
+     "nr": "0079",
+     "preisCent": 1200,
+     "mwst": 0.2,
+     "farbe": null,
+     "slot": 16,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Stromaggregat  63KVA Stundenmiete",
+     "nr": "0150",
+     "preisCent": 1200,
+     "mwst": 0.2,
+     "farbe": null,
+     "slot": 17,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Stromaggregat  63KVA Tagesmiete",
+     "nr": "0149",
+     "preisCent": 12000,
+     "mwst": 0.2,
+     "farbe": null,
+     "slot": 18,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Tischdecken rund",
+     "nr": "0080",
+     "preisCent": 1200,
+     "mwst": 0.2,
+     "farbe": null,
+     "slot": 19,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Weinkühler Paket je Gast",
+     "nr": null,
+     "preisCent": 10,
+     "mwst": 0.2,
+     "farbe": null,
+     "slot": 20,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Zelt 3mx4,5m",
+     "nr": "0081",
+     "preisCent": 12000,
+     "mwst": 0.2,
+     "farbe": null,
+     "slot": 21,
+     "individuell": false,
+     "variante": null
+    }
+   ],
+   "untergruppen": [
+    {
+     "name": "Geräte",
+     "pfad": "Equipment/Geräte",
+     "farbe": "#637685",
+     "farbeGesetzt": false,
+     "reihenfolge": 1,
+     "artikel": [
+      {
+       "name": "Eismaschine (ca. 200kg/24h) Luftgekühlt Tagesmiete",
+       "nr": null,
+       "preisCent": 12000,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 1,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Eismaschine (ca. 200kg/24h) wassergekühlt Tagesmiete",
+       "nr": null,
+       "preisCent": 12000,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 2,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Flaschensumpf Kühl/Tiefkühl",
+       "nr": null,
+       "preisCent": 6000,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 3,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Geschirrspüler Korb 50x50",
+       "nr": null,
+       "preisCent": 12000,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 4,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Mobile Bar mit Kühlung Licht und Theke 220V",
+       "nr": null,
+       "preisCent": 12000,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 5,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Mobile Waschstraße mit Gläserspüler Korb 40x40 & Warmwasser",
+       "nr": null,
+       "preisCent": 12000,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 6,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Tk -Truhe klein",
+       "nr": null,
+       "preisCent": 6000,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 7,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Geschirrspühler Korb 50x50",
+       "nr": null,
+       "preisCent": 12000,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 8,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Mobile Waschstraße mit Gläserspühler Korb 40x40 & Warmwasser",
+       "nr": null,
+       "preisCent": 12000,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 9,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Bottom up Bar / pro Eventtag",
+       "nr": "0075",
+       "preisCent": 50000,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 10,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Bottom up Becher",
+       "nr": "0076",
+       "preisCent": 7200,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 11,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Bottom up Becher Verlust",
+       "nr": "0077",
+       "preisCent": 200,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 12,
+       "individuell": false,
+       "variante": null
+      }
+     ],
+     "untergruppen": []
+    },
+    {
+     "name": "Geschirr",
+     "pfad": "Equipment/Geschirr",
+     "farbe": "#637685",
+     "farbeGesetzt": false,
+     "reihenfolge": 2,
+     "artikel": [
+      {
+       "name": "Gabel 100 Stück",
+       "nr": null,
+       "preisCent": 3000,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 1,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Kaffeelöffel 100 Stück",
+       "nr": null,
+       "preisCent": 3000,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 2,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Messer 100 Stück",
+       "nr": null,
+       "preisCent": 3000,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 3,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Suppenlöffel 100 Stück",
+       "nr": null,
+       "preisCent": 3000,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 4,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Teller 50 Stück",
+       "nr": null,
+       "preisCent": 3000,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 5,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Eisbox Absolut",
+       "nr": null,
+       "preisCent": 1000,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 6,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Eisbox Havana",
+       "nr": null,
+       "preisCent": 1000,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 7,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Eisbox Schwarz",
+       "nr": null,
+       "preisCent": 1000,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 8,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Pourer (Ausgießer)",
+       "nr": null,
+       "preisCent": 100,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 9,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Gedeck",
+       "nr": null,
+       "preisCent": 500,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 10,
+       "individuell": false,
+       "variante": null
+      }
+     ],
+     "untergruppen": []
+    },
+    {
+     "name": "Purezza Flaschen",
+     "pfad": "Equipment/Purezza Flaschen",
+     "farbe": "#637685",
+     "farbeGesetzt": false,
+     "reihenfolge": 3,
+     "artikel": [
+      {
+       "name": "Purezza Flasche 0,33 Prickelnd",
+       "nr": null,
+       "preisCent": 60,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 1,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Purezza Flasche 0,33 Still",
+       "nr": null,
+       "preisCent": 60,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 2,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Purezza Flasche 0,75 Prickelnd",
+       "nr": null,
+       "preisCent": 90,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 3,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Purezza Flasche 0,75 Still",
+       "nr": null,
+       "preisCent": 90,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 4,
+       "individuell": false,
+       "variante": null
+      }
+     ],
+     "untergruppen": []
+    }
+   ]
+  },
+  {
+   "name": "Eventmanagement",
+   "pfad": "Eventmanagement",
+   "farbe": "#db3385",
+   "farbeGesetzt": true,
+   "reihenfolge": 6,
+   "artikel": [
+    {
+     "name": "Workshop Event",
+     "nr": null,
+     "preisCent": 120000,
+     "mwst": 0.2,
+     "farbe": null,
+     "slot": 1,
+     "individuell": false,
+     "variante": "Produkt mit verschiedenen Varianten"
+    },
+    {
+     "name": "Cocktail EK",
+     "nr": null,
+     "preisCent": 120,
+     "mwst": 0.2,
+     "farbe": null,
+     "slot": 2,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Cocktailbar",
+     "nr": null,
+     "preisCent": 12000,
+     "mwst": 0.2,
+     "farbe": null,
+     "slot": 3,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Flammkuchen EK",
+     "nr": null,
+     "preisCent": 120,
+     "mwst": 0.2,
+     "farbe": null,
+     "slot": 4,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Honoranote kochen je Stunde",
+     "nr": null,
+     "preisCent": 3000,
+     "mwst": 0.2,
+     "farbe": null,
+     "slot": 5,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Miete Atriumbar",
+     "nr": null,
+     "preisCent": 80000,
+     "mwst": 0.2,
+     "farbe": null,
+     "slot": 6,
+     "individuell": false,
+     "variante": null
+    }
+   ],
+   "untergruppen": [
+    {
+     "name": "Kassenvermietung",
+     "pfad": "Eventmanagement/Kassenvermietung",
+     "farbe": "#0072bb",
+     "farbeGesetzt": true,
+     "reihenfolge": 7,
+     "artikel": [
+      {
+       "name": "Bankomatsystem",
+       "nr": null,
+       "preisCent": 60000,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 1,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "FinanzOnline  Aktivierung",
+       "nr": null,
+       "preisCent": 8400,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 2,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Frühbucheraktion",
+       "nr": null,
+       "preisCent": 0,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 3,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Kasse Barchef je Orderhandy",
+       "nr": null,
+       "preisCent": 3000,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 4,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Logistik",
+       "nr": null,
+       "preisCent": 60000,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 5,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Onlineticket Einzelpreis je Ticket",
+       "nr": null,
+       "preisCent": 120,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 6,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "OnlineTicket-Service Grundpreis je Monat",
+       "nr": null,
+       "preisCent": 9000,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 7,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Orderhandy je Veranstaltungstag",
+       "nr": null,
+       "preisCent": 2500,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 8,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Kassensystem Grundsetup je Tag",
+       "nr": null,
+       "preisCent": 120000,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 9,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Eventausstattung Internet",
+       "nr": null,
+       "preisCent": 0,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 11,
+       "individuell": true,
+       "variante": null
+      },
+      {
+       "name": "Eventausstattung Primasello inkl. Programmierung und RKSV",
+       "nr": null,
+       "preisCent": 18000,
+       "mwst": 0.2,
+       "farbe": "#eca116",
+       "slot": 12,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Eventausstattung Primasello Zusatzkassa",
+       "nr": null,
+       "preisCent": 9000,
+       "mwst": 0.2,
+       "farbe": "#eca116",
+       "slot": 13,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Erweiterung Primasello je Eventtag",
+       "nr": null,
+       "preisCent": 5000,
+       "mwst": 0.2,
+       "farbe": "#eca116",
+       "slot": 14,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Erweiterung Kassensystem/Tag",
+       "nr": null,
+       "preisCent": 25000,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 15,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Programmierung",
+       "nr": null,
+       "preisCent": 0,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 16,
+       "individuell": true,
+       "variante": null
+      },
+      {
+       "name": "stationäre Kassa je Veranstaltungstag",
+       "nr": null,
+       "preisCent": 3000,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 17,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Support/Std.",
+       "nr": null,
+       "preisCent": 2000,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 18,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Thermorolle",
+       "nr": null,
+       "preisCent": 0,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 19,
+       "individuell": true,
+       "variante": null
+      },
+      {
+       "name": "Zusatzdrucker je Veranstaltungstag",
+       "nr": null,
+       "preisCent": 2000,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 20,
+       "individuell": false,
+       "variante": null
+      }
+     ],
+     "untergruppen": []
+    },
+    {
+     "name": "Transportkosten & Spesen",
+     "pfad": "Eventmanagement/Transportkosten & Spesen",
+     "farbe": "#bba12a",
+     "farbeGesetzt": true,
+     "reihenfolge": 9,
+     "artikel": [
+      {
+       "name": "Kilometergeld",
+       "nr": null,
+       "preisCent": 50,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 1,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Transport Extrakosten PKW inkl. Anhänger",
+       "nr": null,
+       "preisCent": 120,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 2,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Transport-Kosten/Anfahrts-Pauschale",
+       "nr": null,
+       "preisCent": 20000,
+       "mwst": 0.2,
+       "farbe": "#e31b13",
+       "slot": 3,
+       "individuell": false,
+       "variante": null
+      },
+      {
+       "name": "Übernachtung",
+       "nr": null,
+       "preisCent": 0,
+       "mwst": 0.1,
+       "farbe": null,
+       "slot": 4,
+       "individuell": true,
+       "variante": null
+      }
+     ],
+     "untergruppen": []
+    },
+    {
+     "name": "GLÄSER",
+     "pfad": "Eventmanagement/GLÄSER",
+     "farbe": "#203925",
+     "farbeGesetzt": true,
+     "reihenfolge": 10,
+     "artikel": [
+      {
+       "name": "Chilli con Carne klein",
+       "nr": null,
+       "preisCent": 500,
+       "mwst": 0.1,
+       "farbe": null,
+       "slot": 1,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Chilli con Carne groß",
+       "nr": null,
+       "preisCent": 800,
+       "mwst": 0.1,
+       "farbe": null,
+       "slot": 2,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Gazpacho klein",
+       "nr": null,
+       "preisCent": 500,
+       "mwst": 0.1,
+       "farbe": null,
+       "slot": 3,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Gazpacho groß",
+       "nr": null,
+       "preisCent": 800,
+       "mwst": 0.1,
+       "farbe": null,
+       "slot": 4,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Kartoffelgulasch klein",
+       "nr": null,
+       "preisCent": 500,
+       "mwst": 0.1,
+       "farbe": null,
+       "slot": 5,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Kartoffelgulasch groß",
+       "nr": null,
+       "preisCent": 800,
+       "mwst": 0.1,
+       "farbe": null,
+       "slot": 6,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Curry Huhn klein",
+       "nr": null,
+       "preisCent": 500,
+       "mwst": 0.1,
+       "farbe": null,
+       "slot": 7,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Curry Huhn groß",
+       "nr": null,
+       "preisCent": 800,
+       "mwst": 0.1,
+       "farbe": null,
+       "slot": 8,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      },
+      {
+       "name": "Retourglas",
+       "nr": null,
+       "preisCent": -50,
+       "mwst": 0.1,
+       "farbe": null,
+       "slot": 9,
+       "individuell": false,
+       "variante": "Produkt mit verschiedenen Varianten"
+      }
+     ],
+     "untergruppen": []
+    },
+    {
+     "name": "Event Getränke & Pakete",
+     "pfad": "Eventmanagement/Event Getränke & Pakete",
+     "farbe": "#7d4e24",
+     "farbeGesetzt": true,
+     "reihenfolge": 21,
+     "artikel": [
+      {
+       "name": "Soda Paket",
+       "nr": null,
+       "preisCent": 0,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 1,
+       "individuell": true,
+       "variante": null
+      },
+      {
+       "name": "kaltes Buffet",
+       "nr": null,
+       "preisCent": 900,
+       "mwst": 0.2,
+       "farbe": null,
+       "slot": 2,
+       "individuell": false,
+       "variante": null
+      }
+     ],
+     "untergruppen": [
+      {
+       "name": "Alkoholfrei",
+       "pfad": "Eventmanagement/Event Getränke & Pakete/Alkoholfrei",
+       "farbe": "#315f29",
+       "farbeGesetzt": true,
+       "reihenfolge": 1,
+       "artikel": [
+        {
+         "name": "#Soda 0,75l Glasflasche",
+         "nr": null,
+         "preisCent": 300,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 1,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Apfelsaft 1l",
+         "nr": null,
+         "preisCent": 250,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 2,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Cola 1l Glas  / 1,5l PET",
+         "nr": null,
+         "preisCent": 250,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 3,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Soda still 0,75l Glasflasche",
+         "nr": null,
+         "preisCent": 300,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 4,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Orangensaft 1l",
+         "nr": null,
+         "preisCent": 250,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 5,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Schweppes Mojito 1,25l",
+         "nr": null,
+         "preisCent": 250,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 6,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Ananassaft 1l",
+         "nr": null,
+         "preisCent": 300,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 7,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Coke zero 1l Glas  / 1,5l PET",
+         "nr": null,
+         "preisCent": 250,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 8,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Wildberry Schweppes 1,25l",
+         "nr": null,
+         "preisCent": 250,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 9,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Tonic Schweppes 1,25l",
+         "nr": null,
+         "preisCent": 250,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 10,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Red Bull",
+         "nr": null,
+         "preisCent": 150,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 11,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Almdudler 1l Glas  / 1,5l PET",
+         "nr": null,
+         "preisCent": 250,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 12,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Fanta Lemon",
+         "nr": null,
+         "preisCent": 250,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 13,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Pfand KEG",
+         "nr": "0090",
+         "preisCent": 900,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 14,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Soda KEG 18l",
+         "nr": "0089",
+         "preisCent": 2400,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 15,
+         "individuell": false,
+         "variante": null
+        }
+       ],
+       "untergruppen": []
+      },
+      {
+       "name": "Wein & Bier",
+       "pfad": "Eventmanagement/Event Getränke & Pakete/Wein & Bier",
+       "farbe": "#f3a871",
+       "farbeGesetzt": true,
+       "reihenfolge": 2,
+       "artikel": [
+        {
+         "name": "#Bier 0,33",
+         "nr": null,
+         "preisCent": 150,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 1,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Radler 0,33l",
+         "nr": null,
+         "preisCent": 150,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 2,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Bier Alkoholfrei 0,33l",
+         "nr": null,
+         "preisCent": 150,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 3,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Bier 0,5",
+         "nr": null,
+         "preisCent": 150,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 4,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Corona 0,33",
+         "nr": null,
+         "preisCent": 200,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 5,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Welschriesling 1l Schmölzer",
+         "nr": null,
+         "preisCent": 650,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 6,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Gelber Muskateller 0,75l Schmölzer",
+         "nr": null,
+         "preisCent": 1200,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 7,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Sämling 0,75l Schmölzer",
+         "nr": null,
+         "preisCent": 1200,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 8,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Weißburgunder 0,75l Schmölzer",
+         "nr": null,
+         "preisCent": 1200,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 9,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Zweigelt 0,75l Schmölzer",
+         "nr": null,
+         "preisCent": 1200,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 10,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Rose-Frizzante 0,7l",
+         "nr": null,
+         "preisCent": 1000,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 11,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Prosecco 0,7l",
+         "nr": null,
+         "preisCent": 1000,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 12,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Schaumwein 0,75",
+         "nr": null,
+         "preisCent": 750,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 13,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Gösser Fass 30l",
+         "nr": "0092",
+         "preisCent": 0,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 14,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Gösser Fass 50l",
+         "nr": "0091",
+         "preisCent": 21600,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 15,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Pfand Fass bis 50l",
+         "nr": "0093",
+         "preisCent": 3600,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 16,
+         "individuell": false,
+         "variante": null
+        }
+       ],
+       "untergruppen": []
+      },
+      {
+       "name": "Kaffee",
+       "pfad": "Eventmanagement/Event Getränke & Pakete/Kaffee",
+       "farbe": "#7a2921",
+       "farbeGesetzt": true,
+       "reihenfolge": 3,
+       "artikel": [
+        {
+         "name": "Kaffee inkl . Zucker & Sahne",
+         "nr": null,
+         "preisCent": 150,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 22,
+         "individuell": false,
+         "variante": null
+        }
+       ],
+       "untergruppen": []
+      },
+      {
+       "name": "Sprit",
+       "pfad": "Eventmanagement/Event Getränke & Pakete/Sprit",
+       "farbe": "#8e2156",
+       "farbeGesetzt": true,
+       "reihenfolge": 4,
+       "artikel": [
+        {
+         "name": "#Vodka weiß",
+         "nr": null,
+         "preisCent": 2000,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 1,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Aperol 1l",
+         "nr": null,
+         "preisCent": 2000,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 2,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Aperol 0,7l",
+         "nr": null,
+         "preisCent": 2000,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 3,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Beefeater Gin",
+         "nr": null,
+         "preisCent": 2000,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 4,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Berliner Luft",
+         "nr": null,
+         "preisCent": 2000,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 5,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Whiskey",
+         "nr": null,
+         "preisCent": 2000,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 6,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Havana Rum",
+         "nr": null,
+         "preisCent": 2000,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 7,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Lillet Special",
+         "nr": null,
+         "preisCent": 2000,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 8,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Malibu",
+         "nr": null,
+         "preisCent": 2000,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 9,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Olmeca Tequilla",
+         "nr": null,
+         "preisCent": 2000,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 10,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Ramazotti",
+         "nr": null,
+         "preisCent": 2000,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 11,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#ROTER Vodka",
+         "nr": null,
+         "preisCent": 2000,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 12,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Bacardi",
+         "nr": null,
+         "preisCent": 2000,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 13,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Berliner Luft 24x0,02l",
+         "nr": null,
+         "preisCent": 3200,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 14,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Jägermeister 60x0,02l",
+         "nr": null,
+         "preisCent": 5300,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 15,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Berliner Luft",
+         "nr": null,
+         "preisCent": 2000,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 16,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Eristoff ICE",
+         "nr": null,
+         "preisCent": 200,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 17,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Jägermeister Flasche",
+         "nr": null,
+         "preisCent": 2000,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 18,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Klopfer 25x0,02l",
+         "nr": null,
+         "preisCent": 1600,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 19,
+         "individuell": false,
+         "variante": null
+        }
+       ],
+       "untergruppen": []
+      },
+      {
+       "name": "Früchte & Co",
+       "pfad": "Eventmanagement/Event Getränke & Pakete/Früchte & Co",
+       "farbe": "#bba12a",
+       "farbeGesetzt": true,
+       "reihenfolge": 5,
+       "artikel": [
+        {
+         "name": "Limetten Stück",
+         "nr": null,
+         "preisCent": 50,
+         "mwst": 0.1,
+         "farbe": null,
+         "slot": 1,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "Orangen Stück",
+         "nr": null,
+         "preisCent": 50,
+         "mwst": 0.1,
+         "farbe": null,
+         "slot": 2,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "Zitronen Stück",
+         "nr": null,
+         "preisCent": 50,
+         "mwst": 0.1,
+         "farbe": null,
+         "slot": 3,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "TK Beeren 2,5 kg",
+         "nr": null,
+         "preisCent": 2000,
+         "mwst": 0.1,
+         "farbe": null,
+         "slot": 4,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Limettensaft",
+         "nr": null,
+         "preisCent": 500,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 25,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Rohrzucker 2kg",
+         "nr": null,
+         "preisCent": 1000,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 26,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Sahne 0,25l",
+         "nr": null,
+         "preisCent": 250,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 27,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Zitronensaft",
+         "nr": null,
+         "preisCent": 500,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 28,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Holundersaft/Hugo",
+         "nr": null,
+         "preisCent": 700,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 29,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Monin Sirup",
+         "nr": null,
+         "preisCent": 1200,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 30,
+         "individuell": false,
+         "variante": null
+        }
+       ],
+       "untergruppen": []
+      },
+      {
+       "name": "Gläser",
+       "pfad": "Eventmanagement/Event Getränke & Pakete/Gläser",
+       "farbe": "#243e92",
+       "farbeGesetzt": true,
+       "reihenfolge": 6,
+       "artikel": [
+        {
+         "name": "BESTECK PAKET",
+         "nr": null,
+         "preisCent": 15000,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 1,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "BIERGLÄSER Miete inkl. Bruchpauschale & Endreinigung",
+         "nr": null,
+         "preisCent": 100,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 2,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "LIMOGLÄSER Miete inkl. Bruchpauschale & Endreinigung",
+         "nr": null,
+         "preisCent": 100,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 3,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "SEKTGLÄSER Miete inkl. Bruchpauschale & Endreinigung",
+         "nr": null,
+         "preisCent": 100,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 4,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "WEINGLÄSER Miete inkl. Bruchpauschale & Endreinigung",
+         "nr": null,
+         "preisCent": 100,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 5,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "Purezza Flasche Bruch",
+         "nr": null,
+         "preisCent": 300,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 6,
+         "individuell": false,
+         "variante": null
+        }
+       ],
+       "untergruppen": []
+      },
+      {
+       "name": "PAKETE",
+       "pfad": "Eventmanagement/Event Getränke & Pakete/PAKETE",
+       "farbe": "#e31b13",
+       "farbeGesetzt": true,
+       "reihenfolge": 7,
+       "artikel": [
+        {
+         "name": "Bankomat-Paket",
+         "nr": null,
+         "preisCent": 20000,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 1,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "Barkeeper",
+         "nr": null,
+         "preisCent": 40000,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 2,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "Besteck-Paket",
+         "nr": null,
+         "preisCent": 15000,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 3,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "Disco Paket",
+         "nr": null,
+         "preisCent": 20000,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 4,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "Eiswürfel Paket",
+         "nr": null,
+         "preisCent": 15000,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 5,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "Internet-Paket",
+         "nr": null,
+         "preisCent": 25000,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 6,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "Kassen-Paket je Eventtag",
+         "nr": null,
+         "preisCent": 120000,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 7,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "Barequipment-Paket",
+         "nr": null,
+         "preisCent": 5000,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 8,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "Personal/Std",
+         "nr": null,
+         "preisCent": 2800,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 9,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "Personalvermittlungs-Paket",
+         "nr": null,
+         "preisCent": 2500,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 10,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "Tischbedienungs-Paket",
+         "nr": null,
+         "preisCent": 65000,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 11,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "Erweiterung Orderman/Tablet",
+         "nr": null,
+         "preisCent": 2500,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 12,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "Erweiterung Zusatzdrucker",
+         "nr": null,
+         "preisCent": 2500,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 13,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "Event Essen",
+         "nr": null,
+         "preisCent": 700,
+         "mwst": 0.1,
+         "farbe": null,
+         "slot": 14,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "Atriumbar-Paket",
+         "nr": null,
+         "preisCent": 80000,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 15,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "Event Getränk",
+         "nr": null,
+         "preisCent": 500,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 16,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "Getränke-/Speisen-Paket",
+         "nr": null,
+         "preisCent": 0,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 17,
+         "individuell": false,
+         "variante": "Warenkorb"
+        },
+        {
+         "name": "Online Selforder",
+         "nr": null,
+         "preisCent": 20000,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 18,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "Stromkosten je KWh",
+         "nr": null,
+         "preisCent": 0,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 19,
+         "individuell": true,
+         "variante": null
+        },
+        {
+         "name": "Weinkühler-Paket",
+         "nr": null,
+         "preisCent": 5000,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 20,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "Catering-Pauschale",
+         "nr": null,
+         "preisCent": 10000,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 21,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "Auf- und Abbau Bar",
+         "nr": null,
+         "preisCent": 10000,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 22,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "Eventausstattung",
+         "nr": null,
+         "preisCent": 0,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 23,
+         "individuell": true,
+         "variante": null
+        },
+        {
+         "name": "Kühlschrank",
+         "nr": null,
+         "preisCent": 2500,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 24,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "Tisch- und Getränkekarten Druck und Layout",
+         "nr": null,
+         "preisCent": 10000,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 25,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "Tischwäsche je Stk.",
+         "nr": null,
+         "preisCent": 1000,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 26,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "Soda-Paket",
+         "nr": null,
+         "preisCent": 20,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 27,
+         "individuell": false,
+         "variante": null
+        }
+       ],
+       "untergruppen": []
+      },
+      {
+       "name": "Speisen & Speisen-PAKETE",
+       "pfad": "Eventmanagement/Event Getränke & Pakete/Speisen & Speisen-PAKETE",
+       "farbe": "#637685",
+       "farbeGesetzt": false,
+       "reihenfolge": 8,
+       "artikel": [
+        {
+         "name": "ESSENBON TAGESAKTION",
+         "nr": null,
+         "preisCent": 350,
+         "mwst": 0.1,
+         "farbe": null,
+         "slot": 1,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "Semmel",
+         "nr": null,
+         "preisCent": 50,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 2,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "Service&Gedeck PAKET je Person",
+         "nr": null,
+         "preisCent": 500,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 3,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "gefüllte Brezn",
+         "nr": null,
+         "preisCent": 0,
+         "mwst": 0.1,
+         "farbe": null,
+         "slot": 4,
+         "individuell": false,
+         "variante": null
+        }
+       ],
+       "untergruppen": []
+      },
+      {
+       "name": "Sirup",
+       "pfad": "Eventmanagement/Event Getränke & Pakete/Sirup",
+       "farbe": "#637685",
+       "farbeGesetzt": false,
+       "reihenfolge": 9,
+       "artikel": [
+        {
+         "name": "Monin Sirup",
+         "nr": null,
+         "preisCent": 1200,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 1,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#HolunderSirup Spitz 0,7l",
+         "nr": null,
+         "preisCent": 480,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 24,
+         "individuell": false,
+         "variante": null
+        }
+       ],
+       "untergruppen": []
+      },
+      {
+       "name": "Getränke-Pakete",
+       "pfad": "Eventmanagement/Event Getränke & Pakete/Getränke-Pakete",
+       "farbe": "#637685",
+       "farbeGesetzt": false,
+       "reihenfolge": 10,
+       "artikel": [
+        {
+         "name": "BASIS-PAKET Getränke",
+         "nr": null,
+         "preisCent": 400,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 1,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "Getränkejeton",
+         "nr": null,
+         "preisCent": 0,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 2,
+         "individuell": true,
+         "variante": null
+        },
+        {
+         "name": "Upgrade: APERITIV-PAKET Getränke",
+         "nr": null,
+         "preisCent": 100,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 3,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "Upgrade: WEIN-PAKET Getränke",
+         "nr": null,
+         "preisCent": 100,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 4,
+         "individuell": false,
+         "variante": null
+        }
+       ],
+       "untergruppen": []
+      },
+      {
+       "name": "Murauer",
+       "pfad": "Eventmanagement/Event Getränke & Pakete/Murauer",
+       "farbe": "#637685",
+       "farbeGesetzt": false,
+       "reihenfolge": 11,
+       "artikel": [
+        {
+         "name": "# Bier Alkoholfrei 0,33/24",
+         "nr": "0097",
+         "preisCent": 2975,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 1,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Bacardi Carta Bianca 0,7l",
+         "nr": "0113",
+         "preisCent": 1517,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 2,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Berliner Luft 0,02x24",
+         "nr": "0119",
+         "preisCent": 2244,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 3,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Bierblöcke groß",
+         "nr": "0112",
+         "preisCent": 720,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 4,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Bierkühler 3ltg",
+         "nr": "0144",
+         "preisCent": 5400,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 5,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Biogon C 5kg CO2",
+         "nr": "0111",
+         "preisCent": 5758,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 6,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Bombay Original Gin 0,7l",
+         "nr": "0116",
+         "preisCent": 1517,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 7,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Coca Cola Gastro 1l/12",
+         "nr": "0109",
+         "preisCent": 2041,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 8,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Eristoff rot 0,7l",
+         "nr": "0115",
+         "preisCent": 1398,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 9,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Eristoff weiß 0,7l",
+         "nr": "0114",
+         "preisCent": 1398,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 10,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Feinsprizz 0,3",
+         "nr": "0125",
+         "preisCent": 3124,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 11,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Gager Q2 Cuvee 0,75l",
+         "nr": "0129",
+         "preisCent": 1177,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 12,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Jägermeister 0,02x60",
+         "nr": "0117",
+         "preisCent": 4686,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 13,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Klopfer Mix 0,02x25",
+         "nr": "0118",
+         "preisCent": 1577,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 14,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Krispel Sauvignon blanc DAC 0,75l",
+         "nr": "0127",
+         "preisCent": 1123,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 15,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Krispel Weißburgunder DAC 0,75l",
+         "nr": "0126",
+         "preisCent": 896,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 16,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Leihgebühr Bieröffner",
+         "nr": "0138",
+         "preisCent": 198,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 17,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Leihgebühr Festbank",
+         "nr": "0139",
+         "preisCent": 198,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 18,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Leihgebühr Festtisch",
+         "nr": "0140",
+         "preisCent": 594,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 19,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Leihgebühr Kannen 0,3l",
+         "nr": "0132",
+         "preisCent": 0,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 20,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Leihgebühr Kannen 0,5l",
+         "nr": "0133",
+         "preisCent": 0,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 21,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Leihgebühr Kühlschrank Volltür",
+         "nr": "0147",
+         "preisCent": 2970,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 22,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Leihgebühr Kuppeld. Schankwagen",
+         "nr": "0142",
+         "preisCent": 118800,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 23,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Leihgebühr Limogläser",
+         "nr": "0131",
+         "preisCent": 0,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 24,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Leihgebühr Schirmständer",
+         "nr": "0141",
+         "preisCent": 990,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 25,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Leihgebühr Serviertassen",
+         "nr": "0137",
+         "preisCent": 198,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 26,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Leihgebühr Stehtisch",
+         "nr": "0130",
+         "preisCent": 1584,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 27,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Leihgebühr Thekenschirm",
+         "nr": "0136",
+         "preisCent": 2970,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 28,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Leihgebühr Weingläserkorb",
+         "nr": "0135",
+         "preisCent": 1584,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 29,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Leihgebühr Weinkanne 0,25l",
+         "nr": "0134",
+         "preisCent": 40,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 30,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Märzen 0,33/24",
+         "nr": "0098",
+         "preisCent": 2408,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 31,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Murelli Almrausch 0,33/24",
+         "nr": "0101",
+         "preisCent": 1769,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 32,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Murelli Almrausch 1l/12",
+         "nr": "0104",
+         "preisCent": 2513,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 33,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Murelli Apfelsaft 1l/12",
+         "nr": "0106",
+         "preisCent": 3202,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 34,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Murelli Cola-Mix 0,33/24",
+         "nr": "0153",
+         "preisCent": 1769,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 35,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Murelli Himbeer 0,33/24",
+         "nr": "0102",
+         "preisCent": 1769,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 36,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Murelli Maracuja 0,33/24",
+         "nr": "0103",
+         "preisCent": 1769,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 37,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Murelli Orange 0,33/24",
+         "nr": "0100",
+         "preisCent": 1769,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 38,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Murelli Orangensaft 1l/12",
+         "nr": "0105",
+         "preisCent": 3595,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 39,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Murique No1 0,33/24",
+         "nr": "0121",
+         "preisCent": 3675,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 40,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Panitsch Spritzer 25l",
+         "nr": "0120",
+         "preisCent": 7380,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 41,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Römerquelle prickelnd 0,5/24",
+         "nr": "0124",
+         "preisCent": 1942,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 42,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Römerquelle still 0,33/20",
+         "nr": "0122",
+         "preisCent": 1331,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 43,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Römerquelle still 0,5/24",
+         "nr": "0123",
+         "preisCent": 1942,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 44,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#S Leihgebühr Kühlanhänger",
+         "nr": "0146",
+         "preisCent": 39600,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 45,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#S Reinigung Schankwagen",
+         "nr": "0145",
+         "preisCent": 13860,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 46,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Schweppes Tonic 0,2/24",
+         "nr": "0110",
+         "preisCent": 2299,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 47,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Steirer Gold 30l",
+         "nr": "0096",
+         "preisCent": 9037,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 48,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Steirer Gold 50l",
+         "nr": "0095",
+         "preisCent": 15059,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 49,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Strauss Gelber Muskateller DAC 0,75l",
+         "nr": "0128",
+         "preisCent": 940,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 50,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Tafelwasser 0,33/24",
+         "nr": "0107",
+         "preisCent": 809,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 51,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Tafelwasser 1l/12",
+         "nr": "0108",
+         "preisCent": 1162,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 52,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Tafelwasser 20l",
+         "nr": "0099",
+         "preisCent": 2240,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 53,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Transport bis 35km/Fahrzeug",
+         "nr": "0143",
+         "preisCent": 9900,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 54,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Weinglas 0,125",
+         "nr": "0154",
+         "preisCent": 396,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 55,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#Weinkanne 0,25l",
+         "nr": "0148",
+         "preisCent": 168,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 56,
+         "individuell": false,
+         "variante": null
+        },
+        {
+         "name": "#zitro & bier 20l",
+         "nr": "0152",
+         "preisCent": 5201,
+         "mwst": 0.2,
+         "farbe": null,
+         "slot": 57,
+         "individuell": false,
+         "variante": null
+        }
+       ],
+       "untergruppen": []
+      }
+     ]
+    },
+    {
+     "name": "Event Getränke einstellen",
+     "pfad": "Eventmanagement/Event Getränke einstellen",
+     "farbe": "#8e2156",
+     "farbeGesetzt": true,
+     "reihenfolge": 30,
+     "artikel": [],
+     "untergruppen": []
+    }
+   ]
+  },
+  {
+   "name": "Schulungen",
+   "pfad": "Schulungen",
+   "farbe": "#3f9ccd",
+   "farbeGesetzt": true,
+   "reihenfolge": 11,
+   "artikel": [
+    {
+     "name": "Honorarnote",
+     "nr": null,
+     "preisCent": 0,
+     "mwst": 0.2,
+     "farbe": null,
+     "slot": 1,
+     "individuell": true,
+     "variante": "Produkt mit verschiedenen Varianten"
+    },
+    {
+     "name": "Hygieneschulung",
+     "nr": null,
+     "preisCent": 9900,
+     "mwst": 0.2,
+     "farbe": null,
+     "slot": 2,
+     "individuell": false,
+     "variante": "Produkt mit verschiedenen Varianten"
+    },
+    {
+     "name": "Mitarbeiterschulungen ALL in ONE",
+     "nr": null,
+     "preisCent": 1800,
+     "mwst": 0.2,
+     "farbe": null,
+     "slot": 3,
+     "individuell": false,
+     "variante": "Produkt mit verschiedenen Varianten"
+    },
+    {
+     "name": "Online-Schulung",
+     "nr": null,
+     "preisCent": 0,
+     "mwst": 0.2,
+     "farbe": null,
+     "slot": 4,
+     "individuell": true,
+     "variante": "Produkt mit verschiedenen Varianten"
+    }
+   ],
+   "untergruppen": []
+  },
+  {
+   "name": "Kulturhaus Spezialpreise",
+   "pfad": "Kulturhaus Spezialpreise",
+   "farbe": "#e31b13",
+   "farbeGesetzt": true,
+   "reihenfolge": 12,
+   "artikel": [
+    {
+     "name": "Cava Flasche",
+     "nr": null,
+     "preisCent": 0,
+     "mwst": 0.2,
+     "farbe": "#8e2156",
+     "slot": 1,
+     "individuell": true,
+     "variante": "Produkt mit verschiedenen Varianten"
+    },
+    {
+     "name": "Cocktail AF",
+     "nr": null,
+     "preisCent": 0,
+     "mwst": 0.2,
+     "farbe": null,
+     "slot": 2,
+     "individuell": true,
+     "variante": "Produkt mit verschiedenen Varianten"
+    },
+    {
+     "name": "Limo/Saft 0,25l",
+     "nr": null,
+     "preisCent": 300,
+     "mwst": 0.2,
+     "farbe": "#60aa30",
+     "slot": 4,
+     "individuell": false,
+     "variante": "Produkt mit verschiedenen Varianten"
+    },
+    {
+     "name": "O-Saft Flasche",
+     "nr": null,
+     "preisCent": 0,
+     "mwst": 0.2,
+     "farbe": "#8e2156",
+     "slot": 5,
+     "individuell": true,
+     "variante": "Produkt mit verschiedenen Varianten"
+    },
+    {
+     "name": "0,33l Bier/Radler/alkf.Bier",
+     "nr": null,
+     "preisCent": 250,
+     "mwst": 0.2,
+     "farbe": "#eca116",
+     "slot": 6,
+     "individuell": false,
+     "variante": "Produkt mit verschiedenen Varianten"
+    },
+    {
+     "name": "Flasche 1L Kelis",
+     "nr": null,
+     "preisCent": 500,
+     "mwst": 0.2,
+     "farbe": "#8e2156",
+     "slot": 7,
+     "individuell": false,
+     "variante": "Produkt mit verschiedenen Varianten"
+    },
+    {
+     "name": "Limo/Saft",
+     "nr": null,
+     "preisCent": 0,
+     "mwst": 0.2,
+     "farbe": "#60aa30",
+     "slot": 8,
+     "individuell": true,
+     "variante": "Produkt mit verschiedenen Varianten"
+    },
+    {
+     "name": "Soda 1L",
+     "nr": null,
+     "preisCent": 250,
+     "mwst": 0.2,
+     "farbe": "#8e2156",
+     "slot": 9,
+     "individuell": false,
+     "variante": "Produkt mit verschiedenen Varianten"
+    },
+    {
+     "name": "ATRIUMBAR MIETE",
+     "nr": null,
+     "preisCent": 80000,
+     "mwst": 0.2,
+     "farbe": null,
+     "slot": 10,
+     "individuell": false,
+     "variante": null
+    }
+   ],
+   "untergruppen": []
+  },
+  {
+   "name": "Sponsoren",
+   "pfad": "Sponsoren",
+   "farbe": "#637685",
+   "farbeGesetzt": false,
+   "reihenfolge": 13,
+   "artikel": [
+    {
+     "name": "Marketing-Forcierungszuschuss",
+     "nr": null,
+     "preisCent": 0,
+     "mwst": 0.2,
+     "farbe": null,
+     "slot": 1,
+     "individuell": true,
+     "variante": "Produkt mit verschiedenen Varianten"
+    },
+    {
+     "name": "Verdienstentgang",
+     "nr": null,
+     "preisCent": 0,
+     "mwst": 0,
+     "farbe": null,
+     "slot": 2,
+     "individuell": true,
+     "variante": null
+    },
+    {
+     "name": "Sponsoring Konzertunterstützung",
+     "nr": null,
+     "preisCent": 0,
+     "mwst": 0.2,
+     "farbe": null,
+     "slot": 3,
+     "individuell": false,
+     "variante": null
+    }
+   ],
+   "untergruppen": []
+  },
+  {
+   "name": "Kulturhaus Speisen",
+   "pfad": "Kulturhaus Speisen",
+   "farbe": "#463123",
+   "farbeGesetzt": true,
+   "reihenfolge": 14,
+   "artikel": [
+    {
+     "name": "Brötchen",
+     "nr": null,
+     "preisCent": 0,
+     "mwst": 0.1,
+     "farbe": null,
+     "slot": 1,
+     "individuell": true,
+     "variante": null
+    },
+    {
+     "name": "Büffet",
+     "nr": null,
+     "preisCent": 0,
+     "mwst": 0.1,
+     "farbe": null,
+     "slot": 2,
+     "individuell": true,
+     "variante": null
+    }
+   ],
+   "untergruppen": []
+  },
+  {
+   "name": "Gutscheine",
+   "pfad": "Gutscheine",
+   "farbe": "#637685",
+   "farbeGesetzt": false,
+   "reihenfolge": 17,
+   "artikel": [
+    {
+     "name": "Gutscheinverkauf",
+     "nr": null,
+     "preisCent": 0,
+     "mwst": 0,
+     "farbe": null,
+     "slot": 1,
+     "individuell": true,
+     "variante": null
+    }
+   ],
+   "untergruppen": []
+  },
+  {
+   "name": "Becher 0,4",
+   "pfad": "Becher 0,4",
+   "farbe": "#637685",
+   "farbeGesetzt": false,
+   "reihenfolge": 18,
+   "artikel": [
+    {
+     "name": "Limo 0,4l",
+     "nr": null,
+     "preisCent": 450,
+     "mwst": 0.2,
+     "farbe": "#e76815",
+     "slot": 1,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Bier/Radler 0,4l",
+     "nr": null,
+     "preisCent": 450,
+     "mwst": 0.2,
+     "farbe": "#eca116",
+     "slot": 2,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Spritzer 0,4l",
+     "nr": null,
+     "preisCent": 550,
+     "mwst": 0.2,
+     "farbe": "#99887f",
+     "slot": 3,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Limo gespr. 0,4l",
+     "nr": null,
+     "preisCent": 400,
+     "mwst": 0.2,
+     "farbe": "#e76815",
+     "slot": 4,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Bier/Radler 0,4l refill",
+     "nr": "0087",
+     "preisCent": 400,
+     "mwst": 0.2,
+     "farbe": "#eca116",
+     "slot": 5,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "süßer Spritzer 0,4l",
+     "nr": null,
+     "preisCent": 550,
+     "mwst": 0.2,
+     "farbe": "#99887f",
+     "slot": 6,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Soda 0,4l",
+     "nr": null,
+     "preisCent": 250,
+     "mwst": 0.2,
+     "farbe": "#3f9ccd",
+     "slot": 7,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Alkoholfrei 0,33l",
+     "nr": "0071",
+     "preisCent": 400,
+     "mwst": 0.2,
+     "farbe": "#bba12a",
+     "slot": 8,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Sommerspritzer 0,4l",
+     "nr": "0086",
+     "preisCent": 450,
+     "mwst": 0.2,
+     "farbe": "#99887f",
+     "slot": 9,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Saft Soda/gespr 0,4l",
+     "nr": null,
+     "preisCent": 250,
+     "mwst": 0.2,
+     "farbe": "#3f9ccd",
+     "slot": 10,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Aperol Spritzer 0,4l",
+     "nr": null,
+     "preisCent": 650,
+     "mwst": 0.2,
+     "farbe": "#db3385",
+     "slot": 11,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Hugo",
+     "nr": null,
+     "preisCent": 650,
+     "mwst": 0.2,
+     "farbe": "#db3385",
+     "slot": 12,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Red Bull",
+     "nr": null,
+     "preisCent": 500,
+     "mwst": 0.2,
+     "farbe": "#752e53",
+     "slot": 13,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Prosecco",
+     "nr": null,
+     "preisCent": 450,
+     "mwst": 0.2,
+     "farbe": "#99887f",
+     "slot": 14,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Wildberry Special 0,4l",
+     "nr": null,
+     "preisCent": 650,
+     "mwst": 0.2,
+     "farbe": "#752e53",
+     "slot": 15,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Knittelfelder Wasser",
+     "nr": "0088",
+     "preisCent": 650,
+     "mwst": 0.2,
+     "farbe": "#752e53",
+     "slot": 16,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Kaffee",
+     "nr": null,
+     "preisCent": 300,
+     "mwst": 0.2,
+     "farbe": "#463123",
+     "slot": 17,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Longdrink",
+     "nr": "0073",
+     "preisCent": 450,
+     "mwst": 0.2,
+     "farbe": null,
+     "slot": 18,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Bechereinsatz",
+     "nr": null,
+     "preisCent": 200,
+     "mwst": 0,
+     "farbe": "#81926a",
+     "slot": 19,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Becher retour",
+     "nr": null,
+     "preisCent": -200,
+     "mwst": 0,
+     "farbe": "#e31b13",
+     "slot": 20,
+     "individuell": false,
+     "variante": null
+    }
+   ],
+   "untergruppen": []
+  },
+  {
+   "name": "OTH Hütte",
+   "pfad": "OTH Hütte",
+   "farbe": "#637685",
+   "farbeGesetzt": false,
+   "reihenfolge": 27,
+   "artikel": [
+    {
+     "name": "Chicken DOG 30",
+     "nr": null,
+     "preisCent": 950,
+     "mwst": 0.1,
+     "farbe": "#315f29",
+     "slot": 1,
+     "individuell": false,
+     "variante": "Produkt mit verschiedenen Varianten"
+    },
+    {
+     "name": "Schweinsbraten Dog 30",
+     "nr": null,
+     "preisCent": 950,
+     "mwst": 0.1,
+     "farbe": "#bba12a",
+     "slot": 2,
+     "individuell": false,
+     "variante": "Produkt mit verschiedenen Varianten"
+    },
+    {
+     "name": "Sandwich Tomaten-Mozzarella 30",
+     "nr": null,
+     "preisCent": 950,
+     "mwst": 0.1,
+     "farbe": "#e31b13",
+     "slot": 3,
+     "individuell": false,
+     "variante": "Produkt mit verschiedenen Varianten"
+    },
+    {
+     "name": "Chicken DOG 15",
+     "nr": null,
+     "preisCent": 550,
+     "mwst": 0.1,
+     "farbe": "#315f29",
+     "slot": 4,
+     "individuell": false,
+     "variante": "Produkt mit verschiedenen Varianten"
+    },
+    {
+     "name": "Schweinsbraten Dog 15",
+     "nr": null,
+     "preisCent": 550,
+     "mwst": 0.1,
+     "farbe": "#bba12a",
+     "slot": 5,
+     "individuell": false,
+     "variante": "Produkt mit verschiedenen Varianten"
+    },
+    {
+     "name": "Sandwich Tomaten-Mozzarella 15",
+     "nr": null,
+     "preisCent": 550,
+     "mwst": 0.1,
+     "farbe": "#e31b13",
+     "slot": 6,
+     "individuell": false,
+     "variante": "Produkt mit verschiedenen Varianten"
+    },
+    {
+     "name": "Pommesbox",
+     "nr": null,
+     "preisCent": 500,
+     "mwst": 0.1,
+     "farbe": "#eca116",
+     "slot": 7,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Chickenbox",
+     "nr": null,
+     "preisCent": 950,
+     "mwst": 0.1,
+     "farbe": "#bba12a",
+     "slot": 8,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Pizza-Baguette Schinken",
+     "nr": null,
+     "preisCent": 550,
+     "mwst": 0.1,
+     "farbe": "#212f5a",
+     "slot": 9,
+     "individuell": false,
+     "variante": "Produkt mit verschiedenen Varianten"
+    },
+    {
+     "name": "Burger",
+     "nr": null,
+     "preisCent": 950,
+     "mwst": 0.1,
+     "farbe": null,
+     "slot": 10,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Käsekrainer Dog",
+     "nr": null,
+     "preisCent": 950,
+     "mwst": 0.1,
+     "farbe": "#13b1a5",
+     "slot": 11,
+     "individuell": false,
+     "variante": "Produkt mit verschiedenen Varianten"
+    },
+    {
+     "name": "Schnitzl Dog 30",
+     "nr": null,
+     "preisCent": 950,
+     "mwst": 0.1,
+     "farbe": "#e76815",
+     "slot": 12,
+     "individuell": false,
+     "variante": "Produkt mit verschiedenen Varianten"
+    },
+    {
+     "name": "Burger & Pommes",
+     "nr": null,
+     "preisCent": 1150,
+     "mwst": 0.1,
+     "farbe": null,
+     "slot": 13,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Käsekrainer Dog 15",
+     "nr": null,
+     "preisCent": 550,
+     "mwst": 0.1,
+     "farbe": "#13b1a5",
+     "slot": 14,
+     "individuell": false,
+     "variante": "Produkt mit verschiedenen Varianten"
+    },
+    {
+     "name": "Schnitzl Dog 15",
+     "nr": null,
+     "preisCent": 550,
+     "mwst": 0.1,
+     "farbe": "#e76815",
+     "slot": 15,
+     "individuell": false,
+     "variante": "Produkt mit verschiedenen Varianten"
+    },
+    {
+     "name": "Brezn",
+     "nr": null,
+     "preisCent": 400,
+     "mwst": 0.1,
+     "farbe": "#7d4e24",
+     "slot": 16,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Bosna 30",
+     "nr": null,
+     "preisCent": 950,
+     "mwst": 0.1,
+     "farbe": "#272b31",
+     "slot": 17,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Kaffee",
+     "nr": null,
+     "preisCent": 350,
+     "mwst": 0.2,
+     "farbe": "#501f38",
+     "slot": 18,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Schoko Pain",
+     "nr": "0084",
+     "preisCent": 250,
+     "mwst": 0.1,
+     "farbe": null,
+     "slot": 19,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Bosna 15",
+     "nr": "0085",
+     "preisCent": 550,
+     "mwst": 0.1,
+     "farbe": "#272b31",
+     "slot": 20,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "Pommes mit Cheese",
+     "nr": "0155",
+     "preisCent": 600,
+     "mwst": 0.1,
+     "farbe": "#eca116",
+     "slot": 21,
+     "individuell": false,
+     "variante": null
+    }
+   ],
+   "untergruppen": []
+  },
+  {
+   "name": "Shop",
+   "pfad": "Shop",
+   "farbe": "#637685",
+   "farbeGesetzt": false,
+   "reihenfolge": 28,
+   "artikel": [
+    {
+     "name": "JuiceBox",
+     "nr": null,
+     "preisCent": 2750,
+     "mwst": 0.1,
+     "farbe": null,
+     "slot": 1,
+     "individuell": false,
+     "variante": null
+    },
+    {
+     "name": "JuiceBox light",
+     "nr": null,
+     "preisCent": 2750,
+     "mwst": 0.1,
+     "farbe": null,
+     "slot": 2,
+     "individuell": false,
+     "variante": null
+    }
+   ],
+   "untergruppen": []
+  }
+ ],
+ "favoriten": [
+  {
+   "name": "0,3l Soda",
+   "pfad": "Atriumbar/Alkoholfrei"
+  },
+  {
+   "name": "0,3l Bier",
+   "pfad": "Atriumbar/Bier"
+  },
+  {
+   "name": "weißer Spritzer",
+   "pfad": "Atriumbar/Spritzer"
+  },
+  {
+   "name": "0,3l Limo",
+   "pfad": "Atriumbar/Alkoholfrei"
+  },
+  {
+   "name": "0,5l Bier",
+   "pfad": "Atriumbar/Bier"
+  },
+  {
+   "name": "süßer Spritzer",
+   "pfad": "Atriumbar/Spritzer"
+  },
+  {
+   "name": "0,3l Saft pur/gesp.",
+   "pfad": "Atriumbar/Alkoholfrei"
+  },
+  {
+   "name": "0,3l Zit. Radler",
+   "pfad": "Atriumbar/Bier"
+  },
+  {
+   "name": "1/8 Weißburgunder",
+   "pfad": "Atriumbar/Wein"
+  },
+  {
+   "name": "Aperol-Cava",
+   "pfad": "Atriumbar/Spritzer"
+  },
+  {
+   "name": "0,3l Naturgold AF",
+   "pfad": "Atriumbar/Bier"
+  },
+  {
+   "name": "1/8 GMuskateller",
+   "pfad": "Atriumbar/Wein"
+  },
+  {
+   "name": "Hugo-Cava",
+   "pfad": "Atriumbar/Spritzer"
+  },
+  {
+   "name": "Wildberry Special",
+   "pfad": "Atriumbar/Spritzer"
+  },
+  {
+   "name": "1/8 Sämling",
+   "pfad": "Atriumbar/Wein"
+  },
+  {
+   "name": "Glas Prosecco",
+   "pfad": "Atriumbar/Wein"
+  },
+  {
+   "name": "1/8 Roter Zweigelt",
+   "pfad": "Atriumbar/Wein"
+  },
+  {
+   "name": "Glas Sekt",
+   "pfad": "Atriumbar/Wein"
+  },
+  {
+   "name": "Espresso",
+   "pfad": "Atriumbar/Kaffee"
+  },
+  {
+   "name": "Verlängerter",
+   "pfad": "Atriumbar/Kaffee"
+  },
+  {
+   "name": "Longdrink",
+   "pfad": "Atriumbar/Londrink & Cocktails"
+  },
+  {
+   "name": "Longdrink mit Red Bull",
+   "pfad": "Atriumbar/Londrink & Cocktails"
+  },
+  {
+   "name": "Brez´n",
+   "pfad": "Atriumbar/Speisen"
+  },
+  {
+   "name": "Prosciutto Teller",
+   "pfad": "Atriumbar/Speisen"
+  },
+  {
+   "name": "Shot",
+   "pfad": "Atriumbar/Londrink & Cocktails"
+  },
+  {
+   "name": "Pizzasch. Prosciutto",
+   "pfad": "Atriumbar/Speisen"
+  },
+  {
+   "name": "Cocktail",
+   "pfad": "Atriumbar/Londrink & Cocktails"
+  }
+ ]
+}

@@ -171,6 +171,23 @@ export type {
   KategorieFarbeName,
 } from './schemas/kategorie.js'
 
+// Layout-Import (Gruppenbaum + Raster + Farben + Favoriten aus JSON)
+export {
+  LayoutArtikelSchema,
+  LayoutGruppeSchema,
+  LayoutFavoritSchema,
+  LayoutImportSchema,
+  layoutGroesse,
+} from './schemas/layout-import.js'
+export type {
+  LayoutArtikel,
+  LayoutGruppe,
+  LayoutFavorit,
+  LayoutImport,
+  LayoutBericht,
+  LayoutImportOptionen,
+} from './schemas/layout-import.js'
+
 // Raster-Platzierung (Untergruppen-Kacheln, Slots, Leerfelder)
 export { baueRaster } from './raster.js'
 export type { RasterZelle, RasterArtikel } from './raster.js'

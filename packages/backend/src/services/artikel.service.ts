@@ -21,7 +21,7 @@ import {
  * Format: fortlaufende Ganzzahl, 4-stellig mit führenden Nullen (z.B. "0001").
  * Beachtet auch nicht-numerische artikelnummern (werden ignoriert).
  */
-async function generiereArtikelNummer(db: DbOrTx, mandantId: string): Promise<string> {
+export async function generiereArtikelNummer(db: DbOrTx, mandantId: string): Promise<string> {
   const result = await db.execute(sql`
     SELECT COALESCE(MAX(
       CASE WHEN artikelnummer ~ '^[0-9]+$' THEN artikelnummer::integer ELSE 0 END

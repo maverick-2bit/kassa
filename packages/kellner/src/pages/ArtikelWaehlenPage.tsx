@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
-import { farbeZuHex, type Artikel, type ModifikatorGruppe, type ModifikatorAuswahl } from '@kassa/shared'
+import { farbeZuHex, type Artikel, type Kategorie, type ModifikatorGruppe, type ModifikatorAuswahl } from '@kassa/shared'
 import { artikelApi, kategorieApi, modifikatorApi, tischTabApi, kellnerKonfigApi } from '../lib/api'
 import { getAuth, clearAuth, gaengeAktiv as istGaengeAktiv, gaengeAnzahl } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
@@ -25,6 +25,26 @@ function gangLabel(g: number): string {
 }
 
 type Phase = 'artikel' | 'modifikatoren'
+
+/**
+ * Warengruppen in Baum-Reihenfolge (Tiefensuche, Geschwister nach reihenfolge)
+ * mit Reiter-Beschriftung „Eltern › Kind". Gruppen mit unbekanntem Elternteil
+ * gelten als Hauptgruppe; Zyklen im Altbestand brechen die Suche ab.
+ */
+function kategorienImBaum(alle: Kategorie[]): { liste: Kategorie[]; label: Map<string, string> } {
+  const ids = new Set(alle.map(k => k.id))
+  const sortiert = (l: Kategorie[]) => [...l].sort((a, b) => a.reihenfolge - b.reihenfolge || a.name.localeCompare(b.name))
+  const liste: Kategorie[] = []
+  const label = new Map<string, string>()
+  const besuche = (k: Kategorie, praefix: string) => {
+    if (label.has(k.id)) return
+    label.set(k.id, praefix + k.name)
+    liste.push(k)
+    for (const kind of sortiert(alle.filter(x => x.parentId === k.id))) besuche(kind, `${praefix}${k.name} › `)
+  }
+  for (const w of sortiert(alle.filter(k => !k.parentId || !ids.has(k.parentId)))) besuche(w, '')
+  return { liste, label }
+}
 
 /** Pseudo-Kategorie-ID für den Favoriten-Reiter (kollidiert mit keiner UUID). */
 const FAVORITEN_KAT = '__favoriten__'
@@ -92,7 +112,10 @@ export function ArtikelWaehlenPage() {
 
   const sichtbareKatIds = konfigQuery.data?.sichtbareKategorieIds ?? []
   // Warengruppen-Sichtbarkeit dieser Kasse (leer = alle) — wie an der stationären Kasse
-  const kategorien  = (katQuery.data ?? []).filter(k =>
+  // Untergruppen werden hier flach als eigene Reiter gezeigt („Bar › Alkoholfrei"),
+  // in Baum-Reihenfolge (Kachel-Raster der Kasse gibt es in der Kellner-App nicht).
+  const { liste: baumListe, label: reiterLabel } = kategorienImBaum(katQuery.data ?? [])
+  const kategorien  = baumListe.filter(k =>
     sichtbareKatIds.length === 0 || sichtbareKatIds.includes(k.id))
   const alleArtikel = artikelQuery.data ?? []
 
@@ -547,7 +570,7 @@ export function ArtikelWaehlenPage() {
                     : 'text-ink-muted hover:bg-panel-2'
                 }`}
               >
-                {k.name}
+                {reiterLabel.get(k.id) ?? k.name}
               </button>
             ))}
           </div>
