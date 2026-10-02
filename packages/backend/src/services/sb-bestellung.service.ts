@@ -132,6 +132,7 @@ export async function holeTerminalSortiment(db: Db, kasseId: string): Promise<Te
     if (!effektivSichtbar) return false
     if (a.seriennummernAktiv) return false
     if (a.istBestandteil) return false  // Rohstoffe sind nicht direkt bestellbar
+    if (a.preisBruttoCent < 0) return false  // Pfand-Rückgabe nicht für Selbstbedienung
     if (a.lagerstandAktiv && (a.lagerstandMenge === null || a.lagerstandMenge <= 0)) return false
     const verfuegbar = berechneVerfuegbareMenge(rezepte.get(a.id) ?? [])
     if (verfuegbar !== null && verfuegbar <= 0) return false
@@ -192,7 +193,7 @@ export async function erstelleSbBestellung(
     const effektivSichtbar =
       a.terminalSichtbar === true ||
       (a.terminalSichtbar === null && a.kategorieId !== null && (katSichtbar.get(a.kategorieId) ?? false))
-    if (!effektivSichtbar || a.seriennummernAktiv || a.istBestandteil) {
+    if (!effektivSichtbar || a.seriennummernAktiv || a.istBestandteil || a.preisBruttoCent < 0) {
       throw new SbBestellungError(400, 'Artikel ist am Terminal nicht bestellbar')
     }
     if (a.lagerstandAktiv && (a.lagerstandMenge === null || a.lagerstandMenge < p.menge)) {

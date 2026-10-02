@@ -1,15 +1,31 @@
 import { z } from 'zod'
 import { HexFarbeSchema, KATEGORIE_MAX_TIEFE } from './kategorie.js'
+import { StationSchema } from './station.js'
 
 // ---------------------------------------------------------------------------
 // Layout-Import (z. B. aus der alten Asello-Kasse): Gruppenbaum, Raster-Slots,
 // Farben und Favoriten als JSON — wird per POST /artikel/layout-import angewendet.
 // ---------------------------------------------------------------------------
 
+/** Optionsgruppe eines Artikels (Asello: „Variante" / „Optionen") samt Optionen. */
+export const LayoutOptionsgruppeSchema = z.object({
+  gruppe:  z.string().trim().min(1).max(100),
+  /** true → Pflichtgruppe (typ 'pflicht'), sonst optional */
+  pflicht: z.boolean().default(false),
+  /** true → beliebig viele Optionen (maxAuswahl null), sonst genau eine (maxAuswahl 1) */
+  mehrfach: z.boolean().default(false),
+  optionen: z.array(z.object({
+    name:          z.string().trim().min(1).max(100),
+    /** Aufschlag in Cent, kann negativ sein („Ohne Soda") */
+    aufschlagCent: z.number().int().default(0),
+  })).min(1).max(100),
+})
+export type LayoutOptionsgruppe = z.infer<typeof LayoutOptionsgruppeSchema>
+
 export const LayoutArtikelSchema = z.object({
   name:        z.string().trim().min(1).max(200),
   nr:          z.string().nullable().optional(),
-  /** Cent; negativ erlaubt (Pfand-Rückgabe) — neue Artikel mit negativem Preis legt der Import nicht an */
+  /** Cent; negativ erlaubt (Pfand-Rückgabe) */
   preisCent:   z.number().int(),
   /** Steuersatz als Anteil: 0.2 / 0.1 / 0.13 / 0.19 / 0 */
   mwst:        z.number().min(0).max(1),
@@ -19,6 +35,7 @@ export const LayoutArtikelSchema = z.object({
   slot:        z.number().int().positive().max(999),
   individuell: z.boolean().optional(),
   variante:    z.string().nullable().optional(),
+  optionen:    z.array(LayoutOptionsgruppeSchema).max(50).default([]),
 })
 export type LayoutArtikel = z.infer<typeof LayoutArtikelSchema>
 
@@ -27,6 +44,8 @@ export interface LayoutGruppe {
   pfad?:         string | undefined
   farbe:         string
   farbeGesetzt?: boolean | undefined
+  /** KDS-Station der Gruppe (null/fehlend = von den bisherigen Gruppen der Artikel erben) */
+  station?:      z.infer<typeof StationSchema> | null | undefined
   reihenfolge?:  number | undefined
   artikel:       LayoutArtikel[]
   untergruppen:  LayoutGruppe[]
@@ -37,6 +56,7 @@ export const LayoutGruppeSchema: z.ZodType<LayoutGruppe, z.ZodTypeDef, unknown> 
   pfad:          z.string().optional(),
   farbe:         HexFarbeSchema,
   farbeGesetzt:  z.boolean().optional(),
+  station:       StationSchema.nullable().optional(),
   reihenfolge:   z.number().int().optional(),
   artikel:       z.array(LayoutArtikelSchema).max(2000).default([]),
   untergruppen:  z.array(LayoutGruppeSchema).max(500).default([]),
@@ -118,6 +138,25 @@ export interface LayoutBericht {
       kassenFavoritenGeloescht: number
     }
     kassen: { rasterAufSpaltenGesetzt: number }
+    optionen: {
+      /** Neu angelegte Optionsgruppen (inhaltsgleiche nur einmal) */
+      gruppenNeu: number
+      gruppenWiederverwendet: number
+      zuordnungenNeu: number
+      /** Optionsgruppen im Layout, die wegen mehrdeutiger/nicht angelegter Artikel entfallen */
+      uebersprungen: number
+    }
+  }
+  /** Nur bei katalogLoeschen: was vorher gelöscht wird (bzw. im dryRun würde) */
+  katalogLoeschen: {
+    aktiv: boolean
+    geloescht: {
+      artikel: number; gruppen: number; optionsgruppen: number
+      seriennummern: number; inventurPositionen: number
+      sichtbarkeiten: number; kassenFavoriten: number; preisregelnBereinigt: number
+    }
+    /** Nur deaktiviert statt gelöscht, weil laufende Vorgänge daran hängen */
+    nurDeaktiviert: { artikel: { name: string; grund: string }[]; gruppen: { name: string; grund: string }[] }
   }
   probleme: {
     mehrdeutig: { name: string; pfad: string; kandidaten: { id: string; gruppe: string }[] }[]
@@ -135,4 +174,11 @@ export interface LayoutImportOptionen {
   fehlendeAnlegen:   boolean
   /** artikel_pro_zeile aller Kassen des Mandanten auf `spalten` setzen */
   spaltenSetzen:     boolean
+  /**
+   * „Sauberer Neustart": vorher ALLE Artikel, Warengruppen und Optionsgruppen des Mandanten
+   * LÖSCHEN (nicht rückgängig; Belege/DEP bleiben), Kassen-Sichtbarkeitslisten und Kassen-Favoriten leeren —
+   * danach wird alles neu angelegt (Altbestand wird NICHT wiederverwendet, auch nicht bei Wiederholung).
+   * Artikel mit laufenden Vorgängen (offener Tisch, offene Inventur …) werden nur deaktiviert.
+   */
+  katalogLoeschen:     boolean
 }

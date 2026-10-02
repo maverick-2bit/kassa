@@ -191,8 +191,8 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
 
   const submit = handleSubmit((values) => {
     const cent = parseEuroToCent(values.preisEuro)
-    if (cent === null || cent < 0) {
-      setPreisFehler('Preis ungültig (z.B. "12,50")')
+    if (cent === null) {
+      setPreisFehler('Preis ungültig (z.B. "12,50" oder "-2,00" für eine Rückgabe)')
       return
     }
     setPreisFehler(null)
@@ -288,10 +288,10 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Field label="Preis (brutto)" required hint="z.B. 3,50" error={preisFehler ?? undefined}>
+        <Field label="Preis (brutto)" required hint="z.B. 3,50 — Minus für Pfand-/Retourartikel (-2,00)" error={preisFehler ?? undefined}>
           <Input
             placeholder="3,50"
-            inputMode="decimal"
+            inputMode="text"
             invalid={!!preisFehler}
             {...register('preisEuro', { required: true })}
           />

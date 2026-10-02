@@ -10,11 +10,12 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { LayoutImportSchema, type LayoutGruppe, type LayoutImport } from '@kassa/shared'
 import type { KassaArtikel, KassaGruppe, KassaZustand, LayoutPlan } from '../../src/services/layout-import.service.js'
+import { optionsgruppenSchluessel } from '../../src/services/modifikator.service.js'
 
 const hier = dirname(fileURLToPath(import.meta.url))
 
 export function ladeAselloLayout(): LayoutImport {
-  const roh = JSON.parse(readFileSync(join(hier, '..', 'fixtures', 'asello-layout-komplett.json'), 'utf8'))
+  const roh = JSON.parse(readFileSync(join(hier, '..', 'fixtures', 'asello-layout-komplett-v2.json'), 'utf8'))
   return LayoutImportSchema.parse(roh)
 }
 
@@ -71,8 +72,11 @@ export function flacherKassaZustand(layout: LayoutImport): {
 
 /** Wendet einen Plan auf einen In-Memory-Zustand an (wie die DB-Ausführung, für Idempotenz-Tests). */
 export function wendePlanAn(z: KassaZustand, plan: LayoutPlan): KassaZustand {
-  const gruppen = z.gruppen.map(g => ({ ...g }))
-  const artikel = z.artikel.map(a => ({ ...a }))
+  // katalogLoeschen: Altbestand ist gelöscht (nur behaltene bleiben, deaktiviert)
+  const behaltenA = new Set(plan.loeschung?.artikelBehalten.map(a => a.id))
+  const behaltenG = new Set(plan.loeschung?.gruppenBehalten.map(g => g.id))
+  const gruppen = z.gruppen.filter(g => !plan.loeschung || behaltenG.has(g.id)).map(g => ({ ...g, ...(plan.loeschung && { aktiv: false }) }))
+  const artikel = z.artikel.filter(a => !plan.loeschung || behaltenA.has(a.id)).map(a => ({ ...a, ...(plan.loeschung && { aktiv: false, istFavorit: false }) }))
   for (const g of plan.neueGruppen) {
     gruppen.push({ id: g.id, name: g.name, parentId: g.parentId, aktiv: true, farbe: g.farbe, reihenfolge: g.reihenfolge,
       station: g.station, bonierdruckerId: g.bonierdruckerId, terminalSichtbar: g.terminalSichtbar })
@@ -83,6 +87,18 @@ export function wendePlanAn(z: KassaZustand, plan: LayoutPlan): KassaZustand {
       reihenfolge: n.reihenfolge, istFavorit: n.istFavorit, favoritenReihenfolge: n.favoritenReihenfolge, aktiv: true, istBestandteil: false })
   }
   for (const u of plan.artikelUpdates) Object.assign(artikel.find(a => a.id === u.id)!, u.werte)
+  // Optionen: inhaltsgleiche aktive Gruppen wiederverwenden, Zuordnungen ergänzen (wie ordneOptionsgruppeZu)
+  let optionsgruppen = plan.loeschung ? [] : [...(z.optionsgruppen ?? [])]
+  let zuordnungen = plan.loeschung ? [] : [...(z.zuordnungen ?? [])]
+  for (const o of plan.optionen) {
+    let g = optionsgruppen.find(x => optionsgruppenSchluessel(x) === optionsgruppenSchluessel(o))
+    if (!g) { g = { id: testId(), name: o.name, typ: o.typ, maxAuswahl: o.maxAuswahl, optionen: o.optionen }; optionsgruppen.push(g) }
+    if (!zuordnungen.some(x => x.artikelId === o.artikelId && x.gruppeId === g!.id)) zuordnungen.push({ artikelId: o.artikelId, gruppeId: g.id })
+  }
   const kassen = z.kassen.map(k => ({ ...k, artikelProZeile: plan.kassenUpdates.find(u => u.id === k.id)?.artikelProZeile ?? k.artikelProZeile }))
-  return { gruppen, artikel, kassen, kassenFavoritenAnzahl: plan.kassenFavoritenLoeschen ? 0 : z.kassenFavoritenAnzahl }
+  return {
+    gruppen, artikel, kassen, optionsgruppen, zuordnungen,
+    kassenFavoritenAnzahl: plan.kassenFavoritenLoeschen ? 0 : z.kassenFavoritenAnzahl,
+    sichtbarkeitenAnzahl: plan.loeschung ? 0 : (z.sichtbarkeitenAnzahl ?? 0),
+  }
 }

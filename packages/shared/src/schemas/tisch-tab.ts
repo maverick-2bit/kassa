@@ -9,7 +9,8 @@ import { RabattInputSchema } from './beleg.js'
 export const TabPositionSchema = z.object({
   artikelId:       z.string().uuid(),
   bezeichnung:     z.string(),
-  preisBruttoCent: z.number().int().positive(),
+  /** Cent; negativ erlaubt (Pfand-Rückgabe) */
+  preisBruttoCent: z.number().int(),
   menge:           z.number().int().positive(),
   station:         z.string().optional(),
   /** Gewählte Modifikatoren (aufschlagCent bereits in preisBruttoCent eingerechnet) */
@@ -82,16 +83,17 @@ export const TischTabSplittenInputSchema = z.object({
 export type TischTabSplittenInput = z.infer<typeof TischTabSplittenInputSchema>
 
 export const TischTabBezahlenInputSchema = z.object({
+  // Negativ nur bei einem Tab unter 0 (Pfand-Rückgabe überwiegt) — der Beleg-Service prüft das Vorzeichen
   zahlung: z.object({
-    barCent:      z.number().int().nonnegative(),
-    karteCent:    z.number().int().nonnegative(),
-    sonstigeCent: z.number().int().nonnegative(),
+    barCent:      z.number().int(),
+    karteCent:    z.number().int(),
+    sonstigeCent: z.number().int(),
   }),
   rabatt: RabattInputSchema.optional(),
   /** Preis-Overrides pro Position (Index = Reihenfolge in tab.positionen) */
   positionRabatte: z.array(z.object({
     positionIndex:          z.number().int().nonnegative(),
-    einzelpreisBreuttoCent: z.number().int().nonnegative(),
+    einzelpreisBreuttoCent: z.number().int(),
   })).optional(),
   /** Trinkgeld in Cent — wird als freie Position (0 % MwSt) auf den Beleg gebucht */
   trinkgeldCent: z.number().int().nonnegative().optional(),

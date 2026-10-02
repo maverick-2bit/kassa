@@ -64,9 +64,10 @@ export const BarzahlungsbelegInputSchema = z.object({
   kasseId:    z.string().uuid(),
   positionen: z.array(BelegInputPositionSchema).min(1, 'Mindestens eine Position erforderlich'),
   zahlung: z.object({
-    barCent:      z.number().int().nonnegative(),
-    karteCent:    z.number().int().nonnegative(),
-    sonstigeCent: z.number().int().nonnegative(),
+    // Negativ nur bei einem Beleg unter 0 (Retoure, Pfand-Rückgabe) — der Service prüft das Vorzeichen
+    barCent:      z.number().int(),
+    karteCent:    z.number().int(),
+    sonstigeCent: z.number().int(),
   }),
   rabatt:     RabattInputSchema.optional(),
   /** Bestehenden Kunden zuordnen */

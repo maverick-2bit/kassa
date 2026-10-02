@@ -29,7 +29,8 @@ import { formatPreis, heuteLokalYMD } from '../lib/format'
 import {
   positionsPreisCent,
   warenkorbSummeCent,
-  rabattBetragCent,
+  gesamtRabattCent,
+  summeNachGutscheinCent as summeNachGutscheinBetragCent,
   preisNachPositionsRabattCent,
 } from '../lib/warenkorb'
 import { druckeAngebot, druckeGutschein, druckeLiferschein, druckeRechnung } from '../lib/rechnung'
@@ -231,7 +232,13 @@ export function KassePage() {
   }, [modGruppenQuery.data, modZuweisungenQuery.data])
 
   const summeCent  = useMemo(() => warenkorbSummeCent(korb), [korb])
-  const rabattCent = useMemo(() => rabattBetragCent(summeCent, rabatt), [rabatt, summeCent])
+  const rabattCent = useMemo(
+    () => gesamtRabattCent(
+      korb.map(p => ({ preisCent: p.preisCent, menge: p.menge, mwstSatz: p.typ === 'frei' ? p.mwstSatz : p.artikel.mwstSatz })),
+      rabatt,
+    ),
+    [rabatt, korb],
+  )
 
   // Serialisierte Positionen im Warenkorb (Index → Artikel), für die vor dem Bon Seriennummern zu wählen sind
   const serialPositionen = useMemo<SerialPos[]>(
@@ -274,7 +281,7 @@ export function KassePage() {
 
   // Gutschein-Abzug ----------------------------------------------------------
   const gutscheinCent          = gutschein?.einloesungCent ?? 0
-  const summeNachGutscheinCent = Math.max(0, summeNachRabattCent - gutscheinCent)
+  const summeNachGutscheinCent = summeNachGutscheinBetragCent(summeNachRabattCent, gutscheinCent)
 
   // ---------------------------------------------------------------------------
   // Warenkorb-Aktionen
@@ -285,7 +292,7 @@ export function KassePage() {
     // Aktionen: den Artikel-Basispreis ggf. senken (Fixpreis oder Prozent),
     // Modifikatoren kommen zum vollen Preis dazu
     const regeln    = preisregelnQuery.data ?? []
-    const hhProzent = aktiverRabattProzent(regeln, a.id, a.kategorieId, new Date())
+    const hhProzent = a.preisBruttoCent < 0 ? 0 : aktiverRabattProzent(regeln, a.id, a.kategorieId, new Date())
     const basisCent = aktionsPreisCent(a.preisBruttoCent, regeln, a.id, a.kategorieId, new Date())
     const preisCent = positionsPreisCent(basisCent, modifikatoren)
     setKorb((prev) => {
@@ -593,6 +600,11 @@ export function KassePage() {
     // Serialisierte Artikel: zuerst Seriennummern wählen (sofern noch nicht geschehen)
     if (serialPositionen.length > 0 && serialsRef.current === null) {
       setSerialModalOffen(true)
+      return
+    }
+    // Rückzahlung auf Karte lässt sich nicht über das Terminal buchen → bar zurückgeben
+    if (karteCent < 0 && zvtCfg.data?.zvtAktiv) {
+      setFehler('Rückzahlung auf Karte bitte direkt am Kartenterminal durchführen — hier „Bar" wählen.')
       return
     }
     // Karte + aktives ZVT-Terminal → erst ans Terminal, danach Beleg
@@ -942,7 +954,7 @@ export function KassePage() {
                     <span className="font-mono font-medium">−{formatPreis(gutschein.einloesungCent)}</span>
                   </div>
                 ) : (
-                  korb.length > 0 && !kreditModus && (
+                  korb.length > 0 && !kreditModus && summeNachRabattCent > 0 && (
                     <button
                       type="button"
                       onClick={() => { setFehler(null); setGutscheinModalOffen(true) }}
