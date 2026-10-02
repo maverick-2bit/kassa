@@ -767,6 +767,34 @@ export const kasseFavoriten = pgTable('kasse_favoriten', {
 }))
 
 /**
+ * Artikel-Anordnung je Kasse + Warengruppe (eigenes Kachel-Raster, z. B. für 4 statt 3 Spalten).
+ *
+ * Existiert für (kasse_id, kategorie_id) mindestens eine Zeile, gilt diese Anordnung:
+ * `position` = 1-basierter Slot im Raster der Warengruppe NACH den Untergruppen-Kacheln,
+ * fehlende Slotnummern sind leere Felder, `ausgeblendet` = der Artikel erscheint an dieser Kasse
+ * in dieser Warengruppe nicht (position dann NULL), Artikel OHNE Zeile werden hinten angehängt.
+ * Keine Zeile = Standard-Layout (artikel.raster_position). Zeilen zu Artikeln, die inzwischen in einer
+ * anderen Warengruppe liegen, gelten nicht (Lesepfad filtert auf artikel.kategorie_id).
+ *
+ * Tabellen-CHECK (nur in der Migration): ausgeblendet ⇔ position IS NULL, sonst position >= 1.
+ */
+export const kasseArtikelLayout = pgTable('kasse_artikel_layout', {
+  id:           uuid('id').primaryKey().defaultRandom(),
+  mandantId:    uuid('mandant_id').notNull().references(() => mandanten.id),
+  kasseId:      uuid('kasse_id').notNull().references(() => kassen.id, { onDelete: 'cascade' }),
+  kategorieId:  uuid('kategorie_id').notNull().references(() => kategorien.id, { onDelete: 'cascade' }),
+  artikelId:    uuid('artikel_id').notNull().references(() => artikel.id, { onDelete: 'cascade' }),
+  /** NULL nur zusammen mit ausgeblendet */
+  position:     integer('position'),
+  ausgeblendet: boolean('ausgeblendet').notNull().default(false),
+}, (t) => ({
+  artikelIdx:   uniqueIndex('kasse_artikel_layout_artikel_idx').on(t.kasseId, t.kategorieId, t.artikelId),
+  positionIdx:  uniqueIndex('kasse_artikel_layout_position_idx').on(t.kasseId, t.kategorieId, t.position).where(sql`${t.position} IS NOT NULL`),
+  kategorieIdx: index('kasse_artikel_layout_kategorie_idx').on(t.kategorieId),
+  artikelFkIdx: index('kasse_artikel_layout_artikel_fk_idx').on(t.artikelId),
+}))
+
+/**
  * Bonierdrucker-Sichtbarkeit pro Kasse. Bonierdrucker sind mandantweite Geräte;
  * dieser Join wählt, welche für eine bestimmte Kasse aktiv sind. Existiert für
  * eine Kasse KEIN Eintrag, gelten (abwärtskompatibel) alle Bonierdrucker.
