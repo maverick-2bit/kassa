@@ -270,7 +270,7 @@ function Kachel({
       data-slot={slot}
       className={`relative flex flex-col overflow-hidden rounded-lg border bg-panel shadow-sm ${
         gesperrt ? '' : 'cursor-grab active:cursor-grabbing'
-      } ${isDragging ? 'opacity-80 shadow-lg' : ''} ${ziel ? 'border-brand-500 ring-2 ring-brand-500' : 'border-line'}`}
+      } ${isDragging ? 'opacity-80 shadow-lg' : ''} ${ziel && !isDragging ? 'border-brand-500 ring-2 ring-brand-500' : 'border-line'}`}
       style={{ gridRow: zeile, gridColumn: spalte, transform: CSS.Translate.toString(transform), zIndex: isDragging ? 30 : undefined }}
     >
       {/* Farbiger Akzent oben wie an der Kasse: Artikel-Farbe ?? Warengruppen-Farbe */}
