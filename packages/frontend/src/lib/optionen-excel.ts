@@ -38,7 +38,7 @@ export async function exportOptionenVorlage(): Promise<void> {
   const hinweise = [
     ['Feld',            'Pflicht', 'Hinweis'],
     ['Artikel',         'Ja',      'Bezeichnung genau wie in der Kassa (Groß/klein egal)'],
-    ['Warengruppe',     'Nein',    'Nur nötig, wenn es den Artikelnamen in mehreren Warengruppen gibt'],
+    ['Warengruppe',     'Nein',    'Nur nötig, wenn es den Artikelnamen in mehreren Warengruppen gibt. Heißen die Warengruppen gleich (z. B. „Alkoholfrei" unter verschiedenen Elterngruppen), den Pfad schreiben: Atriumbar/Alkoholfrei'],
     ['Optionsgruppe',   'Ja',      'Überschrift der Auswahl, z. B. „Sorte" oder „Beilage"'],
     ['Option',          'Ja',      'Eine Zeile je Option — Reihenfolge der Zeilen = Reihenfolge an der Kasse'],
     ['Aufpreis (EUR)',  'Nein',    'z. B. 0,50 — Minus für Abschläge (-2,00); leer = 0'],

@@ -16,7 +16,7 @@ import type {
   TerminalBestellungStatus,
   TerminalSortiment,
 } from '@kassa/shared'
-import { formatSbNummer } from '@kassa/shared'
+import { baumFlach, formatSbNummer, kategorieAnzeigeNamen } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import {
   artikel,
@@ -94,6 +94,7 @@ export async function holeTerminalSortiment(db: Db, kasseId: string): Promise<Te
     .select({
       id:               kategorien.id,
       name:             kategorien.name,
+      parentId:         kategorien.parentId,
       farbe:            kategorien.farbe,
       terminalSichtbar: kategorien.terminalSichtbar,
       reihenfolge:      kategorien.reihenfolge,
@@ -141,7 +142,11 @@ export async function holeTerminalSortiment(db: Db, kasseId: string): Promise<Te
 
   // Kategorien-Tabs: sichtbare Kategorien + Kategorien mit per-Override sichtbaren Artikeln
   const benutzteKategorieIds = new Set(sichtbareArtikel.map(a => a.kategorieId).filter((id): id is string => id !== null))
-  const tabs = alleKategorien.filter(k => sichtbareKategorieIds.has(k.id) || benutzteKategorieIds.has(k.id))
+  // Baumreihenfolge (`reihenfolge` ist nur die Position unter Geschwistern); gleichnamige Gruppen heißen mit
+  // Pfad („Atriumbar › Alkoholfrei"), damit am Terminal nicht mehrere identische Reiter stehen
+  const anzeigeName = kategorieAnzeigeNamen(alleKategorien)
+  const tabs = baumFlach(alleKategorien).map(e => e.kategorie)
+    .filter(k => sichtbareKategorieIds.has(k.id) || benutzteKategorieIds.has(k.id))
 
   return {
     kasse: {
@@ -149,7 +154,7 @@ export async function holeTerminalSortiment(db: Db, kasseId: string): Promise<Te
       bezeichnung: kasse.bezeichnung,
       firmenname:  mandant?.firmenname ?? '',
     },
-    kategorien: tabs.map(k => ({ id: k.id, name: k.name, farbe: k.farbe })),
+    kategorien: tabs.map(k => ({ id: k.id, name: anzeigeName(k.id), farbe: k.farbe })),
     artikel: sichtbareArtikel.map(a => ({
       id:              a.id,
       bezeichnung:     a.bezeichnung,

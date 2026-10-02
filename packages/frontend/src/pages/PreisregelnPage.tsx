@@ -16,6 +16,7 @@ import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
 import { formatPreis, parseEuroToCent } from '../lib/format'
+import { baumFlach, kategorieAnzeigeNamen, kategoriePfad } from '../lib/kategorie-baum'
 
 const WOCHENTAGE = [1, 2, 3, 4, 5, 6, 7]
 
@@ -40,7 +41,10 @@ export function PreisregelnPage() {
   const regeln     = regelnQuery.data ?? []
   const kategorien = katQuery.data ?? []
   const artikel    = artQuery.data ?? []
-  const katName = (id: string) => kategorien.find(k => k.id === id)?.name ?? '—'
+  // Baumreihenfolge; gleichnamige Gruppen zeigen den Pfad (z. B. „Atriumbar › Alkoholfrei")
+  const kategorienImBaum = baumFlach(kategorien).map(e => e.kategorie)
+  const anzeigeName = kategorieAnzeigeNamen(kategorien)
+  const katName = (id: string) => anzeigeName(id) || '—'
   const artName = (id: string) => artikel.find(a => a.id === id)?.bezeichnung ?? '—'
 
   return (
@@ -175,6 +179,10 @@ function PreisregelForm({
   })
   const [kachelKategorie, setKachelKategorie] = useState<string>('alle')
   const [sammelPreis,     setSammelPreis]     = useState('')
+
+  // Warengruppen im Baum; gleichnamige Gruppen zeigen den Pfad (z. B. „Atriumbar › Alkoholfrei")
+  const kategorienImBaum = baumFlach(kategorien).map(e => e.kategorie)
+  const anzeigeName      = kategorieAnzeigeNamen(kategorien)
 
   const rabattZahl    = parseInt(rabatt) || 0
   const zeitfensterOk = zeitfenster.length > 0 && zeitfenster.every(zf => zf.von && zf.bis)
@@ -361,16 +369,17 @@ function PreisregelForm({
           <p className="text-xs text-ink-subtle">Keine Warengruppen vorhanden.</p>
         ) : (
           <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
-            {kategorien.map(k => (
+            {kategorienImBaum.map(k => (
               <button
                 key={k.id}
                 type="button"
+                title={kategoriePfad(kategorien, k.id)}
                 onClick={() => toggleKat(k.id)}
                 className={`px-2.5 py-1 rounded-md border text-xs font-medium transition ${
                   kategorieIds.includes(k.id) ? 'bg-brand-600 border-brand-600 text-white' : 'border-line-strong text-ink hover:border-brand-400'
                 }`}
               >
-                {k.name}
+                {anzeigeName(k.id)}
               </button>
             ))}
           </div>
@@ -403,7 +412,7 @@ function PreisregelForm({
             className="rounded-md border border-line-strong bg-panel px-2 py-1 text-xs text-ink"
           >
             <option value="alle">Alle Warengruppen</option>
-            {kategorien.map(k => <option key={k.id} value={k.id}>{k.name}</option>)}
+            {kategorienImBaum.map(k => <option key={k.id} value={k.id}>{kategoriePfad(kategorien, k.id)}</option>)}
           </select>
           <button type="button" onClick={() => alleSichtbarenWaehlen(true)}
             className="rounded-md border border-line-strong px-2 py-1 text-xs font-medium text-ink hover:border-brand-400">

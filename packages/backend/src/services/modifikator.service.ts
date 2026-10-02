@@ -1,4 +1,5 @@
 import { and, asc, eq, inArray, max } from 'drizzle-orm'
+import { kategoriePfadNormalisiert, normalisiereKategoriePfad } from '@kassa/shared'
 import type {
   ModifikatorGruppe,
   ModifikatorGruppeErstellen,
@@ -404,16 +405,27 @@ export async function importiereOptionen(
 ): Promise<OptionenImportErgebnis> {
   return db.transaction(async (tx) => {
     const artikelRows = await tx
-      .select({ id: artikel.id, bezeichnung: artikel.bezeichnung, kategorie: kategorien.name })
+      .select({ id: artikel.id, bezeichnung: artikel.bezeichnung, kategorieId: artikel.kategorieId })
       .from(artikel)
-      .leftJoin(kategorien, eq(artikel.kategorieId, kategorien.id))
       .where(and(eq(artikel.mandantId, mandantId), eq(artikel.aktiv, true)))
+    // Warengruppen samt Elterngruppe: mehrere Gruppen dürfen gleich heißen (z. B. „Alkoholfrei" unter
+    // verschiedenen Eltern) — dann trennt nur der Pfad („Atriumbar/Alkoholfrei") die Artikel
+    const gruppen = await tx
+      .select({ id: kategorien.id, name: kategorien.name, parentId: kategorien.parentId })
+      .from(kategorien)
+      .where(eq(kategorien.mandantId, mandantId))
+    const gruppeVon = new Map(gruppen.map(g => [g.id, g] as const))
 
-    const nachName = new Map<string, { id: string; kategorie: string }[]>()
+    const nachName = new Map<string, { id: string; kategorie: string; pfad: string }[]>()
     for (const a of artikelRows) {
       const k = klein(a.bezeichnung)
       const liste = nachName.get(k) ?? []
-      liste.push({ id: a.id, kategorie: klein(a.kategorie ?? '') })
+      const gruppe = a.kategorieId ? gruppeVon.get(a.kategorieId) : undefined
+      liste.push({
+        id: a.id,
+        kategorie: klein(gruppe?.name ?? ''),
+        pfad: gruppe ? kategoriePfadNormalisiert(gruppen, gruppe.id) : '',
+      })
       nachName.set(k, liste)
     }
 
@@ -424,8 +436,10 @@ export async function importiereOptionen(
     }
 
     for (const [index, e] of input.eintraege.entries()) {
+      const wgName = klein(e.warengruppe)
+      const wgPfad = normalisiereKategoriePfad(e.warengruppe)
       const kandidaten = (nachName.get(klein(e.artikel)) ?? [])
-        .filter(a => !e.warengruppe || a.kategorie === klein(e.warengruppe))
+        .filter(a => !e.warengruppe || a.kategorie === wgName || a.pfad === wgPfad)
       const fehler = (text: string) =>
         ergebnis.fehler.push({ index, artikel: e.artikel, warengruppe: e.warengruppe, fehler: text })
       if (kandidaten.length === 0) {
@@ -433,7 +447,9 @@ export async function importiereOptionen(
         continue
       }
       if (kandidaten.length > 1) {
-        fehler(`Artikel ${kandidaten.length}× vorhanden — bitte Warengruppe angeben`)
+        fehler(e.warengruppe
+          ? `Artikel ${kandidaten.length}× in gleichnamigen Warengruppen — bitte den Pfad angeben, z. B. Atriumbar/Alkoholfrei`
+          : `Artikel ${kandidaten.length}× vorhanden — bitte Warengruppe angeben`)
         continue
       }
       await ordneOptionsgruppeZu(tx, mandantId, kontext, kandidaten[0]!.id, { ...e, name: e.gruppe }, ergebnis)
