@@ -63,9 +63,11 @@ export function ModifikatorenPage() {
     queryFn:  () => modifikatorApi.listeGruppen(),
   })
 
+  // Nur aktive: zuweisbar sind nur Artikel, die noch verkauft werden
+  // (bestehende Zuweisungen deaktivierter Artikel bleiben beim Speichern unangetastet)
   const artikel = useQuery({
-    queryKey: ['artikel', identity.mandantId, false],
-    queryFn:  () => artikelApi.list(identity.mandantId, false),
+    queryKey: ['artikel', identity.mandantId, true],
+    queryFn:  () => artikelApi.list(identity.mandantId, true),
   })
 
   const zuweisungenQuery = useQuery({

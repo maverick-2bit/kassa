@@ -16,6 +16,7 @@ import { AuthError, login, loginWithPin, userZuDto, type LoginDeps } from '../se
 import { logAudit, getClientIp } from '../services/audit.service.js'
 import { PinGesperrtError, sendePinGesperrt } from '../services/pin-bremse.js'
 import { alsPinLaenge, PinLaengeError, sendePinLaengeFehler } from '../services/pin-laenge.js'
+import { ladeTagesRegel } from '../services/geschaeftstag.service.js'
 import { ipSchluessel } from '../auth/rate-limit.js'
 
 export interface AuthRouteOptions {
@@ -206,9 +207,13 @@ export const authRoute: FastifyPluginAsync<AuthRouteOptions> = async (fastify, o
       .from(kassen)
       .where(and(eq(kassen.mandantId, user.mandantId), eq(kassen.status, 'aktiv')))
 
+    // Tagesbeginn-Historie (Geschäftstag) — wie beim Login, als letzte Abfrage
+    const dto = await userZuDto(user, opts.db)
+    const tagesRegel = await ladeTagesRegel(opts.db, user.mandantId)
+
     return reply.send({
-      user:    await userZuDto(user, opts.db),
-      mandant: mandant ? { ...mandant, pinLaenge: alsPinLaenge(mandant.pinLaenge) } : mandant,
+      user:    dto,
+      mandant: mandant ? { ...mandant, pinLaenge: alsPinLaenge(mandant.pinLaenge), tagesRegel } : mandant,
       kassen:  kassenListe,
     })
   })

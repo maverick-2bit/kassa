@@ -11,9 +11,9 @@ export type BerichtGruppierung = z.infer<typeof BerichtGruppierungSchema>
 export const BerichtFilterSchema = z.object({
   /** Kassen-IDs; leer = alle zugänglichen Kassen des Mandanten */
   kasseIds:          z.array(z.string().uuid()).default([]),
-  /** Startdatum YYYY-MM-DD (Wiener Ortszeit) */
+  /** Startdatum YYYY-MM-DD (Geschäftstag; ohne verschobenen Tagesbeginn = Wiener Kalendertag) */
   von:               z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Ungültiges Datum (YYYY-MM-DD)'),
-  /** Enddatum YYYY-MM-DD (Wiener Ortszeit, inklusiv) */
+  /** Enddatum YYYY-MM-DD (Geschäftstag, inklusiv) */
   bis:               z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Ungültiges Datum (YYYY-MM-DD)'),
   /** Nur Zielrechnungen (Verkauf auf offenen Posten) anzeigen */
   nurZielrechnungen: z.boolean().default(false),
@@ -142,7 +142,7 @@ export const StundenBerichtResponseSchema = z.object({
   von:      z.string(),
   bis:      z.string(),
   kasseIds: z.array(z.string().uuid()),
-  /** Immer 24 Einträge (Stunde 0–23), Stunden ohne Umsatz mit Nullwerten */
+  /** Immer 24 Einträge (Stunde 0–23), Stunden ohne Umsatz mit Nullwerten. Die Reihenfolge beginnt bei der Stunde des Tagesbeginns (06:00 → 6, 7, …, 23, 0, …, 5). */
   zeilen:   z.array(StundenBerichtZeileSchema),
   gesamt:   BerichtGesamtSchema,
 })

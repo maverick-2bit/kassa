@@ -20,10 +20,27 @@ test.use({ serviceWorkers: 'block' })
 
 type Login = { token: string; user: { id: string }; mandant: { id: string } & Record<string, unknown>; kassen: { id: string }[] }
 
+/**
+ * /api/auth/login ist auf 10 Anmeldungen je Minute und IP begrenzt (429). Die Suite meldet sich
+ * gerade am Ende oft an — bei 429 daher abwarten und erneut versuchen, statt fälschlich in
+ * /api/setup zu fallen („E-Mail bereits vergeben").
+ */
+async function loginAbwarten(request: APIRequestContext) {
+  const body = { data: { email: ADMIN_EMAIL, passwort: ADMIN_PASSWORT } }
+  for (let versuch = 0; versuch < 6; versuch++) {
+    const res = await request.post('/api/auth/login', body)
+    if (res.status() !== 429) return res
+    const sekunden = Math.min(Math.max(Number(res.headers()['retry-after']) || 10, 2), 65)
+    await new Promise(r => setTimeout(r, sekunden * 1000))
+  }
+  return request.post('/api/auth/login', body)
+}
+test.setTimeout(150_000)
+
 let gemerkterLogin: Login | null = null
 async function adminLogin(request: APIRequestContext): Promise<Login> {
   if (gemerkterLogin) return gemerkterLogin
-  let res = await request.post('/api/auth/login', { data: { email: ADMIN_EMAIL, passwort: ADMIN_PASSWORT } })
+  let res = await loginAbwarten(request)
   if (!res.ok()) {
     const setup = await request.post('/api/setup', {
       data: {
@@ -33,7 +50,7 @@ async function adminLogin(request: APIRequestContext): Promise<Login> {
       },
     })
     if (!setup.ok()) throw new Error(`Setup fehlgeschlagen (${setup.status()}): ${await setup.text()}`)
-    res = await request.post('/api/auth/login', { data: { email: ADMIN_EMAIL, passwort: ADMIN_PASSWORT } })
+    res = await loginAbwarten(request)
     if (!res.ok()) throw new Error(`Login nach Setup fehlgeschlagen (${res.status()})`)
   }
   gemerkterLogin = (await res.json()) as Login
@@ -69,8 +86,8 @@ test('Warengruppen-Baum: Pfadlabel, Matrix „Warengruppen-Verteilung" und POS-K
     expect(res.ok(), await res.text()).toBe(true)
     return (await res.json()) as Gruppe
   }
-  // AKTIVE Gruppen — genau die Menge, die die Oberfläche sieht (die Listen-Abfragen der Seiten liefern nur aktive Gruppen;
-  // der Query-Parameter nurAktive=false wird serverseitig per z.coerce.boolean zu true — siehe Bericht)
+  // AKTIVE Gruppen — genau die Menge, die Kasse und Konfiguration sehen (die Betriebsseiten fragen ausdrücklich
+  // nurAktive=true ab; ohne den Parameter lieferte die Route alle Gruppen, auch deaktivierte anderer Specs)
   const alleGruppen = async () => (await (await request.get('/api/kategorien?nurAktive=true', { headers: auth })).json()) as Gruppe[]
   const liste = async () =>
     ((await (await request.get(`/api/kassen/${kasseId}/pos-config`, { headers: auth })).json()) as { sichtbareKategorieIds: string[] }).sichtbareKategorieIds

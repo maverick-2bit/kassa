@@ -7,10 +7,11 @@ import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { buchungApi } from '../lib/api'
-import { heuteLokalYMD } from '../lib/format'
+import { heuteKalendertag } from '../lib/geschaeftstag'
 
+/** Reservierungsdatum = KALENDERtag, den der Gast bucht (kein Geschäftstag). */
 function heuteISO(): string {
-  return heuteLokalYMD()   // LOKAL — toISOString wäre UTC (Vortag vor 2 Uhr früh)
+  return heuteKalendertag()   // Wiener Kalendertag — toISOString wäre UTC (Vortag vor 2 Uhr früh)
 }
 
 export function OnlineBuchungPage() {

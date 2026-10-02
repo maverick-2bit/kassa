@@ -23,6 +23,7 @@ import { KategorieFormular } from '../components/KategorieFormular'
 import { ArtikelImportModal } from '../components/ArtikelImportModal'
 import { LayoutImportModal } from '../components/LayoutImportModal'
 import { exportArtikelVorlage } from '../lib/artikel-excel'
+import { artikelUpdateAusInput } from '../lib/artikel-update'
 import {
   filtereArtikel,
   naechsteSortierung,
@@ -89,10 +90,14 @@ export function ArtikelPage() {
     queryFn:  () => artikelApi.list(identity.mandantId, nurAktive),
   })
 
+  // Stammdatenpflege: auch deaktivierte Warengruppen (ausgegraut, reaktivierbar).
+  // Eigener Key — ['kategorien'] ist überall sonst „nur aktive" (Kasse, Tisch, Auswahlfelder).
   const katList = useQuery({
-    queryKey: ['kategorien'],
+    queryKey: ['kategorien', 'alle'],
     queryFn:  () => kategorieApi.list(false),
   })
+  // Für den Excel-Import zählen nur aktive Warengruppen (Zuordnung, Auswahl, Neuanlage)
+  const aktiveKategorien = useMemo(() => (katList.data ?? []).filter(k => k.aktiv), [katList.data])
 
   const modGruppenQuery = useQuery({
     queryKey: ['modifikator-gruppen'],
@@ -174,25 +179,21 @@ export function ArtikelPage() {
   })
 
   const update = useMutation({
+    // Das Formular schickt ALLE seine Felder mit (lib/artikel-update) — früher fehlten Farbe, Lieferant,
+    // Mindestbestand, Rohstoff-Flag, Bonierbon-Option, Seriennummern und Rezept: sie gingen beim Bearbeiten verloren
     mutationFn: ({ id, input }: { id: string; input: ArtikelInput }) =>
-      artikelApi.update(id, {
-        bezeichnung:     input.bezeichnung,
-        preisBruttoCent: input.preisBruttoCent,
-        mwstSatz:        input.mwstSatz,
-        station:         input.station          ?? null,
-        kategorieId:     input.kategorieId      ?? null,
-        istFavorit:      input.istFavorit,
-        bonierdruckerId: input.bonierdruckerId  ?? null,
-        lagerstandAktiv: input.lagerstandAktiv,
-        lagerstandMenge: input.lagerstandMenge  ?? null,
-        bild:            input.bild             ?? null,
-      }),
+      artikelApi.update(id, artikelUpdateAusInput(input)),
     onSuccess: () => { setModalOpen(false); setEditing(null); setError(null); invalidateArtikel() },
     onError: (err) => setError(err instanceof Error ? err.message : String(err)),
   })
 
   const deaktiviere = useMutation({
     mutationFn: artikelApi.deaktiviere,
+    onSuccess: () => invalidateArtikel(),
+  })
+
+  const reaktiviere = useMutation({
+    mutationFn: (id: string) => artikelApi.update(id, { aktiv: true }),
     onSuccess: () => invalidateArtikel(),
   })
 
@@ -230,6 +231,11 @@ export function ArtikelPage() {
 
   const katDeaktiviere = useMutation({
     mutationFn: kategorieApi.deaktiviere,
+    onSuccess: () => invalidateKategorien(),
+  })
+
+  const katReaktiviere = useMutation({
+    mutationFn: (id: string) => kategorieApi.update(id, { aktiv: true }),
     onSuccess: () => invalidateKategorien(),
   })
 
@@ -524,7 +530,7 @@ export function ArtikelPage() {
                       >
                         Optionen
                       </button>
-                      {a.aktiv && (
+                      {a.aktiv ? (
                         <button
                           type="button"
                           onClick={() => {
@@ -535,6 +541,15 @@ export function ArtikelPage() {
                           className="text-xs text-red-600 hover:underline"
                         >
                           Deaktivieren
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => reaktiviere.mutate(a.id)}
+                          disabled={reaktiviere.isPending}
+                          className="text-xs text-green-700 hover:underline disabled:opacity-50"
+                        >
+                          Reaktivieren
                         </button>
                       )}
                     </td>
@@ -628,7 +643,7 @@ export function ArtikelPage() {
                           >
                             Bearbeiten
                           </button>
-                          {k.aktiv && (
+                          {k.aktiv ? (
                             <button
                               type="button"
                               onClick={() => {
@@ -639,6 +654,15 @@ export function ArtikelPage() {
                               className="text-xs text-red-600 hover:underline"
                             >
                               Deaktivieren
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => katReaktiviere.mutate(k.id)}
+                              disabled={katReaktiviere.isPending}
+                              className="text-xs text-green-700 hover:underline disabled:opacity-50"
+                            >
+                              Reaktivieren
                             </button>
                           )}
                         </td>
@@ -888,7 +912,8 @@ export function ArtikelPage() {
       {/* Excel-Import Modal */}
       <ArtikelImportModal
         open={importModalOpen}
-        kategorien={katList.data ?? []}
+        // Nur aktive: der Name einer deaktivierten Warengruppe legt (wie bisher) eine neue an
+        kategorien={aktiveKategorien}
         mandantId={identity.mandantId}
         onClose={() => { setImportModalOpen(false); invalidateArtikel() }}
       />

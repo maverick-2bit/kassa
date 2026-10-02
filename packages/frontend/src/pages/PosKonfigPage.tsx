@@ -1039,14 +1039,16 @@ export function PosKonfigPage() {
   })
   const aktiveKassen = (kassenQuery.data ?? []).filter(k => k.status === 'aktiv')
 
+  // Nur aktive: Deaktiviertes erscheint an keiner Kasse — also auch nicht in Sortierung,
+  // Sichtbarkeit und Favoriten (sonst zählt es z. B. bei „alle sichtbar" mit).
   const kategorienQuery = useQuery({
     queryKey: ['kategorien'],
-    queryFn:  () => kategorieApi.list(false),
+    queryFn:  () => kategorieApi.list(true),
   })
 
   const artikelQuery = useQuery({
-    queryKey: ['artikel', identity.mandantId, false],
-    queryFn:  () => artikelApi.list(identity.mandantId, false),
+    queryKey: ['artikel', identity.mandantId, true],
+    queryFn:  () => artikelApi.list(identity.mandantId, true),
   })
 
   const tabs: { key: Tab; label: string }[] = [

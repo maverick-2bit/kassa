@@ -1,18 +1,16 @@
 import { useState } from 'react'
 import { getAuth } from '../lib/auth'
 import { downloadBmdExport } from '../lib/api'
-import { heuteLokalYMD } from '../lib/format'
-
-const heute = heuteLokalYMD()
-const jahresBeginn = new Date().getFullYear() + '-01-01'
+import { heuteGeschaeftstag } from '../lib/geschaeftstag'
 
 export function ExportPage() {
   const auth   = getAuth()
   const kassen = auth?.kassen ?? []
 
   const [kasseId,  setKasseId]  = useState(kassen[0]?.id ?? '')
-  const [vonDatum, setVonDatum] = useState(jahresBeginn)
-  const [bisDatum, setBisDatum] = useState(heute)
+  // Von/Bis sind GESCHÄFTSTAGE (wie Tagesabschluss und Berichte); „heute" = aktueller Geschäftstag
+  const [vonDatum, setVonDatum] = useState(() => `${heuteGeschaeftstag().slice(0, 4)}-01-01`)
+  const [bisDatum, setBisDatum] = useState(() => heuteGeschaeftstag())
   const [loading,  setLoading]  = useState(false)
   const [meldung,  setMeldung]  = useState<{ typ: 'ok' | 'fehler'; text: string } | null>(null)
 

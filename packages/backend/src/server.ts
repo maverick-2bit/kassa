@@ -1,4 +1,4 @@
-import Fastify, { type FastifyInstance } from 'fastify'
+import Fastify, { LogController, type FastifyInstance } from 'fastify'
 import cors from '@fastify/cors'
 import helmet from '@fastify/helmet'
 import rateLimit from '@fastify/rate-limit'
@@ -95,7 +95,14 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
       level: deps.config.LOG_LEVEL,
       ...(deps.logStream && { stream: deps.logStream }),
     },
-    disableRequestLogging: deps.config.NODE_ENV === 'test',
+    // Request-Logzeilen ("incoming request" / "request completed") nur außerhalb
+    // der Tests. Über den LogController statt der Top-Level-Option
+    // disableRequestLogging: die ist seit Fastify 5.12 deprecated (FSTDEP023, die
+    // Warnung kam bei jedem Start und jedem Testlauf) und fällt in Fastify 6 weg.
+    // Die Top-Level-Option darf nicht mehr gesetzt werden, auch nicht als false.
+    logController: new LogController({
+      disableRequestLogging: deps.config.NODE_ENV === 'test',
+    }),
     // Werbefolien-Uploads (Base64-Bilder) brauchen mehr als das 1-MiB-Default
     bodyLimit: 4 * 1024 * 1024,
   })

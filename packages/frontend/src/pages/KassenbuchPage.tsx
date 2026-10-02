@@ -12,6 +12,7 @@ import { kassenbuchApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { getAuth } from '../lib/auth'
 import { formatPreis } from '../lib/format'
+import { addTage, endeDesMonats, heuteGeschaeftstag, montagDerWoche } from '../lib/geschaeftstag'
 import { downloadKassenbuchPdf } from '../lib/pdf'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
@@ -21,23 +22,17 @@ import { Modal } from '../components/ui/Modal'
 // Datum-Helfer
 // ---------------------------------------------------------------------------
 
+/**
+ * „Heute" ist der aktuelle GESCHÄFTSTAG: Der Buchungstag einer Einlage/Entnahme
+ * gehört zur Schicht — nach Mitternacht bei Tagesbeginn 06:00 noch zum Vortag,
+ * damit das Kassenbuch zum Tagesabschluss desselben Tages passt.
+ */
 function heute(): string {
-  return new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Vienna' })
-}
-
-function addTage(datum: string, n: number): string {
-  const d = new Date(datum)
-  d.setDate(d.getDate() + n)
-  return d.toLocaleDateString('sv-SE')
+  return heuteGeschaeftstag()
 }
 
 function startDesMonats(datum: string): string {
   return datum.slice(0, 7) + '-01'
-}
-
-function endeDesMonats(datum: string): string {
-  const [y, m] = datum.split('-').map(Number)
-  return new Date(y!, m!, 0).toLocaleDateString('sv-SE')
 }
 
 function formatDatum(datum: string): string {
@@ -68,10 +63,7 @@ function berechneZeitraum(preset: ZeitraumPreset): { von: string; bis: string } 
     case 'heute':   return { von: h, bis: h }
     case 'gestern': { const g = addTage(h, -1); return { von: g, bis: g } }
     case 'woche': {
-      const d = new Date(h)
-      const tag = d.getDay() || 7
-      d.setDate(d.getDate() - (tag - 1))
-      const von = d.toLocaleDateString('sv-SE')
+      const von = montagDerWoche(h)
       return { von, bis: addTage(von, 6) }
     }
     case 'monat': return { von: startDesMonats(h), bis: endeDesMonats(h) }

@@ -445,6 +445,49 @@ export type {
   KuechenBerichtResponse,
 } from './schemas/bericht.js'
 
+// Geschäftstag: frei verschiebbarer Tagesbeginn je Mandant (Rechenkern + API-Schemas)
+export {
+  STANDARD_TAGESBEGINN,
+  addTage,
+  beginnFuer,
+  beginnStunde,
+  dauerStunden,
+  geschaeftstagText,
+  geschaeftstagVon,
+  heuteGeschaeftstag,
+  heuteKalendertagWien,
+  istKalenderDatum,
+  istKalendertag,
+  istStandardRegel,
+  istTagesbeginn,
+  normalisiereRegel,
+  stundenAchse,
+  tagesBeginnZeitpunkt,
+  tagesGrenzen,
+  uebergangsVorschau,
+  wienerZeit,
+  wienerZeitpunkt,
+} from './geschaeftstag.js'
+export type {
+  TagesbeginnEintrag,
+  TagesRegel,
+  UebergangsVorschau,
+  WienerZeit,
+} from './geschaeftstag.js'
+export {
+  TagesbeginnDatumSchema,
+  TagesbeginnUhrzeitSchema,
+  TagesbeginnEintragSchema,
+  TagesbeginnInputSchema,
+  TagesbeginnZeileSchema,
+  TagesbeginnStandSchema,
+} from './schemas/geschaeftstag.js'
+export type {
+  TagesbeginnInput,
+  TagesbeginnZeile,
+  TagesbeginnStand,
+} from './schemas/geschaeftstag.js'
+
 // Tagesabschluss
 export {
   TagesabschlussSchema,

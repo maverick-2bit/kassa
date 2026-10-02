@@ -28,6 +28,8 @@ export const ArbeitszeitResponseSchema = z.object({
   userId:        z.string().uuid(),
   userName:      z.string(),
   beginn:        z.string(),
+  /** Geschäftstag des Schichtbeginns (YYYY-MM-DD) — eine Schicht über Mitternacht gehört zu ihrem Starttag */
+  geschaeftstag: z.string(),
   ende:          z.string().nullable(),
   dauerMinuten:  z.number().int().nullable(),
   pauseMinuten:  z.number().int(),

@@ -30,7 +30,7 @@
  */
 
 import { Buffer } from 'node:buffer'
-import { MWST_LABELS, LIEFERBESTELLUNG_PROVIDER_LABELS } from '@kassa/shared'
+import { MWST_LABELS, LIEFERBESTELLUNG_PROVIDER_LABELS, wienerZeit } from '@kassa/shared'
 import type { BelegResponse, KassenbuchResponse, LieferbestellungResponse, MwStSatz, Tagesabschluss } from '@kassa/shared'
 import * as ep from './commands.js'
 
@@ -357,6 +357,16 @@ export function baueZBon(
   add(ep.textLine('TAGESABSCHLUSS (Z-BON)'))
   add(ep.font())
   add(ep.textLine(formatDatumNur(ta.datum)))
+  // Verschobener Tagesbeginn: den Zeitraum ausschreiben (sonst bleibt der Bon wie er war)
+  if (ta.zeitraum) {
+    const grenze = (iso: string): string => {
+      const w = wienerZeit(new Date(iso))
+      return `${formatDatumNur(w.datum)} ${w.hm}`
+    }
+    add(ep.textLine('Geschäftstag:'))
+    add(ep.textLine(`von ${grenze(ta.zeitraum.von)}`))
+    add(ep.textLine(`bis ${grenze(ta.zeitraum.bis)}`))
+  }
   add(trennlinie(W))
 
   // Beleganzahl

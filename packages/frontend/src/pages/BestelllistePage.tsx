@@ -3,7 +3,8 @@ import { useQuery } from '@tanstack/react-query'
 import type { Artikel, Lieferant } from '@kassa/shared'
 import { artikelApi, lieferantApi } from '../lib/api'
 import { getAuth } from '../lib/auth'
-import { formatPreis, heuteLokalYMD } from '../lib/format'
+import { formatPreis } from '../lib/format'
+import { heuteKalendertag } from '../lib/geschaeftstag'
 
 // ---------------------------------------------------------------------------
 // Status-Helfer (gleiche Logik wie LagerstandPage)
@@ -49,7 +50,7 @@ function exportiereCsv(zeilen: BestellZeile[], lieferantenMap: Map<string, strin
   const url  = URL.createObjectURL(blob)
   const a    = document.createElement('a')
   a.href     = url
-  a.download  = `Bestellliste-${heuteLokalYMD()}.csv`
+  a.download  = `Bestellliste-${heuteKalendertag()}.csv`
   document.body.appendChild(a)
   a.click()
   document.body.removeChild(a)
@@ -78,9 +79,10 @@ interface BestellZeile {
 export function BestelllistePage() {
   const auth = getAuth()
 
+  // Nur aktive: deaktivierte Artikel werden nicht mehr nachbestellt
   const { data: alleArtikel = [], isLoading: artikelLaed } = useQuery({
-    queryKey: ['artikel', auth?.mandant.id, 'alle'],
-    queryFn:  () => artikelApi.list(auth!.mandant.id, false),
+    queryKey: ['artikel', auth?.mandant.id, true],
+    queryFn:  () => artikelApi.list(auth!.mandant.id, true),
     enabled:  !!auth,
   })
 

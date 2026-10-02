@@ -12,6 +12,10 @@
  *
  *  GET   /api/mandanten/pin-laenge   (Admin) → Länge + PINs je Länge
  *  PATCH /api/mandanten/pin-laenge   (Admin) → 4 oder 6 Ziffern
+ *
+ *  GET    /api/mandanten/tagesbeginn      → Geschäftstag: Historie + aktueller Geschäftstag
+ *  POST   /api/mandanten/tagesbeginn      (Admin) → neuer Tagesbeginn ab Stichtag
+ *  DELETE /api/mandanten/tagesbeginn/:id  (Admin) → geplanten Wechsel zurücknehmen
  */
 
 import type { FastifyPluginAsync } from 'fastify'
@@ -25,12 +29,19 @@ import {
   MandantModuleUpdateSchema,
   MandantPinLaengeUpdateSchema,
   MandantStammdatenUpdateSchema,
+  TagesbeginnInputSchema,
   type MandantPinLaenge,
 } from '@kassa/shared'
 import { encryptPrivateKey } from '../crypto/master-key.js'
 import { globaleStripeKonfig, ladeStripeKonfig, testeStripeVerbindung } from '../services/stripe.service.js'
 import { getClientIp, logAudit } from '../services/audit.service.js'
 import { alsPinLaenge } from '../services/pin-laenge.js'
+import {
+  GeschaeftstagError,
+  holeTagesbeginnStand,
+  legeTagesbeginnAn,
+  loescheTagesbeginn,
+} from '../services/geschaeftstag.service.js'
 
 export interface MandantRouteOptions { db: Db; config: Config }
 
@@ -256,6 +267,56 @@ export const mandantRoute: FastifyPluginAsync<MandantRouteOptions> = async (fast
     }, request.log)
 
     return reply.send(await pinLaengeStand(opts.db, request.user.mandantId))
+  })
+
+  // ---- Geschäftstag: Tagesbeginn je Mandant (gültig ab Stichtag) ----
+  // Lesen darf jeder Angemeldete (das Frontend rechnet „heute" damit), ändern nur
+  // der Admin — der Tagesbeginn verschiebt Tagesabschluss, Berichte und Zeiterfassung.
+
+  fastify.get('/mandanten/tagesbeginn', guard, async (request, reply) => {
+    return reply.send(await holeTagesbeginnStand(opts.db, request.user.mandantId))
+  })
+
+  fastify.post('/mandanten/tagesbeginn', adminOnly, async (request, reply) => {
+    const body = TagesbeginnInputSchema.safeParse(request.body)
+    if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
+
+    try {
+      const { stand, vorher } = await legeTagesbeginnAn(opts.db, request.user.mandantId, body.data)
+      await logAudit(opts.db, {
+        mandantId: request.user.mandantId,
+        userId:    request.user.sub,
+        aktion:    'einstellungen.geaendert',
+        details:   { bereich: 'tagesbeginn', gueltigAb: body.data.gueltigAb, vorher, nachher: body.data.beginn },
+        ipAdresse: getClientIp(request as Parameters<typeof getClientIp>[0]),
+        userAgent: (request.headers['user-agent'] as string | undefined) ?? null,
+      }, request.log)
+      return reply.status(201).send(stand)
+    } catch (err) {
+      if (err instanceof GeschaeftstagError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      throw err
+    }
+  })
+
+  fastify.delete('/mandanten/tagesbeginn/:id', adminOnly, async (request, reply) => {
+    const p = z.object({ id: z.string().uuid() }).safeParse(request.params)
+    if (!p.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
+
+    try {
+      const { stand, geloescht } = await loescheTagesbeginn(opts.db, request.user.mandantId, p.data.id)
+      await logAudit(opts.db, {
+        mandantId: request.user.mandantId,
+        userId:    request.user.sub,
+        aktion:    'einstellungen.geaendert',
+        details:   { bereich: 'tagesbeginn', zurueckgenommen: geloescht },
+        ipAdresse: getClientIp(request as Parameters<typeof getClientIp>[0]),
+        userAgent: (request.headers['user-agent'] as string | undefined) ?? null,
+      }, request.log)
+      return reply.send(stand)
+    } catch (err) {
+      if (err instanceof GeschaeftstagError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      throw err
+    }
   })
 
   // ---- GET /mandanten/stammdaten ----

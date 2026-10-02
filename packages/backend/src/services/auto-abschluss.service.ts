@@ -9,6 +9,9 @@
  * Regeln (mit dem Betreiber abgestimmt):
  *  - Uhrzeit < 12:00 → abgeschlossen wird der VORTAG (Gastro schließt nach
  *    Mitternacht), sonst der aktuelle Tag.
+ *  - Geschäftstag: Beginnt der Tag des Mandanten nicht um 00:00 (siehe
+ *    @kassa/shared, geschaeftstag.ts), gilt dieselbe Regel für Geschäftstage —
+ *    siehe bestimmeAbschlussTag. Mit Tagesbeginn 00:00 ändert sich nichts.
  *  - Offene Tische blockieren NICHT — ihre Anzahl wird in der E-Mail vermerkt
  *    (die Beträge erscheinen im Abschluss des Abrechnungstags).
  *  - Kein automatischer Z-Bon-Druck (Reprint jederzeit über die Belege-Seite).
@@ -19,10 +22,19 @@
  */
 
 import { and, count, eq, isNotNull } from 'drizzle-orm'
+import {
+  addTage,
+  beginnFuer,
+  geschaeftstagText,
+  geschaeftstagVon,
+  wienerZeitpunkt,
+  type TagesRegel,
+} from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import type { Config } from '../config.js'
 import { kassen, mandanten, tischTabs } from '../db/schema.js'
 import { holeTagesabschluss } from './tagesabschluss.service.js'
+import { ladeTagesRegel } from './geschaeftstag.service.js'
 import { isEmailAktiv, sendeTagesabschlussEmail } from './email.service.js'
 
 export interface AutoAbschlussErgebnis {
@@ -49,15 +61,30 @@ export function wienJetzt(jetzt: Date): { datum: string; hm: string } {
   return { datum, hm }
 }
 
-/** Vortag eines YYYY-MM-DD (kalenderrein über Date.UTC — keine TZ-/DST-Effekte). */
-function vortag(datum: string): string {
-  const [j, m, t] = datum.split('-').map(Number)
-  return new Date(Date.UTC(j!, m! - 1, t! - 1)).toISOString().slice(0, 10)
-}
-
-/** Uhrzeiten vor 12:00 schließen den Vortag ab, spätere den aktuellen Tag. */
-export function bestimmeAbschlussTag(uhrzeit: string, wienDatum: string): string {
-  return uhrzeit < '12:00' ? vortag(wienDatum) : wienDatum
+/**
+ * Welcher (Geschäfts-)Tag wird abgeschlossen, wenn der Abschluss am Wiener
+ * Kalendertag `wienDatum` um `uhrzeit` läuft?
+ *
+ *  - Uhrzeit ab 12:00: der Geschäftstag, der zu diesem Zeitpunkt läuft — wer
+ *    abends abschließt, schließt den laufenden Tag ab.
+ *  - Uhrzeit vor 12:00 und ab dem Tagesbeginn (B): der Tag davor — der Geschäftstag
+ *    ist zu dieser Zeit schon zu Ende. Ohne verschobenen Tagesbeginn (B = 00:00)
+ *    ist das wie bisher der Vortag.
+ *  - Uhrzeit vor 12:00 und vor dem Tagesbeginn: der Geschäftstag läuft noch — er
+ *    wird mit dem Stand zur Abschlusszeit abgeschlossen (die Oberfläche warnt davor).
+ *
+ * Bezugspunkt ist der geplante Ausführungszeitpunkt (Datum + Uhrzeit), NICHT der
+ * Zeitpunkt der Prüfung: der Cron läuft den ganzen Rest des Kalendertags weiter,
+ * und ein späterer Prüfzeitpunkt würde sonst nach dem Tagesbeginn einen anderen Tag
+ * ergeben und den Idempotenz-Stempel unterlaufen.
+ *
+ * Ohne `regel` (Standard 00:00) gilt die alte Regel: vor 12:00 der Vortag, sonst
+ * der aktuelle Tag.
+ */
+export function bestimmeAbschlussTag(uhrzeit: string, wienDatum: string, regel: TagesRegel = []): string {
+  const laufenderTag = geschaeftstagVon(regel, wienerZeitpunkt(wienDatum, uhrzeit))
+  if (uhrzeit >= '12:00') return laufenderTag
+  return uhrzeit >= beginnFuer(regel, wienDatum) ? addTage(laufenderTag, -1) : laufenderTag
 }
 
 /**
@@ -88,11 +115,23 @@ export async function fuehreFaelligeAutoAbschluesseDurch(
 
   const ergebnisse: AutoAbschlussErgebnis[] = []
 
+  // Tagesbeginn je Mandant — einmal je Lauf laden, nicht je Kasse
+  const regeln = new Map<string, TagesRegel>()
+  const regelVon = async (mandantId: string): Promise<TagesRegel> => {
+    let regel = regeln.get(mandantId)
+    if (!regel) {
+      regel = await ladeTagesRegel(db, mandantId)
+      regeln.set(mandantId, regel)
+    }
+    return regel
+  }
+
   for (const k of kandidaten) {
     const uhrzeit = k.autoAbschlussUhrzeit!
     if (hm < uhrzeit) continue // Uhrzeit heute noch nicht erreicht
 
-    const tag = bestimmeAbschlussTag(uhrzeit, datum)
+    const regel = await regelVon(k.mandantId)
+    const tag = bestimmeAbschlussTag(uhrzeit, datum, regel)
     if (k.letzterAutoAbschlussTag === tag) continue // für diesen Tag schon gelaufen
 
     try {
@@ -138,6 +177,7 @@ export async function fuehreFaelligeAutoAbschluesseDurch(
             })),
             offeneTische,
             automatisch: true,
+            ...(ta.zeitraum && { zeitraumText: geschaeftstagText(ta.zeitraum.von, ta.zeitraum.bis) }),
           }, config)
           emailGesendet = true
         } catch (err) {
