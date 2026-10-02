@@ -13,6 +13,9 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
 import { and, eq, sql, type SQL } from 'drizzle-orm'
 import type { FinanzOnlineClient } from '@kassa/rksv'
 import { artikel, kasseArtikelLayout, kassen, kategorien } from '../../src/db/schema.js'
@@ -28,6 +31,7 @@ function mockFoClient(): FinanzOnlineClient {
 }
 
 const UNBEKANNT = '00000000-0000-4000-8000-000000000000'
+const MIGRATION = join(dirname(fileURLToPath(import.meta.url)), '../../drizzle/0060_kasse_artikel_layout.sql')
 
 type Eintrag = { artikelId: string; position: number | null; ausgeblendet: boolean }
 const platziert = (artikelId: string, position: number): Eintrag => ({ artikelId, position, ausgeblendet: false })
@@ -409,6 +413,16 @@ describe('Artikel-Anordnung je Kasse (Integration, echtes PostgreSQL)', () => {
       await expect(zeile(g.ids[0]!, 2, false)).rejects.toThrow()         // Artikel doppelt
       await zeile(g.ids[1]!, null, true)                                 // ausgeblendete dürfen null mehrfach teilen
       await idb.db.delete(kasseArtikelLayout).where(eq(kasseArtikelLayout.kategorieId, g.kategorieId))
+    })
+
+    it('Migration 0060 lässt sich wiederholen (idempotent) und lässt vorhandene Zeilen unberührt', async () => {
+      const g = await gruppeMitArtikeln(tokenA, 1)
+      await speichere(kasseA1, g.kategorieId, [platziert(g.ids[0]!, 6)])
+      const teile = readFileSync(MIGRATION, 'utf8').split('--> statement-breakpoint')
+      for (let lauf = 0; lauf < 2; lauf++) {
+        for (const teil of teile) if (teil.trim()) await idb.db.execute(sql.raw(teil))
+      }
+      expect(await layoutVon(kasseA1, g.kategorieId)).toEqual([platziert(g.ids[0]!, 6)])
     })
 
     it('Atomarität: scheitert das Einfügen, bleibt die bisherige Anordnung vollständig erhalten', async () => {
