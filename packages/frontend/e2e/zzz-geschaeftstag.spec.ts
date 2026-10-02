@@ -20,7 +20,8 @@ import { test, expect, type APIRequestContext, type Page } from '@playwright/tes
 const ADMIN_EMAIL    = 'e2e-onboarding@test.at'
 const ADMIN_PASSWORT = 'e2e-passwort-12345'
 
-test.use({ serviceWorkers: 'block' })
+// Wiener Zeit im Browser — die Uhrzeiten der Zeiterfassungs-Zeilen kommen aus der Ortszeit des Geräts
+test.use({ serviceWorkers: 'block', timezoneId: 'Europe/Vienna', locale: 'de-AT' })
 
 type Login = { token: string; user: { id: string }; mandant: { id: string } & Record<string, unknown>; kassen: { id: string }[] }
 
@@ -187,6 +188,7 @@ test('„heute" folgt dem Geschäftstag: Tagesabschluss und Berichte um 03:00 vo
 
     // Berichte: „Heute" ist ebenfalls der Geschäftstag
     await page.goto('/berichte')
+    await expect(page.getByTestId('berichte-geschaeftstag-hinweis')).toContainText('Geschäftstage (Tagesbeginn 06:00 Uhr)')
     await page.getByRole('button', { name: 'Umsatz', exact: true }).click()
     await page.getByRole('button', { name: 'Heute', exact: true }).click()
     await expect(page.locator('input[type="date"]').first()).toHaveValue(heute)

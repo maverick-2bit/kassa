@@ -1,11 +1,11 @@
 import { useState, useMemo, useCallback } from 'react'
 import { useQuery, useQueries } from '@tanstack/react-query'
 import type { ArtikelBerichtResponse, BerichtGesamt, BerichtGruppierung, BerichtResponse, KassenVergleichResponse, KassenVergleichZeile, KellnerBerichtResponse, KellnerBerichtZeile, KuechenBerichtResponse, Station, StundenBerichtResponse, StundenBerichtZeile, WarengruppeBerichtResponse } from '@kassa/shared'
-import { STATION_LABELS } from '@kassa/shared'
+import { STATION_LABELS, beginnFuer } from '@kassa/shared'
 import { berichtApi } from '../lib/api'
-import { getAuth } from '../lib/auth'
+import { getAuth, tagesRegel } from '../lib/auth'
 import { formatPreis } from '../lib/format'
-import { addTage, endeDesMonats, heuteGeschaeftstag, montagDerWoche } from '../lib/geschaeftstag'
+import { addTage, endeDesMonats, heuteGeschaeftstag, heuteKalendertag, montagDerWoche } from '../lib/geschaeftstag'
 import { Button } from '../components/ui/Button'
 
 // ---------------------------------------------------------------------------
@@ -103,6 +103,7 @@ const TABS: [BerichtTab, string][] = [
 ]
 
 export function BerichtePage() {
+  const tagesbeginnHeute = beginnFuer(tagesRegel(), heuteKalendertag())
   // ?tab=kueche etc. — Deep-Link vom Dashboard (Küchen-Laufzeiten-Karte)
   const [aktTab, setAktTab] = useState<BerichtTab>(() => {
     const t = new URLSearchParams(window.location.search).get('tab')
@@ -114,6 +115,13 @@ export function BerichtePage() {
       <div>
         <h1 className="text-2xl font-bold text-ink">Berichte</h1>
         <p className="mt-1 text-sm text-ink-muted">Umsatz- und Artikel-Auswertungen</p>
+        {/* Verschobener Tagesbeginn: klarstellen, was ein „Tag" in allen Auswertungen ist */}
+        {tagesbeginnHeute !== '00:00' && (
+          <p data-testid="berichte-geschaeftstag-hinweis" className="mt-1 text-xs text-ink-subtle">
+            Alle Zeiträume sind Geschäftstage (Tagesbeginn {tagesbeginnHeute} Uhr): Ein Tag läuft von {tagesbeginnHeute} Uhr bis
+            {' '}{tagesbeginnHeute} Uhr des Folgetages — eine Schicht über Mitternacht zählt zu dem Tag, an dem sie begonnen hat.
+          </p>
+        )}
       </div>
 
       <div className="flex gap-1 border-b border-line overflow-x-auto">

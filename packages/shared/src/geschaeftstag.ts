@@ -186,16 +186,32 @@ export function wienerZeit(zeitpunkt: Date): WienerZeit {
  * So stimmen die Tagesgrenzen im Browser und in der Datenbank überein.
  */
 export function wienerZeitpunkt(datum: string, hm: string): Date {
+  const schluessel = `${datum} ${hm}`
+  const bekannt = ZEITPUNKT_MERKER.get(schluessel)
+  if (bekannt !== undefined) return new Date(bekannt)
+
   const [j, m, t] = datum.split('-').map(Number)
   const [h, mi]   = hm.split(':').map(Number)
   const lokalAlsUtc = Date.UTC(j!, m! - 1, t!, h!, mi!)
 
+  let ergebnis: Date
   const mez = new Date(lokalAlsUtc - 60 * 60_000)
-  if (wienerZeit(mez).offsetMin === 60) return mez       // Winterzeit (oder Überlappung)
-  const mesz = new Date(lokalAlsUtc - 120 * 60_000)
-  if (wienerZeit(mesz).offsetMin === 120) return mesz    // Sommerzeit
-  return mez                                              // Lücke: Offset vor dem Wechsel
+  if (wienerZeit(mez).offsetMin === 60) {
+    ergebnis = mez                                         // Winterzeit (oder Überlappung)
+  } else {
+    const mesz = new Date(lokalAlsUtc - 120 * 60_000)
+    ergebnis = wienerZeit(mesz).offsetMin === 120 ? mesz   // Sommerzeit
+      : mez                                                // Lücke: Offset vor dem Wechsel
+  }
+
+  // Massenverarbeitung (Export über ein Jahr Belege) fragt immer wieder dieselben Tage ab
+  if (ZEITPUNKT_MERKER.size >= 4000) ZEITPUNKT_MERKER.clear()
+  ZEITPUNKT_MERKER.set(schluessel, ergebnis.getTime())
+  return ergebnis
 }
+
+/** Gemerkte Ergebnisse von wienerZeitpunkt (rein, deshalb gefahrlos); begrenzt, damit nichts wächst. */
+const ZEITPUNKT_MERKER = new Map<string, number>()
 
 // ---------------------------------------------------------------------------
 // Geschäftstag
