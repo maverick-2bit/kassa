@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
-import { KATEGORIE_FARBE_HEX, type Artikel, type KategorieFarbe, type ModifikatorGruppe, type ModifikatorAuswahl } from '@kassa/shared'
+import { farbeZuHex, type Artikel, type ModifikatorGruppe, type ModifikatorAuswahl } from '@kassa/shared'
 import { artikelApi, kategorieApi, modifikatorApi, tischTabApi, kellnerKonfigApi } from '../lib/api'
 import { getAuth, clearAuth, gaengeAktiv as istGaengeAktiv, gaengeAnzahl } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
@@ -589,7 +589,7 @@ export function ArtikelWaehlenPage() {
             const ausverkauft = a.lagerstandMenge !== null && a.lagerstandMenge !== undefined && a.lagerstandMenge <= 0
             // Eigene Artikel-Farbe geht vor, sonst die der Warengruppe
             const farbName = a.farbe ?? kategorien.find(k => k.id === a.kategorieId)?.farbe
-            const farbeHex = farbName ? KATEGORIE_FARBE_HEX[farbName as KategorieFarbe] : undefined
+            const farbeHex = farbName ? farbeZuHex(farbName) : undefined
             return (
               <button
                 key={a.id}

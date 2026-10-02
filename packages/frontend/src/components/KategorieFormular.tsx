@@ -14,10 +14,12 @@ import { Input } from './ui/Input'
 import { Select } from './ui/Select'
 import { Button } from './ui/Button'
 import { FarbAuswahl } from './FarbAuswahl'
+import { baumFlach, nachkommenIds } from '../lib/kategorie-baum'
 
 type FormValues = {
   name:            string
   farbe:           KategorieFarbe
+  parentId:        string
   reihenfolge:     string
   bonierdruckerId: string
   station:         string
@@ -25,6 +27,8 @@ type FormValues = {
 
 interface Props {
   initial?:       Kategorie | null
+  /** Alle Warengruppen — für die Auswahl „Übergeordnete Gruppe" */
+  kategorien?:    Kategorie[] | undefined
   bonierdrucker?: Bonierdrucker[] | undefined
   onSubmit:       (input: KategorieInput) => void
   onCancel:       () => void
@@ -32,11 +36,12 @@ interface Props {
   fehler?:        string | undefined
 }
 
-export function KategorieFormular({ initial, bonierdrucker, onSubmit, onCancel, loading, fehler }: Props) {
+export function KategorieFormular({ initial, kategorien, bonierdrucker, onSubmit, onCancel, loading, fehler }: Props) {
   const { register, handleSubmit, formState: { errors }, reset, setValue, watch } = useForm<FormValues>({
     defaultValues: {
       name:            initial?.name               ?? '',
       farbe:           initial?.farbe              ?? 'grau',
+      parentId:        initial?.parentId           ?? '',
       reihenfolge:     String(initial?.reihenfolge ?? 0),
       bonierdruckerId: initial?.bonierdruckerId    ?? '',
       station:         initial?.station            ?? '',
@@ -47,16 +52,25 @@ export function KategorieFormular({ initial, bonierdrucker, onSubmit, onCancel, 
     reset({
       name:            initial?.name               ?? '',
       farbe:           initial?.farbe              ?? 'grau',
+      parentId:        initial?.parentId           ?? '',
       reihenfolge:     String(initial?.reihenfolge ?? 0),
       bonierdruckerId: initial?.bonierdruckerId    ?? '',
       station:         initial?.station            ?? '',
     })
   }, [initial, reset])
 
+  // Auswahl: nicht die Gruppe selbst und nicht ihre eigenen Untergruppen (Zyklus)
+  const parentOptionen = (() => {
+    const alle = kategorien ?? []
+    const gesperrt = new Set(initial ? [initial.id, ...nachkommenIds(alle, initial.id)] : [])
+    return baumFlach(alle).filter(e => !gesperrt.has(e.kategorie.id))
+  })()
+
   const submit = handleSubmit((values) => {
     onSubmit({
       name:            values.name.trim(),
       farbe:           values.farbe,
+      parentId:        values.parentId || null,
       reihenfolge:     parseInt(values.reihenfolge || '0', 10) || 0,
       bonierdruckerId: values.bonierdruckerId || null,
       station:         (values.station || null) as Station | null,
@@ -83,7 +97,18 @@ export function KategorieFormular({ initial, bonierdrucker, onSubmit, onCancel, 
         />
       </Field>
 
-      <Field label="Reihenfolge" hint="Kleinere Zahl = weiter links im Tab">
+      {kategorien && (
+        <Field label="Übergeordnete Gruppe" hint="Leer = Hauptgruppe (eigener Reiter). Mit Auswahl erscheint diese Gruppe als Kachel in der übergeordneten Gruppe.">
+          <Select {...register('parentId')}>
+            <option value="">— keine (Hauptgruppe) —</option>
+            {parentOptionen.map(({ kategorie: k, tiefe }) => (
+              <option key={k.id} value={k.id}>{'\u00a0\u00a0'.repeat(tiefe)}{tiefe > 0 ? '↳ ' : ''}{k.name}{k.aktiv ? '' : ' (deaktiviert)'}</option>
+            ))}
+          </Select>
+        </Field>
+      )}
+
+      <Field label="Reihenfolge" hint="Kleinere Zahl = weiter links im Tab bzw. früher in der Kachelreihe">
         <Input
           type="number"
           min="0"

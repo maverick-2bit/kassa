@@ -156,15 +156,24 @@ export {
   KategorieInputSchema,
   KategorieUpdateSchema,
   KategorieFarbeSchema,
+  KategorieFarbeNameSchema,
+  HexFarbeSchema,
   KATEGORIE_FARBE_LABELS,
   KATEGORIE_FARBE_HEX,
+  KATEGORIE_MAX_TIEFE,
+  farbeZuHex,
 } from './schemas/kategorie.js'
 export type {
   Kategorie,
   KategorieInput,
   KategorieUpdate,
   KategorieFarbe,
+  KategorieFarbeName,
 } from './schemas/kategorie.js'
+
+// Raster-Platzierung (Untergruppen-Kacheln, Slots, Leerfelder)
+export { baueRaster } from './raster.js'
+export type { RasterZelle, RasterArtikel } from './raster.js'
 
 // Stationen + Bonierung
 export {

@@ -47,6 +47,8 @@ export const ArtikelSchema = z.object({
   /** Eigene Kachel-Farbe; null = Farbe der Warengruppe (Muster wie station) */
   farbe:                KategorieFarbeSchema.nullable(),
   kategorieId:          z.string().uuid().nullable(),
+  /** Slot (1..n) im Raster der Warengruppe; fehlende Nummern = leere Felder; null = nach reihenfolge anhängen */
+  rasterPosition:       z.number().int().positive().nullable(),
   aktiv:                z.boolean(),
   lagerstandAktiv:      z.boolean(),
   lagerstandMenge:      z.number().int().nonnegative().nullable(),
@@ -84,6 +86,7 @@ export const ArtikelInputSchema = z.object({
   station:         StationSchema.optional().nullable(),
   farbe:           KategorieFarbeSchema.optional().nullable(),
   kategorieId:     z.string().uuid().optional().nullable(),
+  rasterPosition:  z.number().int().positive().max(999).optional().nullable(),
   lagerstandAktiv: z.boolean().default(false),
   lagerstandMenge: z.number().int().nonnegative().nullable().default(null),
   mindestbestand:  z.number().int().nonnegative().nullable().default(null),
@@ -106,6 +109,7 @@ export const ArtikelUpdateSchema = z.object({
   station:              StationSchema.optional().nullable(),
   farbe:                KategorieFarbeSchema.optional().nullable(),
   kategorieId:          z.string().uuid().optional().nullable(),
+  rasterPosition:       z.number().int().positive().max(999).optional().nullable(),
   aktiv:                z.boolean().optional(),
   lagerstandAktiv:      z.boolean().optional(),
   lagerstandMenge:      z.number().int().nonnegative().nullable().optional(),

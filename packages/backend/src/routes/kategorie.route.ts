@@ -68,7 +68,7 @@ export const kategorieRoute: FastifyPluginAsync<KategorieRouteOptions> = async (
     const update = KategorieUpdateSchema.safeParse(request.body)
     if (!update.success) return reply.status(400).send({ fehler: update.error.issues })
 
-    const result = await aktualisiereKategorie(opts.db, id.data.id, update.data)
+    const result = await aktualisiereKategorie(opts.db, id.data.id, update.data, request.user.mandantId)
     if (!result) return reply.status(404).send({ fehler: 'Kategorie nicht gefunden' })
     return reply.send(result)
   })

@@ -27,7 +27,7 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { KATEGORIE_FARBE_HEX, type Artikel, type Kategorie, type KategorieFarbe, type Startseite, type KellnerTischwahl, type KellnerModus } from '@kassa/shared'
+import { farbeZuHex, type Artikel, type Kategorie, type Startseite, type KellnerTischwahl, type KellnerModus } from '@kassa/shared'
 import { artikelApi, kategorieApi, posConfigApi, bonierdruckerApi, tischplanApi, kasseApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { Button } from '../components/ui/Button'
@@ -320,7 +320,7 @@ function TabWarengruppen({
                     {handle}
                     <div
                       className="h-3 w-3 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: KATEGORIE_FARBE_HEX[k.farbe] ?? '#9ca3af' }}
+                      style={{ backgroundColor: farbeZuHex(k.farbe) ?? '#9ca3af' }}
                     />
                     <span className="flex-1 text-sm font-medium text-ink">{k.name}</span>
                     {!k.aktiv && (
@@ -711,7 +711,7 @@ function TabFavoriten({ alleArtikel, kategorien, kasseId }: {
                 {liste.map((eintrag, i) => {
                   const a = eintrag.artikel
                   const farbe    = a ? (a.farbe ?? (a.kategorieId ? farbeProKategorie.get(a.kategorieId) : undefined)) : undefined
-                  const farbeHex = farbe ? KATEGORIE_FARBE_HEX[farbe as KategorieFarbe] : undefined
+                  const farbeHex = farbe ? farbeZuHex(farbe) : undefined
                   // Bedienleiste je Kachel; onPointerDown stoppen, damit kein Drag startet
                   const leiste = (
                     <div className="flex items-center justify-end gap-0.5 border-t border-line bg-panel-2/60 px-1 py-0.5">

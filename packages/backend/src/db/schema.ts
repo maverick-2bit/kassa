@@ -647,6 +647,8 @@ export const kategorien = pgTable('kategorien', {
   farbe:           varchar('farbe', { length: 20 }).notNull().default('grau'),
   reihenfolge:     integer('reihenfolge').notNull().default(0),
   aktiv:           boolean('aktiv').notNull().default(true),
+  /** Übergeordnete Warengruppe (Untergruppen-Baum); null = Hauptgruppe/Reiter */
+  parentId:        uuid('parent_id').references((): AnyPgColumn => kategorien.id, { onDelete: 'set null' }),
   /** Standard-Bonierdrucker für alle Artikel dieser Kategorie */
   bonierdruckerId: uuid('bonierdrucker_id').references(() => bonierdrucker.id, { onDelete: 'set null' }),
   /** KDS-Stations-Vorgabe für alle Artikel dieser Kategorie (artikel.station geht vor) */
@@ -657,6 +659,7 @@ export const kategorien = pgTable('kategorien', {
   updatedAt:       timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
   mandantIdx: index('kategorien_mandant_idx').on(t.mandantId),
+  parentIdx:  index('kategorien_parent_idx').on(t.parentId),
 }))
 
 // ---------------------------------------------------------------------------
@@ -676,6 +679,8 @@ export const artikel = pgTable('artikel', {
   farbe:               varchar('farbe', { length: 20 }),
   /** Optionale Kategorie-Zuordnung für Tab-Gruppierung in der POS-Ansicht */
   kategorieId:         uuid('kategorie_id').references(() => kategorien.id),
+  /** Slot (1..n) im Kassen-Raster der Warengruppe; Lücken = leere Felder; null = nach reihenfolge anhängen */
+  rasterPosition:      integer('raster_position'),
   aktiv:               boolean('aktiv').notNull().default(true),
   /** Countdown-Artikel: Lagerstand wird bei jeder Buchung automatisch reduziert */
   lagerstandAktiv:     boolean('lagerstand_aktiv').notNull().default(false),
