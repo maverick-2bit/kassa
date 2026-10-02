@@ -29,10 +29,26 @@ test.use({ serviceWorkers: 'block' })
 
 type Login = { token: string; user: { id: string }; mandant: { id: string } & Record<string, unknown>; kassen: { id: string }[] }
 
+/**
+ * /api/auth/login ist auf 10 Anmeldungen je Minute und IP begrenzt (429). Die Suite meldet sich
+ * gerade am Ende oft an — bei 429 daher abwarten und erneut versuchen, statt fälschlich in
+ * /api/setup zu fallen („E-Mail bereits vergeben").
+ */
+async function loginAbwarten(request: APIRequestContext) {
+  const body = { data: { email: ADMIN_EMAIL, passwort: ADMIN_PASSWORT } }
+  for (let versuch = 0; versuch < 6; versuch++) {
+    const res = await request.post('/api/auth/login', body)
+    if (res.status() !== 429) return res
+    const sekunden = Math.min(Math.max(Number(res.headers()['retry-after']) || 10, 2), 65)
+    await new Promise(r => setTimeout(r, sekunden * 1000))
+  }
+  return request.post('/api/auth/login', body)
+}
+
 let gemerkterLogin: Login | null = null
 async function adminLogin(request: APIRequestContext): Promise<Login> {
   if (gemerkterLogin) return gemerkterLogin
-  let res = await request.post('/api/auth/login', { data: { email: ADMIN_EMAIL, passwort: ADMIN_PASSWORT } })
+  let res = await loginAbwarten(request)
   if (!res.ok()) {
     const setup = await request.post('/api/setup', {
       data: {
@@ -42,7 +58,7 @@ async function adminLogin(request: APIRequestContext): Promise<Login> {
       },
     })
     if (!setup.ok()) throw new Error(`Setup fehlgeschlagen (${setup.status()}): ${await setup.text()}`)
-    res = await request.post('/api/auth/login', { data: { email: ADMIN_EMAIL, passwort: ADMIN_PASSWORT } })
+    res = await loginAbwarten(request)
     if (!res.ok()) throw new Error(`Login nach Setup fehlgeschlagen (${res.status()})`)
   }
   gemerkterLogin = (await res.json()) as Login
@@ -110,7 +126,7 @@ async function oeffneArtikelReiter(page: Page) {
 }
 
 test('Kachel-Anordnung je Kasse: Editor per Knöpfen, Kasse/Tisch/Kellner-App folgen, andere Kasse unberührt, Standard-Ebene, Zurücksetzen', async ({ page, request, browser }) => {
-  test.setTimeout(180_000)
+  test.setTimeout(240_000)
   await expect.poll(async () => (await request.get('/api/health')).status(), { timeout: 35_000, intervals: [500, 1000, 2000, 3000] }).toBe(200)
   const login = await adminLogin(request)
   const token = login.token
@@ -459,7 +475,7 @@ test('Kachel-Anordnung je Kasse: Editor per Knöpfen, Kasse/Tisch/Kellner-App fo
 // ---------------------------------------------------------------------------
 
 test('Kachel-Anordnung: Ziehen auf eine freie Zelle, auf eine belegte (tauscht), auf die Ablage und aus der Ablage zurück', async ({ page, request }) => {
-  test.setTimeout(120_000)
+  test.setTimeout(180_000)
   await expect.poll(async () => (await request.get('/api/health')).status(), { timeout: 35_000, intervals: [500, 1000, 2000, 3000] }).toBe(200)
   const login = await adminLogin(request)
   const token = login.token
@@ -490,6 +506,11 @@ test('Kachel-Anordnung: Ziehen auf eine freie Zelle, auf eine belegte (tauscht),
     await page.mouse.move(startX + 14, startY + 14, { steps: 4 })
     await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 14 })
     await page.mouse.up()
+    // dnd-kit verschluckt nach dem Loslassen noch 50 ms lang alle Klicks am Dokument (capture-Listener, damit der
+    // Zieh-Abschluss keinen Klick auf das Ziel auslöst). Ein Klick direkt danach — etwa auf „Speichern" — ginge
+    // verloren (gemessen: Klick nach 8 ms wirkungslos, nach 100 ms normal). Ein Mensch ist nie so schnell,
+    // der Test schon → kurz warten.
+    await page.waitForTimeout(120)
   }
 
   try {
