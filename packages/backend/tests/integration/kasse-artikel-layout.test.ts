@@ -544,4 +544,30 @@ describe('Artikel-Anordnung je Kasse (Integration, echtes PostgreSQL)', () => {
       expect((await standard(UNBEKANNT, [])).statusCode).toBe(404)
     })
   })
+
+  // -------------------------------------------------------------------------
+  // Als LETZTES: der Sauberer-Neustart-Import löscht den gesamten Katalog von Mandant A
+  describe('Sauberer Neustart (Layout-Import mit katalogLoeschen)', () => {
+    it('entfernt die Anordnungen mit den Artikeln und Warengruppen (Cascade) — Mandant B behält seine', async () => {
+      const g = await gruppeMitArtikeln(tokenA, 2)
+      const gb = await gruppeMitArtikeln(tokenB, 1)
+      await speichere(kasseA1, g.kategorieId, [platziert(g.ids[0]!, 1), versteckt(g.ids[1]!)])
+      await speichere(kasseB, gb.kategorieId, [platziert(gb.ids[0]!, 3)], tokenB)
+      const zeilen = async (mandantId: string) =>
+        (await idb.db.select().from(kasseArtikelLayout).where(eq(kasseArtikelLayout.mandantId, mandantId))).length
+      expect(await zeilen(mandantA)).toBeGreaterThan(0)
+      const zeilenB = await zeilen(mandantB)
+      expect(zeilenB).toBeGreaterThan(0)
+
+      const res = await srv.fastify.inject({
+        method: 'POST', url: '/api/artikel/layout-import?dryRun=false&katalogLoeschen=true&spaltenSetzen=false', headers: mit(tokenA),
+        payload: { gruppen: [{ name: 'Neustart', farbe: '#112233', artikel: [], untergruppen: [] }] },
+      })
+      expect(res.statusCode, res.body).toBe(200)
+      expect(await zeilen(mandantA)).toBe(0)
+      expect(await zeilen(mandantB)).toBe(zeilenB)
+      expect(await layoutVon(kasseA1, g.kategorieId)).toBeUndefined()
+      expect((await holeLayouts(kasseB, tokenB)).map(l => l.kategorieId)).toContain(gb.kategorieId)
+    })
+  })
 })
