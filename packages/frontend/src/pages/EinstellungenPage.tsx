@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { QRCodeSVG } from 'qrcode.react'
-import { ALLE_STATIONEN, STATION_LABELS, type Station, type ZvtConfig, type WeitereKasseInput, type PosKonfig, type Artikel, type Kategorie, type SeeTyp } from '@kassa/shared'
+import { ALLE_STATIONEN, STATION_LABELS, beginnFuer, type Station, type ZvtConfig, type WeitereKasseInput, type PosKonfig, type Artikel, type Kategorie, type SeeTyp } from '@kassa/shared'
 import { druckerApi, druckerPoolApi, kdsApi, kdsGeraetApi, seeApi, zvtApi, downloadDepExport, healthApi, monitoringApi, mandantApi, stripeApi, kasseApi, kasseErweiterungApi, kategorieApi, artikelApi, posConfigApi, tischplanApi, dbBackupApi, belegApi, systemApi, rksvSelbsttestApi, type DruckerConfig, type KdsConfig, type DbSicherungRow, type MonitoringStatus } from '../lib/api'
 import type { DruckerPool, DruckerPoolInput } from '@kassa/shared'
 import { Modal } from '../components/ui/Modal'
@@ -12,7 +12,8 @@ import { DruckerStatusLed } from '../components/DruckerStatusLed'
 import { formatAusfallDauer } from '../components/SeeStatusBanner'
 import { getKasseIdentity, setKasseIdentity } from '../lib/kasse'
 import { useServerHost, merkeServerHost } from '../lib/serverHost'
-import { getAuth, hasModul, updateKasseBezeichnung, addKasse, removeKasse } from '../lib/auth'
+import { getAuth, hasModul, tagesRegel, updateKasseBezeichnung, addKasse, removeKasse } from '../lib/auth'
+import { heuteKalendertag } from '../lib/geschaeftstag'
 import { Field } from '../components/ui/Field'
 import { Input } from '../components/ui/Input'
 import { Button } from '../components/ui/Button'
@@ -933,7 +934,21 @@ function AutoAbschlussSektion() {
     onError: (err) => setMeldung({ typ: 'fehler', text: err instanceof Error ? err.message : String(err) }),
   })
 
-  const vortag = aktiv && uhrzeit < '12:00'
+  // Geschäftstag: Der Tagesbeginn (heute geltend) bestimmt, welcher Tag um `uhrzeit` abgeschlossen wird
+  // (gleiche Regel wie im Backend, bestimmeAbschlussTag). Mit Tagesbeginn 00:00 bleibt alles wie bisher.
+  const beginnHeute     = beginnFuer(tagesRegel(), heuteKalendertag())
+  const verschoben      = beginnHeute !== '00:00'
+  const vortag          = aktiv && uhrzeit < '12:00' && uhrzeit >= beginnHeute
+  const vorTagesbeginn  = aktiv && verschoben && uhrzeit < beginnHeute
+  const abschlussHinweis =
+    !aktiv           ? 'Aus — Abschluss nur manuell über die Belege-Seite.'
+    : vorTagesbeginn ? `Um ${uhrzeit} Uhr läuft der Geschäftstag noch (er endet erst um ${beginnHeute} Uhr).`
+    : vortag         ? (verschoben
+                         ? `Um ${uhrzeit} Uhr wird der soeben beendete Geschäftstag (Vortag) abgeschlossen.`
+                         : `Um ${uhrzeit} Uhr wird der VORTAG abgeschlossen (Uhrzeiten vor 12:00).`)
+    :                  (verschoben
+                         ? `Um ${uhrzeit} Uhr wird der laufende Geschäftstag abgeschlossen.`
+                         : `Um ${uhrzeit} Uhr wird der laufende Tag abgeschlossen.`)
 
   return (
     <section className="rounded-lg bg-panel shadow-sm border border-line p-6 space-y-4">
@@ -959,7 +974,7 @@ function AutoAbschlussSektion() {
         </Field>
         <Field
           label="Automatisch abschließen"
-          hint={vortag ? `Um ${uhrzeit} Uhr wird der VORTAG abgeschlossen (Uhrzeiten vor 12:00).` : aktiv ? `Um ${uhrzeit} Uhr wird der laufende Tag abgeschlossen.` : 'Aus — Abschluss nur manuell über die Belege-Seite.'}
+          hint={abschlussHinweis}
         >
           <div className="flex items-center gap-3">
             <button
@@ -981,6 +996,16 @@ function AutoAbschlussSektion() {
           </div>
         </Field>
       </div>
+
+      {vorTagesbeginn && (
+        <div data-testid="auto-abschluss-vor-tagesbeginn" className="rounded-md p-3 text-sm bg-amber-50 border border-amber-200 text-amber-800">
+          Der Geschäftstag ist zu diesem Zeitpunkt noch nicht zu Ende: Er beginnt um {beginnHeute} Uhr und
+          läuft bis {beginnHeute} Uhr des Folgetages. Um {uhrzeit} Uhr wird der noch laufende Geschäftstag
+          mit dem Stand zu dieser Uhrzeit abgeschlossen — spätere Belege kommen in der Zusammenfassung nicht
+          mehr vor (der Tagesabschluss selbst enthält sie weiterhin). Soll der ganze Geschäftstag erfasst
+          werden, stelle die Uhrzeit auf {beginnHeute} Uhr oder später.
+        </div>
+      )}
 
       {aktiv && email.trim() === '' && (
         <div className="rounded-md p-3 text-sm bg-amber-50 border border-amber-200 text-amber-800">

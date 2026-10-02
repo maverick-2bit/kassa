@@ -7,10 +7,12 @@
 
 import { useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
+import { geschaeftstagText } from '@kassa/shared'
 import { tagesabschlussApi, kassensturzApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { getAuth } from '../lib/auth'
 import { formatPreis } from '../lib/format'
+import { heuteGeschaeftstag } from '../lib/geschaeftstag'
 import { downloadKassensturzPdf } from '../lib/pdf'
 import { Button } from '../components/ui/Button'
 
@@ -41,10 +43,6 @@ const STUECKELUNG: Stueck[] = [
   { label: '1 Cent',  wertCent:     1 },
 ]
 
-function heuteLokal(): string {
-  return new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Vienna' })
-}
-
 function formatDatumAnzeige(datum: string): string {
   const [y, m, d] = datum.split('-')
   return `${d}.${m}.${y}`
@@ -57,7 +55,8 @@ function formatDatumAnzeige(datum: string): string {
 export function KassensturzPage() {
   const identity  = getKasseIdentity()!
   const auth      = getAuth()!
-  const [datum, setDatum]           = useState(heuteLokal())
+  // „Heute" = aktueller Geschäftstag (der Bar-Soll kommt aus dem Tagesabschluss dieses Tages)
+  const [datum, setDatum]           = useState(heuteGeschaeftstag())
   const [stueck, setStueck]         = useState<Record<number, number>>({})
   const [startgeld, setStartgeld]   = useState('')
   const [pdfLaedt, setPdfLaedt]     = useState(false)
@@ -135,7 +134,7 @@ export function KassensturzPage() {
           <input
             type="date"
             value={datum}
-            max={heuteLokal()}
+            max={heuteGeschaeftstag()}
             onChange={e => { setDatum(e.target.value); reset() }}
             className="rounded-md border border-line-strong px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
           />
@@ -196,6 +195,10 @@ export function KassensturzPage() {
           <h2 className="text-sm font-semibold text-ink">
             Ergebnis — {formatDatumAnzeige(datum)}
           </h2>
+          {/* Verschobener Tagesbeginn: zeigt, welcher Zeitraum den Bar-Soll ergibt */}
+          {ta?.zeitraum && (
+            <p className="mt-1 text-xs text-ink-muted">{geschaeftstagText(ta.zeitraum.von, ta.zeitraum.bis)}</p>
+          )}
         </div>
         <div className="p-4 space-y-3">
           {isLoading && <p className="text-sm text-ink-subtle">Lade Soll-Betrag…</p>}

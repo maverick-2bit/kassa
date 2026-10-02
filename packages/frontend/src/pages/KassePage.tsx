@@ -25,7 +25,8 @@ import { angebotApi, artikelApi, belegApi, bonierApi, druckerApi, emailApi, guts
 import { FreigabePinModal } from '../components/FreigabePinModal'
 import { getKasseIdentity } from '../lib/kasse'
 import { getAuth, hasBerechtigung } from '../lib/auth'
-import { formatPreis, heuteLokalYMD } from '../lib/format'
+import { formatPreis } from '../lib/format'
+import { heuteKalendertag } from '../lib/geschaeftstag'
 import {
   positionsPreisCent,
   warenkorbSummeCent,
@@ -1802,7 +1803,8 @@ function GutscheinEinloesenModal({ summeNachRabattCent, onApply, onClose }: Guts
   const einloesungCents = Math.round(parseFloat(einloesungEuro.replace(',', '.')) * 100) || 0
 
   const isAbgelaufen = gefunden?.gueltigBis
-    ? gefunden.gueltigBis < heuteLokalYMD()   // LOKAL — UTC-Datum verlängerte nachts abgelaufene Gutscheine
+    // Kalenderbegriff (Ablaufdatum des Gutscheins), kein Geschäftstag — und nie UTC (verlängerte nachts abgelaufene Gutscheine)
+    ? gefunden.gueltigBis < heuteKalendertag()
     : false
 
   const einloesbar = gefunden

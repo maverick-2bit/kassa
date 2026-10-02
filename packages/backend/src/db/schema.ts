@@ -123,6 +123,28 @@ export const mandanten = pgTable('mandanten', {
 }))
 
 // ---------------------------------------------------------------------------
+// Geschäftstag: Tagesbeginn je Mandant, gültig ab einem Stichtag
+// ---------------------------------------------------------------------------
+
+/**
+ * Ab `gueltigAb` (Wiener Kalendertag) beginnt der Geschäftstag des Mandanten um
+ * `beginn` (HH:MM, Wiener Ortszeit). Für den Kalendertag D gilt der Eintrag mit
+ * dem größten gueltigAb <= D; ohne Eintrag 00:00 — dann ist der Geschäftstag der
+ * Kalendertag. Rechenkern: @kassa/shared (geschaeftstag.ts).
+ */
+export const mandantTagesbeginn = pgTable('mandant_tagesbeginn', {
+  id:        uuid('id').primaryKey().defaultRandom(),
+  mandantId: uuid('mandant_id').notNull().references(() => mandanten.id, { onDelete: 'cascade' }),
+  gueltigAb: date('gueltig_ab', { mode: 'string' }).notNull(),
+  beginn:    varchar('beginn', { length: 5 }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  mandantAbIdx: uniqueIndex('mandant_tagesbeginn_mandant_ab_idx').on(t.mandantId, t.gueltigAb),
+}))
+
+export type MandantTagesbeginn = typeof mandantTagesbeginn.$inferSelect
+
+// ---------------------------------------------------------------------------
 // Kassen (Cash Registers)
 // ---------------------------------------------------------------------------
 
@@ -237,7 +259,7 @@ export const kassen = pgTable('kassen', {
 
   /** E-Mail-Adresse für automatische Tagesabschluss-Zusammenfassung (Feature 7) */
   abschlussEmail:        text('abschluss_email'),
-  /** Automatischer Tagesabschluss: Uhrzeit 'HH:MM' Wiener Zeit (null = aus). Uhrzeiten vor 12:00 schließen den VORTAG ab. */
+  /** Automatischer Tagesabschluss: Uhrzeit 'HH:MM' Wiener Zeit (null = aus). Uhrzeiten vor 12:00 schließen den VORTAG ab (mit verschobenem Tagesbeginn: den davor beendeten Geschäftstag, siehe auto-abschluss.service.ts). */
   autoAbschlussUhrzeit:  text('auto_abschluss_uhrzeit'),
   /** Abschlusstag (YYYY-MM-DD), für den zuletzt automatisch abgeschlossen wurde — Idempotenz-Stempel des Auto-Abschluss-Crons */
   letzterAutoAbschlussTag: text('letzter_auto_abschluss_tag'),

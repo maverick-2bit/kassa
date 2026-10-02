@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { TagesbeginnEintragSchema } from './geschaeftstag.js'
 
 // ---------------------------------------------------------------------------
 // User-Rollen
@@ -142,6 +143,12 @@ export const LoginResponseSchema = z.object({
     gaengeAnzahl:             z.number().int(),
     /** Ziffernzahl der PINs dieses Betriebs */
     pinLaenge:                PinLaengeSchema,
+    /**
+     * Tagesbeginn-Historie des Betriebs (Geschäftstag). Leer = Standard 00:00.
+     * Das Frontend rechnet „heute" damit — mit denselben Funktionen wie das
+     * Backend (@kassa/shared, geschaeftstag).
+     */
+    tagesRegel:               z.array(TagesbeginnEintragSchema),
   }),
   kassen: z.array(z.object({
     id:          z.string().uuid(),

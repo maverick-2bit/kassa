@@ -1,45 +1,34 @@
 import { useState, useMemo, useCallback } from 'react'
 import { useQuery, useQueries } from '@tanstack/react-query'
 import type { ArtikelBerichtResponse, BerichtGesamt, BerichtGruppierung, BerichtResponse, KassenVergleichResponse, KassenVergleichZeile, KellnerBerichtResponse, KellnerBerichtZeile, KuechenBerichtResponse, Station, StundenBerichtResponse, StundenBerichtZeile, WarengruppeBerichtResponse } from '@kassa/shared'
-import { STATION_LABELS } from '@kassa/shared'
+import { STATION_LABELS, beginnFuer } from '@kassa/shared'
 import { berichtApi } from '../lib/api'
-import { getAuth } from '../lib/auth'
+import { getAuth, tagesRegel } from '../lib/auth'
 import { formatPreis } from '../lib/format'
+import { addTage, endeDesMonats, heuteGeschaeftstag, heuteKalendertag, montagDerWoche } from '../lib/geschaeftstag'
 import { Button } from '../components/ui/Button'
 
 // ---------------------------------------------------------------------------
 // Datum-Helfer
 // ---------------------------------------------------------------------------
 
-/** YYYY-MM-DD für heute in Wiener Lokalzeit */
+/**
+ * YYYY-MM-DD für heute — der aktuelle GESCHÄFTSTAG (um 02:00 nachts bei
+ * Tagesbeginn 06:00 noch der Vortag). Alle Zeiträume (Heute, Woche, Monat …)
+ * rechnen von hier aus, und der Server wertet von/bis als Geschäftstage aus.
+ */
 function heute(): string {
-  return new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Vienna' })
-}
-
-/** Addiere `tage` Tage zu einem YYYY-MM-DD-String */
-function addTage(datum: string, tage: number): string {
-  const d = new Date(datum)
-  d.setDate(d.getDate() + tage)
-  return d.toLocaleDateString('sv-SE')
+  return heuteGeschaeftstag()
 }
 
 /** Ersten Tag der ISO-Woche (Montag) für ein gegebenes YYYY-MM-DD */
 function startDerWoche(datum: string): string {
-  const d = new Date(datum)
-  const tag = d.getDay() || 7          // Sonntag = 7
-  d.setDate(d.getDate() - (tag - 1))
-  return d.toLocaleDateString('sv-SE')
+  return montagDerWoche(datum)
 }
 
 /** YYYY-MM-01 für gegebenes Datum */
 function startDesMonats(datum: string): string {
   return datum.slice(0, 7) + '-01'
-}
-
-/** Letzter Tag des Monats */
-function endeDesMonats(datum: string): string {
-  const [y, m] = datum.split('-').map(Number)
-  return new Date(y!, m!, 0).toLocaleDateString('sv-SE')
 }
 
 /** YYYY-01-01 */
@@ -114,6 +103,7 @@ const TABS: [BerichtTab, string][] = [
 ]
 
 export function BerichtePage() {
+  const tagesbeginnHeute = beginnFuer(tagesRegel(), heuteKalendertag())
   // ?tab=kueche etc. — Deep-Link vom Dashboard (Küchen-Laufzeiten-Karte)
   const [aktTab, setAktTab] = useState<BerichtTab>(() => {
     const t = new URLSearchParams(window.location.search).get('tab')
@@ -125,6 +115,13 @@ export function BerichtePage() {
       <div>
         <h1 className="text-2xl font-bold text-ink">Berichte</h1>
         <p className="mt-1 text-sm text-ink-muted">Umsatz- und Artikel-Auswertungen</p>
+        {/* Verschobener Tagesbeginn: klarstellen, was ein „Tag" in allen Auswertungen ist */}
+        {tagesbeginnHeute !== '00:00' && (
+          <p data-testid="berichte-geschaeftstag-hinweis" className="mt-1 text-xs text-ink-subtle">
+            Alle Zeiträume sind Geschäftstage (Tagesbeginn {tagesbeginnHeute} Uhr): Ein Tag läuft von {tagesbeginnHeute} Uhr bis
+            {' '}{tagesbeginnHeute} Uhr des Folgetages — eine Schicht über Mitternacht zählt zu dem Tag, an dem sie begonnen hat.
+          </p>
+        )}
       </div>
 
       <div className="flex gap-1 border-b border-line overflow-x-auto">
@@ -1309,13 +1306,15 @@ function StundenDiagramm({ data }: { data: StundenBerichtResponse }) {
     )
   }
 
-  // Geschäftszeiten ermitteln (erste/letzte Stunde mit Umsatz)
+  // Geschäftszeiten ermitteln (erste/letzte Stunde mit Umsatz). Die Zeilen liegen auf der
+  // Tagesachse — sie beginnt bei der Stunde des Tagesbeginns (06:00 → 6, 7, …, 23, 0, …, 5) —,
+  // das Fenster wird deshalb nach POSITION geschnitten, nicht nach der Uhrzeit.
   const aktiveStunden = data.zeilen.filter(z => z.umsatzCent > 0)
-  const ersteStunde = aktiveStunden[0]?.stunde ?? 0
-  const letzteStunde = aktiveStunden[aktiveStunden.length - 1]?.stunde ?? 23
-  // ±2 Stunden Puffer
-  const von = Math.max(0, ersteStunde - 1)
-  const bis = Math.min(23, letzteStunde + 1)
+  const ersteStelle  = aktiveStunden[0] ? data.zeilen.indexOf(aktiveStunden[0]) : 0
+  const letzteStelle = aktiveStunden.length > 0 ? data.zeilen.indexOf(aktiveStunden[aktiveStunden.length - 1]!) : data.zeilen.length - 1
+  // ±1 Stunde Puffer
+  const von = Math.max(0, ersteStelle - 1)
+  const bis = Math.min(data.zeilen.length - 1, letzteStelle + 1)
   const angezeigteZeilen = data.zeilen.slice(von, bis + 1)
 
   return (
@@ -1507,9 +1506,7 @@ function berechneVergleichsZeitraeume(preset: VergleichPreset, h: string): {
       const vonAkt = startDesMonats(h)
       const bisAkt = endeDesMonats(h)
       // Vormonat: einen Monat zurück
-      const d = new Date(vonAkt)
-      d.setMonth(d.getMonth() - 1)
-      const vonVor = d.toLocaleDateString('sv-SE')
+      const vonVor = startDesMonats(addTage(vonAkt, -1))   // Vortag des Monatsersten liegt im Vormonat
       return { vonAkt, bisAkt, vonVor, bisVor: endeDesMonats(vonVor) }
     }
     case 'jahr': {
@@ -2610,8 +2607,9 @@ function aggregiereNachWochentag(zeilen: { periode: string; umsatzCent: number; 
     tag: i, tage: 0, umsatzSumCent: 0, belegeSumme: 0, umsatzAvgCent: 0,
   }))
   for (const z of zeilen) {
-    const d = new Date(z.periode)
-    const iso = (d.getDay() + 6) % 7  // JS: 0=So → ISO: 0=Mo
+    // Wochentag des Geschäftstags, kalendarisch (UTC-Mittag) und nicht über die Ortszeit des Geräts
+    const d = new Date(`${z.periode}T12:00:00Z`)
+    const iso = (d.getUTCDay() + 6) % 7  // JS: 0=So → ISO: 0=Mo
     const eintrag = acc[iso]!
     eintrag.tage++
     eintrag.umsatzSumCent += z.umsatzCent
@@ -2651,11 +2649,7 @@ function WochentagBericht() {
   // Festes 90-Tage-Fenster
   const [geladen, setGeladen] = useState(false)
   const datumBis  = heute()
-  const datumVon  = (() => {
-    const d = new Date(datumBis)
-    d.setDate(d.getDate() - 89)
-    return d.toLocaleDateString('sv-SE')
-  })()
+  const datumVon  = addTage(datumBis, -89)
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['bericht-wochentag', datumVon, datumBis, kasseIds],

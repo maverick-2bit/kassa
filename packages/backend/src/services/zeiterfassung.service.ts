@@ -1,18 +1,23 @@
 import bcrypt from 'bcryptjs'
-import { and, desc, eq, gte, isNotNull, isNull, lte } from 'drizzle-orm'
+import { and, desc, eq, gte, isNotNull, isNull, lt } from 'drizzle-orm'
 import type { FastifyBaseLogger } from 'fastify'
 import type { Db } from '../db/client.js'
 import { arbeitszeiten, kassen, mandanten, users } from '../db/schema.js'
-import type {
-  ArbeitszeitInput,
-  ArbeitszeitResponse,
-  ArbeitszeitUpdate,
-  StempelResponse,
+import {
+  geschaeftstagVon,
+  tagesBeginnZeitpunkt,
+  tagesGrenzen,
+  type ArbeitszeitInput,
+  type ArbeitszeitResponse,
+  type ArbeitszeitUpdate,
+  type StempelResponse,
+  type TagesRegel,
 } from '@kassa/shared'
 import type { GeraetVertrauenSigner } from '../auth/geraet-vertrauen.js'
 import { pruefeKasseGehoertZuMandant } from '../auth/scope.js'
 import { pruefeMitBremse, toepfeFuerGeraet } from './pin-bremse.js'
 import { pruefePinLaenge } from './pin-laenge.js'
+import { ladeTagesRegel } from './geschaeftstag.service.js'
 
 /** Fachfehler mit HTTP-Status — die Route gibt Status und Meldung weiter. */
 export class ZeiterfassungError extends Error {
@@ -29,7 +34,12 @@ function dauerMinuten(beginn: Date, ende: Date): number {
   return Math.floor((ende.getTime() - beginn.getTime()) / 60_000)
 }
 
-function toDto(row: typeof arbeitszeiten.$inferSelect): ArbeitszeitResponse {
+/**
+ * Eine Arbeitszeit ist eine SCHICHT: sie gehört zum Geschäftstag ihres Beginns —
+ * auch wenn sie über Mitternacht (oder über den Tagesbeginn) hinausläuft. Eine
+ * Nachtschicht von 18:00 bis 02:00 liegt so komplett auf ihrem Starttag.
+ */
+function toDto(row: typeof arbeitszeiten.$inferSelect, regel: TagesRegel): ArbeitszeitResponse {
   const dauer = row.ende ? dauerMinuten(row.beginn, row.ende) : null
   const netto  = dauer !== null ? Math.max(0, dauer - row.pauseMinuten) : null
   return {
@@ -38,6 +48,7 @@ function toDto(row: typeof arbeitszeiten.$inferSelect): ArbeitszeitResponse {
     userId:       row.userId,
     userName:     row.userName,
     beginn:       row.beginn.toISOString(),
+    geschaeftstag: geschaeftstagVon(regel, row.beginn),
     ende:         row.ende ? row.ende.toISOString() : null,
     dauerMinuten: dauer,
     pauseMinuten: row.pauseMinuten,
@@ -184,11 +195,15 @@ export async function listeArbeitszeiten(
   } = {},
 ): Promise<ArbeitszeitResponse[]> {
   const conditions = [eq(arbeitszeiten.mandantId, mandantId)]
+  const regel = await ladeTagesRegel(db, mandantId)
 
   if (opts.userId)   conditions.push(eq(arbeitszeiten.userId,   opts.userId))
   if (opts.kasseId)  conditions.push(eq(arbeitszeiten.kasseId,  opts.kasseId))
-  if (opts.datumVon) conditions.push(gte(arbeitszeiten.beginn, new Date(opts.datumVon + 'T00:00:00Z')))
-  if (opts.datumBis) conditions.push(lte(arbeitszeiten.beginn, new Date(opts.datumBis + 'T23:59:59Z')))
+  // datumVon/datumBis sind GESCHÄFTSTAGE (beide inklusive), Grenzen in Wiener Zeit.
+  // Früher stand hier 'T00:00:00Z' — UTC statt Wien, also um 1–2 Stunden verschoben.
+  // Konstante Zeitpunkte gegen die Spalte: der Index (mandant, beginn) bleibt nutzbar.
+  if (opts.datumVon) conditions.push(gte(arbeitszeiten.beginn, tagesBeginnZeitpunkt(regel, opts.datumVon)))
+  if (opts.datumBis) conditions.push(lt(arbeitszeiten.beginn,  tagesGrenzen(regel, opts.datumBis).bis))
   if (opts.nurOffen) conditions.push(isNull(arbeitszeiten.ende))
 
   const rows = await db
@@ -198,7 +213,7 @@ export async function listeArbeitszeiten(
     .orderBy(desc(arbeitszeiten.beginn))
     .limit(opts.limit ?? 500)
 
-  return rows.map(toDto)
+  return rows.map(r => toDto(r, regel))
 }
 
 export async function erstelleArbeitszeit(
@@ -231,7 +246,7 @@ export async function erstelleArbeitszeit(
   }).returning()
 
   if (!row) throw new ZeiterfassungError(500, 'Eintrag konnte nicht gespeichert werden')
-  return toDto(row)
+  return toDto(row, await ladeTagesRegel(db, mandantId))
 }
 
 export async function aktualisiereArbeitszeit(
@@ -253,7 +268,7 @@ export async function aktualisiereArbeitszeit(
     .returning()
 
   if (!row) throw new ZeiterfassungError(404, 'Eintrag nicht gefunden')
-  return toDto(row)
+  return toDto(row, await ladeTagesRegel(db, mandantId))
 }
 
 export async function loescheArbeitszeit(
@@ -280,5 +295,6 @@ export async function ladeAktuelleSchichten(
     .where(and(eq(arbeitszeiten.mandantId, mandantId), isNull(arbeitszeiten.ende)))
     .orderBy(arbeitszeiten.beginn)
 
-  return rows.map(toDto)
+  const regel = await ladeTagesRegel(db, mandantId)
+  return rows.map(r => toDto(r, regel))
 }

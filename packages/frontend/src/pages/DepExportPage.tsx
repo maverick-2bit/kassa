@@ -2,10 +2,12 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { downloadDepExport, depSicherungApi, type DepSicherungRow } from '../lib/api'
 import { getAuth } from '../lib/auth'
+import { heuteKalendertag } from '../lib/geschaeftstag'
 import { Button } from '../components/ui/Button'
 
+/** Der DEP-Export ist ein RKSV-Begriff — Kalendertage, kein Geschäftstag. */
 function heute(): string {
-  return new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Vienna' })
+  return heuteKalendertag()
 }
 
 function formatDatum(iso: string): string {

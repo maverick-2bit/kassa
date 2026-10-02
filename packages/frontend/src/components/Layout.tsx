@@ -5,6 +5,7 @@ import { useQueries } from '@tanstack/react-query'
 import { clearAuth, getAuth, hasBerechtigung, hasModul } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
 import { kasseApi } from '../lib/api'
+import { useTagesRegelSync } from '../lib/useTagesRegelSync'
 import { KdsToasts } from './KdsToasts'
 import { KdsNachrichten } from './KdsNachrichten'
 import { OfflineStatusBar } from './OfflineStatusBar'
@@ -26,6 +27,8 @@ const KASSEN_ANSICHT = /^\/(kasse|tische\/[^/]+)\/?$/
 export function Layout() {
   const location = useLocation()
   const kassenAnsicht = KASSEN_ANSICHT.test(location.pathname)
+  // Tagesbeginn (Geschäftstag) aktuell halten; bei einer Änderung startet die Seite neu (Key)
+  const regelVersion = useTagesRegelSync()
   return (
     <div className={kassenAnsicht ? 'min-h-screen flex flex-col lg:h-dvh lg:min-h-0' : 'min-h-screen flex flex-col'}>
       <OfflineStatusBar />
@@ -42,7 +45,7 @@ export function Layout() {
               <div className="h-8 w-8 animate-spin rounded-full border-2 border-line border-t-ink-muted" />
             </div>
           }>
-            <Outlet />
+            <Outlet key={regelVersion} />
           </Suspense>
         </ErrorBoundary>
       </main>

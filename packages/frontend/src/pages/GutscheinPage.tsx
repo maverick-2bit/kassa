@@ -13,6 +13,7 @@ import { gutscheinApi, downloadGutscheinJournalCsv } from '../lib/api'
 import { getAuth } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
+import { addTage, heuteGeschaeftstag } from '../lib/geschaeftstag'
 import { druckeGutschein } from '../lib/rechnung'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
@@ -592,14 +593,13 @@ const JOURNAL_TYP_ANZEIGE: Record<string, string> = {
   storno:        'Storno',
 }
 
+/** Das Journal wertet von/bis als GESCHÄFTSTAGE aus (wie Tagesabschluss und Berichte). */
 function heuteISO(): string {
-  return new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Vienna' })
+  return heuteGeschaeftstag()
 }
 
 function vorTagenISO(tage: number): string {
-  const d = new Date()
-  d.setDate(d.getDate() - tage)
-  return d.toLocaleDateString('sv-SE', { timeZone: 'Europe/Vienna' })
+  return addTage(heuteGeschaeftstag(), -tage)
 }
 
 function GutscheinJournalSektion() {

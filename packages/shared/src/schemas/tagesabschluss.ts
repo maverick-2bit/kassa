@@ -24,7 +24,7 @@ export type MwStZeile = z.infer<typeof MwStZeileSchema>
 // ---------------------------------------------------------------------------
 
 export const TagesabschlussSchema = z.object({
-  /** YYYY-MM-DD – Stichtag in Wiener Ortszeit */
+  /** YYYY-MM-DD – Geschäftstag (Standard: Wiener Kalendertag; mit verschobenem Tagesbeginn der Tag, der dort beginnt) */
   datum:                   z.string(),
   kasseId:                 z.string().uuid(),
 
@@ -44,6 +44,13 @@ export const TagesabschlussSchema = z.object({
 
   /** USt-Aufteilung (nur Sätze mit Umsatz ≠ 0) */
   mwst: z.array(MwStZeileSchema),
+
+  /**
+   * Grenzen des Geschäftstags als ISO-Zeitpunkte [von, bis). NUR gesetzt, wenn der
+   * Tag nicht von 00:00 bis 00:00 Wiener Zeit läuft (Tagesbeginn ≠ 00:00) — ohne
+   * verschobenen Tagesbeginn bleibt die Antwort so, wie sie immer war.
+   */
+  zeitraum: z.object({ von: z.string(), bis: z.string() }).optional(),
 })
 
 export type Tagesabschluss = z.infer<typeof TagesabschlussSchema>

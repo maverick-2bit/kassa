@@ -35,11 +35,6 @@ export function lokalYMD(datum: Date): string {
   return `${j}-${m}-${t}`
 }
 
-/** Heutiges LOKALES Datum als YYYY-MM-DD. */
-export function heuteLokalYMD(): string {
-  return lokalYMD(new Date())
-}
-
 export function formatDatum(isoDate: string): string {
   return new Date(isoDate).toLocaleString('de-AT', {
     day:   '2-digit',
