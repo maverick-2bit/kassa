@@ -502,6 +502,32 @@ describe('Geschäftstag (Integration, echtes PostgreSQL)', () => {
       expect(await liste(B, '2025-10-05', '2025-10-05')).toHaveLength(0)
     })
 
+    it('Zeitumstellung: Schichten um 05:59/06:00 an den Umstellungstagen landen auf dem richtigen Geschäftstag', async () => {
+      // 29.03.2026: 02:00 → 03:00 (der Geschäftstag 28.03. hat 23 Stunden); 25.10.2026: 03:00 → 02:00 (der 24.10. hat 25)
+      const s1 = await schicht(A, '2026-03-29 05:59', '2026-03-29 12:00')   // vor 06:00 → 28.03.
+      const s2 = await schicht(A, '2026-03-29 06:00', '2026-03-29 12:00')   // → 29.03.
+      const s3 = await schicht(A, '2026-10-25 05:59', '2026-10-25 12:00')   // → 24.10.
+      const s4 = await schicht(A, '2026-10-25 06:00', '2026-10-25 12:00')   // → 25.10.
+      expect([s1, s2, s3, s4].map(s => s.geschaeftstag)).toEqual(['2026-03-28', '2026-03-29', '2026-10-24', '2026-10-25'])
+      expect((await liste(A, '2026-03-28', '2026-03-28')).map(z => z.id)).toEqual([s1.id])
+      expect((await liste(A, '2026-03-29', '2026-03-29')).map(z => z.id)).toEqual([s2.id])
+      expect((await liste(A, '2026-10-24', '2026-10-24')).map(z => z.id)).toEqual([s3.id])
+      expect((await liste(A, '2026-10-25', '2026-10-25')).map(z => z.id)).toEqual([s4.id])
+      // und lückenlos: eine Liste über beide Wochen sieht jede Schicht genau einmal
+      expect(await liste(A, '2026-03-27', '2026-03-30')).toHaveLength(2)
+      expect(await liste(A, '2026-10-23', '2026-10-26')).toHaveLength(2)
+    })
+
+    it('Mitternacht: Beginn genau um 00:00 gehört (Tagesbeginn 06:00) noch zum Vortag, bei Tagesbeginn 00:00 zum neuen Tag', async () => {
+      const a = await schicht(A, '2025-12-10 00:00', '2025-12-10 04:00')
+      const b = await schicht(B, '2025-12-10 00:00', '2025-12-10 04:00')
+      expect(a.geschaeftstag).toBe('2025-12-09')
+      expect(b.geschaeftstag).toBe('2025-12-10')
+      expect((await liste(A, '2025-12-09', '2025-12-09')).map(z => z.id)).toContain(a.id)
+      expect((await liste(B, '2025-12-10', '2025-12-10')).map(z => z.id)).toContain(b.id)
+      expect((await liste(B, '2025-12-09', '2025-12-09')).map(z => z.id)).not.toContain(b.id)
+    })
+
     it('„aktuell eingestempelt" liefert ebenfalls den Geschäftstag', async () => {
       const res = await get(A, '/api/zeiterfassung/aktuell')
       expect(res.statusCode).toBe(200)
