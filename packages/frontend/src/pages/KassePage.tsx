@@ -24,6 +24,7 @@ import type { AktiveAktion } from '@kassa/shared'
 import { angebotApi, artikelApi, belegApi, bonierApi, druckerApi, emailApi, gutscheinApi, kategorieApi, lieferscheinApi, modifikatorApi, offenerPostenApi, posConfigApi, preisregelApi, tischTabApi, zvtApi, displayApi, ApiError } from '../lib/api'
 import { FreigabePinModal } from '../components/FreigabePinModal'
 import { getKasseIdentity } from '../lib/kasse'
+import { setKassenLeistenAusgeblendet, useKassenLeistenAusgeblendet } from '../lib/kassenLeisten'
 import { getAuth, hasBerechtigung } from '../lib/auth'
 import { formatPreis } from '../lib/format'
 import { heuteKalendertag } from '../lib/geschaeftstag'
@@ -119,6 +120,7 @@ export function KassePage() {
   const [kunde,     setKunde]     = useState<KundeSnapshot | null>(null)
   const [neuerKunde, setNeuerKunde] = useState<KundeInput | undefined>(undefined)
   const [tisch, setTisch] = useState<string>('1')
+  const leistenAus = useKassenLeistenAusgeblendet()
   const [kellner, setKellner] = useState<string>('Service')
   const [letzterBon, setLetzterBon] = useState<BelegResponse | null>(null)
   // Kurze Bestätigung nach „Bon erstellen" (kein Dialog im Druck-Modus). Hält den
@@ -707,7 +709,7 @@ export function KassePage() {
           {/* Kontext-Leiste: Modus + Tisch + Kellner. Die Feldbreiten brauchen „!“ —
               Input bringt w-full mit, das sonst gewinnt; so bleibt die Leiste auch
               in der schmalen linken Spalte (1024 px) einzeilig. */}
-          <div className="mb-3 bg-panel rounded-lg shadow-sm border border-line px-3 py-2 flex flex-wrap items-center gap-3">
+          {!leistenAus && <div className="mb-3 bg-panel rounded-lg shadow-sm border border-line px-3 py-2 flex flex-wrap items-center gap-3">
             {/* Modus-Toggle */}
             <div className="inline-flex rounded-md border border-line-strong overflow-hidden shrink-0">
               <button
@@ -751,7 +753,7 @@ export function KassePage() {
                 className="w-40"
               />
             </label>
-          </div>
+          </div>}
 
           {hasBerechtigung('tische') && <OffeneTischeLeiste />}
 
@@ -760,6 +762,14 @@ export function KassePage() {
                               flex flex-col lg:flex-1 lg:min-h-[15rem]">
             <div className="px-4 pt-4 pb-2 shrink-0 flex items-center justify-between">
               <h2 className="text-sm font-semibold text-ink">Artikel</h2>
+              <button
+                type="button"
+                onClick={() => setKassenLeistenAusgeblendet(!leistenAus)}
+                className="ml-auto mr-4 text-xs font-medium text-ink-muted hover:text-ink hover:underline"
+                title={leistenAus ? 'Hinweise, Tisch und Kellner wieder einblenden' : 'Hinweise, Tisch und Kellner ausblenden — mehr Platz für Artikel'}
+              >
+                {leistenAus ? '▼ Leisten einblenden' : '▲ Leisten ausblenden'}
+              </button>
               <button
                 type="button"
                 onClick={() => { setFehler(null); setFreiePositionOffen(true) }}

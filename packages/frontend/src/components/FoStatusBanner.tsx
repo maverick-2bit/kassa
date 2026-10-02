@@ -10,6 +10,8 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
+import { useLocation } from 'react-router-dom'
+import { useKassenLeistenAusgeblendet } from '../lib/kassenLeisten'
 import { belegApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 
@@ -17,6 +19,8 @@ export function FoStatusBanner() {
   const identity    = getKasseIdentity()
   const kasseId     = identity?.kasseId ?? ''
   const queryClient = useQueryClient()
+  const leistenAus  = useKassenLeistenAusgeblendet()
+  const pfad        = useLocation().pathname
   const [offen, setOffen]   = useState(false)
   const [tid, setTid]       = useState('')
   const [benId, setBenId]   = useState('')
@@ -42,6 +46,8 @@ export function FoStatusBanner() {
   })
 
   if (!status || status.registriert) return null
+  // Auf der Kassen-Seite per Knopf ausblendbar (Tablet quer: mehr Platz für Artikel)
+  if (leistenAus && /^\/kasse\/?$/.test(pfad)) return null
 
   const kannRegistrieren = tid.trim() && benId.trim() && pin.trim()
 
