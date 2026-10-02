@@ -7,7 +7,7 @@
 import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import type { Artikel, ArtikelInput, ArtikelUpdate } from '@kassa/shared'
 import type { Db } from '../db/client.js'
-import { artikel } from '../db/schema.js'
+import { artikel, lieferanten } from '../db/schema.js'
 import {
   berechneVerfuegbareMenge,
   ladeRezepteAngereichert,
@@ -15,6 +15,31 @@ import {
   type BestandteilAngereichert,
   type DbOrTx,
 } from './bestandteil.service.js'
+
+/** Fachfehler (4xx) des Artikelstamms — der globale Fehler-Handler antwortet mit { fehler }. */
+export class ArtikelError extends Error {
+  constructor(public readonly httpStatus: number, message: string) {
+    super(message)
+  }
+}
+
+/**
+ * Der Lieferant muss zum Mandanten des Artikels gehören. Eine fremde oder unbekannte ID
+ * ergibt 400 mit lesbarer Meldung statt eines Fremdschlüssel-Fehlers (500) — und nie eine
+ * Verknüpfung über Mandantengrenzen.
+ *
+ * Deaktivierte Lieferanten bleiben zulässig: Das Formular schickt die bestehende Verknüpfung
+ * bei jedem Speichern mit, und ein später deaktivierter Lieferant darf das Bearbeiten des
+ * Artikels nicht blockieren.
+ */
+async function pruefeLieferant(db: DbOrTx, mandantId: string, lieferantId: string): Promise<void> {
+  const [l] = await db
+    .select({ id: lieferanten.id })
+    .from(lieferanten)
+    .where(and(eq(lieferanten.id, lieferantId), eq(lieferanten.mandantId, mandantId)))
+    .limit(1)
+  if (!l) throw new ArtikelError(400, 'Lieferant nicht gefunden')
+}
 
 /**
  * Generiert die nächste freie Artikelnummer für einen Mandanten.
@@ -80,6 +105,7 @@ async function ladeArtikelDto(db: Db, row: typeof artikel.$inferSelect): Promise
 }
 
 export async function erstelleArtikel(db: Db, input: ArtikelInput): Promise<Artikel> {
+  if (input.lieferantId) await pruefeLieferant(db, input.mandantId, input.lieferantId)
   // Artikelnummer außerhalb der Tx generieren (unverändertes Verhalten).
   const artikelnummer = await generiereArtikelNummer(db, input.mandantId)
   const created = await db.transaction(async (tx) => {
@@ -95,6 +121,8 @@ export async function erstelleArtikel(db: Db, input: ArtikelInput): Promise<Arti
       rasterPosition:  input.rasterPosition ?? null,
       lagerstandAktiv: input.lagerstandAktiv ?? false,
       lagerstandMenge: input.lagerstandAktiv ? (input.lagerstandMenge ?? null) : null,
+      mindestbestand:  input.mindestbestand ?? null,
+      lieferantId:     input.lieferantId ?? null,
       seriennummernAktiv: input.seriennummernAktiv ?? false,
       istFavorit:      input.istFavorit ?? false,
       bonierdruckerId: input.bonierdruckerId ?? null,
@@ -132,6 +160,14 @@ export async function listeArtikel(
   return rows.map(r => toDto(r, rezepte.get(r.id) ?? []))
 }
 
+/**
+ * Aktualisiert einen Artikel — nur die mitgeschickten Felder:
+ *  - fehlt ein Feld (undefined), bleibt es unverändert;
+ *  - null leert ein nullbares Feld (Farbe → „Automatisch", Lieferant lösen, Mindestbestand, Station …);
+ *  - `bestandteile` ersetzt das Rezept vollständig ([] leert es); fehlt es, bleibt das Rezept;
+ *  - der Lieferant muss zum Mandanten des Artikels gehören (sonst ArtikelError 400).
+ * Alles in EINER Transaktion: scheitert das Rezept, bleibt auch der Rest des Artikels unverändert.
+ */
 export async function aktualisiereArtikel(
   db: Db,
   id: string,
@@ -157,10 +193,16 @@ export async function aktualisiereArtikel(
   if (update.bonierdruckerId      !== undefined) values.bonierdruckerId      = update.bonierdruckerId
   if (update.bonierBeiDirektverkauf !== undefined) values.bonierBeiDirektverkauf = update.bonierBeiDirektverkauf
   if (update.istBestandteil       !== undefined) values.istBestandteil       = update.istBestandteil
+  if (update.lieferantId          !== undefined) values.lieferantId          = update.lieferantId
   if (update.terminalSichtbar     !== undefined) values.terminalSichtbar     = update.terminalSichtbar
   if (update.bild                 !== undefined) values.bild                 = update.bild ?? null
 
   const updated = await db.transaction(async (tx) => {
+    // Lieferant: muss zum Mandanten dieses Artikels gehören — geprüft VOR dem Schreiben (null = Verknüpfung lösen)
+    if (typeof update.lieferantId === 'string') {
+      const [a] = await tx.select({ mandantId: artikel.mandantId }).from(artikel).where(eq(artikel.id, id)).limit(1)
+      if (a) await pruefeLieferant(tx, a.mandantId, update.lieferantId)
+    }
     const [row] = await tx
       .update(artikel)
       .set(values)

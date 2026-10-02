@@ -23,6 +23,7 @@ import { KategorieFormular } from '../components/KategorieFormular'
 import { ArtikelImportModal } from '../components/ArtikelImportModal'
 import { LayoutImportModal } from '../components/LayoutImportModal'
 import { exportArtikelVorlage } from '../lib/artikel-excel'
+import { artikelUpdateAusInput } from '../lib/artikel-update'
 import {
   filtereArtikel,
   naechsteSortierung,
@@ -174,19 +175,10 @@ export function ArtikelPage() {
   })
 
   const update = useMutation({
+    // Das Formular schickt ALLE seine Felder mit (lib/artikel-update) — früher fehlten Farbe, Lieferant,
+    // Mindestbestand, Rohstoff-Flag, Bonierbon-Option, Seriennummern und Rezept: sie gingen beim Bearbeiten verloren
     mutationFn: ({ id, input }: { id: string; input: ArtikelInput }) =>
-      artikelApi.update(id, {
-        bezeichnung:     input.bezeichnung,
-        preisBruttoCent: input.preisBruttoCent,
-        mwstSatz:        input.mwstSatz,
-        station:         input.station          ?? null,
-        kategorieId:     input.kategorieId      ?? null,
-        istFavorit:      input.istFavorit,
-        bonierdruckerId: input.bonierdruckerId  ?? null,
-        lagerstandAktiv: input.lagerstandAktiv,
-        lagerstandMenge: input.lagerstandMenge  ?? null,
-        bild:            input.bild             ?? null,
-      }),
+      artikelApi.update(id, artikelUpdateAusInput(input)),
     onSuccess: () => { setModalOpen(false); setEditing(null); setError(null); invalidateArtikel() },
     onError: (err) => setError(err instanceof Error ? err.message : String(err)),
   })
