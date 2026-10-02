@@ -24,17 +24,29 @@ import { ErrorBoundary } from './ErrorBoundary'
  */
 const KASSEN_ANSICHT = /^\/(kasse|tische\/[^/]+)\/?$/
 
+/** Einklapp-Zustand der Kopfleiste, pro Gerät (Standard: ausgeklappt). */
+const KOPFLEISTE_KEY = 'kassa:kopfleisteEingeklappt'
+
+function ladeEingeklappt(): boolean {
+  try { return localStorage.getItem(KOPFLEISTE_KEY) === '1' } catch { return false }
+}
+
 export function Layout() {
   const location = useLocation()
   const kassenAnsicht = KASSEN_ANSICHT.test(location.pathname)
   // Tagesbeginn (Geschäftstag) aktuell halten; bei einer Änderung startet die Seite neu (Key)
   const regelVersion = useTagesRegelSync()
+  const [eingeklappt, setEingeklappt] = useState<boolean>(ladeEingeklappt)
+  const kopfleisteUmschalten = (wert: boolean) => {
+    setEingeklappt(wert)
+    try { localStorage.setItem(KOPFLEISTE_KEY, wert ? '1' : '0') } catch { /* ignorieren */ }
+  }
   return (
     <div className={kassenAnsicht ? 'min-h-screen flex flex-col lg:h-dvh lg:min-h-0' : 'min-h-screen flex flex-col'}>
       <OfflineStatusBar />
       <SeeStatusBanner />
       <FoStatusBanner />
-      <Header />
+      <Header eingeklappt={eingeklappt} onUmschalten={kopfleisteUmschalten} />
       <main className={kassenAnsicht ? 'flex-1 lg:min-h-0 lg:overflow-y-auto' : 'flex-1'}>
         {/* ErrorBoundary pro Route: ein Defekt in einer Seite legt nicht die
             ganze Kasse lahm; Header/Nav bleiben bedienbar. resetKey=Pfad sorgt
@@ -49,9 +61,11 @@ export function Layout() {
           </Suspense>
         </ErrorBoundary>
       </main>
-      <footer className="border-t border-line py-2 text-center">
-        <StatusZeile />
-      </footer>
+      {!eingeklappt && (
+        <footer className="border-t border-line py-2 text-center">
+          <StatusZeile />
+        </footer>
+      )}
       <KdsToasts kassenAnsicht={kassenAnsicht} />
       <KdsNachrichten />
     </div>
@@ -144,7 +158,7 @@ function baueNavGruppen(): NavGruppe[] {
   ].filter(g => g.items.length > 0)
 }
 
-function Header() {
+function Header({ eingeklappt, onUmschalten }: { eingeklappt: boolean; onUmschalten: (wert: boolean) => void }) {
   const navigate = useNavigate()
   const location = useLocation()
   const auth     = getAuth()
@@ -168,6 +182,31 @@ function Header() {
   }
 
   const gruppen = auth ? baueNavGruppen() : []
+
+  if (eingeklappt && auth) {
+    const identity = getKasseIdentity()
+    const kasse    = identity ? auth.kassen.find(k => k.id === identity.kasseId) : null
+    return (
+      <header className="bg-header text-white border-b border-black/20 sticky top-0 z-20">
+        <div className="px-4 py-1 flex items-center gap-4">
+          <button
+            type="button"
+            onClick={() => onUmschalten(false)}
+            className="text-xs text-white/70 hover:text-white px-2 py-1 rounded hover:bg-white/10"
+            title="Kopfleiste aufklappen"
+          >
+            ☰ Menü
+          </button>
+          <div className="flex-1" />
+          <span className="text-xs text-white/70 select-none">
+            {auth.user.name}
+            {kasse && <> · Kasse: <span className="font-mono">{kasse.bezeichnung || kasse.kassenId}</span></>}
+          </span>
+          <UpdateHinweis>{null}</UpdateHinweis>
+        </div>
+      </header>
+    )
+  }
 
   return (
     <header className="bg-header text-white border-b border-black/20 sticky top-0 z-20">
@@ -220,6 +259,17 @@ function Header() {
               title="Abmelden"
             >
               Abmelden
+            </button>
+            <button
+              type="button"
+              onClick={() => onUmschalten(true)}
+              className="flex h-8 w-8 items-center justify-center rounded-md text-white/70 hover:text-white hover:bg-white/10"
+              title="Kopfleiste einklappen"
+              aria-label="Kopfleiste einklappen"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+              </svg>
             </button>
           </div>
         )}
