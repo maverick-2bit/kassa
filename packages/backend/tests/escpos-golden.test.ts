@@ -229,6 +229,7 @@ describe('ESC/POS Golden-Master', () => {
       ],
     }
     pruefeGolden('zbon-42.bin', baueZBon(ta, MANDANT, { breite: 42 }))
+    pruefeGolden('zbon-32.bin', baueZBon(ta, MANDANT, { breite: 32 }))
   })
 
   it('Bonierbon (Text-Layout, Asello-Stil)', () => {

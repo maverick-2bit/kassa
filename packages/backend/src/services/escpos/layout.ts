@@ -369,31 +369,44 @@ export function baueZBon(
   }
   add(trennlinie(W))
 
+  // Abschnittsüberschrift: fett, linksbündig
+  const abschnitt = (titel: string): void => {
+    add(ep.align('left'))
+    add(ep.font({ bold: true }))
+    add(ep.textLine(titel))
+    add(ep.font())
+  }
+
   // Beleganzahl
-  add(ep.align('left'))
+  abschnitt('BELEGE')
   add(ep.textLine(zweispaltig('Barzahlungsbelege', String(ta.anzahlBarzahlungsbelege), W)))
   if (ta.anzahlStornobelege > 0) {
     add(ep.textLine(zweispaltig('Stornobelege', String(ta.anzahlStornobelege), W)))
   }
   add(trennlinie(W))
 
-  // Netto-Umsatz
+  // Netto-Umsatz (nur doppelte Höhe → volle Breite W, Betrag steht rechtsbündig)
   add(ep.font({ bold: true, doubleHeight: true }))
-  add(ep.textLine(zweispaltig('NETTO-UMSATZ', formatCent(ta.nettoUmsatzCent), Math.floor(W / 2))))
+  add(ep.textLine(zweispaltig('NETTO-UMSATZ', formatCent(ta.nettoUmsatzCent), W)))
   add(ep.font())
   add(trennlinie(W))
 
   // Zahlungsarten
+  abschnitt('ZAHLUNGSARTEN')
   if (ta.barCent !== 0)      add(ep.textLine(zweispaltig('Bar',      formatCent(ta.barCent),      W)))
   if (ta.karteCent !== 0)    add(ep.textLine(zweispaltig('Karte',    formatCent(ta.karteCent),    W)))
   if (ta.sonstigCent !== 0)  add(ep.textLine(zweispaltig('Sonstige', formatCent(ta.sonstigCent),  W)))
   add(trennlinie(W))
 
-  // MwSt-Aufteilung
+  // MwSt-Aufteilung: pro Satz eine Überschrift, darunter Netto/USt/Brutto
+  // untereinander — in einer Zeile wäre es breiter als der Bon und bräche um.
   if (ta.mwst.length > 0) {
-    add(ep.textLine('USt-Aufteilung:'))
+    abschnitt('USt-AUFTEILUNG')
     for (const z of ta.mwst) {
-      add(ep.textLine(`  ${z.label}: Netto ${formatCent(z.nettoCent)} USt ${formatCent(z.ustCent)}`))
+      add(ep.textLine(truncate(z.label, W)))
+      add(ep.textLine(zweispaltig('  Netto',  formatCent(z.nettoCent),  W)))
+      add(ep.textLine(zweispaltig('  USt',    formatCent(z.ustCent),    W)))
+      add(ep.textLine(zweispaltig('  Brutto', formatCent(z.bruttoCent), W)))
     }
     add(trennlinie(W))
   }
