@@ -18,10 +18,27 @@ test.use({ serviceWorkers: 'block' })
 
 type Login = { token: string; user: { id: string }; mandant: { id: string } & Record<string, unknown>; kassen: { id: string }[] }
 
+/**
+ * /api/auth/login ist auf 10 Anmeldungen je Minute und IP begrenzt (429). Die Suite meldet sich
+ * gerade am Ende oft an — bei 429 daher abwarten und erneut versuchen, statt fälschlich in
+ * /api/setup zu fallen („E-Mail bereits vergeben").
+ */
+async function loginAbwarten(request: APIRequestContext) {
+  const body = { data: { email: ADMIN_EMAIL, passwort: ADMIN_PASSWORT } }
+  for (let versuch = 0; versuch < 6; versuch++) {
+    const res = await request.post('/api/auth/login', body)
+    if (res.status() !== 429) return res
+    const sekunden = Math.min(Math.max(Number(res.headers()['retry-after']) || 10, 2), 65)
+    await new Promise(r => setTimeout(r, sekunden * 1000))
+  }
+  return request.post('/api/auth/login', body)
+}
+test.setTimeout(150_000)
+
 let gemerkterLogin: Login | null = null
 async function adminLogin(request: APIRequestContext): Promise<Login> {
   if (gemerkterLogin) return gemerkterLogin
-  let res = await request.post('/api/auth/login', { data: { email: ADMIN_EMAIL, passwort: ADMIN_PASSWORT } })
+  let res = await loginAbwarten(request)
   if (!res.ok()) {
     const setup = await request.post('/api/setup', {
       data: {
@@ -31,7 +48,7 @@ async function adminLogin(request: APIRequestContext): Promise<Login> {
       },
     })
     if (!setup.ok()) throw new Error(`Setup fehlgeschlagen (${setup.status()}): ${await setup.text()}`)
-    res = await request.post('/api/auth/login', { data: { email: ADMIN_EMAIL, passwort: ADMIN_PASSWORT } })
+    res = await loginAbwarten(request)
     if (!res.ok()) throw new Error(`Login nach Setup fehlgeschlagen (${res.status()})`)
   }
   gemerkterLogin = (await res.json()) as Login
