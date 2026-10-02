@@ -98,7 +98,7 @@ test('Artikelverwaltung: Import-Doppelte, Sortierung, Favoriten-Schalter', async
     await expect(page.getByRole('heading', { name: 'Artikel', exact: true })).toBeVisible()
 
     // ---- Import: Radler gibt es schon (Groß-/Kleinschreibung egal) ----
-    await page.getByRole('button', { name: 'Importieren' }).click()
+    await page.getByRole('button', { name: 'Importieren', exact: true }).click()
     const dialog = page.getByRole('dialog')
     await dialog.locator('input[type="file"]').setInputFiles({
       name: 'artikel.xlsx',
