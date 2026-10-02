@@ -218,7 +218,7 @@ export type {
 } from './kategorie-baum.js'
 
 // Raster-Platzierung (Untergruppen-Kacheln, Slots, Leerfelder)
-export { baueRaster, baueKassenRaster, loeseAnordnungAuf, ausgeblendeteArtikelIds, RASTER_MAX_SLOT } from './raster.js'
+export { baueRaster, baueKassenRaster, loeseAnordnungAuf, ausgeblendeteArtikelIds, kompakteArtikelListe, RASTER_MAX_SLOT } from './raster.js'
 export type { RasterZelle, RasterArtikel, RasterArtikelMitId, RasterAnordnung, KassenAnordnungEintrag } from './raster.js'
 
 // Artikel-Anordnung je Kasse + Warengruppe (eigenes Kachel-Raster; sonst gilt der Standard)

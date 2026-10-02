@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ausgeblendeteArtikelIds, baumFlach, erweitereSichtbarkeit, farbeZuHex, kategorieAnzeigeNamen, loeseAnordnungAuf, type Artikel, type KasseArtikelLayout, type Kategorie, type ModifikatorGruppe, type ModifikatorAuswahl } from '@kassa/shared'
+import { ausgeblendeteArtikelIds, baumFlach, erweitereSichtbarkeit, farbeZuHex, kategorieAnzeigeNamen, kompakteArtikelListe, type Artikel, type Kategorie, type ModifikatorGruppe, type ModifikatorAuswahl } from '@kassa/shared'
 import { artikelApi, kategorieApi, modifikatorApi, tischTabApi, kellnerKonfigApi } from '../lib/api'
 import { getAuth, clearAuth, gaengeAktiv as istGaengeAktiv, gaengeAnzahl } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
@@ -38,20 +38,6 @@ function kategorienImBaum(alle: Kategorie[]): { liste: Kategorie[]; label: Map<s
 
 /** Pseudo-Kategorie-ID für den Favoriten-Reiter (kollidiert mit keiner UUID). */
 const FAVORITEN_KAT = '__favoriten__'
-
-/**
- * Artikel einer Warengruppe in Anzeigereihenfolge. Hat diese Kasse für die Gruppe eine EIGENE Anordnung
- * (POS-Konfiguration → Artikel), gilt deren Reihenfolge und ausgeblendete Artikel entfallen. Leerfelder gibt es
- * hier nicht: die Reiter der Kellner-App sind kompakte Listen (Untergruppen sind eigene Reiter, keine Kacheln).
- * Ohne eigene Anordnung unverändert nach `reihenfolge`.
- */
-function artikelInReihenfolge(artikel: Artikel[], eintraege: KasseArtikelLayout['eintraege'] | undefined): Artikel[] {
-  if (eintraege && eintraege.length > 0) {
-    const anordnung = loeseAnordnungAuf(artikel, eintraege)
-    if (anordnung.eigene) return anordnung.slots.filter((a): a is Artikel => a !== null)
-  }
-  return [...artikel].sort((a, b) => a.reihenfolge - b.reihenfolge)
-}
 
 // gruppeId → (modId → menge)
 type ModMengenMap = Map<string, Map<string, number>>
@@ -165,7 +151,9 @@ export function ArtikelWaehlenPage() {
 
   const artikelInKat: (Artikel | null)[] = aktivKat === FAVORITEN_KAT
     ? favoriten
-    : artikelInReihenfolge(
+    // Eigene Anordnung dieser Kasse: deren Reihenfolge, ausgeblendete entfallen, ohne Leerfelder (die Reiter hier sind
+    // kompakte Listen, Untergruppen eigene Reiter); ohne sie wie bisher nach reihenfolge
+    : kompakteArtikelListe(
         alleArtikel.filter(a => a.kategorieId === aktivKat),
         layoutsQuery.data?.find(l => l.kategorieId === aktivKat)?.eintraege,
       )
@@ -618,6 +606,7 @@ export function ArtikelWaehlenPage() {
               return (
                 <div
                   key={`platzhalter-${idx}`}
+                  data-testid="artikel-platzhalter"
                   aria-hidden
                   className="rounded-2xl border-2 border-dashed border-line bg-panel/50 min-h-[5.25rem]"
                 />
@@ -631,6 +620,7 @@ export function ArtikelWaehlenPage() {
             return (
               <button
                 key={a.id}
+                data-testid="artikel-kachel"
                 onClick={() => !ausverkauft && artikelWaehlen(a)}
                 disabled={ausverkauft}
                 style={farbeHex && !ausverkauft && menge === 0 ? { borderTopColor: farbeHex, borderTopWidth: 4 } : {}}

@@ -182,3 +182,17 @@ export function ausgeblendeteArtikelIds(
   }
   return ausgeblendet
 }
+
+/**
+ * Kompakte Artikelliste einer Warengruppe ohne Leerfelder (Kellner-App: die Reiter dort sind Listen ohne
+ * Untergruppen-Kacheln). Mit eigener Kassen-Anordnung deren Reihenfolge (ausgeblendete Artikel entfallen,
+ * Neulinge hinten); ohne sie wie bisher nach `reihenfolge` — das Standard-Layout bleibt hier unverändert.
+ */
+export function kompakteArtikelListe<A extends RasterArtikelMitId>(
+  artikel: readonly A[],
+  eintraege?: readonly KassenAnordnungEintrag[] | null,
+): A[] {
+  const anordnung = loeseAnordnungAuf(artikel, eintraege)
+  if (anordnung.eigene) return anordnung.slots.filter((a): a is A => a !== null)
+  return [...artikel].sort((a, b) => a.reihenfolge - b.reihenfolge)
+}

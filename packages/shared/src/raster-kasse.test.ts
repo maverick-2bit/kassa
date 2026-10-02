@@ -3,6 +3,7 @@ import {
   ausgeblendeteArtikelIds,
   baueKassenRaster,
   baueRaster,
+  kompakteArtikelListe,
   loeseAnordnungAuf,
   RASTER_MAX_SLOT,
   type KassenAnordnungEintrag,
@@ -199,5 +200,33 @@ describe('ausgeblendeteArtikelIds', () => {
     expect(ausgeblendeteArtikelIds(artikel, undefined).size).toBe(0)
     expect(ausgeblendeteArtikelIds(artikel, null).size).toBe(0)
     expect(ausgeblendeteArtikelIds(artikel, []).size).toBe(0)
+  })
+})
+
+describe('kompakteArtikelListe (Kellner-App)', () => {
+  const ids = (l: A[]) => l.map(a => a.id)
+
+  it('ohne Anordnung exakt wie bisher nach reihenfolge (nicht nach Rasterposition), Gleichstand in Eingabereihenfolge', () => {
+    const artikel = [art('Cola', 1, 3), art('Fanta', 9, 1), art('Soda', null, 1), art('Sprite', 2, 2)]
+    expect(ids(kompakteArtikelListe(artikel))).toEqual(['Fanta', 'Soda', 'Sprite', 'Cola'])
+    expect(ids(kompakteArtikelListe(artikel, []))).toEqual(['Fanta', 'Soda', 'Sprite', 'Cola'])
+    expect(ids(kompakteArtikelListe(artikel, null))).toEqual(['Fanta', 'Soda', 'Sprite', 'Cola'])
+  })
+
+  it('mit eigener Anordnung: deren Reihenfolge ohne Leerfelder, ausgeblendete entfallen, Neulinge hinten', () => {
+    const artikel = [art('Cola'), art('Fanta'), art('Soda'), art('Neu')]
+    const z = [platziert('Soda', 1), platziert('Cola', 4), versteckt('Fanta')]
+    expect(ids(kompakteArtikelListe(artikel, z))).toEqual(['Soda', 'Cola', 'Neu'])
+  })
+
+  it('Zeilen nur zu fremden Artikeln: Standard (reihenfolge)', () => {
+    const artikel = [art('B', null, 2), art('A', null, 1)]
+    expect(ids(kompakteArtikelListe(artikel, [platziert('Weg', 1)]))).toEqual(['A', 'B'])
+  })
+
+  it('verändert die Eingabe nicht', () => {
+    const artikel = [art('B', null, 2), art('A', null, 1)]
+    kompakteArtikelListe(artikel)
+    expect(ids(artikel)).toEqual(['B', 'A'])
   })
 })
