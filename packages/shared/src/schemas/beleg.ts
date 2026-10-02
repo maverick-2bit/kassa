@@ -39,8 +39,8 @@ export type RabattInput = z.infer<typeof RabattInputSchema>
 export const ArtikelPositionSchema = z.object({
   artikelId:              z.string().uuid(),
   menge:                  z.number().positive('Menge muss positiv sein'),
-  /** Preis-Override (Modifikatoren oder Rabatt; 0 = Artikel gratis) */
-  einzelpreisBreuttoCent: z.number().int().nonnegative().optional(),
+  /** Preis-Override (Modifikatoren oder Rabatt; 0 = Artikel gratis; negativ bei Pfand-Rückgabe) */
+  einzelpreisBreuttoCent: z.number().int().optional(),
   /** Bezeichnungs-Zusatz, z. B. "(groß, Ketchup)" */
   bezeichnungZusatz:      z.string().max(200).optional(),
   /** Gewählte Seriennummern aus dem Pool (bei serialisierten Artikeln) */

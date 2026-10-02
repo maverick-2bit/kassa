@@ -102,6 +102,12 @@ describe('Negative Positionen und Belege unter 0 (Integration)', () => {
     expect(gelesen.positionen[0]).toMatchObject({ bezeichnung: 'Becher retour', einzelpreisBreutto: -200, menge: 3 })
   })
 
+  it('Preis-Override der Kasse (einzelpreisBreuttoCent) darf negativ sein — so sendet die Kasse Artikelpositionen', async () => {
+    const res = await barzahlung([{ artikelId: becherId, menge: 1, einzelpreisBreuttoCent: -200 }], { barCent: -200 })
+    expect(res.statusCode, res.body).toBe(201)
+    expect(res.json().gesamtbetragCent).toBe(-200)
+  })
+
   it('Rückzahlung auf Karte (Gesamt < 0) ist möglich; Vorzeichen der Anteile wird geprüft', async () => {
     const karte = await barzahlung([{ artikelId: glasId, menge: 2 }], { barCent: 0, karteCent: -100 })
     expect(karte.statusCode, karte.body).toBe(201)
