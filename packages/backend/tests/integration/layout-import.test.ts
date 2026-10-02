@@ -203,7 +203,7 @@ describe('Layout-Import (Integration, echtes PostgreSQL)', () => {
     expect(bgr).toMatchObject({ farbe: '#112233' })
   })
 
-  it('fehlende Artikel werden angelegt (mit Steuersatz, geerbter Gruppe) — abschaltbar; negative Preise nie', async () => {
+  it('fehlende Artikel werden angelegt (mit Steuersatz, geerbter Gruppe) — abschaltbar; negative Preise (Pfand-Rückgabe) werden angelegt', async () => {
     const neu = {
       gruppen: [{ name: 'Neuheiten', farbe: '#abcdef', artikel: [
         { name: 'Neu 1', preisCent: 250, mwst: 0.13, slot: 2 },
@@ -213,13 +213,15 @@ describe('Layout-Import (Integration, echtes PostgreSQL)', () => {
     const aus = await importiere(authA(), neu, 'dryRun=false&fehlendeAnlegen=false')
     expect(aus.json().zaehler.artikel).toMatchObject({ neu: 0, nichtGefundenNichtAngelegt: 2 })
     const an = await importiere(authA(), neu)
-    expect(an.json().zaehler.artikel).toMatchObject({ neu: 1, nichtGefundenNichtAngelegt: 1 })
+    expect(an.json().zaehler.artikel).toMatchObject({ neu: 2, nichtGefundenNichtAngelegt: 0 })
+    const [pfand] = (await idb.db.select().from(artikel).where(eq(artikel.mandantId, mandantA))).filter(a => a.bezeichnung === 'Pfand zurück')
+    expect(pfand).toMatchObject({ preisBruttoCent: -50, mwstSatz: 'normal', rasterPosition: 3 })
     const [n1] = (await idb.db.select().from(artikel).where(eq(artikel.mandantId, mandantA))).filter(a => a.bezeichnung === 'Neu 1')
     expect(n1).toMatchObject({ preisBruttoCent: 250, mwstSatz: 'ermaessigt2', rasterPosition: 2, aktiv: true })
     expect(n1!.artikelnummer).toMatch(/^\d{4}$/)
     // zweiter Lauf: kein weiterer Artikel
     const wieder = await importiere(authA(), neu)
-    expect(wieder.json().zaehler.artikel).toMatchObject({ neu: 0, zugeordnet: 1 })
+    expect(wieder.json().zaehler.artikel).toMatchObject({ neu: 0, zugeordnet: 2 })
   })
 })
 
