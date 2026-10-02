@@ -161,3 +161,24 @@ export function baueKassenRaster<G, A extends RasterArtikelMitId>(
 ): RasterZelle<G, A>[] {
   return alsZellen(untergruppen, loeseAnordnungAuf(artikel, eintraege).slots)
 }
+
+/**
+ * IDs der Artikel, die eine Kasse in ihrer Warengruppe ausblendet (Kassen-Anordnung `ausgeblendet`).
+ * Eine Zeile zählt nur, wenn der Artikel auch in der Warengruppe der Zeile liegt (veraltete Zeilen nach
+ * einem Gruppenwechsel nicht). Für Zähler und Reiter-Auswahl der Oberflächen; das Raster selbst blendet
+ * über `loeseAnordnungAuf` aus.
+ */
+export function ausgeblendeteArtikelIds(
+  artikel: readonly { id: string; kategorieId: string | null }[],
+  layouts: readonly { kategorieId: string; eintraege: readonly KassenAnordnungEintrag[] }[] | null | undefined,
+): Set<string> {
+  const ausgeblendet = new Set<string>()
+  if (!layouts || layouts.length === 0) return ausgeblendet
+  const gruppeVon = new Map(artikel.map(a => [a.id, a.kategorieId] as const))
+  for (const l of layouts) {
+    for (const e of l.eintraege) {
+      if (e.ausgeblendet && gruppeVon.get(e.artikelId) === l.kategorieId) ausgeblendet.add(e.artikelId)
+    }
+  }
+  return ausgeblendet
+}

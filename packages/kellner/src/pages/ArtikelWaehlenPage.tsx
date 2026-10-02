@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
-import { baumFlach, erweitereSichtbarkeit, farbeZuHex, kategorieAnzeigeNamen, type Artikel, type Kategorie, type ModifikatorGruppe, type ModifikatorAuswahl } from '@kassa/shared'
+import { ausgeblendeteArtikelIds, baumFlach, erweitereSichtbarkeit, farbeZuHex, kategorieAnzeigeNamen, loeseAnordnungAuf, type Artikel, type KasseArtikelLayout, type Kategorie, type ModifikatorGruppe, type ModifikatorAuswahl } from '@kassa/shared'
 import { artikelApi, kategorieApi, modifikatorApi, tischTabApi, kellnerKonfigApi } from '../lib/api'
 import { getAuth, clearAuth, gaengeAktiv as istGaengeAktiv, gaengeAnzahl } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
@@ -38,6 +38,20 @@ function kategorienImBaum(alle: Kategorie[]): { liste: Kategorie[]; label: Map<s
 
 /** Pseudo-Kategorie-ID für den Favoriten-Reiter (kollidiert mit keiner UUID). */
 const FAVORITEN_KAT = '__favoriten__'
+
+/**
+ * Artikel einer Warengruppe in Anzeigereihenfolge. Hat diese Kasse für die Gruppe eine EIGENE Anordnung
+ * (POS-Konfiguration → Artikel), gilt deren Reihenfolge und ausgeblendete Artikel entfallen. Leerfelder gibt es
+ * hier nicht: die Reiter der Kellner-App sind kompakte Listen (Untergruppen sind eigene Reiter, keine Kacheln).
+ * Ohne eigene Anordnung unverändert nach `reihenfolge`.
+ */
+function artikelInReihenfolge(artikel: Artikel[], eintraege: KasseArtikelLayout['eintraege'] | undefined): Artikel[] {
+  if (eintraege && eintraege.length > 0) {
+    const anordnung = loeseAnordnungAuf(artikel, eintraege)
+    if (anordnung.eigene) return anordnung.slots.filter((a): a is Artikel => a !== null)
+  }
+  return [...artikel].sort((a, b) => a.reihenfolge - b.reihenfolge)
+}
 
 // gruppeId → (modId → menge)
 type ModMengenMap = Map<string, Map<string, number>>
@@ -92,6 +106,13 @@ export function ArtikelWaehlenPage() {
     staleTime: 30_000,
   })
 
+  // Eigene Artikel-Anordnung dieser Kasse je Warengruppe (leer = Standard)
+  const layoutsQuery = useQuery({
+    queryKey:  ['kasse-artikel-layouts', identity.kasseId],
+    queryFn:   () => kellnerKonfigApi.artikelLayouts(identity.kasseId),
+    staleTime: 30_000,
+  })
+
   // Tisch-Info für die Kopfzeile (teilt den Cache mit der Tab-Seite)
   const tabQuery = useQuery({
     queryKey:  ['tisch-tab', tabId],
@@ -109,6 +130,8 @@ export function ArtikelWaehlenPage() {
   const kategorien  = baumListe.filter(k =>
     sichtbareKatIds.length === 0 || sichtbareKatIds.includes(k.id))
   const alleArtikel = artikelQuery.data ?? []
+  // An dieser Kasse in ihrer Warengruppe ausgeblendet (Suche/Favoriten bleiben unberührt)
+  const ausgeblendet = ausgeblendeteArtikelIds(alleArtikel, layoutsQuery.data)
 
   // Nur Favoriten aus Warengruppen, die an dieser Kasse sichtbar sind
   const kategorieSichtbar = (a: Artikel) =>
@@ -130,9 +153,9 @@ export function ArtikelWaehlenPage() {
   // Start-Reiter erst wählen, wenn Konfiguration UND Artikel da sind — sonst
   // gewinnt die erste Warengruppe, weil die Favoritenliste noch leer scheint.
   // Welcher Reiter zuerst kommt, stellt die POS-Konfiguration je Kasse ein.
-  if (aktivKat === null && !konfigQuery.isLoading && !artikelQuery.isLoading && !katQuery.isLoading && !favoritenQuery.isLoading) {
+  if (aktivKat === null && !konfigQuery.isLoading && !artikelQuery.isLoading && !katQuery.isLoading && !favoritenQuery.isLoading && !layoutsQuery.isLoading) {
     const startKat = konfigQuery.data?.startKategorieId
-    const mitArtikeln = kategorien.filter(k => alleArtikel.some(a => a.kategorieId === k.id))
+    const mitArtikeln = kategorien.filter(k => alleArtikel.some(a => a.kategorieId === k.id && !ausgeblendet.has(a.id)))
     if (favoritenAktiv && (konfigQuery.data?.startFavoriten ?? true)) setAktivKat(FAVORITEN_KAT)
     else if (startKat && kategorien.some(k => k.id === startKat)) setAktivKat(startKat)
     else if (mitArtikeln.length > 0) setAktivKat(mitArtikeln[0]!.id)
@@ -142,9 +165,10 @@ export function ArtikelWaehlenPage() {
 
   const artikelInKat: (Artikel | null)[] = aktivKat === FAVORITEN_KAT
     ? favoriten
-    : alleArtikel
-        .filter(a => a.kategorieId === aktivKat)
-        .sort((a, b) => a.reihenfolge - b.reihenfolge)
+    : artikelInReihenfolge(
+        alleArtikel.filter(a => a.kategorieId === aktivKat),
+        layoutsQuery.data?.find(l => l.kategorieId === aktivKat)?.eintraege,
+      )
 
   function mengeImKorb(artikelId: string) {
     return korb.filter(k => k.artikel.id === artikelId).reduce((s, k) => s + k.menge, 0)

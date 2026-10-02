@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  ausgeblendeteArtikelIds,
   baueKassenRaster,
   baueRaster,
   loeseAnordnungAuf,
@@ -168,5 +169,35 @@ describe('Kassen-Anordnung: Neulinge, Altbestand, Robustheit', () => {
     const z = [platziert('Cola', 2), platziert('Weg', 1)]
     // Slot 1 bleibt leer (Weg kennt die Kasse in dieser Gruppe nicht), Fanta hängt hinten dran
     expect(slots(artikel, z)).toEqual(['_', 'Cola', 'Fanta'])
+  })
+})
+
+describe('ausgeblendeteArtikelIds', () => {
+  const artikel = [
+    { id: 'Cola', kategorieId: 'G1' },
+    { id: 'Fanta', kategorieId: 'G1' },
+    { id: 'Pizza', kategorieId: 'G2' },
+    { id: 'Lose', kategorieId: null },
+  ]
+
+  it('sammelt die ausgeblendeten Artikel aller Warengruppen', () => {
+    const layouts = [
+      { kategorieId: 'G1', eintraege: [versteckt('Cola'), platziert('Fanta', 1)] },
+      { kategorieId: 'G2', eintraege: [versteckt('Pizza')] },
+    ]
+    expect([...ausgeblendeteArtikelIds(artikel, layouts)].sort()).toEqual(['Cola', 'Pizza'])
+  })
+
+  it('veraltete Zeilen (Artikel inzwischen in einer anderen Warengruppe), unbekannte Artikel und platzierte zählen nicht', () => {
+    const layouts = [
+      { kategorieId: 'G2', eintraege: [versteckt('Cola'), versteckt('Gibt-es-nicht'), platziert('Pizza', 1)] },
+    ]
+    expect(ausgeblendeteArtikelIds(artikel, layouts).size).toBe(0)
+  })
+
+  it('ohne Anordnung leer', () => {
+    expect(ausgeblendeteArtikelIds(artikel, undefined).size).toBe(0)
+    expect(ausgeblendeteArtikelIds(artikel, null).size).toBe(0)
+    expect(ausgeblendeteArtikelIds(artikel, []).size).toBe(0)
   })
 })

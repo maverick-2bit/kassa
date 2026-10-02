@@ -35,6 +35,9 @@ import type {
   BonierdruckerUpdate,
   PosKonfig,
   KasseFavoritEintrag,
+  KasseArtikelLayout,
+  KasseArtikelLayoutEintrag,
+  StandardRasterEintrag,
   PosKonfigUpdate,
   ReihenfolgeUpdate,
   FavoritenReihenfolgeUpdate,
@@ -502,6 +505,9 @@ export const artikelApi = {
     request<void>('PATCH', '/api/artikel/favoriten-reihenfolge', { eintraege }),
   lagerAktivieren: (kategorieId: string | null) =>
     request<{ aktiviert: number }>('POST', '/api/artikel/lager-aktivieren', { kategorieId }),
+  /** Standard-Raster einer Warengruppe (nur Admin): raster_position + reihenfolge = Slot, null löscht den Slot */
+  rasterSpeichern: (kategorieId: string, eintraege: StandardRasterEintrag[]) =>
+    request<void>('PUT', `/api/kategorien/${kategorieId}/artikel-raster`, { eintraege }),
   /** Layout-Import (nur Admin): dryRun=true liefert nur den Bericht */
   layoutImport: (layout: unknown, opts: { dryRun: boolean; fehlendeAnlegen: boolean; spaltenSetzen: boolean; katalogLoeschen: boolean }) =>
     request<LayoutBericht>(
@@ -632,6 +638,15 @@ export const posConfigApi = {
     request<{ eintraege: KasseFavoritEintrag[] }>('GET', `/api/kassen/${kasseId}/favoriten`),
   favoritenSpeichern: (kasseId: string, eintraege: KasseFavoritEintrag[]) =>
     request<void>('PUT', `/api/kassen/${kasseId}/favoriten`, { eintraege }),
+  /** Artikel-Anordnung je Warengruppe an dieser Kasse (leer = überall das Standard-Layout) */
+  artikelLayouts: (kasseId: string) =>
+    request<KasseArtikelLayout[]>('GET', `/api/kassen/${kasseId}/artikel-layouts`),
+  /** Anordnung einer Warengruppe an dieser Kasse ersetzen (nur Admin) */
+  artikelLayoutSpeichern: (kasseId: string, kategorieId: string, eintraege: KasseArtikelLayoutEintrag[]) =>
+    request<void>('PUT', `/api/kassen/${kasseId}/artikel-layouts/${kategorieId}`, { eintraege }),
+  /** Zurück auf das Standard-Layout (nur Admin) */
+  artikelLayoutZuruecksetzen: (kasseId: string, kategorieId: string) =>
+    request<void>('DELETE', `/api/kassen/${kasseId}/artikel-layouts/${kategorieId}`),
 }
 
 // ---------------------------------------------------------------------------
