@@ -83,8 +83,8 @@ importers:
         specifier: ^5.0.0
         version: 5.8.5
       nodemailer:
-        specifier: ^9.1.1
-        version: 9.1.1
+        specifier: ^10.0.13
+        version: 10.0.13
       pdfkit:
         specifier: ^0.17
         version: 0.17.2
@@ -107,9 +107,6 @@ importers:
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.19
-      '@types/nodemailer':
-        specifier: ^8.0.0
-        version: 8.0.0
       '@types/pdfkit':
         specifier: ^0.17.6
         version: 0.17.6
@@ -1607,9 +1604,6 @@ packages:
   '@types/node@25.9.1':
     resolution: {integrity: sha512-xfrlY7UD5rMJk3ZVJP8BNzS28J36YJg+xp+LPXV1TdWxr8uMH5A860QNxYDGQe/ylDSgjxE52Q9VnO7p75tJxg==}
 
-  '@types/nodemailer@8.0.0':
-    resolution: {integrity: sha512-fyf8jWULsCo0d0BuoQ75i6IeoHs47qcqxWc7yUdUcV0pOZGjUTTOvwdG1PRXUDqN/8A64yQdQdnA2pZgcdi+cA==}
-
   '@types/offscreencanvas@2019.7.3':
     resolution: {integrity: sha512-ieXiYmgSRXUDeOntE1InxjWyvEelZGP63M+cGuquuRLuIKKT1osnkXjxev9B7d1nXSug5vpunx+gNlbVxMlC9A==}
 
@@ -2326,9 +2320,9 @@ packages:
   node-releases@2.0.44:
     resolution: {integrity: sha512-5WUyunoPMsvvEhS8AxHtRzP+oA8UCkJ7YRxatWKjngndhDGLiqEVAQKWjFAiAiuL8zMRGzGSJxFnLetoa43qGQ==}
 
-  nodemailer@9.1.1:
-    resolution: {integrity: sha512-izw9mVKFix6YSnC9eLgV6g1opl9DUlRio9ZNcq+Wu9Ujn2UwF+8Nl0B8nz22kEC+CTZCvinkxwJ0DeFbb6NwcQ==}
-    engines: {node: '>=6.0.0'}
+  nodemailer@10.0.13:
+    resolution: {integrity: sha512-SzG86OlvcW/NNhUFC6uROMwRTL4n7MswfQqC/T8mhkmnY1YVa23zUEMYi4ijSeXSl9GLz9ZeTJDUatEDuY5FeQ==}
+    engines: {node: '>=20.0.0'}
 
   obliterator@2.0.5:
     resolution: {integrity: sha512-42CPE9AhahZRsMNslczq0ctAEtqk8Eka26QofnqC346BZdHDySk3LWka23LI7ULIw11NmltpiLagIq8gBozxTw==}
@@ -3603,10 +3597,6 @@ snapshots:
     dependencies:
       undici-types: 7.24.6
 
-  '@types/nodemailer@8.0.0':
-    dependencies:
-      '@types/node': 25.9.1
-
   '@types/offscreencanvas@2019.7.3': {}
 
   '@types/pako@2.0.4': {}
@@ -4357,7 +4347,7 @@ snapshots:
 
   node-releases@2.0.44: {}
 
-  nodemailer@9.1.1: {}
+  nodemailer@10.0.13: {}
 
   obliterator@2.0.5: {}
 
