@@ -4,14 +4,17 @@
  *
  * Layout:
  *  - Kategorie-Leiste: horizontal scrollbar, Touch-optimiert, Fade-Ränder
- *  - Artikel-Raster:   immer 3 Spalten, vertikal scrollbar innerhalb des Containers
+ *  - Artikel-Raster:   `artikelProZeile` Spalten, vertikal scrollbar innerhalb des Containers
+ *  - Reiter sind die Hauptgruppen; Untergruppen erscheinen als Kacheln IM Raster
+ *    (zuerst), danach die Artikel an ihrer Raster-Position — fehlende Positionen
+ *    sind leere Felder (Asello-Layout). „◂ Elterngruppe" führt zurück.
  *
  * Damit der interne Scroll funktioniert muss der Parent-Container
  * eine definierte Höhe haben (flex-1 min-h-0 oder max-h-[...]).
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { KATEGORIE_FARBE_HEX, type AktiveAktion, type Artikel, type Kategorie, type KategorieFarbe, type ModifikatorAuswahl, type ModifikatorGruppe } from '@kassa/shared'
+import { baueRaster, farbeZuHex, type AktiveAktion, type Artikel, type Kategorie, type ModifikatorAuswahl, type ModifikatorGruppe, type RasterZelle } from '@kassa/shared'
 import { formatPreis } from '../lib/format'
 import {
   artikelDerKasse,
@@ -22,6 +25,7 @@ import {
   startReiter,
   type ReiterLage,
 } from '../lib/artikel-reiter'
+import { erweitereSichtbarkeit, nachkommenIds, untergruppenVon, wurzelgruppen, wurzelIdVon } from '../lib/kategorie-baum'
 import { ModifikatorModal } from './ModifikatorModal'
 import { Input } from './ui/Input'
 
@@ -70,7 +74,10 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
     [kategorien],
   )
   // Vom Benutzer gewählter Reiter; null = noch keiner → Start-Reiter der Kasse
-  const [gewaehlterReiter, setGewaehlterReiter] = useState<string | null>(null)
+  const [gewaehlterReiter, setGewaehlterReiterRoh] = useState<string | null>(null)
+  // Untergruppe, in die hineingewechselt wurde (null = oberste Ebene des Reiters)
+  const [gewaehlteEbene, setGewaehlteEbene] = useState<string | null>(null)
+  const setGewaehlterReiter = (id: string | null) => { setGewaehlterReiterRoh(id); setGewaehlteEbene(null) }
   const [modArtikel, setModArtikel] = useState<Artikel | null>(null)
   const [suche, setSuche] = useState('')
 
@@ -79,16 +86,24 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
   const [fadeLinks,  setFadeLinks]  = useState(false)
   const [fadeRechts, setFadeRechts] = useState(false)
 
-  const aktiveKategorien = useMemo(
-    () => sichtbareWarengruppen(kategorien, sichtbareKategorieIds),
+  // Sichtbarkeit der Kasse gilt samt Untergruppen (und deren Vorfahren, sonst unerreichbar)
+  const sichtbareIds = useMemo(
+    () => erweitereSichtbarkeit(kategorien, sichtbareKategorieIds),
     [kategorien, sichtbareKategorieIds],
   )
+  // Alle aktiven, sichtbaren Gruppen — jede Ebene
+  const aktiveKategorien = useMemo(
+    () => sichtbareWarengruppen(kategorien, sichtbareIds),
+    [kategorien, sichtbareIds],
+  )
+  // Reiter = Hauptgruppen
+  const reiterGruppen = useMemo(() => wurzelgruppen(aktiveKategorien), [aktiveKategorien])
 
   // Rohstoffe/Bestandteile sind nur Lager, nicht direkt verkäuflich → aus dem Raster ausblenden.
   // Und nur, was diese Kasse zeigen darf — auch in der Suche.
   const verkaufsartikel = useMemo(
-    () => artikelDerKasse(artikel.filter(a => !a.istBestandteil), sichtbareKategorieIds),
-    [artikel, sichtbareKategorieIds],
+    () => artikelDerKasse(artikel.filter(a => !a.istBestandteil), sichtbareIds),
+    [artikel, sichtbareIds],
   )
 
   // Artikel ohne (aktive) Warengruppe — eigener Reiter, nur wenn die Kasse alle zeigt
@@ -106,8 +121,8 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
   const favoriten = useMemo<(Artikel | null)[]>(() => {
     // Nur Favoriten aus Warengruppen, die an dieser Kasse sichtbar sind (leer = alle)
     const kategorieSichtbar = (a: Artikel) =>
-      !sichtbareKategorieIds || sichtbareKategorieIds.length === 0 ||
-      (a.kategorieId !== null && sichtbareKategorieIds.includes(a.kategorieId))
+      !sichtbareIds || sichtbareIds.length === 0 ||
+      (a.kategorieId !== null && sichtbareIds.includes(a.kategorieId))
     if (favoritenEintraege && favoritenEintraege.length > 0) {
       const byId = new Map(verkaufsartikel.map(a => [a.id, a] as const))
       return favoritenEintraege
@@ -118,7 +133,7 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
     return verkaufsartikel
       .filter(a => a.istFavorit && kategorieSichtbar(a))
       .sort((a, b) => a.favoritenReihenfolge - b.favoritenReihenfolge || a.bezeichnung.localeCompare(b.bezeichnung))
-  }, [verkaufsartikel, favoritenEintraege, sichtbareKategorieIds])
+  }, [verkaufsartikel, favoritenEintraege, sichtbareIds])
 
   const anzahlProKategorie = useMemo(() => {
     const map = new Map<string, number>()
@@ -128,17 +143,41 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
     return map
   }, [verkaufsartikel])
 
+  // Artikel je Reiter = die der ganzen Hauptgruppe samt aller Untergruppen
+  const anzahlProReiter = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const w of reiterGruppen) {
+      const ids = [w.id, ...nachkommenIds(aktiveKategorien, w.id)]
+      map.set(w.id, ids.reduce((summe, id) => summe + (anzahlProKategorie.get(id) ?? 0), 0))
+    }
+    return map
+  }, [reiterGruppen, aktiveKategorien, anzahlProKategorie])
+
   const lage = useMemo<ReiterLage>(() => ({
     hatFavoriten: favoriten.length > 0,
     hatSonstige:  sonstige.length > 0,
-    kategorieIds: aktiveKategorien.map(k => k.id),
-    kategorieIdsMitArtikeln: aktiveKategorien.filter(k => (anzahlProKategorie.get(k.id) ?? 0) > 0).map(k => k.id),
-  }), [favoriten, sonstige, aktiveKategorien, anzahlProKategorie])
+    kategorieIds: reiterGruppen.map(k => k.id),
+    kategorieIdsMitArtikeln: reiterGruppen.filter(k => (anzahlProReiter.get(k.id) ?? 0) > 0).map(k => k.id),
+  }), [favoriten, sonstige, reiterGruppen, anzahlProReiter])
 
   // Gewählter Reiter, solange es ihn gibt — sonst der Start-Reiter der Kasse
+  // Start-Einstellungen können eine Untergruppe nennen → deren Hauptgruppe öffnen
+  const alsReiter = (id: string | null | undefined) =>
+    id && id !== FAVORITEN_TAB_ID && id !== SONSTIGE_TAB_ID ? (wurzelIdVon(aktiveKategorien, id) ?? id) : id
   const aktivKategorieId = reiterGueltig(gewaehlterReiter, lage)
     ? gewaehlterReiter
-    : startReiter(lage, { startFavoriten, startKategorieId }, initialKategorieId)
+    : startReiter(lage, { startFavoriten, startKategorieId: alsReiter(startKategorieId) }, alsReiter(initialKategorieId))
+
+  // Gruppe, deren Inhalt das Raster zeigt: gewählte Untergruppe (wenn sie noch im Reiter liegt) sonst der Reiter selbst
+  const aktuelleGruppeId = useMemo(() => {
+    if (!aktivKategorieId || aktivKategorieId === FAVORITEN_TAB_ID || aktivKategorieId === SONSTIGE_TAB_ID) return null
+    if (gewaehlteEbene && nachkommenIds(aktiveKategorien, aktivKategorieId).includes(gewaehlteEbene)) return gewaehlteEbene
+    return aktivKategorieId
+  }, [aktivKategorieId, gewaehlteEbene, aktiveKategorien])
+  const aktuelleGruppe = aktuelleGruppeId ? aktiveKategorien.find(k => k.id === aktuelleGruppeId) ?? null : null
+  const elterGruppe    = aktuelleGruppe && aktuelleGruppe.id !== aktivKategorieId && aktuelleGruppe.parentId
+    ? aktiveKategorien.find(k => k.id === aktuelleGruppe.parentId) ?? null
+    : null
 
   useEffect(() => {
     const el = scrollRef.current
@@ -152,10 +191,11 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
     const ro = new ResizeObserver(check)
     ro.observe(el)
     return () => { el.removeEventListener('scroll', check); ro.disconnect() }
-  }, [aktiveKategorien.length])
+  }, [reiterGruppen.length])
 
-  // Kann Platzhalter (null) enthalten — nur im Favoriten-Tab ohne aktive Suche.
-  const gefilterteArtikel = useMemo<(Artikel | null)[]>(() => {
+  // Raster-Zellen: Untergruppen zuerst, dann Artikel an ihrem Slot (Lücken = leere Felder).
+  // Favoriten-Platzhalter (null) werden ebenfalls zu leeren Feldern.
+  const zellen = useMemo<RasterZelle<Kategorie, Artikel>[]>(() => {
     // Aktive Suche überstimmt Kategorie/Favoriten und filtert global über
     // Bezeichnung UND Artikelnummer (client-seitig, artikel ist komplett geladen).
     const q = suche.trim().toLowerCase()
@@ -165,14 +205,21 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
           a.bezeichnung.toLowerCase().includes(q) ||
           (a.artikelnummer?.toLowerCase().includes(q) ?? false))
         .sort((a, b) => a.bezeichnung.localeCompare(b.bezeichnung))
+        .map((a): RasterZelle<Kategorie, Artikel> => ({ typ: 'artikel', artikel: a }))
     }
-    if (aktivKategorieId === FAVORITEN_TAB_ID) return favoriten
-    if (aktivKategorieId === SONSTIGE_TAB_ID)  return sonstige
-    if (aktivKategorieId === null) return []
-    return verkaufsartikel
-      .filter(a => a.kategorieId === aktivKategorieId)
-      .sort((a, b) => a.reihenfolge - b.reihenfolge || a.bezeichnung.localeCompare(b.bezeichnung))
-  }, [aktivKategorieId, verkaufsartikel, favoriten, sonstige, suche])
+    if (aktivKategorieId === FAVORITEN_TAB_ID) {
+      return favoriten.map((a): RasterZelle<Kategorie, Artikel> => (a === null ? { typ: 'leer' } : { typ: 'artikel', artikel: a }))
+    }
+    if (aktivKategorieId === SONSTIGE_TAB_ID) {
+      return sonstige.map((a): RasterZelle<Kategorie, Artikel> => ({ typ: 'artikel', artikel: a }))
+    }
+    if (aktuelleGruppeId === null) return []
+    return baueRaster(
+      untergruppenVon(aktiveKategorien, aktuelleGruppeId),
+      verkaufsartikel.filter(a => a.kategorieId === aktuelleGruppeId),
+    )
+  }, [aktivKategorieId, aktuelleGruppeId, aktiveKategorien, verkaufsartikel, favoriten, sonstige, suche])
+  const mitZurueck = suche.trim() === '' && elterGruppe !== null
 
   // ---------------------------------------------------------------------------
 
@@ -238,15 +285,15 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
               </TabBtn>
             )}
 
-            {aktiveKategorien.map((k) => {
+            {reiterGruppen.map((k) => {
               const isAktiv = k.id === aktivKategorieId
-              const anzahl  = anzahlProKategorie.get(k.id) ?? 0
+              const anzahl  = anzahlProReiter.get(k.id) ?? 0
               return (
                 <TabBtn
                   key={k.id}
                   aktiv={isAktiv}
                   onClick={() => setGewaehlterReiter(k.id)}
-                  farbeHex={KATEGORIE_FARBE_HEX[k.farbe]}
+                  farbeHex={farbeZuHex(k.farbe) ?? '#9ca3af'}
                 >
                   {k.name}
                   {anzahl > 0 && <Anzahl wert={anzahl} aktiv={isAktiv} />}
@@ -268,8 +315,23 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
         </div>
       )}
 
+      {/* ---- Zurück zur Elterngruppe (nur innerhalb einer Untergruppe) ---- */}
+      {mitZurueck && elterGruppe && aktuelleGruppe && (
+        <div className="shrink-0 mb-2 flex items-center gap-2">
+          <button
+            type="button"
+            data-testid="untergruppe-zurueck"
+            onClick={() => setGewaehlteEbene(elterGruppe.id === aktivKategorieId ? null : elterGruppe.id)}
+            className="min-h-[40px] shrink-0 rounded-lg border border-line bg-panel px-3 text-sm font-medium text-ink hover:bg-panel-2 transition"
+          >
+            ◂ {elterGruppe.name}
+          </button>
+          <span className="min-w-0 truncate text-sm font-semibold text-ink-muted">{aktuelleGruppe.name}</span>
+        </div>
+      )}
+
       {/* ---- Artikel-Raster (scrollt vertikal) ---- */}
-      {gefilterteArtikel.length === 0 ? (
+      {zellen.length === 0 ? (
         <p className="text-sm text-ink-subtle py-4 text-center shrink-0">
           Keine Artikel in dieser Kategorie.
         </p>
@@ -279,20 +341,40 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
             className="grid gap-1.5 pb-1"
             style={{ gridTemplateColumns: `repeat(${artikelProZeile ?? 4}, minmax(0, 1fr))` }}
           >
-            {gefilterteArtikel.map((a, idx) => {
-              // Platzhalter (nur im Favoriten-Tab): graue, gesperrte Kachel
-              if (a === null) {
+            {zellen.map((zelle, idx) => {
+              // Leeres Feld (Lücke im Raster / Favoriten-Platzhalter): graue, gesperrte Kachel
+              if (zelle.typ === 'leer') {
                 return (
                   <div
-                    key={`platzhalter-${idx}`}
+                    key={`leer-${idx}`}
                     aria-hidden
+                    data-testid="raster-leer"
                     className="rounded-lg border border-dashed border-line bg-panel-2/60 min-h-[4.5rem]"
                   />
                 )
               }
+              // Untergruppe: Kachel in der Gruppenfarbe mit Box-Symbol — Klick wechselt hinein
+              if (zelle.typ === 'gruppe') {
+                const g = zelle.gruppe
+                const hex = farbeZuHex(g.farbe) ?? '#9ca3af'
+                return (
+                  <button
+                    key={`gruppe-${g.id}`}
+                    type="button"
+                    data-testid="untergruppe-kachel"
+                    onClick={() => setGewaehlteEbene(g.id)}
+                    className="relative flex min-h-[4.5rem] w-full flex-col items-start justify-between gap-1 overflow-hidden rounded-lg p-2 text-left shadow-sm transition active:scale-[0.97] hover:opacity-90"
+                    style={{ backgroundColor: hex, color: schriftAuf(hex) }}
+                  >
+                    <BoxSymbol />
+                    <span className="line-clamp-2 text-xs font-semibold leading-tight">{g.name}</span>
+                  </button>
+                )
+              }
+              const a = zelle.artikel
               // Eigene Artikel-Farbe geht vor, sonst die der Warengruppe
               const farbe         = a.farbe ?? (a.kategorieId ? farbeProKategorie.get(a.kategorieId) : undefined)
-              const farbeHex      = farbe ? KATEGORIE_FARBE_HEX[farbe as KategorieFarbe] : undefined
+              const farbeHex      = farbe ? farbeZuHex(farbe) : undefined
               const gruppen       = artikelGruppen?.get(a.id) ?? []
               const hatMods       = gruppen.length > 0
               // Abgeleitete Verfügbarkeit aus dem Rezept (null = kein Rezept-Limit)
@@ -325,6 +407,7 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
                 <button
                   key={a.id}
                   type="button"
+                  data-testid="artikel-kachel"
                   disabled={istAusverkauft}
                   onClick={handleClick}
                   className={`
@@ -339,7 +422,7 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
                   `}
                 >
                   {/* Farbiger Akzent oben: Artikel-Farbe ?? Warengruppen-Farbe */}
-                  <div className="h-1.5 w-full" style={{ backgroundColor: farbeHex ?? 'var(--color-brand-500, #16a34a)' }} />
+                  <div data-testid="artikel-farbe" className="h-1.5 w-full" style={{ backgroundColor: farbeHex ?? 'var(--color-brand-500, #16a34a)' }} />
 
                   {/* Mengen-Badge, wenn im Warenkorb */}
                   {mengeImKorb > 0 && (
@@ -454,6 +537,22 @@ function TabBtn({
     >
       {children}
     </button>
+  )
+}
+
+/** Lesbare Schriftfarbe (weiß/dunkel) auf einem Hex-Hintergrund. */
+function schriftAuf(hex: string): string {
+  const n = parseInt(hex.slice(1), 16)
+  const helligkeit = (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255))
+  return helligkeit > 160 ? '#1f2937' : '#ffffff'
+}
+
+function BoxSymbol() {
+  return (
+    <svg aria-hidden viewBox="0 0 24 24" className="h-5 w-5 opacity-90" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round">
+      <path d="M12 3 3.5 7.5v9L12 21l8.5-4.5v-9L12 3Z" />
+      <path d="M3.5 7.5 12 12l8.5-4.5M12 12v9" />
+    </svg>
   )
 }
 

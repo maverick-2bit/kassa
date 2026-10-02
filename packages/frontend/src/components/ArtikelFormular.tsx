@@ -4,7 +4,7 @@ import {
   ALLE_STATIONEN,
   MWST_LABELS,
   STATION_LABELS,
-  KATEGORIE_FARBE_HEX,
+  farbeZuHex,
   type Artikel,
   type ArtikelInput,
   type Bonierdrucker,
@@ -144,7 +144,7 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
   const gewaehlteKatId  = watch('kategorieId')
   const gewaehlteKat    = kategorien?.find(k => k.id === gewaehlteKatId)
   const katVorgabe      = gewaehlteKat?.station ?? null
-  const katFarbeHex     = gewaehlteKat ? KATEGORIE_FARBE_HEX[gewaehlteKat.farbe] : undefined
+  const katFarbeHex     = gewaehlteKat ? farbeZuHex(gewaehlteKat.farbe) : undefined
 
   useEffect(() => {
     reset({

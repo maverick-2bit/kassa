@@ -2,13 +2,14 @@
  * Artikel-Routen (alle auth-protected, mandantId aus JWT).
  *   POST   /api/artikel              Anlegen
  *   POST   /api/artikel/bulk         Bulk-Import (Array von Artikel-Inputs)
+ *   POST   /api/artikel/layout-import  Layout-Import (Gruppenbaum, Raster, Farben, Favoriten; nur Admin)
  *   GET    /api/artikel              Auflisten (mandantId aus JWT)
  *   PUT    /api/artikel/:id          Aktualisieren
  *   DELETE /api/artikel/:id          Deaktivieren (soft delete)
  */
 
 import type { FastifyPluginAsync } from 'fastify'
-import { ArtikelInputSchema, ArtikelUpdateSchema } from '@kassa/shared'
+import { ArtikelInputSchema, ArtikelUpdateSchema, LayoutImportSchema } from '@kassa/shared'
 import { z } from 'zod'
 import { and, eq, isNotNull } from 'drizzle-orm'
 import type { Db } from '../db/client.js'
@@ -20,6 +21,7 @@ import {
   aktualisiereArtikel,
   deaktiviereArtikel,
 } from '../services/artikel.service.js'
+import { wendeLayoutAn } from '../services/layout-import.service.js'
 
 export interface ArtikelRouteOptions {
   db: Db
@@ -44,7 +46,35 @@ async function gehortArtikelZuMandant(db: Db, artikelId: string, mandantId: stri
 // mandantId fehlt absichtlich — kommt aus dem JWT und wird serverseitig gesetzt
 const BulkImportSchema = z.array(z.record(z.unknown())).min(1).max(500)
 
+// Query-Booleans NIE z.coerce.boolean (aus "false" würde true)
+const BoolQuery = (standard: 'true' | 'false') => z.enum(['true', 'false']).default(standard).transform(v => v === 'true')
+const LayoutImportQuerySchema = z.object({
+  /** Standard true: ohne ausdrückliches dryRun=false wird nichts geschrieben */
+  dryRun:          BoolQuery('true'),
+  fehlendeAnlegen: BoolQuery('true'),
+  spaltenSetzen:   BoolQuery('true'),
+})
+
 export const artikelRoute: FastifyPluginAsync<ArtikelRouteOptions> = async (fastify, opts) => {
+
+  /**
+   * POST /artikel/layout-import?dryRun=true|false — wendet ein Layout (Gruppenbaum mit
+   * Untergruppen, Raster-Slots, Farben, Favoriten) auf die bestehenden Artikel an.
+   * Nur Admin. mandantId kommt aus dem JWT, nie aus dem Body. Alles in einer Transaktion;
+   * dryRun liefert denselben Bericht, ohne zu schreiben.
+   */
+  fastify.post('/artikel/layout-import', {
+    onRequest: [fastify.requireRolle('admin')],
+    bodyLimit: 8 * 1024 * 1024,
+  }, async (request, reply) => {
+    const query = LayoutImportQuerySchema.safeParse(request.query)
+    if (!query.success) return reply.status(400).send({ fehler: query.error.issues })
+    const layout = LayoutImportSchema.safeParse(request.body)
+    if (!layout.success) return reply.status(400).send({ fehler: layout.error.issues })
+
+    const bericht = await wendeLayoutAn(opts.db, request.user.mandantId, layout.data, query.data)
+    return reply.send(bericht)
+  })
 
   /**
    * POST /artikel/bulk — bis zu 500 Artikel in einer Anfrage anlegen.

@@ -5,14 +5,29 @@ import { StationSchema } from './station.js'
 // Farben – vordefinierte Farbschlüssel für Kategorie-Tabs
 // ---------------------------------------------------------------------------
 
-export const KategorieFarbeSchema = z.enum([
+/** Die 20 vordefinierten Farbnamen (Palette im Farbwähler). */
+export const KategorieFarbeNameSchema = z.enum([
   'grau', 'rot', 'orange', 'gelb', 'gruen', 'blau', 'lila', 'pink',
   'tuerkis', 'mint', 'limette', 'oliv', 'braun', 'gold', 'koralle',
   'himmelblau', 'marine', 'violett', 'magenta', 'schiefer',
 ])
+export type KategorieFarbeName = z.infer<typeof KategorieFarbeNameSchema>
+
+/** Freie Farbe als `#rrggbb` (wird auf Kleinbuchstaben normalisiert). */
+export const HexFarbeSchema = z.string().trim()
+  .regex(/^#[0-9a-fA-F]{6}$/, 'Farbe als #rrggbb')
+  .transform(s => s.toLowerCase())
+
+/**
+ * Kategorie-/Artikelfarbe: entweder einer der 20 Namen ODER ein beliebiger
+ * Hex-Wert `#rrggbb` (z. B. aus dem Asello-Layout-Import). Der Typ ist daher
+ * `string` — für die Anzeige IMMER `farbeZuHex()` benutzen, nie direkt in
+ * KATEGORIE_FARBE_HEX indizieren.
+ */
+export const KategorieFarbeSchema = z.union([KategorieFarbeNameSchema, HexFarbeSchema])
 export type KategorieFarbe = z.infer<typeof KategorieFarbeSchema>
 
-export const KATEGORIE_FARBE_LABELS: Record<KategorieFarbe, string> = {
+export const KATEGORIE_FARBE_LABELS: Record<KategorieFarbeName, string> = {
   grau:       'Grau',
   rot:        'Rot',
   orange:     'Orange',
@@ -40,7 +55,7 @@ export const KATEGORIE_FARBE_LABELS: Record<KategorieFarbe, string> = {
  * Formulare, Konfiguration) — vorher lebten je 8 Farben als Tailwind-Klassen
  * verstreut in den Komponenten, was die Palette nicht erweiterbar machte.
  */
-export const KATEGORIE_FARBE_HEX: Record<KategorieFarbe, string> = {
+export const KATEGORIE_FARBE_HEX: Record<KategorieFarbeName, string> = {
   grau:       '#9ca3af',
   rot:        '#ef4444',
   orange:     '#f97316',
@@ -63,6 +78,21 @@ export const KATEGORIE_FARBE_HEX: Record<KategorieFarbe, string> = {
   schiefer:   '#64748b',
 }
 
+/**
+ * Auflösung einer gespeicherten Farbe (Name ODER Hex) zu einem Hex-Wert.
+ * Unbekannte/leere Werte liefern `undefined` (Aufrufer nehmen ihre Vorgabe).
+ */
+export function farbeZuHex(farbe: string | null | undefined): string | undefined {
+  if (!farbe) return undefined
+  if (Object.prototype.hasOwnProperty.call(KATEGORIE_FARBE_HEX, farbe)) {
+    return KATEGORIE_FARBE_HEX[farbe as KategorieFarbeName]
+  }
+  return /^#[0-9a-fA-F]{6}$/.test(farbe) ? farbe.toLowerCase() : undefined
+}
+
+/** Höchste Schachtelungstiefe von Warengruppen (1 = nur Hauptgruppen). */
+export const KATEGORIE_MAX_TIEFE = 4
+
 // ---------------------------------------------------------------------------
 // Kategorie
 // ---------------------------------------------------------------------------
@@ -74,6 +104,8 @@ export const KategorieSchema = z.object({
   farbe:           KategorieFarbeSchema,
   reihenfolge:     z.number().int(),
   aktiv:           z.boolean(),
+  /** Übergeordnete Warengruppe (null = Hauptgruppe/Reiter) */
+  parentId:        z.string().uuid().nullable(),
   bonierdruckerId: z.string().uuid().nullable(),
   /** KDS-Stations-Vorgabe für alle Artikel dieser Warengruppe (Artikel können einzeln abweichen) */
   station:         StationSchema.nullable(),
@@ -88,6 +120,7 @@ export const KategorieInputSchema = z.object({
   name:            z.string().trim().min(1, 'Name erforderlich').max(80),
   farbe:           KategorieFarbeSchema,
   reihenfolge:     z.number().int().nonnegative().default(0),
+  parentId:        z.string().uuid().optional().nullable(),
   bonierdruckerId: z.string().uuid().optional().nullable(),
   station:         StationSchema.optional().nullable(),
   terminalSichtbar: z.boolean().default(false),
@@ -99,6 +132,7 @@ export const KategorieUpdateSchema = z.object({
   farbe:           KategorieFarbeSchema.optional(),
   reihenfolge:     z.number().int().nonnegative().optional(),
   aktiv:           z.boolean().optional(),
+  parentId:        z.string().uuid().nullable().optional(),
   bonierdruckerId: z.string().uuid().nullable().optional(),
   station:         StationSchema.nullable().optional(),
   terminalSichtbar: z.boolean().optional(),

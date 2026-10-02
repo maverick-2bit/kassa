@@ -21,6 +21,7 @@ import { Schalter } from '../components/ui/Schalter'
 import { ArtikelFormular } from '../components/ArtikelFormular'
 import { KategorieFormular } from '../components/KategorieFormular'
 import { ArtikelImportModal } from '../components/ArtikelImportModal'
+import { LayoutImportModal } from '../components/LayoutImportModal'
 import { exportArtikelVorlage } from '../lib/artikel-excel'
 import {
   filtereArtikel,
@@ -70,6 +71,8 @@ export function ArtikelPage() {
   const [zuweisungArtikelId, setZuweisungArtikelId] = useState<string | null>(null)
   /** Import-Modal */
   const [importModalOpen, setImportModalOpen] = useState(false)
+  /** Layout-Import-Modal (Gruppenbaum, Raster, Farben, Favoriten aus JSON) */
+  const [layoutImportOpen, setLayoutImportOpen] = useState(false)
 
   /** Modifikator, dessen Lagerstand gerade gesetzt wird */
   const [bestandModal, setBestandModal] = useState<{
@@ -341,6 +344,13 @@ export function ArtikelPage() {
             >
               Importieren
             </Button>
+            <Button
+              variant="secondary"
+              onClick={() => setLayoutImportOpen(true)}
+              title="Gruppenbaum, Artikelanordnung, Farben und Favoriten aus einer Layout-Datei (JSON) übernehmen"
+            >
+              Layout importieren (JSON)
+            </Button>
             <Button onClick={openNew}>+ Neuer Artikel</Button>
           </div>
         </div>
@@ -362,11 +372,9 @@ export function ArtikelPage() {
             className="rounded-md border border-line-strong bg-panel px-3 py-1.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand-500"
           >
             <option value="alle">Alle Warengruppen</option>
-            {[...(katList.data ?? [])]
-              .sort((a, b) => a.reihenfolge - b.reihenfolge || a.name.localeCompare(b.name))
-              .map(k => (
-                <option key={k.id} value={k.id}>{k.name}{k.aktiv ? '' : ' (deaktiviert)'}</option>
-              ))}
+            {baumFlach(katList.data ?? []).map(({ kategorie: k, tiefe }) => (
+              <option key={k.id} value={k.id}>{'\u00a0\u00a0'.repeat(tiefe)}{tiefe > 0 ? '↳ ' : ''}{k.name}{k.aktiv ? '' : ' (deaktiviert)'}</option>
+            ))}
             <option value="ohne">— ohne Warengruppe —</option>
           </select>
           <label className="inline-flex items-center gap-2 text-sm text-ink">
@@ -589,11 +597,12 @@ export function ArtikelPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-line">
-                  {katList.data
-                    .sort((a, b) => a.reihenfolge - b.reihenfolge || a.name.localeCompare(b.name))
-                    .map((k) => (
+                  {baumFlach(katList.data)
+                    .map(({ kategorie: k, tiefe }) => (
                       <tr key={k.id} className={k.aktiv ? '' : 'opacity-60'}>
-                        <td className="px-4 py-2.5 font-medium text-ink">{k.name}</td>
+                        <td className="px-4 py-2.5 font-medium text-ink" style={{ paddingLeft: `${1 + tiefe * 1.25}rem` }}>
+                          {tiefe > 0 && <span aria-hidden className="mr-1 text-ink-subtle">↳</span>}{k.name}
+                        </td>
                         <td className="px-4 py-2.5">
                           <FarbChip farbe={k.farbe} />
                         </td>
@@ -828,6 +837,7 @@ export function ArtikelPage() {
       >
         <KategorieFormular
           initial={editingKat}
+          kategorien={katList.data}
           bonierdrucker={bonierdruckerQuery.data}
           onSubmit={handleKatSubmit}
           onCancel={() => { setKatModalOpen(false); setEditingKat(null); setKatError(null) }}
@@ -879,6 +889,12 @@ export function ArtikelPage() {
         kategorien={katList.data ?? []}
         mandantId={identity.mandantId}
         onClose={() => { setImportModalOpen(false); invalidateArtikel() }}
+      />
+
+      {/* Layout-Import Modal */}
+      <LayoutImportModal
+        open={layoutImportOpen}
+        onClose={() => setLayoutImportOpen(false)}
       />
 
       {/* Artikel-Gruppen-Zuweisung Modal */}
@@ -1348,7 +1364,8 @@ function ArtikelGruppenZuweisungModal({
 // Hilfkomponente: Farb-Chip
 // ---------------------------------------------------------------------------
 
-import { KATEGORIE_FARBE_HEX, type KategorieFarbe } from '@kassa/shared'
+import { farbeZuHex, type KategorieFarbe } from '@kassa/shared'
+import { baumFlach } from '../lib/kategorie-baum'
 
 /** Sortierbare Spaltenüberschrift: Klick sortiert, erneuter Klick dreht die Richtung. */
 function SortKopf({
@@ -1382,13 +1399,13 @@ function SortKopf({
 
 function FarbChip({ farbe }: { farbe: KategorieFarbe }) {
   // Hex-Palette statt Klassen-Map — trägt alle 20 Farben
-  const hex = KATEGORIE_FARBE_HEX[farbe]
+  const hex = farbeZuHex(farbe) ?? '#9ca3af'
   return (
     <span
       className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
       style={{ backgroundColor: `${hex}22`, color: hex }}
     >
-      {KATEGORIE_FARBE_LABELS[farbe]}
+      {(KATEGORIE_FARBE_LABELS as Record<string, string>)[farbe] ?? farbe}
     </span>
   )
 }

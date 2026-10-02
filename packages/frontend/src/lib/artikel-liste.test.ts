@@ -8,7 +8,7 @@ const KAT_SPEISEN   = '00000000-0000-4000-8000-000000000002'
 
 function kat(id: string, name: string, reihenfolge: number): Kategorie {
   return {
-    id, mandantId: 'm', name, farbe: 'grau', reihenfolge, aktiv: true, bonierdruckerId: null,
+    id, mandantId: 'm', name, farbe: 'grau', reihenfolge, aktiv: true, parentId: null, bonierdruckerId: null,
     station: null, terminalSichtbar: false, createdAt: '', updatedAt: '',
   }
 }
@@ -18,7 +18,7 @@ function art(teil: Partial<Artikel>): Artikel {
   n++
   return {
     id: `a${n}`, mandantId: 'm', bezeichnung: `Artikel ${n}`, preisBruttoCent: 100, mwstSatz: 'normal',
-    artikelnummer: null, station: null, farbe: null, kategorieId: null, aktiv: true,
+    artikelnummer: null, station: null, farbe: null, kategorieId: null, rasterPosition: null, aktiv: true,
     lagerstandAktiv: false, lagerstandMenge: null, mindestbestand: null, seriennummernAktiv: false,
     istFavorit: false, reihenfolge: 0, favoritenReihenfolge: 0, bonierdruckerId: null,
     bonierBeiDirektverkauf: false, istBestandteil: false, bestandteile: [], lieferantId: null,

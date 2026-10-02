@@ -21,7 +21,7 @@ import {
  * Format: fortlaufende Ganzzahl, 4-stellig mit führenden Nullen (z.B. "0001").
  * Beachtet auch nicht-numerische artikelnummern (werden ignoriert).
  */
-async function generiereArtikelNummer(db: DbOrTx, mandantId: string): Promise<string> {
+export async function generiereArtikelNummer(db: DbOrTx, mandantId: string): Promise<string> {
   const result = await db.execute(sql`
     SELECT COALESCE(MAX(
       CASE WHEN artikelnummer ~ '^[0-9]+$' THEN artikelnummer::integer ELSE 0 END
@@ -47,6 +47,7 @@ function toDto(
     station:              row.station as Artikel['station'],
     farbe:                row.farbe as Artikel['farbe'],
     kategorieId:          row.kategorieId,
+    rasterPosition:       row.rasterPosition,
     aktiv:                row.aktiv,
     lagerstandAktiv:      row.lagerstandAktiv,
     lagerstandMenge:      row.lagerstandMenge,
@@ -91,6 +92,7 @@ export async function erstelleArtikel(db: Db, input: ArtikelInput): Promise<Arti
       station:         input.station ?? null,
       farbe:           input.farbe ?? null,
       kategorieId:     input.kategorieId ?? null,
+      rasterPosition:  input.rasterPosition ?? null,
       lagerstandAktiv: input.lagerstandAktiv ?? false,
       lagerstandMenge: input.lagerstandAktiv ? (input.lagerstandMenge ?? null) : null,
       seriennummernAktiv: input.seriennummernAktiv ?? false,
@@ -143,6 +145,7 @@ export async function aktualisiereArtikel(
   if (update.station         !== undefined) values.station         = update.station
   if (update.farbe           !== undefined) values.farbe           = update.farbe
   if (update.kategorieId     !== undefined) values.kategorieId     = update.kategorieId
+  if (update.rasterPosition  !== undefined) values.rasterPosition  = update.rasterPosition
   if (update.aktiv           !== undefined) values.aktiv           = update.aktiv
   if (update.lagerstandAktiv      !== undefined) values.lagerstandAktiv      = update.lagerstandAktiv
   if (update.seriennummernAktiv   !== undefined) values.seriennummernAktiv   = update.seriennummernAktiv
