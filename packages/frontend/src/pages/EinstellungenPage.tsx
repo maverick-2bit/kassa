@@ -431,7 +431,8 @@ function KassenVerwaltungSektion() {
 function WarengruppenVerteilungSektion() {
   const qc = useQueryClient()
   const kassenQuery     = useQuery({ queryKey: ['kassen-liste'], queryFn: kasseApi.liste })
-  const kategorienQuery = useQuery({ queryKey: ['kategorien'],   queryFn: () => kategorieApi.list(false) })
+  // Nur aktive: eine deaktivierte Warengruppe erscheint an keiner Kasse, braucht also keine Zeile
+  const kategorienQuery = useQuery({ queryKey: ['kategorien'],   queryFn: () => kategorieApi.list(true) })
 
   const kassen     = kassenQuery.data ?? []
   const kategorien = kategorienQuery.data ?? []

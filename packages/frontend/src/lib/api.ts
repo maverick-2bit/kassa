@@ -489,6 +489,12 @@ export const authApi = {
 // ---------------------------------------------------------------------------
 
 export const artikelApi = {
+  /**
+   * Standard: nur aktive Artikel. `nurAktive=false` liefert auch deaktivierte —
+   * nur für die Stammdatenpflege (Artikelverwaltung, Import-Duplikatprüfung).
+   * Query-Keys getrennt halten: ['artikel', mandantId, true] = nur aktive,
+   * ['artikel', mandantId, false] = alle.
+   */
   list:   (mandantId: string, nurAktive = true) =>
     request<Artikel[]>('GET', `/api/artikel?mandantId=${mandantId}&nurAktive=${nurAktive}`),
   create: (input: ArtikelInput) => request<Artikel>('POST', '/api/artikel', input),
@@ -555,7 +561,15 @@ export const sbBestellungApi = {
 }
 
 export const kategorieApi = {
-  list:       (nurAktive = false) =>
+  /**
+   * Standard: nur aktive Warengruppen (wie artikelApi.list und die Kellner-App).
+   * `nurAktive=false` liefert auch deaktivierte — nur für die Stammdatenpflege und
+   * zum Nachschlagen von Namen. Query-Keys getrennt halten: ['kategorien'] = nur
+   * aktive (Kasse, Tisch, Auswahlfelder, Konfiguration), ['kategorien', 'alle'] =
+   * inkl. deaktivierter. Teilen sich beide einen Key, zeigt z. B. die Kasse nach
+   * einem Besuch der Artikelverwaltung deaktivierte Gruppen aus dem Cache.
+   */
+  list:       (nurAktive = true) =>
     request<Kategorie[]>('GET', `/api/kategorien?nurAktive=${nurAktive}`),
   create:     (input: KategorieInput) =>
     request<Kategorie>('POST', '/api/kategorien', input),

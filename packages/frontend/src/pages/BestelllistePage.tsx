@@ -79,9 +79,10 @@ interface BestellZeile {
 export function BestelllistePage() {
   const auth = getAuth()
 
+  // Nur aktive: deaktivierte Artikel werden nicht mehr nachbestellt
   const { data: alleArtikel = [], isLoading: artikelLaed } = useQuery({
-    queryKey: ['artikel', auth?.mandant.id, 'alle'],
-    queryFn:  () => artikelApi.list(auth!.mandant.id, false),
+    queryKey: ['artikel', auth?.mandant.id, true],
+    queryFn:  () => artikelApi.list(auth!.mandant.id, true),
     enabled:  !!auth,
   })
 
