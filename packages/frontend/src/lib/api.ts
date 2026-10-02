@@ -815,6 +815,9 @@ export interface SeeWiederherstellung {
 }
 
 export const berichtApi = {
+  /** Berichts-Tabelle (erste Zeile = Überschriften) auf dem Bondrucker der Kasse ausgeben */
+  drucken: (input: { kasseId: string; titel: string; zeitraum?: string; zeilen: string[][] }): Promise<{ erfolgreich: boolean }> =>
+    request<{ erfolgreich: boolean }>('POST', '/api/berichte/drucken', input),
   umsatz: (filter: Omit<BerichtFilter, 'kasseIds'> & { kasseIds?: string[] }): Promise<BerichtResponse> => {
     const p = new URLSearchParams()
     p.set('von', filter.von)

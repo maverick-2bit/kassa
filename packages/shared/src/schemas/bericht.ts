@@ -279,3 +279,22 @@ export const KuechenBerichtResponseSchema = z.object({
   verlauf:          z.array(KuechenBerichtVerlaufZeileSchema),
 })
 export type KuechenBerichtResponse = z.infer<typeof KuechenBerichtResponseSchema>
+
+// ---------------------------------------------------------------------------
+// Bericht auf dem Bondrucker ausgeben
+// ---------------------------------------------------------------------------
+
+/**
+ * Die Berichts-Seite schickt die Tabelle so, wie sie auch in den CSV-Export geht
+ * (erste Zeile = Spaltenüberschriften). Der Server macht daraus einen Bon — so
+ * braucht es für jeden Bericht keinen eigenen Drucker-Code.
+ */
+export const BerichtDruckInputSchema = z.object({
+  kasseId:    z.string().uuid(),
+  titel:      z.string().min(1).max(60),
+  /** Zeitraum / Hinweis unter dem Titel, z. B. "01.10.2026 – 07.10.2026" */
+  zeitraum:   z.string().max(80).optional(),
+  zeilen:     z.array(z.array(z.string().max(120)).max(12)).min(1).max(500),
+})
+
+export type BerichtDruckInput = z.infer<typeof BerichtDruckInputSchema>

@@ -4,6 +4,8 @@ import type { ArtikelBerichtResponse, BerichtGesamt, BerichtGruppierung, Bericht
 import { STATION_LABELS, beginnFuer } from '@kassa/shared'
 import { berichtApi } from '../lib/api'
 import { getAuth, tagesRegel } from '../lib/auth'
+import { getKasseIdentity } from '../lib/kasse'
+import { downloadBerichtPdf } from '../lib/pdf'
 import { formatPreis } from '../lib/format'
 import { addTage, endeDesMonats, heuteGeschaeftstag, heuteKalendertag, montagDerWoche } from '../lib/geschaeftstag'
 import { Button } from '../components/ui/Button'
@@ -527,6 +529,8 @@ function ArtikelBerichtTabelle({ data }: { data: ArtikelBerichtResponse }) {
         </h2>
         <ExportButtons
           dateiBasis={`bericht-artikel_${data.von}_${data.bis}`}
+            titel="Artikel-Bericht"
+            zeitraum={`${formatDatumAnzeige(data.von)} – ${formatDatumAnzeige(data.bis)}`}
           zeilen={() => {
           const kopfzeile = ['Rang', 'Artikel', 'Menge', 'Umsatz (€)', 'Anteil (%)']
           const datenzeilen = data.zeilen.map((z, i) => [
@@ -658,6 +662,8 @@ function BerichtErgebnis({ data, gruppierung }: { data: BerichtResponse; gruppie
           </h2>
           <ExportButtons
             dateiBasis={`bericht-umsatz_${data.von}_${data.bis}`}
+            titel="Umsatzbericht"
+            zeitraum={`${formatDatumAnzeige(data.von)} – ${formatDatumAnzeige(data.bis)}`}
             zeilen={umsatzExportZeilen}
           />
         </div>
@@ -748,6 +754,8 @@ function BerichtErgebnis({ data, gruppierung }: { data: BerichtResponse; gruppie
             <h2 className="text-sm font-semibold text-ink">USt-Aufteilung</h2>
             <ExportButtons
               dateiBasis={`bericht-ust_${data.von}_${data.bis}`}
+            titel="USt-Aufteilung"
+            zeitraum={`${formatDatumAnzeige(data.von)} – ${formatDatumAnzeige(data.bis)}`}
               zeilen={() => {
               const kopfzeile = ['Steuersatz', 'Brutto (€)', 'Netto (€)', 'USt (€)']
               const datenzeilen = g.mwst.map(z => [
@@ -889,14 +897,76 @@ async function excelHerunterladen(dateiname: string, zeilen: string[][], blattNa
   XLSX.writeFile(wb, dateiname)
 }
 
-function ExportButtons({ dateiBasis, zeilen }: {
+/** Bon drucken + PDF — aus denselben Tabellenzeilen wie der CSV-Export. */
+function DruckenButtons({ dateiBasis, titel, zeitraum, zeilen }: {
+  dateiBasis: string
+  titel:      string
+  zeitraum?:  string
+  zeilen:     () => string[][]
+}) {
+  const [druckt, setDruckt]   = useState(false)
+  const [pdfLaeuft, setPdf]   = useState(false)
+  const [meldung, setMeldung] = useState<{ ok: boolean; text: string } | null>(null)
+  const kasseId = getKasseIdentity()?.kasseId
+
+  const drucken = async () => {
+    if (!kasseId) { setMeldung({ ok: false, text: 'Keine Kasse gewählt' }); return }
+    setDruckt(true); setMeldung(null)
+    try {
+      await berichtApi.drucken({ kasseId, titel, ...(zeitraum ? { zeitraum } : {}), zeilen: zeilen() })
+      setMeldung({ ok: true, text: 'Gedruckt' })
+    } catch (err) {
+      setMeldung({ ok: false, text: err instanceof Error ? err.message : 'Druck fehlgeschlagen' })
+    } finally {
+      setDruckt(false)
+    }
+  }
+  const pdf = async () => {
+    setPdf(true); setMeldung(null)
+    try {
+      await downloadBerichtPdf(titel, zeitraum, getAuth()?.mandant.firmenname ?? '', zeilen(), `${dateiBasis}.pdf`)
+    } finally {
+      setPdf(false)
+    }
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        disabled={druckt}
+        onClick={drucken}
+        className="text-xs font-medium text-ink hover:underline disabled:opacity-50"
+      >
+        {druckt ? 'Druckt …' : 'Bon drucken'}
+      </button>
+      <button
+        type="button"
+        disabled={pdfLaeuft}
+        onClick={pdf}
+        className="text-xs font-medium text-red-700 hover:text-red-800 hover:underline disabled:opacity-50"
+      >
+        {pdfLaeuft ? 'PDF wird erzeugt …' : 'PDF'}
+      </button>
+      {meldung && (
+        <span className={`text-xs ${meldung.ok ? 'text-emerald-700' : 'text-red-700'}`}>{meldung.text}</span>
+      )}
+    </>
+  )
+}
+
+function ExportButtons({ dateiBasis, zeilen, titel, zeitraum }: {
   /** Dateiname ohne Endung — CSV und Excel hängen sie selbst an */
   dateiBasis: string
   zeilen: () => string[][]
+  /** Titel für Bon und PDF */
+  titel: string
+  zeitraum?: string
 }) {
   const [laeuft, setLaeuft] = useState(false)
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex flex-wrap items-center gap-3">
+      <DruckenButtons dateiBasis={dateiBasis} titel={titel} {...(zeitraum ? { zeitraum } : {})} zeilen={zeilen} />
       <button
         type="button"
         onClick={() => csvHerunterladen(`${dateiBasis}.csv`, zeilen())}
@@ -1080,6 +1150,8 @@ function GesamtumsatzErgebnis({ data, von, bis }: { data: BerichtGesamt; von: st
             <h2 className="text-sm font-semibold text-ink">USt-Aufteilung</h2>
             <ExportButtons
               dateiBasis={`bericht-ust_${von}_${bis}`}
+            titel="USt-Aufteilung"
+            zeitraum={`${formatDatumAnzeige(von)} – ${formatDatumAnzeige(bis)}`}
               zeilen={() => {
               const kopfzeile = ['Steuersatz', 'Brutto (€)', 'Netto (€)', 'USt (€)', 'Anteil (%)']
               const datenzeilen = data.mwst.map(z => [
@@ -1184,6 +1256,8 @@ function ZahlungsartErgebnis({ data }: { data: BerichtResponse }) {
           <h2 className="text-sm font-semibold text-ink">Verlauf ({formatDatumAnzeige(data.von)} – {formatDatumAnzeige(data.bis)})</h2>
           <ExportButtons
             dateiBasis={`bericht-zahlungsart_${data.von}_${data.bis}`}
+            titel="Zahlungsarten"
+            zeitraum={`${formatDatumAnzeige(data.von)} – ${formatDatumAnzeige(data.bis)}`}
             zeilen={() => {
             const kopfzeile = ['Periode', 'Bar (€)', 'Karte (€)', 'Sonstige (€)', 'Gesamt (€)']
             const datenzeilen = data.zeilen.map(z => [
@@ -1333,6 +1407,8 @@ function StundenDiagramm({ data }: { data: StundenBerichtResponse }) {
           </h2>
           <ExportButtons
             dateiBasis={`bericht-stunden_${data.von}_${data.bis}`}
+            titel="Umsatz nach Stunde"
+            zeitraum={`${formatDatumAnzeige(data.von)} – ${formatDatumAnzeige(data.bis)}`}
             zeilen={() => {
             const kopfzeile = ['Stunde', 'Belege', 'Umsatz (€)', 'Bar (€)', 'Karte (€)']
             const datenzeilen = data.zeilen.map(z => [
@@ -1794,6 +1870,8 @@ function VergleichErgebnis({
           <h2 className="text-sm font-semibold text-ink">Kennzahlen im Vergleich</h2>
           <ExportButtons
             dateiBasis={`bericht-vergleich_${akt.von}_vs_${vor.von}`}
+            titel="Zeitraum-Vergleich"
+            zeitraum={`${aktLabel} vs. ${vorLabel}`}
             zeilen={() => {
             const kopfzeile = ['Kennzahl', aktLabel, vorLabel, 'Differenz', 'Veränderung (%)']
             const rows: string[][] = [
@@ -1866,6 +1944,8 @@ function WarengruppeTabelle({ data }: { data: WarengruppeBerichtResponse }) {
         </h2>
         <ExportButtons
           dateiBasis={`bericht-warengruppe_${data.von}_${data.bis}`}
+            titel="Warengruppen"
+            zeitraum={`${formatDatumAnzeige(data.von)} – ${formatDatumAnzeige(data.bis)}`}
           zeilen={() => {
           const kopfzeile = ['Warengruppe', 'Menge', 'Umsatz (€)', 'Anteil (%)']
           const datenzeilen = data.zeilen.map(z => [
@@ -2160,6 +2240,8 @@ function KassenVergleichTabelle({ data }: { data: KassenVergleichResponse }) {
           </h2>
           <ExportButtons
             dateiBasis={`bericht-kassen_${data.von}_${data.bis}`}
+            titel="Kassen-Vergleich"
+            zeitraum={`${formatDatumAnzeige(data.von)} – ${formatDatumAnzeige(data.bis)}`}
             zeilen={() => {
             const kopfzeile = ['Kasse', 'Kassen-ID', 'Belege', 'Stornos', 'Umsatz (€)', 'Bar (€)', 'Karte (€)', 'Sonstige (€)', 'Ø Bon (€)', 'Anteil (%)']
             const datenzeilen = data.zeilen.map(z => [
@@ -2439,6 +2521,21 @@ function KuechenBerichtAnzeige({ data }: { data: KuechenBerichtResponse }) {
         ))}
       </div>
 
+      <div className="flex justify-end gap-3">
+        <DruckenButtons
+          dateiBasis={`bericht-kueche_${data.von}_${data.bis}`}
+          titel="Küchen-Bericht"
+          zeitraum={`${formatDatumAnzeige(data.von)} – ${formatDatumAnzeige(data.bis)}`}
+          zeilen={() => [
+            ['Station', 'Bons', 'Ø Dauer', 'Median', 'Längste'],
+            ...data.stationen.map(z => [
+              stationName(z.station), String(z.anzahlBons),
+              fmtMin(z.avgMinuten), fmtMin(z.medianMinuten), fmtMin(z.maxMinuten),
+            ]),
+          ]}
+        />
+      </div>
+
       <KuechenVerlaufChart data={data} />
 
       {data.stationen.length > 0 && (
@@ -2535,6 +2632,23 @@ function KellnerBerichtTabelle({ data }: { data: KellnerBerichtResponse }) {
             <p className="mt-1 text-xl font-bold text-ink">{k.fmt(k.wert)}</p>
           </div>
         ))}
+      </div>
+
+      <div className="flex justify-end gap-3">
+        <DruckenButtons
+          dateiBasis={`bericht-kellner_${data.von}_${data.bis}`}
+          titel="Kellner-Bericht"
+          zeitraum={`${formatDatumAnzeige(data.von)} – ${formatDatumAnzeige(data.bis)}`}
+          zeilen={() => [
+            ['Kellner', 'Belege', 'Stornos', 'Bar (€)', 'Karte (€)', 'Umsatz (€)'],
+            ...data.zeilen.map((z: KellnerBerichtZeile) => [
+              z.kellner, String(z.anzahlBelege), String(z.anzahlStornos),
+              centZuEuro(z.barCent), centZuEuro(z.karteCent), centZuEuro(z.umsatzCent),
+            ]),
+            ['Gesamt', String(data.gesamt.anzahlBelege), String(data.gesamt.anzahlStornos),
+              centZuEuro(data.gesamt.barCent), centZuEuro(data.gesamt.karteCent), centZuEuro(data.gesamt.umsatzCent)],
+          ]}
+        />
       </div>
 
       <div className="rounded-lg border border-line bg-panel overflow-hidden">
@@ -2722,6 +2836,8 @@ function WochentagBericht() {
               <h2 className="text-sm font-semibold text-ink">Ø Umsatz pro Wochentag</h2>
               <ExportButtons
                 dateiBasis={`wochentag_${datumVon}_${datumBis}`}
+            titel="Wochentag-Auswertung"
+            zeitraum={`${formatDatumAnzeige(datumVon)} – ${formatDatumAnzeige(datumBis)}`}
                 zeilen={() => {
                 const kopfzeile = ['Wochentag', 'Anz. Tage', 'Ø Umsatz (€)', 'Gesamt (€)', 'Ø Belege']
                 const datenzeilen = zeilen.map(z => [

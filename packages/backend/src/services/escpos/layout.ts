@@ -465,6 +465,78 @@ export function baueZBon(
 }
 
 // ---------------------------------------------------------------------------
+// Bericht (generisch aus Tabellenzeilen)
+// ---------------------------------------------------------------------------
+
+/**
+ * Druckt eine Berichts-Tabelle (erste Zeile = Überschriften). Bis 2 Spalten steht
+ * jede Zeile links/rechts in einer Druckzeile; ab 3 Spalten bekommt jede Zeile
+ * einen Block: Bezeichnung fett, darunter „Spalte … Wert“ untereinander
+ * (eine breite Tabelle würde auf 32/42 Zeichen umbrechen).
+ */
+export function baueBerichtBon(
+  bericht: { titel: string; zeitraum?: string | undefined; zeilen: string[][] },
+  mandant: { firmenname: string; kassenId: string },
+  kontext: DruckerKontext,
+): Buffer {
+  const W = kontext.breite
+  const parts: Buffer[] = []
+  const add = (b: Buffer): void => { parts.push(b) }
+  // Der Druckerzeichensatz kennt „€“ nicht sicher — wie überall ausschreiben
+  const t = (s: string): string => s.replace(/€/g, 'EUR').replace(/[–—]/g, '-').replace(/\s+/g, ' ').trim()
+
+  add(ep.init())
+  add(ep.selectCodepage(19))
+  add(ep.selectInternational(2))
+
+  add(ep.align('center'))
+  add(ep.font({ bold: true }))
+  add(ep.textLine(truncate(mandant.firmenname.toUpperCase(), W)))
+  add(ep.font())
+  add(ep.textLine(`Kasse: ${mandant.kassenId}`))
+  add(ep.newline())
+  add(ep.font({ bold: true, doubleHeight: true }))
+  add(ep.textLine(truncate(t(bericht.titel).toUpperCase(), W)))
+  add(ep.font())
+  if (bericht.zeitraum) add(ep.textLine(truncate(t(bericht.zeitraum), W)))
+  add(trennlinie(W))
+
+  add(ep.align('left'))
+  const [kopf = [], ...daten] = bericht.zeilen.map(z => z.map(t))
+  if (daten.length === 0) {
+    add(ep.align('center'))
+    add(ep.textLine('Keine Daten'))
+  } else if (kopf.length <= 2) {
+    add(ep.font({ bold: true }))
+    add(ep.textLine(zweispaltig(kopf[0] ?? '', kopf[1] ?? '', W)))
+    add(ep.font())
+    for (const z of daten) add(ep.textLine(zweispaltig(z[0] ?? '', z[1] ?? '', W)))
+    add(trennlinie(W))
+  } else {
+    for (const z of daten) {
+      // Bezeichnung = erste Zelle mit Buchstaben (Rang-/Leerspalten überspringen)
+      const labelIdx = Math.max(0, z.findIndex(c => /\p{L}/u.test(c)))
+      add(ep.font({ bold: true }))
+      add(ep.textLine(truncate(z[labelIdx] ?? '', W)))
+      add(ep.font())
+      z.forEach((wert, i) => {
+        // Rang-Spalte (Nummerierung) ist auf dem Bon überflüssig
+        if (i === labelIdx || wert === '' || kopf[i] === 'Rang') return
+        add(ep.textLine(zweispaltig(`  ${kopf[i] ?? ''}`, wert, W)))
+      })
+      add(trennlinie(W))
+    }
+  }
+
+  add(ep.align('center'))
+  add(ep.textLine(`Gedruckt: ${formatDatum(new Date().toISOString())}`))
+  add(ep.newline(2))
+  add(ep.cut())
+
+  return Buffer.concat(parts)
+}
+
+// ---------------------------------------------------------------------------
 // Layout-Helfer
 // ---------------------------------------------------------------------------
 

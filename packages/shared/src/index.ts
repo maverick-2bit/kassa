@@ -396,6 +396,7 @@ export {
   KuechenBerichtStundenZeileSchema,
   KuechenBerichtVerlaufZeileSchema,
   KuechenBerichtResponseSchema,
+  BerichtDruckInputSchema,
 } from './schemas/bericht.js'
 export type {
   BerichtFilter,
@@ -424,6 +425,7 @@ export type {
   KuechenBerichtStundenZeile,
   KuechenBerichtVerlaufZeile,
   KuechenBerichtResponse,
+  BerichtDruckInput,
 } from './schemas/bericht.js'
 
 // Geschäftstag: frei verschiebbarer Tagesbeginn je Mandant (Rechenkern + API-Schemas)
