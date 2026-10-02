@@ -61,15 +61,19 @@ interface Props {
   gesperrt:          boolean
 }
 
-/** Unter dem Mauszeiger, sonst die nächste Zelle — so trifft man auch die große Ablage-Fläche. */
-const kollision: CollisionDetection = (args) => {
-  const innen = pointerWithin(args)
-  return innen.length > 0 ? innen : closestCenter(args)
-}
-
 const ARTIKEL_ID = 'artikel:'
 const SLOT_ID    = 'slot:'
 const ABLAGE_ID  = 'ablage'
+
+/**
+ * Unter dem Mauszeiger (so trifft man auch die große Ablage-Fläche), sonst die nächste ZELLE — nie die Ablage:
+ * ausgeblendet wird nur durch gezieltes Ablegen dort oder per ✕, nicht durch ein Loslassen neben dem Raster.
+ */
+const kollision: CollisionDetection = (args) => {
+  const innen = pointerWithin(args)
+  if (innen.length > 0) return innen
+  return closestCenter({ ...args, droppableContainers: args.droppableContainers.filter(c => c.id !== ABLAGE_ID) })
+}
 
 export function ArtikelAnordnungEditor({
   anordnung, onChange, artikel, untergruppen, spalten, farbeProKategorie, artikelbilder, ausblendenErlaubt, gesperrt,
