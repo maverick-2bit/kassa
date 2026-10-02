@@ -1,4 +1,5 @@
 import type {
+  LayoutBericht,
   DienstplanSchichtInput,
   DienstplanSchichtResponse,
   DienstplanSchichtUpdate,
@@ -501,6 +502,13 @@ export const artikelApi = {
     request<void>('PATCH', '/api/artikel/favoriten-reihenfolge', { eintraege }),
   lagerAktivieren: (kategorieId: string | null) =>
     request<{ aktiviert: number }>('POST', '/api/artikel/lager-aktivieren', { kategorieId }),
+  /** Layout-Import (nur Admin): dryRun=true liefert nur den Bericht */
+  layoutImport: (layout: unknown, opts: { dryRun: boolean; fehlendeAnlegen: boolean; spaltenSetzen: boolean }) =>
+    request<LayoutBericht>(
+      'POST',
+      `/api/artikel/layout-import?dryRun=${opts.dryRun}&fehlendeAnlegen=${opts.fehlendeAnlegen}&spaltenSetzen=${opts.spaltenSetzen}`,
+      layout,
+    ),
 }
 
 // ---------------------------------------------------------------------------

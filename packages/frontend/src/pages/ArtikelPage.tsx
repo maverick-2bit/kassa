@@ -21,6 +21,7 @@ import { Schalter } from '../components/ui/Schalter'
 import { ArtikelFormular } from '../components/ArtikelFormular'
 import { KategorieFormular } from '../components/KategorieFormular'
 import { ArtikelImportModal } from '../components/ArtikelImportModal'
+import { LayoutImportModal } from '../components/LayoutImportModal'
 import { exportArtikelVorlage } from '../lib/artikel-excel'
 import {
   filtereArtikel,
@@ -70,6 +71,8 @@ export function ArtikelPage() {
   const [zuweisungArtikelId, setZuweisungArtikelId] = useState<string | null>(null)
   /** Import-Modal */
   const [importModalOpen, setImportModalOpen] = useState(false)
+  /** Layout-Import-Modal (Gruppenbaum, Raster, Farben, Favoriten aus JSON) */
+  const [layoutImportOpen, setLayoutImportOpen] = useState(false)
 
   /** Modifikator, dessen Lagerstand gerade gesetzt wird */
   const [bestandModal, setBestandModal] = useState<{
@@ -340,6 +343,13 @@ export function ArtikelPage() {
               onClick={() => setImportModalOpen(true)}
             >
               Importieren
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => setLayoutImportOpen(true)}
+              title="Gruppenbaum, Artikelanordnung, Farben und Favoriten aus einer Layout-Datei (JSON) übernehmen"
+            >
+              Layout importieren (JSON)
             </Button>
             <Button onClick={openNew}>+ Neuer Artikel</Button>
           </div>
@@ -879,6 +889,12 @@ export function ArtikelPage() {
         kategorien={katList.data ?? []}
         mandantId={identity.mandantId}
         onClose={() => { setImportModalOpen(false); invalidateArtikel() }}
+      />
+
+      {/* Layout-Import Modal */}
+      <LayoutImportModal
+        open={layoutImportOpen}
+        onClose={() => setLayoutImportOpen(false)}
       />
 
       {/* Artikel-Gruppen-Zuweisung Modal */}
