@@ -367,6 +367,10 @@ export type {
   SignaturSelbsttestErgebnis,
 } from './schemas/rksv-selbsttest.js'
 
+// Allergene (Buchstabencodes A–R)
+export { ALLERGEN_LABELS, ALLERGEN_CODES, parseAllergene, allergeneAnzeige, allergeneBeschreibung } from './allergene.js'
+export type { AllergenCode, AllergenParse } from './allergene.js'
+
 // Bericht
 export {
   BerichtFilterSchema,

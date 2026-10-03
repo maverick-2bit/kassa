@@ -43,6 +43,7 @@ interface ArtikelRow {
   bezeichnung: string
   preisBruttoCent: number
   mwstSatz: string
+  allergene?: string | null
   station: string | null
   farbe: string | null
   kategorieId: string | null
@@ -114,6 +115,7 @@ describe('Artikel anlegen und bearbeiten: alle Formularfelder werden gespeichert
     bezeichnung:            'Alles geändert',
     preisBruttoCent:        420,
     mwstSatz:               'ermaessigt1',
+    allergene:              'A,C,G',
     station:                'schank',
     farbe:                  '#336699',
     kategorieId,
@@ -189,6 +191,26 @@ describe('Artikel anlegen und bearbeiten: alle Formularfelder werden gespeichert
       })
       expect(rezept(a)).toEqual([{ bestandteilArtikelId: rohstoffA1, menge: 2 }])
     }
+  })
+
+  it('Allergene: Eingabe wird normalisiert (A,C,G), mit null geleert, unbekannte Codes werden abgelehnt', async () => {
+    const id = await legeArtikelAn('Allergen-Artikel', { allergene: 'g, a;c  A' })
+    expect((await artikel(id)).allergene).toBe('A,C,G')
+
+    expect((await put(id, { allergene: 'c' })).statusCode).toBe(200)
+    expect((await artikel(id)).allergene).toBe('C')
+
+    // nicht mitgeschickt → unverändert
+    expect((await put(id, { bezeichnung: 'Allergen-Artikel 2' })).statusCode).toBe(200)
+    expect((await artikel(id)).allergene).toBe('C')
+
+    // Unbekannter Buchstabe → 400, Wert bleibt
+    expect((await put(id, { allergene: 'A, X' })).statusCode).toBe(400)
+    expect((await artikel(id)).allergene).toBe('C')
+
+    // leer → geleert
+    expect((await put(id, { allergene: '' })).statusCode).toBe(200)
+    expect((await artikel(id)).allergene).toBeNull()
   })
 
   it('Bearbeiten: JEDES Feld des Update-Schemas wird geschrieben und wieder geliefert (Wächter gegen nicht verdrahtete Felder)', async () => {

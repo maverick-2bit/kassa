@@ -35,6 +35,8 @@ export const TRANSLATIONS = {
     trinkgeldOptional:'Trinkgeld (optional)',
     trinkgeldHinweis: 'Freiwillig — direkt ans Team.',
     zwischensumme:    'Zwischensumme',
+    allergeneTitel:   'Allergene',
+    allergeneLegende: 'A Glutenhaltiges Getreide · B Krebstiere · C Eier · D Fisch · E Erdnüsse · F Soja · G Milch/Laktose · H Schalenfrüchte (Nüsse) · L Sellerie · M Senf · N Sesam · O Sulfite · P Lupinen · R Weichtiere',
   },
   en: {
     laden:            'Loading menu…',
@@ -70,6 +72,8 @@ export const TRANSLATIONS = {
     trinkgeldOptional:'Tip (optional)',
     trinkgeldHinweis: 'Optional — goes straight to the team.',
     zwischensumme:    'Subtotal',
+    allergeneTitel:   'Allergens',
+    allergeneLegende: 'A Cereals containing gluten · B Crustaceans · C Eggs · D Fish · E Peanuts · F Soy · G Milk · H Tree nuts · L Celery · M Mustard · N Sesame · O Sulphites · P Lupin · R Molluscs',
   },
   it: {
     laden:            'Caricamento menu…',
@@ -105,6 +109,8 @@ export const TRANSLATIONS = {
     trinkgeldOptional:'Mancia (facoltativa)',
     trinkgeldHinweis: 'Facoltativa — va direttamente al team.',
     zwischensumme:    'Subtotale',
+    allergeneTitel:   'Allergeni',
+    allergeneLegende: 'A Cereali contenenti glutine · B Crostacei · C Uova · D Pesce · E Arachidi · F Soia · G Latte · H Frutta a guscio · L Sedano · M Senape · N Sesamo · O Solfiti · P Lupini · R Molluschi',
   },
 } satisfies Record<Lang, Record<string, string | ((n: number) => string)>>
 

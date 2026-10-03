@@ -695,6 +695,8 @@ export const artikel = pgTable('artikel', {
   preisBruttoCent:     integer('preis_brutto_cent').notNull(),
   mwstSatz:            varchar('mwst_satz', { length: 20 }).notNull(),
   artikelnummer:       varchar('artikelnummer', { length: 40 }),
+  /** Allergen-Buchstaben, kommagetrennt und sortiert ("A,C,G"); null = keine Angabe */
+  allergene:           varchar('allergene', { length: 40 }),
   /** KDS-Station für Bonierbon-Routing (null = nicht bonieren, z.B. Pfand) */
   station:             varchar('station', { length: 20 }),
   /** Eigene Kachel-Farbe; null = Farbe der Warengruppe (Muster wie station) */

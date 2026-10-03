@@ -14,7 +14,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { baueRaster, farbeZuHex, type AktiveAktion, type Artikel, type Kategorie, type ModifikatorAuswahl, type ModifikatorGruppe, type RasterZelle } from '@kassa/shared'
+import { allergeneAnzeige, allergeneBeschreibung, baueRaster, farbeZuHex, type AktiveAktion, type Artikel, type Kategorie, type ModifikatorAuswahl, type ModifikatorGruppe, type RasterZelle } from '@kassa/shared'
 import { formatPreis } from '../lib/format'
 import {
   artikelDerKasse,
@@ -481,6 +481,15 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
                         </p>
                       )}
                       <div className="flex items-center gap-1.5">
+                        {a.allergene && (
+                          <span
+                            data-testid="artikel-allergene"
+                            title={allergeneBeschreibung(a.allergene)}
+                            className="text-[10px] font-semibold tracking-wide text-ink-subtle leading-none"
+                          >
+                            {allergeneAnzeige(a.allergene)}
+                          </span>
+                        )}
                         {istAusverkauft && (
                           <span className="text-[10px] bg-red-100 text-red-600 rounded-full px-1.5 py-0.5 font-medium leading-none">
                             Ausverkauft
