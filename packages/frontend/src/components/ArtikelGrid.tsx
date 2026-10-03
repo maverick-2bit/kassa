@@ -442,7 +442,7 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
                   `}
                 >
                   {/* Farbiger Akzent oben: Artikel-Farbe ?? Warengruppen-Farbe */}
-                  <div data-testid="artikel-farbe" className="h-1.5 w-full" style={{ backgroundColor: farbeHex ?? 'var(--color-brand-500, #16a34a)' }} />
+                  <div data-testid="artikel-farbe" className="h-2.5 w-full" style={{ backgroundColor: farbeHex ?? 'var(--color-brand-500, #16a34a)' }} />
 
                   {/* Mengen-Badge, wenn im Warenkorb */}
                   {mengeImKorb > 0 && (

@@ -609,7 +609,7 @@ export function ArtikelWaehlenPage() {
                 key={a.id}
                 onClick={() => !ausverkauft && artikelWaehlen(a)}
                 disabled={ausverkauft}
-                style={farbeHex && !ausverkauft && menge === 0 ? { borderTopColor: farbeHex, borderTopWidth: 4 } : {}}
+                style={farbeHex && !ausverkauft && menge === 0 ? { borderTopColor: farbeHex, borderTopWidth: 6 } : {}}
                 className={`relative rounded-2xl border-2 p-2 pb-1.5 min-h-[5.25rem] flex flex-col justify-between text-left active:scale-95 transition ${
                   ausverkauft
                     ? 'bg-panel border-line opacity-40'
