@@ -646,8 +646,9 @@ export const posConfigApi = {
   /** Favoriten je Kasse in fester Reihenfolge; artikelId null = Platzhalter. Leer = globale istFavorit-Liste gilt. */
   favoriten: (kasseId: string) =>
     request<{ eintraege: KasseFavoritEintrag[] }>('GET', `/api/kassen/${kasseId}/favoriten`),
-  favoritenSpeichern: (kasseId: string, eintraege: KasseFavoritEintrag[]) =>
-    request<void>('PUT', `/api/kassen/${kasseId}/favoriten`, { eintraege }),
+  /** uebernehmenFuer: dieselbe Liste zusätzlich bei diesen Kassen speichern (ersetzt dort deren Favoriten) */
+  favoritenSpeichern: (kasseId: string, eintraege: KasseFavoritEintrag[], uebernehmenFuer?: string[]) =>
+    request<void>('PUT', `/api/kassen/${kasseId}/favoriten`, { eintraege, ...(uebernehmenFuer && uebernehmenFuer.length > 0 ? { uebernehmenFuer } : {}) }),
 }
 
 // ---------------------------------------------------------------------------
