@@ -114,8 +114,26 @@ export interface BonierdruckZeile {
   preisLabel:  string
 }
 
+/**
+ * Das KDS-Display kennzeichnet Storno-Positionen mit dem Präfix "✕ STORNO: " vor der Bezeichnung.
+ * Dieses Zeichen kennt kein Bondrucker (er druckt mehrere Fremdzeichen), und die Menge stünde
+ * davor ("5x ✕ STORNO: Almdudler"). Fürs Papier: "STORNO: 5x Almdudler".
+ */
+const STORNO_PRAEFIX = /^\s*[^\w\s]*\s*STORNO:\s*/i
+
+export function istStornoZeile(bezeichnung: string): boolean {
+  return STORNO_PRAEFIX.test(bezeichnung)
+}
+
+/** Eine Bonzeile: "5x Almdudler"; bei Storno (Bon oder Position) "STORNO: 5x Almdudler". */
+export function bonZeile(menge: number, bezeichnung: string, storno = false): string {
+  const stornoPosition = istStornoZeile(bezeichnung)
+  const name = stornoPosition ? bezeichnung.replace(STORNO_PRAEFIX, '') : bezeichnung
+  return `${stornoPosition || storno ? 'STORNO: ' : ''}${menge}x ${name}`
+}
+
 /** Baut den ESC/POS-Buffer für einen Bonierbon zusammen. */
-function baueBonierbon(tischNummer: string, kellner: string, zeilen: BonierdruckZeile[], storno = false): Buffer {
+export function baueBonierbon(tischNummer: string, kellner: string, zeilen: BonierdruckZeile[], storno = false): Buffer {
   const ESC = 0x1b
   const parts: Buffer[] = []
   const add = (data: number[] | Buffer | string) => {
@@ -144,7 +162,7 @@ function baueBonierbon(tischNummer: string, kellner: string, zeilen: Bonierdruck
   // in der Küche. Preis entfällt (küchenirrelevant) — Fokus auf Menge + Bezeichnung.
   add([ESC, 0x21, 0x18])
   for (const z of zeilen) {
-    add(`${z.menge}x ${z.bezeichnung}\n`)
+    add(`${bonZeile(z.menge, z.bezeichnung, storno)}\n`)
   }
   add([ESC, 0x21, 0x00])
   if (storno) {
@@ -175,7 +193,7 @@ export interface ErledigtBonInhalt {
   rest:        BonierdruckZeile[]
 }
 
-function baueErledigtBon(inhalt: ErledigtBonInhalt): Buffer {
+export function baueErledigtBon(inhalt: ErledigtBonInhalt): Buffer {
   const ESC = 0x1b
   const parts: Buffer[] = []
   const add = (data: number[] | Buffer | string) => {
@@ -184,13 +202,15 @@ function baueErledigtBon(inhalt: ErledigtBonInhalt): Buffer {
   }
 
   const teil = inhalt.rest.length > 0
+  // Wurde ein STORNO-Bon am KDS erledigt, ist es keine "Bestellung" — die Überschrift sagt es
+  const nurStorno = !teil && inhalt.fertig.length > 0 && inhalt.fertig.every(z => istStornoZeile(z.bezeichnung))
 
   add([ESC, 0x40])
   add([ESC, 0x61, 0x01])
   // Kopf unübersehbar: invertiert + fett/doppelhoch
   add([0x1d, 0x42, 0x01])
   add([ESC, 0x21, 0x18])
-  add(teil ? 'TEIL DER BESTELLUNG\n' : 'BESTELLUNG KOMPLETT\n')
+  add(teil ? 'TEIL DER BESTELLUNG\n' : nurStorno ? 'STORNO ERLEDIGT\n' : 'BESTELLUNG KOMPLETT\n')
   add([0x1d, 0x42, 0x00])
   add([ESC, 0x21, 0x18])
   add(`Tisch ${inhalt.tischNummer}\n`)
@@ -201,7 +221,7 @@ function baueErledigtBon(inhalt: ErledigtBonInhalt): Buffer {
   // Fertige Positionen groß + fett
   add([ESC, 0x21, 0x18])
   for (const z of inhalt.fertig) {
-    add(`${z.menge}x ${z.bezeichnung}\n`)
+    add(`${bonZeile(z.menge, z.bezeichnung)}\n`)
   }
   add([ESC, 0x21, 0x00])
   if (teil) {
@@ -211,7 +231,7 @@ function baueErledigtBon(inhalt: ErledigtBonInhalt): Buffer {
     add('Es folgt noch:\n')
     add([ESC, 0x21, 0x00])
     for (const z of inhalt.rest) {
-      add(`  ${z.menge}x ${z.bezeichnung}\n`)
+      add(`  ${bonZeile(z.menge, z.bezeichnung)}\n`)
     }
   }
   add('--------------------------------\n')
