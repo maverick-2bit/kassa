@@ -5,6 +5,7 @@ import type {
   TischTabResponse,
   TischTabErstellenInput,
   TabPosition,
+  TabEreignis,
   BonierungInput,
   BonierungErgebnis,
   BonierZielFehler,
@@ -200,6 +201,26 @@ export const tischTabApi = {
   /** Gänge-Steuerung: eine Position erneut schicken (Re-Print) */
   positionNachschicken: (id: string, positionIndex: number) =>
     request<void>('POST', `/api/tisch-tabs/${id}/position-nachschicken`, { positionIndex }),
+
+  // ---- Tisch-Aktionen (wie am PC) ----
+  /** Tisch komplett verwerfen: alle Positionen werden storniert (Storno-Bon an die Stationen). */
+  verwerfe: (id: string, grund?: string, freigabePin?: string) =>
+    request<TabPositionenAntwort>('POST', `/api/tisch-tabs/${id}/verwerfen`,
+      { ...(grund ? { grund } : {}), ...(freigabePin ? { freigabePin } : {}) }),
+  /** Tischnummer ändern (Tisch umbuchen) */
+  umbucheTisch: (id: string, tischNummer: string) =>
+    request<TischTabResponse>('PATCH', `/api/tisch-tabs/${id}/tisch`, { tischNummer }),
+  /** Kellner/Partei des Tisches ändern */
+  umbenenne: (id: string, kellner: string) =>
+    request<TischTabResponse>('PATCH', `/api/tisch-tabs/${id}/kellner`, { kellner }),
+  /** Andere offene Tische in diesen Tisch zusammenführen */
+  zusammenfuehren: (zielId: string, quellTabIds: string[]) =>
+    request<TischTabResponse>('POST', `/api/tisch-tabs/${zielId}/zusammenfuehren`, { quellTabIds }),
+  /** Teilmenge der Positionen auf einen anderen Tisch verschieben (legt ihn bei Bedarf an) */
+  verschiebePositionen: (id: string, input: { zielTischNummer: string; positionen: TabPosition[] }) =>
+    request<{ quelle: TischTabResponse; ziel: TischTabResponse }>('POST', `/api/tisch-tabs/${id}/verschieben`, input),
+  getVerlauf: (id: string) =>
+    request<TabEreignis[]>('GET', `/api/tisch-tabs/${id}/verlauf`),
 }
 
 // ---------------------------------------------------------------------------

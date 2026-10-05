@@ -10,6 +10,7 @@ import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
 import { ABBRUCH_ZU_SPAET, KartenzahlungOverlay } from '../components/KartenzahlungOverlay'
 import { DruckproblemeBanner } from '../components/DruckproblemeBanner'
+import { TischAktionen } from '../components/TischAktionen'
 
 /** Anzeige-Label eines Gangs (0 = Sofort). */
 function gangLabel(g: number): string {
@@ -24,6 +25,8 @@ export function TabPage() {
   const auth        = getAuth()!
   const [bonierFehler, setBonierFehler] = useState<string | null>(null)
   const [bonierErfolg, setBonierErfolg] = useState(false)
+  /** Tisch-Aktionen (umbuchen, aufteilen, zusammenführen, verwerfen …) */
+  const [aktionenOffen, setAktionenOffen] = useState(false)
   /**
    * Ziele, die den Bon nicht bekommen haben, samt Bonierung zum Nachsenden.
    * Verschwindet NICHT von selbst — die grüne Bestätigung tat das bisher auch
@@ -350,6 +353,14 @@ export function TabPage() {
             <p className="text-xs text-ink-subtle">{tab.kellner}</p>
           </div>
           <button
+            onClick={() => setAktionenOffen(true)}
+            className="h-10 w-10 rounded-xl border border-line-strong bg-surface text-ink text-xl font-black leading-none active:scale-95 transition shrink-0"
+            aria-label="Tisch-Aktionen"
+            title="Umbuchen, Aufteilen, Zusammenführen, Verwerfen …"
+          >
+            ⋯
+          </button>
+          <button
             onClick={() => navigate(`/tab/${tabId}/artikel`)}
             className="bg-brand-600 text-white px-4 py-2 rounded-xl font-bold text-sm active:scale-95 transition shrink-0"
           >
@@ -597,6 +608,19 @@ export function TabPage() {
             </button>
           </div>
         </div>
+      )}
+
+      {/* Tisch-Aktionen: umbuchen, aufteilen, zusammenführen, Kellner ändern, Verlauf, verwerfen */}
+      {aktionenOffen && (
+        <TischAktionen
+          tab={tab}
+          onClose={() => setAktionenOffen(false)}
+          onGeaendert={() => {
+            qc.invalidateQueries({ queryKey: ['tisch-tab'] })
+            qc.invalidateQueries({ queryKey: ['tisch-tabs'] })
+          }}
+          onZurUebersicht={() => { setAktionenOffen(false); navigate('/') }}
+        />
       )}
 
       {/* Kartenzahlung: Trinkgeld + ZVT-Terminal (nur bei aktivem ZVT) */}
