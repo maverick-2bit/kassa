@@ -13,7 +13,8 @@ import type { AddressInfo } from 'node:net'
 import type { FinanzOnlineClient } from '@kassa/rksv'
 import { buildTestServer, type TestServer } from '../helpers/testServer.js'
 import { erstelleIntegrationsDb, type IntegrationsDb } from './helpers/integrationsDb.js'
-import { kdsBons } from '../../src/db/schema.js'
+import { eq } from 'drizzle-orm'
+import { kassen, kdsBons } from '../../src/db/schema.js'
 
 const ADMIN_EMAIL = 'admin@kds-drucker.at', ADMIN_PASSWORT = 'kds-drucker-passwort-123'
 
@@ -215,6 +216,32 @@ describe('KDS-Papierdruck je Station (Integration, echtes PostgreSQL + TCP-Liste
       })
       expect(res.statusCode, res.body).toBe(207)
       expect(res.json().drucker[0]).toMatchObject({ erfolgreich: false })
+    })
+  })
+
+  describe('Stations-IP für TCP-Displays', () => {
+    const patchKds = (kdsStationen: Record<string, string>) =>
+      srv.fastify.inject({ method: 'PATCH', url: `/api/kassen/${kasseId}/kds`, headers: auth(), payload: { kdsStationen } })
+
+    it('eine IP mit Port / http:// wird beim Speichern abgelehnt (400) — gültige IP und leer sind erlaubt', async () => {
+      const mitPort = await patchKds({ schank: '192.168.192.106:8080' })
+      expect(mitPort.statusCode).toBe(400)
+      expect(mitPort.body).toMatch(/ohne Port/)
+      expect((await patchKds({ schank: 'http://192.168.1.5' })).statusCode).toBe(400)
+      expect((await patchKds({ schank: '192.168.1.5' })).statusCode).toBe(200)
+      expect((await patchKds({})).statusCode).toBe(200)
+    })
+
+    it('ein bereits gespeicherter Eintrag mit Port wird ignoriert: Bonieren klappt (Browser-KDS), keine rote Meldung', async () => {
+      await idb.db.update(kassen).set({ kdsStationen: { schank: '192.168.192.106:8080' } }).where(eq(kassen.id, kasseId))
+      const kat = (await post('/api/kategorien', { name: 'Schank2', farbe: 'blau', reihenfolge: 7, station: 'schank' })).id
+      const art = (await post('/api/artikel', { bezeichnung: 'Schankartikel', preisBruttoCent: 300, mwstSatz: 'normal', kategorieId: kat })).id
+      const res = await srv.fastify.inject({
+        method: 'POST', url: '/api/bestellung/bonieren', headers: auth(),
+        payload: { kasseId, tisch: 'T9', kellner: 'Anna', positionen: [{ artikelId: art, menge: 1 }] },
+      })
+      expect(res.statusCode, res.body).toBe(200)
+      expect(res.json().stationen).toMatchObject([{ station: 'schank', ip: '', erfolgreich: true }])
     })
   })
 })

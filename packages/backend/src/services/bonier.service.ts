@@ -21,6 +21,7 @@ import { kdsBonErstellen } from './kds/kds-store.service.js'
 import { dekrementiereBestandteile, ladeRezepte } from './bestandteil.service.js'
 import { ladeWirksamesRouting } from './kategorie-routing.service.js'
 import { beanspruche, gibFrei, speichereErgebnis } from './bonier-bestellung.service.js'
+import { bereinigeStationsIp } from './kds/station-ip.js'
 
 export class BonierError extends Error {
   constructor(public readonly httpStatus: number, message: string) {
@@ -236,7 +237,9 @@ export async function bonierBestellung(
     // Wiederholung: was schon zugestellt wurde, nicht noch einmal senden
     const stationFrueher = wiederholung?.stationen.find(s => s.station === station)
     if (stationFrueher?.erfolgreich) { stationenErgebnisse.push(stationFrueher); continue }
-    const ip = kdsStationen[station]
+    // Nur eine gültige IP (ohne Port/URL) löst einen TCP-Versuch aus; ein Eintrag wie
+    // "192.168.1.5:8080" (Web-Adresse des Browser-KDS) wird wie "keine IP" behandelt.
+    const ip = bereinigeStationsIp(kdsStationen[station])
     if (!ip) {
       // Keine IP = Browser-KDS-Betrieb: der Bon liegt in der DB und geht per
       // SSE an jeden verbundenen Bildschirm dieser Station — das IST die
