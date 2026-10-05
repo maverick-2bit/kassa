@@ -209,12 +209,14 @@ export {
   kategoriePfadNormalisiert,
   loeseKategorieAuf,
   kategorieSchluessel,
+  wirksamesKategorieRouting,
 } from './kategorie-baum.js'
 export type {
   KategorieKnoten,
   KategorieBenannt,
   KategorieSortierbar,
   KategorieAufloesung,
+  KategorieRouting,
 } from './kategorie-baum.js'
 
 // Raster-Platzierung (Untergruppen-Kacheln, Slots, Leerfelder)

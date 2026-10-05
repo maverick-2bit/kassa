@@ -39,6 +39,7 @@ import {
 } from '../services/tagesabschluss.service.js'
 import { tryDruckeBeleg, druckerConfigVonKasse, sendBytes, DruckerError } from '../services/drucker.service.js'
 import { bonierBestellung } from '../services/bonier.service.js'
+import { ladeWirksamesRouting } from '../services/kategorie-routing.service.js'
 import { baueZBon, baueKassensturzBon } from '../services/escpos/layout.js'
 import { listeKassenbuchBuchungen } from '../services/kassenbuch.service.js'
 import { pruefeKasseGehoertZuMandant } from '../auth/scope.js'
@@ -163,11 +164,12 @@ function tryBonierDirektverkauf(
       const katIds = [...new Set(flagged.map(a => a.kategorieId).filter((id): id is string => id !== null))]
       const katRoutingMap = new Map<string, boolean>()
       if (katIds.length > 0) {
-        const katRows = await deps.db
-          .select({ id: kategorien.id, bonierdruckerId: kategorien.bonierdruckerId, station: kategorien.station })
-          .from(kategorien)
-          .where(inArray(kategorien.id, katIds))
-        for (const k of katRows) katRoutingMap.set(k.id, (k.bonierdruckerId ?? k.station ?? null) !== null)
+        // Wirksames Routing: Untergruppen erben Station/Bonierdrucker der Elterngruppe
+        const routing = await ladeWirksamesRouting(deps.db, flagged[0]!.mandantId)
+        for (const id of katIds) {
+          const r = routing.get(id)
+          katRoutingMap.set(id, ((r?.bonierdruckerId ?? r?.station) ?? null) !== null)
+        }
       }
 
       const geroutet = new Set(

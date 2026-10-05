@@ -19,6 +19,7 @@ import { emitKasseEvent } from '../sse/event-bus.js'
 import { logBonierEreignis } from './tisch-tab.service.js'
 import { kdsBonErstellen } from './kds/kds-store.service.js'
 import { dekrementiereBestandteile, ladeRezepte } from './bestandteil.service.js'
+import { ladeWirksamesRouting } from './kategorie-routing.service.js'
 
 export class BonierError extends Error {
   constructor(public readonly httpStatus: number, message: string) {
@@ -104,22 +105,12 @@ export async function bonierBestellung(
   }
   const artikelById = new Map(artikelRows.map((a) => [a.id, a]))
 
-  // 3. Kategorien laden (für Drucker-Fallback: artikel → kategorie)
-  const kategorieIds = [
-    ...new Set(
-      artikelRows
-        .map(a => a.kategorieId)
-        .filter((id): id is string => id !== null),
-    ),
-  ]
+  // 3. Wirksames Routing der Warengruppen (Station/Bonierdrucker werden von der
+  //    Elterngruppe geerbt, wenn die Untergruppe nichts eigenes hat)
   const kategorieMap = new Map<string, { bonierdruckerId: string | null; station: Station | null }>()
-  if (kategorieIds.length > 0) {
-    const katRows = await deps.db
-      .select({ id: kategorien.id, bonierdruckerId: kategorien.bonierdruckerId, station: kategorien.station })
-      .from(kategorien)
-      .where(inArray(kategorien.id, kategorieIds))
-    for (const k of katRows) {
-      kategorieMap.set(k.id, { bonierdruckerId: k.bonierdruckerId, station: k.station as Station | null })
+  if (artikelRows.some(a => a.kategorieId !== null)) {
+    for (const [id, r] of await ladeWirksamesRouting(deps.db, kasse.mandantId)) {
+      kategorieMap.set(id, { bonierdruckerId: r.bonierdruckerId, station: r.station as Station | null })
     }
   }
 

@@ -48,6 +48,7 @@ import { erstelleKunde, ladeKundeSnapshot } from './kunde.service.js'
 import { pruefeRabattFreigabe, type FreigabeKontext } from './freigabe.service.js'
 import { logAudit } from './audit.service.js'
 import { dekrementiereBestandteile, ladeRezepte } from './bestandteil.service.js'
+import { ladeWirksamesRouting } from './kategorie-routing.service.js'
 import { decryptPrivateKey, encryptPrivateKey } from '../crypto/master-key.js'
 
 export interface BelegServiceDeps {
@@ -378,11 +379,14 @@ export async function erstelleBarzahlungsbeleg(
       const katNameMap    = new Map<string, string>()
       if (katergorieIds.length > 0) {
         const katRows = await tx
-          .select({ id: kategorien.id, name: kategorien.name, bonierdruckerId: kategorien.bonierdruckerId, station: kategorien.station })
+          .select({ id: kategorien.id, name: kategorien.name })
           .from(kategorien)
           .where(inArray(kategorien.id, katergorieIds))
+        // Wirksames Routing: Untergruppen erben Station/Bonierdrucker der Elterngruppe
+        const routing = await ladeWirksamesRouting(tx, artikelRows[0]!.mandantId)
         for (const k of katRows) {
-          katRoutingMap.set(k.id, (k.bonierdruckerId ?? k.station ?? null) !== null)
+          const r = routing.get(k.id)
+          katRoutingMap.set(k.id, ((r?.bonierdruckerId ?? r?.station) ?? null) !== null)
           katNameMap.set(k.id, k.name)
         }
       }
