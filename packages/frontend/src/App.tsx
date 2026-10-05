@@ -29,6 +29,7 @@ const TagesabschlussPage        = lazyPage(() => import('./pages/TagesabschlussP
 const BerichtePage              = lazyPage(() => import('./pages/BerichtePage'), 'BerichtePage')
 const WareneingangPage          = lazyPage(() => import('./pages/WareneingangPage'), 'WareneingangPage')
 const LagerstandPage            = lazyPage(() => import('./pages/LagerstandPage'), 'LagerstandPage')
+const KdsZuordnungPage          = lazyPage(() => import('./pages/KdsZuordnungPage'), 'KdsZuordnungPage')
 const InventurPage              = lazyPage(() => import('./pages/InventurPage'), 'InventurPage')
 const OffenePostenPage          = lazyPage(() => import('./pages/OffenePostenPage'), 'OffenePostenPage')
 const GutscheinPage             = lazyPage(() => import('./pages/GutscheinPage'), 'GutscheinPage')
@@ -105,6 +106,7 @@ function AppRoutes() {
           <Route path="/artikel"        element={<Require b="artikel.verwalten"            ><ArtikelPage /></Require>} />
           <Route path="/wareneingang"   element={<Require b="artikel.verwalten"            ><WareneingangPage /></Require>} />
           <Route path="/lagerstand"     element={<Require b="artikel.verwalten"            ><LagerstandPage /></Require>} />
+          <Route path="/kds-zuordnung"  element={<Require b="artikel.verwalten"            ><KdsZuordnungPage /></Require>} />
           <Route path="/inventur"       element={<Require b="artikel.verwalten"            ><InventurPage /></Require>} />
           <Route path="/modifikatoren"    element={<Require b="artikel.verwalten"            ><ModifikatorenPage /></Require>} />
           <Route path="/preisregeln"      element={<Require b="artikel.verwalten"            ><PreisregelnPage /></Require>} />

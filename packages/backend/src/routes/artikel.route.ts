@@ -11,7 +11,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { ArtikelInputSchema, ArtikelUpdateSchema, LayoutImportSchema } from '@kassa/shared'
 import { z } from 'zod'
-import { and, eq, isNotNull } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull } from 'drizzle-orm'
 import type { Db } from '../db/client.js'
 import { artikel } from '../db/schema.js'
 import { fachfehlerStatus } from '../fehler-handler.js'
@@ -177,6 +177,31 @@ export const artikelRoute: FastifyPluginAsync<ArtikelRouteOptions> = async (fast
       .returning({ id: artikel.id })
 
     return reply.send({ aktiviert: rows.length })
+  })
+
+  /**
+   * POST /artikel/kds-zuruecksetzen — setzt die eigene KDS-Station der genannten Artikel
+   * auf "Automatisch" (null): sie folgen danach der Station ihrer Warengruppe bzw. deren
+   * Elterngruppe, auch wenn vorher eine abweichende Station eingestellt war.
+   * Nur Artikel des eigenen Mandanten; geliefert wird die Zahl der tatsächlich geänderten.
+   */
+  fastify.post('/artikel/kds-zuruecksetzen', { onRequest: [fastify.authenticate] }, async (request, reply) => {
+    const parsed = z.object({
+      artikelIds: z.array(z.string().uuid()).min(1).max(10000),
+    }).safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
+
+    const rows = await opts.db
+      .update(artikel)
+      .set({ station: null, updatedAt: new Date() })
+      .where(and(
+        eq(artikel.mandantId, request.user.mandantId),
+        inArray(artikel.id, [...new Set(parsed.data.artikelIds)]),
+        isNotNull(artikel.station),
+      ))
+      .returning({ id: artikel.id })
+
+    return reply.send({ zurueckgesetzt: rows.length })
   })
 
   fastify.delete('/artikel/:id', { onRequest: [fastify.authenticate] }, async (request, reply) => {

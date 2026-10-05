@@ -510,6 +510,9 @@ export const artikelApi = {
     request<void>('PATCH', '/api/artikel/favoriten-reihenfolge', { eintraege }),
   lagerAktivieren: (kategorieId: string | null) =>
     request<{ aktiviert: number }>('POST', '/api/artikel/lager-aktivieren', { kategorieId }),
+  /** Eigene KDS-Station der Artikel auf "Automatisch" (= Warengruppe) zurücksetzen */
+  kdsZuruecksetzen: (artikelIds: string[]) =>
+    request<{ zurueckgesetzt: number }>('POST', '/api/artikel/kds-zuruecksetzen', { artikelIds }),
   /** Layout-Import (nur Admin): dryRun=true liefert nur den Bericht */
   layoutImport: (layout: unknown, opts: { dryRun: boolean; fehlendeAnlegen: boolean; spaltenSetzen: boolean; katalogLoeschen: boolean }) =>
     request<LayoutBericht>(
