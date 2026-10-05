@@ -220,6 +220,8 @@ export interface TabPositionenAntwort extends TischTabResponse {
   stornoBon?: {
     fehler:     BonierZielFehler[]
     positionen: Array<{ artikelId: string; menge: number }>
+    /** Bestell-ID des Korrekturbons — beim Nachsenden wieder mitschicken (kein zweiter Bon an Stationen, die ihn schon haben) */
+    bestellId?: string
   }
 }
 

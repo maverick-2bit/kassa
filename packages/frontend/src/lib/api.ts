@@ -603,6 +603,19 @@ export const lieferantApi = {
 // Bonierdrucker
 // ---------------------------------------------------------------------------
 
+/** Papierdruck der KDS-Bons je Station: welcher Bonierdrucker druckt (ohne Eintrag: alle aktiven wie früher) */
+export const kdsDruckerApi = {
+  list: () =>
+    request<{ eintraege: { station: Station; bonierdruckerId: string }[] }>('GET', '/api/kds/station-drucker'),
+  setzen: (station: Station, bonierdruckerId: string | null) =>
+    request<void>('PUT', '/api/kds/station-drucker', { station, bonierdruckerId }),
+  /** Fester Fallback-Drucker: übernimmt, wenn ein Bonierdruck scheitert */
+  fallback: () =>
+    request<{ bonierdruckerId: string | null }>('GET', '/api/kds/fallback-drucker'),
+  fallbackSetzen: (bonierdruckerId: string | null) =>
+    request<void>('PUT', '/api/kds/fallback-drucker', { bonierdruckerId }),
+}
+
 export const bonierdruckerApi = {
   list:   () =>
     request<Bonierdrucker[]>('GET', '/api/bonierdrucker'),
@@ -1267,6 +1280,8 @@ export interface TabPositionenAntwort extends TischTabResponse {
   stornoBon?: {
     fehler:     BonierZielFehler[]
     positionen: Array<{ artikelId: string; menge: number }>
+    /** Bestell-ID des Korrekturbons — beim Nachsenden wieder mitschicken (kein zweiter Bon an Stationen, die ihn schon haben) */
+    bestellId?: string
   }
 }
 

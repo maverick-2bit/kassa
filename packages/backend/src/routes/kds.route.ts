@@ -15,7 +15,8 @@ import { z } from 'zod'
 import type { Db } from '../db/client.js'
 import { onKdsEvent, emitKdsEvent } from '../sse/kds-event-bus.js'
 import { emitKasseEvent } from '../sse/event-bus.js'
-import { kassen, kdsBons, mandanten, sbBestellungen } from '../db/schema.js'
+import { StationSchema } from '@kassa/shared'
+import { bonierFallbackDrucker, bonierdrucker, kassen, kdsBons, kdsStationDrucker, mandanten, sbBestellungen } from '../db/schema.js'
 import { holeBeleg } from '../services/beleg.service.js'
 import {
   kdsOffeneBons,
@@ -279,7 +280,7 @@ export const kdsRoute: FastifyPluginAsync<KdsRouteOptions> = async (fastify, opt
             kellner:     vorher.kellner,
             fertig:      offen,
             rest:        [],
-          }).catch(err => fastify.log.error({ err }, 'Erledigt-Bon-Druck fehlgeschlagen'))
+          }, vorher.station).catch(err => fastify.log.error({ err }, 'Erledigt-Bon-Druck fehlgeschlagen'))
         }
       }
 
@@ -367,6 +368,83 @@ export const kdsRoute: FastifyPluginAsync<KdsRouteOptions> = async (fastify, opt
     },
   )
 
+  // ── Drucker je Station (KDS-Zuordnung): welcher Bonierdrucker druckt die KDS-Bons ──
+  fastify.get('/kds/station-drucker', { onRequest: [fastify.authenticate] }, async (request, reply) => {
+    const rows = await opts.db
+      .select({ station: kdsStationDrucker.station, bonierdruckerId: kdsStationDrucker.bonierdruckerId })
+      .from(kdsStationDrucker)
+      .where(eq(kdsStationDrucker.mandantId, request.user.mandantId))
+    return reply.send({ eintraege: rows })
+  })
+
+  fastify.put('/kds/station-drucker', { onRequest: [fastify.authenticate] }, async (request, reply) => {
+    const body = z.object({
+      station:         StationSchema,
+      /** null = Zuordnung aufheben (wie früher: alle aktiven Bonierdrucker) */
+      bonierdruckerId: z.string().uuid().nullable(),
+    }).safeParse(request.body)
+    if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
+    const mandantId = request.user.mandantId
+    const { station, bonierdruckerId } = body.data
+
+    if (bonierdruckerId === null) {
+      await opts.db.delete(kdsStationDrucker)
+        .where(and(eq(kdsStationDrucker.mandantId, mandantId), eq(kdsStationDrucker.station, station)))
+      return reply.status(204).send()
+    }
+
+    const [drucker] = await opts.db
+      .select({ id: bonierdrucker.id, istBackup: bonierdrucker.istBackup })
+      .from(bonierdrucker)
+      .where(and(eq(bonierdrucker.id, bonierdruckerId), eq(bonierdrucker.mandantId, mandantId)))
+      .limit(1)
+    if (!drucker) return reply.status(404).send({ fehler: 'Bonierdrucker nicht gefunden' })
+    if (drucker.istBackup) return reply.status(400).send({ fehler: 'Ein Zweitdrucker (Backup) kann keiner Station zugeordnet werden' })
+
+    await opts.db
+      .insert(kdsStationDrucker)
+      .values({ mandantId, station, bonierdruckerId })
+      .onConflictDoUpdate({
+        target: [kdsStationDrucker.mandantId, kdsStationDrucker.station],
+        set:    { bonierdruckerId, updatedAt: new Date() },
+      })
+    return reply.status(204).send()
+  })
+
+  // ── Fester Fallback-Drucker: übernimmt, wenn ein Bonierdruck scheitert (kein Bon geht verloren) ──
+  fastify.get('/kds/fallback-drucker', { onRequest: [fastify.authenticate] }, async (request, reply) => {
+    const [zeile] = await opts.db
+      .select({ bonierdruckerId: bonierFallbackDrucker.bonierdruckerId })
+      .from(bonierFallbackDrucker)
+      .where(eq(bonierFallbackDrucker.mandantId, request.user.mandantId))
+      .limit(1)
+    return reply.send({ bonierdruckerId: zeile?.bonierdruckerId ?? null })
+  })
+
+  fastify.put('/kds/fallback-drucker', { onRequest: [fastify.authenticate] }, async (request, reply) => {
+    const body = z.object({ bonierdruckerId: z.string().uuid().nullable() }).safeParse(request.body)
+    if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
+    const mandantId = request.user.mandantId
+    const { bonierdruckerId } = body.data
+
+    if (bonierdruckerId === null) {
+      await opts.db.delete(bonierFallbackDrucker).where(eq(bonierFallbackDrucker.mandantId, mandantId))
+      return reply.status(204).send()
+    }
+    const [drucker] = await opts.db
+      .select({ id: bonierdrucker.id })
+      .from(bonierdrucker)
+      .where(and(eq(bonierdrucker.id, bonierdruckerId), eq(bonierdrucker.mandantId, mandantId)))
+      .limit(1)
+    if (!drucker) return reply.status(404).send({ fehler: 'Bonierdrucker nicht gefunden' })
+
+    await opts.db
+      .insert(bonierFallbackDrucker)
+      .values({ mandantId, bonierdruckerId })
+      .onConflictDoUpdate({ target: bonierFallbackDrucker.mandantId, set: { bonierdruckerId, updatedAt: new Date() } })
+    return reply.status(204).send()
+  })
+
   // ── Nachdrucken ─────────────────────────────────────────────────────────────
   fastify.post(
     '/kds/bon/:id/nachdrucken',
@@ -438,7 +516,7 @@ export const kdsRoute: FastifyPluginAsync<KdsRouteOptions> = async (fastify, opt
           kellner:     bonNachher.kellner,
           fertig,
           rest,
-        }).catch(err => fastify.log.error({ err }, 'Teilbon-Druck fehlgeschlagen'))
+        }, bonNachher.station).catch(err => fastify.log.error({ err }, 'Teilbon-Druck fehlgeschlagen'))
       }
 
       return reply.send({ erfolgreich: true })

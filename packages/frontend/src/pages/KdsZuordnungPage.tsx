@@ -10,6 +10,7 @@ import {
 } from '@kassa/shared'
 import { baumFlach, kategoriePfad } from '../lib/kategorie-baum'
 import { artikelApi, kategorieApi } from '../lib/api'
+import { KdsDruckerZuordnung } from '../components/KdsDruckerZuordnung'
 import { getAuth } from '../lib/auth'
 
 /**
@@ -125,6 +126,11 @@ export function KdsZuordnungPage() {
         <Kachel label="Artikel" wert={stats.gesamt} />
         <Kachel label="Mit eigener Station" wert={stats.eigene} />
         <Kachel label="Ohne Station (kein KDS)" wert={stats.ohne} warn={stats.ohne > 0} />
+      </div>
+
+      {/* Welcher Bonierdrucker druckt die KDS-Bons je Station (+ Fallback) — dieselbe Einstellung wie unter Einstellungen > Hardware */}
+      <div className="mb-4">
+        <KdsDruckerZuordnung />
       </div>
 
       {/* Aktionen */}

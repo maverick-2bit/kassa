@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
 import { QRCodeSVG } from 'qrcode.react'
 import type { BonierungErgebnis, BonierungInput, BonierZielFehler, TabPosition } from '@kassa/shared'
-import { bonierFehlschlaege } from '@kassa/shared'
+import { bonierFehlschlaege, neueUuid } from '@kassa/shared'
 import { tischTabApi, bonierApi, druckerApi, oeffentlicherBelegApi, zvtApi, ApiError } from '../lib/api'
 import { getAuth, gaengeAktiv as istGaengeAktiv, gaengeAnzahl } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
@@ -81,6 +81,8 @@ export function TabPage() {
           kellner:    auth.user.name,
           positionen: tab.positionen.map(p => ({ artikelId: p.artikelId, menge: p.menge })),
           ohneLagerabzug: true,
+          // "Nochmal senden" schickt dieses Objekt unverändert — gleiche ID = keine doppelte Bestellung
+          bestellId:  neueUuid(),
         }
         return { ergebnis: await bonierApi.bonieren(gesendet), gesendet }
       }
@@ -94,6 +96,7 @@ export function TabPage() {
         kellner:    auth.user.name,
         positionen: offen.map(p => ({ artikelId: p.artikelId, menge: p.menge })),
         ohneLagerabzug: true,
+        bestellId:  neueUuid(),
       }
       let ergebnis: BonierungErgebnis | null = null
       try {
@@ -247,6 +250,8 @@ export function TabPage() {
             positionen: antwort.stornoBon.positionen,
             ohneLagerabzug: true,
             storno:     true,
+            // Dieselbe Bestell-ID wie beim ersten Versuch: Stationen, die den Bon schon haben, bekommen ihn nicht noch einmal
+            ...(antwort.stornoBon.bestellId ? { bestellId: antwort.stornoBon.bestellId } : {}),
           },
         })
       })

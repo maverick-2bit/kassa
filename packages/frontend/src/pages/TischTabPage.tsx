@@ -14,7 +14,7 @@ import type {
   TischTabSplittenInput,
   TischTabResponse,
 } from '@kassa/shared'
-import { aktionsPreisCent, aktiverRabattProzent, aktiveAktion, bonierFehlschlaege } from '@kassa/shared'
+import { aktionsPreisCent, aktiverRabattProzent, aktiveAktion, bonierFehlschlaege, neueUuid } from '@kassa/shared'
 import type { AktiveAktion } from '@kassa/shared'
 import { artikelApi, belegApi, bonierApi, druckerApi, kategorieApi, modifikatorApi, posConfigApi, preisregelApi, tischTabApi, zvtApi, ApiError } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
@@ -336,6 +336,8 @@ export function TischTabPage() {
           // Nur drucken (KDS + Bonierdrucker) — der Lagerstand wird beim Speichern
           // der Positionen (aktualisierePositionen) abgezogen, nicht hier.
           ohneLagerabzug: true,
+          // "Nochmal senden" schickt dieses Objekt unverändert — gleiche ID = keine doppelte Bestellung
+          bestellId:  neueUuid(),
         }
         try {
           ergebnis = await bonierApi.bonieren(gesendet)
@@ -386,6 +388,7 @@ export function TischTabPage() {
           kellner:    tab?.kellner ?? '',
           positionen: korb.map(p => ({ artikelId: p.artikel.id, menge: p.menge })),
           ohneLagerabzug: true,
+          bestellId:  neueUuid(),
         }
         try {
           // Auch hier gilt: nicht zugestellte Ziele melden. Der Gast zahlt gerade,

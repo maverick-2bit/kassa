@@ -190,6 +190,9 @@ export type {
   LayoutImportOptionen,
 } from './schemas/layout-import.js'
 
+// Geräte-seitige UUID (auch ohne HTTPS), z. B. als Bestell-ID beim Bonieren
+export { neueUuid } from './uuid.js'
+
 // Warengruppen-Baum: Reihenfolge, Pfade, Anzeige-Namen, Sichtbarkeit je Kasse
 export {
   wurzelgruppen,
