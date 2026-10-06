@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
-import { allergeneAnzeige, farbeZuHex, kategorieAnzeigeNamen, sichtbareGruppenFlach, sichtbarkeitsMengen, type Artikel, type Kategorie, type ModifikatorGruppe, type ModifikatorAuswahl } from '@kassa/shared'
+import { allergeneAnzeige, artikelErlaubt, farbeZuHex, kategorieAnzeigeNamen, sichtbareGruppenFlach, sichtbarkeitsMengen, type Artikel, type Kategorie, type ModifikatorGruppe, type ModifikatorAuswahl } from '@kassa/shared'
 import { artikelApi, kategorieApi, modifikatorApi, tischTabApi, kellnerKonfigApi } from '../lib/api'
 import { getAuth, clearAuth, gaengeAktiv as istGaengeAktiv, gaengeAnzahl } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
@@ -110,8 +110,7 @@ export function ArtikelWaehlenPage() {
   const alleArtikel  = artikelQuery.data ?? []
 
   // Nur Favoriten aus Warengruppen, die an dieser Kasse gewählt sind
-  const kategorieSichtbar = (a: Artikel) =>
-    sichtbarkeit.alle || (a.kategorieId !== null && sichtbarkeit.sichtbar.has(a.kategorieId))
+  const kategorieSichtbar = (a: Artikel) => artikelErlaubt(a, sichtbarkeit)
 
   // Kassen-Liste (mit Platzhaltern = null) geht vor; sonst globale istFavorit-Liste
   const kassenEintraege = favoritenQuery.data?.eintraege ?? []

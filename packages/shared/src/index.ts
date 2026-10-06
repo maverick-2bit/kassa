@@ -203,6 +203,7 @@ export {
   wurzelIdVon,
   sichtbarkeitsMengen,
   istErreichbar,
+  artikelErlaubt,
   sichtbareGruppenFlach,
   baumFlach,
   KATEGORIE_PFAD_TRENNER,

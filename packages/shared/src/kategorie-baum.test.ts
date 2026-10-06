@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { istErreichbar, sichtbareGruppenFlach, sichtbarkeitsMengen, type KategorieSortierbar } from './kategorie-baum.js'
+import { artikelErlaubt, istErreichbar, sichtbareGruppenFlach, sichtbarkeitsMengen, type KategorieSortierbar } from './kategorie-baum.js'
 
 /**
  *   Atriumbar (atr)
@@ -146,5 +146,40 @@ describe('sichtbareGruppenFlach (Kellner-App, Gast-Karte)', () => {
 
   it('Elterngruppe allein → ohne ihre Untergruppen', () => {
     expect(ids(['kel'])).toEqual(['kel'])
+  })
+})
+
+describe('artikelErlaubt (Kasse, Tisch, Favoriten-Auswahl, Kellner-App)', () => {
+  const artikel = (kategorieId: string | null) => ({ kategorieId })
+
+  it('nur Artikel ausdrücklich gewählter Gruppen — „nur Alkoholfrei": dessen Artikel ja, Limonaden/Säfte/Atriumbar nein', () => {
+    const m = sichtbarkeitsMengen(menge, ['atr-alko'])
+    expect(artikelErlaubt(artikel('atr-alko'), m)).toBe(true)
+    for (const g of ['atr-limo', 'atr-saft', 'atr', 'atr-bier', 'kel-alko', 'grillen']) expect(artikelErlaubt(artikel(g), m), g).toBe(false)
+  })
+
+  it('eine Zugangs-Gruppe zeigt keine eigenen Artikel, eine gewählte Untergruppe schon', () => {
+    const m = sichtbarkeitsMengen(menge, ['atr-limo'])
+    expect(m.zugang.has('atr-alko')).toBe(true)
+    expect(artikelErlaubt(artikel('atr-alko'), m)).toBe(false)
+    expect(artikelErlaubt(artikel('atr-limo'), m)).toBe(true)
+  })
+
+  it('Artikel ohne Warengruppe: nur ohne Einschränkung', () => {
+    expect(artikelErlaubt(artikel(null), sichtbarkeitsMengen(menge, []))).toBe(true)
+    expect(artikelErlaubt(artikel(null), sichtbarkeitsMengen(menge, undefined))).toBe(true)
+    expect(artikelErlaubt(artikel(null), sichtbarkeitsMengen(menge, ['grillen']))).toBe(false)
+  })
+
+  it('ohne Einschränkung ist alles erlaubt; unbekannte Warengruppen nicht bei gesetzter Auswahl', () => {
+    const alle = sichtbarkeitsMengen(menge, [])
+    for (const g of ALLE) expect(artikelErlaubt(artikel(g), alle)).toBe(true)
+    expect(artikelErlaubt(artikel('gibt-es-nicht'), sichtbarkeitsMengen(menge, ['grillen']))).toBe(false)
+  })
+
+  it('ältere Liste mit vollem Teilbaum: alle Gruppen des Teilbaums erlaubt, wie bisher', () => {
+    const m = sichtbarkeitsMengen(menge, ['atr', 'atr-alko', 'atr-limo', 'atr-saft', 'atr-bier', 'atr-wein'])
+    for (const g of ['atr', 'atr-alko', 'atr-limo', 'atr-saft', 'atr-bier', 'atr-wein']) expect(artikelErlaubt(artikel(g), m), g).toBe(true)
+    expect(artikelErlaubt(artikel('kel'), m)).toBe(false)
   })
 })

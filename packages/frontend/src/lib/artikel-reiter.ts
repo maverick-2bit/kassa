@@ -13,7 +13,7 @@
  * Favoriten, Warengruppe ausgeblendet), greift der nächste sinnvolle Reiter.
  */
 
-import { baueRaster, istErreichbar, type Artikel, type Kategorie, type RasterZelle, type SichtbarkeitsMengen } from '@kassa/shared'
+import { artikelErlaubt, baueRaster, istErreichbar, type Artikel, type Kategorie, type RasterZelle, type SichtbarkeitsMengen } from '@kassa/shared'
 import { sichtbarkeitsMengen, untergruppenVon, wurzelgruppen } from './kategorie-baum'
 
 export const FAVORITEN_TAB_ID = '__favoriten__'
@@ -34,15 +34,10 @@ export function sichtbareWarengruppen(
   return mengen.alle ? sorted : sorted.filter(k => istErreichbar(mengen, k.id))
 }
 
-/**
- * Darf der Artikel an dieser Kasse vorkommen? Nur Artikel AUSDRÜCKLICH gewählter Warengruppen — eine Gruppe, die
- * nur als Zugang sichtbar ist, zeigt keine eigenen Artikel. Ohne Einschränkung alle (auch ohne Warengruppe).
- */
-export function artikelErlaubt(a: Pick<Artikel, 'kategorieId'>, mengen: SichtbarkeitsMengen): boolean {
-  return mengen.alle || (a.kategorieId !== null && mengen.sichtbar.has(a.kategorieId))
-}
+// Eine Definition für alle Verbraucher (shared): Kasse/Tisch, Favoriten-Auswahl, Kellner-App
+export { artikelErlaubt }
 
-/** Artikel, die an dieser Kasse überhaupt vorkommen dürfen (siehe artikelErlaubt). */
+/** Artikel, die an dieser Kasse überhaupt vorkommen dürfen (siehe artikelErlaubt: nur ausdrücklich gewählte Gruppen). */
 export function artikelDerKasse(
   artikel: readonly Artikel[],
   mengen: SichtbarkeitsMengen,

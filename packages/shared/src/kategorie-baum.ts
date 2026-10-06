@@ -128,6 +128,14 @@ export function sichtbarkeitsMengen(
 export const istErreichbar = (m: SichtbarkeitsMengen, id: string): boolean => m.sichtbar.has(id) || m.zugang.has(id)
 
 /**
+ * Darf der Artikel an der Kasse vorkommen? Nur Artikel AUSDRÜCKLICH gewählter Warengruppen — eine Gruppe, die nur
+ * als Zugang sichtbar ist, zeigt keine eigenen Artikel. Ohne Einschränkung (`alle`) alle, auch Artikel ohne Warengruppe.
+ * Eine Funktion für alle Verbraucher: Kasse und Tisch, Favoriten-Auswahl, Kellner-App.
+ */
+export const artikelErlaubt = (a: { kategorieId: string | null }, m: SichtbarkeitsMengen): boolean =>
+  m.alle || (a.kategorieId !== null && m.sichtbar.has(a.kategorieId))
+
+/**
  * Flache Reiterliste (Kellner-App, Gast-Karte): die ausdrücklich gewählten Gruppen in Baumreihenfolge.
  * Ein Zugang entfällt hier — jede Untergruppe hat dort ohnehin einen eigenen Reiter.
  */
