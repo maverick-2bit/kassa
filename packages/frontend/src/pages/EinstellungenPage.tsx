@@ -21,8 +21,13 @@ import { KartenzahlungModal } from '../components/KartenzahlungModal'
 import { TischplanEditor } from '../components/TischplanEditor'
 import { parseTischEingabe } from '../components/TischEtikettenModal'
 import { baumFlach, kategorieAnzeigeNamen, kategoriePfad } from '../lib/kategorie-baum'
-import { alleAktiv, sichtbarkeitsZustaende, toggle as toggleSichtbarkeit, zaehlung } from '../lib/sichtbarkeit'
+import {
+  SICHTBARKEIT_TEXTE, alleAusblendenKlick, alleSichtbarKlick, anzeigeZustaende, auswahlStatus, gruppeKlick, mitNeustart,
+  teilbaumKlick, zustandTitel, type Auswahl, type Uebergang,
+} from '../lib/sichtbarkeit'
 import { SichtbarkeitsHaken } from '../components/SichtbarkeitsHaken'
+import { SichtbarkeitsKnoepfe } from '../components/SichtbarkeitsKnoepfe'
+import { TeilbaumKnopf } from '../components/TeilbaumKnopf'
 
 // ---------------------------------------------------------------------------
 // Bereichs-Navigation: gliedert die ~13 Sektionen in 6 Gruppen.
@@ -439,6 +444,10 @@ function WarengruppenVerteilungSektion() {
   // wie die drei „Alkoholfrei" stehen so unter ihrer Elterngruppe und sind unterscheidbar
   const baum = useMemo(() => baumFlach(kategorien), [kategorien])
   const [hinweis, setHinweis] = useState<string | null>(null)
+  // „Alle ausblenden" = Auswahl-NEUSTART einer Kasse: nur Oberflächenzustand (lib/sichtbarkeit), nie gespeichert —
+  // der Server kennt „keine Gruppe" nicht (leer = alle). Je Kasse getrennt; Verlassen der Seite oder Neuladen
+  // verwirft ihn, dann gilt wieder der Serverstand.
+  const [neustartKassen, setNeustartKassen] = useState<ReadonlySet<string>>(() => new Set())
 
   // POS-Konfig je Kasse (enthält sichtbareKategorieIds)
   const configQueries = useQueries({
@@ -457,6 +466,11 @@ function WarengruppenVerteilungSektion() {
     mutationFn: ({ kasseId, ids }: { kasseId: string; ids: string[] }) =>
       posConfigApi.update(kasseId, { sichtbareKategorieIds: ids }),
     onSuccess: (_r, v) => qc.invalidateQueries({ queryKey: ['pos-config', v.kasseId] }),
+    // Fehlgeschlagen: den vorab angezeigten Stand verwerfen — es gilt der Serverstand
+    onError: (err, v) => {
+      qc.invalidateQueries({ queryKey: ['pos-config', v.kasseId] })
+      setHinweis(`Speichern fehlgeschlagen: ${err instanceof Error ? err.message : String(err)}`)
+    },
   })
 
   function setzeAuswahl(kasseId: string, ids: string[]) {
@@ -465,24 +479,38 @@ function WarengruppenVerteilungSektion() {
     speichern.mutate({ kasseId, ids })
   }
 
-  function toggle(kasseId: string, catId: string) {
-    // Nicht togglen, solange die pos-config dieser Kasse nicht geladen ist —
-    // sonst überschreibt der PUT die noch unbekannte Auswahl.
-    const aktuell = configByKasse.get(kasseId)
-    if (!aktuell) return
-    // Gemeinsame Logik mit der POS-Konfiguration (lib/sichtbarkeit): leere Liste = alle angehakt,
-    // ein Haken gilt samt Untergruppen, die letzte sichtbare Gruppe bleibt, alle angehakt → [] speichern
-    const ergebnis = toggleSichtbarkeit(kategorien, aktuell, catId)
-    if (ergebnis.blockiert === 'letzte') {
-      setHinweis('Mindestens eine Warengruppe muss an der Kasse sichtbar bleiben.')
-      return
-    }
-    setHinweis(null)
-    setzeAuswahl(kasseId, ergebnis.liste)
+  /** Zustand einer Kasse; null, solange ihre pos-config nicht geladen ist — sonst überschriebe ein Klick die noch unbekannte Auswahl. */
+  function auswahlVon(kasseId: string): Auswahl | null {
+    const liste = configByKasse.get(kasseId)
+    return liste ? { liste, neustart: neustartKassen.has(kasseId) } : null
+  }
+
+  /** Ergebnis eines Klicks übernehmen (gemeinsame Logik mit der POS-Konfiguration: lib/sichtbarkeit). */
+  function anwenden(kasse: { id: string; name: string }, u: Uebergang) {
+    setNeustartKassen(prev => mitNeustart(prev, kasse.id, u.neustart))
+    setHinweis(u.blockiert === 'letzte'
+      ? `${kassen.length > 1 ? `${kasse.name}: ` : ''}${SICHTBARKEIT_TEXTE.letzteHinweis}`
+      : null)
+    if (u.speichern) setzeAuswahl(kasse.id, u.speichern)
   }
 
   const laden = kassenQuery.isLoading || kategorienQuery.isLoading
   const anzeigeName = useMemo(() => kategorieAnzeigeNamen(kategorien), [kategorien])
+
+  // Gruppen mit Untergruppen bekommen den Komfort-Knopf „samt Untergruppen"
+  const hatKinder = useMemo(() => new Set(kategorien.flatMap(c => (c.parentId ? [c.parentId] : []))), [kategorien])
+
+  // Eine Spalte je Kasse — Zustand, Beschriftung und Haken einmal je Kasse berechnet (jede Kasse für sich)
+  const spalten = kassen.map(k => {
+    const auswahl = auswahlVon(k.id)
+    return {
+      id:        k.id,
+      name:      k.bezeichnung || k.kassenId,
+      auswahl,
+      status:    auswahl ? auswahlStatus(kategorien, auswahl) : null,
+      zustaende: auswahl ? anzeigeZustaende(kategorien, auswahl) : null,
+    }
+  })
 
   return (
     <section className="rounded-lg bg-panel shadow-sm border border-line p-6 space-y-4">
@@ -491,9 +519,12 @@ function WarengruppenVerteilungSektion() {
         <p className="text-sm text-ink-muted mt-0.5">
           Lege fest, welche Warengruppen an welcher Kasse erscheinen — z. B. eine Kasse „Getränke",
           eine Kasse „Speisen". Ohne Einschränkung sind <strong>alle</strong> Warengruppen angehakt
-          (auch künftig angelegte). Ein Haken gilt für die Gruppe <strong>samt allen Untergruppen</strong>;
-          einzelne Untergruppen lassen sich abhaken — die Elterngruppe zeigt dann einen
-          halben Haken und bleibt als Zugang sichtbar. Mindestens eine Warengruppe bleibt immer sichtbar.
+          (auch künftig angelegte). <strong>Jede Warengruppe wird einzeln gewählt</strong>: Ein Haken gilt nur
+          für diese Gruppe und ihre eigenen Artikel, nicht für ihre Untergruppen — der kleine Knopf daneben
+          schaltet die Gruppe samt allen Untergruppen auf einmal. Ist nur eine Untergruppe gewählt, zeigt
+          die Elterngruppe einen halben Haken und bleibt als Zugang sichtbar — ohne eigene Artikel.
+          Mindestens eine Warengruppe bleibt immer sichtbar. „Alle ausblenden" entfernt alle Haken einer Kasse,
+          um die Auswahl neu zu beginnen: Gespeichert wird erst die erste Warengruppe, die du danach einschaltest.
         </p>
       </div>
 
@@ -502,6 +533,13 @@ function WarengruppenVerteilungSektion() {
           {hinweis}
         </p>
       )}
+
+      {spalten.filter(s => s.status?.art === 'keine').map(s => (
+        <p key={s.id} role="status" data-testid="verteilung-neustart-hinweis" className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          {kassen.length > 1 && <strong>{s.name}: </strong>}
+          {SICHTBARKEIT_TEXTE.neustartHinweis}
+        </p>
+      ))}
 
       {laden ? (
         <p className="text-sm text-ink-muted">Wird geladen…</p>
@@ -514,20 +552,30 @@ function WarengruppenVerteilungSektion() {
           <table className="w-full text-sm" data-testid="verteilung-matrix">
             <thead className="bg-panel-2 text-ink-muted">
               <tr>
-                <th className="px-3 py-2 text-left font-medium sticky left-0 bg-panel-2 z-10">Warengruppe</th>
-                {kassen.map(k => {
-                  const liste = configByKasse.get(k.id)
-                  const alle  = liste !== undefined && alleAktiv(liste)
-                  const z     = liste !== undefined ? zaehlung(kategorien, liste) : null
-                  return (
-                    <th key={k.id} className="px-3 py-2 text-center font-medium min-w-[7rem]">
-                      <div className="truncate">{k.bezeichnung || k.kassenId}</div>
-                      <div data-testid="verteilung-status" className={`text-[10px] font-normal mt-0.5 ${alle ? 'text-brand-700' : 'text-ink-subtle'}`}>
-                        {z === null ? '…' : alle ? 'alle sichtbar' : `${z.sichtbar} von ${z.gesamt} sichtbar`}
-                      </div>
-                    </th>
-                  )
-                })}
+                <th className="px-3 py-2 text-left font-medium sticky left-0 bg-panel-2 z-10 align-top">Warengruppe</th>
+                {spalten.map(s => (
+                  <th key={s.id} className="px-3 py-2 text-center font-medium min-w-[9rem] align-top">
+                    <div className="truncate">{s.name}</div>
+                    <div
+                      data-testid="verteilung-status"
+                      data-art={s.status?.art ?? 'laedt'}
+                      className={`text-[10px] font-normal mt-0.5 ${
+                        s.status?.art === 'alle' ? 'text-brand-700' : s.status?.art === 'keine' ? 'text-amber-700' : 'text-ink-subtle'
+                      }`}
+                    >
+                      {s.status ? s.status.text : '…'}
+                    </div>
+                    <SichtbarkeitsKnoepfe
+                      art={s.status?.art ?? 'teilweise'}
+                      disabled={!s.auswahl || (speichern.isPending && speichern.variables?.kasseId === s.id)}
+                      testId="verteilung"
+                      kassenName={s.name}
+                      kompakt
+                      onAlleSichtbar={() => { if (s.auswahl) anwenden(s, alleSichtbarKlick(s.auswahl)) }}
+                      onAlleAusblenden={() => { if (s.auswahl) anwenden(s, alleAusblendenKlick(s.auswahl)) }}
+                    />
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
@@ -542,23 +590,32 @@ function WarengruppenVerteilungSektion() {
                         {!kat.aktiv && <span className="text-[10px] font-normal italic text-ink-subtle">inaktiv</span>}
                       </div>
                     </td>
-                    {kassen.map(k => {
+                    {spalten.map(s => {
                       // Erst bedienbar, wenn die pos-config dieser Kasse geladen ist —
-                      // sonst würde ein Toggle die noch ungeladene Auswahl überschreiben.
-                      const liste  = configByKasse.get(k.id)
-                      const geladen = liste !== undefined
-                      const zustand = geladen ? (sichtbarkeitsZustaende(kategorien, liste).get(kat.id) ?? 'aus') : 'aus'
+                      // sonst würde ein Klick die noch ungeladene Auswahl überschreiben.
+                      const zustand = s.zustaende?.get(kat.id) ?? 'aus'
                       return (
-                        <td key={k.id} className="px-3 py-2 text-center">
-                          <SichtbarkeitsHaken
-                            zustand={zustand}
-                            disabled={!geladen}
-                            onChange={() => toggle(k.id, kat.id)}
-                            label={`${anzeigeName(kat.id)} an ${k.bezeichnung || k.kassenId}`}
-                            title={zustand === 'teilweise'
-                              ? `${pfad} — nur einzelne Untergruppen sichtbar (diese Gruppe bleibt als Zugang sichtbar)`
-                              : pfad}
-                          />
+                        <td key={s.id} className="px-3 py-2">
+                          <div className="flex items-center justify-center gap-1">
+                            {/* linker Platzhalter in Breite des Teilbaum-Knopfs: der Haken bleibt in jeder Zeile mittig */}
+                            <span aria-hidden className="inline-block h-5 w-5 flex-shrink-0" />
+                            <SichtbarkeitsHaken
+                              zustand={zustand}
+                              disabled={!s.auswahl}
+                              onChange={() => { if (s.auswahl) anwenden(s, gruppeKlick(kategorien, s.auswahl, kat.id)) }}
+                              label={`${anzeigeName(kat.id)} an ${s.name}`}
+                              title={zustandTitel(zustand, pfad)}
+                            />
+                            {hatKinder.has(kat.id) ? (
+                              <TeilbaumKnopf
+                                disabled={!s.auswahl}
+                                onClick={() => { if (s.auswahl) anwenden(s, teilbaumKlick(kategorien, s.auswahl, kat.id)) }}
+                                label={`${anzeigeName(kat.id)} samt Untergruppen an ${s.name} ein- oder ausschalten`}
+                              />
+                            ) : (
+                              <span aria-hidden className="inline-block h-5 w-5 flex-shrink-0" />
+                            )}
+                          </div>
                         </td>
                       )
                     })}
@@ -566,31 +623,6 @@ function WarengruppenVerteilungSektion() {
                 )
               })}
             </tbody>
-            <tfoot>
-              <tr className="border-t border-line">
-                <td className="px-3 py-2 text-xs text-ink-muted sticky left-0 bg-panel z-10">Alle einblenden</td>
-                {kassen.map(k => {
-                  const liste = configByKasse.get(k.id)
-                  const alle  = liste !== undefined && alleAktiv(liste)
-                  return (
-                    <td key={k.id} className="px-3 py-2 text-center">
-                      <button
-                        type="button"
-                        disabled={liste === undefined || alle}
-                        onClick={() => { setHinweis(null); setzeAuswahl(k.id, []) }}
-                        data-testid="verteilung-alle"
-                        className={`text-xs px-2 py-1 rounded-md border font-medium transition ${
-                          alle
-                            ? 'border-green-200 bg-green-50 text-green-700 cursor-default'
-                            : 'border-brand-300 text-brand-700 hover:bg-brand-50 disabled:opacity-40 disabled:cursor-not-allowed'
-                        }`}
-                        title={alle ? 'An dieser Kasse sind alle Warengruppen sichtbar' : 'Alle Warengruppen an dieser Kasse einblenden — auch künftig angelegte'}
-                      >{alle ? '✓ alle sichtbar' : 'alle sichtbar'}</button>
-                    </td>
-                  )
-                })}
-              </tr>
-            </tfoot>
           </table>
         </div>
       )}

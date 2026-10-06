@@ -5,8 +5,10 @@ import { test, expect, type APIRequestContext, type Page } from '@playwright/tes
  * in den Einstellungen UND POS-Konfiguration):
  *
  *  - drei gleichnamige „Alkoholfrei" unter verschiedenen Elterngruppen sind per Elternzeile / Pfad unterscheidbar
- *  - Matrix: leere Liste = alle Haken gesetzt, Abhaken → alle außer dieser, „alle sichtbar" stellt alles her
- *    und speichert [], Eltern-Haken gilt für den Teilbaum, Halbzustand, letzte Gruppe nicht abhakbar
+ *  - Matrix: leere Liste = alle Haken gesetzt, Abhaken → alle außer dieser, „Alle sichtbar" stellt alles her
+ *    und speichert [], ein Haken gilt NUR für seine Gruppe (die Untergruppen bleiben, wie sie sind; eine Gruppe
+ *    ohne eigenen Haken, aber mit gewählter Untergruppe zeigt den Halbhaken = Zugang), der kleine Knopf
+ *    „samt Untergruppen" schaltet Gruppe + alle Nachkommen auf einmal, letzte Gruppe nicht abhakbar
  *  - POS-Konfig: Reihenfolge ↑/↓ nur unter Geschwistern, „Reihenfolge speichern" schreibt Positionen
  *    UNTER GESCHWISTERN (keine globalen Indizes), „Artikelwahl öffnet mit" und Artikelformular zeigen Pfadlabel
  *
@@ -147,10 +149,11 @@ test('Warengruppen-Baum: Pfadlabel, Matrix „Warengruppen-Verteilung" und POS-K
 
     // Leere Liste = „alle sichtbar" — und ALLE Haken sind gesetzt (nicht leer)
     const status = matrix.getByTestId('verteilung-status').nth(spalte)
+    const alleKnopf = matrix.getByTestId('verteilung-alle-sichtbar').nth(spalte)
     await expect(status).toHaveText('alle sichtbar')
     for (const pfad of erwarteteBaumreihenfolge) await expect(haken(pfad)).toBeChecked()
-    await expect(matrix.getByTestId('verteilung-alle').nth(spalte)).toHaveText('✓ alle sichtbar')
-    await expect(matrix.getByTestId('verteilung-alle').nth(spalte)).toBeDisabled()
+    await expect(alleKnopf).toHaveAttribute('aria-pressed', 'true')
+    await expect(matrix.getByTestId('verteilung-alle-ausblenden').nth(spalte)).toHaveAttribute('aria-pressed', 'false')
 
     // Eine Gruppe abhaken (nur EINE der drei „Alkoholfrei") → gespeichert: alle außer dieser
     await haken(pfade.kelAlk).click()
@@ -158,37 +161,53 @@ test('Warengruppen-Baum: Pfadlabel, Matrix „Warengruppen-Verteilung" und POS-K
     await expect(haken(pfade.kelAlk)).not.toBeChecked()
     await expect(haken(pfade.barAlk)).toBeChecked()
     await expect(haken(pfade.evtAlk)).toBeChecked()
-    // Elterngruppe: halber Haken (Kellner Bier ist noch an)
-    await expect(haken(pfade.kel)).toHaveAttribute('data-zustand', 'teilweise')
-    await expect(haken(pfade.kel)).toBeChecked({ indeterminate: true })
+    // Jede Gruppe wird einzeln gewählt: die Elterngruppe bleibt, was sie war — angehakt
+    await expect(haken(pfade.kel)).toHaveAttribute('data-zustand', 'an')
+    await expect(haken(pfade.kel)).toBeChecked()
     await expect(haken(pfade.kelBier)).toBeChecked()
     const nachAbhaken = await liste()
     expect(nachAbhaken).not.toContain(kelAlk.id)
-    expect(nachAbhaken).not.toContain(kel.id)            // wird „teilweise" — bleibt als Zugang sichtbar, steht aber nicht in der Liste
-    for (const g of [bar, barAlk, barLim, barBier, kelBier, evt, evtPak, evtAlk]) expect(nachAbhaken).toContain(g.id)
-    expect(nachAbhaken).toHaveLength((await alleGruppen()).length - 2)
+    for (const g of [bar, barAlk, barLim, barBier, kel, kelBier, evt, evtPak, evtAlk]) expect(nachAbhaken).toContain(g.id)
+    expect(nachAbhaken).toHaveLength((await alleGruppen()).length - 1)
 
-    // „alle sichtbar" tut etwas Sichtbares: alles angehakt, Liste leer
-    const alleKnopf = matrix.getByTestId('verteilung-alle').nth(spalte)
+    // „Alle sichtbar" tut etwas Sichtbares: alles angehakt, Liste leer
     await expect(alleKnopf).toBeEnabled()
-    await expect(alleKnopf).toHaveText('alle sichtbar')
+    await expect(alleKnopf).toHaveText('Alle sichtbar')
+    await expect(alleKnopf).toHaveAttribute('aria-pressed', 'false')
     await alleKnopf.click()
     await expect(status).toHaveText('alle sichtbar', { timeout: 10_000 })
     for (const pfad of erwarteteBaumreihenfolge) await expect(haken(pfad)).toBeChecked()
-    await expect(alleKnopf).toHaveText('✓ alle sichtbar')
+    await expect(alleKnopf).toHaveAttribute('aria-pressed', 'true')
     expect(await liste()).toEqual([])
 
-    // Eltern-Haken schaltet den ganzen Teilbaum: Atriumbar ab → auch Alkoholfrei, Limonaden, Bier darunter
+    // Ein Eltern-Haken gilt NUR für diese Gruppe: Atriumbar ab → Alkoholfrei, Limonaden und Bier darunter bleiben
+    // angehakt; die Atriumbar selbst zeigt den Halbhaken (nicht gewählt, aber Zugang zu den gewählten Untergruppen)
     await haken(pfade.bar).click()
+    await expect(status).toContainText(/\d+ von \d+ sichtbar/, { timeout: 10_000 })
+    await expect(haken(pfade.bar)).toHaveAttribute('data-zustand', 'zugang')
+    await expect(haken(pfade.bar)).toBeChecked({ indeterminate: true })
+    for (const pfad of [pfade.barAlk, pfade.barLim, pfade.barBier]) await expect(haken(pfad)).toBeChecked()
+    await expect(haken(pfade.kelAlk)).toBeChecked()
+    const ohneBar = await liste()
+    expect(ohneBar).not.toContain(bar.id)
+    for (const g of [barAlk, barLim, barBier, kel, kelAlk, kelBier, evt, evtPak, evtAlk]) expect(ohneBar).toContain(g.id)
+    // …wieder angehakt: alle Gruppen gewählt → [] gespeichert
+    await haken(pfade.bar).click()
+    await expect(status).toHaveText('alle sichtbar', { timeout: 10_000 })
+    expect(await liste()).toEqual([])
+
+    // Komfort „samt Untergruppen": der kleine Knopf neben der Atriumbar schaltet Gruppe + alle Nachkommen auf einmal
+    const teilbaum = (pfad: string) => zeile(pfad).getByTestId('teilbaum-knopf').nth(spalte)
+    await expect(zeile(pfade.kelAlk).getByTestId('teilbaum-knopf')).toHaveCount(0)       // Gruppen ohne Untergruppen haben ihn nicht
+    await teilbaum(pfade.bar).click()                                                      // alle angehakt → alle vier ab
     await expect(status).toContainText(/\d+ von \d+ sichtbar/, { timeout: 10_000 })
     for (const pfad of [pfade.bar, pfade.barAlk, pfade.barLim, pfade.barBier]) await expect(haken(pfad)).not.toBeChecked()
     await expect(haken(pfade.kelAlk)).toBeChecked()
     await expect(haken(pfade.evtAlk)).toBeChecked()
-    const ohneBar = await liste()
-    for (const g of [bar, barAlk, barLim, barBier]) expect(ohneBar).not.toContain(g.id)
-    for (const g of [kel, kelAlk, kelBier, evt, evtPak, evtAlk]) expect(ohneBar).toContain(g.id)
-    // …und wieder an: Teilbaum vollständig, alle Gruppen sichtbar → [] gespeichert
-    await haken(pfade.bar).click()
+    const ohneTeilbaum = await liste()
+    for (const g of [bar, barAlk, barLim, barBier]) expect(ohneTeilbaum).not.toContain(g.id)
+    for (const g of [kel, kelAlk, kelBier, evt, evtPak, evtAlk]) expect(ohneTeilbaum).toContain(g.id)
+    await teilbaum(pfade.bar).click()                                                      // keine gewählt → alle vier wieder an
     await expect(status).toHaveText('alle sichtbar', { timeout: 10_000 })
     expect(await liste()).toEqual([])
 
@@ -264,12 +283,12 @@ test('Warengruppen-Baum: Pfadlabel, Matrix „Warengruppen-Verteilung" und POS-K
     const nach2 = new Map((await alleGruppen()).map(g => [g.id, g.reihenfolge] as const))
     expect([nach2.get(barAlk.id), nach2.get(barBier.id), nach2.get(barLim.id), nach2.get(kelAlk.id), nach2.get(kelBier.id), nach2.get(evtAlk.id)]).toEqual([1, 0, 0, 0, 1, 0])
 
-    // Sichtbarkeit: derselbe Teilbaum-Schalter mit Halbzustand wie in der Matrix
+    // Sichtbarkeit: derselbe Einzel-Schalter wie in der Matrix — jede Gruppe für sich, die Elterngruppe bleibt angehakt
     const schalter = (pfad: string) => pzeile(pfad).getByRole('switch')
     await expect(schalter(pfade.kelAlk)).toHaveAttribute('data-zustand', 'an')
     await schalter(pfade.kelAlk).click()
     await expect(schalter(pfade.kelAlk)).toHaveAttribute('data-zustand', 'aus')
-    await expect(schalter(pfade.kel)).toHaveAttribute('data-zustand', 'teilweise')
+    await expect(schalter(pfade.kel)).toHaveAttribute('data-zustand', 'an')
     await expect(schalter(pfade.barAlk)).toHaveAttribute('data-zustand', 'an')
     await expect.poll(async () => (await liste()).includes(kelAlk.id)).toBe(false)
     const startListe = await liste()

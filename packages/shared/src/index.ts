@@ -198,7 +198,9 @@ export {
   nachkommenIds,
   pfadIds,
   wurzelIdVon,
-  erweitereSichtbarkeit,
+  sichtbarkeitsMengen,
+  istErreichbar,
+  sichtbareGruppenFlach,
   baumFlach,
   KATEGORIE_PFAD_TRENNER,
   kategoriePfadNamen,
@@ -215,6 +217,7 @@ export type {
   KategorieBenannt,
   KategorieSortierbar,
   KategorieAufloesung,
+  SichtbarkeitsMengen,
 } from './kategorie-baum.js'
 
 // Raster-Platzierung (Untergruppen-Kacheln, Slots, Leerfelder)

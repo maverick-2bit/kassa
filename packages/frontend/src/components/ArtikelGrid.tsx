@@ -14,18 +14,19 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { baueRaster, farbeZuHex, type AktiveAktion, type Artikel, type Kategorie, type ModifikatorAuswahl, type ModifikatorGruppe, type RasterZelle } from '@kassa/shared'
+import { farbeZuHex, type AktiveAktion, type Artikel, type Kategorie, type ModifikatorAuswahl, type ModifikatorGruppe, type RasterZelle } from '@kassa/shared'
 import { formatPreis } from '../lib/format'
 import {
-  artikelDerKasse,
+  artikelErlaubt,
   FAVORITEN_TAB_ID,
+  gruppenRaster,
+  kassenAnsicht,
   reiterGueltig,
-  sichtbareWarengruppen,
   SONSTIGE_TAB_ID,
   startReiter,
   type ReiterLage,
 } from '../lib/artikel-reiter'
-import { erweitereSichtbarkeit, nachkommenIds, untergruppenVon, wurzelgruppen, wurzelIdVon } from '../lib/kategorie-baum'
+import { nachkommenIds, wurzelIdVon } from '../lib/kategorie-baum'
 import { ModifikatorModal } from './ModifikatorModal'
 import { Input } from './ui/Input'
 
@@ -86,25 +87,21 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
   const [fadeLinks,  setFadeLinks]  = useState(false)
   const [fadeRechts, setFadeRechts] = useState(false)
 
-  // Sichtbarkeit der Kasse gilt samt Untergruppen (und deren Vorfahren, sonst unerreichbar)
-  const sichtbareIds = useMemo(
-    () => erweitereSichtbarkeit(kategorien, sichtbareKategorieIds),
-    [kategorien, sichtbareKategorieIds],
+  // Sichtbarkeit der Kasse: JEDE Warengruppe einzeln gewählt — ihre eigenen Artikel erscheinen nur, wenn sie gewählt
+  // ist (Untergruppen kommen nicht automatisch dazu). Eine nicht gewählte Gruppe mit gewählter Untergruppe bleibt als
+  // reiner Zugang (Reiter/Kachel) ohne eigene Artikel. Rechenregel: lib/artikel-reiter (kassenAnsicht).
+  const ansicht = useMemo(
+    () => kassenAnsicht(kategorien, artikel, sichtbareKategorieIds),
+    [kategorien, artikel, sichtbareKategorieIds],
   )
-  // Alle aktiven, sichtbaren Gruppen — jede Ebene
-  const aktiveKategorien = useMemo(
-    () => sichtbareWarengruppen(kategorien, sichtbareIds),
-    [kategorien, sichtbareIds],
-  )
+  // Alle aktiven, erreichbaren Gruppen — jede Ebene
+  const aktiveKategorien = ansicht.gruppen
   // Reiter = Hauptgruppen
-  const reiterGruppen = useMemo(() => wurzelgruppen(aktiveKategorien), [aktiveKategorien])
+  const reiterGruppen = ansicht.reiter
 
   // Rohstoffe/Bestandteile sind nur Lager, nicht direkt verkäuflich → aus dem Raster ausblenden.
   // Und nur, was diese Kasse zeigen darf — auch in der Suche.
-  const verkaufsartikel = useMemo(
-    () => artikelDerKasse(artikel.filter(a => !a.istBestandteil), sichtbareIds),
-    [artikel, sichtbareIds],
-  )
+  const verkaufsartikel = ansicht.artikel
 
   // Artikel ohne (aktive) Warengruppe — eigener Reiter, nur wenn die Kasse alle zeigt
   const sonstige = useMemo(() => {
@@ -119,10 +116,8 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
    * deren Reihenfolge; ohne eigene Liste die globalen istFavorit-Artikel.
    */
   const favoriten = useMemo<(Artikel | null)[]>(() => {
-    // Nur Favoriten aus Warengruppen, die an dieser Kasse sichtbar sind (leer = alle)
-    const kategorieSichtbar = (a: Artikel) =>
-      !sichtbareIds || sichtbareIds.length === 0 ||
-      (a.kategorieId !== null && sichtbareIds.includes(a.kategorieId))
+    // Nur Favoriten aus Warengruppen, die an dieser Kasse gewählt sind (leer = alle)
+    const kategorieSichtbar = (a: Artikel) => artikelErlaubt(a, ansicht.mengen)
     if (favoritenEintraege && favoritenEintraege.length > 0) {
       const byId = new Map(verkaufsartikel.map(a => [a.id, a] as const))
       return favoritenEintraege
@@ -133,7 +128,7 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
     return verkaufsartikel
       .filter(a => a.istFavorit && kategorieSichtbar(a))
       .sort((a, b) => a.favoritenReihenfolge - b.favoritenReihenfolge || a.bezeichnung.localeCompare(b.bezeichnung))
-  }, [verkaufsartikel, favoritenEintraege, sichtbareIds])
+  }, [verkaufsartikel, favoritenEintraege, ansicht.mengen])
 
   const anzahlProKategorie = useMemo(() => {
     const map = new Map<string, number>()
@@ -214,11 +209,8 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
       return sonstige.map((a): RasterZelle<Kategorie, Artikel> => ({ typ: 'artikel', artikel: a }))
     }
     if (aktuelleGruppeId === null) return []
-    return baueRaster(
-      untergruppenVon(aktiveKategorien, aktuelleGruppeId),
-      verkaufsartikel.filter(a => a.kategorieId === aktuelleGruppeId),
-    )
-  }, [aktivKategorieId, aktuelleGruppeId, aktiveKategorien, verkaufsartikel, favoriten, sonstige, suche])
+    return gruppenRaster(ansicht, aktuelleGruppeId)
+  }, [aktivKategorieId, aktuelleGruppeId, ansicht, verkaufsartikel, favoriten, sonstige, suche])
   const mitZurueck = suche.trim() === '' && elterGruppe !== null
 
   // ---------------------------------------------------------------------------

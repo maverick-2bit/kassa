@@ -81,22 +81,62 @@ export function wurzelIdVon(menge: readonly KategorieKnoten[], id: string): stri
 }
 
 /**
- * Sichtbarkeit je Kasse (kasse_kategorie_sichtbarkeit) listet beliebige Gruppen.
- * Erweitert um deren Nachkommen (Untergruppen einer sichtbaren Gruppe sind
- * mit sichtbar) und Vorfahren (sonst wäre die Untergruppe nicht erreichbar).
- * Leere/fehlende Liste = alle sichtbar → unverändert.
+ * Ergebnis von `sichtbarkeitsMengen`: welche Warengruppen eine Kasse zeigt.
+ *
+ * Jede Gruppe wird UNABHÄNGIG gewählt — ein Haken gilt nur für diese Gruppe und ihre eigenen Artikel,
+ * NICHT für ihre Untergruppen (wer „Alkoholfrei" wählt, hat damit nicht automatisch „Limonaden" und „Säfte").
  */
-export function erweitereSichtbarkeit(
+export interface SichtbarkeitsMengen {
+  /** true = keine Einschränkung (leere oder fehlende Liste): alle Gruppen gewählt, auch Artikel ohne Warengruppe */
+  alle:     boolean
+  /** Ausdrücklich gewählte Gruppen — NUR deren eigene Artikel erscheinen an der Kasse */
+  sichtbar: Set<string>
+  /**
+   * Nicht selbst gewählte Gruppen, die eine gewählte Untergruppe haben: reiner ZUGANG (Reiter bzw. Kachel,
+   * die zur gewählten Untergruppe führt) — ohne eigene Artikel und ohne ihre nicht gewählten Untergruppen.
+   */
+  zugang:   Set<string>
+}
+
+/**
+ * Sichtbarkeit je Kasse (kasse_kategorie_sichtbarkeit): aus der gespeicherten Liste die Mengen `sichtbar`
+ * (ausdrücklich gewählt) und `zugang` (nur als Weg zu einer gewählten Untergruppe sichtbar).
+ *
+ *  - leere/fehlende Liste = ALLE Gruppen gewählt (auch künftig angelegte) → `alle`, `zugang` leer
+ *  - sonst: `sichtbar` = die gespeicherten Gruppen (unbekannte IDs zählen nicht), `zugang` = ihre Vorfahren,
+ *    soweit diese nicht selbst gewählt sind. Gespeicherte Listen mit vollen Teilbäumen (ältere Stände)
+ *    enthalten die Untergruppen ausdrücklich und verhalten sich daher unverändert.
+ *
+ * Eine Gruppe ist an der Kasse ERREICHBAR (Reiter/Kachel), wenn sie in `sichtbar` oder `zugang` steht;
+ * ihre eigenen Artikel erscheinen nur, wenn sie in `sichtbar` steht. Ohne bekannte Gruppe ist nichts sichtbar.
+ */
+export function sichtbarkeitsMengen(
   menge: readonly KategorieKnoten[],
   ids: readonly string[] | undefined,
-): string[] | undefined {
-  if (!ids || ids.length === 0) return ids ? [...ids] : undefined
-  const ergebnis = new Set(ids)
-  for (const id of ids) {
-    for (const n of nachkommenIds(menge, id)) ergebnis.add(n)
-    for (const v of pfadIds(menge, id)) ergebnis.add(v)
+): SichtbarkeitsMengen {
+  const bekannt = new Set(menge.map(k => k.id))
+  if (!ids || ids.length === 0) return { alle: true, sichtbar: bekannt, zugang: new Set() }
+  const sichtbar = new Set(ids.filter(id => bekannt.has(id)))
+  const zugang = new Set<string>()
+  for (const id of sichtbar) {
+    for (const vorfahr of pfadIds(menge, id)) if (vorfahr !== id && !sichtbar.has(vorfahr)) zugang.add(vorfahr)
   }
-  return [...ergebnis]
+  return { alle: false, sichtbar, zugang }
+}
+
+/** Erscheint die Gruppe an der Kasse als Reiter/Kachel — gewählt oder als Zugang zu einer gewählten Untergruppe? */
+export const istErreichbar = (m: SichtbarkeitsMengen, id: string): boolean => m.sichtbar.has(id) || m.zugang.has(id)
+
+/**
+ * Flache Reiterliste (Kellner-App, Gast-Karte): die ausdrücklich gewählten Gruppen in Baumreihenfolge.
+ * Ein Zugang entfällt hier — jede Untergruppe hat dort ohnehin einen eigenen Reiter.
+ */
+export function sichtbareGruppenFlach<T extends KategorieSortierbar>(
+  menge: readonly T[],
+  ids: readonly string[] | undefined,
+): T[] {
+  const m = sichtbarkeitsMengen(menge, ids)
+  return baumFlach(menge).map(e => e.kategorie).filter(k => m.sichtbar.has(k.id))
 }
 
 /** Baum in Anzeige-Reihenfolge (Tiefensuche) mit Einrückungstiefe — für Listen und Auswahlfelder. */

@@ -1,9 +1,11 @@
 /**
  * SichtbarkeitsHaken — Checkbox mit Halbzustand für die Sichtbarkeit einer Warengruppe an einer Kasse.
  *
- *   an        → angehakt
- *   teilweise → Indeterminate-Haken (nur einzelne Untergruppen sind an; die Gruppe bleibt als Zugang sichtbar)
- *   aus       → leer
+ *   an     → angehakt (die Gruppe ist gewählt: ihre eigenen Artikel erscheinen an der Kasse)
+ *   zugang → Indeterminate-Haken (nicht selbst gewählt, aber eine Untergruppe ist gewählt: die Gruppe bleibt
+ *            als reiner Zugang sichtbar, ohne eigene Artikel)
+ *   aus    → leer
+ * Ein Haken gilt immer nur für seine Gruppe — Untergruppen werden einzeln gewählt.
  * Die Logik dahinter steht in lib/sichtbarkeit.ts (gemeinsam mit der POS-Konfiguration).
  */
 
@@ -23,7 +25,7 @@ export function SichtbarkeitsHaken({ zustand, onChange, disabled = false, label,
     <input
       type="checkbox"
       // „indeterminate" ist nur als DOM-Eigenschaft setzbar, nicht als Attribut
-      ref={(el) => { if (el) el.indeterminate = zustand === 'teilweise' }}
+      ref={(el) => { if (el) el.indeterminate = zustand === 'zugang' }}
       checked={zustand === 'an'}
       disabled={disabled}
       onChange={onChange}

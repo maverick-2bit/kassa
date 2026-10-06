@@ -13,7 +13,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { and, eq, asc, gte, inArray } from 'drizzle-orm'
 import { z } from 'zod'
-import { baumFlach, erweitereSichtbarkeit, kategorieAnzeigeNamen } from '@kassa/shared'
+import { kategorieAnzeigeNamen, sichtbareGruppenFlach } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import type { Config } from '../config.js'
 import { artikel, kategorien, kassen, kassekategorieSichtbarkeit, tischTabs } from '../db/schema.js'
@@ -86,17 +86,13 @@ export const gastRoute: FastifyPluginAsync<GastRouteOptions> = async (fastify, o
         .where(and(eq(kategorien.mandantId, kasse.mandantId), eq(kategorien.aktiv, true)))
         .orderBy(asc(kategorien.reihenfolge))
 
-      // Filtern: nur sichtbare (oder alle wenn keine Einschränkung konfiguriert). Wie an der Kasse gilt
-      // die Auswahl samt Untergruppen (und deren Vorfahren als Zugang).
-      const sichtbarMitBaum = sichtbareIds.size > 0
-        ? new Set(erweitereSichtbarkeit(alleKategorien, [...sichtbareIds]))
-        : null
-      // Baumreihenfolge (`reihenfolge` ist nur die Position unter Geschwistern); gleichnamige Gruppen
-      // heißen mit Pfad („Atriumbar › Alkoholfrei"), damit Gäste sie unterscheiden können
+      // Filtern: nur gewählte Gruppen (oder alle, wenn keine Einschränkung konfiguriert ist). Wie an der Kasse wird
+      // JEDE Gruppe einzeln gewählt — ein Haken gilt nicht automatisch für Untergruppen. Die Gast-Karte zeigt die
+      // Gruppen flach als Reiter, ein Zugang über die Elterngruppe entfällt daher. In Baumreihenfolge
+      // (`reihenfolge` ist nur die Position unter Geschwistern); gleichnamige Gruppen heißen mit Pfad
+      // („Atriumbar › Alkoholfrei"), damit Gäste sie unterscheiden können.
       const anzeigeName = kategorieAnzeigeNamen(alleKategorien)
-      const gefilterteKategorien = baumFlach(alleKategorien)
-        .map(e => e.kategorie)
-        .filter(k => !sichtbarMitBaum || sichtbarMitBaum.has(k.id))
+      const gefilterteKategorien = sichtbareGruppenFlach(alleKategorien, [...sichtbareIds])
         .map(k => ({ id: k.id, name: anzeigeName(k.id), reihenfolge: k.reihenfolge }))
 
       // Aktive Artikel des Mandanten mit Lagerstand > 0 (oder kein Lagerstand)

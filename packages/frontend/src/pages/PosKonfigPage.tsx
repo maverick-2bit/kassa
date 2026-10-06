@@ -32,8 +32,14 @@ import { farbeZuHex, type Artikel, type Kategorie, type Startseite, type Kellner
 import { artikelApi, kategorieApi, posConfigApi, bonierdruckerApi, tischplanApi, kasseApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { Button } from '../components/ui/Button'
-import { baumFlach, erweitereSichtbarkeit, kategorieAnzeigeNamen, kategoriePfad } from '../lib/kategorie-baum'
-import { alleAktiv, sichtbarkeitsZustaende, toggle as toggleSichtbarkeit, waehleNur, type SichtbarkeitsZustand } from '../lib/sichtbarkeit'
+import { baumFlach, kategorieAnzeigeNamen, kategoriePfad, sichtbarkeitsMengen } from '../lib/kategorie-baum'
+import { artikelErlaubt } from '../lib/artikel-reiter'
+import {
+  SICHTBARKEIT_TEXTE, alleAusblendenKlick, alleSichtbarKlick, anzeigeZustaende, auswahlStatus, gruppeKlick,
+  sichtbarkeitsZustaende, teilbaumKlick, zustandTitel, type Auswahl, type SichtbarkeitsZustand, type Uebergang,
+} from '../lib/sichtbarkeit'
+import { SichtbarkeitsKnoepfe } from '../components/SichtbarkeitsKnoepfe'
+import { TeilbaumKnopf } from '../components/TeilbaumKnopf'
 import {
   elternSchluessel, geschwisterIds, reihenfolgeEintraege, verschiebeUnterGeschwistern, ziehUnterGeschwistern,
 } from '../lib/kategorie-reihenfolge'
@@ -172,7 +178,7 @@ function BaumBlock({
   )
 }
 
-/** Schalter „an dieser Kasse sichtbar" mit Halbzustand (nur einzelne Untergruppen sichtbar). */
+/** Schalter „an dieser Kasse sichtbar" mit Halbzustand (nicht gewählt, aber Zugang zu einer gewählten Untergruppe). */
 function SichtbarkeitsSchalter({
   zustand, onClick, label, title,
 }: {
@@ -182,23 +188,23 @@ function SichtbarkeitsSchalter({
   title:   string
 }) {
   const an = zustand === 'an'
-  const teilweise = zustand === 'teilweise'
+  const zugang = zustand === 'zugang'
   return (
     <button
       type="button"
       role="switch"
-      aria-checked={teilweise ? 'mixed' : an}
+      aria-checked={zugang ? 'mixed' : an}
       aria-label={label}
       data-zustand={zustand}
       onPointerDown={e => e.stopPropagation()}
       onClick={onClick}
       className={`relative inline-flex h-5 w-9 flex-shrink-0 rounded-full border-2 border-transparent transition-colors ${
-        an ? 'bg-brand-500' : teilweise ? 'bg-brand-300' : 'bg-panel-2'
+        an ? 'bg-brand-500' : zugang ? 'bg-brand-300' : 'bg-panel-2'
       }`}
       title={title}
     >
       <span className={`inline-block h-4 w-4 rounded-full bg-panel shadow transition-transform ${
-        an ? 'translate-x-4' : teilweise ? 'translate-x-2' : 'translate-x-0'
+        an ? 'translate-x-4' : zugang ? 'translate-x-2' : 'translate-x-0'
       }`} />
     </button>
   )
@@ -248,6 +254,12 @@ function TabWarengruppen({
     mutationFn: (ids: string[]) =>
       posConfigApi.update(kasseId, { sichtbareKategorieIds: ids }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['pos-config', kasseId] }),
+    // Fehlgeschlagen: den vorab angezeigten Stand verwerfen — es gilt der Serverstand
+    onError: (err) => {
+      setSichtbar(posQuery.data?.sichtbareKategorieIds ?? [])
+      qc.invalidateQueries({ queryKey: ['pos-config', kasseId] })
+      setHinweis(`Speichern fehlgeschlagen: ${err instanceof Error ? err.message : String(err)}`)
+    },
   })
 
   // Verschieben/Ziehen gilt nur INNERHALB der Geschwister (gleiche Elterngruppe)
@@ -269,31 +281,39 @@ function TabWarengruppen({
   }
 
   // Server-Semantik: LEERE Liste = alle Warengruppen sichtbar (auch künftige) — dann stehen alle
-  // Schalter auf „an". „Keine" ist darin nicht speicherbar (und null sichtbare Gruppen wären an
-  // einer Kasse sinnlos) → keineModus ist ein reiner Auswahl-Neustart in der
-  // Oberfläche: alles aus, gespeichert wird erst die erste wieder
-  // eingeschaltete Gruppe. Abbruch/Kassenwechsel lässt den Serverstand unberührt.
-  // Die Sichtbarkeitslogik (Teilbaum, Halbzustand, letzte Gruppe bleibt) steht in lib/sichtbarkeit —
+  // Schalter auf „an". „Keine Gruppe" ist darin nicht speicherbar → „Alle ausblenden" ist ein reiner
+  // Auswahl-NEUSTART in der Oberfläche (neustart): alle Schalter aus, NICHTS gespeichert; gespeichert wird erst
+  // die erste wieder eingeschaltete Gruppe. Verlassen des Tabs, Neuladen und Kassenwechsel (der Tab wird je Kasse
+  // neu gemountet) verwerfen den Neustart — dann gilt wieder der Serverstand.
+  // Die gesamte Sichtbarkeitslogik (Knöpfe, Teilbaum, Halbzustand, letzte Gruppe bleibt) steht in lib/sichtbarkeit —
   // gemeinsam mit der Matrix in den Einstellungen.
-  const [keineModus, setKeineModus] = useState(false)
-  const alleAktivJetzt = !keineModus && alleAktiv(sichtbar)
+  const [neustart, setNeustart] = useState(false)
+  const auswahl: Auswahl = { liste: sichtbar, neustart }
+  const status = auswahlStatus(kategorien, auswahl)
   const zustaende = useMemo(
-    () => keineModus ? new Map<string, SichtbarkeitsZustand>(kategorien.map(k => [k.id, 'aus'] as const)) : sichtbarkeitsZustaende(kategorien, sichtbar),
-    [kategorien, sichtbar, keineModus],
+    () => anzeigeZustaende(kategorien, { liste: sichtbar, neustart }),
+    [kategorien, sichtbar, neustart],
   )
   const zustandVon = (id: string): SichtbarkeitsZustand => zustaende.get(id) ?? 'aus'
-  const istSichtbar = (id: string) => zustandVon(id) !== 'aus'
+  // „Artikelwahl öffnet mit" prüft gegen die GESPEICHERTE Auswahl: ein laufender Neustart ändert daran nichts
+  const gespeichert = useMemo(() => sichtbarkeitsZustaende(kategorien, sichtbar), [kategorien, sichtbar])
+  const istSichtbar = (id: string) => (gespeichert.get(id) ?? 'aus') !== 'aus'
   const baum = useMemo(() => baumFlach(kategorien), [kategorien])
   const anzeigeName = useMemo(() => kategorieAnzeigeNamen(kategorien), [kategorien])
 
-  const alleAktivieren = () => {
-    setKeineModus(false)
-    setHinweis(null)
-    setSichtbar([])
-    sichtbarkeitMut.mutate([])
+  /**
+   * Ergebnis eines Klicks übernehmen. Vor dem Laden des Serverstands passiert nichts — sonst würde die noch
+   * unbekannte Auswahl überschrieben.
+   */
+  const anwenden = (u: Uebergang) => {
+    if (!posQuery.data) return
+    setNeustart(u.neustart)
+    setHinweis(u.blockiert === 'letzte' ? SICHTBARKEIT_TEXTE.letzteHinweis : null)
+    if (u.speichern) {
+      setSichtbar(u.speichern)
+      sichtbarkeitMut.mutate(u.speichern)
+    }
   }
-
-  const keineAktivieren = () => { setHinweis(null); setKeineModus(true) }
 
   // Start-Reiter der Artikelwahl (Kasse, Tisch, Kellner-App)
   const startMut = useMutation({
@@ -312,24 +332,9 @@ function TabWarengruppen({
   const startGruppeAusgeblendet = startWert !== 'favoriten' && startWert !== 'erste'
     && (!kategorien.some(k => k.id === startWert && k.aktiv) || !istSichtbar(startWert))
 
-  const toggleSichtbar = (id: string) => {
-    setHinweis(null)
-    if (keineModus) {
-      // Erste Gruppe nach dem Neustart → wird die neue (gespeicherte) Auswahl
-      setKeineModus(false)
-      const next = waehleNur(kategorien, id)
-      setSichtbar(next)
-      sichtbarkeitMut.mutate(next)
-      return
-    }
-    const ergebnis = toggleSichtbarkeit(kategorien, sichtbar, id)
-    if (ergebnis.blockiert === 'letzte') {
-      setHinweis('Mindestens eine Warengruppe muss an dieser Kasse sichtbar bleiben.')
-      return
-    }
-    setSichtbar(ergebnis.liste)
-    sichtbarkeitMut.mutate(ergebnis.liste)
-  }
+  // Ein Schalter gilt NUR für seine Gruppe; „samt Untergruppen" ist der eigene Komfort-Knopf daneben
+  const toggleSichtbar = (id: string) => anwenden(gruppeKlick(kategorien, auswahl, id))
+  const toggleTeilbaum = (id: string) => anwenden(teilbaumKlick(kategorien, auswahl, id))
 
   /** Geschwistermenge als sortierbare Liste; jeder Block trägt seine Untergruppen. */
   const geschwister = (eltern: string | null, tiefe: number): React.ReactNode => {
@@ -374,14 +379,21 @@ function TabWarengruppen({
                     {!k.aktiv && (
                       <span className="text-xs text-ink-subtle italic">inaktiv</span>
                     )}
-                    {/* Schalter Sichtbarkeit pro Kasse — gilt samt Untergruppen */}
+                    {/* Komfort: Gruppe samt allen Untergruppen auf einmal schalten (nur bei Gruppen mit Untergruppen) */}
+                    {items.some(c => c.parentId === k.id) && (
+                      <TeilbaumKnopf
+                        stopDrag
+                        disabled={!posQuery.data}
+                        onClick={() => toggleTeilbaum(k.id)}
+                        label={`${anzeigeName(k.id)} samt Untergruppen an dieser Kasse ein- oder ausschalten`}
+                      />
+                    )}
+                    {/* Schalter Sichtbarkeit pro Kasse — gilt NUR für diese Gruppe (Untergruppen einzeln) */}
                     <SichtbarkeitsSchalter
                       zustand={zustand}
                       onClick={() => toggleSichtbar(k.id)}
                       label={`${anzeigeName(k.id)} an dieser Kasse sichtbar`}
-                      title={zustand === 'an' ? 'In dieser Kasse sichtbar (samt Untergruppen)'
-                        : zustand === 'teilweise' ? 'Teilweise: nur einzelne Untergruppen sind sichtbar — diese Gruppe bleibt als Zugang sichtbar'
-                        : 'In dieser Kasse ausgeblendet'}
+                      title={zustandTitel(zustand, pfad)}
                     />
                   </div>
                 )}
@@ -396,42 +408,43 @@ function TabWarengruppen({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between gap-4">
         <p className="text-sm text-ink-muted">
           Reihenfolge per Drag&nbsp;&amp;&nbsp;Drop oder ↑/↓ anpassen — nur innerhalb derselben
-          Elterngruppe (gilt für alle Kassen). Sichtbarkeit ist pro Kasse einstellbar: Ein Schalter
-          gilt für die Gruppe <strong>samt Untergruppen</strong>; „teilweise" heißt, nur einzelne
-          Untergruppen sind sichtbar (die Gruppe bleibt dann als Zugang sichtbar).
+          Elterngruppe (gilt für alle Kassen). Sichtbarkeit ist pro Kasse einstellbar: <strong>Jede
+          Warengruppe wird einzeln gewählt</strong> — ein Schalter gilt nur für diese Gruppe und ihre eigenen
+          Artikel, nicht für ihre Untergruppen (der Knopf daneben schaltet die Gruppe samt Untergruppen auf
+          einmal). Ist nur eine Untergruppe gewählt, bleibt die Elterngruppe als Zugang sichtbar (halber
+          Schalter) — ohne eigene Artikel.
         </p>
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            onClick={alleAktivieren}
-            disabled={alleAktivJetzt || sichtbarkeitMut.isPending}
-            title="Alle Warengruppen an dieser Kasse sichtbar machen — auch künftig angelegte"
-            className="rounded-lg border border-line px-3 py-1.5 text-sm font-medium text-ink-muted hover:border-brand-400 hover:text-brand-700 transition disabled:opacity-40 disabled:hover:border-line disabled:hover:text-ink-muted"
+        <div className="flex flex-col items-end gap-1.5 shrink-0">
+          <p
+            data-testid="wg-status"
+            data-art={posQuery.data ? status.art : 'laedt'}
+            className={`text-xs ${status.art === 'alle' ? 'text-brand-700' : status.art === 'keine' ? 'text-amber-700' : 'text-ink-subtle'}`}
           >
-            {alleAktivJetzt ? '✓ Alle sichtbar' : 'Alle sichtbar'}
-          </button>
-          <button
-            onClick={keineAktivieren}
-            disabled={keineModus || sichtbarkeitMut.isPending}
-            title="Auswahl neu beginnen: alles aus — die erste wieder eingeschaltete Warengruppe legt die neue Auswahl fest"
-            className="rounded-lg border border-line px-3 py-1.5 text-sm font-medium text-ink-muted hover:border-brand-400 hover:text-brand-700 transition disabled:opacity-40 disabled:hover:border-line disabled:hover:text-ink-muted"
-          >
-            Keine
-          </button>
-          {dirty && (
-            <Button onClick={saveReihenfolge} loading={reihenfolge.isPending}>
-              Reihenfolge speichern
-            </Button>
-          )}
+            {posQuery.data ? status.text : '…'}
+          </p>
+          <div className="flex items-center gap-2">
+            <SichtbarkeitsKnoepfe
+              art={posQuery.data ? status.art : 'teilweise'}
+              disabled={!posQuery.data || sichtbarkeitMut.isPending}
+              testId="wg"
+              onAlleSichtbar={() => anwenden(alleSichtbarKlick(auswahl))}
+              onAlleAusblenden={() => anwenden(alleAusblendenKlick(auswahl))}
+            />
+            {dirty && (
+              <Button onClick={saveReihenfolge} loading={reihenfolge.isPending}>
+                Reihenfolge speichern
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
-      {keineModus && (
-        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-          Noch nichts gespeichert — die erste Warengruppe, die du jetzt einschaltest, legt die
-          neue Auswahl fest (mindestens eine muss sichtbar sein). Solange gilt die bisherige Auswahl weiter.
+      {neustart && (
+        <p role="status" data-testid="wg-neustart-hinweis" className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          {SICHTBARKEIT_TEXTE.neustartHinweis}
         </p>
       )}
 
@@ -640,9 +653,9 @@ function TabFavoriten({ alleArtikel, kategorien, kasseId }: {
   })
 
   const artikelProZeile = posQuery.data?.artikelProZeile ?? 4
-  // Wie an der Kasse: Untergruppen einer sichtbaren Gruppe sind sichtbar, Vorfahren einer sichtbaren Untergruppe auch
-  const sichtbareKatIds = useMemo(
-    () => erweitereSichtbarkeit(kategorien, posQuery.data?.sichtbareKategorieIds ?? []) ?? [],
+  // Wie an der Kasse: jede Warengruppe einzeln gewählt — nur Artikel gewählter Gruppen sind wählbar
+  const sichtbarkeit = useMemo(
+    () => sichtbarkeitsMengen(kategorien, posQuery.data?.sichtbareKategorieIds),
     [kategorien, posQuery.data],
   )
   const artikelbilder   = posQuery.data?.artikelbilderAktiv ?? true
@@ -651,9 +664,8 @@ function TabFavoriten({ alleArtikel, kategorien, kasseId }: {
     [kategorien],
   )
 
-  // Nur Artikel aus Warengruppen, die an DIESER Kasse sichtbar sind (leer = alle)
-  const kategorieSichtbar = (a: Artikel) =>
-    sichtbareKatIds.length === 0 || (a.kategorieId !== null && sichtbareKatIds.includes(a.kategorieId))
+  // Nur Artikel aus Warengruppen, die an DIESER Kasse gewählt sind (leer = alle)
+  const kategorieSichtbar = (a: Artikel) => artikelErlaubt(a, sichtbarkeit)
 
   // Editor-Zustand: null = wartet noch auf Kassen-Liste + Konfiguration
   const [items, setItems] = useState<FavoritEintrag[] | null>(null)
@@ -665,9 +677,8 @@ function TabFavoriten({ alleArtikel, kategorien, kasseId }: {
   // ohne eigene Liste die globalen ★-Favoriten als Startvorschlag.
   useEffect(() => {
     if (items !== null || !favQuery.data || !posQuery.data) return
-    const katIds = erweitereSichtbarkeit(kategorien, posQuery.data.sichtbareKategorieIds) ?? []
-    const sichtbar = (a: Artikel) =>
-      katIds.length === 0 || (a.kategorieId !== null && katIds.includes(a.kategorieId))
+    const mengen = sichtbarkeitsMengen(kategorien, posQuery.data.sichtbareKategorieIds)
+    const sichtbar = (a: Artikel) => artikelErlaubt(a, mengen)
     const byId = new Map(alleArtikel.map(a => [a.id, a] as const))
     const kassenListe: FavoritEintrag[] = []
     for (const e of favQuery.data.eintraege) {
