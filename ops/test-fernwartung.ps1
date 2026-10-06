@@ -34,6 +34,8 @@ $URLQ  = '?sig=DUMMYQUERYKEY123456'
 $script:Anzahl = 0
 $script:Fehlschlaege = New-Object System.Collections.Generic.List[string]
 
+# ACHTUNG: Die Bedingung läuft im Gültigkeitsbereich von Pruefe — Testvariablen dürfen deshalb
+# nicht $text, $ok oder $grund heißen (PowerShell würde die lokalen Variablen von Pruefe lesen).
 function Pruefe([string]$Beschreibung, [scriptblock]$Bedingung) {
   $script:Anzahl++
   $ok = $false
@@ -476,6 +478,41 @@ Set-Location $ordC
 Pruefe 'Konfig-Suche: nirgends → $null' { $null -eq (Finde-FernwartungKonfig -InstallerOrdner $ordC) }
 Set-Location $vorherOrt
 
+# --- Veroeffentliche-FernwartungStatus mit Attrappe „docker" (die echte Funktion, nur der Befehl ist ersetzt) ---
+$script:EchteVeroeffentlichung = ${function:Veroeffentliche-FernwartungStatus}
+$script:DockerAufrufe = New-Object System.Collections.Generic.List[object]
+$script:DockerCodes = @(0)
+function docker {
+  $eingabe = @($input) -join ''
+  $script:DockerAufrufe.Add([pscustomobject]@{ Args = ($args -join ' '); Stdin = $eingabe })
+  $i = $script:DockerAufrufe.Count - 1
+  $global:LASTEXITCODE = $(if ($i -lt $script:DockerCodes.Count) { $script:DockerCodes[$i] } else { $script:DockerCodes[$script:DockerCodes.Count - 1] })
+}
+$stJ = Neuer-FernwartungStatus -Id '123456789' -Alias 'Café' -Gruppe 'Mietkassen' -InstalliertAm '2026-10-06T10:00:00Z'
+$script:DockerAufrufe.Clear(); $script:DockerCodes = @(0)
+$veroeff = & $script:EchteVeroeffentlichung -Json $stJ -Ziel $ordA -Versuche 3 -Pause 0
+Pruefe 'Veröffentlichen (docker): Weg A — JSON über stdin an „docker compose exec -T updater sh -c"' {
+  $veroeff -eq $true -and $script:DockerAufrufe.Count -eq 1 -and $script:DockerAufrufe[0].Args -match '^compose exec -T updater sh -c cat > /control/fernwartung-status\.json\.tmp' -and $script:DockerAufrufe[0].Stdin -eq $stJ
+}
+Pruefe 'Veröffentlichen (docker): schreibt erst in .tmp und benennt dann atomar um (mv), mit && verkettet' {
+  $a = $script:DockerAufrufe[0].Args
+  ($a -match '&& chmod 644 /control/fernwartung-status\.json\.tmp') -and ($a -match '&& mv /control/fernwartung-status\.json\.tmp /control/fernwartung-status\.json$') -and ($a -notmatch ';')
+}
+$script:DockerAufrufe.Clear(); $script:DockerCodes = @(1, 0)
+$veroeff = & $script:EchteVeroeffentlichung -Json $stJ -Ziel $ordA -Versuche 3 -Pause 0
+Pruefe 'Veröffentlichen (docker): stdin scheitert → Weg B (Base64-Argument) gelingt' {
+  $b64 = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes($stJ))
+  $veroeff -eq $true -and $script:DockerAufrufe.Count -eq 2 -and $script:DockerAufrufe[1].Args -match ('echo ' + [regex]::Escape($b64) + ' \| base64 -d > /control/fernwartung-status\.json\.tmp') -and $script:DockerAufrufe[1].Stdin -eq ''
+}
+$script:DockerAufrufe.Clear(); $script:DockerCodes = @(1)
+$veroeff = & $script:EchteVeroeffentlichung -Json $stJ -Ziel $ordA -Versuche 2 -Pause 0
+Pruefe 'Veröffentlichen (docker): scheitert dauerhaft → nach den Versuchen false, kein Absturz' { $veroeff -eq $false -and $script:DockerAufrufe.Count -eq 4 }
+$script:DockerAufrufe.Clear(); $script:DockerCodes = @(0)
+$veroeff = & $script:EchteVeroeffentlichung -Json 'Café' -Ziel $ordA -Versuche 1 -Pause 0
+Pruefe 'Veröffentlichen (docker): Nicht-ASCII wird gar nicht erst abgeschickt' { $veroeff -eq $false -and $script:DockerAufrufe.Count -eq 0 }
+$script:DockerAufrufe.Clear(); $script:DockerCodes = @(0)
+$veroeff = & $script:EchteVeroeffentlichung -Json $stJ -Ziel $ordA -Versuche 1 -Pause 0
+Pruefe 'Veröffentlichen (docker): in der Befehlszeile steht kein Token/keine Assignment-ID (nur Status)' { ($script:DockerAufrufe | ForEach-Object { $_.Args + $_.Stdin }) -join ' ' -notmatch [regex]::Escape($ASSID) }
 # --- Veröffentlichen: nur die selbst geschriebene Form, nie Müll ---
 $script:VeroeffentlichtMit = $null
 $script:VeroeffentlichenOk = $true

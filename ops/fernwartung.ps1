@@ -786,20 +786,28 @@ function Veroeffentliche-FernwartungStatus {
   # nicht direkt heran. Das Backend liest die Datei nur.
   # Braucht laufende Container (nach „docker compose up"); NIE fatal.
   param([string]$Json, [string]$Ziel, [int]$Versuche = 8, [int]$Pause = 3)
-  $b64 = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes($Json))
-  # Alles mit && verkettet: bricht base64 ab, wird NICHTS umbenannt (keine halbe Datei)
-  $skript = 'echo ' + $b64 + ' | base64 -d > /control/fernwartung-status.json.tmp' +
-            ' && chmod 644 /control/fernwartung-status.json.tmp' +
-            ' && (chown 1000:1000 /control/fernwartung-status.json.tmp 2>/dev/null || true)' +
-            ' && mv /control/fernwartung-status.json.tmp /control/fernwartung-status.json'
+  # Nur reines ASCII: übersteht die Pipeline nach docker unbeschadet (die Datei wird so geschrieben)
+  if ($Json -notmatch '^[\x20-\x7E]+$') { return $false }
+  # Alles mit && verkettet: bricht der Schreibvorgang ab, wird NICHTS umbenannt (keine halbe Datei)
+  $nachlauf = ' && chmod 644 /control/fernwartung-status.json.tmp' +
+              ' && (chown 1000:1000 /control/fernwartung-status.json.tmp 2>/dev/null || true)' +
+              ' && mv /control/fernwartung-status.json.tmp /control/fernwartung-status.json'
+  # Weg A: JSON über stdin (wie in install.sh). Weg B (Rückfall): als Base64-Argument — falls
+  # stdin über die Docker-/PowerShell-Kombination nicht ankommt.
+  $skriptA = 'cat > /control/fernwartung-status.json.tmp' + $nachlauf
+  $skriptB = 'echo ' + [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes($Json)) + ' | base64 -d > /control/fernwartung-status.json.tmp' + $nachlauf
   Push-Location -LiteralPath $Ziel
   try {
     for ($i = 1; $i -le $Versuche; $i++) {
       $geschafft = $false
       $vorher = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
       try {
-        docker compose exec -T updater sh -c $skript 2>&1 | Out-Null
+        $Json | docker compose exec -T updater sh -c $skriptA 2>&1 | Out-Null
         $geschafft = ($LASTEXITCODE -eq 0)
+        if (-not $geschafft) {
+          docker compose exec -T updater sh -c $skriptB 2>&1 | Out-Null
+          $geschafft = ($LASTEXITCODE -eq 0)
+        }
       } catch { $geschafft = $false }
       $ErrorActionPreference = $vorher
       if ($geschafft) { return $true }
