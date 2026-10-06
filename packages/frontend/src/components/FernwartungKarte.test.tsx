@@ -3,7 +3,7 @@
  * Zustände (eingerichtet / nicht eingerichtet / lädt bzw. Fehler) und der Kopier-Helfer.
  *
  * Gerendert wird mit react-dom/server (ohne Browser); die Abfrage + der Admin-Check der
- * Hülle FernwartungKarte laufen im E2E (e2e/fernwartung-karte.spec.ts).
+ * Hülle FernwartungKarte laufen im E2E (e2e/system-fernwartung.spec.ts).
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest'
