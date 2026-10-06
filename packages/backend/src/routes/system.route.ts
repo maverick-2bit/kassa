@@ -132,6 +132,8 @@ export const systemRoute: FastifyPluginAsync = async (fastify) => {
   })
 
   // Fernwartung: nur lesen. Kein Mandant, keine Kasse — es geht um den PC, auf dem diese Kassa läuft.
+  // Im Compose-Betrieb hängt das Kontroll-Volume dafür ein zweites Mal NUR LESEND ein
+  // (FERNWARTUNG_STATUS_DIR=/control-ro); ohne die Variable gilt UPDATE_CONTROL_DIR.
   fastify.get('/system/fernwartung', adminOnly, async (request) => {
     const verzeichnis = process.env.FERNWARTUNG_STATUS_DIR ?? process.env.UPDATE_CONTROL_DIR ?? '/control'
     return leseFernwartungStatus(verzeichnis, (grund) => request.log.warn(`Fernwartung: ${grund}`))

@@ -514,7 +514,8 @@ Signatur geprüft) → Dienst „TeamViewer" läuft und startet mit Windows → 
 **TeamViewer-ID** (Registry-Wert `ClientID`: `HKLM\SOFTWARE\TeamViewer` beim 64-Bit-Client, `…\WOW6432Node\…`
 beim 32-Bit-Client) → schreibt `C:\ProgramData\KassaPOS\fernwartung-status.json` (**ohne Geheimnis**) → nach dem
 Start der Container legt der Installer sie in das Kontroll-Volume der Kassa (`/control` — dasselbe, über das
-Updater und Backend schon sprechen; der Backend-Container liest sie nur). Der Schritt läuft **vor** dem
+Updater und Backend schon sprechen; das Backend hängt es zusätzlich **schreibgeschützt** als `/control-ro`
+ein und liest nur dort). Der Schritt läuft **vor** dem
 Container-Build: hakt Docker, ist die Box trotzdem schon erreichbar.
 
 ### 10.5 Kontrolle
