@@ -11,6 +11,8 @@
  *  - Harte FKs ohne Cascade: seriennummern, inventur_positionen → werden mitgelöscht (Bestandsdaten
  *    am Artikel); artikel.kategorie_id → Artikel zuerst, dann Gruppen.
  *  - Cascade/Set-null: artikel_bestandteile, artikel_modifikator_gruppen, kasse_favoriten,
+ *    kasse_artikel_layout (Anordnung je Kasse + Warengruppe: jede Zeile hängt an Artikel UND Warengruppe,
+ *    verschwindet also mit ihnen; für behaltene/deaktivierte bleibt sie als unsichtbarer Altbestand),
  *    kasse_kategorie_sichtbarkeit, kassen.start_kategorie_id, kategorien.parent_id.
  *  - jsonb ohne FK: preisregeln (kategorie_ids, artikel_ids, artikel_preise) → bereinigt; wird eine
  *    eingegrenzte Regel dadurch scope-los (würde sonst für ALLE Artikel gelten), wird sie deaktiviert.

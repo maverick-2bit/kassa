@@ -44,6 +44,17 @@ for (const tag of journalTags) {
 entries.forEach((e, i) => {
   if (e.idx !== i) fehler.push(`Journal-idx nicht lueckenlos: Eintrag ${i} hat idx ${e.idx}`)
 })
+// `when` STRENG aufsteigend: Drizzle wendet nur Migrationen an, deren `when` groesser ist als das
+// der zuletzt angewendeten — eine Migration mit kleinerem `when` wird auf bestehenden Datenbanken
+// STILL uebersprungen (typisch bei parallelen Branches, die beide hinten anhaengen).
+entries.forEach((e, i) => {
+  if (i > 0 && !(e.when > entries[i - 1].when)) {
+    fehler.push(
+      `Journal-when nicht streng aufsteigend: ${e.tag} (${e.when}) <= ${entries[i - 1].tag} (${entries[i - 1].when}) — ` +
+      'sie wuerde auf bestehenden Datenbanken STILL uebersprungen; when groesser setzen',
+    )
+  }
+})
 
 if (fehler.length > 0) {
   console.error('Migrations-Integritaet VERLETZT:')

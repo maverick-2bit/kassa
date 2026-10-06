@@ -13,7 +13,7 @@
  * Favoriten, Warengruppe ausgeblendet), greift der nächste sinnvolle Reiter.
  */
 
-import { artikelErlaubt, baueRaster, istErreichbar, type Artikel, type Kategorie, type RasterZelle, type SichtbarkeitsMengen } from '@kassa/shared'
+import { artikelErlaubt, baueKassenRaster, istErreichbar, type Artikel, type KassenAnordnungEintrag, type Kategorie, type RasterZelle, type SichtbarkeitsMengen } from '@kassa/shared'
 import { sichtbarkeitsMengen, untergruppenVon, wurzelgruppen } from './kategorie-baum'
 
 export const FAVORITEN_TAB_ID = '__favoriten__'
@@ -73,13 +73,21 @@ export function kassenAnsicht(
 
 /**
  * Zellen des Rasters einer Gruppe: zuerst die Untergruppen-Kacheln (nur erreichbare — nicht gewählte
- * Geschwister-Untergruppen fehlen), danach die EIGENEN Artikel der Gruppe an ihrer Raster-Position. Eine Gruppe,
- * die nur als Zugang sichtbar ist, hat keine eigenen Artikel (sie sind in `ansicht.artikel` nicht enthalten).
+ * Geschwister-Untergruppen fehlen), danach die EIGENEN Artikel der Gruppe an ihrer Raster-Position — mit der
+ * eigenen Anordnung dieser Kasse (`anordnung`, Zeilen aus kasse_artikel_layout), sonst im Standard-Layout.
+ * Eine Gruppe, die nur als Zugang sichtbar ist, hat keine eigenen Artikel (sie sind in `ansicht.artikel` nicht
+ * enthalten): auch eine früher gespeicherte Anordnung erzeugt dort keine Leerfelder (Zeilen zu Artikeln, die nicht
+ * in der Liste stehen, zählen nicht).
  */
-export function gruppenRaster(ansicht: KassenAnsicht, gruppeId: string): RasterZelle<Kategorie, Artikel>[] {
-  return baueRaster(
+export function gruppenRaster(
+  ansicht: KassenAnsicht,
+  gruppeId: string,
+  anordnung?: readonly KassenAnordnungEintrag[] | null,
+): RasterZelle<Kategorie, Artikel>[] {
+  return baueKassenRaster(
     untergruppenVon(ansicht.gruppen, gruppeId),
     ansicht.artikel.filter(a => a.kategorieId === gruppeId),
+    anordnung,
   )
 }
 

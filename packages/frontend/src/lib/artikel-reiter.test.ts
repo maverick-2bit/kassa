@@ -125,6 +125,24 @@ describe('kassenAnsicht / gruppenRaster: Untergruppen werden nicht automatisch m
     expect(a.reiter.map(k => k.id)).toEqual(['atr'])
   })
 
+  it('mit eigener Anordnung dieser Kasse: Artikel nach Slot, ausgeblendete fehlen, die Untergruppen-Kacheln bleiben vorn', () => {
+    const a = ansicht(['atr-alko', 'atr-limo'])
+    const eintraege = [
+      { artikelId: 'atr-alko-a2', position: 3, ausgeblendet: false },
+      { artikelId: 'atr-alko-a1', position: null, ausgeblendet: true },
+    ]
+    const zellen = gruppenRaster(a, 'atr-alko', eintraege)
+    expect(zellen.map(z => z.typ === 'gruppe' ? `kachel:${z.gruppe.id}` : z.typ === 'artikel' ? z.artikel.id : 'leer'))
+      .toEqual(['kachel:atr-limo', 'leer', 'leer', 'atr-alko-a2'])
+  })
+
+  it('eine Zugangs-Gruppe hat keine eigenen Artikel — auch eine früher gespeicherte Anordnung erzeugt dort keine Leerfelder', () => {
+    const a = ansicht(['atr-alko'])
+    const eintraege = [{ artikelId: 'atr-a1', position: 4, ausgeblendet: false }]   // früher war die Atriumbar selbst gewählt
+    expect(gruppenRaster(a, 'atr', eintraege).map(z => z.typ)).toEqual(['gruppe'])   // nur die Kachel „Alkoholfrei"
+    expect(artikelIds(a, 'atr')).toEqual([])
+  })
+
   it('Rohstoffe/Bestandteile erscheinen nie; inaktive Gruppen auch nicht', () => {
     const mitRohstoff = [...artikel, { ...artikel[0]!, id: 'roh', istBestandteil: true } as Artikel]
     expect(kassenAnsicht(kategorien, mitRohstoff, []).artikel.some(x => x.id === 'roh')).toBe(false)

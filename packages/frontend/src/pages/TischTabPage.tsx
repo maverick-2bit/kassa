@@ -158,6 +158,12 @@ export function TischTabPage() {
     queryFn:  () => posConfigApi.favoriten(identity.kasseId),
   })
 
+  // Eigene Artikel-Anordnung dieser Kasse je Warengruppe (POS-Konfiguration → Artikel); leer = Standard-Layout
+  const layoutsQuery = useQuery({
+    queryKey: ['kasse-artikel-layouts', identity.kasseId],
+    queryFn:  () => posConfigApi.artikelLayouts(identity.kasseId),
+  })
+
   const artikelGruppenMap = useMemo<Map<string, ModifikatorGruppe[]>>(() => {
     const gruppen     = modGruppenQuery.data ?? []
     const zuweisungen = modZuweisungenQuery.data ?? []
@@ -732,11 +738,12 @@ export function TischTabPage() {
                 kategorien={kategorienQuery.data ?? []}
                 artikelGruppen={artikelGruppenMap}
                 onArtikelClick={addArtikel}
-                loading={artikelQuery.isLoading}
+                loading={artikelQuery.isLoading || layoutsQuery.isLoading}
                 sichtbareKategorieIds={posConfigQuery.data?.sichtbareKategorieIds}
                 artikelbilderAktiv={posConfigQuery.data?.artikelbilderAktiv ?? true}
                 aktionen={aktionenProArtikel}
                 favoritenEintraege={favoritenQuery.data?.eintraege}
+                kassenLayouts={layoutsQuery.data}
                 artikelProZeile={posConfigQuery.data?.artikelProZeile}
                 startFavoriten={posConfigQuery.data?.startFavoriten}
                 startKategorieId={posConfigQuery.data?.startKategorieId}

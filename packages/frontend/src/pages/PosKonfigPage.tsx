@@ -3,12 +3,13 @@
  *
  * Tabs:
  *   1. Warengruppen  — Baum mit Reihenfolge UNTER GESCHWISTERN (Drag & Drop / ↑↓, global) + Sichtbarkeit pro Kasse
- *   2. Artikel       — Warengruppe wählen → Artikel-Reihenfolge (Drag & Drop, global)
+ *   2. Artikel       — Kachel-Anordnung je Kasse + Warengruppe (Raster in der Spaltenzahl der Kasse, Lücken,
+ *                      Ausblenden) bzw. Standard-Layout für alle Kassen — components/ArtikelAnordnungTab
  *   3. Favoriten     — Favoritenliste je Kasse (Kachel-Editor mit Platzhaltern)
  *   4. Zahlungsarten — pro Kasse An/Aus
  */
 
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import {
   DndContext,
   closestCenter,
@@ -32,6 +33,7 @@ import { farbeZuHex, type Artikel, type Kategorie, type Startseite, type Kellner
 import { artikelApi, kategorieApi, posConfigApi, bonierdruckerApi, tischplanApi, kasseApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { Button } from '../components/ui/Button'
+import { ArtikelAnordnungTab, UngespeichertHinweis } from '../components/ArtikelAnordnungTab'
 import { baumFlach, kategorieAnzeigeNamen, kategoriePfad, sichtbarkeitsMengen } from '../lib/kategorie-baum'
 import { artikelErlaubt } from '../lib/artikel-reiter'
 import {
@@ -94,50 +96,6 @@ function Griff({
           <path d="M7 4a1.3 1.3 0 1 1 0 2.6A1.3 1.3 0 0 1 7 4Zm6 0a1.3 1.3 0 1 1 0 2.6A1.3 1.3 0 0 1 13 4ZM7 8.7a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6Zm6 0a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6ZM7 13.4a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6Zm6 0a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6Z" />
         </svg>
       </span>
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Sortierbare Zeile
-// ---------------------------------------------------------------------------
-
-function SortableItem({
-  id,
-  children,
-  onMoveUp,
-  onMoveDown,
-  istErster,
-  istLetzter,
-}: {
-  id: string
-  children:   (handle: React.ReactNode) => React.ReactNode
-  onMoveUp?:   () => void
-  onMoveDown?: () => void
-  istErster?:  boolean
-  istLetzter?: boolean
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
-
-  const style: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-    zIndex:  isDragging ? 10 : undefined,
-  }
-
-  const handle = <Griff onMoveUp={onMoveUp} onMoveDown={onMoveDown} istErster={istErster} istLetzter={istLetzter} />
-
-  // Ganze Zeile ist zusätzlich der Drag-Handle (Aktivierungsschwelle an den Sensoren).
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      {...attributes}
-      {...listeners}
-      className="cursor-grab active:cursor-grabbing touch-none"
-    >
-      {children(handle)}
     </div>
   )
 }
@@ -485,124 +443,6 @@ function TabWarengruppen({
 
       <DndContext sensors={sensors} collisionDetection={nurGeschwister} onDragEnd={handleDragEnd}>
         {geschwister(null, 0)}
-      </DndContext>
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Tab 2: Artikel-Reihenfolge pro Warengruppe
-// ---------------------------------------------------------------------------
-
-function TabArtikel({ kategorien, alleArtikel }: { kategorien: Kategorie[]; alleArtikel: Artikel[] }) {
-  const qc = useQueryClient()
-  // Warengruppen-Chips im Baum (Reihenfolge unter Geschwistern); gleichnamige Gruppen zeigen den Pfad
-  const aktiveImBaum = useMemo(() => baumFlach(kategorien).map(e => e.kategorie).filter(k => k.aktiv), [kategorien])
-  const anzeigeName  = useMemo(() => kategorieAnzeigeNamen(kategorien.filter(k => k.aktiv)), [kategorien])
-  const [gewaehlteKatId, setGewaehlteKatId] = useState(aktiveImBaum[0]?.id ?? '')
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(TouchSensor,   { activationConstraint: { delay: 200, tolerance: 8 } }),
-  )
-
-  const artikelDerKat = alleArtikel
-    .filter(a => a.kategorieId === gewaehlteKatId)
-    .sort((a, b) => a.reihenfolge - b.reihenfolge)
-
-  const [items, setItems] = useState(artikelDerKat)
-  const [dirty, setDirty] = useState(false)
-
-  // Wenn Kategorie wechselt → neu sortieren
-  const handleKatWechsel = useCallback((katId: string) => {
-    setGewaehlteKatId(katId)
-    setItems(
-      alleArtikel
-        .filter(a => a.kategorieId === katId)
-        .sort((a, b) => a.reihenfolge - b.reihenfolge)
-    )
-    setDirty(false)
-  }, [alleArtikel])
-
-  const reihenfolge = useMutation({
-    mutationFn: (eintraege: { id: string; reihenfolge: number }[]) =>
-      artikelApi.updateReihenfolge(eintraege),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['artikel'] }); setDirty(false) },
-  })
-
-  const handleDragEnd = (e: DragEndEvent) => {
-    const { active, over } = e
-    if (!over || active.id === over.id) return
-    setItems(prev => {
-      const oldIdx = prev.findIndex(i => i.id === active.id)
-      const newIdx = prev.findIndex(i => i.id === over.id)
-      return arrayMove(prev, oldIdx, newIdx)
-    })
-    setDirty(true)
-  }
-
-  return (
-    <div className="space-y-4">
-      {/* Kategorie-Auswahl */}
-      <div className="flex gap-2 flex-wrap">
-        {aktiveImBaum.map(k => (
-          <button
-            key={k.id}
-            onClick={() => handleKatWechsel(k.id)}
-            title={kategoriePfad(kategorien, k.id)}
-            data-testid="wg-chip"
-            className={`px-3 py-1.5 rounded-full text-sm font-medium transition ${
-              gewaehlteKatId === k.id
-                ? 'bg-brand-600 text-white'
-                : 'bg-panel-2 text-ink-muted hover:bg-panel-2'
-            }`}
-          >
-            {anzeigeName(k.id)}
-          </button>
-        ))}
-      </div>
-
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-ink-muted">
-          {items.length} Artikel in dieser Warengruppe.
-        </p>
-        {dirty && (
-          <Button onClick={() => reihenfolge.mutate(items.map((a, i) => ({ id: a.id, reihenfolge: i })))}
-            loading={reihenfolge.isPending}>
-            Reihenfolge speichern
-          </Button>
-        )}
-      </div>
-
-      {items.length === 0 && (
-        <div className="rounded-lg border-2 border-dashed border-line p-8 text-center text-sm text-ink-subtle">
-          Keine Artikel in dieser Warengruppe.
-        </div>
-      )}
-
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <SortableContext items={items.map(a => a.id)} strategy={verticalListSortingStrategy}>
-          <div className="space-y-2">
-            {items.map((a, i) => (
-              <SortableItem key={a.id} id={a.id}
-                onMoveUp={() => { setItems(prev => arrayMove(prev, i, i - 1)); setDirty(true) }}
-                onMoveDown={() => { setItems(prev => arrayMove(prev, i, i + 1)); setDirty(true) }}
-                istErster={i === 0} istLetzter={i === items.length - 1}>
-                {(handle) => (
-                  <div className="flex items-center gap-3 rounded-xl border border-line bg-panel px-3 py-2.5 shadow-sm">
-                    {handle}
-                    <span className="flex-1 text-sm font-medium text-ink">{a.bezeichnung}</span>
-                    <span className="text-xs text-ink-subtle font-mono tabular-nums">
-                      € {(a.preisBruttoCent / 100).toFixed(2).replace('.', ',')}
-                    </span>
-                    {a.istFavorit && (
-                      <span className="text-amber-400" title="Favorit">★</span>
-                    )}
-                  </div>
-                )}
-              </SortableItem>
-            ))}
-          </div>
-        </SortableContext>
       </DndContext>
     </div>
   )
@@ -1237,6 +1077,13 @@ const KEINE_ARTIKEL: Artikel[] = []
 export function PosKonfigPage() {
   const identity = getKasseIdentity()!
   const [aktuellerTab, setAktuellerTab] = useState<Tab>('warengruppen')
+  // Ungespeicherte Änderungen im Reiter „Artikel": Kassen- oder Reiterwechsel fragt nach, statt sie still zu verwerfen
+  const [artikelGeaendert, setArtikelGeaendert] = useState(false)
+  const [seitenWechsel, setSeitenWechsel] = useState<(() => void) | null>(null)
+  const mitSchutz = (aktion: () => void) => {
+    if (aktuellerTab === 'artikel' && artikelGeaendert) setSeitenWechsel(() => aktion)
+    else aktion()
+  }
 
   // Kassen-Auswahl: alle per-Kasse-Einstellungen (Sichtbarkeit, Zahlungsarten,
   // Kellner-App) lassen sich für JEDE Kasse pflegen, nicht nur die angemeldete —
@@ -1271,9 +1118,12 @@ export function PosKonfigPage() {
   const kategorien  = kategorienQuery.data ?? KEINE_KATEGORIEN
   const alleArtikel = artikelQuery.data    ?? KEINE_ARTIKEL
   const isLoading   = kategorienQuery.isLoading || artikelQuery.isLoading
+  const gewaehlteKasse = aktiveKassen.find(k => k.id === gewaehlteKasseId)
+  const kasseName = gewaehlteKasse ? (gewaehlteKasse.bezeichnung || gewaehlteKasse.kassenId) : 'diese Kasse'
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8 space-y-6">
+    // Der Raster-Editor braucht Platz für bis zu 6 Spalten mit Bedienknöpfen
+    <div className={`mx-auto px-4 py-8 space-y-6 ${aktuellerTab === 'artikel' ? 'max-w-5xl' : 'max-w-3xl'}`}>
       <div>
         <h1 className="text-2xl font-bold text-ink">POS-Konfiguration</h1>
         <p className="mt-1 text-sm text-ink-muted">
@@ -1288,7 +1138,7 @@ export function PosKonfigPage() {
             {aktiveKassen.map(k => (
               <button
                 key={k.id}
-                onClick={() => setGewaehlteKasseId(k.id)}
+                onClick={() => { if (k.id !== gewaehlteKasseId) mitSchutz(() => setGewaehlteKasseId(k.id)) }}
                 className={`px-3 py-1.5 rounded-full text-sm font-medium transition ${
                   gewaehlteKasseId === k.id
                     ? 'bg-brand-600 text-white'
@@ -1301,9 +1151,9 @@ export function PosKonfigPage() {
             ))}
           </div>
           <p className="text-xs text-ink-subtle">
-            Warengruppen-Sichtbarkeit, Favoriten, Zahlungsarten und Kellner-App gelten
-            je Kasse — hier die Kasse wählen, für die die Einstellungen gelten sollen.
-            Reihenfolgen sind global.
+            Warengruppen-Sichtbarkeit, Artikel-Anordnung, Favoriten, Zahlungsarten und Kellner-App
+            gelten je Kasse — hier die Kasse wählen, für die die Einstellungen gelten sollen.
+            Die Reihenfolge der Warengruppen ist global.
           </p>
         </div>
       )}
@@ -1313,7 +1163,7 @@ export function PosKonfigPage() {
         {tabs.map(t => (
           <button
             key={t.key}
-            onClick={() => setAktuellerTab(t.key)}
+            onClick={() => { if (t.key !== aktuellerTab) mitSchutz(() => setAktuellerTab(t.key)) }}
             className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition ${
               aktuellerTab === t.key
                 ? 'bg-panel text-ink shadow-sm'
@@ -1325,6 +1175,18 @@ export function PosKonfigPage() {
         ))}
       </div>
 
+      {seitenWechsel && (
+        <UngespeichertHinweis
+          onVerwerfen={() => {
+            const aktion = seitenWechsel
+            setSeitenWechsel(null)
+            setArtikelGeaendert(false)
+            aktion()
+          }}
+          onBleiben={() => setSeitenWechsel(null)}
+        />
+      )}
+
       {isLoading ? (
         <div className="text-sm text-ink-subtle py-8 text-center">Laden…</div>
       ) : (
@@ -1333,7 +1195,14 @@ export function PosKonfigPage() {
             <TabWarengruppen key={gewaehlteKasseId} kategorien={kategorien} kasseId={gewaehlteKasseId} />
           )}
           {aktuellerTab === 'artikel' && (
-            <TabArtikel kategorien={kategorien} alleArtikel={alleArtikel} />
+            <ArtikelAnordnungTab
+              key={gewaehlteKasseId}
+              kategorien={kategorien}
+              alleArtikel={alleArtikel}
+              kasseId={gewaehlteKasseId}
+              kasseName={kasseName}
+              onGeaendertChange={setArtikelGeaendert}
+            />
           )}
           {aktuellerTab === 'favoriten' && (
             <TabFavoriten

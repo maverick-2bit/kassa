@@ -109,6 +109,8 @@ test('Verwerfen bei totem Bonierdrucker: Leiste „Korrekturbon NICHT angekommen
     const antwort = page.waitForResponse(r => r.request().method() === 'POST' && r.url().endsWith('/api/bestellung/bonieren'))
     await page.getByRole('button', { name: 'Nochmal senden' }).click()
     expect((await anfrage).postDataJSON()).toEqual({
+      // seit „Nochmal senden verdoppelt nichts" (4471817) trägt der Korrekturbon eine Bestell-ID (aus der Verwerfen-Antwort)
+      bestellId:      expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/),
       kasseId,
       tisch,
       kellner:        'E2E Service',
