@@ -10,7 +10,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { pruefeKette, validiereDEP7, dep7AusJson, type DEP131Export, type FinanzOnlineClient } from '@kassa/rksv'
-import type { BelegResponse } from '@kassa/shared'
+import { wienerTag, type BelegResponse } from '@kassa/shared'
 import { kassen } from '../../src/db/schema.js'
 import { buildTestServer, type TestServer } from '../helpers/testServer.js'
 import { erstelleIntegrationsDb, type IntegrationsDb } from './helpers/integrationsDb.js'
@@ -150,7 +150,9 @@ describe('Negative Positionen und Belege unter 0 (Integration)', () => {
   })
 
   it('Tagesabschluss summiert negative Belege mit (Bar-Summe sinkt)', async () => {
-    const heute = new Date().toISOString().slice(0, 10)
+    // Wiener Kalendertag wie im Tagesabschluss: das UTC-Datum (toISOString) liegt von 00:00 bis 02:00 Uhr
+    // Sommerzeit (Winterzeit: bis 01:00) noch einen Tag zurück — dann wäre der abgefragte Tag leer.
+    const heute = wienerTag(new Date())
     const res = await srv.fastify.inject({ method: 'GET', url: `/api/belege/tagesabschluss?kasseId=${kasseId}&datum=${heute}`, headers: auth() })
     expect(res.statusCode, res.body).toBe(200)
     const ta = res.json()
