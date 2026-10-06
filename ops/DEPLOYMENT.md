@@ -389,10 +389,10 @@ Hinweis, wie man es nachholt). Er ist als erste von mehreren Wartungs-Schichten 
 | In der TeamViewer-Doku | aktuell („TeamViewer deployment — User guide") | als „Legacy" geführt |
 
 TeamViewer führt die Massenverteilung per MSI laut Doku für **Corporate- und Tensor-Lizenzen**
-(Version 15 oder neuer); das Host-Modul („Custom Host") nennt die ältere Doku schon ab Business (die neuere ebenfalls Corporate/Tensor). Sehen Sie in der
-Verwaltungskonsole unter *Admin settings → Device Management* den Punkt **Rollout set-up**, nehmen Sie
-Variante A. Fehlt er, geht nur Variante B bzw. die Frage an den TeamViewer-Support, ob die Lizenz die
-Rollout-Konfiguration umfasst.
+(Version 15 oder neuer); das Host-Modul („Custom Host") nennt die ältere Doku ab Business, die neuere
+Corporate/Tensor. Sehen Sie in der Verwaltungskonsole unter *Admin settings → Device Management* den Punkt
+**Rollout set-up**, nehmen Sie Variante A. Fehlt er, geht nur Variante B bzw. die Frage an den
+TeamViewer-Support, ob die Lizenz die Rollout-Konfiguration umfasst.
 
 > **Hinweis:** In der Community berichten Nutzer seit 2024, dass der alte Einschritt-Aufruf
 > `msiexec … APITOKEN=… ASSIGNMENTOPTIONS=…` nicht mehr wie früher funktioniert; TeamViewer zeigt dort
