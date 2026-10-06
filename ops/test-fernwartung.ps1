@@ -458,6 +458,118 @@ $o = Fange-Ausgabe { Invoke-Fernwartung -KonfigPfad (Join-Path $tmp 'gibt-es-nic
 Pruefe 'Konfiguration fehlt: Fehler + Hinweis, kein Absturz' { $o.Ergebnis.Erfolg -eq $false -and ($o.Text -match 'nicht gefunden') }
 
 # =============================================================================
+Gruppe '5b. Konfig-Suche, Veröffentlichen und die Schalter-Logik der Installer'
+# =============================================================================
+
+# --- Finde-FernwartungKonfig: ausdrücklicher Pfad → Installer-Ordner → aktueller Ordner ---
+$ordA = Neues-Tempverzeichnis; $aufraeumen.Add($ordA)
+$ordB = Neues-Tempverzeichnis; $aufraeumen.Add($ordB)
+$ordC = Neues-Tempverzeichnis; $aufraeumen.Add($ordC)
+Schreibe-Text (Join-Path $ordA 'fernwartung.json') '{}'
+Schreibe-Text (Join-Path $ordB 'fernwartung.json') '{}'
+$vorherOrt = (Get-Location).Path
+Set-Location $ordB
+Pruefe 'Konfig-Suche: ausdrücklicher Pfad hat Vorrang' { (Finde-FernwartungKonfig -Pfad 'X:\egal.json' -InstallerOrdner $ordA) -eq 'X:\egal.json' }
+Pruefe 'Konfig-Suche: sonst neben dem Installer' { (Finde-FernwartungKonfig -InstallerOrdner $ordA) -eq (Join-Path $ordA 'fernwartung.json') }
+Pruefe 'Konfig-Suche: sonst im aktuellen Ordner' { (Finde-FernwartungKonfig -InstallerOrdner $ordC) -eq (Join-Path $ordB 'fernwartung.json') }
+Set-Location $ordC
+Pruefe 'Konfig-Suche: nirgends → $null' { $null -eq (Finde-FernwartungKonfig -InstallerOrdner $ordC) }
+Set-Location $vorherOrt
+
+# --- Veröffentlichen: nur die selbst geschriebene Form, nie Müll ---
+$script:VeroeffentlichtMit = $null
+$script:VeroeffentlichenOk = $true
+function Veroeffentliche-FernwartungStatus { param([string]$Json, [string]$Ziel, [int]$Versuche = 8, [int]$Pause = 3) $script:VeroeffentlichtMit = $Json; return $script:VeroeffentlichenOk }
+$stJson = Neuer-FernwartungStatus -Id '123456789' -Alias 'Café' -Gruppe 'Mietkassen' -InstalliertAm '2026-10-06T10:00:00Z'
+$stDatei = Join-Path $ordA 'st.json'
+Schreibe-Text $stDatei $stJson
+$o = Fange-Ausgabe { Veroeffentliche-FernwartungErgebnis -Ziel $ordA -StatusDatei $stDatei }
+Pruefe 'Veröffentlichen: gibt die Statusdatei unverändert (ASCII) weiter und meldet Erfolg' { $o.Ergebnis -eq $true -and $script:VeroeffentlichtMit -eq $stJson -and ($o.Text -match 'sichtbar') }
+$script:VeroeffentlichtMit = $null; $script:VeroeffentlichenOk = $false
+$o = Fange-Ausgabe { Veroeffentliche-FernwartungErgebnis -Ziel $ordA -StatusDatei $stDatei }
+Pruefe 'Veröffentlichen: Fehlschlag → Warnung mit Nachhol-Hinweis, kein Absturz' { $o.Ergebnis -eq $false -and ($o.Text -match 'nicht an die Kassa übergeben') }
+$script:VeroeffentlichtMit = $null
+Schreibe-Text (Join-Path $ordA 'kaputt.json') '{"id":"abc"}'
+Schreibe-Text (Join-Path $ordA 'unicode.json') '{"anbieter":"teamviewer","id":"123456789","alias":"Café"}'
+$o = Fange-Ausgabe { Veroeffentliche-FernwartungErgebnis -Ziel $ordA -StatusDatei (Join-Path $ordA 'kaputt.json') }
+Pruefe 'Veröffentlichen: ungültige ID → nichts weitergegeben' { $o.Ergebnis -eq $false -and $null -eq $script:VeroeffentlichtMit }
+$o = Fange-Ausgabe { Veroeffentliche-FernwartungErgebnis -Ziel $ordA -StatusDatei (Join-Path $ordA 'unicode.json') }
+Pruefe 'Veröffentlichen: Nicht-ASCII-Inhalt (fremd geschrieben) → nichts weitergegeben' { $o.Ergebnis -eq $false -and $null -eq $script:VeroeffentlichtMit }
+$o = Fange-Ausgabe { Veroeffentliche-FernwartungErgebnis -Ziel $ordA -StatusDatei (Join-Path $ordA 'gibt-es-nicht.json') }
+Pruefe 'Veröffentlichen: keine Statusdatei → still false' { $o.Ergebnis -eq $false -and $o.Text.Trim() -eq '' }
+
+# --- Schalter-Logik des Fernwartungs-Blocks in install.ps1 / install-offline.ps1 ---
+# Der Block wird aus dem echten Skript herausgeschnitten und mit Attrappen ausgeführt —
+# so ist die Verzweigung (Konfig vorhanden? -OhneDocker? -Fernwartung? …) wirklich geprüft.
+$stubBibliothek = Join-Path $ordA 'stub-bibliothek.ps1'
+Schreibe-Text $stubBibliothek @'
+function Invoke-FernwartungImInstaller {
+  param([string]$KonfigPfad, [string]$Name = '', [switch]$NeuZuordnen, [switch]$Trockenlauf, [string]$StatusDatei = '')
+  $global:BlockAufruf = [pscustomobject]@{ Konfig = $KonfigPfad; Name = $Name; Neu = [bool]$NeuZuordnen }
+}
+'@
+
+function Lass-Block-Laufen {
+  param([string]$Skript, [string]$StartMarke, [hashtable]$P, [string]$SkriptOrdner, [string]$Arbeitsordner, [bool]$BibliothekDa = $true)
+  $text = [System.IO.File]::ReadAllText((Join-Path $here $Skript), [System.Text.Encoding]::UTF8)
+  $von = $text.IndexOf($StartMarke); if ($von -lt 0) { throw "Marke nicht gefunden: $StartMarke" }
+  $bis = $text.IndexOf('if ($OhneDocker) {', $von); if ($bis -lt 0) { throw 'Ende nicht gefunden' }
+  # Skript-Variablen des Installers durch Testwerte ersetzen
+  $block = $text.Substring($von, $bis - $von).Replace('$PSScriptRoot', '$FwTestOrdner').Replace('$paket', '$FwTestOrdner')
+  $FwTestOrdner = $SkriptOrdner
+  $FernwartungKonfig = [string]$P.Konfig; $FernwartungName = [string]$P.Name
+  $Fernwartung = [bool]$P.Fernwartung; $OhneFernwartung = [bool]$P.OhneFernwartung
+  $OhneDocker = [bool]$P.OhneDocker; $FernwartungNeuZuordnen = [bool]$P.Neu
+  $fwAktiv = $false
+  $global:BlockAufruf = $null
+  $global:BlockHinweise = New-Object System.Collections.Generic.List[string]
+  function Finde-FernwartungBibliothek { if ($BibliothekDa) { return $stubBibliothek } return $null }
+  function Hinweis([string]$t) { $global:BlockHinweise.Add($t) }
+  $vorher = (Get-Location).Path
+  Set-Location $Arbeitsordner
+  try { $konsole = (Invoke-Expression $block *>&1 | Out-String) } finally { Set-Location $vorher }   # im Funktions-Scope (nicht in & { }), damit $fwAktiv sichtbar bleibt
+  return [pscustomobject]@{ Aktiv = $fwAktiv; Aufruf = $global:BlockAufruf; Hinweise = ($global:BlockHinweise -join ' | '); Konsole = $konsole }
+}
+
+foreach ($variante in @(
+  @{ Skript = 'install.ps1';         Marke = '# ── 4b. Fernwartung' },
+  @{ Skript = 'install-offline.ps1'; Marke = '# ── 3b. Fernwartung' }
+)) {
+  $n = $variante.Skript
+  $leer  = Neues-Tempverzeichnis; $aufraeumen.Add($leer)      # Skript-/Arbeitsordner OHNE fernwartung.json
+  $mitFw = Neues-Tempverzeichnis; $aufraeumen.Add($mitFw)     # Ordner MIT fernwartung.json
+  Schreibe-Text (Join-Path $mitFw 'fernwartung.json') '{}'
+  $basis = @{ Konfig = ''; Name = ''; Fernwartung = $false; OhneFernwartung = $false; OhneDocker = $false; Neu = $false }
+
+  $r = Lass-Block-Laufen $n $variante.Marke $basis $leer $leer
+  Pruefe "$n`: ohne Konfiguration und ohne -Fernwartung: übersprungen, mit Hinweiszeile" { -not $r.Aktiv -and $null -eq $r.Aufruf -and ($r.Konsole -match 'keine fernwartung\.json') }
+
+  $r = Lass-Block-Laufen $n $variante.Marke (Umg $basis @{ Konfig = 'C:\x\fernwartung.json'; Name = 'Mayr'; Neu = $true }) $leer $leer
+  Pruefe "$n`: -FernwartungKonfig → Schritt läuft mit diesem Pfad, Name und -NeuZuordnen" { $r.Aktiv -and $r.Aufruf.Konfig -eq 'C:\x\fernwartung.json' -and $r.Aufruf.Name -eq 'Mayr' -and $r.Aufruf.Neu -eq $true }
+
+  $r = Lass-Block-Laufen $n $variante.Marke $basis $mitFw $leer
+  Pruefe "$n`: fernwartung.json neben dem Installer wird gefunden" { $r.Aktiv -and $r.Aufruf.Konfig -eq (Join-Path $mitFw 'fernwartung.json') }
+
+  $r = Lass-Block-Laufen $n $variante.Marke $basis $leer $mitFw
+  Pruefe "$n`: fernwartung.json im aktuellen Ordner wird gefunden" { $r.Aktiv -and $r.Aufruf.Konfig -eq (Join-Path $mitFw 'fernwartung.json') }
+
+  $r = Lass-Block-Laufen $n $variante.Marke (Umg $basis @{ OhneFernwartung = $true }) $mitFw $mitFw
+  Pruefe "$n`: -OhneFernwartung überspringt trotz Konfiguration (ohne Hinweiszeile)" { -not $r.Aktiv -and $null -eq $r.Aufruf -and ($r.Konsole -notmatch 'keine fernwartung') }
+
+  $r = Lass-Block-Laufen $n $variante.Marke (Umg $basis @{ OhneDocker = $true }) $mitFw $mitFw
+  Pruefe "$n`: -OhneDocker (Testlauf) installiert NIE versehentlich TeamViewer" { -not $r.Aktiv -and $null -eq $r.Aufruf }
+
+  $r = Lass-Block-Laufen $n $variante.Marke (Umg $basis @{ OhneDocker = $true; Fernwartung = $true }) $mitFw $mitFw
+  Pruefe "$n`: -OhneDocker zusammen mit -Fernwartung läuft" { $r.Aktiv -and $null -ne $r.Aufruf }
+
+  $r = Lass-Block-Laufen $n $variante.Marke (Umg $basis @{ Fernwartung = $true }) $leer $leer
+  Pruefe "$n`: -Fernwartung ohne Datei läuft mit dem Standardpfad (meldet dann: nicht gefunden)" { $r.Aktiv -and $r.Aufruf.Konfig -eq (Join-Path $leer 'fernwartung.json') }
+
+  $r = Lass-Block-Laufen $n $variante.Marke $basis $mitFw $mitFw -BibliothekDa $false
+  Pruefe "$n`: Bibliothek nicht ladbar → übersprungen mit Hinweis, Installer läuft weiter" { -not $r.Aktiv -and $null -eq $r.Aufruf -and ($r.Hinweise -match 'trotzdem installiert') }
+}
+
+# =============================================================================
 Gruppe '6. install.ps1 -Trockenlauf als eigener Prozess (tut nichts, Token nie sichtbar)'
 # =============================================================================
 
