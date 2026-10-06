@@ -8,6 +8,7 @@ import type {
   GutscheinStatus,
   KundeSnapshot,
 } from '@kassa/shared'
+import { heuteKalendertagWien } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import { datumsBereich } from '../db/datum.js'
 import { gutscheine, gutscheinBuchungen, kunden } from '../db/schema.js'
@@ -276,9 +277,11 @@ export async function loesGutscheinEin(
   if (current.status === 'storniert')  throw new GutscheinError(400, 'Dieser Gutschein ist storniert')
   if (current.status === 'eingeloest') throw new GutscheinError(400, 'Dieser Gutschein ist bereits vollständig eingelöst')
 
-  // Ablaufdatum prüfen
+  // Ablaufdatum prüfen: gueltigBis ist ein Kalendertag und zählt nach dem Wiener Datum —
+  // das UTC-Datum steht von 00:00 bis 02:00 Uhr Wiener Zeit (Winterzeit: bis 01:00) noch
+  // auf dem Vortag, ein abgelaufener Gutschein ginge dort noch durch.
   if (current.gueltigBis) {
-    const today = new Date().toISOString().slice(0, 10)
+    const today = heuteKalendertagWien()
     if (today > current.gueltigBis) {
       throw new GutscheinError(400, `Gutschein ist abgelaufen (gültig bis ${current.gueltigBis})`)
     }
