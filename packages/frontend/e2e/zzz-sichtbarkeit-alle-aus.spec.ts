@@ -16,6 +16,9 @@ import { test, expect, type APIRequestContext, type Locator, type Page } from '@
  *    Untergruppe zeigt den Halbhaken (Zugang)
  *  - Kasse: „nur Alkoholfrei" zeigt dessen Artikel, aber keine Kacheln für Limonaden/Säfte; die Obergruppe ist nur
  *    Zugang (ohne eigene Artikel); danach „Limonaden" zusätzlich gewählt → die Kachel erscheint
+ *  - Zusammenspiel mit der Kassen-Anordnung (POS-Konfiguration → Artikel): der Editor bietet nur Gruppen an, die
+ *    an der Kasse eigene Artikel zeigen (ein reiner Zugang erscheint nicht, dafür ein kurzer Hinweis); der
+ *    Reiter-Zähler der Kasse zählt nur gewählte Gruppen und keine an der Kasse ausgeblendeten Artikel
  *
  * Liegt am Ende der Suite (zzz-): ändert die Sichtbarkeitsliste der Kasse (am Schluss wieder []).
  */
@@ -116,9 +119,10 @@ async function legeBaumAn(request: APIRequestContext, auth: { Authorization: str
   return { atr, alko, limo, saft, bier, kel, gril, pfade }
 }
 
-async function legeArtikelAn(request: APIRequestContext, auth: { Authorization: string }, bezeichnung: string, kategorieId: string) {
+async function legeArtikelAn(request: APIRequestContext, auth: { Authorization: string }, bezeichnung: string, kategorieId: string): Promise<string> {
   const res = await request.post('/api/artikel', { headers: auth, data: { bezeichnung, preisBruttoCent: 250, mwstSatz: 'normal', kategorieId } })
   expect(res.ok(), await res.text()).toBe(true)
+  return ((await res.json()) as { id: string }).id
 }
 
 /** Schreibzugriffe auf die Sichtbarkeit (PUT …/pos-config) mitzählen — „nichts gespeichert" ist so beweisbar. */
@@ -156,8 +160,11 @@ test('Matrix und POS-Konfiguration: „Alle sichtbar" / „Alle ausblenden", Tog
     // =================================================================================
     await page.goto('/einstellungen?bereich=kassen')
     const matrix = page.locator('section', { has: page.getByRole('heading', { name: 'Warengruppen-Verteilung' }) })
-    const kassenListe = (await (await request.get('/api/kassen', { headers: auth })).json()) as { id: string }[]
+    const kassenListe = (await (await request.get('/api/kassen', { headers: auth })).json()) as { id: string; kassenId: string; bezeichnung: string | null }[]
     const spalte = Math.max(0, kassenListe.findIndex(k => k.id === kasseId))
+    // Mit mehreren Kassen steht der Kassenname vor dem Hinweis („Bar bei Anna: Noch nichts gespeichert …") — je Spalte ein Hinweis
+    const kassenName = kassenListe[spalte]?.bezeichnung || kassenListe[spalte]?.kassenId || ''
+    const matrixHinweis = kassenListe.length > 1 ? `${kassenName}: ${NEUSTART_HINWEIS}` : NEUSTART_HINWEIS
     const zeile = (pfad: string) => matrix.locator(`[data-testid="verteilung-zeile"][data-pfad="${pfad}"]`)
     const haken = (pfad: string) => zeile(pfad).locator('input[type="checkbox"]').nth(spalte)
     const teilbaum = (pfad: string) => zeile(pfad).getByTestId('teilbaum-knopf').nth(spalte)
@@ -183,7 +190,7 @@ test('Matrix und POS-Konfiguration: „Alle sichtbar" / „Alle ausblenden", Tog
     await sichtbarKnopf.click()
     await expect(status).toHaveText(STATUS_KEINE)
     for (const pfad of unsere) await expect(haken(pfad)).not.toBeChecked()
-    await expect(neustartHinweis).toHaveText(NEUSTART_HINWEIS)
+    await expect(neustartHinweis).toHaveText(matrixHinweis)
     await expect(ausblendenKnopf).toHaveAttribute('aria-pressed', 'true')
     await expect(sichtbarKnopf).toHaveAttribute('aria-pressed', 'false')
     expect(await liste()).toEqual([])
@@ -459,6 +466,74 @@ test('Kasse: nur „Alkoholfrei" gewählt zeigt dessen Artikel ohne Limonaden/S�
     await kacheln(page).filter({ hasText: `${p} Alkoholfrei` }).click()
     await expect.poll(async () => texte(kacheln(page))).toEqual([`${p} Limonaden`, `${p} Säfte`])
   } finally {
+    await setzeListe([])
+  }
+})
+
+test('Kassen-Anordnung und Reiter-Zähler passen zur Auswahl: Editor nur für Gruppen mit eigenen Artikeln, Ausgeblendetes zählt nicht', async ({ page, request }) => {
+  await expect.poll(async () => (await request.get('/api/health')).status(), { timeout: 35_000, intervals: [500, 1000, 2000, 3000] }).toBe(200)
+  const login = await adminLogin(request)
+  const auth = { Authorization: `Bearer ${login.token}` }
+  const kasseId = login.kassen[0]!.id
+  const p = `Sk${Date.now() % 1_000_000}`
+  const g = await legeBaumAn(request, auth, p)
+  const mineral = await legeArtikelAn(request, auth, `${p} Mineral`, g.alko.id)
+  const tonic   = await legeArtikelAn(request, auth, `${p} Tonic`, g.alko.id)
+  await legeArtikelAn(request, auth, `${p} Cola`, g.limo.id)
+  await legeArtikelAn(request, auth, `${p} Atrium-Spezial`, g.atr.id)
+  const setzeListe = async (ids: string[]) =>
+    expect((await request.put(`/api/kassen/${kasseId}/pos-config`, { headers: auth, data: { sichtbareKategorieIds: ids } })).status()).toBe(204)
+
+  await anmelden(page, login)
+  try {
+    // Auswahl: „Alkoholfrei" und „Limonaden" — die Atriumbar ist nur Zugang; „Tonic" ist an dieser Kasse in „Alkoholfrei" ausgeblendet
+    await setzeListe([g.alko.id, g.limo.id])
+    expect((await request.put(`/api/kassen/${kasseId}/artikel-layouts/${g.alko.id}`, {
+      headers: auth,
+      data: { eintraege: [
+        { artikelId: mineral, position: 1,    ausgeblendet: false },
+        { artikelId: tonic,   position: null, ausgeblendet: true },
+      ] },
+    })).status()).toBe(204)
+
+    // ---- Kasse: Reiter-Zähler der Atriumbar (Zugang) = Mineral + Cola; weder „Tonic" (ausgeblendet) noch „Atrium-Spezial" (Gruppe nicht gewählt) ----
+    await page.goto('/kasse')
+    const reiter = page.locator('button[aria-pressed]', { hasText: `${p} Atriumbar` })
+    await expect(reiter).toHaveText(new RegExp(`^${p} Atriumbar\\s*2$`), { timeout: 20_000 })
+    const kacheln = page.locator('[data-testid="untergruppe-kachel"]')
+    const artikel = page.locator('[data-testid="artikel-kachel"]')
+    const texte = async (l: Locator) => (await l.allTextContents()).map(t => t.replace(/\s+/g, ' ').trim())
+    await expect.poll(async () => texte(kacheln)).toEqual([`${p} Alkoholfrei`])
+    await expect.poll(async () => texte(artikel)).toEqual([])                                 // der Zugang hat keine eigenen Artikel
+    await kacheln.filter({ hasText: `${p} Alkoholfrei` }).click()
+    await expect.poll(async () => texte(kacheln)).toEqual([`${p} Limonaden`])
+    await expect.poll(async () => (await texte(artikel)).length).toBe(1)                      // Mineral; Tonic ist ausgeblendet
+    expect((await texte(artikel))[0]).toContain(`${p} Mineral`)
+
+    // ---- POS-Konfiguration → Artikel: nur Gruppen, die die Kasse mit eigenen Artikeln zeigt ----
+    await page.goto('/pos-konfiguration')
+    await page.getByRole('button', { name: 'Artikel', exact: true }).click()
+    await expect(page.getByTestId('anordnung-tab')).toBeVisible({ timeout: 20_000 })
+    const chips = page.locator('[data-testid="wg-chip"]')
+    const chip = (id: string) => page.locator(`[data-testid="wg-chip"][data-kategorie-id="${id}"]`)
+    // „●" kennzeichnet eine Gruppe mit eigener Anordnung an dieser Kasse (hier: „Alkoholfrei") — der Name steht davor
+    await expect.poll(async () => (await texte(chips)).map(t => t.replace('●', '').trim())).toEqual([`${p} Alkoholfrei`, `${p} Limonaden`])
+    await expect(chip(g.alko.id)).toHaveAttribute('data-eigene', 'true')
+    await expect(chip(g.limo.id)).toHaveAttribute('data-eigene', 'false')
+    await expect(chip(g.atr.id)).toHaveCount(0)                                               // der reine Zugang wird nicht angeboten
+    // kurzer Hinweis statt eines leeren Editors für den reinen Zugang
+    const hinweis = page.getByTestId('anordnung-zugang-hinweis')
+    await expect(hinweis).toContainText(`${p} Atriumbar`)
+    await expect(hinweis).toContainText('nur als Zugang')
+    // „Alkoholfrei" ist vorgewählt: eigene Anordnung (Tonic ausgeblendet), davor die Kachel der gewählten Untergruppe „Limonaden"
+    await expect(page.getByTestId('anordnung-status')).toHaveAttribute('data-eigene', 'true')
+    await expect(page.getByTestId('anordnung-tab')).toContainText('davor 1 Untergruppe als feste Kachel')
+    // Standard-Ebene: alle aktiven Gruppen (auch die Atriumbar), der Hinweis entfällt
+    await page.getByTestId('anordnung-modus-standard').click()
+    await expect(chip(g.atr.id)).toHaveCount(1)
+    await expect(hinweis).toHaveCount(0)
+  } finally {
+    await request.delete(`/api/kassen/${kasseId}/artikel-layouts/${g.alko.id}`, { headers: auth }).catch(() => undefined)
     await setzeListe([])
   }
 })
