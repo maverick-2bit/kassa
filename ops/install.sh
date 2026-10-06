@@ -23,6 +23,16 @@
 #   KASSA_BRANCH=master      Git-Branch (Default: master)
 #   KASSA_OHNE_DOCKER=1      Nur Code + .env vorbereiten (Testlauf, kein Docker)
 #
+# Fernwartung (optional, nur Linux, best effort — siehe ops/DEPLOYMENT.md):
+#   Liegt eine fernwartung.json im aktuellen Ordner (oder neben diesem Skript, oder
+#   KASSA_FERNWARTUNG_KONFIG=/pfad/fernwartung.json), installiert das Skript TeamViewer Host
+#   und ordnet das Gerät dem eigenen TeamViewer-Konto zu (Rollout-Konfiguration).
+#   KASSA_FERNWARTUNG_NAME=...   Gerätename in der TeamViewer-Liste (Standard: Rückfrage/Hostname)
+#   KASSA_FERNWARTUNG=1          Schritt erzwingen (auch mit KASSA_OHNE_DOCKER=1)
+#   KASSA_OHNE_FERNWARTUNG=1     Schritt überspringen
+#   KASSA_FERNWARTUNG_NEU=1      Bereits zugeordnetes Gerät erneut zuordnen (--reassign)
+#   KASSA_TROCKENLAUF=1          NUR die geplanten Fernwartungs-Schritte zeigen (Token maskiert)
+#
 set -euo pipefail
 
 KASSA_DIR="${KASSA_DIR:-$HOME/kassa}"
@@ -60,6 +70,37 @@ printf '\n%s══════════════════════�
 printf   '%s  Kassa POS — Setup / Update  (%s)%s\n' "$C_G" "$PLATTFORM" "$C_0"
 printf   '%s══════════════════════════════════════════%s\n' "$C_G" "$C_0"
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Fernwartung (optional, ops/fernwartung.sh): Konfiguration + Bibliothek finden
+# ─────────────────────────────────────────────────────────────────────────────
+SKRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || echo .)"
+
+# fernwartung.json: ausdrücklicher Pfad → aktueller Ordner → neben diesem Skript (leer, wenn keine)
+fw_konfig_finden() {
+  local k
+  if [ -n "${KASSA_FERNWARTUNG_KONFIG:-}" ]; then printf '%s' "$KASSA_FERNWARTUNG_KONFIG"; return 0; fi
+  for k in "$PWD/fernwartung.json" "$SKRIPT_DIR/fernwartung.json"; do
+    [ -f "$k" ] && { printf '%s' "$k"; return 0; }
+  done
+  return 1
+}
+
+# Bibliothek laden: neben dem Skript (Checkout) → im gespiegelten Code → direkt von GitHub.
+# Liefert 0, wenn die Funktionen verfügbar sind. NIE fatal.
+fw_bibliothek_laden() {
+  local k dl
+  for k in "$SKRIPT_DIR/fernwartung.sh" "$KASSA_DIR/ops/fernwartung.sh"; do
+    # shellcheck disable=SC1090
+    [ -f "$k" ] && { . "$k"; return 0; }
+  done
+  dl="$(mktemp 2>/dev/null)" || return 1
+  if curl -fsSL -o "$dl" "https://raw.githubusercontent.com/${REPO}/${KASSA_BRANCH}/ops/fernwartung.sh" 2>/dev/null; then
+    # shellcheck disable=SC1090
+    . "$dl"; rm -f "$dl"; return 0
+  fi
+  rm -f "$dl"; return 1
+}
+
 # Fehlendes Debian/Ubuntu-Paket nachinstallieren (nur Linux, nur mit apt-get)
 linux_paket() { # $1 = Befehl, $2 = Paketname
   command -v "$1" >/dev/null 2>&1 && return 0
@@ -68,6 +109,19 @@ linux_paket() { # $1 = Befehl, $2 = Paketname
     $SUDO apt-get update -qq && $SUDO apt-get install -y -qq "$2"
   fi
 }
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Trockenlauf: NUR die geplanten Fernwartungs-Schritte zeigen, nichts verändern
+# ─────────────────────────────────────────────────────────────────────────────
+if [ "${KASSA_TROCKENLAUF:-0}" = "1" ]; then
+  hinweis "Trockenlauf: Es wird nichts installiert oder verändert — die Kassa-Installation selbst"
+  hinweis "wird nicht simuliert, angezeigt werden nur die Schritte der Fernwartung."
+  fw_k="$(fw_konfig_finden || true)"
+  [ -n "$fw_k" ] || abbruch "Keine fernwartung.json gefunden (in den aktuellen Ordner legen oder KASSA_FERNWARTUNG_KONFIG=<Pfad> setzen)."
+  fw_bibliothek_laden || abbruch "Fernwartungs-Bibliothek (ops/fernwartung.sh) nicht gefunden und nicht ladbar."
+  ( set +e; fw_ausfuehren "$fw_k" "${KASSA_FERNWARTUNG_NAME:-}" "${KASSA_FERNWARTUNG_NEU:-0}" 1 )
+  exit 0
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 1. Docker sicherstellen
@@ -180,6 +234,35 @@ env_port() { # $1 = Name, $2 = Default
   [ -n "$v" ] && echo "$v" || echo "$2"
 }
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 3b. Fernwartung (optional, nur Linux): TeamViewer Host installieren + dem Konto zuordnen
+#     Bewusst VOR dem Container-Build: Hakt der Build, ist die Box trotzdem aus der Ferne
+#     erreichbar. Fehler hier brechen die Kassa-Installation NIE ab.
+# ─────────────────────────────────────────────────────────────────────────────
+FW_AKTIV=0
+if [ "${KASSA_OHNE_FERNWARTUNG:-0}" != "1" ]; then
+  fw_k="$(fw_konfig_finden || true)"
+  # Mit KASSA_OHNE_DOCKER=1 (Testlauf) nur auf ausdrücklichen Wunsch — nie versehentlich TeamViewer installieren
+  if { [ -n "$fw_k" ] || [ "${KASSA_FERNWARTUNG:-0}" = "1" ]; } && { [ "${KASSA_OHNE_DOCKER:-0}" != "1" ] || [ "${KASSA_FERNWARTUNG:-0}" = "1" ]; }; then
+    if [ "$PLATTFORM" != "linux" ]; then
+      hinweis "Fernwartung wird nur unter Linux unterstützt (macOS: TeamViewer Host von Hand installieren)."
+    elif fw_bibliothek_laden; then
+      FW_AKTIV=1
+      [ -n "$fw_k" ] || fw_k="$PWD/fernwartung.json"
+      fw_name="${KASSA_FERNWARTUNG_NAME:-}"
+      if [ -z "$fw_name" ] && [ -t 1 ] && [ -r /dev/tty ] && [ -z "$(fw_status_feld "$FW_STATUS_DATEI_STANDARD" alias 2>/dev/null || true)" ]; then
+        printf '\nName dieser Kasse in der TeamViewer-Geräteliste (Enter = %s): ' "$(hostname)"
+        read -r fw_name < /dev/tty || fw_name=""
+      fi
+      ( set +e; fw_ausfuehren "$fw_k" "$fw_name" "${KASSA_FERNWARTUNG_NEU:-0}" 0 ) || true
+    else
+      hinweis "Fernwartung übersprungen: Bibliothek (ops/fernwartung.sh) nicht ladbar. Die Kassa wird trotzdem installiert — später erneut ausführen."
+    fi
+  elif [ "${KASSA_OHNE_DOCKER:-0}" != "1" ]; then
+    printf '\n   (Fernwartung: keine fernwartung.json gefunden — übersprungen. Siehe ops/DEPLOYMENT.md)\n'
+  fi
+fi
+
 if [ "${KASSA_OHNE_DOCKER:-0}" = "1" ]; then
   schritt "Testlauf (KASSA_OHNE_DOCKER=1): Docker-Build und Start übersprungen"
   ok "Code + .env liegen bereit in $KASSA_DIR"
@@ -202,6 +285,9 @@ fi
 schritt "Baue und starte alle Container — der erste Lauf dauert einige Minuten (auf dem Raspberry Pi ggf. 15–40 Min.) …"
 ( cd "$KASSA_DIR" && $DOCKER compose up -d --build ) || abbruch "docker compose up fehlgeschlagen — Ausgabe oben prüfen."
 ok "Container laufen"
+
+# Fernwartungs-Status für die Kassa sichtbar machen (Einstellungen → System → Fernwartung)
+if [ "$FW_AKTIV" = "1" ]; then ( set +e; fw_veroeffentliche_ergebnis "$KASSA_DIR" ) || true; fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 5. Auf die Kassa warten (Gesundheitscheck)
