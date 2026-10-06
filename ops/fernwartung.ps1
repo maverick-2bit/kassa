@@ -702,6 +702,12 @@ function Finde-FernwartungInstaller {
   param($Konfig)
   if ($Konfig.InstallerPfad) {
     if (Test-Path -LiteralPath $Konfig.InstallerPfad -PathType Leaf) { return $Konfig.InstallerPfad }
+    # Offline-Paket: der Pfad aus der Konfiguration (z. B. D:\tv\x.msi) gibt es auf dem Ziel-PC
+    # nicht — dieselbe Datei liegt aber neben der Konfiguration
+    if ($Konfig.Verzeichnis) {
+      $gleichnamig = Join-Path $Konfig.Verzeichnis (Split-Path -Leaf $Konfig.InstallerPfad)
+      if (Test-Path -LiteralPath $gleichnamig -PathType Leaf) { return $gleichnamig }
+    }
     return $null
   }
   if ($Konfig.Verzeichnis -and (Test-Path -LiteralPath $Konfig.Verzeichnis -PathType Container)) {

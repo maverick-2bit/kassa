@@ -214,6 +214,25 @@ Pruefe '.gitignore schützt die echte Konfiguration' {
 }
 
 # =============================================================================
+Gruppe '2b. Signaturprüfung des Installers'
+# =============================================================================
+
+$tmpS = Neues-Tempverzeichnis; $aufraeumen.Add($tmpS)
+Schreibe-Text (Join-Path $tmpS 'ohne-signatur.msi') 'kein echter Installer'
+$s = Pruefe-InstallerSignatur -Datei (Join-Path $tmpS 'ohne-signatur.msi')
+Pruefe 'Datei ohne Signatur wird abgelehnt' { $s.Gueltig -eq $false -and $s.Grund }
+$s = Pruefe-InstallerSignatur -Datei (Join-Path $tmpS 'gibt-es-nicht.msi')
+Pruefe 'Fehlende Datei wird abgelehnt (kein Absturz)' { $s.Gueltig -eq $false }
+if ($PSVersionTable.PSEdition -ne 'Core' -or $IsWindows) {
+  $s = Pruefe-InstallerSignatur -Datei (Join-Path $env:SystemRoot 'System32\cmd.exe')
+  Pruefe 'Gültig signiert, aber von Microsoft statt TeamViewer → abgelehnt' { $s.Gueltig -eq $false -and ($s.Grund -match 'nicht von TeamViewer') }
+  $tvExe = Join-Path $env:ProgramFiles 'TeamViewer\TeamViewer.exe'
+  if (Test-Path -LiteralPath $tvExe) {
+    $s = Pruefe-InstallerSignatur -Datei $tvExe
+    Pruefe 'Echte TeamViewer.exe (auf diesem PC installiert): Signatur gültig und von TeamViewer' { $s.Gueltig -eq $true }
+  }
+}
+# =============================================================================
 Gruppe '3. Pläne (msiexec- und TeamViewer-Kommandozeilen)'
 # =============================================================================
 
@@ -451,18 +470,33 @@ $ps51 = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.ex
 if (Test-Path $ps51) { $motoren.Add(@('Windows PowerShell 5.1', $ps51)) }
 $pw = Get-Command pwsh -ErrorAction SilentlyContinue
 if ($pw) { $motoren.Add(@('PowerShell 7 (pwsh)', $pw.Source)) }
+$skripte = @(@('install.ps1', (Join-Path $here 'install.ps1')), @('install-offline.ps1', (Join-Path $here 'install-offline.ps1')))
 foreach ($m in $motoren) {
+ foreach ($s in $skripte) {
   $exe = $m[1]
-  $ausgabe = & $exe -NoProfile -ExecutionPolicy Bypass -File $installPs1 -Trockenlauf -FernwartungKonfig (Join-Path $tmp2 'fernwartung.json') -FernwartungName 'Testkasse' 2>&1 | Out-String
+  $name = $m[0] + ' / ' + $s[0]
+  $ausgabe = & $exe -NoProfile -ExecutionPolicy Bypass -File $s[1] -Trockenlauf -FernwartungKonfig (Join-Path $tmp2 'fernwartung.json') -FernwartungName 'Testkasse' 2>&1 | Out-String
   $code = $LASTEXITCODE
-  Pruefe ($m[0] + ': Exit-Code 0') { $code -eq 0 }
+  Pruefe ($name + ': Exit-Code 0') { $code -eq 0 }
   # Auf einem PC mit TeamViewer (Echtsystem!) steht statt msiexec „bereits installiert" — beides ist richtig
-  Pruefe ($m[0] + ': Plan wird angezeigt (Gerätename, Installation oder „bereits installiert", assign)') {
+  Pruefe ($name + ': Plan wird angezeigt (Gerätename, Installation oder „bereits installiert", assign)') {
     ($ausgabe -match 'Testkasse') -and (($ausgabe -match 'msiexec\.exe /i') -or ($ausgabe -match 'bereits installiert')) -and ($ausgabe -match 'assign --api-token \*\*\*')
   }
-  Pruefe ($m[0] + ': das Token steht in KEINER Ausgabe') { $ausgabe -notmatch [regex]::Escape($TOKEN) }
-  Pruefe ($m[0] + ': tut nichts (keine Docker-/Installationsschritte)') { ($ausgabe -notmatch 'Prüfe Docker') -and ($ausgabe -notmatch 'Lade Kassa-Code') }
+  Pruefe ($name + ': das Token steht in KEINER Ausgabe') { $ausgabe -notmatch [regex]::Escape($TOKEN) }
+  Pruefe ($name + ': tut nichts (keine Docker-/Installationsschritte)') { ($ausgabe -notmatch 'Prüfe Docker') -and ($ausgabe -notmatch 'Lade Kassa-Code') -and ($ausgabe -notmatch 'Installiere Code') }
+ }
 }
+if ($motoren.Count -gt 0) {
+  $leer = Neues-Tempverzeichnis; $aufraeumen.Add($leer)
+  $ausgabe = & $motoren[0][1] -NoProfile -ExecutionPolicy Bypass -File (Join-Path $here 'install.ps1') -Trockenlauf -FernwartungKonfig (Join-Path $leer 'gibt-es-nicht.json') 2>&1 | Out-String
+  $code = $LASTEXITCODE
+  Pruefe 'Trockenlauf mit fehlender Konfiguration: Exit-Code 1 und klare Meldung' { $code -eq 1 -and ($ausgabe -match 'nicht gefunden') }
+}
+
+# Kassa-Setup.cmd gibt eine fernwartung.json neben der Datei weiter (und behält CRLF)
+$cmd = [System.IO.File]::ReadAllText((Join-Path $here 'Kassa-Setup.cmd'))
+Pruefe 'Kassa-Setup.cmd: gibt fernwartung.json neben der Datei an den Installer weiter' { $cmd -match '-FernwartungKonfig "%~dp0fernwartung\.json"' -and $cmd -match 'if exist "%~dp0fernwartung\.json"' }
+Pruefe 'Kassa-Setup.cmd: durchgehend CRLF' { ($cmd -split "`n" | Where-Object { $_ -ne '' -and -not $_.EndsWith("`r") }).Count -eq 0 }
 if ($motoren.Count -eq 0) { Pruefe 'PowerShell-Engine für den Prozess-Test vorhanden' { $false } }
 
 # ---- Aufräumen + Ergebnis -----------------------------------------------------
