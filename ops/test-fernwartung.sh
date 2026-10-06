@@ -54,6 +54,11 @@ cat > "$BIN/id" <<'EOF'
 #!/bin/sh
 if [ "${1:-}" = "-u" ]; then echo 1000; else exec /usr/bin/id "$@"; fi
 EOF
+cat > "$BIN/hostname" <<'EOF'
+#!/bin/sh
+# „hostname -I" (GNU) gibt es nicht überall (z. B. Git Bash) — install.sh braucht es für die URL-Tabelle
+if [ "${1:-}" = "-I" ]; then echo 192.168.1.50; else exec /usr/bin/hostname "$@"; fi
+EOF
 cat > "$BIN/dpkg" <<'EOF'
 #!/bin/sh
 [ "${1:-}" = "--print-architecture" ] && { echo amd64; exit 0; }
@@ -67,6 +72,8 @@ EOF
 cat > "$BIN/curl" <<EOF
 #!/bin/sh
 echo "curl \$*" >> "$LOG"
+# Quellcode-Tarball (Download-Schritt von install.sh): winziger Ersatz aus dem Test
+case "\$*" in *archive/refs/heads*) cat "$TMP/kassa-master.tar.gz"; exit 0 ;; esac
 # -o <Datei>: Attrappe schreiben
 while [ \$# -gt 0 ]; do [ "\$1" = "-o" ] && { echo "dummy-paket" > "\$2"; }; shift; done
 exit 0
@@ -97,7 +104,7 @@ case "\$1" in
 esac
 exit 0
 EOF
-chmod +x "$BIN/uname" "$BIN/sudo" "$BIN/id" "$BIN/dpkg" "$BIN/systemctl" "$BIN/curl" "$BIN/docker" "$BIN/apt-get"
+chmod +x "$BIN/hostname" "$BIN/uname" "$BIN/sudo" "$BIN/id" "$BIN/dpkg" "$BIN/systemctl" "$BIN/curl" "$BIN/docker" "$BIN/apt-get"
 export PATH="$BIN:$PATH"
 export FAKE_TV_ID=123456789
 FW_STATUS_DATEI_STANDARD_TEST="$TMP/status/fernwartung-status.json"
@@ -251,6 +258,41 @@ pruefe "install.sh Trockenlauf: die Assignment-ID steht in KEINER Ausgabe" test 
 pruefe "install.sh Trockenlauf: tut nichts (kein Docker, keine Installation)" test "$(enthaelt_nicht "$OUT" 'Docker installieren' && enthaelt_nicht "$OUT" 'Lade aktuellen Quellcode' && echo ja)" = ja -a ! -s "$LOG"
 OUT="$(cd "$TMP" && KASSA_TROCKENLAUF=1 KASSA_FERNWARTUNG_KONFIG="$TMP/gibt-es-nicht.json" bash "$HIER/install.sh" 2>&1)"; RC=$?
 pruefe "install.sh Trockenlauf ohne Konfiguration: Exit-Code 0 mit Fehlermeldung (Konfig nicht gefunden)" test "$(enthaelt "$OUT" 'nicht gefunden' && echo ja)" = ja
+
+# ═════════════════════════════════════════════════════════════════════════════
+gruppe "5b. install.sh normaler Lauf bis zum Docker-Schritt (KASSA_OHNE_DOCKER=1)"
+# ═════════════════════════════════════════════════════════════════════════════
+# winziger Quellcode-Tarball für den Download-Schritt des Installers
+mkdir -p "$TMP/quelle/kassa-master/ops"
+printf 'POSTGRES_PASSWORD=x\nMASTER_PASSPHRASE=x\nJWT_SECRET=x\nFRONTEND_PORT=80\n' > "$TMP/quelle/kassa-master/.env.example"
+cp "$HIER/fernwartung.sh" "$TMP/quelle/kassa-master/ops/fernwartung.sh"
+( cd "$TMP/quelle" && tar -czf "$TMP/kassa-master.tar.gz" kassa-master )
+
+setze_szenario
+mkdir -p "$TMP/lauf2"; cp "$TMP/fw.json" "$TMP/lauf2/fernwartung.json"; cp "$TMP/teamviewer-host_amd64.deb" "$TMP/lauf2/"
+OUT="$(cd "$TMP/lauf2" && KASSA_DIR="$TMP/ziel1" KASSA_STATE_DIR="$TMP/state1" KASSA_OHNE_DOCKER=1 KASSA_FERNWARTUNG=1 KASSA_FERNWARTUNG_NAME=Testkasse bash "$HIER/install.sh" 2>&1)"; RC=$?
+pruefe "install.sh mit KASSA_FERNWARTUNG=1: läuft bis zum Ende (Exit 0), .env wurde erzeugt" test "$RC" -eq 0 -a -f "$TMP/ziel1/.env"
+pruefe "install.sh mit KASSA_FERNWARTUNG=1: installiert TeamViewer, ordnet zu, schreibt den Status" test "$(log_zeilen '^apt-get install')" -eq 1 -a "$(log_zeilen '^teamviewer assignment --id')" -eq 1 -a -s "$TMP/state1/fernwartung-status.json"
+pruefe "install.sh mit KASSA_FERNWARTUNG=1: ID/Name in der Ausgabe, die Assignment-ID NICHT" test "$(enthaelt "$OUT" '123 456 789' && enthaelt "$OUT" Testkasse && enthaelt_nicht "$OUT" "$ASSID" && echo ja)" = ja
+pruefe "install.sh mit KASSA_FERNWARTUNG=1: kein Docker-Aufruf (OHNE_DOCKER), Status wird erst nach compose up veröffentlicht" test "$(log_zeilen '^docker')" -eq 0
+
+setze_szenario
+OUT="$(cd "$TMP/lauf2" && KASSA_DIR="$TMP/ziel2" KASSA_STATE_DIR="$TMP/state2" KASSA_OHNE_DOCKER=1 bash "$HIER/install.sh" 2>&1)"; RC=$?
+pruefe "install.sh nur mit KASSA_OHNE_DOCKER=1 (Testlauf): installiert NIE versehentlich TeamViewer, auch mit Konfiguration im Ordner" test "$RC" -eq 0 -a "$(log_zeilen '^apt-get')" -eq 0 -a "$(log_zeilen '^teamviewer')" -eq 0 -a ! -e "$TMP/state2/fernwartung-status.json"
+
+setze_szenario
+OUT="$(cd "$TMP/lauf2" && KASSA_DIR="$TMP/ziel3" KASSA_STATE_DIR="$TMP/state3" KASSA_OHNE_DOCKER=1 KASSA_FERNWARTUNG=1 KASSA_OHNE_FERNWARTUNG=1 bash "$HIER/install.sh" 2>&1)"; RC=$?
+pruefe "install.sh mit KASSA_OHNE_FERNWARTUNG=1: überspringt den Schritt trotz KASSA_FERNWARTUNG=1" test "$RC" -eq 0 -a "$(log_zeilen '^apt-get')" -eq 0
+
+# Voller Lauf mit Docker-Attrappe: Fernwartung VOR dem Container-Build, Status erst NACH „compose up"
+setze_szenario
+OUT="$(cd "$TMP/lauf2" && KASSA_DIR="$TMP/ziel4" KASSA_STATE_DIR="$TMP/state4" KASSA_FERNWARTUNG_NAME=Testkasse bash "$HIER/install.sh" 2>&1)"; RC=$?
+zeile_apt="$(grep -n '^apt-get install' "$LOG" | head -1 | cut -d: -f1)"
+zeile_up="$(grep -n '^docker compose up' "$LOG" | head -1 | cut -d: -f1)"
+zeile_exec="$(grep -n '^docker compose exec' "$LOG" | head -1 | cut -d: -f1)"
+pruefe "install.sh voller Lauf (Docker-Attrappe): Exit 0, Reihenfolge TeamViewer-Installation → compose up → Status veröffentlichen" test "$RC" -eq 0 -a -n "$zeile_apt" -a -n "$zeile_up" -a -n "$zeile_exec" -a "$zeile_apt" -lt "$zeile_up" -a "$zeile_up" -lt "$zeile_exec"
+pruefe "install.sh voller Lauf: der Kassa wird der Status ohne Geheimnis übergeben" test -s "$TMP/veroeffentlicht.json" -a "$(grep -c '"id":"123456789"' "$TMP/veroeffentlicht.json")" -eq 1 -a "$(grep -c "$ASSID" "$TMP/veroeffentlicht.json")" -eq 0
+pruefe "install.sh voller Lauf: meldet die Sichtbarkeit in der Kassa, die Assignment-ID steht in keiner Ausgabe" test "$(enthaelt "$OUT" 'in der Kassa sichtbar' && enthaelt_nicht "$OUT" "$ASSID" && echo ja)" = ja
 
 printf '\n'
 if [ "$FEHL" -eq 0 ]; then printf 'ALLE %d TESTS BESTANDEN\n' "$ANZAHL"; exit 0; fi
