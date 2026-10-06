@@ -3,7 +3,12 @@
  */
 
 import type { FastifyPluginAsync } from 'fastify'
-import { ArtikelBerichtFilterSchema, BerichtFilterSchema, BuchungsjournalFilterSchema, KassenVergleichFilterSchema, KellnerBerichtFilterSchema, KuechenBerichtFilterSchema, StundenBerichtFilterSchema, WarengruppeBerichtFilterSchema } from '@kassa/shared'
+import { eq } from 'drizzle-orm'
+import { kassen, mandanten } from '../db/schema.js'
+import { pruefeKasseGehoertZuMandant } from '../auth/scope.js'
+import { druckerConfigVonKasse, sendBytes, DruckerError } from '../services/drucker.service.js'
+import { baueBerichtBon } from '../services/escpos/layout.js'
+import { BerichtDruckInputSchema, ArtikelBerichtFilterSchema, BerichtFilterSchema, BuchungsjournalFilterSchema, KassenVergleichFilterSchema, KellnerBerichtFilterSchema, KuechenBerichtFilterSchema, StundenBerichtFilterSchema, WarengruppeBerichtFilterSchema } from '@kassa/shared'
 import {
   erstelleBuchungsjournalCsv,
   holeKassenVergleich,
@@ -171,6 +176,41 @@ export const berichtRoute: FastifyPluginAsync<BerichtRouteOptions> = async (fast
       return reply.send(bericht)
     } catch (err) {
       if (err instanceof BerichtError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      throw err
+    }
+  })
+
+  // POST /berichte/drucken — Berichts-Tabelle auf dem Bondrucker der Kasse ausgeben
+  fastify.post('/berichte/drucken', guard, async (request, reply) => {
+    const parsed = BerichtDruckInputSchema.safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
+    const { kasseId, ...bericht } = parsed.data
+    const db = opts.deps.db
+
+    if (!(await pruefeKasseGehoertZuMandant(db, kasseId, request.user.mandantId))) {
+      return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
+    }
+    const [kasse] = await db.select().from(kassen).where(eq(kassen.id, kasseId)).limit(1)
+    if (!kasse) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
+
+    const druckerConfig = druckerConfigVonKasse(kasse)
+    if (!druckerConfig) {
+      return reply.status(409).send({ fehler: 'Drucker ist nicht konfiguriert oder deaktiviert' })
+    }
+    const [mandant] = await db.select({ firmenname: mandanten.firmenname })
+      .from(mandanten).where(eq(mandanten.id, kasse.mandantId)).limit(1)
+    if (!mandant) return reply.status(404).send({ fehler: 'Mandant nicht gefunden' })
+
+    try {
+      const bytes = baueBerichtBon(
+        bericht,
+        { firmenname: mandant.firmenname, kassenId: kasse.kassenId },
+        { breite: druckerConfig.breite },
+      )
+      await sendBytes(bytes, druckerConfig)
+      return reply.send({ erfolgreich: true })
+    } catch (err) {
+      if (err instanceof DruckerError) return reply.status(err.httpStatus).send({ fehler: err.message })
       throw err
     }
   })

@@ -10,13 +10,27 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
+import { useLocation } from 'react-router-dom'
+import { useKassenLeistenAusgeblendet } from '../lib/kassenLeisten'
 import { belegApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
+
+/** Hinweis verkleinert (schmale Zeile), pro Gerät; Standard: groß. */
+const KLEIN_KEY = 'kassa:foBannerKlein'
 
 export function FoStatusBanner() {
   const identity    = getKasseIdentity()
   const kasseId     = identity?.kasseId ?? ''
   const queryClient = useQueryClient()
+  const leistenAus  = useKassenLeistenAusgeblendet()
+  const pfad        = useLocation().pathname
+  const [klein, setKlein]   = useState<boolean>(() => {
+    try { return localStorage.getItem(KLEIN_KEY) === '1' } catch { return false }
+  })
+  const kleinSetzen = (wert: boolean) => {
+    setKlein(wert)
+    try { localStorage.setItem(KLEIN_KEY, wert ? '1' : '0') } catch { /* ignorieren */ }
+  }
   const [offen, setOffen]   = useState(false)
   const [tid, setTid]       = useState('')
   const [benId, setBenId]   = useState('')
@@ -42,8 +56,30 @@ export function FoStatusBanner() {
   })
 
   if (!status || status.registriert) return null
+  // Auf der Kassen-Seite per Knopf ausblendbar (Tablet quer: mehr Platz für Artikel)
+  if (leistenAus && /^\/kasse\/?$/.test(pfad)) return null
 
   const kannRegistrieren = tid.trim() && benId.trim() && pin.trim()
+
+  // Verkleinert: nur eine schmale Erinnerungszeile (pro Gerät gemerkt)
+  if (klein && !offen) {
+    return (
+      <div data-testid="fo-banner" className="sticky top-0 z-40 bg-amber-500 text-amber-950 shadow-md">
+        <div className="mx-auto max-w-6xl px-4 py-0.5 text-xs flex items-center gap-2">
+          <span aria-hidden>⚠</span>
+          <span className="font-medium">FinanzOnline-Registrierung ausstehend</span>
+          <button
+            type="button"
+            onClick={() => kleinSetzen(false)}
+            className="ml-auto rounded px-2 py-0.5 hover:bg-amber-950/10 whitespace-nowrap"
+            title="Hinweis wieder groß anzeigen"
+          >
+            ▼ Anzeigen
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div data-testid="fo-banner" className="sticky top-0 z-40 bg-amber-500 text-amber-950 shadow-md">
@@ -61,6 +97,14 @@ export function FoStatusBanner() {
             className="ml-auto rounded-md bg-amber-950/10 hover:bg-amber-950/20 px-3 py-1 font-medium transition whitespace-nowrap"
           >
             {offen ? 'Schließen' : 'Jetzt nachtragen'}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setOffen(false); kleinSetzen(true) }}
+            className="rounded-md px-2 py-1 hover:bg-amber-950/10 transition whitespace-nowrap"
+            title="Hinweis auf eine schmale Zeile verkleinern"
+          >
+            ▲ Verkleinern
           </button>
         </div>
 

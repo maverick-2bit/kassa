@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import type { FastifyBaseLogger } from 'fastify'
 import type {
@@ -34,6 +35,8 @@ export interface TischTabServiceDeps {
 export interface StornoBonErgebnis {
   fehler:     BonierZielFehler[]
   positionen: Array<{ artikelId: string; menge: number }>
+  /** Bestell-ID des Korrekturbons: "Nochmal senden" schickt sie wieder mit → kein zweiter Bon an Stationen, die ihn schon haben */
+  bestellId:  string
 }
 
 export class TischTabError extends Error {
@@ -434,6 +437,7 @@ async function verarbeiteStorno(
   })
 
   const positionen = stornoItems.map(s => ({ artikelId: s.artikelId, menge: s.menge }))
+  const bestellId  = randomUUID()
 
   try {
     // Dynamischer Import — bonier.service importiert seinerseits aus diesem
@@ -444,6 +448,7 @@ async function verarbeiteStorno(
       tisch:   tab.tischNummer,
       kellner: kontext?.userName ?? tab.kellner,
       positionen,
+      bestellId,
       // ohneLagerabzug: der Storno-Bon ist reine Küchen-Info — die Rückbuchung
       // des Lagerstands macht bereits aktualisiereStockDeltas.
     }, { db: deps.db }, { storno: true, ohneLagerabzug: true })
@@ -453,7 +458,7 @@ async function verarbeiteStorno(
     // nicht an, muss es der Kellner erfahren — bis v0.7.149 verschwand das
     // Ergebnis hier stillschweigend.
     const fehler = bonierFehlschlaege(ergebnis)
-    return fehler.length > 0 ? { fehler, positionen } : null
+    return fehler.length > 0 ? { fehler, positionen, bestellId } : null
   } catch (err) {
     // Fachmeldungen (BonierError: Kasse/Artikel nicht mehr verfügbar …) gehen im
     // Wortlaut an Kasse und Kellner-App, alles andere nur ins Log — ein DB-Fehler
@@ -473,6 +478,7 @@ async function verarbeiteStorno(
     return {
       fehler: [{ ziel: 'Küche/Schank', ip: '', fehler: meldung, istBackup: false }],
       positionen,
+      bestellId,
     }
   }
 }

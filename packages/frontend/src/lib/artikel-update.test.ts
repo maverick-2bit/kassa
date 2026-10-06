@@ -14,6 +14,7 @@ const BEISPIEL = {
   bezeichnung:            'Testartikel',
   preisBruttoCent:        -200,
   mwstSatz:               'ermaessigt1',
+  allergene:              'A,C,G',
   station:                'schank',
   farbe:                  '#336699',
   kategorieId:            ID(2),
@@ -83,7 +84,7 @@ describe('artikelUpdateAusInput: leere Werte leeren das Feld (null / []), statt 
   it('Standardwerte des Formulars → ausdrückliche null/[]/false im Update-Body', () => {
     expect(artikelUpdateAusInput(minimal)).toEqual({
       bezeichnung: 'Leer', preisBruttoCent: 100, mwstSatz: 'normal',
-      station: null, farbe: null, kategorieId: null, istFavorit: false, bonierdruckerId: null,
+      allergene: null, station: null, farbe: null, kategorieId: null, istFavorit: false, bonierdruckerId: null,
       bonierBeiDirektverkauf: false, istBestandteil: false, bestandteile: [], lieferantId: null,
       lagerstandAktiv: false, lagerstandMenge: null, mindestbestand: null, seriennummernAktiv: false, bild: null,
     })

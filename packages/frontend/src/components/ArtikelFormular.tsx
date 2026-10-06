@@ -2,9 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import {
   ALLE_STATIONEN,
+  ALLERGEN_LABELS,
   MWST_LABELS,
   STATION_LABELS,
   farbeZuHex,
+  parseAllergene,
   type Artikel,
   type ArtikelInput,
   type Bonierdrucker,
@@ -27,6 +29,7 @@ type FormValues = {
   bezeichnung:          string
   preisEuro:            string
   mwstSatz:             MwStSatz
+  allergeneStr:         string
   station:              Station | ''
   farbe:                KategorieFarbe | ''
   kategorieId:          string
@@ -64,6 +67,7 @@ const MWST_OPTIONS: MwStSatz[] = ['normal', 'ermaessigt1', 'ermaessigt2', 'null'
 
 export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker, lieferanten, alleArtikel, onSubmit, onCancel, loading, fehler, onNeueKategorie }: Props) {
   const [preisFehler, setPreisFehler] = useState<string | null>(null)
+  const [allergenFehler, setAllergenFehler] = useState<string | null>(null)
   const [bild,        setBild]        = useState<string | null>(initial?.bild ?? null)
   // Rezept-Bestandteile (Stückliste) — lokaler State
   const [bestandteile, setBestandteile] = useState<RezeptZeile[]>(
@@ -123,6 +127,7 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
       bezeichnung:        initial?.bezeichnung      ?? '',
       preisEuro:          initial ? (initial.preisBruttoCent / 100).toFixed(2).replace('.', ',') : '',
       mwstSatz:           initial?.mwstSatz         ?? 'normal',
+      allergeneStr:       initial?.allergene        ?? '',
       station:            initial?.station          ?? '',
       farbe:              initial?.farbe            ?? '',
       kategorieId:        initial?.kategorieId      ?? '',
@@ -147,11 +152,16 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
   const katVorgabe      = gewaehlteKat?.station ?? null
   const katFarbeHex     = gewaehlteKat ? farbeZuHex(gewaehlteKat.farbe) : undefined
 
+  // Wählbar: aktive Warengruppen — plus eine deaktivierte, in der der Artikel noch steckt
+  // (sonst stünde die Auswahl leer da und Speichern löste ihn still aus seiner Gruppe).
+  const waehlbar = (k: Kategorie) => k.aktiv || k.id === initial?.kategorieId
+
   useEffect(() => {
     reset({
       bezeichnung:        initial?.bezeichnung      ?? '',
       preisEuro:          initial ? (initial.preisBruttoCent / 100).toFixed(2).replace('.', ',') : '',
       mwstSatz:           initial?.mwstSatz         ?? 'normal',
+      allergeneStr:       initial?.allergene        ?? '',
       station:            initial?.station          ?? '',
       farbe:              initial?.farbe            ?? '',
       kategorieId:        initial?.kategorieId      ?? '',
@@ -170,10 +180,12 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
     setNeuerBestandteilId('')
   }, [initial, reset])
 
-  // Namens-Lookup + Kandidaten für die Rezept-Auswahl (sich selbst + bereits gewählte ausschließen)
+  // Namens-Lookup (über alle — auch ein deaktivierter Bestandteil behält seinen Namen) +
+  // Kandidaten für die Rezept-Auswahl: nur aktive Artikel, unabhängig davon, ob die Liste
+  // gerade Deaktiviertes zeigt (sich selbst + bereits gewählte ausschließen)
   const artikelNameById = new Map((alleArtikel ?? []).map(a => [a.id, a.bezeichnung] as const))
   const bestandteilKandidaten = (alleArtikel ?? [])
-    .filter(a => a.id !== initial?.id && !bestandteile.some(b => b.bestandteilArtikelId === a.id))
+    .filter(a => a.aktiv && a.id !== initial?.id && !bestandteile.some(b => b.bestandteilArtikelId === a.id))
     .sort((a, b) => a.bezeichnung.localeCompare(b.bezeichnung))
 
   const bestandteilHinzufuegen = () => {
@@ -197,6 +209,12 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
       return
     }
     setPreisFehler(null)
+    const allergene = parseAllergene(values.allergeneStr)
+    if (!allergene.ok) {
+      setAllergenFehler(`Unbekannte Codes: ${allergene.ungueltig.join(', ')} — erlaubt sind A–H, L–P, R`)
+      return
+    }
+    setAllergenFehler(null)
     const lsMenge = values.lagerstandAktiv && values.lagerstandMengeStr.trim() !== ''
       ? parseInt(values.lagerstandMengeStr.trim(), 10)
       : null
@@ -208,6 +226,7 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
       bezeichnung:     values.bezeichnung.trim(),
       preisBruttoCent: cent,
       mwstSatz:        values.mwstSatz,
+      allergene:       allergene.wert,
       station:         values.station          || null,
       farbe:           values.farbe            || null,
       kategorieId:     values.kategorieId      || null,
@@ -307,6 +326,23 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
       </div>
 
       <Field
+        label="Allergene"
+        hint="Buchstaben kommagetrennt, z. B. A, C, G — erscheint auf der Kachel in Kasse und Kellner-App sowie in der Gast-Karte"
+        error={allergenFehler ?? undefined}
+      >
+        <Input
+          placeholder="A, C, G"
+          autoCapitalize="characters"
+          autoComplete="off"
+          invalid={!!allergenFehler}
+          {...register('allergeneStr')}
+        />
+        <p className="mt-1 text-[11px] leading-snug text-ink-subtle">
+          {Object.entries(ALLERGEN_LABELS).map(([c, l]) => `${c} ${l}`).join(' · ')}
+        </p>
+      </Field>
+
+      <Field
         label="KDS-Station"
         hint={katVorgabe
           ? `Ohne Auswahl gilt die Warengruppen-Vorgabe (${STATION_LABELS[katVorgabe]}) — hier nur einstellen, wenn dieser Artikel abweicht`
@@ -335,14 +371,14 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
       </Field>
 
       <Field label="Warengruppe" hint="Gruppierung in der Kassen-Ansicht">
-        {kategorien && kategorien.filter(k => k.aktiv).length > 0 && (
+        {kategorien && kategorien.some(waehlbar) && (
           <Select {...register('kategorieId')}>
             <option value="">— ohne Warengruppe —</option>
             {/* Baumreihenfolge; Pfadlabel („Atriumbar › Alkoholfrei"), damit gleichnamige Gruppen unterscheidbar sind.
                 Die bisherige Gruppe des Artikels bleibt wählbar, auch wenn sie inzwischen deaktiviert ist. */}
             {baumFlach(kategorien)
               .map(e => e.kategorie)
-              .filter(k => k.aktiv || k.id === initial?.kategorieId)
+              .filter(waehlbar)
               .map((k) => (
                 <option key={k.id} value={k.id}>{kategoriePfad(kategorien, k.id)}{k.aktiv ? '' : ' (deaktiviert)'}</option>
               ))}
@@ -377,7 +413,7 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
           )
         )}
         {katFehler && <p className="mt-1 text-xs text-red-600">{katFehler}</p>}
-        {(!kategorien || kategorien.filter(k => k.aktiv).length === 0) && !neueKatOffen && (
+        {(!kategorien || !kategorien.some(waehlbar)) && !neueKatOffen && (
           <p className="mt-1 text-xs text-ink-subtle">Noch keine Warengruppe vorhanden — oben eine anlegen.</p>
         )}
       </Field>

@@ -4,6 +4,7 @@ import { getTheme, toggleTheme, type ThemeMode } from '../lib/theme'
 import { useQueries } from '@tanstack/react-query'
 import { clearAuth, getAuth, hasBerechtigung, hasModul } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
+import { setKassenLeistenAusgeblendet, useKassenLeistenAusgeblendet } from '../lib/kassenLeisten'
 import { kasseApi } from '../lib/api'
 import { useTagesRegelSync } from '../lib/useTagesRegelSync'
 import { KdsToasts } from './KdsToasts'
@@ -24,17 +25,114 @@ import { ErrorBoundary } from './ErrorBoundary'
  */
 const KASSEN_ANSICHT = /^\/(kasse|tische\/[^/]+)\/?$/
 
+/** Einklapp-Zustand der Kopfleiste, pro Gerät (Standard: ausgeklappt). */
+const KOPFLEISTE_KEY = 'kassa:kopfleisteEingeklappt'
+
+function ladeEingeklappt(): boolean {
+  try { return localStorage.getItem(KOPFLEISTE_KEY) === '1' } catch { return false }
+}
+
+// Browser-Vollbild (Standard + WebKit-Präfix für ältere Safari/iPad)
+type VollbildDoc = Document & {
+  webkitFullscreenElement?: Element | null
+  webkitExitFullscreen?: () => Promise<void> | void
+}
+type VollbildEl = HTMLElement & { webkitRequestFullscreen?: () => Promise<void> | void }
+
+function vollbildElement(): Element | null {
+  const d = document as VollbildDoc
+  return d.fullscreenElement ?? d.webkitFullscreenElement ?? null
+}
+
+async function vollbildStarten(): Promise<boolean> {
+  const el = document.documentElement as VollbildEl
+  try {
+    if (el.requestFullscreen)            { await el.requestFullscreen(); return true }
+    if (el.webkitRequestFullscreen)      { await el.webkitRequestFullscreen(); return true }
+  } catch { /* vom Browser abgelehnt — Leisten bleiben trotzdem eingeklappt */ }
+  return false
+}
+
+async function vollbildBeenden(): Promise<void> {
+  const d = document as VollbildDoc
+  try {
+    if (d.exitFullscreen)            await d.exitFullscreen()
+    else if (d.webkitExitFullscreen) await d.webkitExitFullscreen()
+  } catch { /* ignorieren */ }
+}
+
 export function Layout() {
   const location = useLocation()
   const kassenAnsicht = KASSEN_ANSICHT.test(location.pathname)
   // Tagesbeginn (Geschäftstag) aktuell halten; bei einer Änderung startet die Seite neu (Key)
   const regelVersion = useTagesRegelSync()
+  const [eingeklappt, setEingeklappt] = useState<boolean>(ladeEingeklappt)
+  const kopfleisteUmschalten = (wert: boolean) => {
+    setEingeklappt(wert)
+    try { localStorage.setItem(KOPFLEISTE_KEY, wert ? '1' : '0') } catch { /* ignorieren */ }
+  }
+  const leistenAus = useKassenLeistenAusgeblendet()
+
+  // Vollbild: Browser-Vollbild + Kopfleiste und Zusatzleisten eingeklappt. Beim
+  // Beenden (Knopf oder Esc/Wischgeste des Browsers) kommt der vorherige Zustand zurück.
+  const [vollbild, setVollbild] = useState<boolean>(() => !!vollbildElement())
+  const vorherRef = useRef<{ kopf: boolean; leisten: boolean } | null>(null)
+  const eingeklapptRef = useRef(eingeklappt)
+  const leistenAusRef  = useRef(leistenAus)
+  eingeklapptRef.current = eingeklappt
+  leistenAusRef.current  = leistenAus
+
+  const wiederherstellen = () => {
+    setVollbild(false)
+    if (vorherRef.current) {
+      kopfleisteUmschalten(vorherRef.current.kopf)
+      setKassenLeistenAusgeblendet(vorherRef.current.leisten)
+      vorherRef.current = null
+    }
+  }
+
+  useEffect(() => {
+    const handler = () => {
+      const aktiv = !!vollbildElement()
+      if (aktiv) setVollbild(true)
+      else wiederherstellen()
+    }
+    document.addEventListener('fullscreenchange', handler)
+    document.addEventListener('webkitfullscreenchange', handler)
+    return () => {
+      document.removeEventListener('fullscreenchange', handler)
+      document.removeEventListener('webkitfullscreenchange', handler)
+    }
+    // kopfleisteUmschalten ist stabil genug (setzt nur State + localStorage)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const vollbildUmschalten = () => {
+    if (vollbild) {
+      // Echtes Vollbild: der fullscreenchange-Handler stellt den Zustand wieder her
+      if (vollbildElement()) void vollbildBeenden()
+      else wiederherstellen()
+      return
+    }
+    // Zustand merken und Leisten einklappen — auch wenn der Browser kein Vollbild kann (z. B. iPhone)
+    vorherRef.current = { kopf: eingeklapptRef.current, leisten: leistenAusRef.current }
+    kopfleisteUmschalten(true)
+    setKassenLeistenAusgeblendet(true)
+    setVollbild(true)
+    void vollbildStarten()
+  }
+
   return (
     <div className={kassenAnsicht ? 'min-h-screen flex flex-col lg:h-dvh lg:min-h-0' : 'min-h-screen flex flex-col'}>
       <OfflineStatusBar />
       <SeeStatusBanner />
       <FoStatusBanner />
-      <Header />
+      <Header
+        eingeklappt={eingeklappt}
+        onUmschalten={kopfleisteUmschalten}
+        vollbild={vollbild}
+        onVollbild={vollbildUmschalten}
+      />
       <main className={kassenAnsicht ? 'flex-1 lg:min-h-0 lg:overflow-y-auto' : 'flex-1'}>
         {/* ErrorBoundary pro Route: ein Defekt in einer Seite legt nicht die
             ganze Kasse lahm; Header/Nav bleiben bedienbar. resetKey=Pfad sorgt
@@ -49,9 +147,11 @@ export function Layout() {
           </Suspense>
         </ErrorBoundary>
       </main>
-      <footer className="border-t border-line py-2 text-center">
-        <StatusZeile />
-      </footer>
+      {!eingeklappt && (
+        <footer className="border-t border-line py-2 text-center">
+          <StatusZeile />
+        </footer>
+      )}
       <KdsToasts kassenAnsicht={kassenAnsicht} />
       <KdsNachrichten />
     </div>
@@ -110,6 +210,7 @@ function baueNavGruppen(): NavGruppe[] {
       wenn(b('artikel.verwalten'), '/wareneingang', 'Wareneingang'),
       wenn(b('artikel.verwalten'), '/lagerstand',   'Lagerstand'),
       wenn(b('artikel.verwalten'), '/inventur',     'Inventur'),
+      wenn(b('artikel.verwalten'), '/kds-zuordnung', 'KDS-Zuordnung'),
       wenn(b('artikel.verwalten'), '/modifikatoren', 'Optionen'),
       wenn(b('artikel.verwalten'), '/preisregeln',  'Aktionen'),
       wenn(b('artikel.verwalten'), '/bestellliste', 'Bestellliste'),
@@ -144,7 +245,12 @@ function baueNavGruppen(): NavGruppe[] {
   ].filter(g => g.items.length > 0)
 }
 
-function Header() {
+function Header({ eingeklappt, onUmschalten, vollbild, onVollbild }: {
+  eingeklappt: boolean
+  onUmschalten: (wert: boolean) => void
+  vollbild:    boolean
+  onVollbild:  () => void
+}) {
   const navigate = useNavigate()
   const location = useLocation()
   const auth     = getAuth()
@@ -168,6 +274,39 @@ function Header() {
   }
 
   const gruppen = auth ? baueNavGruppen() : []
+
+  if (eingeklappt && auth) {
+    const identity = getKasseIdentity()
+    const kasse    = identity ? auth.kassen.find(k => k.id === identity.kasseId) : null
+    return (
+      <header className="bg-header text-white border-b border-black/20 sticky top-0 z-20">
+        <div className="px-4 py-1 flex items-center gap-4">
+          <button
+            type="button"
+            onClick={() => onUmschalten(false)}
+            className="text-xs text-white/70 hover:text-white px-2 py-1 rounded hover:bg-white/10"
+            title="Kopfleiste aufklappen"
+          >
+            ☰ Menü
+          </button>
+          <button
+            type="button"
+            onClick={onVollbild}
+            className="text-xs text-white/70 hover:text-white px-2 py-1 rounded hover:bg-white/10"
+            title={vollbild ? 'Vollbild beenden' : 'Vollbild'}
+          >
+            {vollbild ? '⤡ Vollbild beenden' : '⤢ Vollbild'}
+          </button>
+          <div className="flex-1" />
+          <span className="text-xs text-white/70 select-none">
+            {auth.user.name}
+            {kasse && <> · Kasse: <span className="font-mono">{kasse.bezeichnung || kasse.kassenId}</span></>}
+          </span>
+          <UpdateHinweis>{null}</UpdateHinweis>
+        </div>
+      </header>
+    )
+  }
 
   return (
     <header className="bg-header text-white border-b border-black/20 sticky top-0 z-20">
@@ -220,6 +359,25 @@ function Header() {
               title="Abmelden"
             >
               Abmelden
+            </button>
+            <button
+              type="button"
+              onClick={onVollbild}
+              className="flex h-8 items-center justify-center rounded-md px-2 text-xs text-white/70 hover:text-white hover:bg-white/10"
+              title="Vollbild: Browserleiste, Menü und Zusatzleisten ausblenden"
+            >
+              ⤢ Vollbild
+            </button>
+            <button
+              type="button"
+              onClick={() => onUmschalten(true)}
+              className="flex h-8 w-8 items-center justify-center rounded-md text-white/70 hover:text-white hover:bg-white/10"
+              title="Kopfleiste einklappen"
+              aria-label="Kopfleiste einklappen"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+              </svg>
             </button>
           </div>
         )}

@@ -506,3 +506,64 @@ export async function downloadKassenbuchPdf(
 
   doc.save(`kassenbuch_${data.von}_${data.bis}_${kassenBezeichnung.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`)
 }
+
+// ---------------------------------------------------------------------------
+// Bericht (generisch aus Tabellenzeilen, erste Zeile = Überschriften)
+// ---------------------------------------------------------------------------
+
+export async function downloadBerichtPdf(
+  titel:      string,
+  zeitraum:   string | undefined,
+  firmenname: string,
+  zeilen:     string[][],
+  dateiname:  string,
+): Promise<void> {
+  const [{ jsPDF }, { default: autoTable }] = await Promise.all([
+    import('jspdf'),
+    import('jspdf-autotable'),
+  ])
+
+  const [kopf = [], ...daten] = zeilen
+  // Breite Tabellen (z. B. Kassen-Vergleich) im Querformat
+  const quer  = kopf.length > 6
+  const doc   = new jsPDF({ unit: 'mm', format: 'a4', orientation: quer ? 'landscape' : 'portrait', putOnlyUsedFonts: true })
+  const pageW = doc.internal.pageSize.getWidth()
+  const mL    = 15
+  const mR    = 15
+
+  let y = 20
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(16)
+  doc.text(titel, mL, y)
+  y += 7
+
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(9)
+  doc.setTextColor(90)
+  doc.text(firmenname, mL, y)
+  doc.text(
+    `Erstellt: ${new Date().toLocaleString('de-AT', { timeZone: 'Europe/Vienna' })}`,
+    pageW - mR, y,
+    { align: 'right' },
+  )
+  if (zeitraum) { y += 4.5; doc.text(zeitraum, mL, y) }
+  doc.setTextColor(0)
+  y += 6
+
+  autoTable(doc, {
+    startY: y,
+    margin: { left: mL, right: mR },
+    head:   [kopf],
+    body:   daten,
+    styles:     { fontSize: 9, cellPadding: 2 },
+    headStyles: { fillColor: [243, 244, 246], textColor: 20, fontStyle: 'bold' },
+    // Zahlen/Beträge rechtsbündig, Text links
+    didParseCell: (d) => {
+      const wert = String(d.cell.raw ?? '')
+      if (d.column.index > 0 && /^[-+]?[\d.,]+\s*%?$/.test(wert.trim())) d.cell.styles.halign = 'right'
+      if (d.section === 'head' && d.column.index > 0) d.cell.styles.halign = 'right'
+    },
+  })
+
+  doc.save(dateiname)
+}

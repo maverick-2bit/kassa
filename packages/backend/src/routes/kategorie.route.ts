@@ -1,7 +1,7 @@
 /**
  * Kategorie-Routen (alle auth-protected, mandantId aus JWT).
  *   POST   /api/kategorien              Anlegen
- *   GET    /api/kategorien              Auflisten (mandantId aus JWT)
+ *   GET    /api/kategorien              Auflisten (mandantId aus JWT; ?nurAktive=true|false, Standard false)
  *   PUT    /api/kategorien/:id          Aktualisieren
  *   DELETE /api/kategorien/:id          Deaktivieren (soft delete)
  */
@@ -18,13 +18,14 @@ import {
   aktualisiereKategorie,
   deaktiviereKategorie,
 } from '../services/kategorie.service.js'
+import { queryBool } from './query-bool.js'
 
 export interface KategorieRouteOptions {
   db: Db
 }
 
 const ListQuerySchema = z.object({
-  nurAktive: z.coerce.boolean().optional().default(false),
+  nurAktive: queryBool(false),
 })
 
 const IdParamSchema = z.object({ id: z.string().uuid() })

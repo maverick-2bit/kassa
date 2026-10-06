@@ -14,11 +14,14 @@ import type { Db } from '../db/client.js'
 import { artikel, bonierdrucker, kategorien, kassen, kasseBonierdruckerSichtbarkeit } from '../db/schema.js'
 import { baueBonierbon, generiereBonNummer } from './kds/bonierbon.js'
 import { sendeBonierbon, type KdsZiel } from './kds/sender.js'
-import { druckeBonierbonDirekt } from './bonierdrucker.service.js'
+import { druckeBonierbonDirekt, druckeBonierbonMitErsatz } from './bonierdrucker.service.js'
 import { emitKasseEvent } from '../sse/event-bus.js'
 import { logBonierEreignis } from './tisch-tab.service.js'
 import { kdsBonErstellen } from './kds/kds-store.service.js'
 import { dekrementiereBestandteile, ladeRezepte } from './bestandteil.service.js'
+import { ladeWirksamesRouting } from './kategorie-routing.service.js'
+import { beanspruche, gibFrei, speichereErgebnis } from './bonier-bestellung.service.js'
+import { bereinigeStationsIp } from './kds/station-ip.js'
 
 export class BonierError extends Error {
   constructor(public readonly httpStatus: number, message: string) {
@@ -104,22 +107,12 @@ export async function bonierBestellung(
   }
   const artikelById = new Map(artikelRows.map((a) => [a.id, a]))
 
-  // 3. Kategorien laden (für Drucker-Fallback: artikel → kategorie)
-  const kategorieIds = [
-    ...new Set(
-      artikelRows
-        .map(a => a.kategorieId)
-        .filter((id): id is string => id !== null),
-    ),
-  ]
+  // 3. Wirksames Routing der Warengruppen (Station/Bonierdrucker werden von der
+  //    Elterngruppe geerbt, wenn die Untergruppe nichts eigenes hat)
   const kategorieMap = new Map<string, { bonierdruckerId: string | null; station: Station | null }>()
-  if (kategorieIds.length > 0) {
-    const katRows = await deps.db
-      .select({ id: kategorien.id, bonierdruckerId: kategorien.bonierdruckerId, station: kategorien.station })
-      .from(kategorien)
-      .where(inArray(kategorien.id, kategorieIds))
-    for (const k of katRows) {
-      kategorieMap.set(k.id, { bonierdruckerId: k.bonierdruckerId, station: k.station as Station | null })
+  if (artikelRows.some(a => a.kategorieId !== null)) {
+    for (const [id, r] of await ladeWirksamesRouting(deps.db, kasse.mandantId)) {
+      kategorieMap.set(id, { bonierdruckerId: r.bonierdruckerId, station: r.station as Station | null })
     }
   }
 
@@ -149,9 +142,26 @@ export async function bonierBestellung(
   )
 
   // 5. Bonnummer + Zeitstempel (gemeinsam für alle Bons dieser Bestellung)
-  const bonNummer   = generiereBonNummer()
+  let bonNummer     = generiereBonNummer()
   const belegnummer = Math.floor(Date.now() / 1000) % 100
   const uhrzeit     = new Date()
+
+  // 5a. Bestell-ID (Idempotenz): derselbe Aufruf noch einmal ("Nochmal senden") ist eine
+  //     WIEDERHOLUNG — kein zweiter KDS-Bon, kein zweiter Lagerabzug, nur die Ziele erneut
+  //     bedienen, die vorher scheiterten. Ohne ID: wie bisher, jeder Aufruf ist neu.
+  const bestellId = input.bestellId
+  let wiederholung: BonierungErgebnis | null = null
+  let anspruch = false
+  if (bestellId) {
+    const a = await beanspruche(deps.db, { bestellId, mandantId: kasse.mandantId, kasseId: kasse.id, bonNummer })
+    if (a.art === 'fremd')  throw new BonierError(409, 'Die Bestell-ID gehört zu einer anderen Bestellung')
+    if (a.art === 'laeuft') throw new BonierError(409, 'Diese Bestellung wird gerade gesendet — bitte einen Moment warten')
+    bonNummer = a.bonNummer
+    if (a.art === 'wiederholung') wiederholung = a.vorher
+    else anspruch = true
+  }
+
+  try {
 
   // 6. Positionen aufbereiten + Routing bestimmen
   const kdsStationen = kasse.kdsStationen as Record<string, string>
@@ -224,7 +234,12 @@ export async function bonierBestellung(
     // TCP-KDS nur wenn das KDS an der Kasse aktiv ist (SB füllt proStation
     // auch ohne kdsAktiv — dann existiert nur der Browser-KDS-Bon).
     if (!kasse.kdsAktiv) break
-    const ip = kdsStationen[station]
+    // Wiederholung: was schon zugestellt wurde, nicht noch einmal senden
+    const stationFrueher = wiederholung?.stationen.find(s => s.station === station)
+    if (stationFrueher?.erfolgreich) { stationenErgebnisse.push(stationFrueher); continue }
+    // Nur eine gültige IP (ohne Port/URL) löst einen TCP-Versuch aus; ein Eintrag wie
+    // "192.168.1.5:8080" (Web-Adresse des Browser-KDS) wird wie "keine IP" behandelt.
+    const ip = bereinigeStationsIp(kdsStationen[station])
     if (!ip) {
       // Keine IP = Browser-KDS-Betrieb: der Bon liegt in der DB und geht per
       // SSE an jeden verbundenen Bildschirm dieser Station — das IST die
@@ -268,19 +283,32 @@ export async function bonierBestellung(
   const druckerErgebnisse: BonierungErgebnis['drucker'] = []
 
   const sendeAnDrucker = async (drucker: DruckerRow, positionen: BonierbonPosition[], istBackup: boolean) => {
+    // Wiederholung: ein Drucker, der den Bon schon hat, bekommt ihn nicht ein zweites Mal
+    const druckerFrueher = wiederholung?.drucker.find(d => d.druckerId === drucker.id && d.istBackup === istBackup)
+    if (druckerFrueher?.erfolgreich) { druckerErgebnisse.push(druckerFrueher); return }
     const zeilen = positionen.map(p => ({
       menge:       p.menge,
       bezeichnung: p.bezeichnung,
       preisLabel:  '',
     }))
     try {
-      await druckeBonierbonDirekt(drucker.ip, drucker.port, tischLabel, input.kellner, zeilen, optionen.storno === true)
+      // Hauptdrucker: bei Ausfall an den eigenen Fallback bzw. den festen Fallback-Drucker umleiten —
+      // so geht kein Bon verloren. Eine Backup-KOPIE bleibt ohne Umleitung (sonst käme sie doppelt an).
+      let benutzt = drucker
+      if (istBackup) {
+        await druckeBonierbonDirekt(drucker.ip, drucker.port, tischLabel, input.kellner, zeilen, optionen.storno === true)
+      } else {
+        benutzt = await druckeBonierbonMitErsatz(deps.db, drucker, tischLabel, input.kellner, zeilen, optionen.storno === true)
+      }
+      const umgeleitet = benutzt.id !== drucker.id
       druckerErgebnisse.push({
         druckerId:   drucker.id,
-        name:        drucker.name,
-        ip:          drucker.ip,
+        name:        umgeleitet ? `${drucker.name} → ${benutzt.name}` : drucker.name,
+        ip:          benutzt.ip,
         positionen:  positionen.length,
         erfolgreich: true,
+        // Zugestellt, aber nicht auf dem vorgesehenen Gerät — der Hinweis erscheint in der Ergebnisliste
+        ...(umgeleitet ? { fehler: `${drucker.name} nicht erreichbar — Bon wurde an ${benutzt.name} umgeleitet` } : {}),
         istBackup,
       })
     } catch (err) {
@@ -312,7 +340,8 @@ export async function bonierBestellung(
   //     SQL GREATEST(0, …) verhindert negative Bestände.
   //     ohneLagerabzug: Tisch-Bonierung (Parken/Sofort-Kassieren) — der Lagerstand
   //     läuft dort allein über aktualisiereStockDeltas, hier NICHT abziehen.
-  const zuDekrementieren = (optionen.ohneLagerabzug ? [] : input.positionen)
+  //     Wiederholung ("Nochmal senden"): der Lagerstand wurde beim ersten Mal schon abgezogen.
+  const zuDekrementieren = (optionen.ohneLagerabzug || wiederholung ? [] : input.positionen)
     .map(p => ({ a: artikelById.get(p.artikelId)!, menge: p.menge }))
     .filter(({ a }) => a.lagerstandAktiv && a.lagerstandMenge !== null)
     // SB-Bestellung: der RKSV-Beleg (bereits erstellt) dekrementiert Artikel OHNE
@@ -328,7 +357,7 @@ export async function bonierBestellung(
   // Bestandteil-Abbuchung (Rezepte): gleiche Gates wie der Artikel-Abzug, aber
   // unabhängig vom artikel-eigenen Lagerstand — zusammengesetzte Artikel führen
   // selbst keinen Lagerstand, ihre Verfügbarkeit ergibt sich aus den Bestandteilen.
-  const bestandteilPositionen = (optionen.ohneLagerabzug ? [] : input.positionen)
+  const bestandteilPositionen = (optionen.ohneLagerabzug || wiederholung ? [] : input.positionen)
     .filter(p => {
       if (!optionen.sb) return true
       const a = artikelById.get(p.artikelId)!
@@ -380,7 +409,8 @@ export async function bonierBestellung(
 
   // 11a. KDS-Bons in DB schreiben (Browser-Display) — parallel, Fehler nicht fatal.
   //      SB-Bestellungen erzeugen die Browser-Bons immer (Grundlage für Badge + Auto-„bereit").
-  if ((kasse.kdsAktiv || optionen.sb) && proStation.size > 0) {
+  //      Wiederholung: der Browser-KDS-Bon liegt schon in der DB — kein zweiter Bon am Display.
+  if ((kasse.kdsAktiv || optionen.sb) && proStation.size > 0 && !wiederholung) {
     const schreibPromises = [...proStation.entries()].map(([station, positionen]) =>
       kdsBonErstellen(deps.db, {
         mandantId:  kasse.mandantId,
@@ -405,16 +435,18 @@ export async function bonierBestellung(
     await Promise.all(schreibPromises)
   }
 
-  emitKasseEvent(kasse.mandantId, {
-    typ:       'bonierbon',
-    bonNummer,
-    tisch:     tischLabel,
-    kellner:   input.kellner,
-    stationen: stationenErgebnisse,
-  })
+  if (!wiederholung) {
+    emitKasseEvent(kasse.mandantId, {
+      typ:       'bonierbon',
+      bonNummer,
+      tisch:     tischLabel,
+      kellner:   input.kellner,
+      stationen: stationenErgebnisse,
+    })
+  }
 
-  // Verlauf-Eintrag wenn Bonierung einem Tab zugeordnet ist
-  if (input.tabId) {
+  // Verlauf-Eintrag wenn Bonierung einem Tab zugeordnet ist (bei einer Wiederholung nicht noch einmal)
+  if (input.tabId && !wiederholung) {
     const positionen = input.positionen.map(p => ({
       bezeichnung: artikelById.get(p.artikelId)?.bezeichnung ?? p.artikelId,
       menge:       p.menge,
@@ -426,5 +458,13 @@ export async function bonierBestellung(
     }, deps.db)
   }
 
+  // Stand je Ziel festhalten: ein weiteres "Nochmal senden" bedient nur noch, was weiter fehlt
+  if (bestellId) await speichereErgebnis(deps.db, bestellId, ergebnis)
+
   return ergebnis
+  } catch (err) {
+    // Erste Bonierung gescheitert (z. B. "nichts zu bonieren"): ID freigeben, der nächste Versuch startet frisch
+    if (anspruch && bestellId) await gibFrei(deps.db, bestellId).catch(() => undefined)
+    throw err
+  }
 }

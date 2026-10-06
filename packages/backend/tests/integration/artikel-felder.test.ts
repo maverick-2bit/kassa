@@ -43,6 +43,7 @@ interface ArtikelRow {
   bezeichnung: string
   preisBruttoCent: number
   mwstSatz: string
+  allergene?: string | null
   station: string | null
   farbe: string | null
   kategorieId: string | null
@@ -114,6 +115,7 @@ describe('Artikel anlegen und bearbeiten: alle Formularfelder werden gespeichert
     bezeichnung:            'Alles geändert',
     preisBruttoCent:        420,
     mwstSatz:               'ermaessigt1',
+    allergene:              'A,C,G',
     station:                'schank',
     farbe:                  '#336699',
     kategorieId,
@@ -169,6 +171,35 @@ describe('Artikel anlegen und bearbeiten: alle Formularfelder werden gespeichert
     await idb?.zerstoeren()
   })
 
+  it('KDS zurücksetzen: eigene Station wird auf Automatisch (null) gestellt, nur eigener Mandant, Zahl der Geänderten', async () => {
+    const a1 = await legeArtikelAn('KDS Eigen 1')
+    const a2 = await legeArtikelAn('KDS Eigen 2')
+    const a3 = await legeArtikelAn('KDS Automatisch')
+    expect((await put(a1, { station: 'schank' })).statusCode).toBe(200)
+    expect((await put(a2, { station: 'kueche' })).statusCode).toBe(200)
+
+    // Fremder Mandant: derselbe Aufruf darf Artikel von A nicht anfassen
+    const fremd = await srv.fastify.inject({
+      method: 'POST', url: '/api/artikel/kds-zuruecksetzen', headers: authB(), payload: { artikelIds: [a1, a2] },
+    })
+    expect(fremd.statusCode).toBe(200)
+    expect(fremd.json().zurueckgesetzt).toBe(0)
+    expect((await artikel(a1)).station).toBe('schank')
+
+    // Eigener Mandant: a1 + a2 haben eine Station (2 Änderungen), a3 nicht (zählt nicht mit)
+    const res = await srv.fastify.inject({
+      method: 'POST', url: '/api/artikel/kds-zuruecksetzen', headers: authA(), payload: { artikelIds: [a1, a2, a3] },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().zurueckgesetzt).toBe(2)
+    for (const id of [a1, a2, a3]) expect((await artikel(id)).station).toBeNull()
+
+    // Leere Liste / Unsinn → 400
+    expect((await srv.fastify.inject({
+      method: 'POST', url: '/api/artikel/kds-zuruecksetzen', headers: authA(), payload: { artikelIds: [] },
+    })).statusCode).toBe(400)
+  })
+
   it('Anlegen: Lieferant, Mindestbestand, Farbe, Bonierbon-Option, Seriennummern und Rezept werden gespeichert', async () => {
     const res = await srv.fastify.inject({
       method: 'POST', url: '/api/artikel', headers: authA(),
@@ -189,6 +220,26 @@ describe('Artikel anlegen und bearbeiten: alle Formularfelder werden gespeichert
       })
       expect(rezept(a)).toEqual([{ bestandteilArtikelId: rohstoffA1, menge: 2 }])
     }
+  })
+
+  it('Allergene: Eingabe wird normalisiert (A,C,G), mit null geleert, unbekannte Codes werden abgelehnt', async () => {
+    const id = await legeArtikelAn('Allergen-Artikel', { allergene: 'g, a;c  A' })
+    expect((await artikel(id)).allergene).toBe('A,C,G')
+
+    expect((await put(id, { allergene: 'c' })).statusCode).toBe(200)
+    expect((await artikel(id)).allergene).toBe('C')
+
+    // nicht mitgeschickt → unverändert
+    expect((await put(id, { bezeichnung: 'Allergen-Artikel 2' })).statusCode).toBe(200)
+    expect((await artikel(id)).allergene).toBe('C')
+
+    // Unbekannter Buchstabe → 400, Wert bleibt
+    expect((await put(id, { allergene: 'A, X' })).statusCode).toBe(400)
+    expect((await artikel(id)).allergene).toBe('C')
+
+    // leer → geleert
+    expect((await put(id, { allergene: '' })).statusCode).toBe(200)
+    expect((await artikel(id)).allergene).toBeNull()
   })
 
   it('Bearbeiten: JEDES Feld des Update-Schemas wird geschrieben und wieder geliefert (Wächter gegen nicht verdrahtete Felder)', async () => {

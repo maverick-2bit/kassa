@@ -1,6 +1,24 @@
 import { z } from 'zod'
 import { StationSchema } from './station.js'
 import { KategorieFarbeSchema } from './kategorie.js'
+import { parseAllergene } from '../allergene.js'
+
+/**
+ * Allergen-Eingabe ("a, c g") → normalisiert "A,C,G" (sortiert, ohne Doppelte);
+ * leer → null; unbekannte Buchstaben → Validierungsfehler. undefined = unverändert.
+ */
+export const AllergeneEingabeSchema = z.string().max(80).nullable().optional().transform((v, ctx) => {
+  if (v === undefined) return undefined
+  const r = parseAllergene(v)
+  if (!r.ok) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `Unbekannte Allergen-Codes: ${r.ungueltig.join(', ')} (erlaubt: A–H, L–P, R)`,
+    })
+    return z.NEVER
+  }
+  return r.wert
+})
 
 /** Österreichische MwSt-Sätze gemäß RKSV */
 export const MwStSatzSchema = z.enum(['normal', 'ermaessigt1', 'ermaessigt2', 'null', 'besonders'])
@@ -43,6 +61,8 @@ export const ArtikelSchema = z.object({
   preisBruttoCent:      z.number().int(),
   mwstSatz:             MwStSatzSchema,
   artikelnummer:        z.string().nullable(),
+  /** Allergen-Buchstaben, kommagetrennt und sortiert ("A,C,G"); null = keine Angabe */
+  allergene:            z.string().nullable().optional(),
   station:              StationSchema.nullable(),
   /** Eigene Kachel-Farbe; null = Farbe der Warengruppe (Muster wie station) */
   farbe:                KategorieFarbeSchema.nullable(),
@@ -84,6 +104,7 @@ export const ArtikelInputSchema = z.object({
   preisBruttoCent: z.number().int(),
   mwstSatz:        MwStSatzSchema,
   // artikelnummer wird serverseitig automatisch generiert – nie vom Client gesetzt
+  allergene:       AllergeneEingabeSchema,
   station:         StationSchema.optional().nullable(),
   farbe:           KategorieFarbeSchema.optional().nullable(),
   kategorieId:     z.string().uuid().optional().nullable(),
@@ -107,6 +128,7 @@ export const ArtikelUpdateSchema = z.object({
   bezeichnung:          z.string().trim().min(1).max(200).optional(),
   preisBruttoCent:      z.number().int().optional(),
   mwstSatz:             MwStSatzSchema.optional(),
+  allergene:            AllergeneEingabeSchema,
   station:              StationSchema.optional().nullable(),
   farbe:                KategorieFarbeSchema.optional().nullable(),
   kategorieId:          z.string().uuid().optional().nullable(),

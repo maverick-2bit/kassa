@@ -38,6 +38,8 @@ export function korrekturbonFehler(antwort: TabPositionenAntwort, tabId?: string
       positionen: antwort.stornoBon.positionen,
       ohneLagerabzug: true,
       storno:     true,   // Korrekturbon, kein Bestellbon
+      // Dieselbe Bestell-ID wie beim ersten Versuch: Stationen, die den Bon schon haben, bekommen ihn nicht noch einmal
+      ...(antwort.stornoBon.bestellId ? { bestellId: antwort.stornoBon.bestellId } : {}),
     },
   }
 }

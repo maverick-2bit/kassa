@@ -489,6 +489,12 @@ export const authApi = {
 // ---------------------------------------------------------------------------
 
 export const artikelApi = {
+  /**
+   * Standard: nur aktive Artikel. `nurAktive=false` liefert auch deaktivierte —
+   * nur für die Stammdatenpflege (Artikelverwaltung, Import-Duplikatprüfung).
+   * Query-Keys getrennt halten: ['artikel', mandantId, true] = nur aktive,
+   * ['artikel', mandantId, false] = alle.
+   */
   list:   (mandantId: string, nurAktive = true) =>
     request<Artikel[]>('GET', `/api/artikel?mandantId=${mandantId}&nurAktive=${nurAktive}`),
   create: (input: ArtikelInput) => request<Artikel>('POST', '/api/artikel', input),
@@ -504,6 +510,9 @@ export const artikelApi = {
     request<void>('PATCH', '/api/artikel/favoriten-reihenfolge', { eintraege }),
   lagerAktivieren: (kategorieId: string | null) =>
     request<{ aktiviert: number }>('POST', '/api/artikel/lager-aktivieren', { kategorieId }),
+  /** Eigene KDS-Station der Artikel auf "Automatisch" (= Warengruppe) zurücksetzen */
+  kdsZuruecksetzen: (artikelIds: string[]) =>
+    request<{ zurueckgesetzt: number }>('POST', '/api/artikel/kds-zuruecksetzen', { artikelIds }),
   /** Layout-Import (nur Admin): dryRun=true liefert nur den Bericht */
   layoutImport: (layout: unknown, opts: { dryRun: boolean; fehlendeAnlegen: boolean; spaltenSetzen: boolean; katalogLoeschen: boolean }) =>
     request<LayoutBericht>(
@@ -555,7 +564,15 @@ export const sbBestellungApi = {
 }
 
 export const kategorieApi = {
-  list:       (nurAktive = false) =>
+  /**
+   * Standard: nur aktive Warengruppen (wie artikelApi.list und die Kellner-App).
+   * `nurAktive=false` liefert auch deaktivierte — nur für die Stammdatenpflege und
+   * zum Nachschlagen von Namen. Query-Keys getrennt halten: ['kategorien'] = nur
+   * aktive (Kasse, Tisch, Auswahlfelder, Konfiguration), ['kategorien', 'alle'] =
+   * inkl. deaktivierter. Teilen sich beide einen Key, zeigt z. B. die Kasse nach
+   * einem Besuch der Artikelverwaltung deaktivierte Gruppen aus dem Cache.
+   */
+  list:       (nurAktive = true) =>
     request<Kategorie[]>('GET', `/api/kategorien?nurAktive=${nurAktive}`),
   create:     (input: KategorieInput) =>
     request<Kategorie>('POST', '/api/kategorien', input),
@@ -585,6 +602,19 @@ export const lieferantApi = {
 // ---------------------------------------------------------------------------
 // Bonierdrucker
 // ---------------------------------------------------------------------------
+
+/** Papierdruck der KDS-Bons je Station: welcher Bonierdrucker druckt (ohne Eintrag: alle aktiven wie früher) */
+export const kdsDruckerApi = {
+  list: () =>
+    request<{ eintraege: { station: Station; bonierdruckerId: string }[] }>('GET', '/api/kds/station-drucker'),
+  setzen: (station: Station, bonierdruckerId: string | null) =>
+    request<void>('PUT', '/api/kds/station-drucker', { station, bonierdruckerId }),
+  /** Fester Fallback-Drucker: übernimmt, wenn ein Bonierdruck scheitert */
+  fallback: () =>
+    request<{ bonierdruckerId: string | null }>('GET', '/api/kds/fallback-drucker'),
+  fallbackSetzen: (bonierdruckerId: string | null) =>
+    request<void>('PUT', '/api/kds/fallback-drucker', { bonierdruckerId }),
+}
 
 export const bonierdruckerApi = {
   list:   () =>
@@ -632,8 +662,9 @@ export const posConfigApi = {
   /** Favoriten je Kasse in fester Reihenfolge; artikelId null = Platzhalter. Leer = globale istFavorit-Liste gilt. */
   favoriten: (kasseId: string) =>
     request<{ eintraege: KasseFavoritEintrag[] }>('GET', `/api/kassen/${kasseId}/favoriten`),
-  favoritenSpeichern: (kasseId: string, eintraege: KasseFavoritEintrag[]) =>
-    request<void>('PUT', `/api/kassen/${kasseId}/favoriten`, { eintraege }),
+  /** uebernehmenFuer: dieselbe Liste zusätzlich bei diesen Kassen speichern (ersetzt dort deren Favoriten) */
+  favoritenSpeichern: (kasseId: string, eintraege: KasseFavoritEintrag[], uebernehmenFuer?: string[]) =>
+    request<void>('PUT', `/api/kassen/${kasseId}/favoriten`, { eintraege, ...(uebernehmenFuer && uebernehmenFuer.length > 0 ? { uebernehmenFuer } : {}) }),
 }
 
 // ---------------------------------------------------------------------------
@@ -801,6 +832,9 @@ export interface SeeWiederherstellung {
 }
 
 export const berichtApi = {
+  /** Berichts-Tabelle (erste Zeile = Überschriften) auf dem Bondrucker der Kasse ausgeben */
+  drucken: (input: { kasseId: string; titel: string; zeitraum?: string; zeilen: string[][] }): Promise<{ erfolgreich: boolean }> =>
+    request<{ erfolgreich: boolean }>('POST', '/api/berichte/drucken', input),
   umsatz: (filter: Omit<BerichtFilter, 'kasseIds'> & { kasseIds?: string[] }): Promise<BerichtResponse> => {
     const p = new URLSearchParams()
     p.set('von', filter.von)
@@ -1246,6 +1280,8 @@ export interface TabPositionenAntwort extends TischTabResponse {
   stornoBon?: {
     fehler:     BonierZielFehler[]
     positionen: Array<{ artikelId: string; menge: number }>
+    /** Bestell-ID des Korrekturbons — beim Nachsenden wieder mitschicken (kein zweiter Bon an Stationen, die ihn schon haben) */
+    bestellId?: string
   }
 }
 

@@ -252,3 +252,36 @@ export function kategorieSchluessel(menge: readonly KategorieBenannt[], id: stri
   if (name === undefined) return ''
   return kategorieAnzeigeName(menge, id) === name ? name : kategoriePfad(menge, id, '/')
 }
+
+/** Bonier-Routing einer Warengruppe: KDS-Station und/oder Standard-Bonierdrucker. */
+export interface KategorieRouting {
+  station:         string | null
+  bonierdruckerId: string | null
+}
+
+/**
+ * Wirksames Routing je Warengruppe: Station und Bonierdrucker werden von der
+ * Elterngruppe geerbt, solange die Untergruppe selbst keine eigene Angabe hat
+ * (die nächstgelegene Gruppe nach oben gewinnt). Beides wird getrennt geerbt —
+ * eine Untergruppe mit eigenem Drucker erbt trotzdem die Station der Hauptgruppe.
+ * Zyklen und fehlende Eltern beenden die Kette (kein Absturz).
+ */
+export function wirksamesKategorieRouting(
+  menge: readonly (KategorieKnoten & { station: string | null; bonierdruckerId: string | null })[],
+): Map<string, KategorieRouting> {
+  const nachId = new Map(menge.map(k => [k.id, k] as const))
+  const ergebnis = new Map<string, KategorieRouting>()
+  for (const k of menge) {
+    let station: string | null = null
+    let bonierdruckerId: string | null = null
+    const besucht = new Set<string>()
+    for (let cur: typeof k | undefined = k; cur && !besucht.has(cur.id); cur = cur.parentId ? nachId.get(cur.parentId) : undefined) {
+      besucht.add(cur.id)
+      station         ??= cur.station
+      bonierdruckerId ??= cur.bonierdruckerId
+      if (station !== null && bonierdruckerId !== null) break
+    }
+    ergebnis.set(k.id, { station, bonierdruckerId })
+  }
+  return ergebnis
+}

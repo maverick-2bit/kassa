@@ -8,8 +8,8 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
-import type { Bonierdrucker, BonierdruckerInput } from '@kassa/shared'
-import { bonierdruckerApi } from '../lib/api'
+import { STATION_LABELS, type Bonierdrucker, type BonierdruckerInput } from '@kassa/shared'
+import { bonierdruckerApi, kdsDruckerApi } from '../lib/api'
 import { Button } from './ui/Button'
 import { Modal } from './ui/Modal'
 import { Field } from './ui/Field'
@@ -89,6 +89,11 @@ export function BonierdruckerBibliothek() {
   const [testStatus, setTestStatus] = useState<Record<string, 'idle' | 'loading' | 'ok' | 'err'>>({})
 
   const query = useQuery({ queryKey: ['bonierdrucker'], queryFn: bonierdruckerApi.list })
+  // KDS-Zuständigkeit je Drucker (Station / Fallback) — als Kennzeichen in der Liste; bearbeitet wird unten
+  const stationenQuery = useQuery({ queryKey: ['kds-station-drucker'],  queryFn: () => kdsDruckerApi.list() })
+  const fallbackQuery  = useQuery({ queryKey: ['kds-fallback-drucker'], queryFn: () => kdsDruckerApi.fallback() })
+  const stationenVon   = (druckerId: string) =>
+    (stationenQuery.data?.eintraege ?? []).filter(e => e.bonierdruckerId === druckerId).map(e => STATION_LABELS[e.station])
   const invalidate = () => qc.invalidateQueries({ queryKey: ['bonierdrucker'] })
 
   const create = useMutation({
@@ -150,6 +155,20 @@ export function BonierdruckerBibliothek() {
                     {!d.aktiv && <span className="ml-2 text-xs text-ink-subtle">(inaktiv)</span>}
                   </p>
                   <p className="text-xs text-ink-muted font-mono">{d.ip}:{d.port}</p>
+                  {(stationenVon(d.id).length > 0 || fallbackQuery.data?.bonierdruckerId === d.id) && (
+                    <p className="mt-1 flex flex-wrap gap-1">
+                      {stationenVon(d.id).map(name => (
+                        <span key={name} className="inline-flex items-center rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-700">
+                          KDS-Druck: {name}
+                        </span>
+                      ))}
+                      {fallbackQuery.data?.bonierdruckerId === d.id && (
+                        <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+                          Fallback
+                        </span>
+                      )}
+                    </p>
+                  )}
                 </div>
                 <DruckerStatusLed druckerId={d.id} fetchStatus={bonierdruckerApi.status} />
                 <div className="flex items-center gap-1.5 shrink-0">

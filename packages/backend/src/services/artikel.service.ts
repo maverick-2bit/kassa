@@ -69,6 +69,7 @@ function toDto(
     preisBruttoCent:      row.preisBruttoCent,
     mwstSatz:             row.mwstSatz as Artikel['mwstSatz'],
     artikelnummer:        row.artikelnummer,
+    allergene:            row.allergene,
     station:              row.station as Artikel['station'],
     farbe:                row.farbe as Artikel['farbe'],
     kategorieId:          row.kategorieId,
@@ -115,6 +116,7 @@ export async function erstelleArtikel(db: Db, input: ArtikelInput): Promise<Arti
       preisBruttoCent: input.preisBruttoCent,
       mwstSatz:        input.mwstSatz,
       artikelnummer,
+      allergene:       input.allergene ?? null,
       station:         input.station ?? null,
       farbe:           input.farbe ?? null,
       kategorieId:     input.kategorieId ?? null,
@@ -178,6 +180,7 @@ export async function aktualisiereArtikel(
   if (update.preisBruttoCent !== undefined) values.preisBruttoCent = update.preisBruttoCent
   if (update.mwstSatz        !== undefined) values.mwstSatz        = update.mwstSatz
   // artikelnummer ist schreibgeschützt (immer auto-generiert)
+  if (update.allergene       !== undefined) values.allergene       = update.allergene
   if (update.station         !== undefined) values.station         = update.station
   if (update.farbe           !== undefined) values.farbe           = update.farbe
   if (update.kategorieId     !== undefined) values.kategorieId     = update.kategorieId

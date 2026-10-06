@@ -3,7 +3,7 @@
  *   POST   /api/artikel              Anlegen
  *   POST   /api/artikel/bulk         Bulk-Import (Array von Artikel-Inputs)
  *   POST   /api/artikel/layout-import  Layout-Import (Gruppenbaum, Raster, Farben, Favoriten; nur Admin)
- *   GET    /api/artikel              Auflisten (mandantId aus JWT)
+ *   GET    /api/artikel              Auflisten (mandantId aus JWT; ?nurAktive=true|false, Standard true)
  *   PUT    /api/artikel/:id          Aktualisieren
  *   DELETE /api/artikel/:id          Deaktivieren (soft delete)
  */
@@ -11,7 +11,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { ArtikelInputSchema, ArtikelUpdateSchema, LayoutImportSchema } from '@kassa/shared'
 import { z } from 'zod'
-import { and, eq, isNotNull } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull } from 'drizzle-orm'
 import type { Db } from '../db/client.js'
 import { artikel } from '../db/schema.js'
 import { fachfehlerStatus } from '../fehler-handler.js'
@@ -22,13 +22,14 @@ import {
   deaktiviereArtikel,
 } from '../services/artikel.service.js'
 import { wendeLayoutAn } from '../services/layout-import.service.js'
+import { queryBool } from './query-bool.js'
 
 export interface ArtikelRouteOptions {
   db: Db
 }
 
 const ListQuerySchema = z.object({
-  nurAktive: z.coerce.boolean().optional().default(true),
+  nurAktive: queryBool(true),
 })
 
 const IdParamSchema = z.object({ id: z.string().uuid() })
@@ -46,15 +47,13 @@ async function gehortArtikelZuMandant(db: Db, artikelId: string, mandantId: stri
 // mandantId fehlt absichtlich — kommt aus dem JWT und wird serverseitig gesetzt
 const BulkImportSchema = z.array(z.record(z.unknown())).min(1).max(500)
 
-// Query-Booleans NIE z.coerce.boolean (aus "false" würde true)
-const BoolQuery = (standard: 'true' | 'false') => z.enum(['true', 'false']).default(standard).transform(v => v === 'true')
 const LayoutImportQuerySchema = z.object({
   /** Standard true: ohne ausdrückliches dryRun=false wird nichts geschrieben */
-  dryRun:          BoolQuery('true'),
-  fehlendeAnlegen: BoolQuery('true'),
-  spaltenSetzen:   BoolQuery('true'),
+  dryRun:          queryBool(true),
+  fehlendeAnlegen: queryBool(true),
+  spaltenSetzen:   queryBool(true),
   /** Sauberer Neustart: Altbestand vorher LÖSCHEN (Standard aus) */
-  katalogLoeschen:   BoolQuery('false'),
+  katalogLoeschen: queryBool(false),
 })
 
 export const artikelRoute: FastifyPluginAsync<ArtikelRouteOptions> = async (fastify, opts) => {
@@ -178,6 +177,31 @@ export const artikelRoute: FastifyPluginAsync<ArtikelRouteOptions> = async (fast
       .returning({ id: artikel.id })
 
     return reply.send({ aktiviert: rows.length })
+  })
+
+  /**
+   * POST /artikel/kds-zuruecksetzen — setzt die eigene KDS-Station der genannten Artikel
+   * auf "Automatisch" (null): sie folgen danach der Station ihrer Warengruppe bzw. deren
+   * Elterngruppe, auch wenn vorher eine abweichende Station eingestellt war.
+   * Nur Artikel des eigenen Mandanten; geliefert wird die Zahl der tatsächlich geänderten.
+   */
+  fastify.post('/artikel/kds-zuruecksetzen', { onRequest: [fastify.authenticate] }, async (request, reply) => {
+    const parsed = z.object({
+      artikelIds: z.array(z.string().uuid()).min(1).max(10000),
+    }).safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
+
+    const rows = await opts.db
+      .update(artikel)
+      .set({ station: null, updatedAt: new Date() })
+      .where(and(
+        eq(artikel.mandantId, request.user.mandantId),
+        inArray(artikel.id, [...new Set(parsed.data.artikelIds)]),
+        isNotNull(artikel.station),
+      ))
+      .returning({ id: artikel.id })
+
+    return reply.send({ zurueckgesetzt: rows.length })
   })
 
   fastify.delete('/artikel/:id', { onRequest: [fastify.authenticate] }, async (request, reply) => {

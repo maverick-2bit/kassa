@@ -9,6 +9,7 @@ import type { Db } from '../../db/client.js'
 import { kdsBons, bonierdrucker, type KdsPosition } from '../../db/schema.js'
 import { emitKdsEvent } from '../../sse/kds-event-bus.js'
 import { druckeBonierbon } from '../bonierdrucker.service.js'
+import { ladeKdsDrucker } from './kds-druck.service.js'
 import type { Station } from '@kassa/shared'
 
 export interface NeueBonEingabe {
@@ -310,14 +311,8 @@ export async function kdsBonNachdrucken(
 
   if (!bon) return { gedruckt: 0, fehler: 0 }
 
-  const drucker = await db
-    .select()
-    .from(bonierdrucker)
-    .where(and(
-      eq(bonierdrucker.mandantId, mandantId),
-      eq(bonierdrucker.aktiv, true),
-      eq(bonierdrucker.istBackup, false),
-    ))
+  // Zuordnung der Station (KDS-Zuordnung) → nur dieser Drucker, sonst wie bisher alle aktiven
+  const drucker = await ladeKdsDrucker(db, mandantId, bon.station)
 
   const zeilen = bon.positionen.map(p => ({
     menge:       p.menge,

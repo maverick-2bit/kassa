@@ -695,6 +695,8 @@ export const artikel = pgTable('artikel', {
   preisBruttoCent:     integer('preis_brutto_cent').notNull(),
   mwstSatz:            varchar('mwst_satz', { length: 20 }).notNull(),
   artikelnummer:       varchar('artikelnummer', { length: 40 }),
+  /** Allergen-Buchstaben, kommagetrennt und sortiert ("A,C,G"); null = keine Angabe */
+  allergene:           varchar('allergene', { length: 40 }),
   /** KDS-Station für Bonierbon-Routing (null = nicht bonieren, z.B. Pfand) */
   station:             varchar('station', { length: 20 }),
   /** Eigene Kachel-Farbe; null = Farbe der Warengruppe (Muster wie station) */
@@ -1158,6 +1160,48 @@ export const kdsBons = pgTable('kds_bons', {
   mandantStationIdx: index('kds_bons_mandant_station_idx').on(t.mandantId, t.station, t.status),
   sbBestellungIdx:   index('kds_bons_sb_bestellung_idx').on(t.sbBestellungId),
 }))
+
+/**
+ * Bonierung je Bestell-ID (Idempotenz): „Nochmal senden“ mit derselben ID legt keinen zweiten
+ * KDS-Bon an, bucht den Lagerstand nicht doppelt ab und sendet nur an die Ziele, die vorher
+ * scheiterten. `ergebnis` = null solange die erste Bonierung noch läuft.
+ */
+export const bonierBestellungen = pgTable('bonier_bestellungen', {
+  bestellId: uuid('bestell_id').primaryKey(),
+  mandantId: uuid('mandant_id').notNull().references(() => mandanten.id, { onDelete: 'cascade' }),
+  kasseId:   uuid('kasse_id').notNull().references(() => kassen.id, { onDelete: 'cascade' }),
+  bonNummer: varchar('bon_nummer', { length: 20 }).notNull(),
+  /** Letzter Stand je Ziel (BonierungErgebnis); null = erste Bonierung läuft noch */
+  ergebnis:  jsonb('ergebnis'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  createdIdx: index('bonier_bestellungen_created_idx').on(t.createdAt),
+}))
+
+/**
+ * Papierdruck der KDS-Bons (Erledigt-Bon, Teilbon, Nachdrucken) je Station: dieser
+ * Bonierdrucker druckt für diese Station. Ohne Eintrag gilt wie früher "alle aktiven
+ * Nicht-Backup-Bonierdrucker".
+ */
+export const kdsStationDrucker = pgTable('kds_station_drucker', {
+  mandantId:       uuid('mandant_id').notNull().references(() => mandanten.id, { onDelete: 'cascade' }),
+  station:         varchar('station', { length: 20 }).notNull(),
+  bonierdruckerId: uuid('bonierdrucker_id').notNull().references(() => bonierdrucker.id, { onDelete: 'cascade' }),
+  updatedAt:       timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  pk: primaryKey({ columns: [t.mandantId, t.station] }),
+}))
+
+/**
+ * Fester Fallback-Bonierdrucker je Mandant: scheitert ein Bonierdruck auf dem vorgesehenen
+ * Drucker (und auf dessen eigenem Fallback), geht der Bon an diesen Drucker — damit kein Bon verloren geht.
+ */
+export const bonierFallbackDrucker = pgTable('bonier_fallback_drucker', {
+  mandantId:       uuid('mandant_id').primaryKey().references(() => mandanten.id, { onDelete: 'cascade' }),
+  bonierdruckerId: uuid('bonierdrucker_id').notNull().references(() => bonierdrucker.id, { onDelete: 'cascade' }),
+  updatedAt:       timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
 
 export interface KdsPosition {
   id:             string

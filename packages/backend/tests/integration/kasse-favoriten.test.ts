@@ -110,6 +110,47 @@ describe('Favoriten je Kasse (Integration, echtes PostgreSQL)', () => {
     expect(res.eintraege).toEqual([{ artikelId: spritzerId }])
   })
 
+  it('Übernehmen: dieselbe Liste landet atomar auch bei den gewählten Kassen (ersetzt dort), unbekannte Ziel-Kasse → 404 ohne Änderung', async () => {
+    const zweite = await srv.fastify.inject({
+      method: 'POST', url: '/api/kassen', headers: auth(),
+      payload: { kassenId: 'KF-002', bezeichnung: 'Zweite Kasse', umgebung: 'test' },
+    })
+    expect(zweite.statusCode).toBe(201)
+    const kasse2 = zweite.json().kasseId as string
+    const lies = async (id: string) => (await srv.fastify.inject({
+      method: 'GET', url: `/api/kassen/${id}/favoriten`, headers: auth(),
+    })).json().eintraege
+
+    // Kasse 2 hat zuerst eine eigene Liste — die wird beim Übernehmen ersetzt
+    await srv.fastify.inject({
+      method: 'PUT', url: `/api/kassen/${kasse2}/favoriten`, headers: auth(),
+      payload: { eintraege: [{ artikelId: spritzerId }, { artikelId: spritzerId }] },
+    })
+    // sich selbst in der Zielliste: wird ignoriert
+    const put = await srv.fastify.inject({
+      method: 'PUT', url: `/api/kassen/${kasseId}/favoriten`, headers: auth(),
+      payload: { eintraege: [{ artikelId: colaId }, { artikelId: null }, { artikelId: spritzerId }], uebernehmenFuer: [kasse2, kasseId] },
+    })
+    expect(put.statusCode).toBe(204)
+    const soll = [{ artikelId: colaId }, { artikelId: null }, { artikelId: spritzerId }]
+    expect(await lies(kasseId)).toEqual(soll)
+    expect(await lies(kasse2)).toEqual(soll)
+
+    // Unbekannte Ziel-Kasse: 404 und NICHTS wird geändert (auch nicht die eigene Kasse)
+    const fehl = await srv.fastify.inject({
+      method: 'PUT', url: `/api/kassen/${kasseId}/favoriten`, headers: auth(),
+      payload: { eintraege: [{ artikelId: colaId }], uebernehmenFuer: ['00000000-0000-4000-8000-000000000002'] },
+    })
+    expect(fehl.statusCode).toBe(404)
+    expect(await lies(kasseId)).toEqual(soll)
+    expect(await lies(kasse2)).toEqual(soll)
+
+    // Ausgangsstand für die folgenden Tests wiederherstellen
+    await srv.fastify.inject({
+      method: 'PUT', url: `/api/kassen/${kasseId}/favoriten`, headers: auth(),
+      payload: { eintraege: [{ artikelId: spritzerId }] },
+    })
+  })
   it('lehnt fremde/unbekannte Artikel-IDs ab (400)', async () => {
     const res = await srv.fastify.inject({
       method: 'PUT', url: `/api/kassen/${kasseId}/favoriten`, headers: auth(),

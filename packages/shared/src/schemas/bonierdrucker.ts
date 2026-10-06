@@ -138,6 +138,8 @@ export type KasseFavoritEintrag = z.infer<typeof KasseFavoritEintragSchema>
 
 export const KasseFavoritenUpdateSchema = z.object({
   eintraege: z.array(KasseFavoritEintragSchema).max(200),
+  /** Dieselbe Liste zusätzlich bei diesen Kassen übernehmen (ersetzt dort deren Favoriten) — atomar mit dem Speichern */
+  uebernehmenFuer: z.array(z.string().uuid()).max(100).optional(),
 })
 export type KasseFavoritenUpdate = z.infer<typeof KasseFavoritenUpdateSchema>
 

@@ -632,10 +632,12 @@ function SortableKachel({ id, children }: { id: string; children: React.ReactNod
   )
 }
 
-function TabFavoriten({ alleArtikel, kategorien, kasseId }: {
+function TabFavoriten({ alleArtikel, kategorien, kasseId, weitereKassen }: {
   alleArtikel: Artikel[]
   kategorien:  Kategorie[]
   kasseId:     string
+  /** Die anderen aktiven Kassen — Ziele für „Auch für andere Kassen übernehmen" */
+  weitereKassen: { id: string; name: string }[]
 }) {
   const qc = useQueryClient()
   const sensors = useSensors(
@@ -698,12 +700,19 @@ function TabFavoriten({ alleArtikel, kategorien, kasseId }: {
 
   const preis = (c: number) => `€ ${(c / 100).toFixed(2).replace('.', ',')}`
 
+  // Zusätzlich bei diesen Kassen übernehmen (ersetzt dort deren Favoriten) — gilt nur für diesen Speichervorgang
+  const [zielKassen, setZielKassen] = useState<string[]>([])
+  const zielToggle = (id: string) =>
+    setZielKassen(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+
   const speichern = useMutation({
     mutationFn: (eintraege: { artikelId: string | null }[]) =>
-      posConfigApi.favoritenSpeichern(kasseId, eintraege),
+      posConfigApi.favoritenSpeichern(kasseId, eintraege, zielKassen),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['kasse-favoriten', kasseId] })
+      for (const id of zielKassen) qc.invalidateQueries({ queryKey: ['kasse-favoriten', id] })
       setDirty(false)
+      setZielKassen([])
     },
   })
 
@@ -835,14 +844,50 @@ function TabFavoriten({ alleArtikel, kategorien, kasseId }: {
           <h3 className="text-sm font-semibold text-ink">
             Favoriten dieser Kasse <span className="font-normal text-ink-subtle">({liste.filter(i => i.artikel !== null).length})</span>
           </h3>
-          {dirty && (
+          {(dirty || zielKassen.length > 0) && (
             <Button
               onClick={() => speichern.mutate(liste.map(i => ({ artikelId: i.artikel?.id ?? null })))}
               loading={speichern.isPending}>
-              Favoriten speichern
+              {dirty ? 'Favoriten speichern' : 'Auf gewählte Kassen übernehmen'}
+              {dirty && zielKassen.length > 0 ? `und bei ${zielKassen.length} weiteren übernehmen` : ''}
             </Button>
           )}
         </div>
+
+        {/* Dieselbe Liste auch für andere Kassen übernehmen */}
+        {weitereKassen.length > 0 && (
+          <div className="rounded-lg border border-line bg-panel-2/50 p-3 space-y-2">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <p className="text-sm font-medium text-ink">Auch für andere Kassen übernehmen</p>
+              <button
+                type="button"
+                onClick={() => setZielKassen(zielKassen.length === weitereKassen.length ? [] : weitereKassen.map(k => k.id))}
+                className="text-xs font-medium text-brand-600 hover:underline"
+              >
+                {zielKassen.length === weitereKassen.length ? 'Keine' : 'Alle anderen'}
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+              {weitereKassen.map(k => (
+                <label key={k.id} className="inline-flex items-center gap-2 text-sm text-ink cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={zielKassen.includes(k.id)}
+                    onChange={() => zielToggle(k.id)}
+                    className="h-4 w-4 rounded border-line-strong"
+                  />
+                  {k.name}
+                </label>
+              ))}
+            </div>
+            <p className="text-xs text-ink-subtle">
+              {zielKassen.length > 0
+                ? `Beim Speichern ersetzt diese Liste die Favoriten von: ${weitereKassen.filter(k => zielKassen.includes(k.id)).map(k => k.name).join(', ')}.`
+                : 'Nichts gewählt: nur diese Kasse wird gespeichert. Gilt nur für den nächsten Speichervorgang.'}
+              {' '}An jeder Kasse erscheinen davon nur Artikel aus Warengruppen, die dort ausgewählt sind.
+            </p>
+          </div>
+        )}
 
         {liste.length === 0 ? (
           <div className="rounded-lg border-2 border-dashed border-line p-8 text-center">
@@ -1203,14 +1248,16 @@ export function PosKonfigPage() {
   })
   const aktiveKassen = (kassenQuery.data ?? []).filter(k => k.status === 'aktiv')
 
+  // Nur aktive: Deaktiviertes erscheint an keiner Kasse — also auch nicht in Sortierung,
+  // Sichtbarkeit und Favoriten (sonst zählt es z. B. bei „alle sichtbar" mit).
   const kategorienQuery = useQuery({
     queryKey: ['kategorien'],
-    queryFn:  () => kategorieApi.list(false),
+    queryFn:  () => kategorieApi.list(true),
   })
 
   const artikelQuery = useQuery({
-    queryKey: ['artikel', identity.mandantId, false],
-    queryFn:  () => artikelApi.list(identity.mandantId, false),
+    queryKey: ['artikel', identity.mandantId, true],
+    queryFn:  () => artikelApi.list(identity.mandantId, true),
   })
 
   const tabs: { key: Tab; label: string }[] = [
@@ -1289,7 +1336,15 @@ export function PosKonfigPage() {
             <TabArtikel kategorien={kategorien} alleArtikel={alleArtikel} />
           )}
           {aktuellerTab === 'favoriten' && (
-            <TabFavoriten key={gewaehlteKasseId} alleArtikel={alleArtikel} kategorien={kategorien} kasseId={gewaehlteKasseId} />
+            <TabFavoriten
+              key={gewaehlteKasseId}
+              alleArtikel={alleArtikel}
+              kategorien={kategorien}
+              kasseId={gewaehlteKasseId}
+              weitereKassen={aktiveKassen
+                .filter(k => k.id !== gewaehlteKasseId)
+                .map(k => ({ id: k.id, name: k.bezeichnung || k.kassenId }))}
+            />
           )}
           {aktuellerTab === 'zahlungsarten' && (
             <TabZahlungsarten key={gewaehlteKasseId} kasseId={gewaehlteKasseId} />

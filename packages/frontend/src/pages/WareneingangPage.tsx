@@ -71,12 +71,15 @@ export function WareneingangPage() {
   // ---------------------------------------------------------------------------
   // Queries
   // ---------------------------------------------------------------------------
+  // Nur aktive Artikel: Wareneingang/Inventur betreffen, was noch verkauft wird
   const artikelQuery    = useQuery({
-    queryKey: ['artikel', identity.mandantId, false],
-    queryFn:  () => artikelApi.list(identity.mandantId, false),
+    queryKey: ['artikel', identity.mandantId, true],
+    queryFn:  () => artikelApi.list(identity.mandantId, true),
   })
+  // Nur zum Auflösen der Gruppennamen: auch deaktivierte, damit aktive Artikel in einer
+  // deaktivierten Gruppe ihren Namen behalten. Eigener Key — ['kategorien'] ist „nur aktive".
   const kategorienQuery = useQuery({
-    queryKey: ['kategorien'],
+    queryKey: ['kategorien', 'alle'],
     queryFn:  () => kategorieApi.list(false),
   })
   const gruppenQuery    = useQuery({

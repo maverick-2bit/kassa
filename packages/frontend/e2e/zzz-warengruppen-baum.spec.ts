@@ -88,8 +88,8 @@ test('Warengruppen-Baum: Pfadlabel, Matrix „Warengruppen-Verteilung" und POS-K
     expect(res.ok(), await res.text()).toBe(true)
     return (await res.json()) as Gruppe
   }
-  // AKTIVE Gruppen — genau die Menge, die die Oberfläche sieht (die Listen-Abfragen der Seiten liefern nur aktive Gruppen;
-  // der Query-Parameter nurAktive=false wird serverseitig per z.coerce.boolean zu true — siehe Bericht)
+  // AKTIVE Gruppen — genau die Menge, die Kasse und Konfiguration sehen (die Betriebsseiten fragen ausdrücklich
+  // nurAktive=true ab; ohne den Parameter lieferte die Route alle Gruppen, auch deaktivierte anderer Specs)
   const alleGruppen = async () => (await (await request.get('/api/kategorien?nurAktive=true', { headers: auth })).json()) as Gruppe[]
   const liste = async () =>
     ((await (await request.get(`/api/kassen/${kasseId}/pos-config`, { headers: auth })).json()) as { sichtbareKategorieIds: string[] }).sichtbareKategorieIds

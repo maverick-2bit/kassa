@@ -7,6 +7,7 @@ import { druckerApi, druckerPoolApi, kdsApi, kdsGeraetApi, seeApi, zvtApi, downl
 import type { DruckerPool, DruckerPoolInput } from '@kassa/shared'
 import { Modal } from '../components/ui/Modal'
 import { BonierdruckerBibliothek } from '../components/BonierdruckerBibliothek'
+import { KdsDruckerZuordnung } from '../components/KdsDruckerZuordnung'
 import { KassenDruckerZuordnung } from '../components/KassenDruckerZuordnung'
 import { DruckerStatusLed } from '../components/DruckerStatusLed'
 import { formatAusfallDauer } from '../components/SeeStatusBanner'
@@ -436,7 +437,8 @@ function KassenVerwaltungSektion() {
 function WarengruppenVerteilungSektion() {
   const qc = useQueryClient()
   const kassenQuery     = useQuery({ queryKey: ['kassen-liste'], queryFn: kasseApi.liste })
-  const kategorienQuery = useQuery({ queryKey: ['kategorien'],   queryFn: () => kategorieApi.list(false) })
+  // Nur aktive: eine deaktivierte Warengruppe erscheint an keiner Kasse, braucht also keine Zeile
+  const kategorienQuery = useQuery({ queryKey: ['kategorien'],   queryFn: () => kategorieApi.list(true) })
 
   const kassen     = kassenQuery.data ?? []
   const kategorien = kategorienQuery.data ?? []
@@ -2242,8 +2244,10 @@ function DruckerSektion() {
 
       {/* Bonierdrucker-Bibliothek (nur Gastro) */}
       {istGastro && (
-        <div className="border-t border-line pt-4">
+        <div className="border-t border-line pt-4 space-y-4">
           <BonierdruckerBibliothek />
+          {/* KDS-Papierdruck: welcher Drucker druckt für welche Station, plus Fallback — gleiche Einstellung wie unter KDS-Zuordnung */}
+          <KdsDruckerZuordnung />
         </div>
       )}
 
