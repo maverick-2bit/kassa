@@ -17,6 +17,7 @@ import type {
   KellnerTischwahl,
   KellnerModus,
   TischplanBereich,
+  KasseArtikelLayout,
 } from '@kassa/shared'
 import { getToken, clearAuth } from './auth'
 import { clearKasseIdentity } from './kasse'
@@ -153,6 +154,9 @@ export const kellnerKonfigApi = {
     request<KellnerKonfig>('GET', `/api/kassen/${kasseId}/pos-config`),
   favoriten: (kasseId: string) =>
     request<{ eintraege: KasseFavoritEintrag[] }>('GET', `/api/kassen/${kasseId}/favoriten`),
+  /** Eigene Artikel-Anordnung dieser Kasse je Warengruppe (leer = Standard); die Kellner-App nutzt Reihenfolge + Ausblenden */
+  artikelLayouts: (kasseId: string) =>
+    request<KasseArtikelLayout[]>('GET', `/api/kassen/${kasseId}/artikel-layouts`),
 }
 
 export const tischplanApi = {

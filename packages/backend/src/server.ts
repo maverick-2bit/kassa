@@ -33,6 +33,7 @@ import { sseRoute } from './routes/sse.route.js'
 import { bonierdruckerRoute } from './routes/bonierdrucker.route.js'
 import { druckerPoolRoute } from './routes/drucker-pool.route.js'
 import { posConfigRoute } from './routes/pos-config.route.js'
+import { kasseArtikelLayoutRoute } from './routes/kasse-artikel-layout.route.js'
 import { kundeRoute } from './routes/kunde.route.js'
 import { angebotRoute } from './routes/angebot.route.js'
 import { lieferscheinRoute } from './routes/lieferschein.route.js'
@@ -211,6 +212,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     await api.register(bonierdruckerRoute,  { db:   deps.db })
     await api.register(druckerPoolRoute,    { db:   deps.db })
     await api.register(posConfigRoute,      { db:   deps.db })
+    await api.register(kasseArtikelLayoutRoute, { db: deps.db })
     await api.register(kundeRoute,          { db:   deps.db })
     await api.register(angebotRoute,        { db:   deps.db })
     await api.register(lieferscheinRoute,    { db: deps.db, config: deps.config })

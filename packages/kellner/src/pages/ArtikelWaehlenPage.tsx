@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
-import { allergeneAnzeige, baumFlach, erweitereSichtbarkeit, farbeZuHex, kategorieAnzeigeNamen, type Artikel, type Kategorie, type ModifikatorGruppe, type ModifikatorAuswahl } from '@kassa/shared'
+import { allergeneAnzeige, ausgeblendeteArtikelIds, baumFlach, erweitereSichtbarkeit, farbeZuHex, kategorieAnzeigeNamen, kompakteArtikelListe, type Artikel, type Kategorie, type ModifikatorGruppe, type ModifikatorAuswahl } from '@kassa/shared'
 import { artikelApi, kategorieApi, modifikatorApi, tischTabApi, kellnerKonfigApi } from '../lib/api'
 import { getAuth, clearAuth, gaengeAktiv as istGaengeAktiv, gaengeAnzahl } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
@@ -92,6 +92,13 @@ export function ArtikelWaehlenPage() {
     staleTime: 30_000,
   })
 
+  // Eigene Artikel-Anordnung dieser Kasse je Warengruppe (leer = Standard)
+  const layoutsQuery = useQuery({
+    queryKey:  ['kasse-artikel-layouts', identity.kasseId],
+    queryFn:   () => kellnerKonfigApi.artikelLayouts(identity.kasseId),
+    staleTime: 30_000,
+  })
+
   // Tisch-Info für die Kopfzeile (teilt den Cache mit der Tab-Seite)
   const tabQuery = useQuery({
     queryKey:  ['tisch-tab', tabId],
@@ -109,6 +116,8 @@ export function ArtikelWaehlenPage() {
   const kategorien  = baumListe.filter(k =>
     sichtbareKatIds.length === 0 || sichtbareKatIds.includes(k.id))
   const alleArtikel = artikelQuery.data ?? []
+  // An dieser Kasse in ihrer Warengruppe ausgeblendet (Suche/Favoriten bleiben unberührt)
+  const ausgeblendet = ausgeblendeteArtikelIds(alleArtikel, layoutsQuery.data)
 
   // Nur Favoriten aus Warengruppen, die an dieser Kasse sichtbar sind
   const kategorieSichtbar = (a: Artikel) =>
@@ -130,9 +139,9 @@ export function ArtikelWaehlenPage() {
   // Start-Reiter erst wählen, wenn Konfiguration UND Artikel da sind — sonst
   // gewinnt die erste Warengruppe, weil die Favoritenliste noch leer scheint.
   // Welcher Reiter zuerst kommt, stellt die POS-Konfiguration je Kasse ein.
-  if (aktivKat === null && !konfigQuery.isLoading && !artikelQuery.isLoading && !katQuery.isLoading && !favoritenQuery.isLoading) {
+  if (aktivKat === null && !konfigQuery.isLoading && !artikelQuery.isLoading && !katQuery.isLoading && !favoritenQuery.isLoading && !layoutsQuery.isLoading) {
     const startKat = konfigQuery.data?.startKategorieId
-    const mitArtikeln = kategorien.filter(k => alleArtikel.some(a => a.kategorieId === k.id))
+    const mitArtikeln = kategorien.filter(k => alleArtikel.some(a => a.kategorieId === k.id && !ausgeblendet.has(a.id)))
     if (favoritenAktiv && (konfigQuery.data?.startFavoriten ?? true)) setAktivKat(FAVORITEN_KAT)
     else if (startKat && kategorien.some(k => k.id === startKat)) setAktivKat(startKat)
     else if (mitArtikeln.length > 0) setAktivKat(mitArtikeln[0]!.id)
@@ -142,9 +151,12 @@ export function ArtikelWaehlenPage() {
 
   const artikelInKat: (Artikel | null)[] = aktivKat === FAVORITEN_KAT
     ? favoriten
-    : alleArtikel
-        .filter(a => a.kategorieId === aktivKat)
-        .sort((a, b) => a.reihenfolge - b.reihenfolge)
+    // Eigene Anordnung dieser Kasse: deren Reihenfolge, ausgeblendete entfallen, ohne Leerfelder (die Reiter hier sind
+    // kompakte Listen, Untergruppen eigene Reiter); ohne sie wie bisher nach reihenfolge
+    : kompakteArtikelListe(
+        alleArtikel.filter(a => a.kategorieId === aktivKat),
+        layoutsQuery.data?.find(l => l.kategorieId === aktivKat)?.eintraege,
+      )
 
   function mengeImKorb(artikelId: string) {
     return korb.filter(k => k.artikel.id === artikelId).reduce((s, k) => s + k.menge, 0)
@@ -594,6 +606,7 @@ export function ArtikelWaehlenPage() {
               return (
                 <div
                   key={`platzhalter-${idx}`}
+                  data-testid="artikel-platzhalter"
                   aria-hidden
                   className="rounded-2xl border-2 border-dashed border-line bg-panel/50 min-h-[5.25rem]"
                 />
@@ -607,6 +620,7 @@ export function ArtikelWaehlenPage() {
             return (
               <button
                 key={a.id}
+                data-testid="artikel-kachel"
                 onClick={() => !ausverkauft && artikelWaehlen(a)}
                 disabled={ausverkauft}
                 style={farbeHex && !ausverkauft && menge === 0 ? { borderTopColor: farbeHex, borderTopWidth: 6 } : {}}

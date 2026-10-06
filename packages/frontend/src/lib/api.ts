@@ -35,6 +35,9 @@ import type {
   BonierdruckerUpdate,
   PosKonfig,
   KasseFavoritEintrag,
+  KasseArtikelLayout,
+  KasseArtikelLayoutEintrag,
+  StandardRasterEintrag,
   PosKonfigUpdate,
   ReihenfolgeUpdate,
   FavoritenReihenfolgeUpdate,
@@ -510,6 +513,9 @@ export const artikelApi = {
     request<void>('PATCH', '/api/artikel/favoriten-reihenfolge', { eintraege }),
   lagerAktivieren: (kategorieId: string | null) =>
     request<{ aktiviert: number }>('POST', '/api/artikel/lager-aktivieren', { kategorieId }),
+  /** Standard-Raster einer Warengruppe (nur Admin): raster_position + reihenfolge = Slot, null löscht den Slot */
+  rasterSpeichern: (kategorieId: string, eintraege: StandardRasterEintrag[]) =>
+    request<void>('PUT', `/api/kategorien/${kategorieId}/artikel-raster`, { eintraege }),
   /** Eigene KDS-Station der Artikel auf "Automatisch" (= Warengruppe) zurücksetzen */
   kdsZuruecksetzen: (artikelIds: string[]) =>
     request<{ zurueckgesetzt: number }>('POST', '/api/artikel/kds-zuruecksetzen', { artikelIds }),
@@ -665,6 +671,15 @@ export const posConfigApi = {
   /** uebernehmenFuer: dieselbe Liste zusätzlich bei diesen Kassen speichern (ersetzt dort deren Favoriten) */
   favoritenSpeichern: (kasseId: string, eintraege: KasseFavoritEintrag[], uebernehmenFuer?: string[]) =>
     request<void>('PUT', `/api/kassen/${kasseId}/favoriten`, { eintraege, ...(uebernehmenFuer && uebernehmenFuer.length > 0 ? { uebernehmenFuer } : {}) }),
+  /** Artikel-Anordnung je Warengruppe an dieser Kasse (leer = überall das Standard-Layout) */
+  artikelLayouts: (kasseId: string) =>
+    request<KasseArtikelLayout[]>('GET', `/api/kassen/${kasseId}/artikel-layouts`),
+  /** Anordnung einer Warengruppe an dieser Kasse ersetzen (nur Admin) */
+  artikelLayoutSpeichern: (kasseId: string, kategorieId: string, eintraege: KasseArtikelLayoutEintrag[]) =>
+    request<void>('PUT', `/api/kassen/${kasseId}/artikel-layouts/${kategorieId}`, { eintraege }),
+  /** Zurück auf das Standard-Layout (nur Admin) */
+  artikelLayoutZuruecksetzen: (kasseId: string, kategorieId: string) =>
+    request<void>('DELETE', `/api/kassen/${kasseId}/artikel-layouts/${kategorieId}`),
 }
 
 // ---------------------------------------------------------------------------

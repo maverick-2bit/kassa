@@ -435,6 +435,13 @@
       "when": 1791331200000,
       "tag": "0063_bonier_fallback_drucker",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1791417600000,
+      "tag": "0064_kasse_artikel_layout",
+      "breakpoints": true
     }
   ]
 }

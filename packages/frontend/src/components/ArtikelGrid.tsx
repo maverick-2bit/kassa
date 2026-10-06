@@ -8,13 +8,15 @@
  *  - Reiter sind die Hauptgruppen; Untergruppen erscheinen als Kacheln IM Raster
  *    (zuerst), danach die Artikel an ihrer Raster-Position — fehlende Positionen
  *    sind leere Felder (Asello-Layout). „◂ Elterngruppe" führt zurück.
+ *  - Je Kasse kann eine Warengruppe eine EIGENE Anordnung haben (`kassenLayouts`,
+ *    Editor: POS-Konfiguration → Artikel); ohne sie gilt das Standard-Layout.
  *
  * Damit der interne Scroll funktioniert muss der Parent-Container
  * eine definierte Höhe haben (flex-1 min-h-0 oder max-h-[...]).
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { allergeneAnzeige, allergeneBeschreibung, baueRaster, farbeZuHex, type AktiveAktion, type Artikel, type Kategorie, type ModifikatorAuswahl, type ModifikatorGruppe, type RasterZelle } from '@kassa/shared'
+import { allergeneAnzeige, allergeneBeschreibung, ausgeblendeteArtikelIds, baueKassenRaster, farbeZuHex, type AktiveAktion, type Artikel, type KasseArtikelLayout, type Kategorie, type ModifikatorAuswahl, type ModifikatorGruppe, type RasterZelle } from '@kassa/shared'
 import { formatPreis } from '../lib/format'
 import {
   artikelDerKasse,
@@ -27,6 +29,7 @@ import {
 } from '../lib/artikel-reiter'
 import { erweitereSichtbarkeit, nachkommenIds, untergruppenVon, wurzelgruppen, wurzelIdVon } from '../lib/kategorie-baum'
 import { ModifikatorModal } from './ModifikatorModal'
+import { BoxSymbol, schriftAuf } from './RasterBausteine'
 import { Input } from './ui/Input'
 
 // Farben kommen aus der zentralen 20er-Hex-Palette (@kassa/shared) — die
@@ -61,13 +64,19 @@ interface Props {
   favoritenEintraege?:  { artikelId: string | null }[] | undefined
   /** Artikel je Zeile (2–6, default 4) — gemeinsame Einstellung mit der Kellner-App */
   artikelProZeile?:     number | undefined
+  /**
+   * Eigene Anordnung der Artikel je Warengruppe an DIESER Kasse (Slots, Leerfelder, ausgeblendete Artikel);
+   * Warengruppen ohne Eintrag zeigen das Standard-Layout. Ausgeblendete Artikel fehlen nur im Raster der
+   * eigenen Warengruppe — Suche und Favoriten finden sie weiterhin.
+   */
+  kassenLayouts?:       KasseArtikelLayout[] | undefined
 }
 
 // ---------------------------------------------------------------------------
 // Komponente
 // ---------------------------------------------------------------------------
 
-export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClick, loading, sichtbareKategorieIds, artikelbilderAktiv = true, initialKategorieId = null, startFavoriten, startKategorieId, mengenProArtikel, aktionen, favoritenEintraege, artikelProZeile }: Props) {
+export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClick, loading, sichtbareKategorieIds, artikelbilderAktiv = true, initialKategorieId = null, startFavoriten, startKategorieId, mengenProArtikel, aktionen, favoritenEintraege, artikelProZeile, kassenLayouts }: Props) {
   // Kategorie-ID → Farbe, für den Akzentstreifen je Artikel (auch in Favoriten + Suche).
   const farbeProKategorie = useMemo(
     () => new Map(kategorien.map(k => [k.id, k.farbe] as const)),
@@ -143,13 +152,22 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
       .sort((a, b) => a.favoritenReihenfolge - b.favoritenReihenfolge || a.bezeichnung.localeCompare(b.bezeichnung))
   }, [verkaufsartikel, favoritenEintraege, sichtbareIds])
 
+  // Eigene Anordnung dieser Kasse je Warengruppe (Warengruppen ohne Eintrag: Standard-Layout)
+  const anordnungVonGruppe = useMemo(
+    () => new Map((kassenLayouts ?? []).map(l => [l.kategorieId, l.eintraege] as const)),
+    [kassenLayouts],
+  )
+
+  // Anzahl je Warengruppe ohne die an dieser Kasse in ihrer Gruppe ausgeblendeten Artikel
+  // (sonst zeigte der Reiter Artikel an, die das Raster nicht hat)
   const anzahlProKategorie = useMemo(() => {
+    const ausgeblendet = ausgeblendeteArtikelIds(verkaufsartikel, kassenLayouts)
     const map = new Map<string, number>()
     for (const a of verkaufsartikel) {
-      if (a.kategorieId) map.set(a.kategorieId, (map.get(a.kategorieId) ?? 0) + 1)
+      if (a.kategorieId && !ausgeblendet.has(a.id)) map.set(a.kategorieId, (map.get(a.kategorieId) ?? 0) + 1)
     }
     return map
-  }, [verkaufsartikel])
+  }, [verkaufsartikel, kassenLayouts])
 
   // Artikel je Reiter = die der ganzen Hauptgruppe samt aller Untergruppen
   const anzahlProReiter = useMemo(() => {
@@ -222,11 +240,12 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
       return sonstige.map((a): RasterZelle<Kategorie, Artikel> => ({ typ: 'artikel', artikel: a }))
     }
     if (aktuelleGruppeId === null) return []
-    return baueRaster(
+    return baueKassenRaster(
       untergruppenVon(aktiveKategorien, aktuelleGruppeId),
       verkaufsartikel.filter(a => a.kategorieId === aktuelleGruppeId),
+      anordnungVonGruppe.get(aktuelleGruppeId),
     )
-  }, [aktivKategorieId, aktuelleGruppeId, aktiveKategorien, verkaufsartikel, favoriten, sonstige, suche])
+  }, [aktivKategorieId, aktuelleGruppeId, aktiveKategorien, verkaufsartikel, favoriten, sonstige, suche, anordnungVonGruppe])
   const mitZurueck = suche.trim() === '' && elterGruppe !== null
 
   // ---------------------------------------------------------------------------
@@ -566,22 +585,6 @@ function TabBtn({
     >
       {children}
     </button>
-  )
-}
-
-/** Lesbare Schriftfarbe (weiß/dunkel) auf einem Hex-Hintergrund. */
-function schriftAuf(hex: string): string {
-  const n = parseInt(hex.slice(1), 16)
-  const helligkeit = (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255))
-  return helligkeit > 160 ? '#1f2937' : '#ffffff'
-}
-
-function BoxSymbol() {
-  return (
-    <svg aria-hidden viewBox="0 0 24 24" className="h-5 w-5 opacity-90" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round">
-      <path d="M12 3 3.5 7.5v9L12 21l8.5-4.5v-9L12 3Z" />
-      <path d="M3.5 7.5 12 12l8.5-4.5M12 12v9" />
-    </svg>
   )
 }
 
