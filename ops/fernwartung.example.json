@@ -1,0 +1,24 @@
+{
+  "_hilfe": "VORLAGE mit Platzhaltern. Kopieren nach fernwartung.json (NEBEN den Installer legen, NIE ins Repo einchecken — die echte Datei enthaelt Geheimnisse). Felder, die mit _ beginnen, sind Kommentare. Platzhalter 'ERSETZEN' muessen durch echte Werte ersetzt oder geloescht werden. Beschreibung aller Felder: ops/DEPLOYMENT.md, Abschnitt 'Fernwartung (TeamViewer Host)'.",
+
+  "anbieter": "teamviewer",
+
+  "_msiPfad": "Pfad zum TeamViewer-Host-Installer (MSI aus der Verwaltungskonsole oder die EXE) — relativ zu DIESER Datei oder absolut. Alternativ 'hostInstallerUrl' (https). Fehlen beide, sucht der Installer TeamViewer_Host*.msi/.exe neben dieser Datei.",
+  "msiPfad": "TeamViewer_Host.msi",
+
+  "_customConfigId": "CUSTOMCONFIGID des Host-Moduls (Verwaltungskonsole -> Custom modules). Nur fuer die MSI. Optional.",
+  "customConfigId": "ERSETZEN-DURCH-CUSTOMCONFIGID",
+
+  "_assignmentId": "EMPFOHLEN: ID der Rollout-Konfiguration (Verwaltungskonsole -> Rollout set-up -> Drei Punkte -> Copy ID). GEHEIMNIS.",
+  "assignmentId": "ERSETZEN-DURCH-DIE-ASSIGNMENT-ID-DER-ROLLOUT-KONFIGURATION",
+
+  "_gruppe": "Nur Anzeige in der Kassa (bei assignmentId bestimmt die Rollout-Konfiguration die Gruppe).",
+  "gruppe": "Mietkassen",
+
+  "_aliasVorlage": "Geraetename in der TeamViewer-Liste. {Name} = Wert von -FernwartungName (sonst Computername), {Computername} = Name des Windows-PCs.",
+  "aliasVorlage": "Kassa {Name}",
+
+  "_alternativ_apiToken": "ALTERNATIVE (aeltere Variante): statt assignmentId ein API-Token. GEHEIMNIS. Dann assignmentId entfernen und diese Felder nach oben uebernehmen: { \"apiToken\": \"...\", \"gruppeId\": \"g12345678\" oder \"gruppe\": \"Mietkassen\", \"zuordnungsweg\": \"cli\" }",
+
+  "_weitere_felder": "Optional: hostInstallerUrl, signaturPruefen (Standard true), exeArgumente (Standard [\"/S\"]), einstellungsDatei (.tvopt), zuordnungsweg (cli | msi), assignmentRetries (Standard 20), assignmentTimeout (Standard 120)."
+}

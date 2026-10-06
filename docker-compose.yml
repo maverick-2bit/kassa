@@ -45,10 +45,14 @@ services:
       MONITORING_TOKEN:  ${MONITORING_TOKEN:-}
       # Kontroll-Verzeichnis für den In-App-Updater (geteiltes Volume mit 'updater')
       UPDATE_CONTROL_DIR: /control
+      # Fernwartungs-Status (fernwartung-status.json, vom Installer geschrieben): dasselbe
+      # Volume, aber NUR LESEND eingehängt — das Backend zeigt ihn an, kann ihn nicht ändern.
+      FERNWARTUNG_STATUS_DIR: /control-ro
     volumes:
       - db_backups:/data/db-backups
       - dep_backups:/data/dep-backups
       - update_control:/control
+      - update_control:/control-ro:ro
     healthcheck:
       # Check mit Node selbst (garantiert im Image) statt wget: busybox-wget +
       # localhost-Auflösung erwiesen sich im Erstlauf als unzuverlässig

@@ -249,6 +249,17 @@ export interface SystemStatus {
   update:            SystemUpdateStatus
 }
 
+/** Fernwartungs-Anbindung dieser Kasse (TeamViewer Host auf dem Kassen-PC) — vom Installer geschrieben */
+export interface FernwartungStatus {
+  eingerichtet:  boolean
+  anbieter:      string | null
+  id:            string | null
+  alias:         string | null
+  gruppe:        string | null
+  /** ISO-8601 */
+  installiertAm: string | null
+}
+
 export const systemApi = {
   /** frisch=true umgeht Server- und CDN-Cache — für den manuellen Prüf-Knopf. */
   status:    (frisch = false) => request<SystemStatus>('GET', `/api/system/status${frisch ? '?frisch=1' : ''}`),
@@ -256,6 +267,8 @@ export const systemApi = {
   ausloesen: () => request<{ angefordert: boolean }>('POST', '/api/system/update'),
   /** LAN-IPv4s des Servers; im Docker-Betrieb ehrlich leer (imContainer=true). */
   netzwerk:  () => request<{ ips: string[]; imContainer?: boolean }>('GET', '/api/system/netzwerk'),
+  /** Fernwartungs-Status (nur Admin): TeamViewer-ID, Gerätename, Gruppe — rein lesend. */
+  fernwartung: () => request<FernwartungStatus>('GET', '/api/system/fernwartung'),
 }
 
 export const kdsGeraetApi = {

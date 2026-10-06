@@ -6,6 +6,7 @@ import { ALLE_STATIONEN, STATION_LABELS, beginnFuer, type Station, type ZvtConfi
 import { druckerApi, druckerPoolApi, kdsApi, kdsGeraetApi, seeApi, zvtApi, downloadDepExport, healthApi, monitoringApi, mandantApi, stripeApi, kasseApi, kasseErweiterungApi, kategorieApi, artikelApi, posConfigApi, tischplanApi, dbBackupApi, belegApi, systemApi, rksvSelbsttestApi, type DruckerConfig, type KdsConfig, type DbSicherungRow, type MonitoringStatus } from '../lib/api'
 import type { DruckerPool, DruckerPoolInput } from '@kassa/shared'
 import { Modal } from '../components/ui/Modal'
+import { FernwartungKarte } from '../components/FernwartungKarte'
 import { BonierdruckerBibliothek } from '../components/BonierdruckerBibliothek'
 import { KdsDruckerZuordnung } from '../components/KdsDruckerZuordnung'
 import { KassenDruckerZuordnung } from '../components/KassenDruckerZuordnung'
@@ -127,6 +128,7 @@ export function EinstellungenPage() {
       {bereich === 'system' && (
         <>
           <AktualisierungSektion />
+          <FernwartungKarte />
           <DruckerStatusSektion />
           <DbBackupSektion />
           <SystemInfoSektion />
