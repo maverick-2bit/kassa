@@ -8,6 +8,7 @@ import type { Bonierdrucker, BonierdruckerInput, BonierdruckerUpdate } from '@ka
 import type { Db } from '../db/client.js'
 import { bonierdrucker } from '../db/schema.js'
 import { sendBytes } from './drucker.service.js'
+import { ladeFallbackDrucker, ladeKdsDrucker } from './kds/kds-druck.service.js'
 import * as ep from './escpos/commands.js'
 
 function toDto(row: typeof bonierdrucker.$inferSelect): Bonierdrucker {
@@ -226,39 +227,59 @@ export async function druckeErledigtBon(
   db:        Db,
   mandantId: string,
   inhalt:    ErledigtBonInhalt,
+  /** Station des KDS-Bons: ist ihr ein Drucker zugeordnet (KDS-Zuordnung), druckt nur dieser */
+  station?:  string | null,
 ): Promise<{ gedruckt: number; fehler: number }> {
-  const drucker = await db
-    .select()
-    .from(bonierdrucker)
-    .where(and(
-      eq(bonierdrucker.mandantId, mandantId),
-      eq(bonierdrucker.aktiv, true),
-      eq(bonierdrucker.istBackup, false),
-    ))
+  const drucker = await ladeKdsDrucker(db, mandantId, station)
 
   const bon = baueErledigtBon(inhalt)
   let gedruckt = 0
   let fehler   = 0
   for (const d of drucker) {
     try {
-      try {
-        await sendTcp(d.ip, d.port, bon)
-      } catch (primaerFehler) {
-        if (!d.fallbackId) throw primaerFehler
-        const [fallback] = await db
-          .select()
-          .from(bonierdrucker)
-          .where(and(eq(bonierdrucker.id, d.fallbackId), eq(bonierdrucker.mandantId, mandantId)))
-          .limit(1)
-        if (!fallback?.aktiv) throw primaerFehler
-        await sendTcp(fallback.ip, fallback.port, bon)
-      }
+      await sendeMitErsatz(db, mandantId, d, bon)
       gedruckt++
     } catch {
       fehler++
     }
   }
   return { gedruckt, fehler }
+}
+
+/**
+ * Sendet an den Drucker; scheitert das, an dessen eigenen Fallback und danach an den festen
+ * Fallback-Drucker des Mandanten (KDS-Zuordnung) — damit kein Bon verloren geht.
+ * Wirft nur, wenn auch alle Ersatzdrucker scheitern (dann den ERSTEN Fehler).
+ * @returns der Drucker, der den Bon schließlich bekommen hat
+ */
+export async function sendeMitErsatz(
+  db:        Db,
+  mandantId: string,
+  drucker:   typeof bonierdrucker.$inferSelect,
+  bon:       Buffer,
+): Promise<typeof bonierdrucker.$inferSelect> {
+  try {
+    await sendTcp(drucker.ip, drucker.port, bon)
+    return drucker
+  } catch (primaerFehler) {
+    const versucht = [drucker.id]
+    if (drucker.fallbackId) {
+      const [fallback] = await db
+        .select()
+        .from(bonierdrucker)
+        .where(and(eq(bonierdrucker.id, drucker.fallbackId), eq(bonierdrucker.mandantId, mandantId)))
+        .limit(1)
+      if (fallback?.aktiv) {
+        versucht.push(fallback.id)
+        try { await sendTcp(fallback.ip, fallback.port, bon); return fallback } catch { /* weiter zum festen Fallback */ }
+      }
+    }
+    const fest = await ladeFallbackDrucker(db, mandantId, versucht)
+    if (fest) {
+      try { await sendTcp(fest.ip, fest.port, bon); return fest } catch { /* alles gescheitert */ }
+    }
+    throw primaerFehler
+  }
 }
 
 function sendTcp(ip: string, port: number, bon: Buffer): Promise<void> {
@@ -289,24 +310,24 @@ export async function druckeBonierbon(
 
   const bon = baueBonierbon(tischNummer, kellner, zeilen)
 
-  try {
-    await sendTcp(drucker.ip, drucker.port, bon)
-  } catch (primaryErr) {
-    // Fallback versuchen wenn konfiguriert
-    if (drucker.fallbackId) {
-      const [fallback] = await db
-        .select()
-        .from(bonierdrucker)
-        .where(and(eq(bonierdrucker.id, drucker.fallbackId), eq(bonierdrucker.mandantId, mandantId)))
-        .limit(1)
+  // eigener Fallback des Druckers, danach der feste Fallback-Drucker des Mandanten
+  await sendeMitErsatz(db, mandantId, drucker, bon)
+}
 
-      if (fallback?.aktiv) {
-        await sendTcp(fallback.ip, fallback.port, bon)
-        return  // Fallback erfolgreich
-      }
-    }
-    throw primaryErr  // Kein Fallback oder Fallback auch gescheitert
-  }
+/**
+ * Bonierbon an einen Drucker (Zeilen wie druckeBonierbonDirekt) — mit Ersatz: scheitert der
+ * Drucker, versucht der Reihe nach dessen eigenen Fallback und den festen Fallback-Drucker.
+ * @returns der Drucker, der den Bon bekommen hat (≠ `drucker`, wenn umgeleitet wurde)
+ */
+export async function druckeBonierbonMitErsatz(
+  db:          Db,
+  drucker:     typeof bonierdrucker.$inferSelect,
+  tischNummer: string,
+  kellner:     string,
+  zeilen:      BonierdruckZeile[],
+  storno = false,
+): Promise<typeof bonierdrucker.$inferSelect> {
+  return sendeMitErsatz(db, drucker.mandantId, drucker, baueBonierbon(tischNummer, kellner, zeilen, storno))
 }
 
 /**

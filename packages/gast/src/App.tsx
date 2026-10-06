@@ -10,6 +10,8 @@ interface GastArtikel {
   id:              string
   bezeichnung:     string
   preisBruttoCent: number
+  /** Allergen-Buchstaben, kommagetrennt (z. B. "A,C,G") */
+  allergene?:      string | null
   kategorieId:     string | null
   reihenfolge:     number
 }
@@ -568,6 +570,9 @@ export default function App() {
               <div key={a.id} className="bg-panel rounded-2xl border border-line px-4 py-3 flex items-center justify-between gap-3">
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-ink text-sm leading-tight">{a.bezeichnung}</p>
+                  {a.allergene && (
+                    <p className="text-[11px] text-ink-subtle mt-0.5">Allergene: {a.allergene.split(',').join(', ')}</p>
+                  )}
                   <p className="text-brand-600 font-black text-base mt-0.5">{formatPreis(a.preisBruttoCent)}</p>
                 </div>
                 {menge === 0 ? (
@@ -591,6 +596,14 @@ export default function App() {
               </div>
             )
           })
+        )}
+
+        {/* Legende, wenn irgendeine Speise in der Karte Allergene führt */}
+        {(karte?.artikel ?? []).some(a => a.allergene) && (
+          <details className="text-[11px] text-ink-subtle pt-1">
+            <summary className="cursor-pointer select-none">{t.allergeneTitel}</summary>
+            <p className="mt-1 leading-snug">{t.allergeneLegende}</p>
+          </details>
         )}
       </div>
 

@@ -16,7 +16,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ausgeblendeteArtikelIds, baueKassenRaster, farbeZuHex, type AktiveAktion, type Artikel, type KasseArtikelLayout, type Kategorie, type ModifikatorAuswahl, type ModifikatorGruppe, type RasterZelle } from '@kassa/shared'
+import { allergeneAnzeige, allergeneBeschreibung, ausgeblendeteArtikelIds, baueKassenRaster, farbeZuHex, type AktiveAktion, type Artikel, type KasseArtikelLayout, type Kategorie, type ModifikatorAuswahl, type ModifikatorGruppe, type RasterZelle } from '@kassa/shared'
 import { formatPreis } from '../lib/format'
 import {
   artikelDerKasse,
@@ -89,6 +89,14 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
   const setGewaehlterReiter = (id: string | null) => { setGewaehlterReiterRoh(id); setGewaehlteEbene(null) }
   const [modArtikel, setModArtikel] = useState<Artikel | null>(null)
   const [suche, setSuche] = useState('')
+  // Suchfeld einklappbar (mehr Platz fürs Raster); pro Gerät gemerkt, Standard: sichtbar
+  const [sucheKlein, setSucheKlein] = useState<boolean>(() => {
+    try { return localStorage.getItem('kassa:artikelSucheEingeklappt') === '1' } catch { return false }
+  })
+  const sucheKleinSetzen = (wert: boolean) => {
+    setSucheKlein(wert)
+    try { localStorage.setItem('kassa:artikelSucheEingeklappt', wert ? '1' : '0') } catch { /* ignorieren */ }
+  }
 
   // Scroll-State für Fade-Ränder der Kategorieleiste
   const scrollRef    = useRef<HTMLDivElement>(null)
@@ -261,7 +269,7 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
     <div className="flex flex-col h-full">
 
       {/* ---- Suchfeld (Name oder Artikelnummer) ---- */}
-      <div className="relative shrink-0 mb-2">
+      {(!sucheKlein || suche !== '') && <div className="relative shrink-0 mb-2">
         <Input
           value={suche}
           onChange={(e) => setSuche(e.target.value)}
@@ -279,11 +287,12 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
             ×
           </button>
         )}
-      </div>
+      </div>}
 
-      {/* ---- Kategorie-Leiste (bleibt oben) ---- */}
+      {/* ---- Kategorie-Leiste (bleibt oben) + Knopf zum Ein-/Ausklappen der Suche ---- */}
+      <div className="flex items-start gap-2 shrink-0 mb-3">
       {(aktiveKategorien.length > 0 || favoriten.length > 0 || sonstige.length > 0) && (
-        <div className="relative shrink-0 mb-3">
+        <div className="relative min-w-0 flex-1">
           {fadeLinks && (
             <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-8 z-10
                             bg-gradient-to-r from-panel to-transparent" />
@@ -333,6 +342,17 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
           </div>
         </div>
       )}
+      <button
+        type="button"
+        onClick={() => sucheKleinSetzen(!sucheKlein)}
+        aria-label={sucheKlein ? 'Suchfeld einblenden' : 'Suchfeld ausblenden'}
+        aria-expanded={!sucheKlein}
+        title={sucheKlein ? 'Suchfeld einblenden' : 'Suchfeld ausblenden'}
+        className="ml-auto shrink-0 min-h-[36px] rounded-lg border border-line bg-panel px-2.5 text-sm text-ink-muted hover:bg-panel-2 transition"
+      >
+        {sucheKlein ? '🔍' : '🔍 ▴'}
+      </button>
+      </div>
 
       {/* ---- Zurück zur Elterngruppe (nur innerhalb einer Untergruppe) ---- */}
       {mitZurueck && elterGruppe && aktuelleGruppe && (
@@ -441,7 +461,7 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
                   `}
                 >
                   {/* Farbiger Akzent oben: Artikel-Farbe ?? Warengruppen-Farbe */}
-                  <div data-testid="artikel-farbe" className="h-1.5 w-full" style={{ backgroundColor: farbeHex ?? 'var(--color-brand-500, #16a34a)' }} />
+                  <div data-testid="artikel-farbe" className="h-2.5 w-full" style={{ backgroundColor: farbeHex ?? 'var(--color-brand-500, #16a34a)' }} />
 
                   {/* Mengen-Badge, wenn im Warenkorb */}
                   {mengeImKorb > 0 && (
@@ -480,6 +500,15 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
                         </p>
                       )}
                       <div className="flex items-center gap-1.5">
+                        {a.allergene && (
+                          <span
+                            data-testid="artikel-allergene"
+                            title={allergeneBeschreibung(a.allergene)}
+                            className="text-[10px] font-semibold tracking-wide text-ink-subtle leading-none"
+                          >
+                            {allergeneAnzeige(a.allergene)}
+                          </span>
+                        )}
                         {istAusverkauft && (
                           <span className="text-[10px] bg-red-100 text-red-600 rounded-full px-1.5 py-0.5 font-medium leading-none">
                             Ausverkauft

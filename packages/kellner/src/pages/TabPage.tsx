@@ -3,13 +3,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
 import { QRCodeSVG } from 'qrcode.react'
 import type { BonierungErgebnis, BonierungInput, BonierZielFehler, TabPosition } from '@kassa/shared'
-import { bonierFehlschlaege } from '@kassa/shared'
+import { bonierFehlschlaege, neueUuid } from '@kassa/shared'
 import { tischTabApi, bonierApi, druckerApi, oeffentlicherBelegApi, zvtApi, ApiError } from '../lib/api'
 import { getAuth, gaengeAktiv as istGaengeAktiv, gaengeAnzahl } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
 import { ABBRUCH_ZU_SPAET, KartenzahlungOverlay } from '../components/KartenzahlungOverlay'
 import { DruckproblemeBanner } from '../components/DruckproblemeBanner'
+import { TischAktionen } from '../components/TischAktionen'
 
 /** Anzeige-Label eines Gangs (0 = Sofort). */
 function gangLabel(g: number): string {
@@ -24,6 +25,8 @@ export function TabPage() {
   const auth        = getAuth()!
   const [bonierFehler, setBonierFehler] = useState<string | null>(null)
   const [bonierErfolg, setBonierErfolg] = useState(false)
+  /** Tisch-Aktionen (umbuchen, aufteilen, zusammenführen, verwerfen …) */
+  const [aktionenOffen, setAktionenOffen] = useState(false)
   /**
    * Ziele, die den Bon nicht bekommen haben, samt Bonierung zum Nachsenden.
    * Verschwindet NICHT von selbst — die grüne Bestätigung tat das bisher auch
@@ -81,6 +84,8 @@ export function TabPage() {
           kellner:    auth.user.name,
           positionen: tab.positionen.map(p => ({ artikelId: p.artikelId, menge: p.menge })),
           ohneLagerabzug: true,
+          // "Nochmal senden" schickt dieses Objekt unverändert — gleiche ID = keine doppelte Bestellung
+          bestellId:  neueUuid(),
         }
         return { ergebnis: await bonierApi.bonieren(gesendet), gesendet }
       }
@@ -94,6 +99,7 @@ export function TabPage() {
         kellner:    auth.user.name,
         positionen: offen.map(p => ({ artikelId: p.artikelId, menge: p.menge })),
         ohneLagerabzug: true,
+        bestellId:  neueUuid(),
       }
       let ergebnis: BonierungErgebnis | null = null
       try {
@@ -247,6 +253,8 @@ export function TabPage() {
             positionen: antwort.stornoBon.positionen,
             ohneLagerabzug: true,
             storno:     true,
+            // Dieselbe Bestell-ID wie beim ersten Versuch: Stationen, die den Bon schon haben, bekommen ihn nicht noch einmal
+            ...(antwort.stornoBon.bestellId ? { bestellId: antwort.stornoBon.bestellId } : {}),
           },
         })
       })
@@ -344,6 +352,14 @@ export function TabPage() {
             <h1 className="font-black text-ink text-lg leading-tight truncate">{tab.tischNummer}</h1>
             <p className="text-xs text-ink-subtle">{tab.kellner}</p>
           </div>
+          <button
+            onClick={() => setAktionenOffen(true)}
+            className="h-10 w-10 rounded-xl border border-line-strong bg-surface text-ink text-xl font-black leading-none active:scale-95 transition shrink-0"
+            aria-label="Tisch-Aktionen"
+            title="Umbuchen, Aufteilen, Zusammenführen, Verwerfen …"
+          >
+            ⋯
+          </button>
           <button
             onClick={() => navigate(`/tab/${tabId}/artikel`)}
             className="bg-brand-600 text-white px-4 py-2 rounded-xl font-bold text-sm active:scale-95 transition shrink-0"
@@ -592,6 +608,19 @@ export function TabPage() {
             </button>
           </div>
         </div>
+      )}
+
+      {/* Tisch-Aktionen: umbuchen, aufteilen, zusammenführen, Kellner ändern, Verlauf, verwerfen */}
+      {aktionenOffen && (
+        <TischAktionen
+          tab={tab}
+          onClose={() => setAktionenOffen(false)}
+          onGeaendert={() => {
+            qc.invalidateQueries({ queryKey: ['tisch-tab'] })
+            qc.invalidateQueries({ queryKey: ['tisch-tabs'] })
+          }}
+          onZurUebersicht={() => { setAktionenOffen(false); navigate('/') }}
+        />
       )}
 
       {/* Kartenzahlung: Trinkgeld + ZVT-Terminal (nur bei aktivem ZVT) */}

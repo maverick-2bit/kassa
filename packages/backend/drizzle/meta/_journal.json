@@ -412,7 +412,35 @@
       "idx": 58,
       "version": "7",
       "when": 1791072000000,
-      "tag": "0060_kasse_artikel_layout",
+      "tag": "0060_allergene",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1791158400000,
+      "tag": "0061_bonier_bestellungen",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1791244800000,
+      "tag": "0062_kds_station_drucker",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1791331200000,
+      "tag": "0063_bonier_fallback_drucker",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1791417600000,
+      "tag": "0064_kasse_artikel_layout",
       "breakpoints": true
     }
   ]

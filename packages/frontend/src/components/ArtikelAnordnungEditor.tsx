@@ -273,8 +273,8 @@ function Kachel({
       } ${isDragging ? 'opacity-80 shadow-lg' : ''} ${ziel && !isDragging ? 'border-brand-500 ring-2 ring-brand-500' : 'border-line'}`}
       style={{ gridRow: zeile, gridColumn: spalte, transform: CSS.Translate.toString(transform), zIndex: isDragging ? 30 : undefined }}
     >
-      {/* Farbiger Akzent oben wie an der Kasse: Artikel-Farbe ?? Warengruppen-Farbe */}
-      <div className="h-1.5 w-full shrink-0" style={{ backgroundColor: farbeHex ?? 'var(--color-brand-500, #16a34a)' }} />
+      {/* Farbiger Akzent oben wie an der Kasse (dort h-2.5): Artikel-Farbe ?? Warengruppen-Farbe */}
+      <div className="h-2.5 w-full shrink-0" style={{ backgroundColor: farbeHex ?? 'var(--color-brand-500, #16a34a)' }} />
       {artikelbilder && a.bild && (
         <div className="h-12 w-full shrink-0 overflow-hidden bg-panel-2">
           <img src={a.bild} alt="" className="h-full w-full object-cover" loading="lazy" />

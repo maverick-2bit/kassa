@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ausgeblendeteArtikelIds, baumFlach, erweitereSichtbarkeit, farbeZuHex, kategorieAnzeigeNamen, kompakteArtikelListe, type Artikel, type Kategorie, type ModifikatorGruppe, type ModifikatorAuswahl } from '@kassa/shared'
+import { allergeneAnzeige, ausgeblendeteArtikelIds, baumFlach, erweitereSichtbarkeit, farbeZuHex, kategorieAnzeigeNamen, kompakteArtikelListe, type Artikel, type Kategorie, type ModifikatorGruppe, type ModifikatorAuswahl } from '@kassa/shared'
 import { artikelApi, kategorieApi, modifikatorApi, tischTabApi, kellnerKonfigApi } from '../lib/api'
 import { getAuth, clearAuth, gaengeAktiv as istGaengeAktiv, gaengeAnzahl } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
@@ -623,7 +623,7 @@ export function ArtikelWaehlenPage() {
                 data-testid="artikel-kachel"
                 onClick={() => !ausverkauft && artikelWaehlen(a)}
                 disabled={ausverkauft}
-                style={farbeHex && !ausverkauft && menge === 0 ? { borderTopColor: farbeHex, borderTopWidth: 4 } : {}}
+                style={farbeHex && !ausverkauft && menge === 0 ? { borderTopColor: farbeHex, borderTopWidth: 6 } : {}}
                 className={`relative rounded-2xl border-2 p-2 pb-1.5 min-h-[5.25rem] flex flex-col justify-between text-left active:scale-95 transition ${
                   ausverkauft
                     ? 'bg-panel border-line opacity-40'
@@ -639,6 +639,11 @@ export function ArtikelWaehlenPage() {
                   <p className="text-[11px] text-red-500 font-bold mt-1">Ausverkauft</p>
                 ) : (
                   <p className="text-xs text-ink-subtle font-mono mt-1">{formatPreis(a.preisBruttoCent)}</p>
+                )}
+                {a.allergene && !ausverkauft && (
+                  <p className="text-[10px] font-semibold tracking-wide text-ink-subtle leading-none mt-0.5">
+                    {allergeneAnzeige(a.allergene)}
+                  </p>
                 )}
 
                 {/* Mengen-Badge + Minus, nur wenn schon im Korb */}

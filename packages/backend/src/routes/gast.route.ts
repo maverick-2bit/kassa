@@ -105,6 +105,7 @@ export const gastRoute: FastifyPluginAsync<GastRouteOptions> = async (fastify, o
           id:              artikel.id,
           bezeichnung:     artikel.bezeichnung,
           preisBruttoCent: artikel.preisBruttoCent,
+          allergene:       artikel.allergene,
           kategorieId:     artikel.kategorieId,
           reihenfolge:     artikel.reihenfolge,
           lagerstandAktiv: artikel.lagerstandAktiv,

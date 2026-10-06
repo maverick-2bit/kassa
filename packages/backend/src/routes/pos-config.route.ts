@@ -240,17 +240,31 @@ export const posConfigRoute: FastifyPluginAsync<PosConfigRouteOptions> = async (
       }
     }
 
+    // Optional dieselbe Liste auch bei anderen Kassen des Mandanten übernehmen
+    const zielKassenIds = [...new Set(body.data.uebernehmenFuer ?? [])].filter(id => id !== p.data.kasseId)
+    if (zielKassenIds.length > 0) {
+      const ziele = await opts.db
+        .select({ id: kassen.id })
+        .from(kassen)
+        .where(and(inArray(kassen.id, zielKassenIds), eq(kassen.mandantId, mandantId)))
+      if (ziele.length !== zielKassenIds.length) {
+        return reply.status(404).send({ fehler: 'Eine der Ziel-Kassen wurde nicht gefunden' })
+      }
+    }
+
     await opts.db.transaction(async (tx) => {
-      await tx.delete(kasseFavoriten).where(eq(kasseFavoriten.kasseId, p.data.kasseId))
-      if (body.data.eintraege.length > 0) {
-        await tx.insert(kasseFavoriten).values(
-          body.data.eintraege.map((e, i) => ({
-            mandantId,
-            kasseId:   p.data.kasseId,
-            position:  i,
-            artikelId: e.artikelId,
-          })),
-        )
+      for (const kasseZiel of [p.data.kasseId, ...zielKassenIds]) {
+        await tx.delete(kasseFavoriten).where(eq(kasseFavoriten.kasseId, kasseZiel))
+        if (body.data.eintraege.length > 0) {
+          await tx.insert(kasseFavoriten).values(
+            body.data.eintraege.map((e, i) => ({
+              mandantId,
+              kasseId:   kasseZiel,
+              position:  i,
+              artikelId: e.artikelId,
+            })),
+          )
+        }
       }
     })
     return reply.status(204).send()

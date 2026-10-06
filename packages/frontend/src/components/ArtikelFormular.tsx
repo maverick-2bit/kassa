@@ -2,9 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import {
   ALLE_STATIONEN,
+  ALLERGEN_LABELS,
   MWST_LABELS,
   STATION_LABELS,
   farbeZuHex,
+  parseAllergene,
   type Artikel,
   type ArtikelInput,
   type Bonierdrucker,
@@ -27,6 +29,7 @@ type FormValues = {
   bezeichnung:          string
   preisEuro:            string
   mwstSatz:             MwStSatz
+  allergeneStr:         string
   station:              Station | ''
   farbe:                KategorieFarbe | ''
   kategorieId:          string
@@ -64,6 +67,7 @@ const MWST_OPTIONS: MwStSatz[] = ['normal', 'ermaessigt1', 'ermaessigt2', 'null'
 
 export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker, lieferanten, alleArtikel, onSubmit, onCancel, loading, fehler, onNeueKategorie }: Props) {
   const [preisFehler, setPreisFehler] = useState<string | null>(null)
+  const [allergenFehler, setAllergenFehler] = useState<string | null>(null)
   const [bild,        setBild]        = useState<string | null>(initial?.bild ?? null)
   // Rezept-Bestandteile (Stückliste) — lokaler State
   const [bestandteile, setBestandteile] = useState<RezeptZeile[]>(
@@ -123,6 +127,7 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
       bezeichnung:        initial?.bezeichnung      ?? '',
       preisEuro:          initial ? (initial.preisBruttoCent / 100).toFixed(2).replace('.', ',') : '',
       mwstSatz:           initial?.mwstSatz         ?? 'normal',
+      allergeneStr:       initial?.allergene        ?? '',
       station:            initial?.station          ?? '',
       farbe:              initial?.farbe            ?? '',
       kategorieId:        initial?.kategorieId      ?? '',
@@ -156,6 +161,7 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
       bezeichnung:        initial?.bezeichnung      ?? '',
       preisEuro:          initial ? (initial.preisBruttoCent / 100).toFixed(2).replace('.', ',') : '',
       mwstSatz:           initial?.mwstSatz         ?? 'normal',
+      allergeneStr:       initial?.allergene        ?? '',
       station:            initial?.station          ?? '',
       farbe:              initial?.farbe            ?? '',
       kategorieId:        initial?.kategorieId      ?? '',
@@ -203,6 +209,12 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
       return
     }
     setPreisFehler(null)
+    const allergene = parseAllergene(values.allergeneStr)
+    if (!allergene.ok) {
+      setAllergenFehler(`Unbekannte Codes: ${allergene.ungueltig.join(', ')} — erlaubt sind A–H, L–P, R`)
+      return
+    }
+    setAllergenFehler(null)
     const lsMenge = values.lagerstandAktiv && values.lagerstandMengeStr.trim() !== ''
       ? parseInt(values.lagerstandMengeStr.trim(), 10)
       : null
@@ -214,6 +226,7 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
       bezeichnung:     values.bezeichnung.trim(),
       preisBruttoCent: cent,
       mwstSatz:        values.mwstSatz,
+      allergene:       allergene.wert,
       station:         values.station          || null,
       farbe:           values.farbe            || null,
       kategorieId:     values.kategorieId      || null,
@@ -311,6 +324,23 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
           </Select>
         </Field>
       </div>
+
+      <Field
+        label="Allergene"
+        hint="Buchstaben kommagetrennt, z. B. A, C, G — erscheint auf der Kachel in Kasse und Kellner-App sowie in der Gast-Karte"
+        error={allergenFehler ?? undefined}
+      >
+        <Input
+          placeholder="A, C, G"
+          autoCapitalize="characters"
+          autoComplete="off"
+          invalid={!!allergenFehler}
+          {...register('allergeneStr')}
+        />
+        <p className="mt-1 text-[11px] leading-snug text-ink-subtle">
+          {Object.entries(ALLERGEN_LABELS).map(([c, l]) => `${c} ${l}`).join(' · ')}
+        </p>
+      </Field>
 
       <Field
         label="KDS-Station"

@@ -187,19 +187,27 @@ export function GrossAnzeige({ bons, station, farbe, onZurueck }: GrossAnzeigePr
               return (
                 <div
                   key={key}
-                  className="relative rounded-2xl overflow-hidden flex flex-col items-center justify-center select-none"
+                  className="relative rounded-2xl overflow-hidden flex flex-col items-center select-none py-4"
                   style={{
-                    minHeight: '180px',
+                    // Feste Kachelhöhe: Name hat einen festen Platz, die Menge steht darunter
+                    // IMMER an derselben Stelle — egal ob der Name ein- oder mehrzeilig ist.
+                    height: '21rem',
                     background: `${fc}15`,
                     border: `2px solid ${fc}40`,
                   }}
                 >
-                  {/* Inhalt — Artikeltext OBEN, Menge darunter (User-Vorgabe) */}
-                  <div className="text-center text-4xl font-bold text-ink px-3 leading-tight max-w-full break-words">
-                    {key}
+                  {/* Artikeltext OBEN in festem Feld (mittig, Schrift passt sich der Länge an), Menge darunter */}
+                  <div
+                    className={[
+                      'h-[9.5rem] w-full px-3 flex items-center justify-center text-center font-bold text-ink leading-tight break-words overflow-hidden shrink-0',
+                      key.length <= 14 ? 'text-4xl' : key.length <= 28 ? 'text-3xl' : 'text-2xl',
+                    ].join(' ')}
+                    title={key}
+                  >
+                    <span className="line-clamp-4">{key}</span>
                   </div>
                   <div
-                    className="text-9xl font-black tabular-nums leading-none mt-3"
+                    className="text-9xl font-black tabular-nums leading-none mt-3 shrink-0"
                     style={{ color: menge === 0 ? '#3f3f46' : fc }}
                   >
                     {menge}

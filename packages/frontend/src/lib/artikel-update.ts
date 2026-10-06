@@ -28,6 +28,7 @@ export function artikelUpdateAusInput(input: ArtikelInput): ArtikelUpdate {
     bezeichnung:            input.bezeichnung,
     preisBruttoCent:        input.preisBruttoCent,
     mwstSatz:               input.mwstSatz,
+    allergene:              input.allergene       ?? null,
     station:                input.station         ?? null,
     farbe:                  input.farbe           ?? null,
     kategorieId:            input.kategorieId     ?? null,

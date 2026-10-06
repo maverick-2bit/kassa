@@ -7,6 +7,7 @@ import { druckerApi, druckerPoolApi, kdsApi, kdsGeraetApi, seeApi, zvtApi, downl
 import type { DruckerPool, DruckerPoolInput } from '@kassa/shared'
 import { Modal } from '../components/ui/Modal'
 import { BonierdruckerBibliothek } from '../components/BonierdruckerBibliothek'
+import { KdsDruckerZuordnung } from '../components/KdsDruckerZuordnung'
 import { KassenDruckerZuordnung } from '../components/KassenDruckerZuordnung'
 import { DruckerStatusLed } from '../components/DruckerStatusLed'
 import { formatAusfallDauer } from '../components/SeeStatusBanner'
@@ -2211,8 +2212,10 @@ function DruckerSektion() {
 
       {/* Bonierdrucker-Bibliothek (nur Gastro) */}
       {istGastro && (
-        <div className="border-t border-line pt-4">
+        <div className="border-t border-line pt-4 space-y-4">
           <BonierdruckerBibliothek />
+          {/* KDS-Papierdruck: welcher Drucker druckt für welche Station, plus Fallback — gleiche Einstellung wie unter KDS-Zuordnung */}
+          <KdsDruckerZuordnung />
         </div>
       )}
 

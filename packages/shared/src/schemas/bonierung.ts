@@ -36,6 +36,14 @@ export const BonierungInputSchema = z.object({
    * gezielt nachzusenden.
    */
   storno:         z.boolean().optional(),
+  /**
+   * Eindeutige ID dieser Bestellung (vom Gerät erzeugt, bei „Nochmal senden“ unverändert
+   * wieder mitgeschickt). Der Server merkt sich pro ID, was schon zugestellt ist: ein
+   * zweiter Aufruf mit derselben ID legt NICHT noch einmal einen KDS-Bon an, bucht den
+   * Lagerstand nicht ein zweites Mal ab und sendet nur an die Ziele, die vorher scheiterten.
+   * Fehlt sie, verhält sich die Bonierung wie bisher (jeder Aufruf ist eine neue Bestellung).
+   */
+  bestellId:      z.string().uuid().optional(),
 })
 export type BonierungInput = z.infer<typeof BonierungInputSchema>
 

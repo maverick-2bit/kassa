@@ -190,6 +190,9 @@ export type {
   LayoutImportOptionen,
 } from './schemas/layout-import.js'
 
+// Geräte-seitige UUID (auch ohne HTTPS), z. B. als Bestell-ID beim Bonieren
+export { neueUuid } from './uuid.js'
+
 // Warengruppen-Baum: Reihenfolge, Pfade, Anzeige-Namen, Sichtbarkeit je Kasse
 export {
   wurzelgruppen,
@@ -209,12 +212,14 @@ export {
   kategoriePfadNormalisiert,
   loeseKategorieAuf,
   kategorieSchluessel,
+  wirksamesKategorieRouting,
 } from './kategorie-baum.js'
 export type {
   KategorieKnoten,
   KategorieBenannt,
   KategorieSortierbar,
   KategorieAufloesung,
+  KategorieRouting,
 } from './kategorie-baum.js'
 
 // Raster-Platzierung (Untergruppen-Kacheln, Slots, Leerfelder)
@@ -386,6 +391,10 @@ export type {
   SignaturSelbsttestErgebnis,
 } from './schemas/rksv-selbsttest.js'
 
+// Allergene (Buchstabencodes A–R)
+export { ALLERGEN_LABELS, ALLERGEN_CODES, parseAllergene, allergeneAnzeige, allergeneBeschreibung } from './allergene.js'
+export type { AllergenCode, AllergenParse } from './allergene.js'
+
 // Bericht
 export {
   BerichtFilterSchema,
@@ -415,6 +424,7 @@ export {
   KuechenBerichtStundenZeileSchema,
   KuechenBerichtVerlaufZeileSchema,
   KuechenBerichtResponseSchema,
+  BerichtDruckInputSchema,
 } from './schemas/bericht.js'
 export type {
   BerichtFilter,
@@ -443,6 +453,7 @@ export type {
   KuechenBerichtStundenZeile,
   KuechenBerichtVerlaufZeile,
   KuechenBerichtResponse,
+  BerichtDruckInput,
 } from './schemas/bericht.js'
 
 // Geschäftstag: frei verschiebbarer Tagesbeginn je Mandant (Rechenkern + API-Schemas)

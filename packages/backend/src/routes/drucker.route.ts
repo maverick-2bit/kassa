@@ -18,6 +18,7 @@ import type { Db } from '../db/client.js'
 import { drucker, druckLog, kassen } from '../db/schema.js'
 import { pruefeBelegGehoertZuMandant, pruefeKasseGehoertZuMandant } from '../auth/scope.js'
 import { waehleDruckerFuerKasse } from '../services/drucker-pool.service.js'
+import { istGueltigeStationsIp } from '../services/kds/station-ip.js'
 import {
   druckeBeleg,
   holeOffeneDruckprobleme,
@@ -228,7 +229,13 @@ export const druckerRoute: FastifyPluginAsync<DruckerRouteOptions> = async (fast
     const KdsConfigSchema = z.object({
       kdsAktiv:     z.boolean().optional(),
       kdsPort:      z.number().int().min(1).max(65535).optional(),
-      kdsStationen: z.record(StationSchema, z.string().trim().min(1).max(64)).optional(),
+      kdsStationen: z.record(
+        StationSchema,
+        z.string().trim().min(1).max(64).refine(
+          istGueltigeStationsIp,
+          'Nur die IP-Adresse eintragen, ohne Port und ohne http:// (die Web-Adresse des Browser-KDS gehört hier nicht hin — für Browser-Displays das Feld leer lassen)',
+        ),
+      ).optional(),
     })
     const body = KdsConfigSchema.safeParse(request.body)
     if (!body.success) return reply.status(400).send({ fehler: body.error.issues })

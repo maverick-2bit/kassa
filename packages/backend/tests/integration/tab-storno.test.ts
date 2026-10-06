@@ -320,6 +320,7 @@ describe('Tab-Storno + Verwerfen (Integration, echtes PostgreSQL)', () => {
     expect(put.json().stornoBon).toEqual({
       fehler:     [{ ziel: 'Küche/Schank', ip: '', fehler: 'Interner Serverfehler', istBackup: false }],
       positionen: [{ artikelId: schnitzelId, menge: 2 }],
+      bestellId:  expect.any(String),
     })
     expect(put.body).not.toMatch(INTERNE_DETAILS)
 
@@ -344,6 +345,7 @@ describe('Tab-Storno + Verwerfen (Integration, echtes PostgreSQL)', () => {
     expect(res.json().stornoBon).toEqual({
       fehler:     [{ ziel: 'Küche/Schank', ip: '', fehler: 'Interner Serverfehler', istBackup: false }],
       positionen: [{ artikelId: schnitzelId, menge: 1 }],
+      bestellId:  expect.any(String),
     })
     expect(res.body).not.toMatch(INTERNE_DETAILS)
     const eintraege = log.korrekturbonFehler()
@@ -367,6 +369,7 @@ describe('Tab-Storno + Verwerfen (Integration, echtes PostgreSQL)', () => {
       expect(put.json().stornoBon).toEqual({
         fehler:     [{ ziel: 'Küche/Schank', ip: '', fehler: 'Mindestens ein Artikel ist nicht (mehr) verfügbar', istBackup: false }],
         positionen: [{ artikelId: schnitzelId, menge: 1 }],
+        bestellId:  expect.any(String),
       })
       expect(log.korrekturbonFehler()).toHaveLength(0)
     } finally {

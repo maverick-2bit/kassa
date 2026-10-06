@@ -22,7 +22,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { BelegResponse, Tagesabschluss } from '@kassa/shared'
 import {
-  baueBon, baueGutscheinBon, baueInventurBon, baueLieferscheinBon,
+  baueBerichtBon, baueBon, baueGutscheinBon, baueInventurBon, baueLieferscheinBon,
   baueRechnungBon, baueTischEtikett, baueWareneingangBon, baueZBon,
 } from '../src/services/escpos/layout.js'
 import { baueBonierbon } from '../src/services/kds/bonierbon.js'
@@ -229,6 +229,24 @@ describe('ESC/POS Golden-Master', () => {
       ],
     }
     pruefeGolden('zbon-42.bin', baueZBon(ta, MANDANT, { breite: 42 }))
+    pruefeGolden('zbon-32.bin', baueZBon(ta, MANDANT, { breite: 32 }))
+  })
+
+  it('Bericht-Bon 32 (3+ Spalten → Blöcke) und 42 (2 Spalten → eine Zeile)', () => {
+    const mandant = { firmenname: MANDANT.firmenname, kassenId: MANDANT.kassenId }
+    pruefeGolden('bericht-artikel-32.bin', baueBerichtBon({
+      titel: 'Artikel-Bericht', zeitraum: '01.10.2026 – 07.10.2026',
+      zeilen: [
+        ['Rang', 'Artikel', 'Menge', 'Umsatz (€)', 'Anteil (%)'],
+        ['1', 'Bier vom Fass 0,5l', '120', '540,00', '38'],
+        ['2', 'Schnitzel', '60', '720,00', '50'],
+        ['', 'Gesamt', '180', '1.260,00', '100'],
+      ],
+    }, mandant, { breite: 32 }))
+    pruefeGolden('bericht-zahlart-42.bin', baueBerichtBon({
+      titel: 'Zahlungsarten',
+      zeilen: [['Zahlart', 'Betrag (€)'], ['Bar', '500,00'], ['Karte', '345,00']],
+    }, mandant, { breite: 42 }))
   })
 
   it('Bonierbon (Text-Layout, Asello-Stil)', () => {
