@@ -71,6 +71,11 @@ describe('FernwartungAnzeige — eingerichtet', () => {
     expect(h).not.toContain('>Kopieren<')
   })
 
+  it('Knopf meldet dem Screenreader auch das Ergebnis (kopieren → kopiert)', () => {
+    expect(html()).toContain('aria-label="TeamViewer-ID kopieren"')
+    expect(html({ kopiert: true })).toContain('aria-label="TeamViewer-ID kopiert"')
+  })
+
   it('Knopf nutzt die Button-Klassen (Utility-Ebene gewinnt, keine Basisklassen-Falle)', () => {
     expect(html()).toMatch(/class="btn btn-sm btn-secondary/)
   })

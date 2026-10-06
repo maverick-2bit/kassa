@@ -93,7 +93,7 @@ test('ohne Statusdatei: „Nicht eingerichtet" mit Anleitung — kein Fehler, ke
   await expect(karte).toContainText('fernwartung.json')
   await expect(karte).toContainText('ops/DEPLOYMENT.md')
   await expect(karte.getByTestId('fernwartung-id')).toHaveCount(0)
-  await expect(karte.getByRole('button', { name: /kopieren/i })).toHaveCount(0)
+  await expect(karte.getByRole('button', { name: /kopier/i })).toHaveCount(0)
   // das Backend hat sauber geantwortet (kein 500, kein Fehlerkasten)
   await expect(karte).not.toContainText('konnte nicht geladen werden')
 })
@@ -116,8 +116,8 @@ test('mit Statusdatei: ID in Dreiergruppen, Gerätename, Kopieren legt nur die Z
   await expect(karte).toContainText('Mietkassen')
   await expect(karte).toContainText('Diese ID dem Support nennen')
 
-  await karte.getByRole('button', { name: /kopieren/i }).click()
-  await expect(karte.getByRole('button', { name: /kopieren/i })).toContainText('Kopiert')
+  await karte.getByRole('button', { name: /kopier/i }).click()
+  await expect(karte.getByRole('button', { name: /kopier/i })).toContainText('Kopiert')
   // Zwischenablage zurücklesen — nur prüfen, wenn der Browser das erlaubt (Rechte/Fokus je nach
   // Umgebung); die Rückmeldung „Kopiert" oben belegt, dass der Kopier-Weg durchlaufen wurde.
   const abgelegt = await page.evaluate(async () => {

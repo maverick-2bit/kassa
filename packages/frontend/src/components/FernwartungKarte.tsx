@@ -109,7 +109,7 @@ export function FernwartungAnzeige({ status, laedt, fehler, kopiert, onKopieren 
               <span data-testid="fernwartung-id" className="font-mono text-2xl font-semibold tracking-wider text-ink">
                 {formatTeamViewerId(status.id ?? '')}
               </span>
-              <Button variant="secondary" size="sm" onClick={onKopieren} aria-label="TeamViewer-ID kopieren">
+              <Button variant="secondary" size="sm" onClick={onKopieren} aria-label={kopiert ? 'TeamViewer-ID kopiert' : 'TeamViewer-ID kopieren'}>
                 {kopiert ? 'Kopiert ✓' : 'Kopieren'}
               </Button>
             </dd>
