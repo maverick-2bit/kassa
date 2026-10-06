@@ -655,6 +655,44 @@ $paketE = Neues-Tempverzeichnis; $aufraeumen.Add($paketE)
 $konsole = Lass-Paketblock-Laufen -Konfig '' -CodeOrdner $repoWurzel -Paket $paketE
 Pruefe 'Offline-Paket: ohne Konfiguration passiert nichts (kein Fernwartungs-Schritt)' { $konsole.Trim() -eq '' -and @(Get-ChildItem $paketE).Count -eq 0 }
 
+# --- Veröffentlichen NACH „compose up": auch ohne neuen Lauf, wenn dieser PC schon eingerichtet ist ---
+$stubVeroeffentlichen = Join-Path $ordA 'stub-veroeffentlichen.ps1'
+Schreibe-Text $stubVeroeffentlichen @'
+function Veroeffentliche-FernwartungErgebnis { param([string]$Ziel, [string]$StatusDatei = '') $global:VeroeffentlichAufruf = $Ziel; return $true }
+'@
+function Lass-Nachlauf-Laufen {
+  param([string]$Skript, [string]$Ende, [bool]$Aktiv, [bool]$Ohne, [bool]$MarkerDa, [bool]$BibliothekDa = $true)
+  $text = [System.IO.File]::ReadAllText((Join-Path $here $Skript), [System.Text.Encoding]::UTF8)
+  $von = $text.IndexOf('# Fernwartungs-Status für die Kassa sichtbar machen'); if ($von -lt 0) { throw 'Nachlauf-Marke nicht gefunden' }
+  $bis = $text.IndexOf($Ende, $von); if ($bis -lt 0) { throw 'Nachlauf-Ende nicht gefunden' }
+  $block = $text.Substring($von, $bis - $von)
+  $ordner = Neues-Tempverzeichnis; $aufraeumen.Add($ordner)
+  if ($MarkerDa) { New-Item -ItemType Directory -Path (Join-Path $ordner 'KassaPOS') -Force | Out-Null; Schreibe-Text (Join-Path $ordner 'KassaPOS\fernwartung-status.json') '{}' }
+  $vorherPd = $env:ProgramData; $env:ProgramData = $ordner
+  $fwAktiv = $Aktiv; $OhneFernwartung = $Ohne; $Ziel = 'C:\kassa-pos-test'
+  $global:VeroeffentlichAufruf = $null
+  if ($Aktiv) { . $stubVeroeffentlichen }     # Bibliothek ist in diesem Fall schon geladen
+  function Finde-FernwartungBibliothek { if ($BibliothekDa) { return $stubVeroeffentlichen } return $null }
+  try { Invoke-Expression $block *>&1 | Out-Null } finally { $env:ProgramData = $vorherPd }
+  return $global:VeroeffentlichAufruf
+}
+foreach ($v in @(
+  @{ Skript = 'install.ps1';         Ende = '# ── 6. Firewall' },
+  @{ Skript = 'install-offline.ps1'; Ende = '# ── 5. Firewall' }
+)) {
+  $n = $v.Skript
+  $r = Lass-Nachlauf-Laufen $n $v.Ende $true $false $false
+  Pruefe "$n`: nach compose up: Fernwartungs-Lauf war aktiv → Status wird übergeben" { $r -eq 'C:\kassa-pos-test' }
+  $r = Lass-Nachlauf-Laufen $n $v.Ende $false $false $true
+  Pruefe "$n`: kein neuer Lauf, aber der PC ist schon eingerichtet (Statusdatei da) → Status wird trotzdem übergeben" { $r -eq 'C:\kassa-pos-test' }
+  $r = Lass-Nachlauf-Laufen $n $v.Ende $false $false $false
+  Pruefe "$n`: nie eingerichtet (keine Statusdatei) → nichts wird übergeben" { $null -eq $r }
+  $r = Lass-Nachlauf-Laufen $n $v.Ende $false $true $true
+  Pruefe "$n`: -OhneFernwartung → nichts wird übergeben, auch wenn eine Statusdatei da ist" { $null -eq $r }
+  $r = Lass-Nachlauf-Laufen $n $v.Ende $false $false $true -BibliothekDa $false
+  Pruefe "$n`: Bibliothek nicht auffindbar → kein Absturz, nichts übergeben" { $null -eq $r }
+}
+
 # =============================================================================
 Gruppe '6. install.ps1 -Trockenlauf als eigener Prozess (tut nichts, Token nie sichtbar)'
 # =============================================================================

@@ -286,8 +286,13 @@ schritt "Baue und starte alle Container — der erste Lauf dauert einige Minuten
 ( cd "$KASSA_DIR" && $DOCKER compose up -d --build ) || abbruch "docker compose up fehlgeschlagen — Ausgabe oben prüfen."
 ok "Container laufen"
 
-# Fernwartungs-Status für die Kassa sichtbar machen (Einstellungen → System → Fernwartung)
-if [ "$FW_AKTIV" = "1" ]; then ( set +e; fw_veroeffentliche_ergebnis "$KASSA_DIR" ) || true; fi
+# Fernwartungs-Status für die Kassa sichtbar machen (Einstellungen → System → Fernwartung) —
+# auch ohne neuen Fernwartungs-Lauf, wenn dieses Gerät schon eingerichtet ist (der Status folgt der
+# Box, z. B. nach „docker compose down -v" oder einer Neuinstallation der Container)
+fw_status_vorhanden="${KASSA_STATE_DIR:-/var/lib/kassa-pos}/fernwartung-status.json"
+if [ "${KASSA_OHNE_FERNWARTUNG:-0}" != "1" ] && { [ "$FW_AKTIV" = "1" ] || [ -f "$fw_status_vorhanden" ]; }; then
+  { [ "$FW_AKTIV" = "1" ] || fw_bibliothek_laden; } && ( set +e; fw_veroeffentliche_ergebnis "$KASSA_DIR" ) || true
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 5. Auf die Kassa warten (Gesundheitscheck)

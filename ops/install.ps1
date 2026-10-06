@@ -337,8 +337,16 @@ try {
 } finally { Pop-Location }
 Ok 'Container laufen'
 
-# Fernwartungs-Status für die Kassa sichtbar machen (Einstellungen → System → Fernwartung)
-if ($fwAktiv) { try { [void](Veroeffentliche-FernwartungErgebnis -Ziel $Ziel) } catch { } }
+# Fernwartungs-Status für die Kassa sichtbar machen (Einstellungen → System → Fernwartung) —
+# auch ohne neuen Fernwartungs-Lauf, wenn dieser PC schon eingerichtet ist (der Status folgt der Box,
+# z. B. nach „docker compose down -v" oder einer Neuinstallation der Container)
+try {
+  $fwStatusVorhanden = Test-Path -LiteralPath (Join-Path $env:ProgramData 'KassaPOS\fernwartung-status.json') -PathType Leaf
+  if (-not $OhneFernwartung -and ($fwAktiv -or $fwStatusVorhanden)) {
+    if (-not $fwAktiv) { $fwLib = Finde-FernwartungBibliothek; if ($fwLib) { . $fwLib } }
+    if (Get-Command Veroeffentliche-FernwartungErgebnis -ErrorAction SilentlyContinue) { [void](Veroeffentliche-FernwartungErgebnis -Ziel $Ziel) }
+  }
+} catch { }
 
 # ── 6. Firewall für Geräte im LAN öffnen ─────────────────────────────────────
 Schritt 'Öffne Windows-Firewall für die Kassa-Ports'

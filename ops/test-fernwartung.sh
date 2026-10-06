@@ -294,6 +294,19 @@ pruefe "install.sh voller Lauf (Docker-Attrappe): Exit 0, Reihenfolge TeamViewer
 pruefe "install.sh voller Lauf: der Kassa wird der Status ohne Geheimnis übergeben" test -s "$TMP/veroeffentlicht.json" -a "$(grep -c '"id":"123456789"' "$TMP/veroeffentlicht.json")" -eq 1 -a "$(grep -c "$ASSID" "$TMP/veroeffentlicht.json")" -eq 0
 pruefe "install.sh voller Lauf: meldet die Sichtbarkeit in der Kassa, die Assignment-ID steht in keiner Ausgabe" test "$(enthaelt "$OUT" 'in der Kassa sichtbar' && enthaelt_nicht "$OUT" "$ASSID" && echo ja)" = ja
 
+# Schon eingerichteter PC, Update OHNE fernwartung.json: der Status wird trotzdem wieder an die Kassa übergeben
+# (hermetisch: Skripte in einen eigenen Ordner kopieren, damit keine echte ops/fernwartung.json gefunden wird)
+setze_szenario
+mkdir -p "$TMP/skripte" "$TMP/lauf3" "$TMP/state5"
+cp "$HIER/install.sh" "$HIER/fernwartung.sh" "$TMP/skripte/"
+printf '%s\n' '{"anbieter":"teamviewer","id":"123456789","alias":"Kassa Mayr","gruppe":null,"installiertAm":"2026-10-06T10:00:00Z"}' > "$TMP/state5/fernwartung-status.json"
+OUT="$(cd "$TMP/lauf3" && KASSA_DIR="$TMP/ziel5" KASSA_STATE_DIR="$TMP/state5" bash "$TMP/skripte/install.sh" 2>&1)"; RC=$?
+pruefe "install.sh Update ohne fernwartung.json, PC schon eingerichtet: Status wird trotzdem übergeben, nichts installiert" test "$RC" -eq 0 -a "$(log_zeilen '^apt-get')" -eq 0 -a "$(log_zeilen '^teamviewer')" -eq 0 -a "$(log_zeilen '^docker compose exec')" -eq 1 -a "$(grep -c '"id":"123456789"' "$TMP/veroeffentlicht.json")" -eq 1
+setze_szenario
+rm -f "$TMP/state5/fernwartung-status.json"
+OUT="$(cd "$TMP/lauf3" && KASSA_DIR="$TMP/ziel6" KASSA_STATE_DIR="$TMP/state5" bash "$TMP/skripte/install.sh" 2>&1)"; RC=$?
+pruefe "install.sh Update ohne Konfiguration und ohne Statusdatei: nichts mit Fernwartung (nur die Hinweiszeile)" test "$RC" -eq 0 -a "$(log_zeilen '^docker compose exec')" -eq 0 -a "$(enthaelt "$OUT" 'keine fernwartung.json gefunden' && echo ja)" = ja
+
 printf '\n'
 if [ "$FEHL" -eq 0 ]; then printf 'ALLE %d TESTS BESTANDEN\n' "$ANZAHL"; exit 0; fi
 printf '%d von %d TESTS FEHLGESCHLAGEN\n' "$FEHL" "$ANZAHL"; exit 1

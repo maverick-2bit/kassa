@@ -515,7 +515,9 @@ Signatur geprüft) → Dienst „TeamViewer" läuft und startet mit Windows → 
 beim 32-Bit-Client) → schreibt `C:\ProgramData\KassaPOS\fernwartung-status.json` (**ohne Geheimnis**) → nach dem
 Start der Container legt der Installer sie in das Kontroll-Volume der Kassa (`/control` — dasselbe, über das
 Updater und Backend schon sprechen; das Backend hängt es zusätzlich **schreibgeschützt** als `/control-ro`
-ein und liest nur dort). Der Schritt läuft **vor** dem
+ein und liest nur dort). Der Status „folgt der Box": Ist ein PC schon eingerichtet, übergibt auch ein späteres
+Update **ohne** `fernwartung.json` die gespeicherte Statusdatei erneut (z. B. nach neu aufgesetzten Containern).
+Der Schritt läuft **vor** dem
 Container-Build: hakt Docker, ist die Box trotzdem schon erreichbar.
 
 ### 10.5 Kontrolle
