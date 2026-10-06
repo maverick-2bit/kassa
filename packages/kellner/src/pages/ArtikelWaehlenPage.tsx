@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
-import { allergeneAnzeige, ausgeblendeteArtikelIds, baumFlach, erweitereSichtbarkeit, farbeZuHex, kategorieAnzeigeNamen, kompakteArtikelListe, type Artikel, type Kategorie, type ModifikatorGruppe, type ModifikatorAuswahl } from '@kassa/shared'
+import { allergeneAnzeige, artikelErlaubt, ausgeblendeteArtikelIds, farbeZuHex, kategorieAnzeigeNamen, kompakteArtikelListe, sichtbareGruppenFlach, sichtbarkeitsMengen, type Artikel, type Kategorie, type ModifikatorGruppe, type ModifikatorAuswahl } from '@kassa/shared'
 import { artikelApi, kategorieApi, modifikatorApi, tischTabApi, kellnerKonfigApi } from '../lib/api'
 import { getAuth, clearAuth, gaengeAktiv as istGaengeAktiv, gaengeAnzahl } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
@@ -27,13 +27,12 @@ function gangLabel(g: number): string {
 type Phase = 'artikel' | 'modifikatoren'
 
 /**
- * Warengruppen in Baum-Reihenfolge (Reihenfolge unter Geschwistern) mit Reiter-Beschriftung: der Name,
- * bei Namensgleichheit der Pfad „Eltern › Kind" (mehrere Gruppen heißen z. B. „Alkoholfrei").
+ * Reiter-Beschriftung: der Name, bei Namensgleichheit der Pfad „Eltern › Kind"
+ * (mehrere Gruppen heißen z. B. „Alkoholfrei").
  */
-function kategorienImBaum(alle: Kategorie[]): { liste: Kategorie[]; label: Map<string, string> } {
+function reiterBeschriftungen(alle: Kategorie[]): Map<string, string> {
   const anzeigeName = kategorieAnzeigeNamen(alle)
-  const liste = baumFlach(alle).map(e => e.kategorie)
-  return { liste, label: new Map(liste.map(k => [k.id, anzeigeName(k.id)] as const)) }
+  return new Map(alle.map(k => [k.id, anzeigeName(k.id)] as const))
 }
 
 /** Pseudo-Kategorie-ID für den Favoriten-Reiter (kollidiert mit keiner UUID). */
@@ -107,21 +106,20 @@ export function ArtikelWaehlenPage() {
     staleTime: 10_000,
   })
 
-  // Wie an der Kasse: Untergruppen einer sichtbaren Gruppe sind sichtbar, Vorfahren einer sichtbaren Untergruppe auch
-  const sichtbareKatIds = erweitereSichtbarkeit(katQuery.data ?? [], konfigQuery.data?.sichtbareKategorieIds ?? []) ?? []
-  // Warengruppen-Sichtbarkeit dieser Kasse (leer = alle) — wie an der stationären Kasse
-  // Untergruppen werden hier flach als eigene Reiter gezeigt („Bar › Alkoholfrei"),
-  // in Baum-Reihenfolge (Kachel-Raster der Kasse gibt es in der Kellner-App nicht).
-  const { liste: baumListe, label: reiterLabel } = kategorienImBaum(katQuery.data ?? [])
-  const kategorien  = baumListe.filter(k =>
-    sichtbareKatIds.length === 0 || sichtbareKatIds.includes(k.id))
-  const alleArtikel = artikelQuery.data ?? []
+  // Warengruppen-Sichtbarkeit dieser Kasse (leer = alle) — wie an der stationären Kasse: JEDE Gruppe einzeln gewählt,
+  // ein Haken gilt nicht automatisch für Untergruppen. Untergruppen werden hier flach als eigene Reiter gezeigt
+  // („Bar › Alkoholfrei"), in Baum-Reihenfolge (ein Kachel-Raster wie an der Kasse gibt es in der Kellner-App nicht) —
+  // einen Zugang über die Elterngruppe braucht es daher nicht.
+  const sichtbareIds = konfigQuery.data?.sichtbareKategorieIds
+  const sichtbarkeit = sichtbarkeitsMengen(katQuery.data ?? [], sichtbareIds)
+  const kategorien   = sichtbareGruppenFlach(katQuery.data ?? [], sichtbareIds)
+  const reiterLabel  = reiterBeschriftungen(katQuery.data ?? [])
+  const alleArtikel  = artikelQuery.data ?? []
   // An dieser Kasse in ihrer Warengruppe ausgeblendet (Suche/Favoriten bleiben unberührt)
   const ausgeblendet = ausgeblendeteArtikelIds(alleArtikel, layoutsQuery.data)
 
-  // Nur Favoriten aus Warengruppen, die an dieser Kasse sichtbar sind
-  const kategorieSichtbar = (a: Artikel) =>
-    sichtbareKatIds.length === 0 || (a.kategorieId !== null && sichtbareKatIds.includes(a.kategorieId))
+  // Nur Favoriten aus Warengruppen, die an dieser Kasse gewählt sind
+  const kategorieSichtbar = (a: Artikel) => artikelErlaubt(a, sichtbarkeit)
 
   // Kassen-Liste (mit Platzhaltern = null) geht vor; sonst globale istFavorit-Liste
   const kassenEintraege = favoritenQuery.data?.eintraege ?? []

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { Kategorie } from '@kassa/shared'
 import {
-  baumFlach, erweitereSichtbarkeit, nachkommenIds, pfadIds, untergruppenVon, wurzelgruppen, wurzelIdVon,
+  baumFlach, nachkommenIds, pfadIds, sichtbarkeitsMengen, untergruppenVon, wurzelgruppen, wurzelIdVon,
 } from './kategorie-baum'
 
 const kat = (id: string, parentId: string | null, reihenfolge = 0, name = id): Kategorie => ({
@@ -29,10 +29,14 @@ describe('kategorie-baum', () => {
     expect(wurzelIdVon(baum, 'bar-alk-bier')).toBe('bar')
     expect(wurzelIdVon(baum, 'unbekannt')).toBeNull()
   })
-  it('Sichtbarkeit: leer = alle, sonst Nachkommen + Vorfahren', () => {
-    expect(erweitereSichtbarkeit(baum, [])).toEqual([])
-    expect(erweitereSichtbarkeit(baum, undefined)).toBeUndefined()
-    expect(erweitereSichtbarkeit(baum, ['bar-alk'])!.sort()).toEqual(['bar', 'bar-alk', 'bar-alk-bier'])
+  it('Sichtbarkeit: leer = alle; sonst NUR die gewählten Gruppen, ihre Vorfahren sind Zugang (keine automatischen Nachkommen)', () => {
+    const alle = sichtbarkeitsMengen(baum, [])
+    expect(alle.alle).toBe(true)
+    expect([...alle.sichtbar].sort()).toEqual(['bar', 'bar-alk', 'bar-alk-bier', 'bar-na', 'speisen'])
+    expect(sichtbarkeitsMengen(baum, undefined).alle).toBe(true)
+    const gewaehlt = sichtbarkeitsMengen(baum, ['bar-alk'])
+    expect([...gewaehlt.sichtbar]).toEqual(['bar-alk'])           // „bar-alk-bier" ist NICHT automatisch dabei
+    expect([...gewaehlt.zugang]).toEqual(['bar'])
   })
   it('baumFlach: Tiefensuche mit Tiefe', () => {
     expect(baumFlach(baum).map(e => `${e.tiefe}:${e.kategorie.id}`)).toEqual([

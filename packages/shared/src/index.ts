@@ -201,7 +201,10 @@ export {
   nachkommenIds,
   pfadIds,
   wurzelIdVon,
-  erweitereSichtbarkeit,
+  sichtbarkeitsMengen,
+  istErreichbar,
+  artikelErlaubt,
+  sichtbareGruppenFlach,
   baumFlach,
   KATEGORIE_PFAD_TRENNER,
   kategoriePfadNamen,
@@ -219,6 +222,7 @@ export type {
   KategorieBenannt,
   KategorieSortierbar,
   KategorieAufloesung,
+  SichtbarkeitsMengen,
   KategorieRouting,
 } from './kategorie-baum.js'
 

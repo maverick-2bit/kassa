@@ -19,7 +19,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { loeseAnordnungAuf, type Artikel, type Kategorie } from '@kassa/shared'
 import { artikelApi, posConfigApi } from '../lib/api'
 import { getAuth } from '../lib/auth'
-import { baumFlach, erweitereSichtbarkeit, kategorieAnzeigeNamen, kategoriePfad, untergruppenVon } from '../lib/kategorie-baum'
+import { baumFlach, kategorieAnzeigeNamen, kategoriePfad, sichtbarkeitsMengen, untergruppenVon } from '../lib/kategorie-baum'
 import { sichtbareWarengruppen } from '../lib/artikel-reiter'
 import {
   anordnungSchluessel,
@@ -83,19 +83,25 @@ export function ArtikelAnordnungTab({ kategorien, alleArtikel, kasseId, kasseNam
 
   const spalten = modus === 'kasse' ? (posQuery.data?.artikelProZeile ?? 4) : vorschauSpalten
 
-  // Wie an der Kasse: Untergruppen einer sichtbaren Gruppe sind sichtbar, Vorfahren einer sichtbaren Untergruppe auch
-  const sichtbareIds = useMemo(
-    () => erweitereSichtbarkeit(kategorien, posQuery.data?.sichtbareKategorieIds ?? []) ?? [],
+  // Wie an der Kasse: JEDE Warengruppe einzeln gewählt (shared sichtbarkeitsMengen). Eine gewählte Gruppe zeigt ihre
+  // eigenen Artikel; eine nicht gewählte mit gewählter Untergruppe ist nur Zugang (Reiter/Kachel) — ohne eigene Artikel.
+  const mengen = useMemo(
+    () => sichtbarkeitsMengen(kategorien, posQuery.data?.sichtbareKategorieIds),
     [kategorien, posQuery.data],
   )
-  const kasseSiehtGruppe = (id: string) => sichtbareIds.length === 0 || sichtbareIds.includes(id)
-  /** Aktive, an dieser Kasse sichtbare Gruppen — daraus die Untergruppen-Kacheln, die die Kasse vorn zeigt */
-  const sichtbareGruppen = useMemo(() => sichtbareWarengruppen(kategorien, sichtbareIds), [kategorien, sichtbareIds])
+  /** Aktive, an dieser Kasse erreichbare Gruppen (gewählt oder Zugang) — daraus die Untergruppen-Kacheln, die die Kasse vorn zeigt */
+  const sichtbareGruppen = useMemo(() => sichtbareWarengruppen(kategorien, mengen), [kategorien, mengen])
 
-  // Warengruppen-Chips im Baum; gleichnamige Gruppen zeigen den Pfad. Die Kassen-Ebene bietet nur an, was die Kasse zeigt.
+  // Warengruppen-Chips im Baum; gleichnamige Gruppen zeigen den Pfad. Die Kassen-Ebene bietet nur Gruppen an, die die Kasse
+  // MIT eigenen Artikeln zeigt — ein reiner Zugang hat nichts anzuordnen (kein leerer Editor, dafür der Hinweis unten).
   const gruppen = useMemo(
-    () => baumFlach(kategorien).map(e => e.kategorie).filter(k => k.aktiv && (modus === 'standard' || kasseSiehtGruppe(k.id))),
-    [kategorien, modus, sichtbareIds], // eslint-disable-line react-hooks/exhaustive-deps
+    () => baumFlach(kategorien).map(e => e.kategorie).filter(k => k.aktiv && (modus === 'standard' || mengen.sichtbar.has(k.id))),
+    [kategorien, modus, mengen],
+  )
+  /** Aktive Gruppen, die an dieser Kasse nur als Zugang zu einer gewählten Untergruppe sichtbar sind */
+  const nurZugang = useMemo(
+    () => baumFlach(kategorien).map(e => e.kategorie).filter(k => k.aktiv && mengen.zugang.has(k.id)),
+    [kategorien, mengen],
   )
   const anzeigeName = useMemo(() => kategorieAnzeigeNamen(kategorien.filter(k => k.aktiv)), [kategorien])
   const [gewaehlteKatId, setGewaehlteKatId] = useState('')
@@ -299,6 +305,14 @@ export function ArtikelAnordnungTab({ kategorien, alleArtikel, kasseId, kasseNam
           )
         })}
       </div>
+
+      {modus === 'kasse' && nurZugang.length > 0 && (
+        <p data-testid="anordnung-zugang-hinweis" className="text-xs text-ink-subtle">
+          Nicht aufgeführt: {nurZugang.map(k => anzeigeName(k.id)).join(', ')} —{' '}
+          {nurZugang.length === 1 ? 'diese Warengruppe ist' : 'diese Warengruppen sind'} an dieser Kasse nur als Zugang zu einer
+          gewählten Untergruppe sichtbar und {nurZugang.length === 1 ? 'zeigt' : 'zeigen'} keine eigenen Artikel.
+        </p>
+      )}
 
       {wechsel && <UngespeichertHinweis onVerwerfen={verwerfenUndWechseln} onBleiben={() => setWechsel(null)} />}
 

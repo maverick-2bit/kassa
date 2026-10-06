@@ -1,8 +1,9 @@
 /**
  * Integrationstest: gleichnamige Warengruppen („Alkoholfrei" unter drei verschiedenen Elterngruppen)
  * in den serverseitig gelieferten Listen — Gast-Karte und SB-Terminal-Sortiment kommen in BAUM-
- * Reihenfolge mit Pfad-Namen bei Namensgleichheit, die Kassen-Sichtbarkeit gilt samt Untergruppen
- * (wie an der Kasse) — und der Optionen-Import ordnet über den Pfad „Atriumbar/Alkoholfrei" zu.
+ * Reihenfolge mit Pfad-Namen bei Namensgleichheit, die Kassen-Sichtbarkeit wählt jede Gruppe einzeln
+ * (wie an der Kasse: kein automatischer Teilbaum) — und der Optionen-Import ordnet über den Pfad
+ * „Atriumbar/Alkoholfrei" zu.
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
@@ -119,15 +120,22 @@ describe('Warengruppen-Baum in Gast-Karte, Terminal-Sortiment und Optionen-Impor
     expect(k.kategorien.find(x => x.id === ids.kelBier)!.reihenfolge).toBe(1)
   })
 
-  it('Gast-Karte mit Kassen-Auswahl: Untergruppen und Zugang (Elterngruppe) wie an der Kasse', async () => {
-    // Auswahl: nur „Kellner › Alkoholfrei" → die Elterngruppe bleibt als Zugang, andere Teilbäume fehlen
+  it('Gast-Karte mit Kassen-Auswahl: jede Gruppe einzeln gewählt — kein Teilbaum, kein Zugang (flache Reiter)', async () => {
+    const reiter = async () =>
+      ((await srv.fastify.inject({ method: 'GET', url: `/api/gast/karte?kasseId=${kasseId}` })).json() as { kategorien: { name: string }[] })
+        .kategorien.map(x => x.name)
+    // Auswahl: nur „Kellner › Alkoholfrei" → genau diese Gruppe (die Elterngruppe wäre nur Zugang und entfällt bei flachen Reitern)
     await setzeSichtbarkeit([ids.kelAlk!])
-    let k = (await srv.fastify.inject({ method: 'GET', url: `/api/gast/karte?kasseId=${kasseId}` })).json() as { kategorien: { name: string }[] }
-    expect(k.kategorien.map(x => x.name)).toEqual(['Kellner Getränke', 'Kellner Getränke › Alkoholfrei'])
-    // Auswahl: Elterngruppe „Atriumbar" → samt allen Untergruppen
+    expect(await reiter()).toEqual(['Kellner Getränke › Alkoholfrei'])
+    // Auswahl: Elterngruppe „Atriumbar" → nur sie — ihre Untergruppen sind nicht automatisch dabei
     await setzeSichtbarkeit([ids.atr!])
-    k = (await srv.fastify.inject({ method: 'GET', url: `/api/gast/karte?kasseId=${kasseId}` })).json() as { kategorien: { name: string }[] }
-    expect(k.kategorien.map(x => x.name)).toEqual(['Atriumbar', 'Atriumbar › Alkoholfrei', 'Limonaden', 'Atriumbar › Bier'])
+    expect(await reiter()).toEqual(['Atriumbar'])
+    // „Atriumbar › Alkoholfrei" + „Limonaden" einzeln gewählt: beide, in Baumreihenfolge (Bier und Atriumbar selbst nicht)
+    await setzeSichtbarkeit([ids.atrLim!, ids.atrAlk!])
+    expect(await reiter()).toEqual(['Atriumbar › Alkoholfrei', 'Limonaden'])
+    // Ältere Liste mit vollem Teilbaum (Gruppe + alle Untergruppen): wie bisher der ganze Teilbaum
+    await setzeSichtbarkeit([ids.atr!, ids.atrAlk!, ids.atrLim!, ids.atrBier!])
+    expect(await reiter()).toEqual(['Atriumbar', 'Atriumbar › Alkoholfrei', 'Limonaden', 'Atriumbar › Bier'])
     await setzeSichtbarkeit([])
   })
 

@@ -21,7 +21,9 @@ export {
   nachkommenIds,
   pfadIds,
   wurzelIdVon,
-  erweitereSichtbarkeit,
+  sichtbarkeitsMengen,
+  istErreichbar,
+  sichtbareGruppenFlach,
   baumFlach,
   KATEGORIE_PFAD_TRENNER,
   kategoriePfadNamen,
@@ -33,4 +35,4 @@ export {
   loeseKategorieAuf,
   kategorieSchluessel,
 } from '@kassa/shared'
-export type { KategorieAufloesung } from '@kassa/shared'
+export type { KategorieAufloesung, SichtbarkeitsMengen } from '@kassa/shared'
