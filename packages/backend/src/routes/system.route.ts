@@ -7,6 +7,9 @@
  *  POST /system/update  (admin) — löst das Update aus: legt die „request"-Datei im
  *                          geteilten Kontroll-Volume an, die der Updater-Dienst
  *                          abholt. 409 wenn kein Updater-Dienst läuft.
+ *  GET  /system/fernwartung (admin) — Fernwartungs-Anbindung dieser Kasse (TeamViewer ID,
+ *                          Gerätename, Gruppe). Liest NUR die Statusdatei, die der
+ *                          Installer ins Kontroll-Volume legt (services/fernwartung-status.ts).
  *
  * Das Backend startet oder baut hier NICHTS selbst — es gibt nur das Startsignal.
  * Den eigentlichen Rebuild macht der abgeschottete 'updater'-Container.
@@ -16,6 +19,7 @@ import type { FastifyPluginAsync } from 'fastify'
 import { createRequire } from 'module'
 import { readFile, writeFile } from 'fs/promises'
 import { join } from 'path'
+import { leseFernwartungStatus } from '../services/fernwartung-status.js'
 
 const require = createRequire(import.meta.url)
 const { version: INSTALLIERT } = require('../../package.json') as { version: string }
@@ -125,6 +129,12 @@ export const systemRoute: FastifyPluginAsync = async (fastify) => {
       }
     }
     return { ips, imContainer: false }
+  })
+
+  // Fernwartung: nur lesen. Kein Mandant, keine Kasse — es geht um den PC, auf dem diese Kassa läuft.
+  fastify.get('/system/fernwartung', adminOnly, async (request) => {
+    const verzeichnis = process.env.FERNWARTUNG_STATUS_DIR ?? process.env.UPDATE_CONTROL_DIR ?? '/control'
+    return leseFernwartungStatus(verzeichnis, (grund) => request.log.warn(`Fernwartung: ${grund}`))
   })
 
   fastify.post('/system/update', adminOnly, async (_request, reply) => {
