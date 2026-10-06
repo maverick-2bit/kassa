@@ -112,6 +112,13 @@ describe('Offline-Einlass (Integration, echtes PostgreSQL)', () => {
       mandantId: vorlage!.mandantId, eventId: eventA, ticketArtId: artA, code: 'reserviertxxxxxx',
       typ: 'einzel', bezeichnung: 'Eintritt', status: 'reserviert',
     })
+
+    // Alle Fixture-Tickets gelten als „vor einer Stunde zuletzt geändert": neue Tickets stempelt
+    // PostgreSQL (DEFAULT now()), der ?seit-Abgleich vergleicht aber mit `erstelltAt` aus der Node-Uhr.
+    // Die beiden Uhren gehen um Millisekunden auseinander (unter Windows zieht jeder Node-Prozess
+    // beim Start zufällig 0 … >10 ms Rückstand), und die Tickets entstehen nur wenige ms vor der
+    // ersten Liste — das zuletzt ausgestellte rutschte gelegentlich in den Abgleich („1 erwartet, 2 geliefert").
+    await idb.db.update(tickets).set({ updatedAt: new Date(Date.now() - 3600_000) }).where(eq(tickets.eventId, eventA))
   })
 
   afterAll(async () => {
@@ -143,7 +150,11 @@ describe('Offline-Einlass (Integration, echtes PostgreSQL)', () => {
     const [t] = await idb.db.select({ id: tickets.id }).from(tickets).where(eq(tickets.code, code.storno!))
     expect((await srv.fastify.inject({ method: 'POST', url: `/api/ticketing/tickets/${t!.id}/stornieren`, headers: admin('A') })).statusCode).toBe(200)
 
-    const delta = (await liste('Nord', eventA, listenStand)).json()
+    // Wie das Gerät (einlass/src/lib/offline.ts, UEBERLAPPUNG_MS) nicht exakt ab dem Listenstand abgleichen,
+    // sondern ein Stück davor: der Server liefert lieber etwas zu viel als zu wenig. Die Fixture-Tickets
+    // sind eine Stunde alt, das Storno ist neuer — das Ergebnis hängt an keiner Millisekunde mehr.
+    const seit = new Date(Date.parse(listenStand) - 5_000).toISOString()
+    const delta = (await liste('Nord', eventA, seit)).json()
     expect(delta.vollstaendig).toBe(false)
     expect(delta.tickets).toHaveLength(1)
     expect(delta.tickets[0]).toMatchObject({ h: sha(code.storno!), status: 'storniert' })
