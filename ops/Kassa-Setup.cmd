@@ -37,7 +37,14 @@ if %errorlevel% neq 0 (
 )
 
 rem -- 3. Installer ausfuehren --
+rem    Liegt neben dieser Datei eine fernwartung.json, richtet der Installer zusaetzlich
+rem    die Fernwartung (TeamViewer Host) ein - siehe ops/DEPLOYMENT.md.
+if exist "%~dp0fernwartung.json" goto mit_fernwartung
 powershell -NoProfile -ExecutionPolicy Bypass -File "%TEMP%\kassa-install.ps1"
+goto installer_fertig
+:mit_fernwartung
+powershell -NoProfile -ExecutionPolicy Bypass -File "%TEMP%\kassa-install.ps1" -FernwartungKonfig "%~dp0fernwartung.json"
+:installer_fertig
 
 echo.
 echo Fenster kann geschlossen werden.

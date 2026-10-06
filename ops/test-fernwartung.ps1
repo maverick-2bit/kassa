@@ -1,0 +1,478 @@
+﻿# =============================================================================
+# Kassa POS — Tests für den Fernwartungs-Schritt (TeamViewer Host)
+#
+# Prüft OHNE etwas zu installieren oder zu verändern:
+#   - Konfiguration (fernwartung.json): Prüfregeln, Platzhalter, kaputtes JSON
+#   - Parameter-Aufbereitung: Gerätename, Gruppe, Kommandozeilen (msiexec,
+#     TeamViewer.exe assignment / assign), Quoting, Maskierung
+#   - dass das Token/die Assignment-ID in KEINER Ausgabe vorkommt
+#     (Trockenlauf, Fehlerfälle, vollständiger Ablauf mit simuliertem System)
+#   - Idempotenz (zweiter Lauf installiert/ordnet nicht erneut zu), Statusdatei
+#   - install.ps1 -Trockenlauf als eigener Prozess (Windows PowerShell 5.1 und pwsh)
+#
+# Aufruf:   powershell -NoProfile -ExecutionPolicy Bypass -File ops\test-fernwartung.ps1
+#           pwsh -NoProfile -File ops/test-fernwartung.ps1
+# Exit-Code 0 = alles bestanden, 1 = mindestens ein Test fehlgeschlagen.
+#
+# Die Systemzugriffe (Dienst, Registry, msiexec, Docker) werden im Test durch
+# Funktionen ersetzt, die nur Aufrufe mitschreiben — dieser Test kann also auch auf
+# einem PC laufen, auf dem TeamViewer produktiv im Einsatz ist.
+# =============================================================================
+
+$ErrorActionPreference = 'Stop'
+$here = $PSScriptRoot
+if (-not $here) { $here = Split-Path -Parent $MyInvocation.MyCommand.Path }
+
+# Erfundene Geheimnisse — daran wird geprüft, dass sie nirgends ausgegeben werden
+$TOKEN = '1234567-DUMMYTOKENabcdefghijkl'
+$ASSID = '0001DUMMYASSIGNMENTIDabcdefghijklmnopqrstuvwxyz0123456789-ZZZZ'
+$URLQ  = '?sig=DUMMYQUERYKEY123456'
+
+. (Join-Path $here 'fernwartung.ps1')
+
+# ---- Mini-Testrahmen --------------------------------------------------------
+$script:Anzahl = 0
+$script:Fehlschlaege = New-Object System.Collections.Generic.List[string]
+
+function Pruefe([string]$Beschreibung, [scriptblock]$Bedingung) {
+  $script:Anzahl++
+  $ok = $false
+  $grund = ''
+  try { $ok = [bool](& $Bedingung) } catch { $ok = $false; $grund = ' (Ausnahme: ' + $_.Exception.Message + ')' }
+  if ($ok) { Write-Host ('  [ok]   ' + $Beschreibung) -ForegroundColor Green }
+  else {
+    Write-Host ('  [FAIL] ' + $Beschreibung + $grund) -ForegroundColor Red
+    $script:Fehlschlaege.Add($Beschreibung)
+  }
+}
+function Gruppe([string]$Titel) { Write-Host ("`n" + $Titel) -ForegroundColor Cyan }
+
+function Fange-Ausgabe([scriptblock]$Block) {
+  # Fängt alles ab, was in die Konsole (Write-Host & Co.) geschrieben wird
+  $script:FangErgebnis = $null
+  $text = (& { $script:FangErgebnis = (& $Block) } *>&1 | Out-String)
+  return [pscustomobject]@{ Text = $text; Ergebnis = $script:FangErgebnis }
+}
+
+function Neues-Tempverzeichnis {
+  $d = Join-Path ([System.IO.Path]::GetTempPath()) ('kassa-fw-test-' + [guid]::NewGuid().ToString('N'))
+  New-Item -ItemType Directory -Path $d -Force | Out-Null
+  return $d
+}
+function Schreibe-Text([string]$Pfad, [string]$Text) {
+  [System.IO.File]::WriteAllText($Pfad, $Text, (New-Object System.Text.UTF8Encoding($false)))
+}
+function Lies-Konfig([string]$Json, [string]$Verzeichnis = 'C:\konfig') {
+  Pruefe-FernwartungKonfig -Roh ($Json | ConvertFrom-Json) -Verzeichnis $Verzeichnis
+}
+
+function Umg([hashtable]$Basis, [hashtable]$Ueber) {
+  # Hashtables mischen (die rechte Seite gewinnt) — $a + $b wirft bei doppelten Schlüsseln
+  $n = @{}
+  foreach ($k in $Basis.Keys) { $n[$k] = $Basis[$k] }
+  foreach ($k in $Ueber.Keys) { $n[$k] = $Ueber[$k] }
+  return $n
+}
+$aufraeumen = New-Object System.Collections.Generic.List[string]
+
+# =============================================================================
+Gruppe '1. Kleine reine Funktionen'
+# =============================================================================
+
+Pruefe 'Alias: Vorlage + Name' { (Format-FernwartungAlias -Vorlage 'Kassa {Name}' -Name 'Gasthof Mayr' -Computername 'PC01') -eq 'Kassa Gasthof Mayr' }
+Pruefe 'Alias: ohne Name gilt der Computername' { (Format-FernwartungAlias -Vorlage '{Name}' -Name '' -Computername 'KASSA-PC') -eq 'KASSA-PC' }
+Pruefe 'Alias: {Computername} in der Vorlage' { (Format-FernwartungAlias -Vorlage '{Name} ({Computername})' -Name 'Cafe' -Computername 'PC7') -eq 'Cafe (PC7)' }
+Pruefe 'Alias: Umlaute bleiben erhalten' { (Format-FernwartungAlias -Vorlage '{Name}' -Name 'Café Müller Straße' -Computername 'X') -eq 'Café Müller Straße' }
+Pruefe 'Alias: Anführungszeichen, %, &, | werden entfernt' {
+  $a = Format-FernwartungAlias -Vorlage '{Name}' -Name 'A"B''C%D&E|F;G' -Computername 'X'
+  ($a -notmatch '["''%&|;]') -and ($a -match '^A B C D E F G$')
+}
+Pruefe 'Alias: höchstens 64 Zeichen' { (Format-FernwartungAlias -Vorlage '{Name}' -Name ('x' * 200) -Computername 'X').Length -le 64 }
+Pruefe 'Alias: nur Sonderzeichen → Computername als Rückfall' { (Format-FernwartungAlias -Vorlage '{Name}' -Name '"""' -Computername 'PC9') -eq 'PC9' }
+
+Pruefe 'ID-Format: 9 Stellen' { (Formatiere-TeamViewerId '123456789') -eq '123 456 789' }
+Pruefe 'ID-Format: 10 Stellen (von rechts gruppiert)' { (Formatiere-TeamViewerId '1234567890') -eq '1 234 567 890' }
+Pruefe 'ID-Format: Leerzeichen/Müll werden ignoriert' { (Formatiere-TeamViewerId ' 123-456 789 ') -eq '123 456 789' }
+Pruefe 'ID aus Registry: DWORD positiv' { (Konvertiere-TeamViewerId ([int]123456789)) -eq '123456789' }
+Pruefe 'ID aus Registry: DWORD ab 2^31 kommt negativ an und wird korrigiert' { (Konvertiere-TeamViewerId ([int]-2000000000)) -eq '2294967296' }
+Pruefe 'ID aus Registry: Text mit Leerzeichen' { (Konvertiere-TeamViewerId '123 456 789') -eq '123456789' }
+Pruefe 'ID aus Registry: 0, Müll, zu kurz → $null' {
+  ($null -eq (Konvertiere-TeamViewerId ([int]0))) -and ($null -eq (Konvertiere-TeamViewerId 'abc')) -and ($null -eq (Konvertiere-TeamViewerId '1234'))
+}
+
+Pruefe 'Kommandozeile: einfache Argumente unverändert' { (Baue-Kommandozeile @('assignment', '--id', 'ABC', '--retries=3')) -eq 'assignment --id ABC --retries=3' }
+Pruefe 'Kommandozeile: --option=Wert mit Leerzeichen → --option="Wert" (wie in der TeamViewer-Doku)' {
+  (Baue-Kommandozeile @('--device-alias=Kassa Müller')) -eq '--device-alias="Kassa Müller"'
+}
+Pruefe 'Kommandozeile: Leerzeichen-Argument wird in Anführungszeichen gesetzt' { (Baue-Kommandozeile @('--alias', 'Kassa Müller')) -eq '--alias "Kassa Müller"' }
+Pruefe 'Kommandozeile: Pfad mit Backslash am Ende' { (Baue-Kommandozeile @('C:\Program Files\X\')) -eq '"C:\Program Files\X\\"' }
+Pruefe 'MSI-Eigenschaft: NAME="Wert"' { (Baue-MsiEigenschaft 'CUSTOMCONFIGID' 'abc123') -eq 'CUSTOMCONFIGID="abc123"' }
+Pruefe 'MSI-Eigenschaft: Anführungszeichen im Wert wird abgelehnt' {
+  $fehlgeschlagen = $false
+  try { Baue-MsiEigenschaft 'X' 'a"b' | Out-Null } catch { $fehlgeschlagen = $true }
+  $fehlgeschlagen
+}
+
+$script:FwGeheimnisse = @($TOKEN, $ASSID)
+Pruefe 'Maskierung: bekannte Geheimnisse' { (Maskiere-Geheimnisse "x $TOKEN y $ASSID z") -eq 'x *** y *** z' }
+$script:FwGeheimnisse = @()
+Pruefe 'Maskierung: Sicherheitsnetz für APITOKEN=… auch ohne bekannte Liste' { (Maskiere-Geheimnisse 'msiexec /i a.msi APITOKEN="abc-12345678" /qn') -eq 'msiexec /i a.msi APITOKEN="***" /qn' }
+Pruefe 'Maskierung: Sicherheitsnetz für --api-token und assignment --id' {
+  $t = Maskiere-Geheimnisse 'TeamViewer.exe assign --api-token geheim123456 --alias X; TeamViewer.exe assignment --id langeid1234567890'
+  ($t -notmatch 'geheim123456') -and ($t -notmatch 'langeid1234567890')
+}
+Pruefe 'Maskierung: ASSIGNMENTID=… ' { (Maskiere-Geheimnisse 'ASSIGNMENTID="langeid1234567890"') -eq 'ASSIGNMENTID="***"' }
+
+# =============================================================================
+Gruppe '2. Konfiguration prüfen'
+# =============================================================================
+
+$jsonRollout = @"
+{ "anbieter": "teamviewer", "msiPfad": "TeamViewer_Host.msi", "customConfigId": "abc1234",
+  "assignmentId": "$ASSID", "gruppe": "Mietkassen", "aliasVorlage": "Kassa {Name}" }
+"@
+$jsonToken = @"
+{ "msiPfad": "C:\\tv\\TeamViewer_Host.msi", "customConfigId": "abc1234", "apiToken": "$TOKEN",
+  "gruppeId": "12345678", "aliasVorlage": "{Name}" }
+"@
+
+$e = Lies-Konfig $jsonRollout
+Pruefe 'Rollout-Konfiguration: gültig, Modus assignmentId' { $e.Fehler.Count -eq 0 -and $e.Konfig.Modus -eq 'assignmentId' }
+Pruefe 'Rollout-Konfiguration: relativer msiPfad wird zum Konfig-Verzeichnis aufgelöst' { $e.Konfig.InstallerPfad -eq (Join-Path 'C:\konfig' 'TeamViewer_Host.msi') }
+Pruefe 'Rollout-Konfiguration: Installer-Typ msi, Signaturprüfung standardmäßig an' { $e.Konfig.InstallerTyp -eq 'msi' -and $e.Konfig.SignaturPruefen -eq $true }
+Pruefe 'Rollout-Konfiguration: Assignment-ID steht in der Geheimnisliste' { $e.Konfig.Geheimnisse -contains $ASSID }
+Pruefe 'Rollout-Konfiguration: Standardwerte für Retries/Timeout' { $e.Konfig.Retries -eq 20 -and $e.Konfig.Timeout -eq 120 }
+Pruefe 'Rollout-Konfiguration: Gruppe nur zur Anzeige → Warnung, kein Fehler' { $e.Warnungen.Count -ge 1 }
+
+$e = Lies-Konfig $jsonToken
+Pruefe 'API-Token-Konfiguration: gültig, Modus apiToken, absoluter Pfad bleibt' { $e.Fehler.Count -eq 0 -and $e.Konfig.Modus -eq 'apiToken' -and $e.Konfig.InstallerPfad -eq 'C:\tv\TeamViewer_Host.msi' }
+Pruefe 'API-Token-Konfiguration: gruppeId wird mit „g" normalisiert' { $e.Konfig.GruppeId -eq 'g12345678' }
+Pruefe 'API-Token-Konfiguration: Token steht in der Geheimnisliste' { $e.Konfig.Geheimnisse -contains $TOKEN }
+
+$e = Lies-Konfig ('{ "assignmentId": "' + $ASSID + '", "apiToken": "' + $TOKEN + '" }')
+Pruefe 'Beides gesetzt: es gilt die Rollout-Konfiguration + Warnung' { $e.Konfig.Modus -eq 'assignmentId' -and (($e.Warnungen -join ' ') -match 'apiToken') }
+
+$e = Lies-Konfig '{ "msiPfad": "a.msi" }'
+Pruefe 'Ohne Zuordnung: erlaubt (nur installieren), mit Warnung' { $e.Fehler.Count -eq 0 -and $e.Konfig.Modus -eq 'keine' -and $e.Warnungen.Count -ge 1 }
+
+$e = Lies-Konfig '{ "msiPfad": "a.msi", "apiToken": "kurz" }'
+Pruefe 'Token mit unerwartetem Format → Fehler OHNE den Wert zu nennen' { $e.Fehler.Count -ge 1 -and (($e.Fehler -join ' ') -notmatch 'kurz') }
+$e = Lies-Konfig '{ "msiPfad": "a.msi", "apiToken": "1234567-abc def" }'
+Pruefe 'Token mit Leerzeichen → Fehler (Kommandozeilen-Schutz)' { $e.Fehler.Count -ge 1 }
+$e = Lies-Konfig ('{ "hostInstallerUrl": "http://example.com/a.msi", "assignmentId": "' + $ASSID + '" }')
+Pruefe 'http:// als Installer-URL → Fehler' { $e.Fehler.Count -ge 1 }
+$e = Lies-Konfig '{ "msiPfad": "a.zip" }'
+Pruefe 'Installer ohne .msi/.exe → Fehler' { $e.Fehler.Count -ge 1 }
+$e = Lies-Konfig '{ "anbieter": "anydesk", "msiPfad": "a.msi" }'
+Pruefe 'Unbekannter Anbieter → Fehler' { $e.Fehler.Count -ge 1 }
+$e = Lies-Konfig '{ "msiPfad": "a.msi", "gruppe": "Miet\"kassen" }'
+Pruefe 'Gruppe mit Anführungszeichen → Fehler' { $e.Fehler.Count -ge 1 }
+$e = Lies-Konfig '{ "msiPfad": "a.msi", "gruppeId": "abc" }'
+Pruefe 'Ungültige gruppeId → Fehler' { $e.Fehler.Count -ge 1 }
+$e = Lies-Konfig '{ "msiPfad": "a.msi", "assignmentRetries": 99999 }'
+Pruefe 'assignmentRetries außerhalb 0..600 → Fehler' { $e.Fehler.Count -ge 1 }
+$e = Lies-Konfig '{ "msiPfad": "a.msi", "customConfigIdd": "abc" }'
+Pruefe 'Tippfehler im Feldnamen → Warnung „Unbekanntes Feld"' { ($e.Warnungen -join ' ') -match 'Unbekanntes Feld' }
+$e = Lies-Konfig '{ "_kommentar": "egal", "msiPfad": "a.msi" }'
+Pruefe 'Felder mit führendem _ sind Kommentare (keine Warnung)' { (($e.Warnungen -join ' ') -notmatch 'Unbekannt') }
+$e = Lies-Konfig '{ "msiPfad": "a.msi", "customConfigId": "ERSETZEN-DURCH-CUSTOMCONFIGID" }'
+Pruefe 'Nicht ersetzter Platzhalter → Fehler' { ($e.Fehler -join ' ') -match 'Platzhalter' }
+$e = Lies-Konfig ('{ "hostInstallerUrl": "https://example.com/TeamViewer_Host.msi?sig=DUMMYQUERYKEY123456", "assignmentId": "' + $ASSID + '" }')
+Pruefe 'Installer-URL: Query-Teil gilt als Geheimnis, Typ aus dem Pfad' { $e.Fehler.Count -eq 0 -and $e.Konfig.InstallerTyp -eq 'msi' -and ($e.Konfig.Geheimnisse -contains '?sig=DUMMYQUERYKEY123456') }
+$e = Lies-Konfig ('{ "msiPfad": "a.msi", "assignmentId": "' + $ASSID + '", "zuordnungsweg": "msi" }')
+Pruefe 'Rollout über MSI-Eigenschaft: Warnung (kein Gerätename, Erfolg nicht prüfbar)' { $e.Fehler.Count -eq 0 -and (($e.Warnungen -join ' ') -match 'NICHT übernommen') }
+$e = Lies-Konfig ('{ "msiPfad": "TeamViewer_Host_Setup_x64.exe", "customConfigId": "abc1234", "zuordnungsweg": "msi", "apiToken": "' + $TOKEN + '" }')
+Pruefe 'EXE-Installer: customConfigId ignoriert und zuordnungsweg msi → cli (mit Warnungen)' { $e.Konfig.InstallerTyp -eq 'exe' -and $e.Konfig.Zuordnungsweg -eq 'cli' -and $e.Warnungen.Count -ge 2 }
+
+# Datei lesen — Fehlerfälle dürfen den Dateiinhalt nicht preisgeben
+$tmp = Neues-Tempverzeichnis; $aufraeumen.Add($tmp)
+$r = Lese-FernwartungKonfig -Pfad (Join-Path $tmp 'gibt-es-nicht.json')
+Pruefe 'Datei fehlt → Fehlermeldung, kein Absturz' { $null -eq $r.Konfig -and $r.Fehler.Count -eq 1 }
+Schreibe-Text (Join-Path $tmp 'kaputt.json') ('{ "apiToken": "' + $TOKEN + '" "gruppe": "x" }')
+$o = Fange-Ausgabe { Lese-FernwartungKonfig -Pfad (Join-Path $tmp 'kaputt.json') }
+Pruefe 'Kaputtes JSON → Fehler, der Fehlertext enthält nichts aus der Datei' { $null -eq $o.Ergebnis.Konfig -and (($o.Ergebnis.Fehler -join ' ') -notmatch [regex]::Escape($TOKEN)) -and ($o.Text -notmatch [regex]::Escape($TOKEN)) }
+Schreibe-Text (Join-Path $tmp 'ok.json') $jsonRollout
+$r = Lese-FernwartungKonfig -Pfad (Join-Path $tmp 'ok.json')
+Pruefe 'Datei lesen: Konfig-Verzeichnis = Ordner der Datei' { $r.Konfig.Verzeichnis -eq $tmp }
+$script:FwGeheimnisse = @()
+
+# Beispieldatei
+$bsp = Get-Content -LiteralPath (Join-Path $here 'fernwartung.example.json') -Raw -Encoding UTF8
+Pruefe 'Beispieldatei: gültiges JSON' { $null -ne ($bsp | ConvertFrom-Json) }
+$eb = Pruefe-FernwartungKonfig -Roh ($bsp | ConvertFrom-Json) -Verzeichnis $here
+Pruefe 'Beispieldatei: unveränderte Platzhalter werden vom Installer abgelehnt' { ($eb.Fehler -join ' ') -match 'Platzhalter' }
+$bspOhne = ($bsp -replace '"[^"]*ERSETZEN[^"]*"', '"abc12345678901234567890"')
+$ebo = Pruefe-FernwartungKonfig -Roh ($bspOhne | ConvertFrom-Json) -Verzeichnis $here
+Pruefe 'Beispieldatei: mit ersetzten Platzhaltern vollständig gültig' { $ebo.Fehler.Count -eq 0 -and $ebo.Konfig.Modus -eq 'assignmentId' }
+Pruefe 'Beispieldatei: alle bekannten Felder sind dokumentiert' {
+  $fehlt = @($script:FwBekannteFelder | Where-Object { $bsp -notmatch ('"' + $_ + '"') -and $bsp -notmatch ('\b' + $_ + '\b') })
+  $fehlt.Count -eq 0
+}
+Pruefe '.gitignore schützt die echte Konfiguration' {
+  $gi = Get-Content -LiteralPath (Join-Path $here '..\.gitignore') -Raw
+  ($gi -match '(?m)^ops/fernwartung\.json\s*$') -and ($gi -match '(?m)^ops/fernwartung\*\.local\.json\s*$')
+}
+
+# =============================================================================
+Gruppe '3. Pläne (msiexec- und TeamViewer-Kommandozeilen)'
+# =============================================================================
+
+$kRollout = (Lies-Konfig $jsonRollout 'C:\konfig').Konfig
+$kToken   = (Lies-Konfig $jsonToken 'C:\konfig').Konfig
+$umg = @{ Installiert = $false; InstallerDatei = 'C:\Pfad mit Leerzeichen\TeamViewer_Host.msi'; TeamViewerExe = 'C:\Program Files\TeamViewer\TeamViewer.exe'; LogDatei = 'C:\Temp\tv.log' }
+
+$p = Neuer-FernwartungsPlan -Konfig $kRollout -Alias 'Kassa Müller' -Umgebung $umg
+Pruefe 'Rollout/cli: zwei Schritte (installieren, zuordnen)' { $p.Schritte.Count -eq 2 -and $p.Schritte[0].Id -eq 'installieren' -and $p.Schritte[1].Id -eq 'zuordnen' }
+Pruefe 'Rollout/cli: msiexec still, ohne Neustart, mit Log und CUSTOMCONFIGID' {
+  $a = $p.Schritte[0].ArgumentString
+  $p.Schritte[0].Datei -eq 'msiexec.exe' -and $a -match '^/i "C:\\Pfad mit Leerzeichen\\TeamViewer_Host.msi" /qn /norestart ' -and $a -match 'CUSTOMCONFIGID="abc1234"' -and $a -match '/L\*v "C:\\Temp\\tv.log"'
+}
+Pruefe 'Rollout/cli: die Assignment-ID steht NICHT auf der msiexec-Kommandozeile' { $p.Schritte[0].ArgumentString -notmatch [regex]::Escape($ASSID) }
+Pruefe 'Rollout/cli: assignment-Befehl mit --id, --device-alias="…", --retries, --timeout' {
+  $a = $p.Schritte[1].ArgumentString
+  $a -eq ('assignment --id ' + $ASSID + ' --device-alias="Kassa Müller" --retries=20 --timeout=120')
+}
+Pruefe 'Rollout/cli: Anzeige maskiert die Assignment-ID' { ($p.Schritte[1].Anzeige -notmatch [regex]::Escape($ASSID)) -and ($p.Schritte[1].Anzeige -match '--id \*\*\*') }
+$p2 = Neuer-FernwartungsPlan -Konfig $kRollout -Alias 'K' -Umgebung (Umg $umg @{ NeuZuordnen = $true })
+Pruefe 'Rollout: -NeuZuordnen hängt --reassign an' { $p2.Schritte[1].ArgumentString -match ' --reassign$' }
+$p2 = Neuer-FernwartungsPlan -Konfig $kRollout -Alias 'K' -Umgebung (Umg $umg @{ Installiert = $true })
+Pruefe 'Rollout: schon installiert → nur die Zuordnung' { $p2.Schritte.Count -eq 1 -and $p2.Schritte[0].Id -eq 'zuordnen' }
+$p2 = Neuer-FernwartungsPlan -Konfig $kRollout -Alias 'K' -Umgebung (Umg $umg @{ Installiert = $true; ZuordnungErledigt = $true })
+Pruefe 'Rollout: schon installiert und zugeordnet → nichts zu tun' { $p2.Schritte.Count -eq 0 }
+$p2 = Neuer-FernwartungsPlan -Konfig $kRollout -Alias 'K' -Umgebung (Umg $umg @{ Installiert = $true; Offline = $true })
+Pruefe 'Rollout: Vormerken nutzt --offline statt --retries/--timeout' { $p2.Schritte[0].ArgumentString -match ' --offline' -and $p2.Schritte[0].ArgumentString -notmatch '--retries' }
+
+$p = Neuer-FernwartungsPlan -Konfig $kToken -Alias 'Cafe Mayr' -Umgebung $umg
+Pruefe 'Token/cli: das Token steht NICHT auf der msiexec-Kommandozeile' { $p.Schritte[0].ArgumentString -notmatch [regex]::Escape($TOKEN) -and $p.Schritte[0].ArgumentString -notmatch 'APITOKEN' }
+Pruefe 'Token/cli: assign-Befehl mit --api-token, --alias, --group-id, --grant-easy-access' {
+  $p.Schritte[1].ArgumentString -eq ('assign --api-token ' + $TOKEN + ' --alias "Cafe Mayr" --group-id g12345678 --grant-easy-access')
+}
+Pruefe 'Token/cli: Anzeige maskiert das Token' { ($p.Schritte[1].Anzeige -notmatch [regex]::Escape($TOKEN)) -and ($p.Schritte[1].Anzeige -match '--api-token \*\*\*') }
+$kTokenGruppe = (Lies-Konfig ('{ "msiPfad": "a.msi", "apiToken": "' + $TOKEN + '", "gruppe": "Mietkassen" }') 'C:\konfig').Konfig
+$p2 = Neuer-FernwartungsPlan -Konfig $kTokenGruppe -Alias 'X' -Umgebung (Umg $umg @{ Installiert = $true; NeuZuordnen = $true })
+Pruefe 'Token: Gruppe per Name (--group) und --reassign' { $p2.Schritte[0].ArgumentString -match '--group Mietkassen --grant-easy-access --reassign$' }
+
+$kMsi = (Lies-Konfig ('{ "msiPfad": "a.msi", "customConfigId": "abc1234", "apiToken": "' + $TOKEN + '", "gruppeId": "g123456", "zuordnungsweg": "msi" }') 'C:\konfig').Konfig
+$p = Neuer-FernwartungsPlan -Konfig $kMsi -Alias 'Cafe Mayr' -Umgebung $umg
+Pruefe 'Token/msi (Einschritt): ein Schritt, Zuordnung über MSI-Eigenschaften' { $p.Schritte.Count -eq 1 -and $p.ZuordnungImMsi -eq $true }
+Pruefe 'Token/msi: APITOKEN und ASSIGNMENTOPTIONS wie in der Doku' {
+  $a = $p.Schritte[0].ArgumentString
+  ($a -match [regex]::Escape('APITOKEN="' + $TOKEN + '"')) -and ($a -match [regex]::Escape('ASSIGNMENTOPTIONS="--alias ''Cafe Mayr'' --group-id g123456 --grant-easy-access"'))
+}
+Pruefe 'Token/msi: Anzeige maskiert das Token' { ($p.Schritte[0].Anzeige -notmatch [regex]::Escape($TOKEN)) -and ($p.Schritte[0].Anzeige -match 'APITOKEN="\*\*\*"') }
+Pruefe 'Token/msi: KEIN MSI-Log (würde das Token mitschreiben)' { $p.Schritte[0].ArgumentString -notmatch '/L\*v' }
+$p2 = Neuer-FernwartungsPlan -Konfig $kMsi -Alias 'X' -Umgebung (Umg $umg @{ Installiert = $true })
+Pruefe 'Token/msi: ist TeamViewer schon installiert, wird per Kommandozeile zugeordnet' { $p2.Schritte.Count -eq 1 -and $p2.Schritte[0].Id -eq 'zuordnen' }
+$kAMsi = (Lies-Konfig ('{ "msiPfad": "a.msi", "assignmentId": "' + $ASSID + '", "zuordnungsweg": "msi" }') 'C:\konfig').Konfig
+$p = Neuer-FernwartungsPlan -Konfig $kAMsi -Alias 'X' -Umgebung $umg
+Pruefe 'Rollout/msi: ASSIGNMENTID als MSI-Eigenschaft, maskiert angezeigt' {
+  ($p.Schritte[0].ArgumentString -match [regex]::Escape('ASSIGNMENTID="' + $ASSID + '"')) -and ($p.Schritte[0].Anzeige -match 'ASSIGNMENTID="\*\*\*"') -and ($p.Schritte[0].Anzeige -notmatch [regex]::Escape($ASSID))
+}
+
+$kExe = (Lies-Konfig ('{ "msiPfad": "TeamViewer_Host_Setup_x64.exe", "apiToken": "' + $TOKEN + '" }') 'C:\konfig').Konfig
+$p = Neuer-FernwartungsPlan -Konfig $kExe -Alias 'Cafe' -Umgebung (Umg $umg @{ InstallerDatei = 'C:\tv\TeamViewer_Host_Setup_x64.exe' })
+Pruefe 'EXE: Installation mit /S, danach assign' { $p.Schritte[0].Datei -eq 'C:\tv\TeamViewer_Host_Setup_x64.exe' -and $p.Schritte[0].ArgumentString -eq '/S' -and $p.Schritte[1].ArgumentString -match '^assign --api-token' }
+
+$kNur = (Lies-Konfig '{ "msiPfad": "a.msi" }' 'C:\konfig').Konfig
+$p = Neuer-FernwartungsPlan -Konfig $kNur -Alias 'X' -Umgebung $umg
+Pruefe 'Ohne Zuordnung: nur die Installation' { $p.Schritte.Count -eq 1 -and $p.Schritte[0].Id -eq 'installieren' }
+
+# =============================================================================
+Gruppe '4. Statusdatei (ohne Geheimnisse, reines ASCII)'
+# =============================================================================
+
+$j = Neuer-FernwartungStatus -Id '123456789' -Alias 'Café "Müller" \ Straße' -Gruppe 'Mietkassen' -InstalliertAm '2026-10-06T20:15:00Z'
+Pruefe 'Status: gültiges JSON mit den erwarteten Feldern' {
+  $o = $j | ConvertFrom-Json
+  $o.anbieter -eq 'teamviewer' -and $o.id -eq '123456789' -and $o.gruppe -eq 'Mietkassen'
+}
+Pruefe 'Status: Umlaute und Sonderzeichen überstehen den Rundlauf' { (($j | ConvertFrom-Json).alias) -eq 'Café "Müller" \ Straße' }
+Pruefe 'Status: reines ASCII (übersteht jede Kodierung unterwegs)' { -not ($j.ToCharArray() | Where-Object { [int]$_ -gt 126 -or ([int]$_ -lt 32) }) }
+Pruefe 'Status: ohne Gruppe → null' { ((Neuer-FernwartungStatus -Id '123456789' -Alias 'A') | ConvertFrom-Json).gruppe -eq $null }
+Pruefe 'Status: Rücklesen per Regex (id, alias, installiertAm unverändert)' {
+  $x = Lese-FernwartungStatusText $j
+  $x.id -eq '123456789' -and $x.alias -eq 'Café "Müller" \ Straße' -and $x.installiertAm -eq '2026-10-06T20:15:00Z'
+}
+Pruefe 'Status: Müll oder ungültige ID → $null' { ($null -eq (Lese-FernwartungStatusText '{"id":"abc"}')) -and ($null -eq (Lese-FernwartungStatusText 'kein json')) }
+
+# =============================================================================
+Gruppe '5. Ablauf mit simuliertem System (Trockenlauf, voller Lauf, Wiederholung, Fehler)'
+# =============================================================================
+
+# Ersatz für alles, was das System anfasst — schreibt nur Aufrufe mit
+$script:FakeInstalliert = $false
+$script:FakeId          = $null
+$script:FakeIdNachInstall = '123456789'
+$script:FakeAdmin       = $true
+$script:Aufrufe         = New-Object System.Collections.Generic.List[object]
+$script:ProzessCode     = @{ msiexec = 0; assignment = 0; assign = 0 }
+$script:ProzessAusnahme = $false
+
+function Get-TeamViewerInstallation {
+  [pscustomobject]@{
+    Installiert = $script:FakeInstalliert
+    ExePfad     = $(if ($script:FakeInstalliert) { 'C:\Program Files\TeamViewer\TeamViewer.exe' } else { $null })
+    Version     = '15.99.9'; DienstStatus = 'Running'; DienstStart = 'Auto'
+  }
+}
+function Get-TeamViewerId { return $script:FakeId }
+function Teste-Administrator { return $script:FakeAdmin }
+function Sichere-TeamViewerDienst { return $true }
+function Warte-Auf { param($Bedingung, $Sekunden, $Takt) return [bool](& $Bedingung) }
+function Hole-FernwartungInstaller { param($Konfig, $ZielVerzeichnis) [pscustomobject]@{ Pfad = 'C:\fake\TeamViewer_Host.msi'; Temporaer = $false } }
+function Invoke-FwProzess {
+  param([string]$Datei, [string]$ArgumentString = '', [int]$TimeoutSekunden = 600, [string]$Arbeitsverzeichnis = '')
+  $script:Aufrufe.Add([pscustomobject]@{ Datei = $Datei; Args = $ArgumentString })
+  if ($script:ProzessAusnahme) { throw 'simulierter Absturz beim Start' }
+  if ($Datei -eq 'msiexec.exe') {
+    if ($script:ProzessCode.msiexec -eq 0) { $script:FakeInstalliert = $true; $script:FakeId = $script:FakeIdNachInstall }
+    return [pscustomobject]@{ ExitCode = $script:ProzessCode.msiexec; Zeitueberschreitung = $false; Ausgabe = '' }
+  }
+  $art = $(if ($ArgumentString -match '^assignment') { 'assignment' } else { 'assign' })
+  $code = $script:ProzessCode[$art]
+  if ($ArgumentString -match '--offline' -and $art -eq 'assignment') { $code = 0 }
+  return [pscustomobject]@{ ExitCode = $code; Zeitueberschreitung = $false; Ausgabe = $(if ($code -ne 0) { "device assignment failed (Token $TOKEN)" } else { '' }) }
+}
+
+function Setze-Szenario([hashtable]$Werte) {
+  $script:FakeInstalliert = $false; $script:FakeId = $null; $script:FakeAdmin = $true; $script:FakeIdNachInstall = '123456789'
+  $script:ProzessCode = @{ msiexec = 0; assignment = 0; assign = 0 }; $script:ProzessAusnahme = $false
+  $script:Aufrufe.Clear()
+  foreach ($k in $Werte.Keys) { Set-Variable -Scope Script -Name $k -Value $Werte[$k] }
+}
+
+$tmp = Neues-Tempverzeichnis; $aufraeumen.Add($tmp)
+Schreibe-Text (Join-Path $tmp 'fw-rollout.json') $jsonRollout
+Schreibe-Text (Join-Path $tmp 'fw-token.json') $jsonToken
+New-Item -ItemType File -Path (Join-Path $tmp 'TeamViewer_Host.msi') -Force | Out-Null
+$status = Join-Path $tmp 'status\fernwartung-status.json'
+
+# --- Trockenlauf ---------------------------------------------------------------
+Setze-Szenario @{}
+$o = Fange-Ausgabe { Invoke-Fernwartung -KonfigPfad (Join-Path $tmp 'fw-token.json') -Name 'Mayr' -Trockenlauf -StatusDatei $status }
+Pruefe 'Trockenlauf (Token): zeigt msiexec- und assign-Aufruf' { ($o.Text -match 'msiexec\.exe /i') -and ($o.Text -match 'TeamViewer\.exe" assign --api-token \*\*\*') }
+Pruefe 'Trockenlauf (Token): das Token steht in KEINER Ausgabe' { $o.Text -notmatch [regex]::Escape($TOKEN) }
+Pruefe 'Trockenlauf: führt nichts aus und schreibt nichts' { $script:Aufrufe.Count -eq 0 -and -not (Test-Path (Join-Path $tmp 'status')) -and $o.Ergebnis.Erfolg -eq $true }
+$o = Fange-Ausgabe { Invoke-Fernwartung -KonfigPfad (Join-Path $tmp 'fw-rollout.json') -Name 'Mayr' -Trockenlauf -StatusDatei $status }
+Pruefe 'Trockenlauf (Rollout): Assignment-ID maskiert, Gerätename sichtbar' { ($o.Text -notmatch [regex]::Escape($ASSID)) -and ($o.Text -match 'assignment --id \*\*\*') -and ($o.Text -match 'Kassa Mayr') }
+Setze-Szenario @{ FakeInstalliert = $true; FakeId = '123456789' }
+$o = Fange-Ausgabe { Invoke-Fernwartung -KonfigPfad (Join-Path $tmp 'fw-rollout.json') -Trockenlauf -StatusDatei $status }
+Pruefe 'Trockenlauf bei installiertem TeamViewer: keine Neuinstallation geplant' { ($o.Text -match 'bereits installiert') -and ($o.Text -notmatch 'msiexec') }
+
+# --- Voller Lauf: Neuinstallation -------------------------------------------------
+Setze-Szenario @{}
+$o = Fange-Ausgabe { Invoke-Fernwartung -KonfigPfad (Join-Path $tmp 'fw-rollout.json') -Name 'Mayr' -StatusDatei $status }
+$erg = $o.Ergebnis
+Pruefe 'Voller Lauf (Rollout): erfolgreich, ID 123456789' { $erg.Erfolg -eq $true -and $erg.Id -eq '123456789' -and $erg.Meldung -eq 'eingerichtet' }
+Pruefe 'Voller Lauf: erst msiexec, dann assignment (genau diese zwei Prozesse)' { $script:Aufrufe.Count -eq 2 -and $script:Aufrufe[0].Datei -eq 'msiexec.exe' -and $script:Aufrufe[1].Args -match '^assignment --id ' }
+Pruefe 'Voller Lauf: Assignment-ID erscheint in KEINER Ausgabe' { $o.Text -notmatch [regex]::Escape($ASSID) }
+Pruefe 'Voller Lauf: Statusdatei geschrieben, ohne Geheimnis' {
+  $t = Get-Content -LiteralPath $status -Raw
+  ($t -match '"id":"123456789"') -and ($t -match '"alias":"Kassa Mayr"') -and ($t -match '"gruppe":"Mietkassen"') -and ($t -notmatch [regex]::Escape($ASSID))
+}
+$erstZeit = (Lese-FernwartungStatusDatei -Pfad $status).installiertAm
+Pruefe 'Voller Lauf: Ausgabe nennt die ID in Dreiergruppen' { $o.Text -match '123 456 789' }
+
+# --- Wiederholung = Idempotenz --------------------------------------------------------
+$script:Aufrufe.Clear()
+$o = Fange-Ausgabe { Invoke-Fernwartung -KonfigPfad (Join-Path $tmp 'fw-rollout.json') -StatusDatei $status }
+Pruefe 'Zweiter Lauf: installiert und ordnet NICHT erneut zu' { $script:Aufrufe.Count -eq 0 -and $o.Ergebnis.Erfolg -eq $true }
+Pruefe 'Zweiter Lauf: behält Gerätename und Installationszeitpunkt' { $s2 = Lese-FernwartungStatusDatei -Pfad $status; $s2.alias -eq 'Kassa Mayr' -and $s2.installiertAm -eq $erstZeit }
+$script:Aufrufe.Clear()
+$o = Fange-Ausgabe { Invoke-Fernwartung -KonfigPfad (Join-Path $tmp 'fw-rollout.json') -NeuZuordnen -StatusDatei $status }
+Pruefe 'Mit -NeuZuordnen: genau ein assignment-Aufruf mit --reassign (keine Neuinstallation)' { $script:Aufrufe.Count -eq 1 -and $script:Aufrufe[0].Args -match ' --reassign$' }
+Pruefe 'Mit -NeuZuordnen: Assignment-ID weiterhin nirgends ausgegeben' { $o.Text -notmatch [regex]::Escape($ASSID) }
+
+# --- Token-Variante, voller Lauf -------------------------------------------------------
+Remove-Item -LiteralPath (Split-Path -Parent $status) -Recurse -Force
+Setze-Szenario @{}
+$o = Fange-Ausgabe { Invoke-Fernwartung -KonfigPfad (Join-Path $tmp 'fw-token.json') -Name 'Cafe Mayr' -StatusDatei $status }
+Pruefe 'Voller Lauf (Token): erfolgreich, assign-Aufruf' { $o.Ergebnis.Erfolg -eq $true -and $script:Aufrufe[1].Args -match '^assign --api-token ' }
+Pruefe 'Voller Lauf (Token): das Token steht in KEINER Ausgabe' { $o.Text -notmatch [regex]::Escape($TOKEN) }
+Pruefe 'Voller Lauf (Token): Statusdatei ohne Token' { (Get-Content -LiteralPath $status -Raw) -notmatch [regex]::Escape($TOKEN) }
+
+# --- Fehlerfälle: nie werfen, nie das Geheimnis ausgeben -------------------------------
+Remove-Item -LiteralPath (Split-Path -Parent $status) -Recurse -Force -ErrorAction SilentlyContinue
+Setze-Szenario @{ ProzessCode = @{ msiexec = 1603; assignment = 0; assign = 0 } }
+$o = Fange-Ausgabe { Invoke-Fernwartung -KonfigPfad (Join-Path $tmp 'fw-token.json') -StatusDatei $status }
+Pruefe 'Installation schlägt fehl (1603): wirft nicht, meldet Fehler + Nachhol-Hinweis' { $o.Ergebnis.Erfolg -eq $false -and ($o.Text -match '1603') -and ($o.Text -match 'Nachholen') -and ($o.Text -match 'Kassa wird trotzdem installiert') }
+Pruefe 'Installation schlägt fehl: kein Token in der Ausgabe, keine Statusdatei' { ($o.Text -notmatch [regex]::Escape($TOKEN)) -and -not (Test-Path $status) }
+
+Setze-Szenario @{ ProzessCode = @{ msiexec = 0; assignment = 0; assign = 5 } }
+$o = Fange-Ausgabe { Invoke-Fernwartung -KonfigPfad (Join-Path $tmp 'fw-token.json') -StatusDatei $status }
+Pruefe 'Zuordnung schlägt fehl: Warnung + Hinweis auf -FernwartungNeuZuordnen, KEINE Statusdatei' { $o.Ergebnis.Erfolg -eq $false -and ($o.Text -match 'Zuordnung nicht gelungen') -and ($o.Text -match 'FernwartungNeuZuordnen') -and -not (Test-Path $status) }
+Pruefe 'Zuordnung schlägt fehl: Fehlerausgabe von TeamViewer wird maskiert angezeigt' { ($o.Text -match 'TeamViewer meldet') -and ($o.Text -notmatch [regex]::Escape($TOKEN)) }
+
+Setze-Szenario @{ ProzessAusnahme = $true }
+$o = Fange-Ausgabe { Invoke-Fernwartung -KonfigPfad (Join-Path $tmp 'fw-token.json') -StatusDatei $status }
+Pruefe 'Unerwartete Ausnahme: wird abgefangen (der Installer läuft weiter)' { $o.Ergebnis.Erfolg -eq $false -and $o.Ergebnis.Meldung -eq 'Fehler' -and ($o.Text -match 'simulierter Absturz') }
+
+Setze-Szenario @{ FakeAdmin = $false }
+$o = Fange-Ausgabe { Invoke-Fernwartung -KonfigPfad (Join-Path $tmp 'fw-rollout.json') -StatusDatei $status }
+Pruefe 'Ohne Administratorrechte: Hinweis, nichts wird ausgeführt' { $o.Ergebnis.Erfolg -eq $false -and $script:Aufrufe.Count -eq 0 -and ($o.Text -match 'Administratorrechte') }
+
+Setze-Szenario @{ ProzessCode = @{ msiexec = 0; assignment = 403; assign = 0 } }
+$o = Fange-Ausgabe { Invoke-Fernwartung -KonfigPfad (Join-Path $tmp 'fw-rollout.json') -StatusDatei $status }
+Pruefe 'Kein Internet (403): Zuordnung wird mit --offline vorgemerkt, Status NICHT geschrieben' {
+  ($script:Aufrufe.Count -eq 3) -and ($script:Aufrufe[2].Args -match ' --offline') -and ($o.Text -match 'vorgemerkt') -and $o.Ergebnis.Erfolg -eq $false -and -not (Test-Path $status)
+}
+
+Remove-Item -LiteralPath (Split-Path -Parent $status) -Recurse -Force -ErrorAction SilentlyContinue
+Setze-Szenario @{ FakeIdNachInstall = $null }
+$o = Fange-Ausgabe { Invoke-Fernwartung -KonfigPfad (Join-Path $tmp 'fw-rollout.json') -StatusDatei $status }
+Pruefe 'Kasse von Anfang an offline (keine ID): Zuordnung sofort mit --offline vorgemerkt, ohne den Online-Weg zu versuchen' {
+  ($script:Aufrufe.Count -eq 2) -and ($script:Aufrufe[1].Args -match ' --offline') -and ($script:Aufrufe[1].Args -notmatch '--retries') -and ($o.Text -match 'vorgemerkt') -and $o.Ergebnis.Erfolg -eq $false -and -not (Test-Path $status)
+}
+Pruefe 'Offline: die Assignment-ID steht in KEINER Ausgabe' { $o.Text -notmatch [regex]::Escape($ASSID) }
+Setze-Szenario @{ ProzessCode = @{ msiexec = 0; assignment = 409; assign = 0 } }
+$o = Fange-Ausgabe { Invoke-Fernwartung -KonfigPfad (Join-Path $tmp 'fw-rollout.json') -StatusDatei $status }
+Pruefe 'Schon zugeordnet (409): gilt als Erfolg' { $o.Ergebnis.Erfolg -eq $true -and ($o.Text -match 'bereits') }
+
+Remove-Item -LiteralPath (Split-Path -Parent $status) -Recurse -Force -ErrorAction SilentlyContinue
+Setze-Szenario @{}
+Schreibe-Text (Join-Path $tmp 'fw-leer.json') '{ }'
+$o = Fange-Ausgabe { Invoke-Fernwartung -KonfigPfad (Join-Path $tmp 'fw-leer.json') -StatusDatei $status }
+Pruefe 'Konfiguration ohne Zuordnung: installiert, aber zeigt NICHT „eingerichtet"' { $o.Ergebnis.Erfolg -eq $false -and $o.Ergebnis.Meldung -eq 'nicht zugeordnet' -and -not (Test-Path $status) }
+
+Setze-Szenario @{}
+$o = Fange-Ausgabe { Invoke-Fernwartung -KonfigPfad (Join-Path $tmp 'gibt-es-nicht.json') -StatusDatei $status }
+Pruefe 'Konfiguration fehlt: Fehler + Hinweis, kein Absturz' { $o.Ergebnis.Erfolg -eq $false -and ($o.Text -match 'nicht gefunden') }
+
+# =============================================================================
+Gruppe '6. install.ps1 -Trockenlauf als eigener Prozess (tut nichts, Token nie sichtbar)'
+# =============================================================================
+
+$tmp2 = Neues-Tempverzeichnis; $aufraeumen.Add($tmp2)
+Schreibe-Text (Join-Path $tmp2 'fernwartung.json') $jsonToken
+New-Item -ItemType File -Path (Join-Path $tmp2 'TeamViewer_Host.msi') -Force | Out-Null
+$installPs1 = Join-Path $here 'install.ps1'
+$motoren = New-Object System.Collections.Generic.List[object]
+$ps51 = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+if (Test-Path $ps51) { $motoren.Add(@('Windows PowerShell 5.1', $ps51)) }
+$pw = Get-Command pwsh -ErrorAction SilentlyContinue
+if ($pw) { $motoren.Add(@('PowerShell 7 (pwsh)', $pw.Source)) }
+foreach ($m in $motoren) {
+  $exe = $m[1]
+  $ausgabe = & $exe -NoProfile -ExecutionPolicy Bypass -File $installPs1 -Trockenlauf -FernwartungKonfig (Join-Path $tmp2 'fernwartung.json') -FernwartungName 'Testkasse' 2>&1 | Out-String
+  $code = $LASTEXITCODE
+  Pruefe ($m[0] + ': Exit-Code 0') { $code -eq 0 }
+  # Auf einem PC mit TeamViewer (Echtsystem!) steht statt msiexec „bereits installiert" — beides ist richtig
+  Pruefe ($m[0] + ': Plan wird angezeigt (Gerätename, Installation oder „bereits installiert", assign)') {
+    ($ausgabe -match 'Testkasse') -and (($ausgabe -match 'msiexec\.exe /i') -or ($ausgabe -match 'bereits installiert')) -and ($ausgabe -match 'assign --api-token \*\*\*')
+  }
+  Pruefe ($m[0] + ': das Token steht in KEINER Ausgabe') { $ausgabe -notmatch [regex]::Escape($TOKEN) }
+  Pruefe ($m[0] + ': tut nichts (keine Docker-/Installationsschritte)') { ($ausgabe -notmatch 'Prüfe Docker') -and ($ausgabe -notmatch 'Lade Kassa-Code') }
+}
+if ($motoren.Count -eq 0) { Pruefe 'PowerShell-Engine für den Prozess-Test vorhanden' { $false } }
+
+# ---- Aufräumen + Ergebnis -----------------------------------------------------
+foreach ($d in $aufraeumen) { Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue }
+
+Write-Host ''
+if ($script:Fehlschlaege.Count -eq 0) {
+  Write-Host ("ALLE " + $script:Anzahl + " TESTS BESTANDEN (PowerShell " + $PSVersionTable.PSVersion + ")") -ForegroundColor Green
+  exit 0
+}
+Write-Host ($script:Fehlschlaege.Count.ToString() + ' von ' + $script:Anzahl + ' TESTS FEHLGESCHLAGEN:') -ForegroundColor Red
+foreach ($f in $script:Fehlschlaege) { Write-Host ('  - ' + $f) -ForegroundColor Red }
+exit 1

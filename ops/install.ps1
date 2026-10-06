@@ -8,6 +8,9 @@
 #   4. baut + startet alle Container (docker compose up -d --build)
 #   5. öffnet die Windows-Firewall für die Geräte im LAN
 #   6. zeigt die Geräte-URLs an
+#   (optional) richtet die Fernwartung ein: TeamViewer Host still installieren und
+#   dem eigenen TeamViewer-Konto zuordnen — nur mit fernwartung.json, siehe
+#   ops/DEPLOYMENT.md, Abschnitt „Fernwartung (TeamViewer Host)"
 #
 # Aufruf (PowerShell ALS ADMINISTRATOR, EINE Zeile — umgeht Execution-Policy-
 # und TLS-Stolpersteine frischer Windows-Installationen):
@@ -25,7 +28,23 @@ param(
   # Git-Branch, dessen Stand installiert wird
   [string]$Branch = 'master',
   # Nur Code + .env vorbereiten, Docker/Firewall überspringen (Testlauf)
-  [switch]$OhneDocker
+  [switch]$OhneDocker,
+
+  # ── Fernwartung (TeamViewer Host) — optional, siehe ops/DEPLOYMENT.md ──────
+  # Läuft, sobald eine fernwartung.json gefunden wird (neben diesem Installer,
+  # neben Kassa-Setup.cmd oder im aktuellen Ordner) oder -Fernwartung gesetzt ist.
+  # Pfad zur fernwartung.json (Standard: wird gesucht)
+  [string]$FernwartungKonfig = '',
+  # Gerätename in der TeamViewer-Liste (Standard: Rückfrage bzw. Computername)
+  [string]$FernwartungName = '',
+  # Schritt erzwingen (auch zusammen mit -OhneDocker) und fehlende Konfiguration melden
+  [switch]$Fernwartung,
+  # Fernwartungs-Schritt überspringen
+  [switch]$OhneFernwartung,
+  # Bereits zugeordnetes Gerät erneut zuordnen (--reassign; ersetzt Zuordnung, Manager, Richtlinien)
+  [switch]$FernwartungNeuZuordnen,
+  # NUR die geplanten Fernwartungs-Schritte anzeigen (Token maskiert) — tut sonst nichts
+  [switch]$Trockenlauf
 )
 
 $ErrorActionPreference = 'Stop'
@@ -51,10 +70,38 @@ function Neues-Secret([int]$Bytes) {
   return ($b | ForEach-Object { $_.ToString('x2') }) -join ''
 }
 
+# Fernwartungs-Bibliothek (ops\fernwartung.ps1) finden: neben diesem Skript (Checkout),
+# im bereits gespiegelten Code, sonst direkt von GitHub (der Installer läuft über
+# Kassa-Setup.cmd allein aus %TEMP%). Gibt den Pfad zurück oder $null — NIE fatal.
+function Finde-FernwartungBibliothek {
+  $kandidaten = @()
+  if ($PSScriptRoot) { $kandidaten += (Join-Path $PSScriptRoot 'fernwartung.ps1') }
+  $kandidaten += (Join-Path $Ziel 'ops\fernwartung.ps1')
+  foreach ($k in $kandidaten) { if (Test-Path -LiteralPath $k -PathType Leaf) { return $k } }
+  try {
+    $datei = Join-Path $env:TEMP 'kassa-fernwartung.ps1'
+    Invoke-WebRequest -Uri "https://raw.githubusercontent.com/maverick-2bit/kassa/$Branch/ops/fernwartung.ps1" -OutFile $datei -UseBasicParsing
+    return $datei
+  } catch { return $null }
+}
+
 Write-Host ''
 Write-Host '=============================================' -ForegroundColor Cyan
 Write-Host ' Kassa POS — Installation / Update (Windows)' -ForegroundColor Cyan
 Write-Host '=============================================' -ForegroundColor Cyan
+
+# ── Trockenlauf: NUR die geplanten Fernwartungs-Schritte zeigen, nichts verändern ─
+if ($Trockenlauf) {
+  Hinweis 'Trockenlauf: Es wird nichts installiert oder verändert — die Kassa-Installation selbst'
+  Hinweis 'wird nicht simuliert, angezeigt werden nur die Schritte der Fernwartung.'
+  $fwLib = Finde-FernwartungBibliothek
+  if (-not $fwLib) { Fehler 'Fernwartungs-Bibliothek (ops\fernwartung.ps1) nicht gefunden und nicht ladbar.'; exit 1 }
+  . $fwLib
+  $fwKonfigPfad = Finde-FernwartungKonfig -Pfad $FernwartungKonfig -InstallerOrdner $PSScriptRoot
+  if (-not $fwKonfigPfad) { Fehler 'Keine fernwartung.json gefunden (neben dem Installer legen oder -FernwartungKonfig <Pfad> angeben).'; exit 1 }
+  $fwErgebnis = Invoke-FernwartungImInstaller -KonfigPfad $fwKonfigPfad -Name $FernwartungName -NeuZuordnen:$FernwartungNeuZuordnen -Trockenlauf
+  if ($fwErgebnis.Erfolg) { exit 0 } else { exit 1 }
+}
 
 # ── 0. Administrator? (für Firewall-Regeln nötig) ────────────────────────────
 $istAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -242,6 +289,41 @@ $ports = [ordered]@{
   'Einlass-App'       = (Env-Port 'EINLASS_PORT' 8087)
 }
 
+# ── 4b. Fernwartung (optional): TeamViewer Host installieren + dem Konto zuordnen ─
+# Bewusst VOR dem Container-Build: Hakt der Docker-Teil, ist die Box trotzdem aus der
+# Ferne erreichbar. Fehler hier brechen die Kassa-Installation NIE ab.
+$fwAktiv = $false
+try {
+  if (-not $OhneFernwartung) {
+    $fwKonfigPfad = $null
+    $fwLibGeladen = $false
+    # Konfiguration suchen — ohne die Bibliothek zu brauchen (Standardorte)
+    if ($FernwartungKonfig) { $fwKonfigPfad = $FernwartungKonfig }
+    else {
+      foreach ($ordner in @($PSScriptRoot, (Get-Location).Path)) {
+        if ($ordner -and (Test-Path -LiteralPath (Join-Path $ordner 'fernwartung.json') -PathType Leaf)) { $fwKonfigPfad = Join-Path $ordner 'fernwartung.json'; break }
+      }
+    }
+    # Mit -OhneDocker (Testlauf) nur auf ausdrücklichen Wunsch — nie versehentlich TeamViewer installieren
+    $fwAktiv = [bool](($fwKonfigPfad -or $Fernwartung) -and ((-not $OhneDocker) -or $Fernwartung))
+    if ($fwAktiv) {
+      $fwLib = Finde-FernwartungBibliothek
+      if (-not $fwLib) { throw 'Fernwartungs-Bibliothek (ops\fernwartung.ps1) nicht gefunden und nicht ladbar.' }
+      . $fwLib
+      $fwLibGeladen = $true
+      if (-not $fwKonfigPfad) { $fwKonfigPfad = Join-Path $(if ($PSScriptRoot) { $PSScriptRoot } else { (Get-Location).Path }) 'fernwartung.json' }
+      [void](Invoke-FernwartungImInstaller -KonfigPfad $fwKonfigPfad -Name $FernwartungName -NeuZuordnen:$FernwartungNeuZuordnen)
+    } elseif (-not $OhneDocker) {
+      Write-Host ''
+      Write-Host '    (Fernwartung: keine fernwartung.json gefunden — übersprungen. Siehe ops/DEPLOYMENT.md)' -ForegroundColor DarkGray
+    }
+  }
+} catch {
+  Hinweis ('Fernwartung übersprungen: ' + $_.Exception.Message)
+  Hinweis 'Die Kassa wird trotzdem installiert. Fernwartung nachholen: Installer erneut ausführen (ops/DEPLOYMENT.md).'
+  $fwAktiv = $false
+}
+
 if ($OhneDocker) {
   Schritt 'Testlauf (-OhneDocker): Docker-Build, Firewall und Start übersprungen'
   Ok ("Code + .env liegen bereit in " + $Ziel)
@@ -256,6 +338,9 @@ try {
   if ($LASTEXITCODE -ne 0) { Fehler 'docker compose up fehlgeschlagen — Ausgabe oben prüfen.'; exit 1 }
 } finally { Pop-Location }
 Ok 'Container laufen'
+
+# Fernwartungs-Status für die Kassa sichtbar machen (Einstellungen → System → Fernwartung)
+if ($fwAktiv) { try { [void](Veroeffentliche-FernwartungErgebnis -Ziel $Ziel) } catch { } }
 
 # ── 6. Firewall für Geräte im LAN öffnen ─────────────────────────────────────
 Schritt 'Öffne Windows-Firewall für die Kassa-Ports'

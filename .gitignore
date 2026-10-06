@@ -13,3 +13,8 @@ playwright-report/
 # Backend-Runtime-Ausgaben (DEP- und DB-Backups)
 dep-backups/
 db-backups/
+
+# Fernwartung (TeamViewer Host): echte Konfiguration enthaelt Geheimnisse (API-Token,
+# Assignment-ID) und gehoert NIE ins Repo. Vorlage: ops/fernwartung.example.json
+ops/fernwartung.json
+ops/fernwartung*.local.json
