@@ -324,6 +324,7 @@ Gruppe '5. Ablauf mit simuliertem System (Trockenlauf, voller Lauf, Wiederholung
 $script:FakeInstalliert = $false
 $script:FakeId          = $null
 $script:FakeIdNachInstall = '123456789'
+$script:FakeVersion     = '15.99.9'
 $script:FakeAdmin       = $true
 $script:Aufrufe         = New-Object System.Collections.Generic.List[object]
 $script:ProzessCode     = @{ msiexec = 0; assignment = 0; assign = 0 }
@@ -333,7 +334,7 @@ function Get-TeamViewerInstallation {
   [pscustomobject]@{
     Installiert = $script:FakeInstalliert
     ExePfad     = $(if ($script:FakeInstalliert) { 'C:\Program Files\TeamViewer\TeamViewer.exe' } else { $null })
-    Version     = '15.99.9'; DienstStatus = 'Running'; DienstStart = 'Auto'
+    Version     = $script:FakeVersion; DienstStatus = 'Running'; DienstStart = 'Auto'
   }
 }
 function Get-TeamViewerId { return $script:FakeId }
@@ -356,7 +357,7 @@ function Invoke-FwProzess {
 }
 
 function Setze-Szenario([hashtable]$Werte) {
-  $script:FakeInstalliert = $false; $script:FakeId = $null; $script:FakeAdmin = $true; $script:FakeIdNachInstall = '123456789'
+  $script:FakeInstalliert = $false; $script:FakeId = $null; $script:FakeAdmin = $true; $script:FakeIdNachInstall = '123456789'; $script:FakeVersion = '15.99.9'
   $script:ProzessCode = @{ msiexec = 0; assignment = 0; assign = 0 }; $script:ProzessAusnahme = $false
   $script:Aufrufe.Clear()
   foreach ($k in $Werte.Keys) { Set-Variable -Scope Script -Name $k -Value $Werte[$k] }
@@ -438,6 +439,15 @@ Pruefe 'Kein Internet (403): Zuordnung wird mit --offline vorgemerkt, Status NIC
   ($script:Aufrufe.Count -eq 3) -and ($script:Aufrufe[2].Args -match ' --offline') -and ($o.Text -match 'vorgemerkt') -and $o.Ergebnis.Erfolg -eq $false -and -not (Test-Path $status)
 }
 
+Remove-Item -LiteralPath (Split-Path -Parent $status) -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath (Split-Path -Parent $status) -Recurse -Force -ErrorAction SilentlyContinue
+Setze-Szenario @{ FakeInstalliert = $true; FakeId = '123456789'; FakeVersion = '14.7.1965' }
+$o = Fange-Ausgabe { Invoke-Fernwartung -KonfigPfad (Join-Path $tmp 'fw-rollout.json') -StatusDatei $status }
+Pruefe 'Bestehendes TeamViewer älter als 15: Warnung (Rollout-Zuordnung braucht 15+), Ablauf läuft trotzdem weiter' { ($o.Text -match 'älter als 15') -and $script:Aufrufe.Count -ge 1 -and $o.Ergebnis.Id -eq '123456789' }
+Remove-Item -LiteralPath (Split-Path -Parent $status) -Recurse -Force -ErrorAction SilentlyContinue
+Setze-Szenario @{ FakeInstalliert = $true; FakeId = '123456789'; FakeVersion = '15.82.6' }
+$o = Fange-Ausgabe { Invoke-Fernwartung -KonfigPfad (Join-Path $tmp 'fw-rollout.json') -StatusDatei $status }
+Pruefe 'TeamViewer 15.x: keine Versionswarnung' { $o.Text -notmatch 'älter als 15' }
 Remove-Item -LiteralPath (Split-Path -Parent $status) -Recurse -Force -ErrorAction SilentlyContinue
 Setze-Szenario @{ FakeIdNachInstall = $null }
 $o = Fange-Ausgabe { Invoke-Fernwartung -KonfigPfad (Join-Path $tmp 'fw-rollout.json') -StatusDatei $status }

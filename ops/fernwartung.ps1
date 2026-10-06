@@ -973,6 +973,10 @@ function Invoke-Fernwartung {
     # --- 2. Dienst + Autostart -------------------------------------------------------
     if (-not (Warte-Auf { (Get-TeamViewerInstallation).Installiert } 60 2)) { throw 'TeamViewer ist nach der Installation nicht auffindbar.' }
     $inst = Get-TeamViewerInstallation
+    # „assignment" gibt es laut TeamViewer-Doku erst ab Version 15 — sonst klingt der Fehler später nur nach „ungültigen Argumenten"
+    if ($konfig.Modus -eq 'assignmentId' -and $inst.Version -match '^(\d+)\.' -and [int]$Matches[1] -lt 15) {
+      Fw-Warnung ('Die installierte TeamViewer-Version (' + $inst.Version + ') ist älter als 15 — die Zuordnung per Rollout-Konfiguration braucht Version 15 oder neuer. Bitte TeamViewer aktualisieren (neueren Installer verwenden).')
+    }
     if (Sichere-TeamViewerDienst) { Fw-Ok 'TeamViewer-Dienst läuft und startet mit Windows (Autostart)' }
     else { Fw-Warnung 'TeamViewer-Dienst konnte nicht gestartet bzw. auf Autostart gesetzt werden (Windows-Dienste → „TeamViewer").' }
 
