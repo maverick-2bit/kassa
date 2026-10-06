@@ -296,7 +296,6 @@ $fwAktiv = $false
 try {
   if (-not $OhneFernwartung) {
     $fwKonfigPfad = $null
-    $fwLibGeladen = $false
     # Konfiguration suchen — ohne die Bibliothek zu brauchen (Standardorte)
     if ($FernwartungKonfig) { $fwKonfigPfad = $FernwartungKonfig }
     else {
@@ -310,7 +309,6 @@ try {
       $fwLib = Finde-FernwartungBibliothek
       if (-not $fwLib) { throw 'Fernwartungs-Bibliothek (ops\fernwartung.ps1) nicht gefunden und nicht ladbar.' }
       . $fwLib
-      $fwLibGeladen = $true
       if (-not $fwKonfigPfad) { $fwKonfigPfad = Join-Path $(if ($PSScriptRoot) { $PSScriptRoot } else { (Get-Location).Path }) 'fernwartung.json' }
       [void](Invoke-FernwartungImInstaller -KonfigPfad $fwKonfigPfad -Name $FernwartungName -NeuZuordnen:$FernwartungNeuZuordnen)
     } elseif (-not $OhneDocker) {

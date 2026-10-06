@@ -148,7 +148,10 @@ if ($fwKonfigPfad) {
     Write-Host '    Soll die Zuordnung zum TeamViewer-Konto schon am Ziel-PC passieren, die Datei von Hand' -ForegroundColor Yellow
     Write-Host '    in den Paketordner legen (und den Stick danach sicher aufbewahren bzw. löschen).' -ForegroundColor Yellow
   } catch {
-    Write-Host ("    Fernwartung nicht ins Paket gelegt: " + (Maskiere-Geheimnisse $_.Exception.Message)) -ForegroundColor Red
+    $fwMeldung = $_.Exception.Message
+    # (die Maskierung gibt es erst, wenn die Bibliothek geladen ist)
+    if (Get-Command Maskiere-Geheimnisse -ErrorAction SilentlyContinue) { $fwMeldung = Maskiere-Geheimnisse $fwMeldung }
+    Write-Host ("    Fernwartung nicht ins Paket gelegt: " + $fwMeldung) -ForegroundColor Red
     Write-Host '    Das Paket wird trotzdem erstellt (ohne TeamViewer-Installer).' -ForegroundColor Yellow
   }
 }

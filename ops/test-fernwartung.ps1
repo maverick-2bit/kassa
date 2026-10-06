@@ -616,6 +616,45 @@ foreach ($variante in @(
   Pruefe "$n`: Bibliothek nicht ladbar → übersprungen mit Hinweis, Installer läuft weiter" { -not $r.Aktiv -and $null -eq $r.Aufruf -and ($r.Hinweise -match 'trotzdem installiert') }
 }
 
+# --- Offline-Paket: der 7b-Block aus erstelle-offline-paket.ps1 (Installer ins Paket, Konfiguration NICHT) ---
+function Lass-Paketblock-Laufen {
+  param([string]$Konfig, [string]$CodeOrdner, [string]$Paket, [string]$SkriptOrdner = '')
+  $text = [System.IO.File]::ReadAllText((Join-Path $here 'erstelle-offline-paket.ps1'), [System.Text.Encoding]::UTF8)
+  $von = $text.IndexOf('# ── 7b. Fernwartung'); if ($von -lt 0) { throw '7b-Marke nicht gefunden' }
+  $bis = $text.IndexOf('$liesMich = @"', $von); if ($bis -lt 0) { throw 'Ende nicht gefunden' }
+  $block = $text.Substring($von, $bis - $von).Replace('$PSScriptRoot', '$FwTestOrdner')
+  $FwTestOrdner = $SkriptOrdner; $FernwartungKonfig = $Konfig; $codeDir = $CodeOrdner; $Ziel = $Paket; $Branch = 'master'
+  function Schritt([string]$t) { Write-Host ("==> " + $t) }
+  function Ok([string]$t) { Write-Host ("OK: " + $t) }
+  return (Invoke-Expression $block *>&1 | Out-String)
+}
+$repoWurzel = Split-Path -Parent $here
+$paketA = Neues-Tempverzeichnis; $aufraeumen.Add($paketA)
+$cfgOrd = Neues-Tempverzeichnis; $aufraeumen.Add($cfgOrd)
+Schreibe-Text (Join-Path $cfgOrd 'TeamViewer_Host.msi') 'kein echter Installer'
+Schreibe-Text (Join-Path $cfgOrd 'fernwartung.json') ('{ "msiPfad": "TeamViewer_Host.msi", "signaturPruefen": false, "assignmentId": "' + $ASSID + '" }')
+$konsole = Lass-Paketblock-Laufen -Konfig (Join-Path $cfgOrd 'fernwartung.json') -CodeOrdner $repoWurzel -Paket $paketA
+Pruefe 'Offline-Paket: der Installer aus der Konfiguration landet im Paket' { Test-Path (Join-Path $paketA 'TeamViewer_Host.msi') }
+Pruefe 'Offline-Paket: die fernwartung.json (mit dem Token) wird NICHT ins Paket kopiert' { -not (Test-Path (Join-Path $paketA 'fernwartung.json')) -and ($konsole -match 'NICHT ins Paket kopiert') }
+Pruefe 'Offline-Paket: die Assignment-ID steht in keiner Ausgabe' { $konsole -notmatch [regex]::Escape($ASSID) }
+$paketB = Neues-Tempverzeichnis; $aufraeumen.Add($paketB)
+$leerCode = Neues-Tempverzeichnis; $aufraeumen.Add($leerCode)
+$konsole = Lass-Paketblock-Laufen -Konfig (Join-Path $cfgOrd 'fernwartung.json') -CodeOrdner $leerCode -Paket $paketB
+Pruefe 'Offline-Paket: fehlt die Bibliothek im Code, meldet es das — das Paket wird trotzdem erstellt (kein Absturz)' { ($konsole -match 'fehlt im Branch') -and ($konsole -match 'trotzdem erstellt') -and -not (Test-Path (Join-Path $paketB 'TeamViewer_Host.msi')) }
+Schreibe-Text (Join-Path $cfgOrd 'kaputt.json') ('{ "apiToken": "' + $TOKEN + '" "x": 1 }')
+$paketC = Neues-Tempverzeichnis; $aufraeumen.Add($paketC)
+$konsole = Lass-Paketblock-Laufen -Konfig (Join-Path $cfgOrd 'kaputt.json') -CodeOrdner $repoWurzel -Paket $paketC
+Pruefe 'Offline-Paket: kaputte Konfiguration → Meldung ohne Dateiinhalt, Paket läuft weiter' { ($konsole -match 'nicht ins Paket gelegt') -and ($konsole -notmatch [regex]::Escape($TOKEN)) -and ($konsole -match 'trotzdem erstellt') }
+Schreibe-Text (Join-Path $cfgOrd 'ohneinstaller.json') ('{ "assignmentId": "' + $ASSID + '" }')
+$leerOrd = Neues-Tempverzeichnis; $aufraeumen.Add($leerOrd)
+Schreibe-Text (Join-Path $leerOrd 'fernwartung.json') ('{ "assignmentId": "' + $ASSID + '" }')
+$paketD = Neues-Tempverzeichnis; $aufraeumen.Add($paketD)
+$konsole = Lass-Paketblock-Laufen -Konfig (Join-Path $leerOrd 'fernwartung.json') -CodeOrdner $repoWurzel -Paket $paketD
+Pruefe 'Offline-Paket: Konfiguration ohne Installer-Angabe und ohne Datei daneben → klare Meldung' { ($konsole -match 'Keine Installer-Datei') -and ($konsole -notmatch [regex]::Escape($ASSID)) }
+$paketE = Neues-Tempverzeichnis; $aufraeumen.Add($paketE)
+$konsole = Lass-Paketblock-Laufen -Konfig '' -CodeOrdner $repoWurzel -Paket $paketE
+Pruefe 'Offline-Paket: ohne Konfiguration passiert nichts (kein Fernwartungs-Schritt)' { $konsole.Trim() -eq '' -and @(Get-ChildItem $paketE).Count -eq 0 }
+
 # =============================================================================
 Gruppe '6. install.ps1 -Trockenlauf als eigener Prozess (tut nichts, Token nie sichtbar)'
 # =============================================================================
