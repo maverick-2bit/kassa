@@ -273,6 +273,10 @@ export async function scanne(
  * dessen SHA-256 — wer ein Einlass-Handy findet, kann daraus keine gültigen
  * QR-Codes bauen. Reservierte (noch unbezahlte) Tickets fehlen bewusst.
  * Mit `seit` nur die seither geänderten Tickets (Abgleich im laufenden Betrieb).
+ * Der Schnitt ist nicht auf die Millisekunde genau: neue Tickets stempelt die DB-Uhr
+ * (DEFAULT now()), Änderungen und `erstelltAt` die Node-Uhr, und eine Änderung wird erst
+ * mit ihrem Commit sichtbar. Das Gerät greift deshalb um eine Überlappung zurück
+ * (einlass/src/lib/offline.ts: UEBERLAPPUNG_MS) — Doppeltes ist harmlos, es überschreibt je Hash.
  */
 export async function holeOfflineListe(
   db: Db, geraet: Pick<EinlassGeraetRow, 'mandantId'>, eventId: string, seit: Date | null,
