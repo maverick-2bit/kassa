@@ -950,23 +950,6 @@ export const tagesabschlussApi = {
     request<{ erfolgreich: boolean }>('POST', '/api/belege/tagesabschluss/drucken', { kasseId, datum, ...(druckerId ? { druckerId } : {}) }),
 }
 
-export interface KassensturzDruckInput {
-  kasseId:       string
-  datum:         string
-  /** Drucker der Bibliothek; fehlt er, druckt der Kassen-Bondrucker */
-  druckerId?:    string
-  istCent:       number
-  sollCent:      number
-  differenzCent: number
-  startgeldCent: number
-  stueck:        { label: string; anzahl: number; summeCent: number }[]
-}
-
-export const kassensturzApi = {
-  drucken: (input: KassensturzDruckInput) =>
-    request<{ erfolgreich: boolean }>('POST', '/api/kassensturz/drucken', input),
-}
-
 // ---------------------------------------------------------------------------
 // User-Verwaltung
 // ---------------------------------------------------------------------------

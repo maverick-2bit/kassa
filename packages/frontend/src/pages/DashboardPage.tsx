@@ -250,9 +250,6 @@ function QuickActions() {
       {hasBerechtigung('belege.lesen') && (
         <QuickLink to="/tagesabschluss" label="Tagesabschluss" color="amber" />
       )}
-      {hasBerechtigung('belege.lesen') && (
-        <QuickLink to="/kassensturz" label="Kassensturz" color="amber" />
-      )}
       {hasBerechtigung('einstellungen') && (
         <QuickLink to="/kassenbuch" label="Kassenbuch" color="purple" />
       )}

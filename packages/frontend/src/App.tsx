@@ -40,7 +40,6 @@ const DashboardPage             = lazyPage(() => import('./pages/DashboardPage')
 const KundenPage                = lazyPage(() => import('./pages/KundenPage'), 'KundenPage')
 const AngebotePage              = lazyPage(() => import('./pages/AngebotePage'), 'AngebotePage')
 const BelegArchivPage           = lazyPage(() => import('./pages/BelegArchivPage'), 'BelegArchivPage')
-const KassensturzPage           = lazyPage(() => import('./pages/KassensturzPage'), 'KassensturzPage')
 const BonierdruckerPage         = lazyPage(() => import('./pages/BonierdruckerPage'), 'BonierdruckerPage')
 const KassenbuchPage            = lazyPage(() => import('./pages/KassenbuchPage'), 'KassenbuchPage')
 const PosKonfigPage             = lazyPage(() => import('./pages/PosKonfigPage'), 'PosKonfigPage')
@@ -117,7 +116,6 @@ function AppRoutes() {
           <Route path="/module"         element={<Require b="einstellungen"                ><MandantenEinstellungenPage /></Require>} />
           <Route path="/benutzer"       element={<Require b="user.verwalten"               ><UserVerwaltungPage /></Require>} />
           <Route path="/tagesabschluss" element={<Require b="belege.lesen"                 ><TagesabschlussPage /></Require>} />
-          <Route path="/kassensturz"    element={<Require b="belege.lesen"                 ><KassensturzPage /></Require>} />
           <Route path="/kassenbuch"     element={<Require b="einstellungen"                ><KassenbuchPage /></Require>} />
           <Route path="/berichte"       element={<Require b="belege.lesen"                 ><BerichtePage /></Require>} />
           <Route path="/kunden"         element={<Require b="kunden.verwalten"             ><KundenPage /></Require>} />

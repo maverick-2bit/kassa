@@ -6,7 +6,7 @@ import { Button } from './ui/Button'
 import { Input } from './ui/Input'
 
 /**
- * Eigener Drucker für Tagesabschluss/Kassensturz und (getrennt davon) für die
+ * Eigener Drucker für Tagesabschluss und (getrennt davon) für die
  * Berichte — unabhängig vom Bondrucker der Kasse. Auswahl aus der
  * Drucker-Bibliothek; die Wahl wird je Gerät und Bereich gemerkt (das Gerät
  * steht meist beim Büro-/Abrechnungsdrucker). Wer Einstellungen ändern darf,

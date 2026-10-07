@@ -223,7 +223,6 @@ function baueNavGruppen(): NavGruppe[] {
     gruppe('Auswertung', [
       wenn(b('belege.lesen'),   '/belege',        'Belege'),
       wenn(b('belege.lesen'),   '/tagesabschluss', 'Abschluss'),
-      wenn(b('belege.lesen'),   '/kassensturz',   'Kassensturz'),
       wenn(b('belege.lesen'),   '/berichte',      'Berichte'),
       wenn(b('einstellungen'),  '/kassenbuch',    'Kassenbuch'),
     ]),
