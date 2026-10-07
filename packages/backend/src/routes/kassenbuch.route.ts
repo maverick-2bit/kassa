@@ -16,7 +16,7 @@ import {
   erstelleKassenbuchBuchung,
   listeKassenbuchBuchungen,
 } from '../services/kassenbuch.service.js'
-import { druckerConfigVonKasse, sendBytes, DruckerError } from '../services/drucker.service.js'
+import { druckerConfigVonKasse, resolveZielDrucker, sendBytes, DruckerError } from '../services/drucker.service.js'
 import { baueKassenbuchBon } from '../services/escpos/layout.js'
 
 export interface KassenbuchRouteOptions { db: Db }
@@ -68,6 +68,7 @@ export const kassenbuchRoute: FastifyPluginAsync<KassenbuchRouteOptions> = async
 
   const DruckenSchema = z.object({
     kasseId: z.string().uuid(),
+    druckerId: z.string().uuid().optional(),
     von:     z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     bis:     z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   })
@@ -76,7 +77,7 @@ export const kassenbuchRoute: FastifyPluginAsync<KassenbuchRouteOptions> = async
     const parsed = DruckenSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
 
-    const { kasseId, von, bis } = parsed.data
+    const { kasseId, von, bis, druckerId } = parsed.data
     const mandantId = request.user.mandantId
 
     if (!(await pruefeKasseGehoertZuMandant(opts.db, kasseId, mandantId))) {
@@ -86,7 +87,16 @@ export const kassenbuchRoute: FastifyPluginAsync<KassenbuchRouteOptions> = async
     const [kasse] = await opts.db.select().from(kassen).where(eq(kassen.id, kasseId)).limit(1)
     if (!kasse) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
 
-    const druckerConfig = druckerConfigVonKasse(kasse)
+    let druckerConfig
+    try {
+      // Gewählter Bibliotheks-Drucker hat Vorrang, egal wie der Kassen-Drucker eingestellt ist
+      druckerConfig = druckerId
+        ? await resolveZielDrucker(opts.db, mandantId, kasse.id, druckerId)
+        : druckerConfigVonKasse(kasse)
+    } catch (err) {
+      if (err instanceof DruckerError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      throw err
+    }
     if (!druckerConfig) {
       return reply.status(409).send({ fehler: 'Drucker ist nicht konfiguriert oder deaktiviert' })
     }

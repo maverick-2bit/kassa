@@ -13,11 +13,14 @@ import { Input } from './ui/Input'
  * kann hier auch gleich einen neuen Drucker anlegen.
  */
 
-export type DruckerBereich = 'abschluss' | 'berichte'
+export type DruckerBereich = 'abschluss' | 'berichte' | 'kassenbuch' | 'lieferung' | 'gutschein'
 
 const KEYS: Record<DruckerBereich, string> = {
   abschluss: 'kassa:abrechnungsDrucker',
   berichte:  'kassa:berichteDrucker',
+  kassenbuch: 'kassa:kassenbuchDrucker',
+  lieferung: 'kassa:lieferungDrucker',
+  gutschein: 'kassa:gutscheinDrucker',
 }
 const KASSEN_DRUCKER = ''
 
@@ -141,4 +144,10 @@ export function AbrechnungsDruckerAuswahl({ auswahl, drucker, onChange, label = 
       )}
     </div>
   )
+}
+
+/** Gewählter Drucker eines Bereichs ohne Hook (z. B. in Event-Handlern); undefined = Kassen-Bondrucker. */
+export function gewaehlterDrucker(bereich: DruckerBereich): string | undefined {
+  const id = lies(bereich)
+  return id === KASSEN_DRUCKER ? undefined : id
 }

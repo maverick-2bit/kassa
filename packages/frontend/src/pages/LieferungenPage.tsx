@@ -17,6 +17,7 @@ import { lieferApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
 import { Button } from '../components/ui/Button'
+import { AbrechnungsDruckerAuswahl, useAbrechnungsDrucker } from '../components/AbrechnungsDrucker'
 import { Modal } from '../components/ui/Modal'
 import { useKasseEvents } from '../lib/sse'
 
@@ -270,8 +271,9 @@ function BestellungDetail({
 }) {
   const istAktiv = b.status === 'neu' || b.status === 'bestaetigt'
 
+  const lfDrucker = useAbrechnungsDrucker('lieferung')
   const druckenMut = useMutation({
-    mutationFn: () => lieferApi.drucken(b.id),
+    mutationFn: () => lieferApi.drucken(b.id, lfDrucker.druckerId),
   })
 
   return (
@@ -334,6 +336,9 @@ function BestellungDetail({
         <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           {fehler}
         </div>
+      )}
+      {lfDrucker.drucker.length > 0 && (
+        <AbrechnungsDruckerAuswahl label="Drucker für Lieferbons" auswahl={lfDrucker.auswahl} drucker={lfDrucker.drucker} onChange={lfDrucker.waehle} />
       )}
 
       {/* Aktionen */}

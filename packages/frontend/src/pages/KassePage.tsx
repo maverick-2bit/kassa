@@ -39,6 +39,7 @@ import { druckeAngebot, druckeGutschein, druckeLiferschein, druckeRechnung } fro
 import { AusgabeDialog } from '../components/AusgabeDialog'
 import { MengeNumpadModal } from '../components/MengeNumpadModal'
 import { Button } from '../components/ui/Button'
+import { gewaehlterDrucker } from '../components/AbrechnungsDrucker'
 import { Modal } from '../components/ui/Modal'
 import { Input } from '../components/ui/Input'
 import { BonAnzeige } from '../components/BonAnzeige'
@@ -406,7 +407,7 @@ export function KassePage() {
           // A4-Druckfenster zurück.
           if (result.restGutschein) {
             try {
-              await gutscheinApi.drucken(result.restGutschein.id, identity.kasseId)
+              await gutscheinApi.drucken(result.restGutschein.id, identity.kasseId, gewaehlterDrucker('gutschein'))
             } catch {
               const auth = getAuth()
               if (auth) druckeGutschein(result.restGutschein, { firmenname: auth.mandant.firmenname, uid: auth.mandant.uid })

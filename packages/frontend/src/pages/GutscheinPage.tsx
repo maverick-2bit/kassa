@@ -10,12 +10,13 @@ import {
   GUTSCHEIN_STATUS_LABELS,
 } from '@kassa/shared'
 import { gutscheinApi, downloadGutscheinJournalCsv } from '../lib/api'
-import { getAuth } from '../lib/auth'
+import { getAuth, hasBerechtigung } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
 import { addTage, heuteGeschaeftstag } from '../lib/geschaeftstag'
 import { druckeGutschein } from '../lib/rechnung'
 import { Button } from '../components/ui/Button'
+import { AbrechnungsDruckerAuswahl, useAbrechnungsDrucker } from '../components/AbrechnungsDrucker'
 import { Input } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
 import { KundePicker } from '../components/KundePicker'
@@ -304,6 +305,7 @@ function GutscheinDetailModal({ gs, onClose, onBonDruck, bonDruckLaeuft }: Gutsc
 
 export function GutscheinPage() {
   const auth        = getAuth()
+  const gsDrucker   = useAbrechnungsDrucker('gutschein')
   const queryClient = useQueryClient()
   const [statusFilter, setStatusFilter] = useState<GutscheinStatus | 'alle'>('aktiv')
   const [suche,          setSuche]          = useState('')
@@ -322,7 +324,7 @@ export function GutscheinPage() {
     mutationFn: (id: string) => {
       const identity = getKasseIdentity()
       if (!identity) throw new Error('Keine aktive Kasse — Bon-Druck braucht die Kassen-Zuordnung')
-      return gutscheinApi.drucken(id, identity.kasseId)
+      return gutscheinApi.drucken(id, identity.kasseId, gsDrucker.druckerId)
     },
     onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
   })
@@ -338,7 +340,7 @@ export function GutscheinPage() {
       try {
         const identity = getKasseIdentity()
         if (!identity) throw new Error('keine Kasse')
-        await gutscheinApi.drucken(gs.id, identity.kasseId)
+        await gutscheinApi.drucken(gs.id, identity.kasseId, gsDrucker.druckerId)
       } catch {
         if (auth) druckeGutschein(gs, { firmenname: auth.mandant.firmenname, uid: auth.mandant.uid })
       }
@@ -381,6 +383,12 @@ export function GutscheinPage() {
           + Neuer Gutschein
         </Button>
       </div>
+
+      {hasBerechtigung('einstellungen') && (
+        <div className="rounded-lg bg-panel shadow-sm border border-line p-4 mb-6">
+          <AbrechnungsDruckerAuswahl label="Drucker für Gutscheine" auswahl={gsDrucker.auswahl} drucker={gsDrucker.drucker} onChange={gsDrucker.waehle} />
+        </div>
+      )}
 
       {/* Statistik */}
       <div className="grid grid-cols-3 gap-4 mb-6">

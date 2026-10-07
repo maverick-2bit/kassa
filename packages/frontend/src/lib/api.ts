@@ -1277,8 +1277,8 @@ export const lieferApi = {
   },
   updateStatus: (id: string, input: LieferbestellungUpdate): Promise<LieferbestellungResponse> =>
     request<LieferbestellungResponse>('PATCH', `/api/lieferbestellungen/${id}`, input),
-  drucken: (id: string): Promise<{ erfolgreich: boolean }> =>
-    request<{ erfolgreich: boolean }>('POST', `/api/lieferbestellungen/${id}/drucken`),
+  drucken: (id: string, druckerId?: string): Promise<{ erfolgreich: boolean }> =>
+    request<{ erfolgreich: boolean }>('POST', `/api/lieferbestellungen/${id}/drucken`, druckerId ? { druckerId } : {}),
   webhookUrls: (kasseId: string): Promise<{ webhookSecret: string; urls: { lieferando: string; mergeport: string; custom: string } }> =>
     request('GET', `/api/kassen/${kasseId}/webhook-url`),
 }
@@ -1584,8 +1584,8 @@ export const kassenbuchApi = {
   erstelle: (input: KassenbuchBuchungInput): Promise<KassenbuchBuchung> =>
     request<KassenbuchBuchung>('POST', '/api/kassenbuch', input),
 
-  drucken: (kasseId: string, von: string, bis: string): Promise<{ erfolgreich: boolean }> =>
-    request<{ erfolgreich: boolean }>('POST', '/api/kassenbuch/drucken', { kasseId, von, bis }),
+  drucken: (kasseId: string, von: string, bis: string, druckerId?: string): Promise<{ erfolgreich: boolean }> =>
+    request<{ erfolgreich: boolean }>('POST', '/api/kassenbuch/drucken', { kasseId, von, bis, ...(druckerId ? { druckerId } : {}) }),
 }
 
 // ---------------------------------------------------------------------------

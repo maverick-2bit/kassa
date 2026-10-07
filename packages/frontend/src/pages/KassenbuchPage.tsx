@@ -15,6 +15,7 @@ import { formatPreis } from '../lib/format'
 import { addTage, endeDesMonats, heuteGeschaeftstag, montagDerWoche } from '../lib/geschaeftstag'
 import { downloadKassenbuchPdf } from '../lib/pdf'
 import { Button } from '../components/ui/Button'
+import { AbrechnungsDruckerAuswahl, useAbrechnungsDrucker } from '../components/AbrechnungsDrucker'
 import { Input } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
 
@@ -106,8 +107,9 @@ export function KassenbuchPage() {
     },
   })
 
+  const kbDrucker = useAbrechnungsDrucker('kassenbuch')
   const druckenMutation = useMutation({
-    mutationFn: () => kassenbuchApi.drucken(identity.kasseId, von, bis),
+    mutationFn: () => kassenbuchApi.drucken(identity.kasseId, von, bis, kbDrucker.druckerId),
     onSuccess:  () => setBonFehler(null),
     onError:    (err) => setBonFehler(err instanceof Error ? err.message : 'Druckfehler'),
   })
@@ -137,6 +139,12 @@ export function KassenbuchPage() {
         </div>
         <Button onClick={() => setModal(true)}>+ Neue Buchung</Button>
       </div>
+
+      {hasBerechtigung('einstellungen') && (
+        <div className="rounded-lg bg-panel shadow-sm border border-line p-4">
+          <AbrechnungsDruckerAuswahl label="Drucker für das Kassenbuch" auswahl={kbDrucker.auswahl} drucker={kbDrucker.drucker} onChange={kbDrucker.waehle} />
+        </div>
+      )}
 
       {/* Filter */}
       <div className="rounded-lg bg-panel shadow-sm border border-line p-4">

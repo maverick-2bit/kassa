@@ -94,9 +94,11 @@ export const lieferbestellungRoute: FastifyPluginAsync<LieferbestellungRouteOpti
   fastify.post('/lieferbestellungen/:id/drucken', guard, async (request, reply) => {
     const p = IdParam.safeParse(request.params)
     if (!p.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
+    const body = z.object({ druckerId: z.string().uuid().optional() }).safeParse(request.body ?? {})
+    if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
 
     try {
-      await druckeLieferbestellung(opts.db, p.data.id, request.user.mandantId)
+      await druckeLieferbestellung(opts.db, p.data.id, request.user.mandantId, body.data.druckerId)
       return reply.send({ erfolgreich: true })
     } catch (err) {
       if (err instanceof LieferbestellungError) return reply.status(err.httpStatus).send({ fehler: err.message })

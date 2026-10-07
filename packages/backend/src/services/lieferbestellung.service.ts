@@ -12,7 +12,7 @@ import { and, desc, eq } from 'drizzle-orm'
 import type { Db } from '../db/client.js'
 import { kassen, lieferbestellungen, mandanten } from '../db/schema.js'
 import { emitKasseEvent } from '../sse/event-bus.js'
-import { druckerConfigVonKasse, sendBytes } from './drucker.service.js'
+import { druckerConfigVonKasse, resolveZielDrucker, sendBytes, DruckerError } from './drucker.service.js'
 import { baueLieferbestellungBon } from './escpos/layout.js'
 import type {
   LieferbestellungPosition,
@@ -356,6 +356,7 @@ export async function druckeLieferbestellung(
   db:        Db,
   id:        string,
   mandantId: string,
+  druckerId?: string,
 ): Promise<void> {
   // Bestellung laden
   const [row] = await db
@@ -380,7 +381,16 @@ export async function druckeLieferbestellung(
     .limit(1)
   if (!kasse) throw new LieferbestellungError(404, 'Kasse nicht gefunden')
 
-  const druckerConfig = druckerConfigVonKasse(kasse)
+  // Gewählter Bibliotheks-Drucker hat Vorrang, egal wie der Kassen-Drucker eingestellt ist
+  let druckerConfig
+  try {
+    druckerConfig = druckerId
+      ? await resolveZielDrucker(db, mandantId, row.kasseId, druckerId)
+      : druckerConfigVonKasse(kasse)
+  } catch (err) {
+    if (err instanceof DruckerError) throw new LieferbestellungError(err.httpStatus, err.message)
+    throw err
+  }
   if (!druckerConfig) throw new LieferbestellungError(409, 'Drucker nicht konfiguriert oder deaktiviert')
 
   // Mandant laden
