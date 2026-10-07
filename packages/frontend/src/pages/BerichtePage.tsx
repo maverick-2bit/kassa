@@ -778,7 +778,14 @@ function BerichtErgebnis({ data, gruppierung }: { data: BerichtResponse; gruppie
                 centZuEuro(z.nettoCent),
                 centZuEuro(z.ustCent),
               ])
-                return [kopfzeile, ...datenzeilen]
+              // Gesamtsumme über alle Steuersätze (wie in der Bildschirm-Tabelle)
+              const fusszeile = [
+                'Gesamt',
+                centZuEuro(g.mwst.reduce((s, z) => s + z.bruttoCent, 0)),
+                centZuEuro(g.mwst.reduce((s, z) => s + z.nettoCent, 0)),
+                centZuEuro(g.mwst.reduce((s, z) => s + z.ustCent, 0)),
+              ]
+                return [kopfzeile, ...datenzeilen, ...(g.mwst.length > 1 ? [fusszeile] : [])]
               }}
             />
           </div>
@@ -1177,7 +1184,15 @@ function GesamtumsatzErgebnis({ data, von, bis }: { data: BerichtGesamt; von: st
                 centZuEuro(z.ustCent),
                 data.umsatzCent !== 0 ? String(Math.round(Math.abs(z.bruttoCent / data.umsatzCent) * 100)) : '0',
               ])
-                return [kopfzeile, ...datenzeilen]
+              // Gesamtsumme über alle Steuersätze
+              const fusszeile = [
+                'Gesamt',
+                centZuEuro(data.mwst.reduce((s, z) => s + z.bruttoCent, 0)),
+                centZuEuro(data.mwst.reduce((s, z) => s + z.nettoCent, 0)),
+                centZuEuro(data.mwst.reduce((s, z) => s + z.ustCent, 0)),
+                '100',
+              ]
+                return [kopfzeile, ...datenzeilen, ...(data.mwst.length > 1 ? [fusszeile] : [])]
               }}
             />
           </div>
