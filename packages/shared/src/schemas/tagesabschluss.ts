@@ -62,3 +62,9 @@ export const TagesabschlussQuerySchema = z.object({
 })
 
 export type TagesabschlussQuery = z.infer<typeof TagesabschlussQuerySchema>
+
+/** Z-Bon drucken: optional auf einem Drucker der Bibliothek statt dem Kassen-Bondrucker. */
+export const TagesabschlussDruckenSchema = TagesabschlussQuerySchema.extend({
+  druckerId: z.string().uuid().optional(),
+})
+export type TagesabschlussDrucken = z.infer<typeof TagesabschlussDruckenSchema>

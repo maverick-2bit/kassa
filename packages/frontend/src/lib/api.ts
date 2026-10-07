@@ -946,13 +946,15 @@ export const berichtApi = {
 export const tagesabschlussApi = {
   get:    (kasseId: string, datum: string) =>
     request<Tagesabschluss>('GET', `/api/belege/tagesabschluss?kasseId=${kasseId}&datum=${datum}`),
-  drucken:(kasseId: string, datum: string) =>
-    request<{ erfolgreich: boolean }>('POST', '/api/belege/tagesabschluss/drucken', { kasseId, datum }),
+  drucken:(kasseId: string, datum: string, druckerId?: string) =>
+    request<{ erfolgreich: boolean }>('POST', '/api/belege/tagesabschluss/drucken', { kasseId, datum, ...(druckerId ? { druckerId } : {}) }),
 }
 
 export interface KassensturzDruckInput {
   kasseId:       string
   datum:         string
+  /** Drucker der Bibliothek; fehlt er, druckt der Kassen-Bondrucker */
+  druckerId?:    string
   istCent:       number
   sollCent:      number
   differenzCent: number

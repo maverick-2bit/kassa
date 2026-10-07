@@ -9,12 +9,13 @@ import { useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { geschaeftstagText } from '@kassa/shared'
 import { tagesabschlussApi, kassensturzApi } from '../lib/api'
-import { getAuth } from '../lib/auth'
+import { getAuth, hasBerechtigung } from '../lib/auth'
 import { formatPreis } from '../lib/format'
 import { heuteGeschaeftstag } from '../lib/geschaeftstag'
 import { downloadKassensturzPdf } from '../lib/pdf'
 import { Button } from '../components/ui/Button'
 import { KassenAuswahl, useAbrechnungsKasse } from '../components/KassenAuswahl'
+import { AbrechnungsDruckerAuswahl, useAbrechnungsDrucker } from '../components/AbrechnungsDrucker'
 
 // ---------------------------------------------------------------------------
 // Euro-Stückelung
@@ -56,6 +57,7 @@ export function KassensturzPage() {
   const auth      = getAuth()!
   const { kasseId, setKasseId, kassen, bezeichnung, auswahlMoeglich } = useAbrechnungsKasse()
   // „Heute" = aktueller Geschäftstag (der Bar-Soll kommt aus dem Tagesabschluss dieses Tages)
+  const abrDrucker = useAbrechnungsDrucker()
   const [datum, setDatum]           = useState(heuteGeschaeftstag())
   const [stueck, setStueck]         = useState<Record<number, number>>({})
   const [startgeld, setStartgeld]   = useState('')
@@ -103,7 +105,10 @@ export function KassensturzPage() {
 
   // ESC/POS-Druck via Backend (braucht konfigurierten Drucker an der Kasse)
   const druckenMutation = useMutation({
-    mutationFn: () => kassensturzApi.drucken(baueEingabe()),
+    mutationFn: () => kassensturzApi.drucken({
+      ...baueEingabe(),
+      ...(abrDrucker.druckerId ? { druckerId: abrDrucker.druckerId } : {}),
+    }),
   })
 
   async function pdfHerunterladen() {
@@ -162,6 +167,17 @@ export function KassensturzPage() {
           </div>
         </div>
       </div>
+
+      {/* Drucker für den Kassensturz-Bon (unabhängig vom Kassen-Bondrucker) */}
+      {hasBerechtigung('einstellungen') && (
+        <div className="rounded-lg bg-panel shadow-sm border border-line p-4">
+          <AbrechnungsDruckerAuswahl
+            auswahl={abrDrucker.auswahl}
+            drucker={abrDrucker.drucker}
+            onChange={abrDrucker.waehle}
+          />
+        </div>
+      )}
 
       {/* Stückelung */}
       <div className="rounded-lg bg-panel shadow-sm border border-line overflow-hidden">

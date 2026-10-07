@@ -507,11 +507,13 @@ export type {
 export {
   TagesabschlussSchema,
   TagesabschlussQuerySchema,
+  TagesabschlussDruckenSchema,
   MwStZeileSchema,
 } from './schemas/tagesabschluss.js'
 export type {
   Tagesabschluss,
   TagesabschlussQuery,
+  TagesabschlussDrucken,
   MwStZeile,
 } from './schemas/tagesabschluss.js'
 

@@ -12,6 +12,7 @@ import {
   MonatsbelegInputSchema,
   JahresbelegInputSchema,
   TagesabschlussQuerySchema,
+  TagesabschlussDruckenSchema,
   geschaeftstagText,
   type BarzahlungsbelegInput,
 } from '@kassa/shared'
@@ -37,7 +38,7 @@ import {
   holeTagesabschluss,
   TagesabschlussError,
 } from '../services/tagesabschluss.service.js'
-import { tryDruckeBeleg, druckerConfigVonKasse, sendBytes, DruckerError } from '../services/drucker.service.js'
+import { tryDruckeBeleg, druckerConfigVonKasse, resolveZielDrucker, sendBytes, DruckerError } from '../services/drucker.service.js'
 import { bonierBestellung } from '../services/bonier.service.js'
 import { ladeWirksamesRouting } from '../services/kategorie-routing.service.js'
 import { baueZBon, baueKassensturzBon } from '../services/escpos/layout.js'
@@ -466,6 +467,7 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
   const KassensturzDruckenSchema = z.object({
     kasseId:       z.string().uuid(),
     datum:         z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    druckerId:     z.string().uuid().optional(),
     istCent:       z.number().int(),
     sollCent:      z.number().int(),
     differenzCent: z.number().int(),
@@ -494,7 +496,15 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
       return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
     }
 
-    const druckerConfig = druckerConfigVonKasse(kasse)
+    let druckerConfig
+    try {
+      druckerConfig = parsed.data.druckerId
+        ? await resolveZielDrucker(opts.deps.db, mandantId, kasse.id, parsed.data.druckerId)
+        : druckerConfigVonKasse(kasse)
+    } catch (err) {
+      if (err instanceof DruckerError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      throw err
+    }
     if (!druckerConfig) {
       return reply.status(409).send({ fehler: 'Drucker ist nicht konfiguriert oder deaktiviert' })
     }
@@ -522,7 +532,7 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
   })
 
   fastify.post('/belege/tagesabschluss/drucken', guard, async (request, reply) => {
-    const parsed = TagesabschlussQuerySchema.safeParse(request.body)
+    const parsed = TagesabschlussDruckenSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
 
     try {
@@ -541,7 +551,10 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
         .limit(1)
       if (!kasse) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
 
-      const druckerConfig = druckerConfigVonKasse(kasse)
+      // Gewählter Bibliotheks-Drucker hat Vorrang, egal wie der Kassen-Drucker eingestellt ist
+      const druckerConfig = parsed.data.druckerId
+        ? await resolveZielDrucker(opts.deps.db, request.user.mandantId, kasse.id, parsed.data.druckerId)
+        : druckerConfigVonKasse(kasse)
       if (!druckerConfig) {
         return reply.status(409).send({ fehler: 'Drucker ist nicht konfiguriert oder deaktiviert' })
       }

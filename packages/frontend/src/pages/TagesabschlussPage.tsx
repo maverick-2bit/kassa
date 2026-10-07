@@ -9,11 +9,13 @@ import { heuteGeschaeftstag } from '../lib/geschaeftstag'
 import { downloadZBonPdf } from '../lib/pdf'
 import { Button } from '../components/ui/Button'
 import { KassenAuswahl, useAbrechnungsKasse } from '../components/KassenAuswahl'
+import { AbrechnungsDruckerAuswahl, useAbrechnungsDrucker } from '../components/AbrechnungsDrucker'
 
 export function TagesabschlussPage() {
   const auth       = getAuth()!
   const { kasseId, setKasseId, kassen, bezeichnung: kasseBezeichnung, auswahlMoeglich } = useAbrechnungsKasse()
   // „Heute" ist der aktuelle GESCHÄFTSTAG: um 02:00 nachts bei Tagesbeginn 06:00 noch der Vortag
+  const abrDrucker = useAbrechnungsDrucker()
   const [datum, setDatum] = useState<string>(heuteGeschaeftstag())
   const [druckfehler, setDruckfehler]   = useState<string | null>(null)
   const [druckErfolg, setDruckErfolg]   = useState(false)
@@ -39,7 +41,7 @@ export function TagesabschlussPage() {
   })
 
   const druckenMutation = useMutation({
-    mutationFn: () => tagesabschlussApi.drucken(kasseId, datum),
+    mutationFn: () => tagesabschlussApi.drucken(kasseId, datum, abrDrucker.druckerId),
     onSuccess:  () => { setDruckErfolg(true); setDruckfehler(null) },
     onError:    (err) => {
       setDruckfehler(err instanceof Error ? err.message : String(err))
@@ -106,6 +108,15 @@ export function TagesabschlussPage() {
             Aktualisieren
           </Button>
         </div>
+        {hasBerechtigung('einstellungen') && (
+          <div className="mt-4 pt-4 border-t border-line">
+            <AbrechnungsDruckerAuswahl
+              auswahl={abrDrucker.auswahl}
+              drucker={abrDrucker.drucker}
+              onChange={(id) => { abrDrucker.waehle(id); setDruckErfolg(false); setDruckfehler(null) }}
+            />
+          </div>
+        )}
       </div>
 
       {/* Fehler / Laden */}
