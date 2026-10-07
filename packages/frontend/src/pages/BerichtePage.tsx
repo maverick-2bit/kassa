@@ -1160,6 +1160,27 @@ function GesamtumsatzErgebnis({ data, von, bis }: { data: BerichtGesamt; von: st
 
   return (
     <div className="space-y-4">
+      {/* Druck/Export mit allen Gesamtsummen (Abrechnung, Buchhaltung) */}
+      <div className="flex justify-end items-center gap-3">
+        <ExportButtons
+          dateiBasis={`bericht-uebersicht_${von}_${bis}`}
+          titel="Umsatz-Übersicht"
+          zeitraum={`${formatDatumAnzeige(von)} – ${formatDatumAnzeige(bis)}`}
+          zeilen={() => {
+            const summe = (feld: 'bruttoCent' | 'nettoCent' | 'ustCent') => data.mwst.reduce((s, z) => s + z[feld], 0)
+            return [
+              ['Position', 'Brutto (€)', 'Netto (€)', 'USt (€)'],
+              ...data.mwst.map(z => [z.label, centZuEuro(z.bruttoCent), centZuEuro(z.nettoCent), centZuEuro(z.ustCent)]),
+              ['Gesamtumsatz', centZuEuro(data.umsatzCent), data.mwst.length > 0 ? centZuEuro(summe('nettoCent')) : '', data.mwst.length > 0 ? centZuEuro(summe('ustCent')) : ''],
+              ['Barzahlung', centZuEuro(data.barCent), '', ''],
+              ['Kartenzahlung', centZuEuro(data.karteCent), '', ''],
+              ...(data.sonstigCent !== 0 ? [['Sonstige Zahlungen', centZuEuro(data.sonstigCent), '', '']] : []),
+              ...(data.zielCent !== 0 ? [['davon Zielrechnungen', centZuEuro(data.zielCent), '', '']] : []),
+              [`Belege: ${data.anzahlBelege}${data.anzahlStornos > 0 ? ` (davon Stornos: ${data.anzahlStornos})` : ''}`, '', '', ''],
+            ]
+          }}
+        />
+      </div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <Kachel label="Gesamtumsatz"    wert={formatPreis(data.umsatzCent)}    sub={`${formatDatumAnzeige(von)} – ${formatDatumAnzeige(bis)}`} hervor />
         <Kachel label="Anzahl Belege"   wert={String(data.anzahlBelege)}       sub={data.anzahlStornos > 0 ? `${data.anzahlStornos} Stornos (${stornoPct} %)` : 'keine Stornos'} />
