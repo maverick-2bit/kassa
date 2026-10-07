@@ -9,12 +9,12 @@ import { useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { geschaeftstagText } from '@kassa/shared'
 import { tagesabschlussApi, kassensturzApi } from '../lib/api'
-import { getKasseIdentity } from '../lib/kasse'
 import { getAuth } from '../lib/auth'
 import { formatPreis } from '../lib/format'
 import { heuteGeschaeftstag } from '../lib/geschaeftstag'
 import { downloadKassensturzPdf } from '../lib/pdf'
 import { Button } from '../components/ui/Button'
+import { KassenAuswahl, useAbrechnungsKasse } from '../components/KassenAuswahl'
 
 // ---------------------------------------------------------------------------
 // Euro-Stückelung
@@ -53,8 +53,8 @@ function formatDatumAnzeige(datum: string): string {
 // ---------------------------------------------------------------------------
 
 export function KassensturzPage() {
-  const identity  = getKasseIdentity()!
   const auth      = getAuth()!
+  const { kasseId, setKasseId, kassen, bezeichnung, auswahlMoeglich } = useAbrechnungsKasse()
   // „Heute" = aktueller Geschäftstag (der Bar-Soll kommt aus dem Tagesabschluss dieses Tages)
   const [datum, setDatum]           = useState(heuteGeschaeftstag())
   const [stueck, setStueck]         = useState<Record<number, number>>({})
@@ -63,8 +63,8 @@ export function KassensturzPage() {
   const [pdfFehler, setPdfFehler]   = useState<string | null>(null)
 
   const { data: ta, isLoading, isError, error } = useQuery({
-    queryKey: ['tagesabschluss', identity.kasseId, datum],
-    queryFn:  () => tagesabschlussApi.get(identity.kasseId, datum),
+    queryKey: ['tagesabschluss', kasseId, datum],
+    queryFn:  () => tagesabschlussApi.get(kasseId, datum),
     enabled:  !!datum,
   })
 
@@ -87,7 +87,7 @@ export function KassensturzPage() {
   /** Gemeinsame Daten für PDF und ESC/POS-Druck */
   function baueEingabe() {
     return {
-      kasseId:       identity.kasseId,
+      kasseId,
       datum,
       istCent,
       sollCent,
@@ -110,8 +110,6 @@ export function KassensturzPage() {
     setPdfLaedt(true)
     setPdfFehler(null)
     try {
-      const kasseInfo   = auth.kassen.find(k => k.id === identity.kasseId)
-      const bezeichnung = kasseInfo?.bezeichnung ?? kasseInfo?.kassenId ?? identity.kasseId
       await downloadKassensturzPdf(baueEingabe(), auth.mandant.firmenname, bezeichnung)
     } catch (err) {
       setPdfFehler(err instanceof Error ? err.message : 'PDF-Erstellung fehlgeschlagen')
@@ -129,6 +127,13 @@ export function KassensturzPage() {
 
       {/* Datum */}
       <div className="rounded-lg bg-panel shadow-sm border border-line p-4 flex flex-wrap items-end gap-4">
+        {auswahlMoeglich && (
+          <KassenAuswahl
+            kasseId={kasseId}
+            kassen={kassen}
+            onChange={id => { setKasseId(id); reset() }}
+          />
+        )}
         <div>
           <label className="block text-sm font-medium text-ink mb-1">Datum</label>
           <input

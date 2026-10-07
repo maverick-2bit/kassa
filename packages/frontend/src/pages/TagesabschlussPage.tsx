@@ -3,16 +3,16 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import type { KassenbuchResponse } from '@kassa/shared'
 import { KASSENBUCH_TYP_LABELS, geschaeftstagText } from '@kassa/shared'
 import { tagesabschlussApi, kassenbuchApi, mandantApi } from '../lib/api'
-import { getKasseIdentity } from '../lib/kasse'
 import { getAuth, hasBerechtigung } from '../lib/auth'
 import { formatPreis } from '../lib/format'
 import { heuteGeschaeftstag } from '../lib/geschaeftstag'
 import { downloadZBonPdf } from '../lib/pdf'
 import { Button } from '../components/ui/Button'
+import { KassenAuswahl, useAbrechnungsKasse } from '../components/KassenAuswahl'
 
 export function TagesabschlussPage() {
-  const identity   = getKasseIdentity()!
   const auth       = getAuth()!
+  const { kasseId, setKasseId, kassen, bezeichnung: kasseBezeichnung, auswahlMoeglich } = useAbrechnungsKasse()
   // „Heute" ist der aktuelle GESCHÄFTSTAG: um 02:00 nachts bei Tagesbeginn 06:00 noch der Vortag
   const [datum, setDatum] = useState<string>(heuteGeschaeftstag())
   const [druckfehler, setDruckfehler]   = useState<string | null>(null)
@@ -21,14 +21,14 @@ export function TagesabschlussPage() {
   const [pdfFehler, setPdfFehler]       = useState<string | null>(null)
 
   const { data, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['tagesabschluss', identity.kasseId, datum],
-    queryFn:  () => tagesabschlussApi.get(identity.kasseId, datum),
+    queryKey: ['tagesabschluss', kasseId, datum],
+    queryFn:  () => tagesabschlussApi.get(kasseId, datum),
     enabled:  !!datum,
   })
 
   const kassenbuchQuery = useQuery({
-    queryKey: ['kassenbuch-tag', identity.kasseId, datum],
-    queryFn:  () => kassenbuchApi.liste(identity.kasseId, datum, datum),
+    queryKey: ['kassenbuch-tag', kasseId, datum],
+    queryFn:  () => kassenbuchApi.liste(kasseId, datum, datum),
     enabled:  !!datum,
   })
 
@@ -39,7 +39,7 @@ export function TagesabschlussPage() {
   })
 
   const druckenMutation = useMutation({
-    mutationFn: () => tagesabschlussApi.drucken(identity.kasseId, datum),
+    mutationFn: () => tagesabschlussApi.drucken(kasseId, datum),
     onSuccess:  () => { setDruckErfolg(true); setDruckfehler(null) },
     onError:    (err) => {
       setDruckfehler(err instanceof Error ? err.message : String(err))
@@ -52,13 +52,10 @@ export function TagesabschlussPage() {
     setPdfLaedt(true)
     setPdfFehler(null)
     try {
-      // Kassenbezeichnung aus den im JWT gespeicherten Kassen-Infos holen
-      const kasseInfo  = auth.kassen.find(k => k.id === identity.kasseId)
-      const bezeichnung = kasseInfo?.bezeichnung ?? kasseInfo?.kassenId ?? identity.kasseId
       await downloadZBonPdf(
         data,
         auth.mandant.firmenname,
-        bezeichnung,
+        kasseBezeichnung,
         kassenbuchQuery.data,
         stammdatenQuery.data?.belegFusstext,
       )
@@ -82,6 +79,13 @@ export function TagesabschlussPage() {
       {/* Datumsauswahl */}
       <div className="rounded-lg bg-panel shadow-sm border border-line p-4">
         <div className="flex flex-wrap items-end gap-3">
+          {auswahlMoeglich && (
+            <KassenAuswahl
+              kasseId={kasseId}
+              kassen={kassen}
+              onChange={(id) => { setKasseId(id); setDruckErfolg(false); setDruckfehler(null) }}
+            />
+          )}
           <div>
             <label className="block text-sm font-medium text-ink mb-1">
               Datum
@@ -118,7 +122,7 @@ export function TagesabschlussPage() {
           <div className="rounded-lg bg-panel shadow-sm border border-line overflow-hidden">
             <div className="px-4 py-3 bg-panel-2 border-b border-line">
               <h2 className="text-sm font-semibold text-ink uppercase tracking-wide">
-                Übersicht — {formatDatumAnzeige(datum)}
+                Übersicht — {auswahlMoeglich ? `${kasseBezeichnung}, ` : ''}{formatDatumAnzeige(datum)}
               </h2>
               {/* Verschobener Tagesbeginn: der Zeitraum steht ausgeschrieben da, damit klar ist,
                   welche Belege zu diesem Abschluss gehören (sonst fehlt der Hinweis ganz) */}
