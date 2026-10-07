@@ -544,6 +544,7 @@ function ArtikelBerichtTabelle({ data }: { data: ArtikelBerichtResponse }) {
         <ExportButtons
           dateiBasis={`bericht-artikel_${data.von}_${data.bis}`}
             titel="Artikel-Bericht"
+            kassen={kassenText(data.kasseIds)}
             zeitraum={`${formatDatumAnzeige(data.von)} – ${formatDatumAnzeige(data.bis)}`}
           zeilen={() => {
           const kopfzeile = ['Rang', 'Artikel', 'Menge', 'Umsatz (€)', 'Anteil (%)']
@@ -677,6 +678,7 @@ function BerichtErgebnis({ data, gruppierung }: { data: BerichtResponse; gruppie
           <ExportButtons
             dateiBasis={`bericht-umsatz_${data.von}_${data.bis}`}
             titel="Umsatzbericht"
+            kassen={kassenText(data.kasseIds)}
             zeitraum={`${formatDatumAnzeige(data.von)} – ${formatDatumAnzeige(data.bis)}`}
             zeilen={umsatzExportZeilen}
           />
@@ -769,6 +771,7 @@ function BerichtErgebnis({ data, gruppierung }: { data: BerichtResponse; gruppie
             <ExportButtons
               dateiBasis={`bericht-ust_${data.von}_${data.bis}`}
             titel="USt-Aufteilung"
+            kassen={kassenText(data.kasseIds)}
             zeitraum={`${formatDatumAnzeige(data.von)} – ${formatDatumAnzeige(data.bis)}`}
               zeilen={() => {
               const kopfzeile = ['Steuersatz', 'Brutto (€)', 'Netto (€)', 'USt (€)']
@@ -919,10 +922,21 @@ async function excelHerunterladen(dateiname: string, zeilen: string[][], blattNa
 }
 
 /** Bon drucken + PDF — aus denselben Tabellenzeilen wie der CSV-Export. */
-function DruckenButtons({ dateiBasis, titel, zeitraum, zeilen }: {
+/** Klartext der Kassen, die ein Bericht umfasst (leer = alle): 'Name [ID]' — damit im Ausdruck eindeutig steht, welche Kasse gemeint ist. */
+function kassenText(ids: string[] | undefined): string {
+  const alle = getAuth()?.kassen ?? []
+  const name = (k: { bezeichnung: string | null; kassenId: string }) => k.bezeichnung ? `${k.bezeichnung} [${k.kassenId}]` : k.kassenId
+  const gewaehlt = ids && ids.length > 0 ? ids : alle.map(k => k.id)
+  const namen = gewaehlt.map(id => { const k = alle.find(x => x.id === id); return k ? name(k) : id })
+  return gewaehlt.length === alle.length && alle.length > 1 ? `Alle Kassen: ${namen.join(', ')}` : namen.join(', ')
+}
+
+function DruckenButtons({ dateiBasis, titel, zeitraum, kassen, zeilen }: {
   dateiBasis: string
   titel:      string
   zeitraum?:  string
+  /** Kasse(n), die der Bericht umfasst — steht im Kopf von Bon und PDF */
+  kassen?:    string
   zeilen:     () => string[][]
 }) {
   const [druckt, setDruckt]   = useState(false)
@@ -936,7 +950,7 @@ function DruckenButtons({ dateiBasis, titel, zeitraum, zeilen }: {
     if (!kasseId) { setMeldung({ ok: false, text: 'Keine Kasse gewählt' }); return }
     setDruckt(true); setMeldung(null)
     try {
-      await berichtApi.drucken({ kasseId, ...(abrDrucker.druckerId ? { druckerId: abrDrucker.druckerId } : {}), titel, ...(zeitraum ? { zeitraum } : {}), zeilen: zeilen() })
+      await berichtApi.drucken({ kasseId, ...(abrDrucker.druckerId ? { druckerId: abrDrucker.druckerId } : {}), titel, ...(zeitraum ? { zeitraum } : {}), ...(kassen ? { kassen } : {}), zeilen: zeilen() })
       setMeldung({ ok: true, text: 'Gedruckt' })
     } catch (err) {
       setMeldung({ ok: false, text: err instanceof Error ? err.message : 'Druck fehlgeschlagen' })
@@ -947,7 +961,7 @@ function DruckenButtons({ dateiBasis, titel, zeitraum, zeilen }: {
   const pdf = async () => {
     setPdf(true); setMeldung(null)
     try {
-      await downloadBerichtPdf(titel, zeitraum, getAuth()?.mandant.firmenname ?? '', zeilen(), `${dateiBasis}.pdf`)
+      await downloadBerichtPdf(titel, zeitraum, getAuth()?.mandant.firmenname ?? '', zeilen(), `${dateiBasis}.pdf`, kassen)
     } finally {
       setPdf(false)
     }
@@ -978,18 +992,19 @@ function DruckenButtons({ dateiBasis, titel, zeitraum, zeilen }: {
   )
 }
 
-function ExportButtons({ dateiBasis, zeilen, titel, zeitraum }: {
+function ExportButtons({ dateiBasis, zeilen, titel, zeitraum, kassen }: {
   /** Dateiname ohne Endung — CSV und Excel hängen sie selbst an */
   dateiBasis: string
   zeilen: () => string[][]
   /** Titel für Bon und PDF */
   titel: string
   zeitraum?: string
+  kassen?: string
 }) {
   const [laeuft, setLaeuft] = useState(false)
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <DruckenButtons dateiBasis={dateiBasis} titel={titel} {...(zeitraum ? { zeitraum } : {})} zeilen={zeilen} />
+      <DruckenButtons dateiBasis={dateiBasis} titel={titel} {...(zeitraum ? { zeitraum } : {})} {...(kassen ? { kassen } : {})} zeilen={zeilen} />
       <button
         type="button"
         onClick={() => csvHerunterladen(`${dateiBasis}.csv`, zeilen())}
@@ -1145,12 +1160,12 @@ function GesamtumsatzBericht() {
         onLaden={() => setGeladenerFilter({ kasseIds, von, bis, gruppierung: 'monat' })} />
 
       {isError && <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error instanceof Error ? error.message : 'Fehler'}</div>}
-      {data && <GesamtumsatzErgebnis data={data.gesamt} von={data.von} bis={data.bis} />}
+      {data && <GesamtumsatzErgebnis data={data.gesamt} von={data.von} bis={data.bis} kasseIds={data.kasseIds} />}
     </div>
   )
 }
 
-function GesamtumsatzErgebnis({ data, von, bis }: { data: BerichtGesamt; von: string; bis: string }) {
+function GesamtumsatzErgebnis({ data, von, bis, kasseIds }: { data: BerichtGesamt; von: string; bis: string; kasseIds: string[] }) {
   const avgBonCent = data.anzahlBelege > 0
     ? Math.round(data.umsatzCent / data.anzahlBelege)
     : 0
@@ -1165,6 +1180,7 @@ function GesamtumsatzErgebnis({ data, von, bis }: { data: BerichtGesamt; von: st
         <ExportButtons
           dateiBasis={`bericht-uebersicht_${von}_${bis}`}
           titel="Umsatz-Übersicht"
+          kassen={kassenText(kasseIds)}
           zeitraum={`${formatDatumAnzeige(von)} – ${formatDatumAnzeige(bis)}`}
           zeilen={() => {
             const summe = (feld: 'bruttoCent' | 'nettoCent' | 'ustCent') => data.mwst.reduce((s, z) => s + z[feld], 0)
@@ -1195,6 +1211,7 @@ function GesamtumsatzErgebnis({ data, von, bis }: { data: BerichtGesamt; von: st
             <ExportButtons
               dateiBasis={`bericht-ust_${von}_${bis}`}
             titel="USt-Aufteilung"
+            kassen={kassenText(kasseIds)}
             zeitraum={`${formatDatumAnzeige(von)} – ${formatDatumAnzeige(bis)}`}
               zeilen={() => {
               const kopfzeile = ['Steuersatz', 'Brutto (€)', 'Netto (€)', 'USt (€)', 'Anteil (%)']
@@ -1309,6 +1326,7 @@ function ZahlungsartErgebnis({ data }: { data: BerichtResponse }) {
           <ExportButtons
             dateiBasis={`bericht-zahlungsart_${data.von}_${data.bis}`}
             titel="Zahlungsarten"
+            kassen={kassenText(data.kasseIds)}
             zeitraum={`${formatDatumAnzeige(data.von)} – ${formatDatumAnzeige(data.bis)}`}
             zeilen={() => {
             const kopfzeile = ['Periode', 'Bar (€)', 'Karte (€)', 'Sonstige (€)', 'Gesamt (€)']
@@ -1460,6 +1478,7 @@ function StundenDiagramm({ data }: { data: StundenBerichtResponse }) {
           <ExportButtons
             dateiBasis={`bericht-stunden_${data.von}_${data.bis}`}
             titel="Umsatz nach Stunde"
+            kassen={kassenText(data.kasseIds)}
             zeitraum={`${formatDatumAnzeige(data.von)} – ${formatDatumAnzeige(data.bis)}`}
             zeilen={() => {
             const kopfzeile = ['Stunde', 'Belege', 'Umsatz (€)', 'Bar (€)', 'Karte (€)']
@@ -1925,6 +1944,7 @@ function VergleichErgebnis({
           <ExportButtons
             dateiBasis={`bericht-vergleich_${akt.von}_vs_${vor.von}`}
             titel="Zeitraum-Vergleich"
+            kassen={kassenText(akt.kasseIds)}
             zeitraum={`${aktLabel} vs. ${vorLabel}`}
             zeilen={() => {
             const kopfzeile = ['Kennzahl', aktLabel, vorLabel, 'Differenz', 'Veränderung (%)']
@@ -1999,6 +2019,7 @@ function WarengruppeTabelle({ data }: { data: WarengruppeBerichtResponse }) {
         <ExportButtons
           dateiBasis={`bericht-warengruppe_${data.von}_${data.bis}`}
             titel="Warengruppen"
+            kassen={kassenText(data.kasseIds)}
             zeitraum={`${formatDatumAnzeige(data.von)} – ${formatDatumAnzeige(data.bis)}`}
           zeilen={() => {
           const kopfzeile = ['Warengruppe', 'Menge', 'Umsatz (€)', 'Anteil (%)']
@@ -2579,6 +2600,7 @@ function KuechenBerichtAnzeige({ data }: { data: KuechenBerichtResponse }) {
         <DruckenButtons
           dateiBasis={`bericht-kueche_${data.von}_${data.bis}`}
           titel="Küchen-Bericht"
+          kassen={kassenText(undefined)}
           zeitraum={`${formatDatumAnzeige(data.von)} – ${formatDatumAnzeige(data.bis)}`}
           zeilen={() => [
             ['Station', 'Bons', 'Ø Dauer', 'Median', 'Längste'],
@@ -2692,6 +2714,7 @@ function KellnerBerichtTabelle({ data }: { data: KellnerBerichtResponse }) {
         <DruckenButtons
           dateiBasis={`bericht-kellner_${data.von}_${data.bis}`}
           titel="Kellner-Bericht"
+          kassen={kassenText(data.kasseIds)}
           zeitraum={`${formatDatumAnzeige(data.von)} – ${formatDatumAnzeige(data.bis)}`}
           zeilen={() => [
             ['Kellner', 'Belege', 'Stornos', 'Bar (€)', 'Karte (€)', 'Umsatz (€)'],
@@ -2891,6 +2914,7 @@ function WochentagBericht() {
               <ExportButtons
                 dateiBasis={`wochentag_${datumVon}_${datumBis}`}
             titel="Wochentag-Auswertung"
+            kassen={kassenText(data?.kasseIds)}
             zeitraum={`${formatDatumAnzeige(datumVon)} – ${formatDatumAnzeige(datumBis)}`}
                 zeilen={() => {
                 const kopfzeile = ['Wochentag', 'Anz. Tage', 'Ø Umsatz (€)', 'Gesamt (€)', 'Ø Belege']

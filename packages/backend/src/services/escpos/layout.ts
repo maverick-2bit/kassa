@@ -475,7 +475,7 @@ export function baueZBon(
  * (eine breite Tabelle würde auf 32/42 Zeichen umbrechen).
  */
 export function baueBerichtBon(
-  bericht: { titel: string; zeitraum?: string | undefined; zeilen: string[][] },
+  bericht: { titel: string; zeitraum?: string | undefined; kassen?: string | undefined; zeilen: string[][] },
   mandant: { firmenname: string; kassenId: string },
   kontext: DruckerKontext,
 ): Buffer {
@@ -493,7 +493,18 @@ export function baueBerichtBon(
   add(ep.font({ bold: true }))
   add(ep.textLine(truncate(mandant.firmenname.toUpperCase(), W)))
   add(ep.font())
-  add(ep.textLine(`Kasse: ${mandant.kassenId}`))
+  // Die Kasse, an der gedruckt wird, ist nicht die des Berichts: umfasst er andere oder alle
+  // Kassen, steht deren Name im Kopf (sonst bliebe nur die ID der Druck-Kasse stehen).
+  if (bericht.kassen) {
+    const woerter = `Kasse: ${t(bericht.kassen)}`.split(' ')
+    let zeile = ''
+    for (const w of woerter) {
+      if (zeile && (zeile + ' ' + w).length > W) { add(ep.textLine(zeile)); zeile = w } else zeile = zeile ? `${zeile} ${w}` : w
+    }
+    if (zeile) add(ep.textLine(zeile))
+  } else {
+    add(ep.textLine(`Kasse: ${mandant.kassenId}`))
+  }
   add(ep.newline())
   add(ep.font({ bold: true, doubleHeight: true }))
   add(ep.textLine(truncate(t(bericht.titel).toUpperCase(), W)))

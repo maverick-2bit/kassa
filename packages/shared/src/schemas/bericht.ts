@@ -296,6 +296,8 @@ export const BerichtDruckInputSchema = z.object({
   titel:      z.string().min(1).max(60),
   /** Zeitraum / Hinweis unter dem Titel, z. B. "01.10.2026 – 07.10.2026" */
   zeitraum:   z.string().max(80).optional(),
+  /** Welche Kasse(n) der Bericht umfasst, z. B. "Bar [2], Terrasse [3]" — steht im Kopf des Bons */
+  kassen:     z.string().max(300).optional(),
   zeilen:     z.array(z.array(z.string().max(120)).max(12)).min(1).max(500),
 })
 

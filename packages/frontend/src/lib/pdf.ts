@@ -377,6 +377,7 @@ export async function downloadBerichtPdf(
   firmenname: string,
   zeilen:     string[][],
   dateiname:  string,
+  kassen?:    string,
 ): Promise<void> {
   const [{ jsPDF }, { default: autoTable }] = await Promise.all([
     import('jspdf'),
@@ -407,6 +408,12 @@ export async function downloadBerichtPdf(
     { align: 'right' },
   )
   if (zeitraum) { y += 4.5; doc.text(zeitraum, mL, y) }
+  if (kassen) {
+    y += 4.5
+    const zeilenKassen = doc.splitTextToSize(`Kasse: ${kassen}`, pageW - mL - mR) as string[]
+    doc.text(zeilenKassen, mL, y)
+    y += 4.5 * (zeilenKassen.length - 1)
+  }
   doc.setTextColor(0)
   y += 6
 
