@@ -1470,7 +1470,9 @@ function StundenDiagramm({ data }: { data: StundenBerichtResponse }) {
               centZuEuro(z.barCent),
               centZuEuro(z.karteCent),
             ])
-              return [kopfzeile, ...datenzeilen]
+            const summe = (f: 'anzahlBelege' | 'umsatzCent' | 'barCent' | 'karteCent') => data.zeilen.reduce((s, z) => s + z[f], 0)
+            const fusszeile = ['Gesamt', String(summe('anzahlBelege')), centZuEuro(summe('umsatzCent')), centZuEuro(summe('barCent')), centZuEuro(summe('karteCent'))]
+              return [kopfzeile, ...datenzeilen, fusszeile]
             }}
           />
         </div>
