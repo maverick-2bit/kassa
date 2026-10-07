@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useSyncExternalStore } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { druckerPoolApi } from '../lib/api'
 import { hasBerechtigung } from '../lib/auth'
@@ -6,28 +6,50 @@ import { Button } from './ui/Button'
 import { Input } from './ui/Input'
 
 /**
- * Eigener Drucker für Tagesabschluss (Z-Bon) und Kassensturz — unabhängig vom
- * Bondrucker der Kasse. Auswahl aus der Drucker-Bibliothek; die Wahl wird je
- * Gerät gemerkt (das Gerät steht meist beim Büro-/Abrechnungsdrucker). Wer
- * Einstellungen ändern darf, kann hier auch gleich einen neuen Drucker anlegen.
+ * Eigener Drucker für Tagesabschluss/Kassensturz und (getrennt davon) für die
+ * Berichte — unabhängig vom Bondrucker der Kasse. Auswahl aus der
+ * Drucker-Bibliothek; die Wahl wird je Gerät und Bereich gemerkt (das Gerät
+ * steht meist beim Büro-/Abrechnungsdrucker). Wer Einstellungen ändern darf,
+ * kann hier auch gleich einen neuen Drucker anlegen.
  */
 
-const KEY = 'kassa:abrechnungsDrucker'
+export type DruckerBereich = 'abschluss' | 'berichte'
+
+const KEYS: Record<DruckerBereich, string> = {
+  abschluss: 'kassa:abrechnungsDrucker',
+  berichte:  'kassa:berichteDrucker',
+}
 const KASSEN_DRUCKER = ''
 
-function gemerkt(): string {
-  try { return localStorage.getItem(KEY) ?? KASSEN_DRUCKER } catch { return KASSEN_DRUCKER }
+/** Mehrere Komponenten desselben Bereichs (z. B. Auswahl oben + Druck-Knöpfe) bleiben so im Gleichklang. */
+const hoerer = new Set<() => void>()
+const speicher = new Map<DruckerBereich, string>()
+
+function lies(bereich: DruckerBereich): string {
+  const bekannt = speicher.get(bereich)
+  if (bekannt !== undefined) return bekannt
+  let wert = KASSEN_DRUCKER
+  try { wert = localStorage.getItem(KEYS[bereich]) ?? KASSEN_DRUCKER } catch { /* Speicher gesperrt */ }
+  speicher.set(bereich, wert)
+  return wert
 }
 
-function merke(id: string): void {
+function schreibe(bereich: DruckerBereich, id: string): void {
+  speicher.set(bereich, id)
   try {
-    if (id === KASSEN_DRUCKER) localStorage.removeItem(KEY)
-    else localStorage.setItem(KEY, id)
+    if (id === KASSEN_DRUCKER) localStorage.removeItem(KEYS[bereich])
+    else localStorage.setItem(KEYS[bereich], id)
   } catch { /* Speicher gesperrt: Wahl gilt dann nur bis zum Neuladen */ }
+  hoerer.forEach(f => f())
 }
 
-export function useAbrechnungsDrucker() {
-  const [auswahl, setAuswahl] = useState<string>(gemerkt())
+function abonniere(f: () => void): () => void {
+  hoerer.add(f)
+  return () => { hoerer.delete(f) }
+}
+
+export function useAbrechnungsDrucker(bereich: DruckerBereich = 'abschluss') {
+  const auswahl = useSyncExternalStore(abonniere, () => lies(bereich))
   const query = useQuery({
     queryKey:  ['drucker-pool'],
     queryFn:   () => druckerPoolApi.list(),
@@ -37,14 +59,15 @@ export function useAbrechnungsDrucker() {
   // Gemerkter Drucker wurde inzwischen gelöscht/deaktiviert → zurück auf den Kassen-Drucker
   const gueltig = auswahl === KASSEN_DRUCKER || drucker.some(d => d.id === auswahl) || query.isLoading
   const druckerId = gueltig && auswahl !== KASSEN_DRUCKER ? auswahl : undefined
-  const waehle = (id: string) => { setAuswahl(id); merke(id) }
+  const waehle = (id: string) => schreibe(bereich, id)
   return { druckerId, auswahl: gueltig ? auswahl : KASSEN_DRUCKER, waehle, drucker }
 }
 
-export function AbrechnungsDruckerAuswahl({ auswahl, drucker, onChange }: {
+export function AbrechnungsDruckerAuswahl({ auswahl, drucker, onChange, label = 'Drucker für Abschlüsse' }: {
   auswahl:  string
   drucker:  { id: string; name: string; ip: string }[]
   onChange: (id: string) => void
+  label?:   string
 }) {
   const qc = useQueryClient()
   const darfAnlegen = hasBerechtigung('einstellungen')
@@ -69,7 +92,7 @@ export function AbrechnungsDruckerAuswahl({ auswahl, drucker, onChange }: {
     <div className="space-y-2">
       <div className="flex flex-wrap items-end gap-3">
         <div>
-          <label className="block text-sm font-medium text-ink mb-1">Drucker für Abschlüsse</label>
+          <label className="block text-sm font-medium text-ink mb-1">{label}</label>
           <select
             data-testid="abrechnung-drucker"
             value={auswahl}

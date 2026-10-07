@@ -6,7 +6,7 @@ import type { FastifyPluginAsync } from 'fastify'
 import { eq } from 'drizzle-orm'
 import { kassen, mandanten } from '../db/schema.js'
 import { pruefeKasseGehoertZuMandant } from '../auth/scope.js'
-import { druckerConfigVonKasse, sendBytes, DruckerError } from '../services/drucker.service.js'
+import { druckerConfigVonKasse, resolveZielDrucker, sendBytes, DruckerError } from '../services/drucker.service.js'
 import { baueBerichtBon } from '../services/escpos/layout.js'
 import { BerichtDruckInputSchema, ArtikelBerichtFilterSchema, BerichtFilterSchema, BuchungsjournalFilterSchema, KassenVergleichFilterSchema, KellnerBerichtFilterSchema, KuechenBerichtFilterSchema, StundenBerichtFilterSchema, WarengruppeBerichtFilterSchema } from '@kassa/shared'
 import {
@@ -184,7 +184,7 @@ export const berichtRoute: FastifyPluginAsync<BerichtRouteOptions> = async (fast
   fastify.post('/berichte/drucken', guard, async (request, reply) => {
     const parsed = BerichtDruckInputSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
-    const { kasseId, ...bericht } = parsed.data
+    const { kasseId, druckerId, ...bericht } = parsed.data
     const db = opts.deps.db
 
     if (!(await pruefeKasseGehoertZuMandant(db, kasseId, request.user.mandantId))) {
@@ -193,7 +193,16 @@ export const berichtRoute: FastifyPluginAsync<BerichtRouteOptions> = async (fast
     const [kasse] = await db.select().from(kassen).where(eq(kassen.id, kasseId)).limit(1)
     if (!kasse) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
 
-    const druckerConfig = druckerConfigVonKasse(kasse)
+    let druckerConfig
+    try {
+      // Gewählter Bibliotheks-Drucker hat Vorrang, egal wie der Kassen-Drucker eingestellt ist
+      druckerConfig = druckerId
+        ? await resolveZielDrucker(db, request.user.mandantId, kasse.id, druckerId)
+        : druckerConfigVonKasse(kasse)
+    } catch (err) {
+      if (err instanceof DruckerError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      throw err
+    }
     if (!druckerConfig) {
       return reply.status(409).send({ fehler: 'Drucker ist nicht konfiguriert oder deaktiviert' })
     }

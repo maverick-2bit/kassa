@@ -3,12 +3,13 @@ import { useQuery, useQueries } from '@tanstack/react-query'
 import type { ArtikelBerichtResponse, BerichtGesamt, BerichtGruppierung, BerichtResponse, KassenVergleichResponse, KassenVergleichZeile, KellnerBerichtResponse, KellnerBerichtZeile, KuechenBerichtResponse, Station, StundenBerichtResponse, StundenBerichtZeile, WarengruppeBerichtResponse } from '@kassa/shared'
 import { STATION_LABELS, beginnFuer } from '@kassa/shared'
 import { berichtApi } from '../lib/api'
-import { getAuth, tagesRegel } from '../lib/auth'
+import { getAuth, hasBerechtigung, tagesRegel } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
 import { downloadBerichtPdf } from '../lib/pdf'
 import { formatPreis } from '../lib/format'
 import { addTage, endeDesMonats, heuteGeschaeftstag, heuteKalendertag, montagDerWoche } from '../lib/geschaeftstag'
 import { Button } from '../components/ui/Button'
+import { AbrechnungsDruckerAuswahl, useAbrechnungsDrucker } from '../components/AbrechnungsDrucker'
 
 // ---------------------------------------------------------------------------
 // Datum-Helfer
@@ -112,6 +113,8 @@ export function BerichtePage() {
     return TABS.some(([tab]) => tab === t) ? (t as BerichtTab) : 'gesamtumsatz'
   })
 
+  const berichteDrucker = useAbrechnungsDrucker('berichte')
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 sm:py-8 space-y-6">
       <div>
@@ -125,6 +128,17 @@ export function BerichtePage() {
           </p>
         )}
       </div>
+
+      {hasBerechtigung('einstellungen') && (
+        <div className="rounded-lg bg-panel shadow-sm border border-line p-4">
+          <AbrechnungsDruckerAuswahl
+            label="Drucker für Berichte"
+            auswahl={berichteDrucker.auswahl}
+            drucker={berichteDrucker.drucker}
+            onChange={berichteDrucker.waehle}
+          />
+        </div>
+      )}
 
       <div className="flex gap-1 border-b border-line overflow-x-auto">
         {TABS.map(([tab, label]) => (
@@ -908,12 +922,14 @@ function DruckenButtons({ dateiBasis, titel, zeitraum, zeilen }: {
   const [pdfLaeuft, setPdf]   = useState(false)
   const [meldung, setMeldung] = useState<{ ok: boolean; text: string } | null>(null)
   const kasseId = getKasseIdentity()?.kasseId
+  // Eigener Berichte-Drucker (je Gerät gemerkt, oben auf der Seite wählbar), unabhängig vom Kassen-Bondrucker
+  const abrDrucker = useAbrechnungsDrucker('berichte')
 
   const drucken = async () => {
     if (!kasseId) { setMeldung({ ok: false, text: 'Keine Kasse gewählt' }); return }
     setDruckt(true); setMeldung(null)
     try {
-      await berichtApi.drucken({ kasseId, titel, ...(zeitraum ? { zeitraum } : {}), zeilen: zeilen() })
+      await berichtApi.drucken({ kasseId, ...(abrDrucker.druckerId ? { druckerId: abrDrucker.druckerId } : {}), titel, ...(zeitraum ? { zeitraum } : {}), zeilen: zeilen() })
       setMeldung({ ok: true, text: 'Gedruckt' })
     } catch (err) {
       setMeldung({ ok: false, text: err instanceof Error ? err.message : 'Druck fehlgeschlagen' })

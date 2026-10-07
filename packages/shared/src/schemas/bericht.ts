@@ -291,6 +291,8 @@ export type KuechenBerichtResponse = z.infer<typeof KuechenBerichtResponseSchema
  */
 export const BerichtDruckInputSchema = z.object({
   kasseId:    z.string().uuid(),
+  /** Drucker der Bibliothek; fehlt er, druckt der Bondrucker der Kasse */
+  druckerId:  z.string().uuid().optional(),
   titel:      z.string().min(1).max(60),
   /** Zeitraum / Hinweis unter dem Titel, z. B. "01.10.2026 – 07.10.2026" */
   zeitraum:   z.string().max(80).optional(),
