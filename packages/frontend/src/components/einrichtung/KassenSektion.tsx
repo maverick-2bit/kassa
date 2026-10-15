@@ -12,9 +12,9 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { type EinrichtungKasse, type Startseite } from '@kassa/shared'
 import { bonierdruckerApi, druckerPoolApi } from '../../lib/api'
-import { getKasseIdentity, setKasseIdentity } from '../../lib/kasse'
-import { getAuth } from '../../lib/auth'
+import { getKasseIdentity } from '../../lib/kasse'
 import { kassenName } from '../../lib/einrichtung'
+import { wechsleKasse } from '../../lib/kassenWechsel'
 import { Button } from '../ui/Button'
 import { Schalter } from '../ui/Schalter'
 import { useEinrichtung } from './EinrichtungKontext'
@@ -34,19 +34,11 @@ const ZELLEN_AUSWAHL = 'block w-full min-w-[7.5rem] rounded-md border border-lin
 
 export function KassenSektion() {
   const { kassen, laedt, istGastro, neuLaden } = useEinrichtung()
-  const auth     = getAuth()!
   const identity = getKasseIdentity()
 
   const [formOffen, setFormOffen] = useState(false)
   const [offen, setOffen]         = useState<ReadonlySet<string>>(() => new Set())
   const [meldung, setMeldung]     = useState<Meldung | null>(null)
-
-  function wechsleZu(kasseId: string) {
-    if (kasseId === identity?.kasseId) return
-    setKasseIdentity({ mandantId: auth.mandant.id, kasseId })
-    // Detail-Sektionen lesen die Kassen-ID nicht-reaktiv beim Render → Neuladen.
-    window.location.reload()
-  }
 
   const umschalten = (id: string) =>
     setOffen(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
@@ -112,7 +104,7 @@ export function KassenSektion() {
                 istDiesesGeraet={k.id === identity?.kasseId}
                 detailsOffen={offen.has(k.id)}
                 onDetails={() => umschalten(k.id)}
-                onWechseln={() => wechsleZu(k.id)}
+                onWechseln={() => wechsleKasse(k)}
                 onMeldung={setMeldung}
               />
             ))}

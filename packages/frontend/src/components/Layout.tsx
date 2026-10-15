@@ -4,6 +4,7 @@ import { getTheme, toggleTheme, type ThemeMode } from '../lib/theme'
 import { useQueries } from '@tanstack/react-query'
 import { clearAuth, getAuth, hasBerechtigung, hasModul } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
+import { KASSEN_ANSICHT } from '../lib/kassenWechsel'
 import { setKassenLeistenAusgeblendet, useKassenLeistenAusgeblendet } from '../lib/kassenLeisten'
 import { kasseApi } from '../lib/api'
 import { useTagesRegelSync } from '../lib/useTagesRegelSync'
@@ -11,19 +12,10 @@ import { KdsToasts } from './KdsToasts'
 import { KdsNachrichten } from './KdsNachrichten'
 import { OfflineStatusBar } from './OfflineStatusBar'
 import { UpdateHinweis } from './UpdateHinweis'
+import { KassenUmschalter, useUmschaltKassen } from './KassenUmschalter'
 import { SeeStatusBanner } from './SeeStatusBanner'
 import { FoStatusBanner } from './FoStatusBanner'
 import { ErrorBoundary } from './ErrorBoundary'
-
-/**
- * Kassier-Ansichten (Kasse, offener Tisch) füllen ab lg genau den Bildschirm:
- * Kopfleiste und Statuszeile stehen fest, dazwischen teilt die Seite die Höhe
- * selbst auf — Artikel-Raster und Warenkorb scrollen in sich, die Seite nicht.
- * So liegen Bar/Karte/Leeren/Bonieren im Bild, egal wie hoch die Kopfleiste
- * gerade ist (voll ausgebautes Menü bricht zweizeilig um) und ob darüber ein
- * Hinweis steht; nichts gleitet beim Scrollen unter die Kopfleiste.
- */
-const KASSEN_ANSICHT = /^\/(kasse|tische\/[^/]+)\/?$/
 
 /** Einklapp-Zustand der Kopfleiste, pro Gerät (Standard: ausgeklappt). */
 const KOPFLEISTE_KEY = 'kassa:kopfleisteEingeklappt'
@@ -63,6 +55,11 @@ async function vollbildBeenden(): Promise<void> {
 
 export function Layout() {
   const location = useLocation()
+  // Kassier-Ansichten (Kasse, offener Tisch; KASSEN_ANSICHT in lib/kassenWechsel.ts) füllen ab lg genau den
+  // Bildschirm: Kopfleiste und Statuszeile stehen fest, dazwischen teilt die Seite die Höhe selbst auf —
+  // Artikel-Raster und Warenkorb scrollen in sich, die Seite nicht. So liegen Bar/Karte/Leeren/Bonieren im
+  // Bild, egal wie hoch die Kopfleiste gerade ist (voll ausgebautes Menü bricht zweizeilig um) und ob
+  // darüber ein Hinweis steht; nichts gleitet beim Scrollen unter die Kopfleiste.
   const kassenAnsicht = KASSEN_ANSICHT.test(location.pathname)
   // Tagesbeginn (Geschäftstag) aktuell halten; bei einer Änderung startet die Seite neu (Key)
   const regelVersion = useTagesRegelSync()
@@ -174,7 +171,7 @@ function StatusZeile() {
         Kassa v{__APP_VERSION__}
       </Link>
       {auth && <> · {auth.mandant.firmenname}</>}
-      {kasse && <> · Kasse: <span className="font-mono">{kasse.bezeichnung || kasse.kassenId}</span></>}
+      {kasse && <> · Kasse: <span className="font-mono" data-testid="status-kasse">{kasse.bezeichnung || kasse.kassenId}</span></>}
     </span>
   )
 }
@@ -253,6 +250,8 @@ function Header({ eingeklappt, onUmschalten, vollbild, onVollbild }: {
   const auth     = getAuth()
   const [offen, setOffen] = useState<string | null>(null)
   const navRef = useRef<HTMLElement>(null)
+  // Mehrere Kassen an diesem Gerät: Schnellumschalter statt der festen Kassen-Angabe (eingeklappte Kopfleiste)
+  const umschaltKassen = useUmschaltKassen()
 
   // Dropdown schließen bei Navigation und bei Klick außerhalb der Nav
   useEffect(() => { setOffen(null) }, [location.pathname])
@@ -297,8 +296,9 @@ function Header({ eingeklappt, onUmschalten, vollbild, onVollbild }: {
           <div className="flex-1" />
           <span className="text-xs text-white/70 select-none">
             {auth.user.name}
-            {kasse && <> · Kasse: <span className="font-mono">{kasse.bezeichnung || kasse.kassenId}</span></>}
+            {kasse && umschaltKassen.length < 2 && <> · Kasse: <span className="font-mono">{kasse.bezeichnung || kasse.kassenId}</span></>}
           </span>
+          <KassenUmschalter kompakt />
           <UpdateHinweis>{null}</UpdateHinweis>
         </div>
       </header>
@@ -327,6 +327,9 @@ function Header({ eingeklappt, onUmschalten, vollbild, onVollbild }: {
                 onToggle={() => setOffen(o => (o === g.label ? null : g.label))}
               />
             ))}
+            {/* Kassen-Umschalter als letztes Menü-Element (rechtsbündig): er belegt freien Platz in der letzten
+                Zeile, statt die rechte Seite zu verbreitern und die Kopfleiste früher umbrechen zu lassen. */}
+            <KassenUmschalter className="ml-auto" />
           </nav>
         )}
         {!auth && <div className="flex-1" />}
