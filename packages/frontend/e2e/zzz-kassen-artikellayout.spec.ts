@@ -373,7 +373,7 @@ test('Kachel-Anordnung je Kasse: Editor per Knöpfen, Kasse/Tisch/Kellner-App fo
     // =====================================================================================================
     expect(await layouts(kasse2)).toEqual([])
     await oeffneArtikelReiter(page)
-    await page.getByRole('button', { name: `${p} Bar`, exact: true }).click()        // Kasse wählen
+    await page.getByRole('main').getByRole('button', { name: `${p} Bar`, exact: true }).click()        // Kasse wählen (im Hauptbereich — in der Kopfleiste steht dieselbe Kasse im Kassen-Umschalter)
     await expect(page.getByTestId('anordnung-tab')).toBeVisible()
     await page.locator(`[data-testid="wg-chip"][data-kategorie-id="${gruppe.id}"]`).click()
     await expect(page.getByTestId('anordnung-status')).toHaveAttribute('data-eigene', 'false')
