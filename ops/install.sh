@@ -348,7 +348,7 @@ if [ "$hp" = "80" ]; then lokal="http://localhost"; else lokal="http://localhost
 printf '\n%s Erste Schritte:%s\n' "$C_C" "$C_0"
 printf '   1. Hier öffnen:  %s\n' "$lokal"
 printf '   2. Setup-Assistent ausfüllen (Firma, Kasse, Admin) — RKSV-Testmodus wählen\n'
-printf '   3. Bondrucker: Einstellungen → Hardware → IP des LAN-Druckers eintragen + Testdruck\n'
+printf '   3. Bondrucker: Einstellungen → Kassen & Drucker → Drucker → IP des LAN-Druckers eintragen + Testdruck\n'
 printf '\n%s Update später:%s dieses Skript erneut ausführen (Daten bleiben erhalten).\n' "$C_Y" "$C_0"
 if [ "$PLATTFORM" = "macos" ]; then
   printf '%s Autostart:%s in Docker Desktop → Einstellungen → „Start Docker Desktop when you sign in" aktivieren;\n' "$C_Y" "$C_0"
