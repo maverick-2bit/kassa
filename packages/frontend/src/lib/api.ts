@@ -39,6 +39,8 @@ import type {
   KasseArtikelLayoutEintrag,
   StandardRasterEintrag,
   PosKonfigUpdate,
+  Einrichtung,
+  RoutingAenderung,
   ReihenfolgeUpdate,
   FavoritenReihenfolgeUpdate,
   LagerstandBulkInput,
@@ -693,6 +695,22 @@ export const posConfigApi = {
   /** Zurück auf das Standard-Layout (nur Admin) */
   artikelLayoutZuruecksetzen: (kasseId: string, kategorieId: string) =>
     request<void>('DELETE', `/api/kassen/${kasseId}/artikel-layouts/${kategorieId}`),
+}
+
+// ---------------------------------------------------------------------------
+// Einrichtungs-Übersicht (Einstellungen → Kassen)
+// ---------------------------------------------------------------------------
+
+export const einrichtungApi = {
+  /** Alle Kassen mit Druckern/Warengruppen/KDS und alle Kassen-Ausnahmen beim Bon-Routing — in einer Anfrage */
+  get: () =>
+    request<Einrichtung>('GET', '/api/einrichtung'),
+  /** Kassen-Ausnahmen ändern (Stapel, alles oder nichts); null = Standard, 'keiner'/'keine' = ausdrücklich keiner */
+  ausnahmenSetzen: (aenderungen: RoutingAenderung[]) =>
+    request<void>('PUT', '/api/einrichtung/ausnahmen', { aenderungen }),
+  /** Einrichtung einer Kasse auf eine andere übernehmen (Warengruppen, Drucker, KDS, Ausnahmen …) */
+  kopieren: (zielKasseId: string, vonKasseId: string) =>
+    request<void>('POST', `/api/kassen/${zielKasseId}/einrichtung-kopieren`, { vonKasseId }),
 }
 
 // ---------------------------------------------------------------------------

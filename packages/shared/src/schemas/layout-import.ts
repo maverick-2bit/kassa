@@ -153,7 +153,7 @@ export interface LayoutBericht {
     geloescht: {
       artikel: number; gruppen: number; optionsgruppen: number
       seriennummern: number; inventurPositionen: number
-      sichtbarkeiten: number; kassenFavoriten: number; preisregelnBereinigt: number
+      sichtbarkeiten: number; ausnahmen: number; kassenFavoriten: number; preisregelnBereinigt: number
     }
     /** Nur deaktiviert statt gelöscht, weil laufende Vorgänge daran hängen */
     nurDeaktiviert: { artikel: { name: string; grund: string }[]; gruppen: { name: string; grund: string }[] }

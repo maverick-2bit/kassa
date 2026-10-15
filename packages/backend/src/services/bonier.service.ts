@@ -9,7 +9,7 @@
  */
 
 import { and, eq, inArray, sql } from 'drizzle-orm'
-import type { BonierungErgebnis, BonierungInput, Station } from '@kassa/shared'
+import { hatBonRouting, type BonierungErgebnis, type BonierungInput, type Station } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import { artikel, bonierdrucker, kategorien, kassen, kasseBonierdruckerSichtbarkeit } from '../db/schema.js'
 import { baueBonierbon, generiereBonNummer } from './kds/bonierbon.js'
@@ -19,7 +19,7 @@ import { emitKasseEvent } from '../sse/event-bus.js'
 import { logBonierEreignis } from './tisch-tab.service.js'
 import { kdsBonErstellen } from './kds/kds-store.service.js'
 import { dekrementiereBestandteile, ladeRezepte } from './bestandteil.service.js'
-import { ladeWirksamesRouting } from './kategorie-routing.service.js'
+import { baueBonRouting, ladeKasseRoutingAusnahmen, ladeKategorieRoutingZeilen, wirksamesRoutingVonArtikel } from './kategorie-routing.service.js'
 import { beanspruche, gibFrei, speichereErgebnis } from './bonier-bestellung.service.js'
 import { bereinigeStationsIp } from './kds/station-ip.js'
 
@@ -107,14 +107,12 @@ export async function bonierBestellung(
   }
   const artikelById = new Map(artikelRows.map((a) => [a.id, a]))
 
-  // 3. Wirksames Routing der Warengruppen (Station/Bonierdrucker werden von der
-  //    Elterngruppe geerbt, wenn die Untergruppe nichts eigenes hat)
-  const kategorieMap = new Map<string, { bonierdruckerId: string | null; station: Station | null }>()
-  if (artikelRows.some(a => a.kategorieId !== null)) {
-    for (const [id, r] of await ladeWirksamesRouting(deps.db, kasse.mandantId)) {
-      kategorieMap.set(id, { bonierdruckerId: r.bonierdruckerId, station: r.station as Station | null })
-    }
-  }
+  // 3. Vorgaben der Warengruppen (Station/Bonierdrucker werden von der Elterngruppe geerbt, wenn die
+  //    Untergruppe nichts eigenes hat). Das Routing DIESER Kasse (Kassen-Ausnahmen) wird unten gerechnet,
+  //    sobald alle Lesezugriffe durch sind.
+  const kategorieZeilen = artikelRows.some(a => a.kategorieId !== null)
+    ? await ladeKategorieRoutingZeilen(deps.db, kasse.mandantId)
+    : []
 
   // 4. Alle aktiven Bonierdrucker laden — je Kasse ggf. auf die gewählten filtern
   const alleBonierdruckerRoh = await deps.db
@@ -140,6 +138,12 @@ export async function bonierBestellung(
   const nichtBackupMap    = new Map<string, DruckerRow>(
     alleBonierdrucker.filter(d => !d.istBackup).map(d => [d.id, d]),
   )
+
+  // 4a. Kassen-Ausnahmen: an dieser Kasse darf eine Warengruppe / ein Artikel auf einen anderen Drucker bzw.
+  //     eine andere KDS-Station gehen als allgemein vorgegeben. Rangfolge: Artikel an der Kasse → Artikel →
+  //     Warengruppe an der Kasse → Warengruppe (siehe @kassa/shared wirksamesArtikelRouting).
+  const bonRouting = baueBonRouting(kategorieZeilen, await ladeKasseRoutingAusnahmen(deps.db, kasse.id))
+  const routingVon = (a: (typeof artikelRows)[number]) => wirksamesRoutingVonArtikel(bonRouting, a)
 
   // 5. Bonnummer + Zeitstempel (gemeinsam für alle Bons dieser Bestellung)
   let bonNummer     = generiereBonNummer()
@@ -182,10 +186,9 @@ export async function bonierBestellung(
     }
     allePositionen.push(pos)
 
-    // Effektive Station: Artikel geht vor, sonst Warengruppen-Vorgabe
-    const effektiveStation =
-      (a.station as Station | null) ??
-      (a.kategorieId ? (kategorieMap.get(a.kategorieId)?.station ?? null) : null)
+    // Effektives Routing dieses Artikels an dieser Kasse (Artikel geht der Warengruppe vor, die Kassen-Ausnahme beiden)
+    const routing = routingVon(a)
+    const effektiveStation = routing.station as Station | null
 
     // KDS-Routing. SB-Bestellungen: immer KDS — ohne Station → 'kueche'.
     if (kasse.kdsAktiv || optionen.sb) {
@@ -204,11 +207,8 @@ export async function bonierBestellung(
     const druckErstBeimErledigen = kasse.kdsAktiv && !optionen.storno && effektiveStation !== null
     if (!druckErstBeimErledigen) sofortDruckPositionen.push(pos)
 
-    // Bonierdrucker-Routing: artikel.bonierdruckerId → kategorie.bonierdruckerId → nichts
-    const effektiverDruckerId = druckErstBeimErledigen
-      ? null
-      : a.bonierdruckerId ??
-        (a.kategorieId ? (kategorieMap.get(a.kategorieId)?.bonierdruckerId ?? null) : null)
+    // Bonierdrucker-Routing: Kassen-Ausnahme → artikel.bonierdruckerId → kategorie.bonierdruckerId → nichts
+    const effektiverDruckerId = druckErstBeimErledigen ? null : routing.bonierdruckerId
 
     if (effektiverDruckerId) {
       const drucker = nichtBackupMap.get(effektiverDruckerId)
@@ -347,24 +347,13 @@ export async function bonierBestellung(
     // SB-Bestellung: der RKSV-Beleg (bereits erstellt) dekrementiert Artikel OHNE
     // Bonierrouting selbst — hier nur echte geroutete Positionen abziehen, sonst
     // würden ungeroutete (Kueche-Fallback) doppelt gezählt.
-    .filter(({ a }) => {
-      if (!optionen.sb) return true
-      const kat = a.kategorieId ? kategorieMap.get(a.kategorieId) : undefined
-      const hatKategorieRouting = (kat?.bonierdruckerId ?? kat?.station ?? null) !== null
-      return a.station !== null || a.bonierdruckerId !== null || hatKategorieRouting
-    })
+    .filter(({ a }) => !optionen.sb || hatBonRouting(routingVon(a)))
 
   // Bestandteil-Abbuchung (Rezepte): gleiche Gates wie der Artikel-Abzug, aber
   // unabhängig vom artikel-eigenen Lagerstand — zusammengesetzte Artikel führen
   // selbst keinen Lagerstand, ihre Verfügbarkeit ergibt sich aus den Bestandteilen.
   const bestandteilPositionen = (optionen.ohneLagerabzug || wiederholung ? [] : input.positionen)
-    .filter(p => {
-      if (!optionen.sb) return true
-      const a = artikelById.get(p.artikelId)!
-      const kat = a.kategorieId ? kategorieMap.get(a.kategorieId) : undefined
-      const hatKategorieRouting = (kat?.bonierdruckerId ?? kat?.station ?? null) !== null
-      return a.station !== null || a.bonierdruckerId !== null || hatKategorieRouting
-    })
+    .filter(p => !optionen.sb || hatBonRouting(routingVon(artikelById.get(p.artikelId)!)))
     .map(p => ({ artikelId: p.artikelId, menge: p.menge }))
   const rezepte = bestandteilPositionen.length > 0
     ? await ladeRezepte(deps.db, [...new Set(bestandteilPositionen.map(p => p.artikelId))])

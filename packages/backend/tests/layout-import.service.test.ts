@@ -423,7 +423,7 @@ describe('Optionen je Artikel', () => {
 
 describe('Sauberer Neustart (katalogLoeschen)', () => {
   const loesch = (extra: Partial<LoeschPlan> = {}): LoeschPlan => ({
-    artikelLoeschen: 2, gruppenLoeschen: 1, optionsgruppen: 3, seriennummern: 4, inventurPositionen: 5, sichtbarkeiten: 6,
+    artikelLoeschen: 2, gruppenLoeschen: 1, optionsgruppen: 3, seriennummern: 4, inventurPositionen: 5, sichtbarkeiten: 6, ausnahmen: 7,
     artikelBehalten: [], gruppenBehalten: [], preisregeln: [], ...extra,
   })
 
@@ -439,7 +439,7 @@ describe('Sauberer Neustart (katalogLoeschen)', () => {
     expect(plan.artikelUpdates).toEqual([])
     expect(plan.loeschung).toEqual(z.loeschung)
     expect(plan.kassenFavoritenLoeschen).toBe(true)
-    expect(plan.bericht.katalogLoeschen).toMatchObject({ aktiv: true, geloescht: { artikel: 2, gruppen: 1, optionsgruppen: 3, seriennummern: 4, inventurPositionen: 5, sichtbarkeiten: 6, kassenFavoriten: 2 } })
+    expect(plan.bericht.katalogLoeschen).toMatchObject({ aktiv: true, geloescht: { artikel: 2, gruppen: 1, optionsgruppen: 3, seriennummern: 4, inventurPositionen: 5, sichtbarkeiten: 6, ausnahmen: 7, kassenFavoriten: 2 } })
     expect(plan.bericht.zusammenfassung[0]).toMatch(/Sauberer Neustart.*gelöscht.*auch bei Wiederholung/)
     expect(planeLayout(z, l, { ...OPT, katalogLoeschen: true, dryRun: true }).bericht.zusammenfassung[0]).toMatch(/würde löschen/)
     // ohne Haken: keine Löschung, Bericht inaktiv

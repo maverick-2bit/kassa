@@ -327,7 +327,8 @@ test('Multi-Kassen: anlegen, wechseln, außer Betrieb nehmen', async ({ page, re
   await page.getByTestId('kasse-zeile-E2E-KASSE-01').getByRole('button', { name: 'Wechseln' }).click()
   await expect(page.getByTestId('kasse-zeile-E2E-KASSE-01')).toContainText('● aktiv', { timeout: 15_000 })
 
-  // ---- Stilllegen: Inline-Bestätigung → Schlussbeleg → Badge ----
+  // ---- Stilllegen (in den Details der Kasse): Inline-Bestätigung → Schlussbeleg → Badge ----
+  await page.getByTestId('kasse-zeile-E2E-KASSE-02').getByRole('button', { name: /^Details/ }).click()
   await page.getByTestId('kasse-zeile-E2E-KASSE-02')
     .getByRole('button', { name: 'Außer Betrieb nehmen' }).click()
   await expect(page.getByText(/endgültig außer Betrieb nehmen\?/)).toBeVisible()
@@ -339,6 +340,7 @@ test('Multi-Kassen: anlegen, wechseln, außer Betrieb nehmen', async ({ page, re
   const zeile02Danach = page.getByTestId('kasse-zeile-E2E-KASSE-02')
   await expect(zeile02Danach).toContainText('außer Betrieb')
   await expect(zeile02Danach.getByRole('button', { name: 'Wechseln' })).toHaveCount(0)
+  // DEP-Export bleibt auch für die stillgelegte Kasse (Details)
   await expect(zeile02Danach.getByRole('button', { name: 'DEP7' })).toBeVisible()
 })
 
@@ -1028,7 +1030,7 @@ test('Kassenbuch: Einlage buchen erscheint in der Buchungsliste', async ({ page,
  * QR-Scan am Tisch) eine Bestellung aufgeben und prüfen, dass daraus ein Tisch-Tab
  * (Kellner „Gast") auf der Tische-Seite entsteht. Deckt die Gast→Kasse-Integration ab.
  * Der Gast-Modus der Kasse muss dafür auf „Ohne Zahlung" (tab) stehen — „Aus" weist ab;
- * umgeschaltet wird über die Auswahl im Backoffice (Einstellungen → Hardware).
+ * umgeschaltet wird über die Auswahl im Backoffice (Einstellungen → Kassen & Drucker → Details der Kasse).
  */
 test('Gast-Bestellung: öffentliche Bestellung erzeugt einen Tisch-Tab', async ({ page, request }) => {
   const login = await ensureAuth(request)
@@ -1061,7 +1063,8 @@ test('Gast-Bestellung: öffentliche Bestellung erzeugt einen Tisch-Tab', async (
 
   // Backoffice: „Ohne Zahlung" wählen (Karte der ersten Kasse = kasseId); der Hinweis
   // wechselt erst, wenn die gespeicherte Konfiguration zurückkommt.
-  await page.goto('/einstellungen?bereich=hardware')
+  await page.goto('/einstellungen?bereich=kassen')
+  await page.getByTestId('kasse-zeile-E2E-KASSE-01').getByRole('button', { name: /^Details/ }).click()
   const modusAuswahl = page.getByLabel('Gast-Bestellung per Tisch-QR').first()
   await expect(modusAuswahl).toHaveValue('aus', { timeout: 10_000 })
   await modusAuswahl.selectOption('tab')

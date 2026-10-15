@@ -210,7 +210,6 @@ function baueNavGruppen(): NavGruppe[] {
       wenn(b('artikel.verwalten'), '/wareneingang', 'Wareneingang'),
       wenn(b('artikel.verwalten'), '/lagerstand',   'Lagerstand'),
       wenn(b('artikel.verwalten'), '/inventur',     'Inventur'),
-      wenn(b('artikel.verwalten'), '/kds-zuordnung', 'KDS-Zuordnung'),
       wenn(b('artikel.verwalten'), '/modifikatoren', 'Optionen'),
       wenn(b('artikel.verwalten'), '/preisregeln',  'Aktionen'),
       wenn(b('artikel.verwalten'), '/bestellliste', 'Bestellliste'),
@@ -234,7 +233,6 @@ function baueNavGruppen(): NavGruppe[] {
     gruppe('Einstellungen', [
       wenn(b('einstellungen'),                    '/einstellungen',     'Einstellungen'),
       wenn(b('einstellungen'),                    '/pos-konfiguration', 'POS-Konfig'),
-      wenn(b('einstellungen'),                    '/kassen-startseite', 'Startseiten'),
       wenn(b('einstellungen'),                    '/dep-export',        'DEP-Export'),
       wenn(b('einstellungen'),                    '/bmd-export',        'BMD-Export'),
       wenn(b('einstellungen'),                    '/werbefolien',       'Werbefolien'),

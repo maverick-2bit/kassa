@@ -193,7 +193,7 @@ function LoeschWarnung({ bericht, bestaetigung, onChange }: { bericht: LayoutBer
       <p className="font-bold">Achtung: Das LÖSCHT den bisherigen Katalog — nicht rückgängig.</p>
       <p>
         Es werden gelöscht: <strong>{g.artikel}</strong> Artikel, <strong>{g.gruppen}</strong> Warengruppen, <strong>{g.optionsgruppen}</strong> Optionsgruppen
-        {' '}(dazu {g.seriennummern} Seriennummern und {g.inventurPositionen} Inventurpositionen dieser Artikel; {g.sichtbarkeiten} Gruppen-Zuordnungen und {g.kassenFavoriten} Kassen-Favoriten werden geleert, {g.preisregelnBereinigt} Preisregeln bereinigt).
+        {' '}(dazu {g.seriennummern} Seriennummern und {g.inventurPositionen} Inventurpositionen dieser Artikel; {g.sichtbarkeiten} Gruppen-Zuordnungen, {g.ausnahmen} Kassen-Ausnahmen (Drucker/Station je Kasse) und {g.kassenFavoriten} Kassen-Favoriten werden geleert, {g.preisregelnBereinigt} Preisregeln bereinigt).
       </p>
       {(bericht.katalogLoeschen.nurDeaktiviert.artikel.length > 0 || bericht.katalogLoeschen.nurDeaktiviert.gruppen.length > 0) && (
         <p>

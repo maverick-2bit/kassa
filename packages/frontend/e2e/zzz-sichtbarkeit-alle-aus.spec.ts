@@ -214,7 +214,7 @@ test('Matrix und POS-Konfiguration: „Alle sichtbar" / „Alle ausblenden", Tog
     await expect(neustartHinweis).toHaveCount(0)
     await ausblendenKnopf.click()
     await expect(status).toHaveText(STATUS_KEINE)
-    await page.goto('/einstellungen?bereich=hardware')                                       // Seite verlassen …
+    await page.goto('/einstellungen?bereich=system')                                         // Seite verlassen …
     await page.goto('/einstellungen?bereich=kassen')                                         // … und zurück
     await expect(zeile(g.pfade.atr)).toBeVisible({ timeout: 15_000 })
     await expect(status).toHaveText(STATUS_ALLE)

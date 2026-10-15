@@ -11,6 +11,29 @@ import { sendBytes } from './drucker.service.js'
 import { ladeFallbackDrucker, ladeKdsDrucker } from './kds/kds-druck.service.js'
 import * as ep from './escpos/commands.js'
 
+/** Fachfehler der Bonierdrucker-Verwaltung (httpStatus: der globale Fehler-Handler antwortet damit). */
+export class BonierdruckerError extends Error {
+  constructor(public readonly httpStatus: number, message: string) {
+    super(message)
+  }
+}
+
+/**
+ * Der eigene Backup-Drucker (fallbackId) eines Bonierdruckers: er springt ein, wenn der Drucker nicht
+ * erreichbar ist (siehe sendeMitErsatz). Muss ein anderer Drucker desselben Mandanten sein — eine fremde
+ * oder die eigene ID würde beim Ausfall nie greifen und den Fehler nur verschleiern.
+ */
+async function pruefeBackupDrucker(db: Db, mandantId: string, selbstId: string | null, backupId: string | null | undefined): Promise<void> {
+  if (!backupId) return
+  if (backupId === selbstId) throw new BonierdruckerError(400, 'Ein Drucker kann nicht sein eigener Backup-Drucker sein')
+  const [row] = await db
+    .select({ id: bonierdrucker.id })
+    .from(bonierdrucker)
+    .where(and(eq(bonierdrucker.id, backupId), eq(bonierdrucker.mandantId, mandantId)))
+    .limit(1)
+  if (!row) throw new BonierdruckerError(404, 'Backup-Drucker nicht gefunden')
+}
+
 function toDto(row: typeof bonierdrucker.$inferSelect): Bonierdrucker {
   return {
     id:         row.id,
@@ -40,12 +63,14 @@ export async function erstelleBonierdrucker(
   mandantId: string,
   input: BonierdruckerInput,
 ): Promise<Bonierdrucker> {
+  await pruefeBackupDrucker(db, mandantId, null, input.fallbackId)
   const [created] = await db.insert(bonierdrucker).values({
     mandantId,
-    name:      input.name,
-    ip:        input.ip,
-    port:      input.port ?? 9100,
-    istBackup: input.istBackup ?? false,
+    name:       input.name,
+    ip:         input.ip,
+    port:       input.port ?? 9100,
+    istBackup:  input.istBackup ?? false,
+    fallbackId: input.fallbackId ?? null,
   }).returning()
   if (!created) throw new Error('Bonierdrucker konnte nicht angelegt werden')
   return toDto(created)
@@ -57,6 +82,7 @@ export async function aktualisiereBonierdrucker(
   mandantId: string,
   update: BonierdruckerUpdate,
 ): Promise<Bonierdrucker | null> {
+  await pruefeBackupDrucker(db, mandantId, id, update.fallbackId)
   const values: Partial<typeof bonierdrucker.$inferInsert> = { updatedAt: new Date() }
   if (update.name      !== undefined) values.name      = update.name
   if (update.ip        !== undefined) values.ip        = update.ip

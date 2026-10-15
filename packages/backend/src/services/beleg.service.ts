@@ -41,14 +41,14 @@ import type {
   NullbelegInput,
   StornobelegInput,
 } from '@kassa/shared'
-import { ArtikelPositionSchema } from '@kassa/shared'
+import { ArtikelPositionSchema, hatBonRouting } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import { artikel, belege, kassen, kategorien, mandanten, modifikatoren, seriennummern } from '../db/schema.js'
 import { erstelleKunde, ladeKundeSnapshot } from './kunde.service.js'
 import { pruefeRabattFreigabe, type FreigabeKontext } from './freigabe.service.js'
 import { logAudit } from './audit.service.js'
 import { dekrementiereBestandteile, ladeRezepte } from './bestandteil.service.js'
-import { ladeWirksamesRouting } from './kategorie-routing.service.js'
+import { baueBonRouting, ladeKasseRoutingAusnahmen, ladeKategorieRoutingZeilen, wirksamesRoutingVonArtikel } from './kategorie-routing.service.js'
 import { decryptPrivateKey, encryptPrivateKey } from '../crypto/master-key.js'
 
 export interface BelegServiceDeps {
@@ -374,21 +374,21 @@ export async function erstelleBarzahlungsbeleg(
       const katergorieIds = [...new Set(
         artikelRows.map(a => a.kategorieId).filter((id): id is string => id !== null),
       )]
-      /** true = die Kategorie routet (Bonierdrucker ODER Stations-Vorgabe) */
-      const katRoutingMap = new Map<string, boolean>()
-      const katNameMap    = new Map<string, string>()
+      const katNameMap = new Map<string, string>()
+      /** Bon-Routing DIESER Kasse (Warengruppen erben von der Elterngruppe; Kassen-Ausnahmen für Warengruppen und Artikel) */
+      let bonRouting = baueBonRouting([], [])
       if (katergorieIds.length > 0) {
         const katRows = await tx
           .select({ id: kategorien.id, name: kategorien.name })
           .from(kategorien)
           .where(inArray(kategorien.id, katergorieIds))
-        // Wirksames Routing: Untergruppen erben Station/Bonierdrucker der Elterngruppe
-        const routing = await ladeWirksamesRouting(tx, artikelRows[0]!.mandantId)
-        for (const k of katRows) {
-          const r = routing.get(k.id)
-          katRoutingMap.set(k.id, ((r?.bonierdruckerId ?? r?.station) ?? null) !== null)
-          katNameMap.set(k.id, k.name)
-        }
+        for (const k of katRows) katNameMap.set(k.id, k.name)
+      }
+      if (artikelRows.length > 0) {
+        const kategorieZeilen = katergorieIds.length > 0
+          ? await ladeKategorieRoutingZeilen(tx, artikelRows[0]!.mandantId)
+          : []
+        bonRouting = baueBonRouting(kategorieZeilen, await ladeKasseRoutingAusnahmen(tx, input.kasseId))
       }
 
       // Positionen aufbauen — extra Felder (kategorieId, kategorieName) werden im JSONB
@@ -535,11 +535,8 @@ export async function erstelleBarzahlungsbeleg(
         const a = artikelById.get(p.artikelId)
         if (!a) continue
         // Bonierbar? → Lagerstand (Artikel + Bestandteile) wurde beim Bonieren abgezogen, nicht hier.
-        const hatArtikelBonierrouting  = a.station !== null || a.bonierdruckerId !== null
-        const hatKategorieBonierrouting = a.kategorieId
-          ? (katRoutingMap.get(a.kategorieId) ?? false)
-          : false
-        if (hatArtikelBonierrouting || hatKategorieBonierrouting) continue
+        // Maßgeblich ist das Routing dieser Kasse (Artikel/Warengruppe, jeweils mit Kassen-Ausnahme).
+        if (hatBonRouting(wirksamesRoutingVonArtikel(bonRouting, a))) continue
 
         // Kein Bonierrouting → Direktkassieren
         if (a.lagerstandAktiv) {

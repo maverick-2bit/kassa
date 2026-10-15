@@ -29,7 +29,6 @@ const TagesabschlussPage        = lazyPage(() => import('./pages/TagesabschlussP
 const BerichtePage              = lazyPage(() => import('./pages/BerichtePage'), 'BerichtePage')
 const WareneingangPage          = lazyPage(() => import('./pages/WareneingangPage'), 'WareneingangPage')
 const LagerstandPage            = lazyPage(() => import('./pages/LagerstandPage'), 'LagerstandPage')
-const KdsZuordnungPage          = lazyPage(() => import('./pages/KdsZuordnungPage'), 'KdsZuordnungPage')
 const InventurPage              = lazyPage(() => import('./pages/InventurPage'), 'InventurPage')
 const OffenePostenPage          = lazyPage(() => import('./pages/OffenePostenPage'), 'OffenePostenPage')
 const GutscheinPage             = lazyPage(() => import('./pages/GutscheinPage'), 'GutscheinPage')
@@ -40,10 +39,8 @@ const DashboardPage             = lazyPage(() => import('./pages/DashboardPage')
 const KundenPage                = lazyPage(() => import('./pages/KundenPage'), 'KundenPage')
 const AngebotePage              = lazyPage(() => import('./pages/AngebotePage'), 'AngebotePage')
 const BelegArchivPage           = lazyPage(() => import('./pages/BelegArchivPage'), 'BelegArchivPage')
-const BonierdruckerPage         = lazyPage(() => import('./pages/BonierdruckerPage'), 'BonierdruckerPage')
 const KassenbuchPage            = lazyPage(() => import('./pages/KassenbuchPage'), 'KassenbuchPage')
 const PosKonfigPage             = lazyPage(() => import('./pages/PosKonfigPage'), 'PosKonfigPage')
-const KassenStartseiteSeite     = lazyPage(() => import('./pages/KassenStartseiteSeite'), 'KassenStartseiteSeite')
 const DepExportPage             = lazyPage(() => import('./pages/DepExportPage'), 'DepExportPage')
 const FinanzpruefungPage        = lazyPage(() => import('./pages/FinanzpruefungPage'), 'FinanzpruefungPage')
 const PruefungsansichtPage      = lazyPage(() => import('./pages/PruefungsansichtPage'), 'PruefungsansichtPage')
@@ -105,12 +102,13 @@ function AppRoutes() {
           <Route path="/artikel"        element={<Require b="artikel.verwalten"            ><ArtikelPage /></Require>} />
           <Route path="/wareneingang"   element={<Require b="artikel.verwalten"            ><WareneingangPage /></Require>} />
           <Route path="/lagerstand"     element={<Require b="artikel.verwalten"            ><LagerstandPage /></Require>} />
-          <Route path="/kds-zuordnung"  element={<Require b="artikel.verwalten"            ><KdsZuordnungPage /></Require>} />
+          <Route path="/kds-zuordnung"  element={<Navigate to="/einstellungen?bereich=kassen#einrichtung-routing" replace />} />
           <Route path="/inventur"       element={<Require b="artikel.verwalten"            ><InventurPage /></Require>} />
           <Route path="/modifikatoren"    element={<Require b="artikel.verwalten"            ><ModifikatorenPage /></Require>} />
           <Route path="/preisregeln"      element={<Require b="artikel.verwalten"            ><PreisregelnPage /></Require>} />
           <Route path="/pos-konfiguration" element={<Require b="einstellungen"             ><PosKonfigPage /></Require>} />
-          <Route path="/bonierdrucker"     element={<Require b="einstellungen"  m="gastro" ><BonierdruckerPage /></Require>} />
+          {/* Alte Adressen (Lesezeichen) → die gemeinsame Einrichtungs-Übersicht */}
+          <Route path="/bonierdrucker"     element={<Navigate to="/einstellungen?bereich=kassen" replace />} />
           <Route path="/belege"         element={<Require b="belege.lesen"                 ><BelegePage /></Require>} />
           <Route path="/einstellungen"  element={<Require b="einstellungen"                ><EinstellungenPage /></Require>} />
           <Route path="/module"         element={<Require b="einstellungen"                ><MandantenEinstellungenPage /></Require>} />
@@ -136,7 +134,7 @@ function AppRoutes() {
           <Route path="/werbefolien"           element={<Require b="einstellungen"                ><WerbefolienPage /></Require>} />
           <Route path="/dienstplan"            element={<Require b="einstellungen"    m="zeiterfassung" ><DienstplanPage /></Require>} />
           <Route path="/finanzpruefung"      element={<Require b="einstellungen"                ><FinanzpruefungPage /></Require>} />
-          <Route path="/kassen-startseite"   element={<Require b="einstellungen"                ><KassenStartseiteSeite /></Require>} />
+          <Route path="/kassen-startseite"   element={<Navigate to="/einstellungen?bereich=kassen" replace />} />
         </Route>
         <Route path="*" element={<Navigate to={getInitialRoute()} replace />} />
       </Routes>

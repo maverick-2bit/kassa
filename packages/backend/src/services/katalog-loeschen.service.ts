@@ -13,6 +13,8 @@
  *  - Cascade/Set-null: artikel_bestandteile, artikel_modifikator_gruppen, kasse_favoriten,
  *    kasse_artikel_layout (Anordnung je Kasse + Warengruppe: jede Zeile hängt an Artikel UND Warengruppe,
  *    verschwindet also mit ihnen; für behaltene/deaktivierte bleibt sie als unsichtbarer Altbestand),
+ *    kasse_routing (Kassen-Ausnahmen beim Bon-Routing: Drucker/KDS-Station je Warengruppe bzw. Artikel an einer
+ *    Kasse — jede Zeile hängt an Warengruppe ODER Artikel und verschwindet mit ihnen; wird im Bericht gezählt),
  *    kasse_kategorie_sichtbarkeit, kassen.start_kategorie_id, kategorien.parent_id.
  *  - jsonb ohne FK: preisregeln (kategorie_ids, artikel_ids, artikel_preise) → bereinigt; wird eine
  *    eingegrenzte Regel dadurch scope-los (würde sonst für ALLE Artikel gelten), wird sie deaktiviert.
@@ -25,7 +27,7 @@ import { and, eq, inArray, notInArray, sql } from 'drizzle-orm'
 import type { Db } from '../db/client.js'
 import {
   artikel, artikelBestandteile, gastBestellungen, inventuren, inventurPositionen, kassekategorieSichtbarkeit,
-  kassen, kasseFavoriten, kategorien, modifikatorGruppen, preisregeln, sbBestellungen, seriennummern, tischTabs,
+  kassen, kasseFavoriten, kasseRouting, kategorien, modifikatorGruppen, preisregeln, sbBestellungen, seriennummern, tischTabs,
 } from '../db/schema.js'
 
 type Tx = Db | Parameters<Parameters<Db['transaction']>[0]>[0]
@@ -45,6 +47,8 @@ export interface LoeschPlan {
   seriennummern: number
   inventurPositionen: number
   sichtbarkeiten: number
+  /** Kassen-Ausnahmen beim Bon-Routing (Drucker/Station je Kasse), die mit ihren Warengruppen/Artikeln verschwinden */
+  ausnahmen: number
   /** nur deaktiviert wegen Verweisen */
   artikelBehalten: { id: string; bezeichnung: string; grund: string }[]
   gruppenBehalten: { id: string; name: string; grund: string }[]
@@ -98,7 +102,7 @@ export async function ermittleLoeschPlan(tx: Tx, mandantId: string): Promise<Loe
   const keptG = [...gruppenBehalten.keys()]
 
   const zaehle = async (q: Promise<{ n: number }[]>) => (await q)[0]?.n ?? 0
-  const [og, sn, ip, sv] = await Promise.all([
+  const [og, sn, ip, sv, au] = await Promise.all([
     zaehle(tx.select({ n: sql<number>`count(*)::int` }).from(modifikatorGruppen).where(eq(modifikatorGruppen.mandantId, mandantId))),
     zaehle(tx.select({ n: sql<number>`count(*)::int` }).from(seriennummern)
       .where(and(eq(seriennummern.mandantId, mandantId), keptA.length ? notInArray(seriennummern.artikelId, keptA) : undefined))),
@@ -107,6 +111,12 @@ export async function ermittleLoeschPlan(tx: Tx, mandantId: string): Promise<Loe
       .where(and(eq(inventuren.mandantId, mandantId), keptA.length ? notInArray(inventurPositionen.artikelId, keptA) : undefined))),
     zaehle(tx.select({ n: sql<number>`count(*)::int` }).from(kassekategorieSichtbarkeit)
       .innerJoin(kassen, eq(kassekategorieSichtbarkeit.kasseId, kassen.id)).where(eq(kassen.mandantId, mandantId))),
+    // Ausnahmen, deren Warengruppe bzw. Artikel gelöscht wird (behaltene/deaktivierte behalten ihre als unsichtbaren Altbestand)
+    zaehle(tx.select({ n: sql<number>`count(*)::int` }).from(kasseRouting).where(and(
+      eq(kasseRouting.mandantId, mandantId),
+      sql`(${kasseRouting.artikelId} IS NULL OR ${keptA.length ? sql`${kasseRouting.artikelId} NOT IN (${sql.join(keptA.map(id => sql`${id}`), sql`, `)})` : sql`TRUE`})`,
+      sql`(${kasseRouting.kategorieId} IS NULL OR ${keptG.length ? sql`${kasseRouting.kategorieId} NOT IN (${sql.join(keptG.map(id => sql`${id}`), sql`, `)})` : sql`TRUE`})`,
+    ))),
   ])
 
   // Preisregeln bereinigen
@@ -127,7 +137,7 @@ export async function ermittleLoeschPlan(tx: Tx, mandantId: string): Promise<Loe
   return {
     artikelLoeschen: alleArtikel.length - keptA.length,
     gruppenLoeschen: alleGruppen.length - keptG.length,
-    optionsgruppen: og, seriennummern: sn, inventurPositionen: ip, sichtbarkeiten: sv,
+    optionsgruppen: og, seriennummern: sn, inventurPositionen: ip, sichtbarkeiten: sv, ausnahmen: au,
     artikelBehalten: keptA.map(id => ({ id, bezeichnung: bezeichnung.get(id)!, grund: behalten.get(id)! })),
     gruppenBehalten: alleGruppen.filter(g => gruppenBehalten.has(g.id)).map(g => ({ id: g.id, name: g.name, grund: gruppenBehalten.get(g.id)! })),
     preisregeln: bereinigungen,

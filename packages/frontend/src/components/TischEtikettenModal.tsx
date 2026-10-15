@@ -235,11 +235,11 @@ export function TischEtikettenModal({
             <p className="text-xs text-ink-subtle">
               {gastUrlGesetzt
                 ? 'Gast scannt zum Bestellen (tischindividuelle URL).'
-                : 'Zuerst die Gast-Bestell-Basis-URL in Einstellungen → Hardware setzen.'}
+                : 'Zuerst die Gast-Bestell-Basis-URL in Einstellungen → Kassen & Drucker (Details der Kasse) setzen.'}
             </p>
             {gastUrlGesetzt && cfgQuery.data?.gastModus === 'aus' && (
               <p className="text-[11px] text-amber-600">
-                ⚠ Gast-Bestellung ist für diese Kasse aus — Modus unter Einstellungen → Hardware wählen.
+                ⚠ Gast-Bestellung ist für diese Kasse aus — Modus unter Einstellungen → Kassen & Drucker (Details der Kasse) wählen.
               </p>
             )}
           </div>
