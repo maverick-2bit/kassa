@@ -831,6 +831,37 @@ export const kasseBonierdruckerSichtbarkeit = pgTable('kasse_bonierdrucker_sicht
   kasseIdx: index('kbs_kasse_idx').on(t.kasseId),
 }))
 
+/**
+ * Kassen-Ausnahmen beim Bon-Routing: an DIESER Kasse druckt eine Warengruppe bzw. ein Artikel auf einem
+ * anderen Bonierdrucker / geht an eine andere KDS-Station als die allgemeine Vorgabe
+ * (kategorien.bonierdrucker_id/station, artikel.bonierdrucker_id/station).
+ *
+ * Rangfolge (das Genauere gewinnt): Artikel an der Kasse → Artikel allgemein → Warengruppe an der Kasse →
+ * Warengruppe allgemein. Keine Zeile = die allgemeine Vorgabe gilt (abwärtskompatibel).
+ * kein_drucker / keine_station = ausdrücklich kein Drucker / keine Station an dieser Kasse (auch wenn die
+ * Vorgabe einen hat). Beides leer = keine Angabe für diesen Wert.
+ *
+ * Tabellen-CHECKs (nur in der Migration): genau eines von kategorie_id/artikel_id; kein_drucker schließt
+ * bonierdrucker_id aus, keine_station schließt station aus.
+ */
+export const kasseRouting = pgTable('kasse_routing', {
+  id:              uuid('id').primaryKey().defaultRandom(),
+  mandantId:       uuid('mandant_id').notNull().references(() => mandanten.id),
+  kasseId:         uuid('kasse_id').notNull().references(() => kassen.id, { onDelete: 'cascade' }),
+  kategorieId:     uuid('kategorie_id').references(() => kategorien.id, { onDelete: 'cascade' }),
+  artikelId:       uuid('artikel_id').references(() => artikel.id, { onDelete: 'cascade' }),
+  bonierdruckerId: uuid('bonierdrucker_id').references(() => bonierdrucker.id, { onDelete: 'set null' }),
+  keinDrucker:     boolean('kein_drucker').notNull().default(false),
+  station:         varchar('station', { length: 20 }),
+  keineStation:    boolean('keine_station').notNull().default(false),
+}, (t) => ({
+  kategorieIdx:   uniqueIndex('kasse_routing_kategorie_idx').on(t.kasseId, t.kategorieId).where(sql`${t.kategorieId} IS NOT NULL`),
+  artikelIdx:     uniqueIndex('kasse_routing_artikel_idx').on(t.kasseId, t.artikelId).where(sql`${t.artikelId} IS NOT NULL`),
+  kategorieFkIdx: index('kasse_routing_kategorie_fk_idx').on(t.kategorieId),
+  artikelFkIdx:   index('kasse_routing_artikel_fk_idx').on(t.artikelId),
+  druckerFkIdx:   index('kasse_routing_drucker_fk_idx').on(t.bonierdruckerId),
+}))
+
 // ---------------------------------------------------------------------------
 // Tisch-Tabs — offene Tische mit akkumulierten Positionen
 // ---------------------------------------------------------------------------

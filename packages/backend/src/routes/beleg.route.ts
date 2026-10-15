@@ -40,7 +40,8 @@ import {
 } from '../services/tagesabschluss.service.js'
 import { tryDruckeBeleg, druckerConfigVonKasse, resolveZielDrucker, sendBytes, DruckerError } from '../services/drucker.service.js'
 import { bonierBestellung } from '../services/bonier.service.js'
-import { ladeWirksamesRouting } from '../services/kategorie-routing.service.js'
+import { baueBonRouting, ladeKasseRoutingAusnahmen, ladeKategorieRoutingZeilen, wirksamesRoutingVonArtikel } from '../services/kategorie-routing.service.js'
+import { hatBonRouting } from '@kassa/shared'
 import { baueZBon, baueKassensturzBon } from '../services/escpos/layout.js'
 import { listeKassenbuchBuchungen } from '../services/kassenbuch.service.js'
 import { pruefeKasseGehoertZuMandant } from '../auth/scope.js'
@@ -160,26 +161,16 @@ function tryBonierDirektverkauf(
       const flagged = rows.filter(a => a.bonierBeiDirektverkauf)
       if (flagged.length === 0) return
 
-      // Kategorie-Routing (Bonierdrucker ODER Stations-Vorgabe) für die
-      // Routing-Prüfung (spiegelt beleg.service De-Dup)
-      const katIds = [...new Set(flagged.map(a => a.kategorieId).filter((id): id is string => id !== null))]
-      const katRoutingMap = new Map<string, boolean>()
-      if (katIds.length > 0) {
-        // Wirksames Routing: Untergruppen erben Station/Bonierdrucker der Elterngruppe
-        const routing = await ladeWirksamesRouting(deps.db, flagged[0]!.mandantId)
-        for (const id of katIds) {
-          const r = routing.get(id)
-          katRoutingMap.set(id, ((r?.bonierdruckerId ?? r?.station) ?? null) !== null)
-        }
-      }
+      // Routing-Prüfung (spiegelt beleg.service De-Dup): maßgeblich ist das Bon-Routing dieser Kasse —
+      // Station ODER Bonierdrucker des Artikels bzw. der Warengruppe (Untergruppen erben von der
+      // Elterngruppe), jeweils mit Kassen-Ausnahme.
+      const hatKategorie = flagged.some(a => a.kategorieId !== null)
+      const kategorieZeilen = hatKategorie ? await ladeKategorieRoutingZeilen(deps.db, flagged[0]!.mandantId) : []
+      const bonRouting = baueBonRouting(kategorieZeilen, await ladeKasseRoutingAusnahmen(deps.db, input.kasseId))
 
       const geroutet = new Set(
         flagged
-          .filter(a =>
-            a.station !== null ||
-            a.bonierdruckerId !== null ||
-            (a.kategorieId ? (katRoutingMap.get(a.kategorieId) ?? false) : false),
-          )
+          .filter(a => hatBonRouting(wirksamesRoutingVonArtikel(bonRouting, a)))
           .map(a => a.id),
       )
       if (geroutet.size === 0) return

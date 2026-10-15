@@ -15,7 +15,7 @@ import { validiereDEP7, dep7AusJson, type FinanzOnlineClient } from '@kassa/rksv
 import type { BelegResponse, LayoutImport } from '@kassa/shared'
 import {
   artikel, artikelBestandteile, artikelModifikatorGruppen, belege, inventuren, inventurPositionen, kassekategorieSichtbarkeit,
-  kassen, kasseFavoriten, kategorien, modifikatoren, modifikatorGruppen, preisregeln, seriennummern,
+  kassen, kasseFavoriten, kasseRouting, kategorien, modifikatoren, modifikatorGruppen, preisregeln, seriennummern,
 } from '../../src/db/schema.js'
 import { buildTestServer, type TestServer } from '../helpers/testServer.js'
 import { erstelleIntegrationsDb, type IntegrationsDb } from './helpers/integrationsDb.js'
@@ -133,6 +133,13 @@ describe('Sauberer Neustart: Katalog löschen (Integration, echtes PostgreSQL)',
     await idb.db.insert(kasseFavoriten).values([{ mandantId: mandantA, kasseId: kasseA, position: 1, artikelId: altX }, { mandantId: mandantA, kasseId: kasseA, position: 2, artikelId: null }])
     await idb.db.insert(kassekategorieSichtbarkeit).values({ kasseId: kasseA, kategorieId: altGruppe })
     await idb.db.update(kassen).set({ startKategorieId: altGruppe }).where(eq(kassen.id, kasseA))
+    // Kassen-Ausnahmen beim Bon-Routing hängen an Warengruppe bzw. Artikel: die an gelöschten verschwinden mit, die an behaltenen bleiben
+    await idb.db.insert(kasseRouting).values([
+      { mandantId: mandantA, kasseId: kasseA, kategorieId: altGruppe,  keinDrucker: true },
+      { mandantId: mandantA, kasseId: kasseA, artikelId: altX,         station: 'schank' },
+      { mandantId: mandantA, kasseId: kasseA, kategorieId: altGruppeY, station: 'kueche' },
+      { mandantId: mandantA, kasseId: kasseA, artikelId: altY,         keineStation: true },
+    ])
     // Offener Tisch-Tab mit Artikel Z
     const tab = await srv.fastify.inject({ method: 'POST', url: '/api/tisch-tabs', headers: authA(), payload: { kasseId: kasseA, tischNummer: 'T1', kellner: 'Anna' } })
     expect(tab.statusCode, tab.body).toBe(201)
@@ -181,6 +188,8 @@ describe('Sauberer Neustart: Katalog löschen (Integration, echtes PostgreSQL)',
       'kasse_artikel_layout.kategorie_id -> kategorien (CASCADE)',
       'kasse_favoriten.artikel_id -> artikel (CASCADE)',
       'kasse_kategorie_sichtbarkeit.kategorie_id -> kategorien (CASCADE)',
+      'kasse_routing.artikel_id -> artikel (CASCADE)',
+      'kasse_routing.kategorie_id -> kategorien (CASCADE)',
       'kassen.start_kategorie_id -> kategorien (SET NULL)',
       'kategorien.parent_id -> kategorien (SET NULL)',
       'modifikatoren.gruppe_id -> modifikator_gruppen (CASCADE)',
@@ -199,7 +208,7 @@ describe('Sauberer Neustart: Katalog löschen (Integration, echtes PostgreSQL)',
     expect(b.dryRun).toBe(true)
     // 5 Artikel, 2 Gruppen; Y (offene Inventur) + Z (offener Tisch) bleiben → 3 Artikel gelöscht, Gruppe „Alt Offen" bleibt
     expect(b.katalogLoeschen.aktiv).toBe(true)
-    expect(b.katalogLoeschen.geloescht).toMatchObject({ artikel: 3, gruppen: 1, optionsgruppen: 1, seriennummern: 2, inventurPositionen: 1, sichtbarkeiten: 1, kassenFavoriten: 2, preisregelnBereinigt: 2 })
+    expect(b.katalogLoeschen.geloescht).toMatchObject({ artikel: 3, gruppen: 1, optionsgruppen: 1, seriennummern: 2, inventurPositionen: 1, sichtbarkeiten: 1, ausnahmen: 2, kassenFavoriten: 2, preisregelnBereinigt: 2 })
     expect(b.katalogLoeschen.nurDeaktiviert.artikel.map((a: { grund: string }) => a.grund).sort()).toEqual(['offene Inventur', 'offener Tisch'])
     expect(b.katalogLoeschen.nurDeaktiviert.gruppen).toHaveLength(1)
     expect(b.zusammenfassung[0]).toMatch(/würde löschen/)
@@ -219,6 +228,9 @@ describe('Sauberer Neustart: Katalog löschen (Integration, echtes PostgreSQL)',
     const alte = art.filter(a => [altX, altW, altY, altZ, altBestandteil].includes(a.id))
     expect(alte.map(a => a.id).sort()).toEqual([altY, altZ].sort())
     expect(alte.every(a => !a.aktiv && !a.istFavorit)).toBe(true)
+    // Kassen-Ausnahmen: die an gelöschten Warengruppen/Artikeln sind weg, die an behaltenen (deaktivierten) bleiben als Altbestand
+    const ausnahmenRest = await idb.db.select().from(kasseRouting).where(eq(kasseRouting.mandantId, mandantA))
+    expect(ausnahmenRest.map(r => r.kategorieId ?? r.artikelId).sort()).toEqual([altGruppeY, altY].sort())
     expect(gruppen.find(g => g.id === altGruppe)).toBeUndefined()
     expect(gruppen.find(g => g.id === altGruppeY)).toMatchObject({ aktiv: false })
     // abhängige Zeilen mit weg

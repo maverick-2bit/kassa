@@ -581,7 +581,7 @@ export function planeLayout(ist: KassaZustand, layout: LayoutImport, opts: Layou
     const w = opts.dryRun ? 'würde löschen' : 'gelöscht'
     zusammenfassung.unshift(
       `Sauberer Neustart (nicht rückgängig): ${w}: ${loesch.artikelLoeschen} Artikel, ${loesch.gruppenLoeschen} Gruppen, ${loesch.optionsgruppen} Optionsgruppen, ` +
-      `${loesch.seriennummern} Seriennummern, ${loesch.inventurPositionen} Inventurpositionen; ${loesch.sichtbarkeiten} Kassen-Sichtbarkeiten und ${kassenFavoritenGeloescht} Kassen-Favoriten ${opts.dryRun ? 'würden geleert' : 'geleert'}, ` +
+      `${loesch.seriennummern} Seriennummern, ${loesch.inventurPositionen} Inventurpositionen; ${loesch.sichtbarkeiten} Kassen-Sichtbarkeiten, ${loesch.ausnahmen} Kassen-Ausnahmen (Drucker/Station je Kasse) und ${kassenFavoritenGeloescht} Kassen-Favoriten ${opts.dryRun ? 'würden geleert' : 'geleert'}, ` +
       `${loesch.preisregeln.length} Preisregel(n) bereinigt. Belege, DEP und Archiv bleiben unberührt. Alles aus dem Layout wird NEU angelegt — auch bei Wiederholung.`,
     )
     if (loesch.artikelBehalten.length > 0 || loesch.gruppenBehalten.length > 0) {
@@ -599,7 +599,7 @@ export function planeLayout(ist: KassaZustand, layout: LayoutImport, opts: Layou
       geloescht: {
         artikel: loesch?.artikelLoeschen ?? 0, gruppen: loesch?.gruppenLoeschen ?? 0, optionsgruppen: loesch?.optionsgruppen ?? 0,
         seriennummern: loesch?.seriennummern ?? 0, inventurPositionen: loesch?.inventurPositionen ?? 0,
-        sichtbarkeiten: loesch?.sichtbarkeiten ?? 0, kassenFavoriten: opts.katalogLoeschen ? kassenFavoritenGeloescht : 0,
+        sichtbarkeiten: loesch?.sichtbarkeiten ?? 0, ausnahmen: loesch?.ausnahmen ?? 0, kassenFavoriten: opts.katalogLoeschen ? kassenFavoritenGeloescht : 0,
         preisregelnBereinigt: loesch?.preisregeln.length ?? 0,
       },
       nurDeaktiviert: {

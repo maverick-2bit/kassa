@@ -244,4 +244,70 @@ describe('KDS-Papierdruck je Station (Integration, echtes PostgreSQL + TCP-Liste
       expect(res.json().stationen).toMatchObject([{ station: 'schank', ip: '', erfolgreich: true }])
     })
   })
+
+  describe('Backup-Drucker je Stationsdrucker (eigener Ersatzdrucker)', () => {
+    let defekt = ''
+    const setzeBackup = (id: string, fallbackId: string | null) =>
+      srv.fastify.inject({ method: 'PATCH', url: `/api/bonierdrucker/${id}`, headers: auth(), payload: { fallbackId } })
+    const aktiv = (id: string, wert: boolean) =>
+      srv.fastify.inject({ method: 'PATCH', url: `/api/bonierdrucker/${id}`, headers: auth(), payload: { aktiv: wert } })
+
+    beforeAll(async () => {
+      // Der feste Fallback soll die Fälle hier nicht überdecken; Station schank → ein nicht erreichbarer Drucker
+      expect((await srv.fastify.inject({ method: 'PUT', url: '/api/kds/fallback-drucker', headers: auth(), payload: { bonierdruckerId: null } })).statusCode).toBe(204)
+      defekt = (await post('/api/bonierdrucker', { name: 'Defekt-Station', ip: '127.0.0.1', port: 1 })).id
+      expect((await zuordnen('schank', defekt)).statusCode).toBe(204)
+    })
+
+    it('ohne Backup geht der Bon des defekten Stationsdruckers verloren', async () => {
+      expect(await nachdrucken()).toEqual({ gedruckt: 0, fehler: 1 })
+    })
+
+    it('mit Backup-Drucker druckt dieser, wenn der Stationsdrucker nicht erreichbar ist', async () => {
+      const res = await setzeBackup(defekt, druckerB)
+      expect(res.statusCode, res.body).toBe(200)
+      expect(res.json().fallbackId).toBe(druckerB)
+      const vorher = b.empfangen()
+      expect(await nachdrucken()).toEqual({ gedruckt: 1, fehler: 0 })
+      expect(b.empfangen()).toBe(vorher + 1)
+    })
+
+    it('ein als Zweitdrucker (Backup) markierter Drucker darf der Backup-Drucker sein — er muss aktiv und erreichbar sein', async () => {
+      expect((await aktiv(backupId, true)).statusCode).toBe(200)
+      expect((await setzeBackup(defekt, backupId)).statusCode).toBe(200)
+      // Port 9 des Zweitdruckers ist nicht erreichbar → der Bon geht trotzdem verloren (kein weiterer Ersatz)
+      expect(await nachdrucken()).toEqual({ gedruckt: 0, fehler: 1 })
+      expect((await aktiv(backupId, false)).statusCode).toBe(200)
+    })
+
+    it('Backup-Drucker deaktiviert → es wird nicht umgeleitet', async () => {
+      expect((await setzeBackup(defekt, druckerB)).statusCode).toBe(200)
+      expect((await aktiv(druckerB, false)).statusCode).toBe(200)
+      expect(await nachdrucken()).toEqual({ gedruckt: 0, fehler: 1 })
+      expect((await aktiv(druckerB, true)).statusCode).toBe(200)
+    })
+
+    it('der eigene Drucker oder eine unbekannte ID sind kein Backup-Drucker (geprüft wird gegen die Drucker des Mandanten)', async () => {
+      const selbst = await setzeBackup(defekt, defekt)
+      expect(selbst.statusCode).toBe(400)
+      expect(selbst.json().fehler).toMatch(/eigener Backup/)
+      expect((await setzeBackup(defekt, '00000000-0000-4000-8000-000000000001')).statusCode).toBe(404)
+      // beim Anlegen genauso geprüft — und gespeichert (früher wurde die ID beim Anlegen stillschweigend verworfen)
+      const neu = await srv.fastify.inject({
+        method: 'POST', url: '/api/bonierdrucker', headers: auth(),
+        payload: { name: 'Mit Backup', ip: '127.0.0.1', port: 1, fallbackId: druckerA },
+      })
+      expect(neu.statusCode, neu.body).toBe(201)
+      expect(neu.json().fallbackId).toBe(druckerA)
+      expect((await srv.fastify.inject({
+        method: 'POST', url: '/api/bonierdrucker', headers: auth(),
+        payload: { name: 'Kaputt', ip: '127.0.0.1', port: 1, fallbackId: '00000000-0000-4000-8000-000000000001' },
+      })).statusCode).toBe(404)
+    })
+
+    it('Backup entfernen (null): wieder kein Ersatz', async () => {
+      expect((await setzeBackup(defekt, null)).json().fallbackId).toBeNull()
+      expect(await nachdrucken()).toEqual({ gedruckt: 0, fehler: 1 })
+    })
+  })
 })

@@ -216,6 +216,8 @@ export {
   loeseKategorieAuf,
   kategorieSchluessel,
   wirksamesKategorieRouting,
+  wirksamesArtikelRouting,
+  hatBonRouting,
 } from './kategorie-baum.js'
 export type {
   KategorieKnoten,
@@ -224,6 +226,7 @@ export type {
   KategorieAufloesung,
   SichtbarkeitsMengen,
   KategorieRouting,
+  KasseRoutingAusnahme,
 } from './kategorie-baum.js'
 
 // Raster-Platzierung (Untergruppen-Kacheln, Slots, Leerfelder)
@@ -348,6 +351,24 @@ export type {
   ReihenfolgeUpdate,
   FavoritenReihenfolgeUpdate,
 } from './schemas/bonierdrucker.js'
+
+// Einrichtungs-Übersicht (Kassen, Drucker, Warengruppen, KDS) + Kassen-Ausnahmen beim Bon-Routing
+export {
+  RoutingAusnahmeSchema,
+  EinrichtungKasseSchema,
+  EinrichtungSchema,
+  RoutingAenderungSchema,
+  RoutingAenderungenSchema,
+  EinrichtungKopierenSchema,
+} from './schemas/einrichtung.js'
+export type {
+  RoutingAusnahme,
+  EinrichtungKasse,
+  Einrichtung,
+  RoutingAenderung,
+  RoutingAenderungen,
+  EinrichtungKopieren,
+} from './schemas/einrichtung.js'
 
 // Bondrucker-Bibliothek (mandantenweiter Pool)
 export {

@@ -268,28 +268,88 @@ export interface KategorieRouting {
 }
 
 /**
+ * Kassen-Ausnahme beim Bon-Routing: gilt NUR an einer Kasse (die Liste gehört immer zu einer Kasse)
+ * und geht der allgemeinen Vorgabe der Warengruppe bzw. des Artikels vor. Genau eines von
+ * `kategorieId` / `artikelId` ist gesetzt.
+ *
+ *  - `bonierdruckerId`: an dieser Kasse druckt der Bon auf diesem Drucker
+ *  - `keinDrucker`:     an dieser Kasse KEIN Bonierdrucker (auch wenn die Vorgabe einen hat)
+ *  - beides leer:       keine Angabe für den Drucker — die Vorgabe gilt
+ *  - `station` / `keineStation` genauso für die KDS-Station
+ */
+export interface KasseRoutingAusnahme {
+  kategorieId:     string | null
+  artikelId:       string | null
+  bonierdruckerId: string | null
+  keinDrucker:     boolean
+  station:         string | null
+  keineStation:    boolean
+}
+
+/**
+ * Angabe EINER Gruppe oder eines Artikels: die Kassen-Ausnahme (ein Wert oder „ausdrücklich keiner")
+ * geht der eigenen Vorgabe vor. `undefined` = hier keine Angabe, die nächste Ebene entscheidet;
+ * `null` = ausdrücklich keiner (die Vererbung bricht hier ab).
+ */
+function eigeneAngabe(ausnahmeWert: string | null, keiner: boolean, vorgabe: string | null): string | null | undefined {
+  if (keiner) return null
+  return ausnahmeWert ?? vorgabe ?? undefined
+}
+
+/**
  * Wirksames Routing je Warengruppe: Station und Bonierdrucker werden von der
  * Elterngruppe geerbt, solange die Untergruppe selbst keine eigene Angabe hat
  * (die nächstgelegene Gruppe nach oben gewinnt). Beides wird getrennt geerbt —
  * eine Untergruppe mit eigenem Drucker erbt trotzdem die Station der Hauptgruppe.
  * Zyklen und fehlende Eltern beenden die Kette (kein Absturz).
+ *
+ * Mit `ausnahmen` (die Warengruppen-Ausnahmen EINER Kasse) gilt das Routing dieser Kasse:
+ * eine Ausnahme ersetzt die eigene Vorgabe der Gruppe und wird wie diese an Untergruppen
+ * ohne eigene Angabe vererbt; „keiner" beendet die Vererbung. Artikel-Ausnahmen bleiben hier außen vor.
  */
 export function wirksamesKategorieRouting(
   menge: readonly (KategorieKnoten & { station: string | null; bonierdruckerId: string | null })[],
+  ausnahmen: readonly KasseRoutingAusnahme[] = [],
 ): Map<string, KategorieRouting> {
   const nachId = new Map(menge.map(k => [k.id, k] as const))
+  const ausnahmeVon = new Map<string, KasseRoutingAusnahme>()
+  for (const a of ausnahmen) if (a.kategorieId) ausnahmeVon.set(a.kategorieId, a)
   const ergebnis = new Map<string, KategorieRouting>()
   for (const k of menge) {
-    let station: string | null = null
-    let bonierdruckerId: string | null = null
+    let station: string | null | undefined
+    let bonierdruckerId: string | null | undefined
     const besucht = new Set<string>()
     for (let cur: typeof k | undefined = k; cur && !besucht.has(cur.id); cur = cur.parentId ? nachId.get(cur.parentId) : undefined) {
       besucht.add(cur.id)
-      station         ??= cur.station
-      bonierdruckerId ??= cur.bonierdruckerId
-      if (station !== null && bonierdruckerId !== null) break
+      const a = ausnahmeVon.get(cur.id)
+      if (station === undefined)         station         = eigeneAngabe(a?.station ?? null,         a?.keineStation ?? false, cur.station)
+      if (bonierdruckerId === undefined) bonierdruckerId = eigeneAngabe(a?.bonierdruckerId ?? null, a?.keinDrucker ?? false,  cur.bonierdruckerId)
+      if (station !== undefined && bonierdruckerId !== undefined) break
     }
-    ergebnis.set(k.id, { station, bonierdruckerId })
+    ergebnis.set(k.id, { station: station ?? null, bonierdruckerId: bonierdruckerId ?? null })
   }
   return ergebnis
 }
+
+/**
+ * Wirksames Routing eines ARTIKELS an einer Kasse. Rangfolge (das Genauere gewinnt):
+ *   1. Ausnahme dieses Artikels an dieser Kasse
+ *   2. eigene Vorgabe des Artikels
+ *   3. wirksames Routing seiner Warengruppe an dieser Kasse (`gruppe`, siehe wirksamesKategorieRouting mit Ausnahmen)
+ * Station und Drucker werden getrennt aufgelöst; „keiner" (Ausnahme) beendet die Kette.
+ */
+export function wirksamesArtikelRouting(
+  artikel:  { station: string | null; bonierdruckerId: string | null },
+  gruppe:   KategorieRouting | undefined,
+  ausnahme?: KasseRoutingAusnahme,
+): KategorieRouting {
+  const station         = eigeneAngabe(ausnahme?.station ?? null,         ausnahme?.keineStation ?? false, artikel.station)
+  const bonierdruckerId = eigeneAngabe(ausnahme?.bonierdruckerId ?? null, ausnahme?.keinDrucker ?? false,  artikel.bonierdruckerId)
+  return {
+    station:         station === undefined         ? (gruppe?.station ?? null)         : station,
+    bonierdruckerId: bonierdruckerId === undefined ? (gruppe?.bonierdruckerId ?? null) : bonierdruckerId,
+  }
+}
+
+/** Geht an einer Kasse überhaupt etwas an KDS oder Bonierdrucker? (Gate für Lager-De-Dup und Direktverkauf-Bonierung) */
+export const hatBonRouting = (r: KategorieRouting): boolean => r.station !== null || r.bonierdruckerId !== null

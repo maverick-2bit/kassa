@@ -1,5 +1,5 @@
 /**
- * Stations-IP für TCP-Hardware-Displays (Einstellungen → Hardware → KDS → "Stations-IPs").
+ * Stations-IP für TCP-Hardware-Displays (Einstellungen → Kassen & Drucker → Details der Kasse → "KDS-Adressen").
  *
  * Gültig ist nur ein Host/eine IP-Adresse OHNE Port und ohne http:// — der Port steht getrennt in
  * der KDS-Konfiguration. Typischer Fehler: die Web-Adresse des Browser-KDS ("192.168.1.5:8080")
