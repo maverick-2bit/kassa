@@ -3,6 +3,8 @@
  * Wird nach erfolgreichem Setup gesetzt und von allen anderen Seiten gelesen.
  */
 
+import { merkeKasse } from './konten'
+
 const KEY_MANDANT_ID = 'kassa:mandantId'
 const KEY_KASSE_ID   = 'kassa:kasseId'
 
@@ -21,6 +23,7 @@ export function getKasseIdentity(): KasseIdentity | null {
 export function setKasseIdentity(identity: KasseIdentity): void {
   localStorage.setItem(KEY_MANDANT_ID, identity.mandantId)
   localStorage.setItem(KEY_KASSE_ID,   identity.kasseId)
+  merkeKasse(identity.mandantId, identity.kasseId)      // das Konto dieses Mandanten merkt sich die Kasse
 }
 
 export function clearKasseIdentity(): void {

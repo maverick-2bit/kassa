@@ -1,40 +1,42 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { LoginInputSchema, PIN_LAENGE_CODE, type LoginInput, type Startseite } from '@kassa/shared'
-import { ApiError, authApi, posConfigApi, setupApi } from '../lib/api'
-import { gemerktePinLaenge, getGeraetToken, merkePinLaenge, setAuth } from '../lib/auth'
-import { getKasseIdentity, setKasseIdentity } from '../lib/kasse'
+import { LoginInputSchema, PIN_LAENGE_CODE, type LoginInput } from '@kassa/shared'
+import { ApiError, authApi, setupApi } from '../lib/api'
+import { gemerktePinLaenge, getAuth, getGeraetToken, merkePinLaenge, setAuth } from '../lib/auth'
+import { getKasseIdentity } from '../lib/kasse'
+import { sichereKasseNachAnmeldung } from '../lib/kontoWechsel'
 import { restzeitText, usePinSperre } from '../lib/pin-sperre'
+import { leseStartseitePfad } from '../lib/startseite'
 import { Field } from '../components/ui/Field'
 import { Input } from '../components/ui/Input'
 import { Button } from '../components/ui/Button'
-
-const STARTSEITE_PFAD: Record<Startseite, string> = {
-  tische:          '/tische',
-  kasse:           '/kasse',
-  kasse_favoriten: '/kasse?tab=favoriten',
-  dashboard:       '/dashboard',
-}
-
-async function leseStartseitePfad(kasseId: string): Promise<string> {
-  try {
-    const cfg = await posConfigApi.get(kasseId)
-    return STARTSEITE_PFAD[cfg.startseite] ?? '/tische'
-  } catch {
-    return '/tische'
-  }
-}
+import { KontenWahl } from '../components/KontenWahl'
 
 type Tab = 'passwort' | 'pin'
 
+/**
+ * Wohin nach der Anmeldung? Bei einem anderen Mandanten als vorher mit frischem Laden der Seite: im Speicher
+ * der laufenden Seite (abgefragte Daten, gemerkte Auswahlen) steckt sonst noch der andere Betrieb.
+ */
+type Weiter = (pfad: string, neuLaden: boolean) => void
+
 export function LoginPage() {
   const navigate   = useNavigate()
+  // „Weiteren Mandanten anmelden" (aus dem Mandanten-Umschalter): die aktuelle Sitzung bleibt bestehen und wird beim
+  // Anmelden zur Seite gelegt — nur E-Mail und Passwort, denn das PIN-Pad gehört zum Mandanten dieses Geräts.
+  const [params]   = useSearchParams()
+  const [weiterer] = useState(() => params.get('konto') === 'neu' && getAuth() !== null)
+  // Der Mandant, in dem diese Seite geöffnet wurde (angemeldet oder zuletzt am Gerät)
+  const [bisherMandantId] = useState(() => getAuth()?.mandant.id ?? getKasseIdentity()?.mandantId ?? null)
+  const weiter: Weiter = (pfad, neuLaden) => (neuLaden ? window.location.assign(pfad) : navigate(pfad))
+  // Ändert sich die Kasse des PIN-Pads (Mandanten-Wahl), muss das Pad neu aufgebaut werden
+  const [padVersion, setPadVersion] = useState(0)
   // Ohne bekannte Kasse (frisches Gerät) zuerst den E-Mail-Login zeigen — der
   // PIN-Login setzt eine bereits gewählte Kasse voraus.
-  const [tab, setTab] = useState<Tab>(() => (getKasseIdentity() ? 'pin' : 'passwort'))
+  const [tab, setTab] = useState<Tab>(() => (!weiterer && getKasseIdentity() ? 'pin' : 'passwort'))
 
   // Frische Installation erkennen: solange es keine Benutzer gibt, führt ein
   // Login-Formular nur in die Irre — Zugangsdaten anderer Installationen
@@ -58,7 +60,7 @@ export function LoginPage() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M3 3h18v4H3zM3 11h18v10H3zM7 15h2M7 18h2"/>
             </svg>
           </div>
-          <h1 className="text-2xl font-bold text-ink">{frisch ? 'Willkommen' : 'Anmeldung'}</h1>
+          <h1 className="text-2xl font-bold text-ink">{frisch ? 'Willkommen' : weiterer ? 'Weiteren Mandanten anmelden' : 'Anmeldung'}</h1>
         </header>
 
         {frisch && (
@@ -78,28 +80,48 @@ export function LoginPage() {
           </div>
         )}
 
+        {weiterer && (
+          <p data-testid="login-weiterer-mandant" className="mb-4 rounded-md border border-line bg-panel p-3 text-center text-xs text-ink-muted">
+            Ihre aktuelle Anmeldung bleibt bestehen. Danach wechseln Sie in der Kopfleiste mit einem Klick zwischen den Mandanten.
+          </p>
+        )}
+
         {/* Tab-Umschalter */}
-        <div className="flex rounded-lg border border-line bg-panel-2 p-1 mb-4">
-          {(['pin', 'passwort'] as Tab[]).map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setTab(t)}
-              className={`flex-1 py-1.5 text-sm font-medium rounded-md transition ${
-                tab === t
-                  ? 'bg-panel shadow-sm text-ink'
-                  : 'text-ink-muted hover:text-ink'
-              }`}
-            >
-              {t === 'pin' ? 'PIN' : 'E-Mail & Passwort'}
-            </button>
-          ))}
-        </div>
+        {!weiterer && (
+          <div className="flex rounded-lg border border-line bg-panel-2 p-1 mb-4">
+            {(['pin', 'passwort'] as Tab[]).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setTab(t)}
+                className={`flex-1 py-1.5 text-sm font-medium rounded-md transition ${
+                  tab === t
+                    ? 'bg-panel shadow-sm text-ink'
+                    : 'text-ink-muted hover:text-ink'
+                }`}
+              >
+                {t === 'pin' ? 'PIN' : 'E-Mail & Passwort'}
+              </button>
+            ))}
+          </div>
+        )}
 
         {tab === 'pin'
-          ? <PinLoginForm onNavigate={(pfad) => navigate(pfad)} />
-          : <PasswortLoginForm onNavigate={(pfad) => navigate(pfad)} />
+          ? <PinLoginForm key={padVersion} bisherMandantId={bisherMandantId} onWeiter={weiter} onMandantGewaehlt={() => setPadVersion(v => v + 1)} />
+          : <PasswortLoginForm bisherMandantId={bisherMandantId} onWeiter={weiter} />
         }
+
+        {weiterer && (
+          <p className="mt-4 text-center text-xs">
+            <button
+              type="button"
+              onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/'))}
+              className="text-brand-600 hover:underline"
+            >
+              Abbrechen
+            </button>
+          </p>
+        )}
       </div>
     </div>
   )
@@ -109,7 +131,11 @@ export function LoginPage() {
 // PIN-Login
 // ---------------------------------------------------------------------------
 
-function PinLoginForm({ onNavigate }: { onNavigate: (pfad: string) => void }) {
+function PinLoginForm({ bisherMandantId, onWeiter, onMandantGewaehlt }: {
+  bisherMandantId:   string | null
+  onWeiter:          Weiter
+  onMandantGewaehlt: () => void
+}) {
   const [pin, setPin]         = useState('')
   const [fehler, setFehler]   = useState<string | null>(null)
   const inputRef              = useRef<HTMLInputElement>(null)
@@ -137,15 +163,11 @@ function PinLoginForm({ onNavigate }: { onNavigate: (pfad: string) => void }) {
     mutationFn: authApi.pinLogin,
     onSuccess: async (data) => {
       setAuth(data)
-      // Kasse wechseln: wenn aktuelle Kasse nicht in den zugewiesenen ist, auf die erste umschalten
-      const aktuelle = getKasseIdentity()
-      const passt = aktuelle && data.kassen.some(k => k.id === aktuelle.kasseId)
-      if (!passt && data.kassen[0]) {
-        setKasseIdentity({ mandantId: data.mandant.id, kasseId: data.kassen[0].id })
-      }
+      // Kasse wechseln: wenn aktuelle Kasse nicht in den zugewiesenen ist, auf die zuletzt benutzte bzw. erste umschalten
+      sichereKasseNachAnmeldung(data)
       const kasseId = getKasseIdentity()?.kasseId
       const pfad = kasseId ? await leseStartseitePfad(kasseId) : '/tische'
-      onNavigate(pfad)
+      onWeiter(pfad, data.mandant.id !== bisherMandantId)
     },
     onError: (err) => {
       setPin('')
@@ -192,6 +214,7 @@ function PinLoginForm({ onNavigate }: { onNavigate: (pfad: string) => void }) {
 
   return (
     <div className="rounded-xl bg-panel shadow-sm border border-line p-6">
+      <KontenWahl onGewaehlt={onMandantGewaehlt} />
       <p className="text-center text-sm text-ink-muted mb-5">PIN eingeben</p>
 
       {/* PIN-Punkte */}
@@ -265,7 +288,7 @@ function PinLoginForm({ onNavigate }: { onNavigate: (pfad: string) => void }) {
 // Passwort-Login
 // ---------------------------------------------------------------------------
 
-function PasswortLoginForm({ onNavigate }: { onNavigate: (pfad: string) => void }) {
+function PasswortLoginForm({ bisherMandantId, onWeiter }: { bisherMandantId: string | null; onWeiter: Weiter }) {
   const [serverFehler, setServerFehler] = useState<string | null>(null)
 
   const {
@@ -282,16 +305,12 @@ function PasswortLoginForm({ onNavigate }: { onNavigate: (pfad: string) => void 
     onSuccess: async (data) => {
       setAuth(data)
       // Aktive Kasse sicherstellen: wenn keine oder eine nicht (mehr) zugewiesene
-      // Kasse gewählt ist, auf die erste umschalten. Wichtig bei mehreren Kassen —
-      // sonst bleibt keine aktive Kasse gesetzt und Seiten crashen.
-      const aktuelle = getKasseIdentity()
-      const passt = aktuelle && data.kassen.some(k => k.id === aktuelle.kasseId)
-      if (!passt && data.kassen[0]) {
-        setKasseIdentity({ mandantId: data.mandant.id, kasseId: data.kassen[0].id })
-      }
+      // Kasse gewählt ist, auf die zuletzt benutzte bzw. erste umschalten. Wichtig bei
+      // mehreren Kassen — sonst bleibt keine aktive Kasse gesetzt und Seiten crashen.
+      sichereKasseNachAnmeldung(data)
       const kasseId = getKasseIdentity()?.kasseId
       const pfad = kasseId ? await leseStartseitePfad(kasseId) : '/tische'
-      onNavigate(pfad)
+      onWeiter(pfad, data.mandant.id !== bisherMandantId)
     },
     onError: (err) => setServerFehler(err instanceof Error ? err.message : 'Login fehlgeschlagen'),
   })

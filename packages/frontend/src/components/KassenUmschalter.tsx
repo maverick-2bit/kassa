@@ -9,13 +9,13 @@
  * ihnen zugeordneten (siehe lib/kassenWechsel.ts).
  */
 
-import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useLocation } from 'react-router-dom'
 import { kasseApi } from '../lib/api'
 import { getAuth, hasBerechtigung } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
 import { KASSEN_ANSICHT, kasseName, umschaltKassen, wechsleKasse, type WechselKasse } from '../lib/kassenWechsel'
+import { useAufklappen } from '../lib/useAufklappen'
 
 /** Die Kassen, zwischen denen dieses Gerät umschalten darf (weniger als zwei = kein Umschalter). */
 export function useUmschaltKassen(): WechselKasse[] {
@@ -37,18 +37,8 @@ export function KassenUmschalter({ kompakt = false, className = '' }: { kompakt?
   const kassen   = useUmschaltKassen()
   const identity = getKasseIdentity()
   const { pathname } = useLocation()
-  const [offen, setOffen] = useState(false)
-  const huelle = useRef<HTMLDivElement>(null)
-
-  // Auswahlliste: schließen bei Klick daneben und mit Esc
-  useEffect(() => {
-    if (!offen) return
-    const aussen = (e: MouseEvent) => { if (huelle.current && !huelle.current.contains(e.target as Node)) setOffen(false) }
-    const taste  = (e: KeyboardEvent) => { if (e.key === 'Escape') setOffen(false) }
-    document.addEventListener('mousedown', aussen)
-    document.addEventListener('keydown', taste)
-    return () => { document.removeEventListener('mousedown', aussen); document.removeEventListener('keydown', taste) }
-  }, [offen])
+  // Auswahlliste: schließt bei Klick daneben und mit Esc
+  const { offen, setOffen, huelle } = useAufklappen()
 
   if (!identity || kassen.length < 2) return null
 

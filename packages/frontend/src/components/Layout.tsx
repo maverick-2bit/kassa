@@ -13,6 +13,7 @@ import { KdsNachrichten } from './KdsNachrichten'
 import { OfflineStatusBar } from './OfflineStatusBar'
 import { UpdateHinweis } from './UpdateHinweis'
 import { KassenUmschalter, useUmschaltKassen } from './KassenUmschalter'
+import { MandantenUmschalter } from './MandantenUmschalter'
 import { SeeStatusBanner } from './SeeStatusBanner'
 import { FoStatusBanner } from './FoStatusBanner'
 import { ErrorBoundary } from './ErrorBoundary'
@@ -170,7 +171,7 @@ function StatusZeile() {
       <Link to="/einstellungen?bereich=system" title="Aktualisierung & System" className="hover:text-ink hover:underline">
         Kassa v{__APP_VERSION__}
       </Link>
-      {auth && <> · {auth.mandant.firmenname}</>}
+      {auth && <> · <span data-testid="status-mandant">{auth.mandant.firmenname}</span></>}
       {kasse && <> · Kasse: <span className="font-mono" data-testid="status-kasse">{kasse.bezeichnung || kasse.kassenId}</span></>}
     </span>
   )
@@ -298,6 +299,7 @@ function Header({ eingeklappt, onUmschalten, vollbild, onVollbild }: {
             {auth.user.name}
             {kasse && umschaltKassen.length < 2 && <> · Kasse: <span className="font-mono">{kasse.bezeichnung || kasse.kassenId}</span></>}
           </span>
+          <MandantenUmschalter kompakt />
           <KassenUmschalter kompakt />
           <UpdateHinweis>{null}</UpdateHinweis>
         </div>
@@ -350,7 +352,7 @@ function Header({ eingeklappt, onUmschalten, vollbild, onVollbild }: {
             </UpdateHinweis>
             <div className="text-right text-xs">
               <p className="font-medium text-white">{auth.user.name}</p>
-              <p className="text-white/60">{auth.mandant.firmenname}</p>
+              <MandantenUmschalter />
             </div>
             <button
               type="button"
