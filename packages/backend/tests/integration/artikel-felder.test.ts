@@ -63,6 +63,7 @@ interface ArtikelRow {
   verfuegbareMenge?: number | null
   lieferantId: string | null
   terminalSichtbar: boolean | null
+  optionenAbfrage: boolean | null
   bild?: string | null
 }
 
@@ -134,6 +135,7 @@ describe('Artikel anlegen und bearbeiten: alle Formularfelder werden gespeichert
     bestandteile:           [{ bestandteilArtikelId: rohstoffA1, menge: 3 }, { bestandteilArtikelId: rohstoffA2, menge: 2 }],
     lieferantId:            lieferantA2,
     terminalSichtbar:       true,
+    optionenAbfrage:        false,
     bild:                   'data:image/jpeg;base64,/9j/AAAA',
   } satisfies Record<keyof ArtikelUpdate, unknown>)
 
