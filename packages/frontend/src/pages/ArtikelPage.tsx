@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   KATEGORIE_FARBE_LABELS,
   MWST_LABELS,
+  allergeneAnzeige,
+  allergeneBeschreibung,
   type Artikel,
   type ArtikelInput,
   type Kategorie,
@@ -481,7 +483,18 @@ export function ArtikelPage() {
                         </button>
                       </div>
                     </td>
-                    <td className="px-4 py-2.5 font-medium text-ink">{a.bezeichnung}</td>
+                    <td className="px-4 py-2.5 font-medium text-ink">
+                      {a.bezeichnung}
+                      {a.allergene && (
+                        <span
+                          data-testid="artikel-allergene"
+                          title={allergeneBeschreibung(a.allergene)}
+                          className="ml-2 inline-flex items-center rounded bg-amber-50 px-1.5 py-0.5 align-middle text-[10px] font-semibold tracking-wide text-amber-700"
+                        >
+                          Allergene: {allergeneAnzeige(a.allergene)}
+                        </span>
+                      )}
+                    </td>
                     <td className="px-4 py-2.5 text-ink-muted text-xs">
                       {katNameFuerId(a.kategorieId) ?? <span className="text-ink-subtle">—</span>}
                     </td>

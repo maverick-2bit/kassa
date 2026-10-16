@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import {
   ALLE_STATIONEN,
-  ALLERGEN_LABELS,
   MWST_LABELS,
   STATION_LABELS,
   farbeZuHex,
@@ -22,6 +21,7 @@ import { Select } from './ui/Select'
 import { Button } from './ui/Button'
 import { Schalter } from './ui/Schalter'
 import { FarbAuswahl } from './FarbAuswahl'
+import { AllergenAuswahl } from './AllergenAuswahl'
 import { formatPreis, parseEuroToCent } from '../lib/format'
 import { baumFlach, kategoriePfad } from '../lib/kategorie-baum'
 
@@ -327,19 +327,13 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
 
       <Field
         label="Allergene"
-        hint="Buchstaben kommagetrennt, z. B. A, C, G — erscheint auf der Kachel in Kasse und Kellner-App sowie in der Gast-Karte"
+        hint="Zutreffende antippen — erscheint auf der Kachel in Kasse und Kellner-App, in der Artikelliste sowie in der Gast-Karte"
         error={allergenFehler ?? undefined}
       >
-        <Input
-          placeholder="A, C, G"
-          autoCapitalize="characters"
-          autoComplete="off"
-          invalid={!!allergenFehler}
-          {...register('allergeneStr')}
+        <AllergenAuswahl
+          wert={watch('allergeneStr')}
+          onChange={(w) => setValue('allergeneStr', w, { shouldDirty: true })}
         />
-        <p className="mt-1 text-[11px] leading-snug text-ink-subtle">
-          {Object.entries(ALLERGEN_LABELS).map(([c, l]) => `${c} ${l}`).join(' · ')}
-        </p>
       </Field>
 
       <Field
