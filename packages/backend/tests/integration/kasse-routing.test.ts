@@ -126,9 +126,12 @@ describe('Kassen-Ausnahmen beim Bon-Routing (Integration, echtes PostgreSQL + TC
     expect(u.ausnahmen).toEqual([])
     const k = u.kassen[0] as unknown as Record<string, unknown>
     for (const feld of ['belegModus', 'druckerId', 'kdsAktiv', 'kdsPort', 'kdsStationen', 'startseite', 'gastModus',
+      'startFavoriten', 'startKategorieId',
       'sichtbareKategorieIds', 'sichtbareBonierdruckerIds', 'status', 'umgebung', 'beiFoRegistriert']) {
       expect(k, `Feld ${feld}`).toHaveProperty(feld)
     }
+    // Start der Artikelwahl: ohne Einstellung die Favoriten, keine feste Warengruppe
+    expect(k).toMatchObject({ startFavoriten: true, startKategorieId: null })
   })
 
   it('ohne Ausnahme gilt die allgemeine Vorgabe: Warengruppe → A, Artikel mit eigenem Drucker → B (an jeder Kasse)', async () => {
@@ -309,7 +312,7 @@ describe('Kassen-Ausnahmen beim Bon-Routing (Integration, echtes PostgreSQL + TC
       })).statusCode).toBe(200)
       expect((await srv.fastify.inject({
         method: 'PUT', url: `/api/kassen/${kasse2}/pos-config`, headers: auth(),
-        payload: { sichtbareKategorieIds: [getraenke], sichtbareBonierdruckerIds: [druckerB], startseite: 'kasse' },
+        payload: { sichtbareKategorieIds: [getraenke], sichtbareBonierdruckerIds: [druckerB], startseite: 'kasse', startFavoriten: false, startKategorieId: getraenke },
       })).statusCode).toBe(204)
       await ausnahmen([
         { kasseId: kasse2, kategorieId: getraenke, drucker: druckerB, station: 'schank' },
@@ -324,13 +327,15 @@ describe('Kassen-Ausnahmen beim Bon-Routing (Integration, echtes PostgreSQL + TC
       expect(res.statusCode, res.body).toBe(204)
 
       const [k3] = await idb.db.select().from(kassen).where(eq(kassen.id, kasse3))
-      expect(k3).toMatchObject({ druckerId: pool.id, belegModus: 'beides', kdsAktiv: true, kdsPort: 9300, startseite: 'kasse' })
+      expect(k3).toMatchObject({ druckerId: pool.id, belegModus: 'beides', kdsAktiv: true, kdsPort: 9300, startseite: 'kasse',
+        startFavoriten: false, startKategorieId: getraenke })
       expect(k3!.druckerAktiv).toBe(true)                       // Snapshot-Felder mitkopiert (der Druckpfad liest nur diese)
       expect(k3!.druckerIp).toBe('127.0.0.1')
 
       const u = (await uebersicht())
       const e3 = (await srv.fastify.inject({ method: 'GET', url: '/api/einrichtung', headers: auth() })).json().kassen.find((k: { id: string }) => k.id === kasse3)
       expect(e3.sichtbareKategorieIds).toEqual([getraenke])
+      expect(e3).toMatchObject({ startFavoriten: false, startKategorieId: getraenke })       // Start der Artikelwahl kommt mit
       expect(e3.sichtbareBonierdruckerIds).toEqual([druckerB])
       // Kasse 2 hat drei Ausnahmen (Getränke, Cola, dazu Radler → A aus dem Test oben): alle drei kommen an,
       // die frühere von Kasse 3 (Speisen → A, „keiner" bei Getränken …) ist ersetzt
@@ -380,6 +385,11 @@ describe('Kassen-Ausnahmen beim Bon-Routing (Integration, echtes PostgreSQL + TC
       const sicht = (await srv.fastify.inject({ method: 'GET', url: '/api/einrichtung', headers: fremd })).json()
       expect(sicht.kassen.map((k: { kassenId: string }) => k.kassenId)).toEqual(['FR-001'])
       expect(sicht.ausnahmen).toEqual([])
+
+      // Altbestand: eine Start-Warengruppe eines ANDEREN Mandanten darf in der Übersicht nie auftauchen
+      await idb.db.update(kassen).set({ startFavoriten: false, startKategorieId: speisen }).where(eq(kassen.id, login2.kassen[0].id))
+      const nachher = (await srv.fastify.inject({ method: 'GET', url: '/api/einrichtung', headers: fremd })).json()
+      expect(nachher.kassen[0]).toMatchObject({ startFavoriten: false, startKategorieId: null })
 
       // fremde Kasse / Warengruppe / Artikel / Drucker → 404 (Existenz bleibt unerkennbar)
       const eigeneKasse = login2.kassen[0].id

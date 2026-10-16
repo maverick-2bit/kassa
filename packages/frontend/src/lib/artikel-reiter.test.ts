@@ -188,3 +188,16 @@ describe('startReiter', () => {
     expect(startReiter({ ...nurSonstige, hatSonstige: false }, {})).toBeNull()
   })
 })
+
+describe('startReiter über die Re-Exporte: genau eine Warengruppe öffnet sich von selbst', () => {
+  const einzeln: ReiterLage = { hatFavoriten: true, hatSonstige: false, kategorieIds: ['kellner'], kategorieIdsMitArtikeln: ['kellner'] }
+
+  it('auch bei vorhandenen Favoriten und der Einstellung „Favoriten"', () => {
+    expect(startReiter(einzeln, {})).toBe('kellner')
+    expect(startReiter(einzeln, { startFavoriten: true })).toBe('kellner')
+  })
+
+  it('nur der ausdrückliche Wunsch (?tab=favoriten) geht vor', () => {
+    expect(startReiter(einzeln, {}, FAVORITEN_TAB_ID)).toBe(FAVORITEN_TAB_ID)
+  })
+})

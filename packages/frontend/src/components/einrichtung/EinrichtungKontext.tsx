@@ -24,7 +24,8 @@ export type KassePatch = Partial<Pick<EinrichtungKasse,
   | 'bezeichnung'
   | 'belegModus' | 'druckerId' | 'gastModus' | 'gastBasisUrl'
   | 'kdsAktiv' | 'kdsPort' | 'kdsStationen'
-  | 'startseite' | 'erlaubteZahlungsarten' | 'sichtbareKategorieIds' | 'sichtbareBonierdruckerIds'
+  | 'startseite' | 'startFavoriten' | 'startKategorieId'
+  | 'erlaubteZahlungsarten' | 'sichtbareKategorieIds' | 'sichtbareBonierdruckerIds'
 >>
 
 /** Verteilt die geänderten Felder auf die Endpunkte, die sie speichern (parallel). */
@@ -46,6 +47,8 @@ async function schreibeKassenPatch(kasseId: string, p: KassePatch): Promise<void
 
   const pos: Parameters<typeof posConfigApi.update>[1] = {}
   if (p.startseite                !== undefined) pos.startseite                = p.startseite
+  if (p.startFavoriten            !== undefined) pos.startFavoriten            = p.startFavoriten
+  if (p.startKategorieId          !== undefined) pos.startKategorieId          = p.startKategorieId
   if (p.erlaubteZahlungsarten     !== undefined) pos.erlaubteZahlungsarten     = p.erlaubteZahlungsarten
   if (p.sichtbareKategorieIds     !== undefined) pos.sichtbareKategorieIds     = p.sichtbareKategorieIds
   if (p.sichtbareBonierdruckerIds !== undefined) pos.sichtbareBonierdruckerIds = p.sichtbareBonierdruckerIds

@@ -1,6 +1,7 @@
 /**
- * Kassen — alle Kassen auf einen Blick, jede Zeile direkt bedienbar: Startseite, Belegausgabe,
- * Rechnungsdrucker, aktive Bonierdrucker und KDS an/aus. Alles Weitere (Bezeichnung, Zahlungsarten, Gast-
+ * Kassen — alle Kassen auf einen Blick, jede Zeile direkt bedienbar: Startseite, womit die Artikelwahl startet
+ * (Favoriten oder Warengruppe), Belegausgabe, Rechnungsdrucker, aktive Bonierdrucker und KDS an/aus.
+ * Alles Weitere (Bezeichnung, Zahlungsarten, Gast-
  * Bestellung, KDS-Adressen, Kartenterminal, Einrichtung übernehmen, Betrieb) klappt unter der Zeile auf.
  * Dazu: weitere Kassen anlegen — auch mehrere auf einmal.
  *
@@ -10,8 +11,8 @@
 
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { type EinrichtungKasse, type Startseite } from '@kassa/shared'
-import { bonierdruckerApi, druckerPoolApi } from '../../lib/api'
+import { type EinrichtungKasse, type Kategorie, type Startseite } from '@kassa/shared'
+import { bonierdruckerApi, druckerPoolApi, kategorieApi } from '../../lib/api'
 import { getKasseIdentity } from '../../lib/kasse'
 import { kassenName } from '../../lib/einrichtung'
 import { wechsleKasse } from '../../lib/kassenWechsel'
@@ -20,6 +21,7 @@ import { Schalter } from '../ui/Schalter'
 import { useEinrichtung } from './EinrichtungKontext'
 import { KasseDetails } from './KasseDetails'
 import { NeueKasseFormular } from './NeueKasseFormular'
+import { StartReiterAuswahl } from './StartReiterAuswahl'
 
 type Meldung = { typ: 'ok' | 'fehler'; text: string }
 
@@ -43,7 +45,10 @@ export function KassenSektion() {
   const umschalten = (id: string) =>
     setOffen(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
 
-  const spalten = istGastro ? 7 : 6
+  // Aktive Warengruppen für die Auswahl „Artikelwahl startet mit" (derselbe Schlüssel wie die anderen Abschnitte)
+  const kategorienQuery = useQuery({ queryKey: ['kategorien'], queryFn: () => kategorieApi.list(true) })
+
+  const spalten = istGastro ? 8 : 7
 
   return (
     <section id="einrichtung-kassen" className="rounded-lg bg-panel shadow-sm border border-line p-6 space-y-4">
@@ -89,6 +94,7 @@ export function KassenSektion() {
               <tr className="text-left text-xs font-medium">
                 <th className="px-3 py-2">Kasse</th>
                 <th className="px-3 py-2">Startseite</th>
+                <th className="px-3 py-2" title="Mit welchem Reiter die Artikelwahl öffnet: Favoriten oder eine Warengruppe (Direktverkauf, Tische, Kellner-App)">Artikelwahl startet mit</th>
                 <th className="px-3 py-2">Belegausgabe</th>
                 <th className="px-3 py-2">Rechnungsdrucker</th>
                 {istGastro && <th className="px-3 py-2">Bonierdrucker (Küche/Schank)</th>}
@@ -101,6 +107,8 @@ export function KassenSektion() {
                 key={k.id}
                 kasse={k}
                 spalten={spalten}
+                kategorien={kategorienQuery.data ?? []}
+                kategorienGeladen={!kategorienQuery.isLoading}
                 istDiesesGeraet={k.id === identity?.kasseId}
                 detailsOffen={offen.has(k.id)}
                 onDetails={() => umschalten(k.id)}
@@ -115,9 +123,11 @@ export function KassenSektion() {
   )
 }
 
-function KasseZeile({ kasse: k, spalten, istDiesesGeraet, detailsOffen, onDetails, onWechseln, onMeldung }: {
+function KasseZeile({ kasse: k, spalten, kategorien, kategorienGeladen, istDiesesGeraet, detailsOffen, onDetails, onWechseln, onMeldung }: {
   kasse:           EinrichtungKasse
   spalten:         number
+  kategorien:      readonly Kategorie[]
+  kategorienGeladen: boolean
   istDiesesGeraet: boolean
   detailsOffen:    boolean
   onDetails:       () => void
@@ -148,7 +158,7 @@ function KasseZeile({ kasse: k, spalten, istDiesesGeraet, detailsOffen, onDetail
   return (
     <tbody data-testid={`kasse-zeile-${k.kassenId}`} className="border-t border-line first:border-t-0">
       <tr className={`${istDiesesGeraet && !stillgelegt ? 'bg-brand-50' : ''} ${stillgelegt ? 'bg-panel-2/60' : ''} align-top`}>
-        <td className={`px-3 py-2.5 min-w-[12rem] ${stillgelegt ? 'opacity-70' : ''}`}>
+        <td className={`px-3 py-2.5 min-w-[10rem] ${stillgelegt ? 'opacity-70' : ''}`}>
           <p className="font-medium text-ink">
             {name}
             {istDiesesGeraet && !stillgelegt && <span className="ml-2 text-xs font-semibold text-brand-700">● aktiv</span>}
@@ -180,6 +190,17 @@ function KasseZeile({ kasse: k, spalten, istDiesesGeraet, detailsOffen, onDetail
               </select>
             </td>
             <td className="px-3 py-2.5">
+              <StartReiterAuswahl
+                kasse={k}
+                name={name}
+                kategorien={kategorien}
+                geladen={kategorienGeladen}
+                speichern={speichern}
+                // Lange Gruppennamen (mit Pfad) sollen die Spalte nicht aufblähen
+                className={`${ZELLEN_AUSWAHL} max-w-[10.5rem]`}
+              />
+            </td>
+            <td className="px-3 py-2.5">
               <select
                 aria-label={`Belegausgabe ${name}`}
                 className={ZELLEN_AUSWAHL}
@@ -205,7 +226,7 @@ function KasseZeile({ kasse: k, spalten, istDiesesGeraet, detailsOffen, onDetail
               </select>
             </td>
             {istGastro && (
-              <td className="px-3 py-2.5 min-w-[13rem]">
+              <td className="px-3 py-2.5 min-w-[11rem]">
                 {bonier.length === 0 ? (
                   <span className="text-xs text-ink-subtle">Noch kein Bonierdrucker angelegt.</span>
                 ) : (

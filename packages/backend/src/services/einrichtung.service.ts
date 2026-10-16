@@ -63,6 +63,11 @@ export async function ladeEinrichtung(db: Db, mandantId: string): Promise<Einric
     .from(kasseRouting)
     .where(eq(kasseRouting.mandantId, mandantId))
 
+  // Die Start-Warengruppe einer Kasse zählt nur, wenn sie zu diesem Mandanten gehört (fremde ID = Altbestand)
+  const eigeneKategorien = new Set(
+    (await db.select({ id: kategorien.id }).from(kategorien).where(eq(kategorien.mandantId, mandantId))).map(r => r.id),
+  )
+
   const kategorienJeKasse = new Map<string, string[]>()
   for (const r of sichtKategorien) kategorienJeKasse.set(r.kasseId, [...(kategorienJeKasse.get(r.kasseId) ?? []), r.kategorieId])
   const druckerJeKasse = new Map<string, string[]>()
@@ -90,6 +95,9 @@ export async function ladeEinrichtung(db: Db, mandantId: string): Promise<Einric
 
     startseite:            k.startseite as EinrichtungKasse['startseite'],
     erlaubteZahlungsarten: k.erlaubteZahlungsarten as EinrichtungKasse['erlaubteZahlungsarten'],
+
+    startFavoriten:   k.startFavoriten,
+    startKategorieId: k.startKategorieId && eigeneKategorien.has(k.startKategorieId) ? k.startKategorieId : null,
 
     sichtbareKategorieIds:     kategorienJeKasse.get(k.id) ?? [],
     sichtbareBonierdruckerIds: druckerJeKasse.get(k.id) ?? [],
@@ -202,7 +210,7 @@ export async function setzeRoutingAusnahmen(db: Db, mandantId: string, aenderung
 /**
  * Übernimmt die Einrichtung einer Kasse auf eine andere — damit eine neue Kasse „wie Kasse 3" startet.
  * Übernommen werden: sichtbare Warengruppen, aktive Bonierdrucker, Kassen-Ausnahmen (Warengruppen und
- * Artikel), Rechnungsdrucker, Belegausgabe, KDS (aktiv, Port, TCP-Stationen), Startseite, Zahlungsarten
+ * Artikel), Rechnungsdrucker, Belegausgabe, KDS (aktiv, Port, TCP-Stationen), Startseite, Start-Reiter, Zahlungsarten
  * und die Gast-Bestellung. NICHT übernommen: Kartenterminal (ein Gerät gehört einer Kasse), Favoriten,
  * Artikel-Anordnung und Kellner-App-Einstellungen.
  */
@@ -232,6 +240,8 @@ export async function kopiereEinrichtung(db: Db, mandantId: string, zielKasseId:
       kdsPort:           von.kdsPort,
       kdsStationen:      von.kdsStationen,
       startseite:        von.startseite,
+      startFavoriten:    von.startFavoriten,
+      startKategorieId:  von.startKategorieId,
       erlaubteZahlungsarten: von.erlaubteZahlungsarten,
       gastModus:         von.gastModus,
       gastBasisUrl:      von.gastBasisUrl,

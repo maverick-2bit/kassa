@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
-import { allergeneAnzeige, artikelErlaubt, ausgeblendeteArtikelIds, farbeZuHex, kategorieAnzeigeNamen, kompakteArtikelListe, sichtbareGruppenFlach, sichtbarkeitsMengen, type Artikel, type Kategorie, type ModifikatorGruppe, type ModifikatorAuswahl } from '@kassa/shared'
+import { allergeneAnzeige, artikelErlaubt, ausgeblendeteArtikelIds, FAVORITEN_TAB_ID, farbeZuHex, kategorieAnzeigeNamen, kompakteArtikelListe, sichtbareGruppenFlach, sichtbarkeitsMengen, startReiter, type Artikel, type Kategorie, type ModifikatorGruppe, type ModifikatorAuswahl } from '@kassa/shared'
 import { artikelApi, kategorieApi, modifikatorApi, tischTabApi, kellnerKonfigApi } from '../lib/api'
 import { getAuth, clearAuth, gaengeAktiv as istGaengeAktiv, gaengeAnzahl } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
@@ -35,8 +35,8 @@ function reiterBeschriftungen(alle: Kategorie[]): Map<string, string> {
   return new Map(alle.map(k => [k.id, anzeigeName(k.id)] as const))
 }
 
-/** Pseudo-Kategorie-ID für den Favoriten-Reiter (kollidiert mit keiner UUID). */
-const FAVORITEN_KAT = '__favoriten__'
+/** Pseudo-Kategorie-ID für den Favoriten-Reiter (kollidiert mit keiner UUID) — dieselbe wie an Kasse und Tisch. */
+const FAVORITEN_KAT = FAVORITEN_TAB_ID
 
 // gruppeId → (modId → menge)
 type ModMengenMap = Map<string, Map<string, number>>
@@ -136,15 +136,20 @@ export function ArtikelWaehlenPage() {
 
   // Start-Reiter erst wählen, wenn Konfiguration UND Artikel da sind — sonst
   // gewinnt die erste Warengruppe, weil die Favoritenliste noch leer scheint.
-  // Welcher Reiter zuerst kommt, stellt die POS-Konfiguration je Kasse ein.
+  // Welcher Reiter zuerst kommt, stellt die Kasse selbst ein (Einstellungen → Kassen & Drucker); hat sie nur EINE
+  // Warengruppe, öffnet die sich von selbst. Dieselbe Regel wie an Kasse und Tisch: @kassa/shared (start-reiter).
   if (aktivKat === null && !konfigQuery.isLoading && !artikelQuery.isLoading && !katQuery.isLoading && !favoritenQuery.isLoading && !layoutsQuery.isLoading) {
-    const startKat = konfigQuery.data?.startKategorieId
     const mitArtikeln = kategorien.filter(k => alleArtikel.some(a => a.kategorieId === k.id && !ausgeblendet.has(a.id)))
-    if (favoritenAktiv && (konfigQuery.data?.startFavoriten ?? true)) setAktivKat(FAVORITEN_KAT)
-    else if (startKat && kategorien.some(k => k.id === startKat)) setAktivKat(startKat)
-    else if (mitArtikeln.length > 0) setAktivKat(mitArtikeln[0]!.id)
-    else if (favoritenAktiv) setAktivKat(FAVORITEN_KAT)
-    else if (kategorien.length > 0) setAktivKat(kategorien[0]!.id)
+    const start = startReiter(
+      {
+        hatFavoriten: favoritenAktiv,
+        hatSonstige:  false,
+        kategorieIds: kategorien.map(k => k.id),
+        kategorieIdsMitArtikeln: mitArtikeln.map(k => k.id),
+      },
+      { startFavoriten: konfigQuery.data?.startFavoriten, startKategorieId: konfigQuery.data?.startKategorieId },
+    )
+    if (start) setAktivKat(start)
   }
 
   const artikelInKat: (Artikel | null)[] = aktivKat === FAVORITEN_KAT

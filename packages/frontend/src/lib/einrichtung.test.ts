@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { RoutingAusnahme } from '@kassa/shared'
+import type { Kategorie, RoutingAusnahme } from '@kassa/shared'
 import {
   ausnahmenNachZelle,
   wendeAenderungenAn,
@@ -10,6 +10,9 @@ import {
   naechsteKassenIds,
   routingAenderung,
   routingJeKasse,
+  startReiterAuswahl,
+  startReiterFelder,
+  startReiterWert,
   zellenSchluessel,
   zellenWert,
 } from './einrichtung'
@@ -198,5 +201,70 @@ describe('kassenIdsFolge: mehrere Kassen auf einmal anlegen', () => {
 
   it('ohne Endnummer: -1, -2, … angehängt', () => {
     expect(kassenIdsFolge('BAR', 2)).toEqual(['BAR-1', 'BAR-2'])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Start-Reiter der Artikelwahl (Spalte „Artikelwahl startet mit")
+// ---------------------------------------------------------------------------
+
+describe('startReiterWert / startReiterFelder: Auswahl ↔ gespeicherte Felder', () => {
+  it('Favoriten, erste Warengruppe und eine bestimmte Warengruppe — hin und zurück', () => {
+    expect(startReiterWert({ startFavoriten: true,  startKategorieId: null })).toBe('favoriten')
+    expect(startReiterWert({ startFavoriten: false, startKategorieId: null })).toBe('erste')
+    expect(startReiterWert({ startFavoriten: false, startKategorieId: 'g1' })).toBe('g1')
+
+    for (const wert of ['favoriten', 'erste', 'g1']) {
+      expect(startReiterWert(startReiterFelder(wert))).toBe(wert)
+    }
+  })
+
+  it('Favoriten setzen die Warengruppe zurück; eine Warengruppe schaltet die Favoriten ab', () => {
+    expect(startReiterFelder('favoriten')).toEqual({ startFavoriten: true,  startKategorieId: null })
+    expect(startReiterFelder('erste')).toEqual({ startFavoriten: false, startKategorieId: null })
+    expect(startReiterFelder('g1')).toEqual({ startFavoriten: false, startKategorieId: 'g1' })
+  })
+
+  it('solange die Favoriten an sind, zählt eine alte Warengruppe nicht', () => {
+    expect(startReiterWert({ startFavoriten: true, startKategorieId: 'g1' })).toBe('favoriten')
+  })
+})
+
+describe('startReiterAuswahl: was eine Kasse als Reiter zeigt', () => {
+  const k = (id: string, name: string, o: Partial<Kategorie> = {}) =>
+    ({ id, name, reihenfolge: 0, aktiv: true, parentId: null, ...o }) as Kategorie
+  const kategorien = [
+    k('kg', 'Kellner Getränke', { reihenfolge: 0 }),
+    k('bier', 'Bier', { parentId: 'kg' }),
+    k('ks', 'Kellner Speisen', { reihenfolge: 1 }),
+    k('buero', 'Büro', { reihenfolge: 2 }),
+  ]
+
+  it('ohne Einschränkung: alle Warengruppen in Baumreihenfolge mit Pfad, die Hauptgruppen als Reiter', () => {
+    const a = startReiterAuswahl(kategorien, [])
+    expect(a.gruppen.map(g => g.pfad)).toEqual(['Kellner Getränke', 'Kellner Getränke › Bier', 'Kellner Speisen', 'Büro'])
+    expect(a.reiter.map(r => r.id)).toEqual(['kg', 'ks', 'buero'])
+  })
+
+  it('an einer Kasse mit eingeschränkten Warengruppen: nur die dort erreichbaren', () => {
+    const a = startReiterAuswahl(kategorien, ['ks', 'buero'])
+    expect(a.gruppen.map(g => g.id)).toEqual(['ks', 'buero'])
+    expect(a.reiter.map(r => r.id)).toEqual(['ks', 'buero'])
+  })
+
+  it('genau EINE Warengruppe → genau ein Reiter (sie öffnet sich von selbst)', () => {
+    expect(startReiterAuswahl(kategorien, ['kg']).reiter.map(r => r.id)).toEqual(['kg'])
+    expect(startReiterAuswahl([k('allein', 'Allein')], []).reiter.map(r => r.id)).toEqual(['allein'])
+  })
+
+  it('eine Untergruppe als einzige gewählt: ihre Hauptgruppe ist der eine Reiter (Zugang)', () => {
+    const a = startReiterAuswahl(kategorien, ['bier'])
+    expect(a.reiter.map(r => r.id)).toEqual(['kg'])
+    expect(a.gruppen.map(g => g.pfad)).toEqual(['Kellner Getränke', 'Kellner Getränke › Bier'])
+  })
+
+  it('inaktive Warengruppen zählen nicht', () => {
+    const a = startReiterAuswahl([k('a', 'A'), k('b', 'B', { aktiv: false })], [])
+    expect(a.reiter.map(r => r.id)).toEqual(['a'])
   })
 })

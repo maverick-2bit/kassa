@@ -436,7 +436,8 @@ function TabWarengruppen({
         </label>
         <p className="text-xs text-ink-subtle">
           Gilt an dieser Kasse für Direktverkauf, Tische und die Kellner-App. Gibt es keine Favoriten
-          (bzw. ist die Warengruppe ausgeblendet), öffnet die erste Warengruppe mit Artikeln.
+          (bzw. ist die Warengruppe ausgeblendet), öffnet die erste Warengruppe mit Artikeln. Hat die Kasse nur
+          eine Warengruppe, öffnet sich immer diese. Einstellbar auch unter Einstellungen → Kassen &amp; Drucker.
           {startGruppeAusgeblendet && ' Die gewählte Warengruppe ist an dieser Kasse gerade ausgeblendet.'}
         </p>
       </div>
