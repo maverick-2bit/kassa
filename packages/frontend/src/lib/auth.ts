@@ -5,6 +5,8 @@
 
 import { normalisiereRegel } from '@kassa/shared'
 import type { Berechtigung, LoginResponse, MandantModul, PinLaenge, TagesbeginnEintrag, TagesRegel } from '@kassa/shared'
+import { getKasseIdentity } from './kasse'
+import { merkeAnmeldung, verwirfSitzungen, type AktiveSitzung } from './konten'
 
 const KEY_TOKEN = 'kassa:token'
 const KEY_AUTH  = 'kassa:auth'
@@ -36,7 +38,17 @@ export function getAuth(): AuthState | null {
   }
 }
 
-export function setAuth(login: LoginResponse): void {
+/** Die angemeldete Sitzung samt Kasse dieses Geräts — in der Form, die lib/konten.ts zum Zur-Seite-Legen braucht. */
+export function aktiveSitzung(): AktiveSitzung | null {
+  const auth = getAuth()
+  if (!auth) return null
+  return {
+    sitzung: { token: auth.token, user: auth.user, mandant: auth.mandant, kassen: auth.kassen },
+    kasseId: getKasseIdentity()?.kasseId ?? null,
+  }
+}
+
+function schreibeSitzung(login: LoginResponse): void {
   localStorage.setItem(KEY_TOKEN, login.token)
   localStorage.setItem(KEY_AUTH, JSON.stringify({
     user:    login.user,
@@ -45,6 +57,29 @@ export function setAuth(login: LoginResponse): void {
   }))
   if (login.geraetToken) localStorage.setItem(KEY_GERAET, login.geraetToken)
   if (login.mandant.pinLaenge) merkePinLaenge(login.mandant.pinLaenge)
+}
+
+export function setAuth(login: LoginResponse): void {
+  // Zuerst die Konten-Liste: sie legt die bisherige (noch nicht überschriebene) Sitzung zur Seite — oder verwirft sie
+  merkeAnmeldung(login, aktiveSitzung(), getKasseIdentity()?.kasseId ?? null)
+  schreibeSitzung(login)
+}
+
+/** Eine zur Seite gelegte Sitzung wieder aktivieren (Mandanten-Wechsel) — die Konten-Liste bleibt unberührt. */
+export function aktiviereSitzung(sitzung: LoginResponse): void {
+  schreibeSitzung(sitzung)
+}
+
+/** Die aktive Sitzung beenden, OHNE gemerkte Sitzungen anderer Mandanten zu verwerfen (Wechsel zu einem Mandanten, der sich anmelden muss). */
+export function verlasseSitzung(): void {
+  localStorage.removeItem(KEY_TOKEN)
+  localStorage.removeItem(KEY_AUTH)
+}
+
+/** Das Geräte-Merkmal des Mandanten setzen, auf den das Gerät wechselt (null = keins bekannt). */
+export function setGeraetToken(token: string | null): void {
+  if (token) localStorage.setItem(KEY_GERAET, token)
+  else localStorage.removeItem(KEY_GERAET)
 }
 
 /** Geräte-Merkmal fürs Mitschicken bei PIN-Login und Stempeln (undefined = fremdes Gerät). */
@@ -79,9 +114,11 @@ export function updateMandantPinLaenge(laenge: PinLaenge): void {
   }))
 }
 
+/** Abmelden (und bei abgelaufenem Token): die Sitzung endet — und mit ihr alle gemerkten Sitzungen anderer Mandanten. */
 export function clearAuth(): void {
   localStorage.removeItem(KEY_TOKEN)
   localStorage.removeItem(KEY_AUTH)
+  verwirfSitzungen()
 }
 
 export function getToken(): string | null {
