@@ -21,6 +21,8 @@ export const LayoutOptionsgruppeSchema = z.object({
   exakterName: z.boolean().optional(),
   /** Kassa-Export: genaue Obergrenze der Auswahl (null = unbegrenzt); fehlt sie, gilt `mehrfach` */
   maxAuswahl: z.number().int().positive().nullable().optional(),
+  /** Jede gewählte Option (samt Anzahl) wird an der Kasse eine eigene Position (z. B. 3 Spritzer statt 1 mit 3 Optionen) */
+  jeAuswahlArtikel: z.boolean().optional(),
   optionen: z.array(z.object({
     name:          z.string().trim().min(1).max(100),
     /** Aufschlag in Cent, kann negativ sein („Ohne Soda") */

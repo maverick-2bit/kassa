@@ -387,6 +387,9 @@ function GruppeDetail({
           {gruppe.maxAuswahl && (
             <p className="text-sm text-ink-muted mt-1">Maximal {gruppe.maxAuswahl} Auswahl</p>
           )}
+          {gruppe.jeAuswahlArtikel && (
+            <p className="text-sm text-ink-muted mt-1">Jede Auswahl wird ein eigener Artikel</p>
+          )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <Button variant="secondary" onClick={onGruppeBearbeiten}>Bearbeiten</Button>
@@ -669,12 +672,14 @@ function GruppeFormModal({
   const [name,       setName]       = useState('')
   const [typ,        setTyp]        = useState<'pflicht' | 'optional'>('optional')
   const [maxAuswahl, setMaxAuswahl] = useState<string>('')
+  const [jeAuswahl,  setJeAuswahl]  = useState(false)
 
   useEffect(() => {
     if (open) {
       setName(editing?.name ?? '')
       setTyp(editing?.typ ?? 'optional')
       setMaxAuswahl(editing?.maxAuswahl?.toString() ?? '')
+      setJeAuswahl(editing?.jeAuswahlArtikel ?? false)
     }
   }, [open, editing])
 
@@ -685,6 +690,7 @@ function GruppeFormModal({
       name: name.trim(),
       typ,
       maxAuswahl: max && max > 0 ? max : null,
+      jeAuswahlArtikel: jeAuswahl,
     })
   }
 
@@ -741,6 +747,24 @@ function GruppeFormModal({
             placeholder="z. B. 1 für Radio-Buttons"
           />
         </div>
+
+        <label className="flex items-start gap-3 cursor-pointer rounded-lg border border-line p-3">
+          <input
+            type="checkbox"
+            data-testid="je-auswahl-artikel"
+            className="mt-0.5 h-4 w-4 rounded border-line-strong text-brand-600 focus:ring-brand-500"
+            checked={jeAuswahl}
+            onChange={e => setJeAuswahl(e.target.checked)}
+          />
+          <div>
+            <p className="text-sm font-medium text-ink">Jede Auswahl = eigener Artikel</p>
+            <p className="text-xs text-ink-subtle">
+              Für Varianten wie „süß / Sommer / weiß" beim Spritzer: Wer drei Optionen wählt, bekommt drei Getränke
+              (und 2× „weiß" antippen = zwei Getränke) statt einem Artikel mit drei Optionen. Aus: alle gewählten
+              Optionen hängen an einem Artikel (z. B. „mit Senf" und „mit Kren").
+            </p>
+          </div>
+        </label>
 
         <div className="flex gap-2 pt-1">
           <Button variant="secondary" onClick={onClose} className="flex-1">Abbrechen</Button>

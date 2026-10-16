@@ -67,6 +67,7 @@ async function fetchGruppenMitModifikatoren(
     name:        g.name,
     typ:         g.typ as 'pflicht' | 'optional',
     maxAuswahl:  g.maxAuswahl,
+    jeAuswahlArtikel: g.jeAuswahlArtikel,
     reihenfolge: g.reihenfolge,
     aktiv:       g.aktiv,
     createdAt:   g.createdAt.toISOString(),
@@ -106,6 +107,7 @@ export async function erstelleGruppe(
       name:        input.name,
       typ:         input.typ,
       maxAuswahl:  input.maxAuswahl ?? null,
+      jeAuswahlArtikel: input.jeAuswahlArtikel ?? false,
       reihenfolge: input.reihenfolge,
     })
     .returning()
@@ -117,6 +119,7 @@ export async function erstelleGruppe(
     name:          row.name,
     typ:           row.typ as 'pflicht' | 'optional',
     maxAuswahl:    row.maxAuswahl,
+    jeAuswahlArtikel: row.jeAuswahlArtikel,
     reihenfolge:   row.reihenfolge,
     aktiv:         row.aktiv,
     modifikatoren: [],
@@ -142,6 +145,7 @@ export async function aktualisiereGruppe(
   if (input.name        !== undefined) updates.name        = input.name
   if (input.typ         !== undefined) updates.typ         = input.typ
   if (input.maxAuswahl  !== undefined) updates.maxAuswahl  = input.maxAuswahl
+  if (input.jeAuswahlArtikel !== undefined) updates.jeAuswahlArtikel = input.jeAuswahlArtikel
   if (input.reihenfolge !== undefined) updates.reihenfolge = input.reihenfolge
   if (input.aktiv       !== undefined) updates.aktiv       = input.aktiv
 
@@ -354,7 +358,7 @@ export async function ordneOptionsgruppeZu(
   mandantId: string,
   kontext: OptionenKontext,
   artikelId: string,
-  e: { name: string; typ: 'pflicht' | 'optional'; maxAuswahl: number | null; optionen: { name: string; aufschlagCent: number }[] },
+  e: { name: string; typ: 'pflicht' | 'optional'; maxAuswahl: number | null; jeAuswahlArtikel?: boolean | undefined; optionen: { name: string; aufschlagCent: number }[] },
   zaehler: { gruppenNeu: number; gruppenWiederverwendet: number; zuweisungenNeu: number },
 ): Promise<void> {
   const schluessel = gruppenSchluessel(e)
@@ -363,7 +367,7 @@ export async function ordneOptionsgruppeZu(
     if (!kontext.wiederverwendet.has(gruppeId)) { kontext.wiederverwendet.add(gruppeId); zaehler.gruppenWiederverwendet++ }
   } else {
     const [g] = await tx.insert(modifikatorGruppen)
-      .values({ mandantId, name: e.name, typ: e.typ, maxAuswahl: e.maxAuswahl })
+      .values({ mandantId, name: e.name, typ: e.typ, maxAuswahl: e.maxAuswahl, jeAuswahlArtikel: e.jeAuswahlArtikel ?? false })
       .returning({ id: modifikatorGruppen.id })
     gruppeId = g!.id
     await tx.insert(modifikatoren).values(e.optionen.map((o, i) => ({

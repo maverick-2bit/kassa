@@ -923,6 +923,8 @@ export const modifikatorGruppen = pgTable('modifikator_gruppen', {
   typ:         varchar('typ', { length: 20 }).notNull().default('optional'),
   /** Maximale Anzahl auswählbarer Optionen (null = unbegrenzt) */
   maxAuswahl:  integer('max_auswahl'),
+  /** true = jede gewählte Option (samt Anzahl) wird eine eigene Position (z. B. 3 Spritzer statt 1 mit 3 Optionen) */
+  jeAuswahlArtikel: boolean('je_auswahl_artikel').notNull().default(false),
   reihenfolge: integer('reihenfolge').notNull().default(0),
   aktiv:       boolean('aktiv').notNull().default(true),
   createdAt:   timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
-import { allergeneAnzeige, artikelErlaubt, ausgeblendeteArtikelIds, FAVORITEN_TAB_ID, farbeZuHex, fragtNachOptionen, warengruppenWahl, kategorieAnzeigeNamen, kompakteArtikelListe, sichtbareGruppenFlach, sichtbarkeitsMengen, startReiter, type Artikel, type Kategorie, type ModifikatorGruppe, type ModifikatorAuswahl } from '@kassa/shared'
+import { allergeneAnzeige, artikelErlaubt, baueAuswahlPositionen, ausgeblendeteArtikelIds, FAVORITEN_TAB_ID, farbeZuHex, fragtNachOptionen, warengruppenWahl, kategorieAnzeigeNamen, kompakteArtikelListe, sichtbareGruppenFlach, sichtbarkeitsMengen, startReiter, type Artikel, type Kategorie, type ModifikatorGruppe, type ModifikatorAuswahl } from '@kassa/shared'
 import { artikelApi, kategorieApi, modifikatorApi, tischTabApi, kellnerKonfigApi } from '../lib/api'
 import { getAuth, clearAuth, gaengeAktiv as istGaengeAktiv, gaengeAnzahl } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
@@ -267,31 +267,17 @@ export function ArtikelWaehlenPage() {
       }
     }
 
-    const mods: ModifikatorAuswahl[] = []
-    for (const g of aktuelleGruppen) {
-      const gruppeMap = modMengen.get(g.id)
-      if (!gruppeMap) continue
-      for (const [modId, menge] of gruppeMap) {
-        if (menge === 0) continue
-        const mod = g.modifikatoren.find(m => m.id === modId)
-        if (mod) mods.push({
-          modifikatorId: mod.id,
-          gruppeId:      g.id,
-          gruppeName:    g.name,
-          name:          mod.name,
-          aufschlagCent: mod.aufschlagCent,
-          menge,
-        })
-      }
+    // Normal eine Position mit allen Optionen; bei „Jede Auswahl = eigener Artikel" (z. B. Spritzer süß/Sommer/weiß)
+    // eine Position je gewählter Option mit deren Anzahl (@kassa/shared baueAuswahlPositionen)
+    for (const p of baueAuswahlPositionen(aktuelleGruppen, modMengen)) {
+      // Gesamtaufschlag: Aufschlag × Menge pro Mod
+      const aufschlag = p.modifikatoren.reduce((s, m) => s + m.aufschlagCent * (m.menge ?? 1), 0)
+      addToKorb(
+        { ...aktuellerArtikel, preisBruttoCent: aktuellerArtikel.preisBruttoCent + aufschlag },
+        artikelMenge * p.menge,
+        p.modifikatoren,
+      )
     }
-
-    // Gesamtaufschlag: Aufschlag × Menge pro Mod
-    const aufschlag = mods.reduce((s, m) => s + m.aufschlagCent * (m.menge ?? 1), 0)
-    addToKorb(
-      { ...aktuellerArtikel, preisBruttoCent: aktuellerArtikel.preisBruttoCent + aufschlag },
-      artikelMenge,
-      mods,
-    )
     setFehler(null)
     return true
   }
@@ -411,6 +397,9 @@ export function ArtikelWaehlenPage() {
                     <span className="text-xs bg-panel-2 text-ink-subtle px-2 py-0.5 rounded-full">
                       Optional
                     </span>
+                  )}
+                  {g.jeAuswahlArtikel && (
+                    <span className="text-xs text-ink-subtle">· jede Auswahl = eigener Artikel</span>
                   )}
                   {g.maxAuswahl !== null && (
                     <span className="text-xs text-ink-subtle ml-auto">

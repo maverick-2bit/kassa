@@ -24,6 +24,10 @@ describe('modifikatorAufschlagCent / positionsPreisCent', () => {
     expect(positionsPreisCent(990, [{ aufschlagCent: 150 }, { aufschlagCent: 50 }])).toBe(1190)
     expect(positionsPreisCent(990, [])).toBe(990)
   })
+  it('eine mehrfach gewählte Option (menge) zählt entsprechend oft — ohne menge einmal', () => {
+    expect(modifikatorAufschlagCent([{ aufschlagCent: 50, menge: 3 }, { aufschlagCent: 100 }])).toBe(250)
+    expect(positionsPreisCent(300, [{ aufschlagCent: 50, menge: 2 }])).toBe(400)
+  })
 })
 
 describe('warenkorbSummeCent', () => {

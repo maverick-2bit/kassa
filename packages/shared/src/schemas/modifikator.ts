@@ -26,6 +26,8 @@ export const ModifikatorGruppeSchema = z.object({
   name:        z.string(),
   typ:         ModifikatorGruppeTypSchema,
   maxAuswahl:  z.number().int().nullable(),
+  /** true = jede gewählte Option (samt Anzahl) wird eine eigene Position (z. B. 3 Spritzer statt 1 mit 3 Optionen) */
+  jeAuswahlArtikel: z.boolean(),
   reihenfolge: z.number().int(),
   aktiv:       z.boolean(),
   modifikatoren: z.array(ModifikatorSchema),
@@ -42,6 +44,7 @@ export const ModifikatorGruppeErstellenSchema = z.object({
   name:        z.string().trim().min(1).max(100),
   typ:         ModifikatorGruppeTypSchema.default('optional'),
   maxAuswahl:  z.number().int().positive().nullable().default(null),
+  jeAuswahlArtikel: z.boolean().optional(),
   reihenfolge: z.number().int().nonnegative().default(0),
 })
 export type ModifikatorGruppeErstellen = z.infer<typeof ModifikatorGruppeErstellenSchema>
@@ -50,6 +53,7 @@ export const ModifikatorGruppeAktualisierenSchema = z.object({
   name:        z.string().trim().min(1).max(100).optional(),
   typ:         ModifikatorGruppeTypSchema.optional(),
   maxAuswahl:  z.number().int().positive().nullable().optional(),
+  jeAuswahlArtikel: z.boolean().optional(),
   reihenfolge: z.number().int().nonnegative().optional(),
   aktiv:       z.boolean().optional(),
 })
