@@ -142,6 +142,8 @@ export interface KellnerKonfig {
   startFavoriten:        boolean
   /** Sonst mit dieser Warengruppe (null = erste mit Artikeln) */
   startKategorieId:      string | null
+  /** Direktverkauf (Theken-Modus): Optionen/Varianten abfragen — Warengruppe/Artikel können abweichen */
+  optionenAbfrage:       boolean
 }
 
 /** Favoriten-Eintrag dieser Kasse; artikelId null = Platzhalter (graue Kachel). */

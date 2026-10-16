@@ -48,7 +48,7 @@ export function KassenSektion() {
   // Aktive Warengruppen für die Auswahl „Artikelwahl startet mit" (derselbe Schlüssel wie die anderen Abschnitte)
   const kategorienQuery = useQuery({ queryKey: ['kategorien'], queryFn: () => kategorieApi.list(true) })
 
-  const spalten = istGastro ? 8 : 7
+  const spalten = istGastro ? 9 : 8
 
   return (
     <section id="einrichtung-kassen" className="rounded-lg bg-panel shadow-sm border border-line p-6 space-y-4">
@@ -95,6 +95,7 @@ export function KassenSektion() {
                 <th className="px-3 py-2">Kasse</th>
                 <th className="px-3 py-2">Startseite</th>
                 <th className="px-3 py-2" title="Mit welchem Reiter die Artikelwahl öffnet: Favoriten oder eine Warengruppe (Direktverkauf, Tische, Kellner-App)">Artikelwahl startet mit</th>
+                <th className="px-3 py-2" title="Ob im Direktverkauf (Kasse, Kellner-App im Theken-Modus) nach Optionen/Varianten gefragt wird. Warengruppen und Artikel können abweichen (dort einstellbar); Tisch-Bestellungen fragen immer.">Optionen im Direktverkauf</th>
                 <th className="px-3 py-2">Belegausgabe</th>
                 <th className="px-3 py-2">Rechnungsdrucker</th>
                 {istGastro && <th className="px-3 py-2">Bonierdrucker (Küche/Schank)</th>}
@@ -199,6 +200,17 @@ function KasseZeile({ kasse: k, spalten, kategorien, kategorienGeladen, istDiese
                 // Lange Gruppennamen (mit Pfad) sollen die Spalte nicht aufblähen
                 className={`${ZELLEN_AUSWAHL} max-w-[10.5rem]`}
               />
+            </td>
+            <td className="px-3 py-2.5">
+              <select
+                aria-label={`Optionen im Direktverkauf ${name}`}
+                className={ZELLEN_AUSWAHL}
+                value={k.optionenAbfrage ? 'fragen' : 'nie'}
+                onChange={e => void speichern(k.id, { optionenAbfrage: e.target.value === 'fragen' })}
+              >
+                <option value="fragen" title="Pur/gespritzt usw. wird beim Hinzufügen abgefragt (bisheriges Verhalten)">Abfragen</option>
+                <option value="nie" title="Keine Abfrage — außer eine Warengruppe oder ein Artikel steht auf „Immer fragen“">Nicht abfragen</option>
+              </select>
             </td>
             <td className="px-3 py-2.5">
               <select

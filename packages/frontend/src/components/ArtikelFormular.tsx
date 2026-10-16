@@ -24,6 +24,9 @@ import { FarbAuswahl } from './FarbAuswahl'
 import { AllergenAuswahl } from './AllergenAuswahl'
 import { formatPreis, parseEuroToCent } from '../lib/format'
 import { baumFlach, kategoriePfad } from '../lib/kategorie-baum'
+import {
+  OPTIONEN_ABFRAGE_HINWEIS, optionenAbfrageFeld, optionenAbfrageTexte, optionenAbfrageWahl, type OptionenAbfrageFeld,
+} from '../lib/optionen-abfrage'
 
 type FormValues = {
   bezeichnung:          string
@@ -42,6 +45,7 @@ type FormValues = {
   lagerstandMengeStr:   string
   mindestbestandStr:    string
   seriennummernAktiv:   boolean
+  optionenAbfrage:      OptionenAbfrageFeld
 }
 
 /** Ein Rezept-Bestandteil im Editor (lokaler State, nicht in react-hook-form). */
@@ -140,6 +144,7 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
       lagerstandMengeStr: initial?.lagerstandMenge   != null ? String(initial.lagerstandMenge)   : '',
       mindestbestandStr:  initial?.mindestbestand    != null ? String(initial.mindestbestand)    : '',
       seriennummernAktiv: initial?.seriennummernAktiv ?? false,
+      optionenAbfrage:    optionenAbfrageFeld(initial?.optionenAbfrage),
     },
   })
 
@@ -174,6 +179,7 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
       lagerstandMengeStr: initial?.lagerstandMenge   != null ? String(initial.lagerstandMenge)   : '',
       mindestbestandStr:  initial?.mindestbestand    != null ? String(initial.mindestbestand)    : '',
       seriennummernAktiv: initial?.seriennummernAktiv ?? false,
+      optionenAbfrage:    optionenAbfrageFeld(initial?.optionenAbfrage),
     })
     setBild(initial?.bild ?? null)
     setBestandteile(initial?.bestandteile?.map(b => ({ bestandteilArtikelId: b.bestandteilArtikelId, menge: b.menge })) ?? [])
@@ -242,6 +248,7 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
       seriennummernAktiv: values.seriennummernAktiv,
       // Wird zentral im SB-Terminal-Bereich der Einstellungen verwaltet — hier nur erhalten
       terminalSichtbar: initial?.terminalSichtbar ?? null,
+      optionenAbfrage:  optionenAbfrageWahl(values.optionenAbfrage),
       bild,
     })
   })
@@ -450,6 +457,14 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
             <p className="text-xs text-ink-subtle">Beim direkten „Bon erstellen" mitdrucken (sonst nur bei Tischbuchung)</p>
           </div>
         </label>
+
+        <Field label="Optionen/Varianten abfragen" hint={OPTIONEN_ABFRAGE_HINWEIS}>
+          <Select data-testid="artikel-optionen-abfrage" {...register('optionenAbfrage')}>
+            {(Object.entries(optionenAbfrageTexte('Warengruppe')) as [OptionenAbfrageFeld, string][]).map(([wert, text]) => (
+              <option key={wert} value={wert}>{text}</option>
+            ))}
+          </Select>
+        </Field>
 
         {lieferanten && lieferanten.length > 0 && (
           <Field label="Lieferant" hint="Für Bestellliste und Einkauf">

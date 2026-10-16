@@ -90,6 +90,8 @@ export const ArtikelSchema = z.object({
   lieferantId:          z.string().uuid().nullable(),
   /** SB-Terminal-Sichtbarkeit: null = erbt von der Kategorie, true/false = Override */
   terminalSichtbar:     z.boolean().nullable(),
+  /** Optionen-Abfrage im Direktverkauf: null = wie die Warengruppe, true = immer fragen, false = nie fragen */
+  optionenAbfrage:      z.boolean().nullable(),
   /** Artikelbild als Data-URL (client-seitig auf max. 200×200 px / JPEG komprimiert) */
   bild:                 z.string().nullable().optional(),
   createdAt:            z.string(),
@@ -120,6 +122,7 @@ export const ArtikelInputSchema = z.object({
   bestandteile:    z.array(ArtikelBestandteilInputSchema).default([]),
   lieferantId:     z.string().uuid().optional().nullable(),
   terminalSichtbar: z.boolean().nullable().default(null),
+  optionenAbfrage:  z.boolean().nullable().optional(),
   bild:            z.string().nullable().optional(),
 })
 export type ArtikelInput = z.infer<typeof ArtikelInputSchema>
@@ -147,6 +150,7 @@ export const ArtikelUpdateSchema = z.object({
   bestandteile:         z.array(ArtikelBestandteilInputSchema).optional(),
   lieferantId:          z.string().uuid().nullable().optional(),
   terminalSichtbar:     z.boolean().nullable().optional(),
+  optionenAbfrage:      z.boolean().nullable().optional(),
   bild:                 z.string().nullable().optional(),
 })
 export type ArtikelUpdate = z.infer<typeof ArtikelUpdateSchema>

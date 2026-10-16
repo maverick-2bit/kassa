@@ -240,6 +240,10 @@ export {
 } from './start-reiter.js'
 export type { ReiterLage, StartEinstellung } from './start-reiter.js'
 
+// Optionen-/Varianten-Abfrage im Direktverkauf (Artikel → Warengruppe → Kasse)
+export { fragtNachOptionen, warengruppenWahl } from './optionen-abfrage.js'
+export type { OptionenAbfrageLage, OptionenAbfrageWahl } from './optionen-abfrage.js'
+
 // Raster-Platzierung (Untergruppen-Kacheln, Slots, Leerfelder)
 export { baueRaster, baueKassenRaster, loeseAnordnungAuf, ausgeblendeteArtikelIds, kompakteArtikelListe, RASTER_MAX_SLOT } from './raster.js'
 export type { RasterZelle, RasterArtikel, RasterArtikelMitId, RasterAnordnung, KassenAnordnungEintrag } from './raster.js'

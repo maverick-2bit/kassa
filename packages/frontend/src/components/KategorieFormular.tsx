@@ -15,6 +15,9 @@ import { Select } from './ui/Select'
 import { Button } from './ui/Button'
 import { FarbAuswahl } from './FarbAuswahl'
 import { baumFlach, kategoriePfad, nachkommenIds } from '../lib/kategorie-baum'
+import {
+  OPTIONEN_ABFRAGE_HINWEIS, optionenAbfrageFeld, optionenAbfrageTexte, optionenAbfrageWahl, type OptionenAbfrageFeld,
+} from '../lib/optionen-abfrage'
 
 type FormValues = {
   name:            string
@@ -23,6 +26,7 @@ type FormValues = {
   reihenfolge:     string
   bonierdruckerId: string
   station:         string
+  optionenAbfrage: OptionenAbfrageFeld
 }
 
 interface Props {
@@ -45,6 +49,7 @@ export function KategorieFormular({ initial, kategorien, bonierdrucker, onSubmit
       reihenfolge:     String(initial?.reihenfolge ?? 0),
       bonierdruckerId: initial?.bonierdruckerId    ?? '',
       station:         initial?.station            ?? '',
+      optionenAbfrage: optionenAbfrageFeld(initial?.optionenAbfrage),
     },
   })
 
@@ -56,6 +61,7 @@ export function KategorieFormular({ initial, kategorien, bonierdrucker, onSubmit
       reihenfolge:     String(initial?.reihenfolge ?? 0),
       bonierdruckerId: initial?.bonierdruckerId    ?? '',
       station:         initial?.station            ?? '',
+      optionenAbfrage: optionenAbfrageFeld(initial?.optionenAbfrage),
     })
   }, [initial, reset])
 
@@ -76,6 +82,7 @@ export function KategorieFormular({ initial, kategorien, bonierdrucker, onSubmit
       station:         (values.station || null) as Station | null,
       // Wird zentral im SB-Terminal-Bereich der Einstellungen verwaltet — hier nur erhalten
       terminalSichtbar: initial?.terminalSichtbar ?? false,
+      optionenAbfrage:  optionenAbfrageWahl(values.optionenAbfrage),
     })
   })
 
@@ -124,6 +131,17 @@ export function KategorieFormular({ initial, kategorien, bonierdrucker, onSubmit
           <option value="">— keine Vorgabe —</option>
           {ALLE_STATIONEN.map(s => (
             <option key={s} value={s}>{STATION_LABELS[s]}</option>
+          ))}
+        </Select>
+      </Field>
+
+      <Field
+        label="Optionen/Varianten abfragen"
+        hint={`Vorgabe für alle Artikel dieser Warengruppe und ihre Untergruppen — einzelne Artikel können abweichen. ${OPTIONEN_ABFRAGE_HINWEIS}`}
+      >
+        <Select data-testid="kategorie-optionen-abfrage" {...register('optionenAbfrage')}>
+          {(Object.entries(optionenAbfrageTexte('Kasse')) as [OptionenAbfrageFeld, string][]).map(([wert, text]) => (
+            <option key={wert} value={wert}>{text}</option>
           ))}
         </Select>
       </Field>

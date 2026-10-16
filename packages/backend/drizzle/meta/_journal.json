@@ -449,6 +449,13 @@
       "when": 1791504000000,
       "tag": "0065_kasse_routing",
       "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1791590400000,
+      "tag": "0066_optionen_abfrage",
+      "breakpoints": true
     }
   ]
 }

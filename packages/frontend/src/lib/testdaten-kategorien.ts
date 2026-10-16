@@ -24,7 +24,7 @@ import type { Kategorie } from '@kassa/shared'
 export const kat = (id: string, name: string, parentId: string | null, reihenfolge: number, aktiv = true): Kategorie => ({
   id, name, parentId, reihenfolge, aktiv,
   mandantId: 'm', farbe: 'grau', bonierdruckerId: null, station: null,
-  terminalSichtbar: false, createdAt: '', updatedAt: '',
+  terminalSichtbar: false, optionenAbfrage: null, createdAt: '', updatedAt: '',
 })
 
 /** Absichtlich NICHT in Baumreihenfolge — die Funktionen müssen selbst sortieren. */

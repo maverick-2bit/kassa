@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
-import { allergeneAnzeige, artikelErlaubt, ausgeblendeteArtikelIds, FAVORITEN_TAB_ID, farbeZuHex, kategorieAnzeigeNamen, kompakteArtikelListe, sichtbareGruppenFlach, sichtbarkeitsMengen, startReiter, type Artikel, type Kategorie, type ModifikatorGruppe, type ModifikatorAuswahl } from '@kassa/shared'
+import { allergeneAnzeige, artikelErlaubt, ausgeblendeteArtikelIds, FAVORITEN_TAB_ID, farbeZuHex, fragtNachOptionen, warengruppenWahl, kategorieAnzeigeNamen, kompakteArtikelListe, sichtbareGruppenFlach, sichtbarkeitsMengen, startReiter, type Artikel, type Kategorie, type ModifikatorGruppe, type ModifikatorAuswahl } from '@kassa/shared'
 import { artikelApi, kategorieApi, modifikatorApi, tischTabApi, kellnerKonfigApi } from '../lib/api'
 import { getAuth, clearAuth, gaengeAktiv as istGaengeAktiv, gaengeAnzahl } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
@@ -204,6 +204,16 @@ export function ArtikelWaehlenPage() {
   // ---------------------------------------------------------------------------
 
   async function artikelWaehlen(a: Artikel) {
+    // Theken-Modus = Direktverkauf: je nach Kasse/Warengruppe/Artikel (@kassa/shared fragtNachOptionen) ohne Abfrage
+    // in den Korb. Tisch-Bestellungen fragen immer — dort wird für Küche/Schank bestellt.
+    if (konfigQuery.data?.kellnerModus === 'theke' && !fragtNachOptionen({
+      kasse:       konfigQuery.data.optionenAbfrage,
+      warengruppe: warengruppenWahl(katQuery.data ?? [], a.kategorieId),
+      artikel:     a.optionenAbfrage,
+    })) {
+      addToKorb(a, 1, [])
+      return
+    }
     const gruppen = await modifikatorApi.getGruppenFuerArtikel(a.id).catch(() => [])
     const aktiv   = gruppen.filter(g => g.aktiv)
     if (aktiv.length > 0) {

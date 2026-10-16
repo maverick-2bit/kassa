@@ -106,8 +106,10 @@ export const PosKonfigSchema = z.object({
   startFavoriten:        z.boolean(),
   /** Sonst mit dieser Warengruppe (null = erste sichtbare) */
   startKategorieId:      z.string().uuid().nullable(),
+  /** Direktverkauf: Optionen/Varianten abfragen (Warengruppe/Artikel können abweichen; Tische fragen immer) */
+  optionenAbfrage:       z.boolean(),
 })
-export type PosKonfig = z.infer<typeof PosKonfigSchema>
+export type PosKonfig= z.infer<typeof PosKonfigSchema>
 
 export const PosKonfigUpdateSchema = z.object({
   sichtbareKategorieIds: z.array(z.string().uuid()).optional(),
@@ -121,6 +123,7 @@ export const PosKonfigUpdateSchema = z.object({
   kellnerFavoritenAktiv: z.boolean().optional(),
   startFavoriten:        z.boolean().optional(),
   startKategorieId:      z.string().uuid().nullable().optional(),
+  optionenAbfrage:       z.boolean().optional(),
 })
 export type PosKonfigUpdate = z.infer<typeof PosKonfigUpdateSchema>
 

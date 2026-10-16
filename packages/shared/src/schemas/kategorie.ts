@@ -111,6 +111,8 @@ export const KategorieSchema = z.object({
   station:         StationSchema.nullable(),
   /** SB-Terminal: Artikel dieser Warengruppe am Bestellterminal anzeigen */
   terminalSichtbar: z.boolean(),
+  /** Optionen-Abfrage im Direktverkauf: null = wie die Kasse, true = immer fragen, false = nie fragen (Untergruppen erben) */
+  optionenAbfrage: z.boolean().nullable(),
   createdAt:       z.string(),
   updatedAt:       z.string(),
 })
@@ -124,6 +126,7 @@ export const KategorieInputSchema = z.object({
   bonierdruckerId: z.string().uuid().optional().nullable(),
   station:         StationSchema.optional().nullable(),
   terminalSichtbar: z.boolean().default(false),
+  optionenAbfrage: z.boolean().nullable().optional(),
 })
 export type KategorieInput = z.infer<typeof KategorieInputSchema>
 
@@ -136,5 +139,6 @@ export const KategorieUpdateSchema = z.object({
   bonierdruckerId: z.string().uuid().nullable().optional(),
   station:         StationSchema.nullable().optional(),
   terminalSichtbar: z.boolean().optional(),
+  optionenAbfrage: z.boolean().nullable().optional(),
 })
 export type KategorieUpdate = z.infer<typeof KategorieUpdateSchema>

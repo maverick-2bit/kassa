@@ -7,7 +7,7 @@ import {
 const kat = (id: string, parentId: string | null, reihenfolge = 0, name = id): Kategorie => ({
   id, parentId, reihenfolge, name,
   mandantId: 'm', farbe: 'grau', aktiv: true, bonierdruckerId: null, station: null,
-  terminalSichtbar: false, createdAt: '', updatedAt: '',
+  terminalSichtbar: false, optionenAbfrage: null, createdAt: '', updatedAt: '',
 })
 
 const baum = [

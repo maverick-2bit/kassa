@@ -99,6 +99,8 @@ export async function ladeEinrichtung(db: Db, mandantId: string): Promise<Einric
     startFavoriten:   k.startFavoriten,
     startKategorieId: k.startKategorieId && eigeneKategorien.has(k.startKategorieId) ? k.startKategorieId : null,
 
+    optionenAbfrage:  k.optionenAbfrage,
+
     sichtbareKategorieIds:     kategorienJeKasse.get(k.id) ?? [],
     sichtbareBonierdruckerIds: druckerJeKasse.get(k.id) ?? [],
   }))
@@ -242,6 +244,7 @@ export async function kopiereEinrichtung(db: Db, mandantId: string, zielKasseId:
       startseite:        von.startseite,
       startFavoriten:    von.startFavoriten,
       startKategorieId:  von.startKategorieId,
+      optionenAbfrage:   von.optionenAbfrage,
       erlaubteZahlungsarten: von.erlaubteZahlungsarten,
       gastModus:         von.gastModus,
       gastBasisUrl:      von.gastBasisUrl,

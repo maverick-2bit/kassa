@@ -19,7 +19,7 @@ import type {
   TischTabErstellenInput,
   TischTabResponse,
 } from '@kassa/shared'
-import { GUTSCHEIN_STATUS_LABELS, MWST_LABELS, STATION_LABELS, aktionsPreisCent, aktiverRabattProzent, aktiveAktion } from '@kassa/shared'
+import { GUTSCHEIN_STATUS_LABELS, MWST_LABELS, STATION_LABELS, aktionsPreisCent, aktiverRabattProzent, aktiveAktion, fragtNachOptionen, warengruppenWahl } from '@kassa/shared'
 import type { AktiveAktion } from '@kassa/shared'
 import { angebotApi, artikelApi, belegApi, bonierApi, druckerApi, emailApi, gutscheinApi, kategorieApi, lieferscheinApi, modifikatorApi, offenerPostenApi, posConfigApi, preisregelApi, tischTabApi, zvtApi, displayApi, ApiError } from '../lib/api'
 import { FreigabePinModal } from '../components/FreigabePinModal'
@@ -229,17 +229,29 @@ export function KassePage() {
     const zuweisungen = modZuweisungenQuery.data ?? []
     const gruppeById  = new Map(gruppen.map(g => [g.id, g]))
 
+    // Direktverkauf: Artikel, bei denen nicht gefragt werden soll (Kasse / Warengruppe / Artikel), bekommen keine
+    // Gruppen — die Kachel fügt sie dann gleich hinzu. Die Regel steht in @kassa/shared (fragtNachOptionen).
+    const artikelById  = new Map((artikelQuery.data ?? []).map(a => [a.id, a] as const))
+    const kategorien   = kategorienQuery.data ?? []
+    const kasseFragt   = posConfigQuery.data?.optionenAbfrage
+
     const map = new Map<string, ModifikatorGruppe[]>()
     for (const z of zuweisungen) {
       const gruppe = gruppeById.get(z.gruppeId)
       if (!gruppe || !gruppe.aktiv) continue
       if (!gruppe.modifikatoren.some(m => m.aktiv)) continue
+      const a = artikelById.get(z.artikelId)
+      if (a && !fragtNachOptionen({
+        kasse:       kasseFragt,
+        warengruppe: warengruppenWahl(kategorien, a.kategorieId),
+        artikel:     a.optionenAbfrage,
+      })) continue
       const list = map.get(z.artikelId) ?? []
       list.push(gruppe)
       map.set(z.artikelId, list)
     }
     return map
-  }, [modGruppenQuery.data, modZuweisungenQuery.data])
+  }, [modGruppenQuery.data, modZuweisungenQuery.data, artikelQuery.data, kategorienQuery.data, posConfigQuery.data?.optionenAbfrage])
 
   const summeCent  = useMemo(() => warenkorbSummeCent(korb), [korb])
   const rabattCent = useMemo(

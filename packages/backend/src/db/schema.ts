@@ -244,6 +244,8 @@ export const kassen = pgTable('kassen', {
   startFavoriten:        boolean('start_favoriten').notNull().default(true),
   /** Artikelwahl: Start-Warengruppe, wenn nicht die Favoriten (null = erste sichtbare) */
   startKategorieId:      uuid('start_kategorie_id').references((): AnyPgColumn => kategorien.id, { onDelete: 'set null' }),
+  /** Direktverkauf: Optionen/Varianten abfragen (Warengruppe und Artikel können abweichen); Tisch-Bestellungen fragen immer */
+  optionenAbfrage:       boolean('optionen_abfrage').notNull().default(true),
 
   // ZVT-Kartenterminal-Konfiguration (Hobex/Payroc & kompatible über Standard-ZVT-Protokoll)
   zvtIp:                 varchar('zvt_ip',   { length: 64 }),
@@ -677,6 +679,8 @@ export const kategorien = pgTable('kategorien', {
   station:         varchar('station', { length: 20 }),
   /** SB-Terminal: Artikel dieser Warengruppe am Bestellterminal anzeigen */
   terminalSichtbar: boolean('terminal_sichtbar').notNull().default(false),
+  /** Optionen-Abfrage im Direktverkauf: NULL = wie die Kasse, true = immer fragen, false = nie fragen (Artikel geht vor) */
+  optionenAbfrage: boolean('optionen_abfrage'),
   createdAt:       timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt:       timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
@@ -716,6 +720,8 @@ export const artikel = pgTable('artikel', {
   seriennummernAktiv:  boolean('seriennummern_aktiv').notNull().default(false),
   /** SB-Terminal-Sichtbarkeit: NULL = erbt von der Kategorie, true/false = Override */
   terminalSichtbar:    boolean('terminal_sichtbar'),
+  /** Optionen-Abfrage im Direktverkauf: NULL = wie die Warengruppe, true = immer fragen, false = nie fragen */
+  optionenAbfrage:     boolean('optionen_abfrage'),
   /** Erscheint im Favoriten-Tab der POS-Ansicht */
   istFavorit:          boolean('ist_favorit').notNull().default(false),
   /** Sortierung innerhalb der Kategorie (global, für alle Kassen gleich) */
