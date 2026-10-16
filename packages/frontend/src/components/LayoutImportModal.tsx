@@ -106,8 +106,10 @@ export function LayoutImportModal({ open, onClose }: Props) {
           <div className="space-y-3">
             <p className="text-sm text-ink-muted">
               Übernimmt Gruppenbaum (mit Untergruppen), die Anordnung der Artikel im Raster samt leerer Felder,
-              Farben und Favoriten aus einer Layout-Datei. Bestehende Artikel werden über den Namen zugeordnet —
-              Preise, Stationen und Bonierdrucker bleiben unberührt. Zuerst gibt es eine Vorschau, die nichts ändert.
+              Farben und Favoriten aus einer Layout-Datei — z. B. aus der alten Asello-Kasse oder aus „Layout
+              exportieren" einer anderen Kassa. Bestehende Artikel werden über den Namen zugeordnet — ihre Preise,
+              Stationen und Bonierdrucker bleiben unberührt; fehlende Artikel entstehen neu, mit Preis, MwSt, Allergenen
+              und Optionen aus der Datei. Zuerst gibt es eine Vorschau, die nichts ändert.
             </p>
             <input
               ref={dateiRef}

@@ -72,6 +72,12 @@ export function mwstZuSatz(mwst: number): string | undefined {
   return MWST_SAETZE[Math.round(mwst * 100)]
 }
 
+/** Umkehrung von mwstZuSatz (für den Layout-Export): 'normal' → 0.2 …; unbekannter Satz → undefined. */
+export function satzZuMwst(satz: string): number | undefined {
+  const prozent = Object.entries(MWST_SAETZE).find(([, s]) => s === satz)?.[0]
+  return prozent === undefined ? undefined : Number(prozent) / 100
+}
+
 // ---------------------------------------------------------------------------
 // Typen: Ist-Zustand + Plan
 // ---------------------------------------------------------------------------
@@ -122,7 +128,7 @@ export interface LayoutPlan {
   gruppenUpdates: { id: string; werte: { parentId?: string | null; farbe?: string; reihenfolge?: number; station?: string } }[]
   neueArtikel: { id: string; bezeichnung: string; preisBruttoCent: number; mwstSatz: string; kategorieId: string
     farbe: string | null; rasterPosition: number | null; reihenfolge: number
-    istFavorit: boolean; favoritenReihenfolge: number }[]
+    istFavorit: boolean; favoritenReihenfolge: number; allergene: string | null }[]
   artikelUpdates: { id: string; werte: { kategorieId?: string; farbe?: string | null; rasterPosition?: number | null
     reihenfolge?: number; istFavorit?: boolean; favoritenReihenfolge?: number } }[]
   kassenFavoritenLoeschen: boolean
@@ -432,6 +438,7 @@ export function planeLayout(ist: KassaZustand, layout: LayoutImport, opts: Layou
           neueArtikel.set(z.neuId, {
             id: z.neuId, bezeichnung: z.artikel.name.trim(), preisBruttoCent: z.artikel.preisCent, mwstSatz: satz,
             kategorieId, farbe, rasterPosition, reihenfolge: z.artikel.slot, istFavorit: false, favoritenReihenfolge: 0,
+            allergene: z.artikel.allergene ?? null,
           })
         }
       }
@@ -453,8 +460,11 @@ export function planeLayout(ist: KassaZustand, layout: LayoutImport, opts: Layou
       if (!artikelId) { optionenZaehler.uebersprungen += z.artikel.optionen.length; continue }
       for (const o of z.artikel.optionen) {
         const eintrag = {
-          name: optionsgruppenName(o.gruppe, o.optionen), typ: (o.pflicht ? 'pflicht' : 'optional') as 'pflicht' | 'optional',
-          maxAuswahl: o.mehrfach ? null : 1, optionen: o.optionen.map(x => ({ name: x.name, aufschlagCent: x.aufschlagCent })),
+          // Kassa-Export: der Name steht schon voll da; Asello-Layouts bekommen die Optionen als Vorschau angehängt
+          name: o.exakterName ? o.gruppe : optionsgruppenName(o.gruppe, o.optionen),
+          typ: (o.pflicht ? 'pflicht' : 'optional') as 'pflicht' | 'optional',
+          maxAuswahl: o.maxAuswahl !== undefined ? o.maxAuswahl : (o.mehrfach ? null : 1),
+          optionen: o.optionen.map(x => ({ name: x.name, aufschlagCent: x.aufschlagCent })),
         }
         optionenZeilen.push({ artikelId, ...eintrag })
         const schluessel = optionsgruppenSchluessel(eintrag)
@@ -678,7 +688,7 @@ async function schreibePlan(tx: DbOrTx, mandantId: string, plan: LayoutPlan): Pr
         id: n.id, mandantId, bezeichnung: n.bezeichnung, preisBruttoCent: n.preisBruttoCent, mwstSatz: n.mwstSatz,
         artikelnummer: String(nummer++).padStart(4, '0'), kategorieId: n.kategorieId, farbe: n.farbe,
         rasterPosition: n.rasterPosition, reihenfolge: n.reihenfolge,
-        istFavorit: n.istFavorit, favoritenReihenfolge: n.favoritenReihenfolge,
+        istFavorit: n.istFavorit, favoritenReihenfolge: n.favoritenReihenfolge, allergene: n.allergene,
       })
     }
   }
