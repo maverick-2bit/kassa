@@ -230,6 +230,16 @@ export type {
   KasseRoutingAusnahme,
 } from './kategorie-baum.js'
 
+// Start-Reiter der Artikelwahl (Kasse, Tisch, Kellner-App): eine Definition für alle
+export {
+  FAVORITEN_TAB_ID,
+  SONSTIGE_TAB_ID,
+  reiterGueltig,
+  einzigeWarengruppe,
+  startReiter,
+} from './start-reiter.js'
+export type { ReiterLage, StartEinstellung } from './start-reiter.js'
+
 // Raster-Platzierung (Untergruppen-Kacheln, Slots, Leerfelder)
 export { baueRaster, baueKassenRaster, loeseAnordnungAuf, ausgeblendeteArtikelIds, kompakteArtikelListe, RASTER_MAX_SLOT } from './raster.js'
 export type { RasterZelle, RasterArtikel, RasterArtikelMitId, RasterAnordnung, KassenAnordnungEintrag } from './raster.js'

@@ -10,6 +10,8 @@
  */
 
 import {
+  baumFlach,
+  kategoriePfad,
   wirksamesKategorieRouting,
   type EinrichtungKasse,
   type KasseRoutingAusnahme,
@@ -19,6 +21,7 @@ import {
   type RoutingAusnahme,
   type Station,
 } from '@kassa/shared'
+import { kassenAnsicht } from './artikel-reiter'
 
 /** Was die Matrix zeigt: der Bonierdrucker oder die KDS-Station. */
 export type RoutingMerkmal = 'drucker' | 'station'
@@ -204,4 +207,37 @@ export function kassenIdsFolge(erste: string, anzahl: number): string[] {
   if (!m) return Array.from({ length: anzahl }, (_, i) => `${id}-${i + 1}`)
   const praefix = m[1]!, start = parseInt(m[2]!, 10), breite = m[2]!.length
   return Array.from({ length: anzahl }, (_, i) => `${praefix}${String(start + i).padStart(breite, '0')}`)
+}
+
+// ---------------------------------------------------------------------------
+// Start-Reiter der Artikelwahl (je Kasse)
+// ---------------------------------------------------------------------------
+
+type StartFelder = Pick<EinrichtungKasse, 'startFavoriten' | 'startKategorieId'>
+
+/** Wert der Auswahl „Artikelwahl startet mit": 'favoriten', 'erste' (erste Warengruppe mit Artikeln) oder die ID einer Warengruppe. */
+export const startReiterWert = (k: StartFelder): string =>
+  k.startFavoriten ? 'favoriten' : (k.startKategorieId ?? 'erste')
+
+/** Die Felder, die zu einem Wert der Auswahl gehören (Gegenstück zu startReiterWert). */
+export function startReiterFelder(wert: string): StartFelder {
+  if (wert === 'favoriten') return { startFavoriten: true,  startKategorieId: null }
+  if (wert === 'erste')     return { startFavoriten: false, startKategorieId: null }
+  return { startFavoriten: false, startKategorieId: wert }
+}
+
+/**
+ * Was die Artikelwahl einer Kasse als Reiter zeigt (so rechnet die Kasse selbst, siehe kassenAnsicht):
+ * `gruppen` = alle dort erreichbaren Warengruppen in Baumreihenfolge, mit Pfad — zur Auswahl; `reiter` = deren
+ * Hauptgruppen. Genau EIN Reiter heißt: diese Warengruppe öffnet sich beim Start von selbst.
+ */
+export function startReiterAuswahl(
+  kategorien: readonly Kategorie[],
+  sichtbareKategorieIds: readonly string[],
+): { gruppen: { id: string; pfad: string }[]; reiter: Kategorie[] } {
+  const ansicht = kassenAnsicht(kategorien, [], sichtbareKategorieIds)
+  return {
+    gruppen: baumFlach(ansicht.gruppen).map(({ kategorie: k }) => ({ id: k.id, pfad: kategoriePfad(kategorien, k.id) })),
+    reiter:  ansicht.reiter,
+  }
 }

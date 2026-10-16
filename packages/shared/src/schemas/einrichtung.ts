@@ -52,6 +52,14 @@ export const EinrichtungKasseSchema = z.object({
   startseite:            StartseitenEnum,
   erlaubteZahlungsarten: z.array(z.enum(['bar', 'karte', 'sonstige'])),
 
+  /**
+   * Artikelwahl (Direktverkauf, Tisch, Kellner-App) öffnet mit den Favoriten (Standard) …
+   * … oder mit dieser Warengruppe (nur wirksam, wenn startFavoriten false ist; null = erste Warengruppe mit Artikeln).
+   * Hat die Kasse genau eine Warengruppe, öffnet sie sich ohnehin von selbst (shared/start-reiter).
+   */
+  startFavoriten:   z.boolean(),
+  startKategorieId: z.string().uuid().nullable(),
+
   /** Sichtbare Warengruppen (leer = alle) */
   sichtbareKategorieIds:     z.array(z.string().uuid()),
   /** Aktive Bonierdrucker dieser Kasse (leer = alle) */

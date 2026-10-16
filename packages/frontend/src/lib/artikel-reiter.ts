@@ -8,16 +8,14 @@
  * der Kasse sichtbaren Warengruppen und — nur wenn die Kasse alle Warengruppen
  * zeigt — „Sonstige" für Artikel ohne (aktive) Warengruppe.
  *
- * Welcher Reiter beim Öffnen aktiv ist, stellt die POS-Konfiguration je Kasse
- * ein (Favoriten oder eine Warengruppe); passt die Einstellung nicht (keine
- * Favoriten, Warengruppe ausgeblendet), greift der nächste sinnvolle Reiter.
+ * Welcher Reiter beim Öffnen aktiv ist, stellt die Kasse selbst ein (Einstellungen →
+ * Kassen & Drucker bzw. POS-Konfiguration: Favoriten oder eine Warengruppe); hat sie
+ * nur EINE Warengruppe, öffnet die sich von selbst. Passt die Einstellung nicht
+ * (keine Favoriten, Warengruppe ausgeblendet), greift der nächste sinnvolle Reiter.
  */
 
 import { artikelErlaubt, baueKassenRaster, istErreichbar, type Artikel, type KassenAnordnungEintrag, type Kategorie, type RasterZelle, type SichtbarkeitsMengen } from '@kassa/shared'
 import { sichtbarkeitsMengen, untergruppenVon, wurzelgruppen } from './kategorie-baum'
-
-export const FAVORITEN_TAB_ID = '__favoriten__'
-export const SONSTIGE_TAB_ID  = '__sonstige__'
 
 /**
  * Aktive Warengruppen in Kassen-Reihenfolge, die an der Kasse ERREICHBAR sind: die ausdrücklich gewählten und
@@ -91,41 +89,7 @@ export function gruppenRaster(
   )
 }
 
-export interface ReiterLage {
-  hatFavoriten: boolean
-  hatSonstige:  boolean
-  /** Warengruppen-Reiter in Anzeige-Reihenfolge */
-  kategorieIds: readonly string[]
-  /** Davon die mit mindestens einem Artikel */
-  kategorieIdsMitArtikeln: readonly string[]
-}
-
-export function reiterGueltig(tab: string | null | undefined, lage: ReiterLage): tab is string {
-  if (!tab) return false
-  if (tab === FAVORITEN_TAB_ID) return lage.hatFavoriten
-  if (tab === SONSTIGE_TAB_ID)  return lage.hatSonstige
-  return lage.kategorieIds.includes(tab)
-}
-
-/**
- * Start-Reiter: ausdrücklich gewünschter (z. B. ?tab=favoriten) → Einstellung
- * der Kasse → Ersatz. „Erste Warengruppe" (startKategorieId null) meint die
- * erste Warengruppe mit Artikeln, Favoriten kommen dann erst danach.
- */
-export function startReiter(
-  lage: ReiterLage,
-  einstellung: { startFavoriten?: boolean | undefined; startKategorieId?: string | null | undefined },
-  gewuenscht?: string | null,
-): string | null {
-  const favoritenZuerst = einstellung.startFavoriten ?? true
-  const kandidaten: (string | null | undefined)[] = [
-    gewuenscht,
-    favoritenZuerst ? FAVORITEN_TAB_ID : einstellung.startKategorieId,
-    ...(favoritenZuerst ? [] : lage.kategorieIdsMitArtikeln),
-    FAVORITEN_TAB_ID,
-    ...lage.kategorieIdsMitArtikeln,
-    SONSTIGE_TAB_ID,
-    ...lage.kategorieIds,
-  ]
-  return kandidaten.find(t => reiterGueltig(t, lage)) ?? null
-}
+// Start-Reiter (Favoriten / Warengruppe / die einzige Warengruppe): EINE Definition in @kassa/shared
+// (start-reiter.ts) für Kasse, Tisch und Kellner-App — hier nur unter den gewohnten Namen erreichbar.
+export { FAVORITEN_TAB_ID, SONSTIGE_TAB_ID, einzigeWarengruppe, reiterGueltig, startReiter } from '@kassa/shared'
+export type { ReiterLage } from '@kassa/shared'
