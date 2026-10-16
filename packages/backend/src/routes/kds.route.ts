@@ -399,7 +399,7 @@ export const kdsRoute: FastifyPluginAsync<KdsRouteOptions> = async (fastify, opt
       .where(and(eq(bonierdrucker.id, bonierdruckerId), eq(bonierdrucker.mandantId, mandantId)))
       .limit(1)
     if (!drucker) return reply.status(404).send({ fehler: 'Bonierdrucker nicht gefunden' })
-    if (drucker.istBackup) return reply.status(400).send({ fehler: 'Ein Zweitdrucker (Backup) kann keiner Station zugeordnet werden' })
+    if (drucker.istBackup) return reply.status(400).send({ fehler: 'Ein Zweitdrucker kann keiner Station zugeordnet werden — er bekommt ohnehin eine Kopie jedes Bons' })
 
     await opts.db
       .insert(kdsStationDrucker)

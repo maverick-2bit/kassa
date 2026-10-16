@@ -2,7 +2,7 @@
  * Papierdruck der KDS-Bons (Erledigt-Bon, Teilbon, Nachdrucken): welcher Bonierdrucker druckt?
  *
  * Mit Zuordnung (kds_station_drucker) druckt NUR der gewählte Drucker für diese Station —
- * ohne Zuordnung wie früher alle aktiven Nicht-Backup-Bonierdrucker. Ist der zugeordnete
+ * ohne Zuordnung wie früher alle aktiven Bonierdrucker, die keine Zweitdrucker sind. Ist der zugeordnete
  * Drucker deaktiviert, wird nirgends gedruckt (kein Ausweichen auf andere Geräte; die
  * Oberfläche weist darauf hin).
  */

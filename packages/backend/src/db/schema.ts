@@ -646,9 +646,9 @@ export const bonierdrucker = pgTable('bonierdrucker', {
   name:        text('name').notNull(),
   ip:          varchar('ip', { length: 64 }).notNull(),
   port:        integer('port').notNull().default(9100),
-  /** Backup-Drucker: empfängt automatisch eine Kopie jedes Bonierbons */
+  /** Zweitdrucker (Spalte heißt aus Altgründen ist_backup): empfängt automatisch eine Kopie jedes Bonierbons — springt NICHT bei Ausfall ein */
   istBackup:   boolean('ist_backup').notNull().default(false),
-  /** Fallback-Drucker: wird verwendet wenn dieser Drucker nicht erreichbar ist */
+  /** Backup-Drucker: springt ein, wenn dieser Drucker nicht erreichbar ist (Spalte fallback_id) */
   fallbackId:  uuid('fallback_id').references((): AnyPgColumn => bonierdrucker.id, { onDelete: 'set null' }),
   aktiv:       boolean('aktiv').notNull().default(true),
   createdAt:   timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1241,7 +1241,7 @@ export const bonierBestellungen = pgTable('bonier_bestellungen', {
 /**
  * Papierdruck der KDS-Bons (Erledigt-Bon, Teilbon, Nachdrucken) je Station: dieser
  * Bonierdrucker druckt für diese Station. Ohne Eintrag gilt wie früher "alle aktiven
- * Nicht-Backup-Bonierdrucker".
+ * Bonierdrucker, die keine Zweitdrucker sind".
  */
 export const kdsStationDrucker = pgTable('kds_station_drucker', {
   mandantId:       uuid('mandant_id').notNull().references(() => mandanten.id, { onDelete: 'cascade' }),

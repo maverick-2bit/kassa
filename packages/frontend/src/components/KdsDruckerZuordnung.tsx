@@ -7,8 +7,8 @@
  * - Station → Drucker: Erledigt-Bon, Teilbon und Nachdrucken gehen NUR an den gewählten Drucker
  *   (ohne Auswahl: jeder aktive Bonierdrucker, wie früher).
  * - Backup-Drucker: der eigene Ersatz des gewählten Druckers — ist er nicht erreichbar, druckt der Bon dort.
- *   Gilt für alles, was der Drucker druckt (auch Bonieren), nicht nur für diese Station. Hier ist auch der als
- *   „Backup" (Zweitdrucker) markierte Drucker wählbar.
+ *   Gilt für alles, was der Drucker druckt (auch Bonieren), nicht nur für diese Station. Hier ist auch ein als
+ *   Zweitdrucker (Kopie jedes Bons) markierter Drucker wählbar.
  * - Fallback: scheitert ein Druck am vorgesehenen Drucker (und an dessen Backup-Drucker), geht der
  *   Bon an diesen Drucker — damit kein Bon verloren geht.
  */

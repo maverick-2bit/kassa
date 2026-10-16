@@ -438,7 +438,7 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
               <option value="">— Standard der Warengruppe —</option>
               {bonierdrucker.filter(d => d.aktiv).map(d => (
                 <option key={d.id} value={d.id}>
-                  {d.name} {d.istBackup ? '(Backup)' : ''}
+                  {d.name} {d.istBackup ? '(Zweitdrucker)' : ''}
                 </option>
               ))}
             </Select>

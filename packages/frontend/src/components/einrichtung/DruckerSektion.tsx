@@ -1,8 +1,11 @@
 /**
  * Drucker — EINE Liste aller Drucker im Betrieb: Bondrucker (Rechnung/Beleg) und Bonierdrucker
- * (Küche/Schank, auch als Backup) — anlegen, ändern, testen, löschen. Jede Zeile zeigt, WOFÜR der Drucker
+ * (Küche/Schank, auch als Zweitdrucker) — anlegen, ändern, testen, löschen. Jede Zeile zeigt, WOFÜR der Drucker
  * eingesetzt ist: an welchen Kassen er die Rechnung druckt, welche Warengruppen/Artikel/Kassen-Ausnahmen auf
- * ihn gehen, welche KDS-Station er bedient und ob er der Fallback ist.
+ * ihn gehen, welche KDS-Station er bedient, wessen Backup-Drucker er ist und ob er der Fallback ist.
+ *
+ * Zwei Begriffe, die nicht verwechselt werden dürfen: der BACKUP-Drucker springt nur ein, wenn ein Drucker
+ * nicht erreichbar ist (fallbackId); der ZWEITDRUCKER bekommt dagegen immer eine Kopie jedes Bons (istBackup).
  *
  * Früher zwei getrennte Bibliotheken (Einstellungen → Hardware) plus die Zuordnung je Kasse darunter.
  */
@@ -12,7 +15,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { STATION_LABELS, type Bonierdrucker, type DruckerPool, type DruckerPoolInput } from '@kassa/shared'
 import { artikelApi, bonierdruckerApi, druckerPoolApi, kategorieApi, kdsDruckerApi } from '../../lib/api'
 import { getAuth } from '../../lib/auth'
-import { bonierdruckerVerwendung, kassenMitRechnungsdrucker, kassenName } from '../../lib/einrichtung'
+import { bonierdruckerBackup, bonierdruckerVerwendung, kassenMitRechnungsdrucker, kassenName } from '../../lib/einrichtung'
 import { Button } from '../ui/Button'
 import { Field } from '../ui/Field'
 import { Input } from '../ui/Input'
@@ -100,11 +103,15 @@ export function DruckerSektion() {
 
   function loeschenFragen(e: Eintrag) {
     const v = verwendung(e)
+    const backupFuer = e.art === 'bonier' ? bonierdruckerBackup(e.id, bonierQuery.data ?? []).backupFuer : []
     const folgen = e.art === 'bon'
       ? (kassenMitRechnungsdrucker(e.id, kassen).length > 0 ? ' Kassen, die ihn nutzen, drucken danach nicht mehr.' : '')
       : v && (v.warengruppen.length + v.artikel + v.ausnahmen + v.stationen.length > 0 || v.fallback)
         ? ' Seine Zuordnungen (Warengruppen, Artikel, Kassen-Ausnahmen, KDS-Stationen) fallen weg.' : ''
-    if (window.confirm(`Drucker „${e.name}" löschen?${folgen}`)) loeschen.mutate(e)
+    // Ein gelöschter Backup-Drucker lässt den Drucker, den er vertrat, ohne Ersatz zurück — das merkt man erst beim nächsten Ausfall
+    const backupFolge = backupFuer.length > 0
+      ? ` Er ist Backup-Drucker für ${backupFuer.map(n => `„${n}"`).join(', ')} — dort springt danach niemand mehr ein.` : ''
+    if (window.confirm(`Drucker „${e.name}" löschen?${folgen}${backupFolge}`)) loeschen.mutate(e)
   }
 
   const laedt = poolQuery.isLoading || (istGastro && bonierQuery.isLoading)
@@ -117,6 +124,7 @@ export function DruckerSektion() {
           <p className="text-sm text-ink-muted mt-0.5">
             Alle Bondrucker{istGastro ? ' und Bonierdrucker' : ''} an einer Stelle. Welche Kasse auf welchem Drucker druckt, stellst du
             oben bei „Kassen" ein, welche Warengruppe/Artikel wohin geht weiter unten bei „Drucker & KDS-Station je Kasse".
+            {istGastro && ' Der Backup-Drucker eines Bonierdruckers springt ein, wenn dieser nicht erreichbar ist.'}
           </p>
         </div>
         <Button variant="secondary" onClick={() => setModal({ art: 'bon', eintrag: null })}>+ weiteren Drucker einrichten</Button>
@@ -131,6 +139,7 @@ export function DruckerSektion() {
           {eintraege.map(e => {
             const v = verwendung(e)
             const kassenDamit = e.art === 'bon' ? kassenMitRechnungsdrucker(e.id, kassen) : []
+            const backupInfo = e.art === 'bonier' ? bonierdruckerBackup(e.id, bonierQuery.data ?? []) : null
             const roh = e.roh
             return (
               <div key={`${e.art}-${e.id}`} data-testid={`drucker-zeile-${e.name}`} className={`flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2.5 ${e.aktiv ? '' : 'opacity-60'}`}>
@@ -138,7 +147,7 @@ export function DruckerSektion() {
                   <p className="text-sm font-medium text-ink">
                     {e.name}
                     {e.art === 'bonier' && (roh as Bonierdrucker).istBackup
-                      ? <span className="ml-2"><Chip ton="bernstein">Backup</Chip></span>
+                      ? <span className="ml-2"><Chip ton="bernstein" titel="Bekommt zusätzlich eine Kopie jedes Bons — springt nicht bei Ausfall ein">Zweitdrucker</Chip></span>
                       : <span className="ml-2"><Chip ton="grau">{e.art === 'bon' ? 'Bondrucker (Rechnung)' : 'Bonierdrucker'}</Chip></span>}
                     {!e.aktiv && <span className="ml-2 text-xs text-ink-subtle">(deaktiviert)</span>}
                   </p>
@@ -162,13 +171,22 @@ export function DruckerSektion() {
                       {v.artikel > 0 && <Chip>Artikel: {v.artikel}</Chip>}
                       {v.ausnahmen > 0 && <Chip titel="Warengruppen oder Artikel, die an einer bestimmten Kasse auf diesen Drucker gehen">Kassen-Ausnahmen: {v.ausnahmen}</Chip>}
                       {v.stationen.length > 0 && <Chip ton="gruen">KDS-Papier: {v.stationen.map(s => STATION_LABELS[s]).join(', ')}</Chip>}
-                      {v.fallback && <Chip ton="gruen">Fallback</Chip>}
-                      {(roh as Bonierdrucker).fallbackId && (
-                        <Chip ton="gruen" titel="Springt ein, wenn dieser Drucker nicht erreichbar ist">
-                          Backup: {(bonierQuery.data ?? []).find(b => b.id === (roh as Bonierdrucker).fallbackId)?.name ?? "?"}
+                      {v.fallback && <Chip ton="gruen" titel="Letzte Rückfallebene: übernimmt, wenn ein Drucker und dessen Backup-Drucker nicht erreichbar sind">Fallback</Chip>}
+                      {backupInfo?.backup && (
+                        <Chip
+                          ton={backupInfo.backup.aktiv ? 'gruen' : 'bernstein'}
+                          titel={backupInfo.backup.aktiv ? 'Springt ein, wenn dieser Drucker nicht erreichbar ist' : 'Ist deaktiviert und springt deshalb nicht ein'}
+                        >
+                          Backup: {backupInfo.backup.name}{backupInfo.backup.aktiv ? '' : ' (deaktiviert)'}
                         </Chip>
                       )}
-                      {!(roh as Bonierdrucker).istBackup && v.warengruppen.length + v.artikel + v.ausnahmen + v.stationen.length === 0 && !v.fallback && (
+                      {backupInfo && backupInfo.backupFuer.length > 0 && (
+                        <Chip ton="gruen" titel={`Springt ein, wenn ${backupInfo.backupFuer.join(', ')} nicht erreichbar ist`}>
+                          Backup für: {kurz(backupInfo.backupFuer)}
+                        </Chip>
+                      )}
+                      {!(roh as Bonierdrucker).istBackup && v.warengruppen.length + v.artikel + v.ausnahmen + v.stationen.length === 0 && !v.fallback
+                        && !backupInfo?.backupFuer.length && (
                         <Chip ton="grau">nicht zugeordnet</Chip>
                       )}
                     </>
@@ -304,8 +322,11 @@ function DruckerFormular({ art: startArt, eintrag, istGastro, bonierListe, onClo
             <input type="checkbox" className="h-4 w-4 rounded border-line-strong text-amber-500 focus:ring-amber-400"
               checked={istBackup} onChange={e => setIstBackup(e.target.checked)} />
             <div>
-              <p className="text-sm font-medium text-amber-900">Backup-Drucker</p>
-              <p className="text-xs text-amber-700">Empfängt automatisch eine Kopie <em>jedes</em> Bonierbons — unabhängig von der Zuordnung</p>
+              <p className="text-sm font-medium text-amber-900">Zweitdrucker</p>
+              <p className="text-xs text-amber-700">
+                Druckt zusätzlich eine Kopie <em>jedes</em> Bonierbons — unabhängig von der Zuordnung. Das ist kein Ersatz bei Ausfall:
+                dafür gibt es den Backup-Drucker.
+              </p>
             </div>
           </label>
         )}

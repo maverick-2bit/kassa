@@ -238,13 +238,13 @@ function KasseZeile({ kasse: k, spalten, kategorien, kategorienGeladen, istDiese
                           key={b.id}
                           type="button"
                           aria-pressed={an}
-                          title={b.istBackup ? 'Backup-Drucker: bekommt eine Kopie jedes Bons' : 'Aktiv an dieser Kasse'}
+                          title={b.istBackup ? 'Zweitdrucker: bekommt zusätzlich eine Kopie jedes Bons' : 'Aktiv an dieser Kasse'}
                           onClick={() => druckerUmschalten(b.id)}
                           className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium transition ${
                             an ? 'bg-brand-600 border-brand-600 text-white' : 'bg-panel border-line-strong text-ink-muted hover:border-brand-400'
                           } ${b.aktiv ? '' : 'line-through opacity-60'}`}
                         >
-                          <span aria-hidden>{an ? '✓' : '+'}</span>{b.name}{b.istBackup && <span className="opacity-80">· Backup</span>}
+                          <span aria-hidden>{an ? '✓' : '+'}</span>{b.name}{b.istBackup && <span className="opacity-80">· Zweitdrucker</span>}
                         </button>
                       )
                     })}

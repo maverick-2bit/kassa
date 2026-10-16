@@ -13,6 +13,7 @@ import {
   baumFlach,
   kategoriePfad,
   wirksamesKategorieRouting,
+  type Bonierdrucker,
   type EinrichtungKasse,
   type KasseRoutingAusnahme,
   type Kategorie,
@@ -155,6 +156,29 @@ export function bonierdruckerVerwendung(
     ausnahmen:    daten.ausnahmen.filter(a => a.bonierdruckerId === druckerId).length,
     stationen:    daten.stationDrucker.filter(e => e.bonierdruckerId === druckerId).map(e => e.station),
     fallback:     daten.fallbackId === druckerId,
+  }
+}
+
+export interface BonierdruckerBackup {
+  /** Der Backup-Drucker, der einspringt, wenn dieser Drucker nicht erreichbar ist (null = keiner) */
+  backup:     { name: string; aktiv: boolean } | null
+  /** Namen der Drucker, für die dieser Drucker der Backup-Drucker ist */
+  backupFuer: string[]
+}
+
+/**
+ * Der Backup-Drucker (Ersatz bei Ausfall) eines Druckers — und für welche Drucker er selbst einspringt.
+ * Nicht zu verwechseln mit dem Zweitdrucker (istBackup), der jeden Bon als Kopie bekommt.
+ */
+export function bonierdruckerBackup(
+  druckerId: string,
+  drucker:   readonly Pick<Bonierdrucker, 'id' | 'name' | 'aktiv' | 'fallbackId'>[],
+): BonierdruckerBackup {
+  const eigener = drucker.find(d => d.id === druckerId)
+  const backup  = eigener?.fallbackId ? drucker.find(d => d.id === eigener.fallbackId) : undefined
+  return {
+    backup:     backup ? { name: backup.name, aktiv: backup.aktiv } : null,
+    backupFuer: drucker.filter(d => d.fallbackId === druckerId).map(d => d.name),
   }
 }
 

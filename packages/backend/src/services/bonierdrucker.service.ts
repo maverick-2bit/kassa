@@ -266,8 +266,8 @@ export function baueErledigtBon(inhalt: ErledigtBonInhalt): Buffer {
 }
 
 /**
- * Druckt den Erledigt-Bon an ALLE aktiven Nicht-Backup-Bonierdrucker
- * (Muster kdsBonNachdrucken), je Drucker mit Fallback-Versuch.
+ * Druckt den Erledigt-Bon an ALLE aktiven Bonierdrucker, die keine Zweitdrucker sind
+ * (Muster kdsBonNachdrucken), je Drucker mit Backup-/Fallback-Versuch.
  */
 export async function druckeErledigtBon(
   db:        Db,

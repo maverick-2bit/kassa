@@ -316,9 +316,15 @@ test('Einrichtungs-Übersicht: Kassen anlegen und einrichten, Drucker/Station je
       await expect(barZeile.getByTestId('drucker-verwendung')).toContainText(`Backup: ${p} Küche`)
       await expect(barZeile.getByTestId('drucker-verwendung')).toContainText('Kassen-Ausnahmen: 1')    // Cola an Stand 2
       await expect(page.getByTestId(`drucker-zeile-${p} Rechnung`).getByTestId('drucker-verwendung')).toContainText(`Rechnung: ${p} Nord, ${p} Stand 2`)
+      // Der Backup-Drucker zeigt auch, für wen er einspringt (und ist deshalb nicht „nicht zugeordnet")
+      await expect(page.getByTestId(`drucker-zeile-${p} Küche`).getByTestId('drucker-verwendung')).toContainText(`Backup für: ${p} Bar`)
 
       await page.getByRole('button', { name: '+ weiteren Drucker einrichten' }).click()
       await page.getByRole('radio', { name: /Bonierdrucker/ }).click()
+      // Zwei verschiedene Dinge, zwei Namen: Backup-Drucker = Ersatz bei Ausfall, Zweitdrucker = Kopie jedes Bons
+      await expect(page.getByText('Backup-Drucker (optional)')).toBeVisible()
+      await expect(page.getByText('Zweitdrucker', { exact: true })).toBeVisible()
+      await expect(page.getByText('Springt ein, wenn dieser Drucker nicht erreichbar ist', { exact: false })).toBeVisible()
       await page.getByLabel('Name', { exact: true }).fill(`${p} Neu`)
       await page.getByLabel('IP-Adresse').fill('127.0.0.1')
       await page.getByLabel('Port', { exact: true }).fill('9104')
