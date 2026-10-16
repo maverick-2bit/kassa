@@ -8,7 +8,11 @@
 
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { kategorieApi } from '../../lib/api'
+import { artikelApi, kategorieApi } from '../../lib/api'
+import { getAuth } from '../../lib/auth'
+import { Button } from '../ui/Button'
+import { LayoutExportModal } from '../LayoutExportModal'
+import { LayoutImportModal } from '../LayoutImportModal'
 import { baumFlach, kategorieAnzeigeNamen, kategoriePfad } from '../../lib/kategorie-baum'
 import {
   SICHTBARKEIT_TEXTE, alleAusblendenKlick, alleSichtbarKlick, anzeigeZustaende, auswahlStatus, gruppeKlick, mitNeustart,
@@ -24,6 +28,16 @@ export function SichtbarkeitsSektion() {
   const { kassen, laedt, speichereKasse } = useEinrichtung()
   // Nur aktive: eine deaktivierte Warengruppe erscheint an keiner Kasse, braucht also keine Zeile
   const kategorienQuery = useQuery({ queryKey: ['kategorien'], queryFn: () => kategorieApi.list(true) })
+
+  const [importOffen, setImportOffen] = useState(false)
+  const [exportOffen, setExportOffen] = useState(false)
+  // Artikel nur für die Zahlen im Export-Dialog — erst laden, wenn er geöffnet wird
+  const mandantId = getAuth()?.mandant.id ?? ''
+  const artikelQuery = useQuery({
+    queryKey: ['artikel', mandantId, false],
+    queryFn:  () => artikelApi.list(mandantId, false),
+    enabled:  exportOffen && mandantId !== '',
+  })
 
   const kategorien = kategorienQuery.data ?? []
   // Zeilen im Baum (Reihenfolge unter Geschwistern, Einrückung nach Tiefe) — gleichnamige Gruppen
@@ -80,7 +94,8 @@ export function SichtbarkeitsSektion() {
 
   return (
     <section id="einrichtung-warengruppen" className="rounded-lg bg-panel shadow-sm border border-line p-6 space-y-4">
-      <div>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-[16rem] flex-1">
         <h2 className="text-base font-semibold text-ink">Warengruppen-Verteilung</h2>
         <p className="text-sm text-ink-muted mt-0.5">
           Lege fest, welche Warengruppen an welcher Kasse erscheinen — z. B. eine Kasse „Getränke",
@@ -92,6 +107,25 @@ export function SichtbarkeitsSektion() {
           Mindestens eine Warengruppe bleibt immer sichtbar. „Alle ausblenden" entfernt alle Haken einer Kasse,
           um die Auswahl neu zu beginnen: Gespeichert wird erst die erste Warengruppe, die du danach einschaltest.
         </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="secondary"
+            onClick={() => setImportOffen(true)}
+            title="Warengruppen und Artikel samt Optionen/Varianten aus einer Layout-Datei (JSON) übernehmen — fehlende Optionen werden angelegt und den Artikeln zugeordnet"
+          >
+            Warengruppen &amp; Artikel importieren
+          </Button>
+          {getAuth()?.user.rolle === 'admin' && (
+            <Button
+              variant="secondary"
+              onClick={() => setExportOffen(true)}
+              title="Warengruppen samt Artikeln und Optionen in eine Layout-Datei (JSON) schreiben — zum Import in einer anderen Kassa"
+            >
+              Exportieren
+            </Button>
+          )}
+        </div>
       </div>
 
       {hinweis && (
@@ -192,6 +226,14 @@ export function SichtbarkeitsSektion() {
           </table>
         </div>
       )}
+
+      <LayoutImportModal open={importOffen} onClose={() => setImportOffen(false)} />
+      <LayoutExportModal
+        open={exportOffen}
+        onClose={() => setExportOffen(false)}
+        kategorien={kategorien}
+        artikel={artikelQuery.data ?? []}
+      />
     </section>
   )
 }
