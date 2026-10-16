@@ -262,12 +262,14 @@ export async function holeArtikelBericht(
 
   const regel = await ladeTagesRegel(deps.db, mandantId)
 
-  // Positionen per jsonb_array_elements auffalten und nach Bezeichnung aggregieren.
+  // Positionen per jsonb_array_elements auffalten und nach Hauptartikel aggregieren: artikelName ist der Artikel
+  // OHNE Optionen („Wiener Schnitzel" — egal ob mit Pommes oder Kartoffelsalat, „Apfelsaft" — egal ob pur oder
+  // gespritzt). Ältere Belege kennen es nicht; für sie gilt wie bisher die volle Bezeichnung.
   // Stornobelege haben negative Einzelpreise → werden automatisch korrekt subtrahiert.
   const kasseIdArr = sql.join(angefragte.map(id => sql`${id}::uuid`), sql`, `)
   const rows = await deps.db.execute<{ bezeichnung: string; menge_summe: string; umsatz_cent: string }>(sql`
     SELECT
-      pos->>'bezeichnung'                                           AS bezeichnung,
+      COALESCE(pos->>'artikelName', pos->>'bezeichnung')            AS bezeichnung,
       SUM((pos->>'menge')::int)                                     AS menge_summe,
       SUM((pos->>'menge')::int * (pos->>'einzelpreisBreutto')::int) AS umsatz_cent
     FROM belege,
@@ -275,7 +277,7 @@ export async function holeArtikelBericht(
     WHERE kasse_id = ANY(ARRAY[${kasseIdArr}])
       AND beleg_typ IN ('Barzahlungsbeleg','Stornobeleg')
       AND ${datumsBereich(sql`beleg_datum`, filter.von, filter.bis, regel)}
-    GROUP BY pos->>'bezeichnung'
+    GROUP BY COALESCE(pos->>'artikelName', pos->>'bezeichnung')
     ORDER BY umsatz_cent DESC
     LIMIT ${filter.limit}
   `)

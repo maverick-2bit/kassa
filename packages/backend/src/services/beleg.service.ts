@@ -391,9 +391,11 @@ export async function erstelleBarzahlungsbeleg(
         bonRouting = baueBonRouting(kategorieZeilen, await ladeKasseRoutingAusnahmen(tx, input.kasseId))
       }
 
-      // Positionen aufbauen — extra Felder (kategorieId, kategorieName) werden im JSONB
+      // Positionen aufbauen — extra Felder (kategorieId, kategorieName, artikelName) werden im JSONB
       // mitgespeichert, berühren aber nicht die RKSV-Signatur (nur menge/preis/mwst relevant).
-      const positionen: (BelegPosition & { kategorieId?: string | undefined; kategorieName?: string | undefined })[] =
+      // artikelName = Name des Hauptartikels OHNE Optionen („Spritzer", nicht „Spritzer (süß)"): die
+      // Artikelberichte zählen danach, egal ob mit Pommes oder Kartoffelsalat.
+      const positionen: (BelegPosition & { kategorieId?: string | undefined; kategorieName?: string | undefined; artikelName?: string | undefined })[] =
         input.positionen.map((p) => {
           // Freie Position: direkt übernehmen, kein Artikel-Lookup
           if (!('artikelId' in p)) {
@@ -412,6 +414,7 @@ export async function erstelleBarzahlungsbeleg(
             : a.bezeichnung
           return {
             bezeichnung,
+            artikelName:        a.bezeichnung,
             menge:              p.menge,
             einzelpreisBreutto: preis,
             mwstSatz:           a.mwstSatz as MwStSatz,
@@ -616,9 +619,11 @@ export async function erstelleStornobeleg(
       }
 
       // Positionen mit negiertem Einzelpreis
-      const originalPositionen = verweisBeleg.positionen as BelegPosition[]
-      const positionen: BelegPosition[] = originalPositionen.map(p => ({
+      const originalPositionen = verweisBeleg.positionen as (BelegPosition & { artikelName?: string })[]
+      const positionen: (BelegPosition & { artikelName?: string | undefined })[] = originalPositionen.map(p => ({
         bezeichnung:        `Storno: ${p.bezeichnung}`,
+        // „Storno: Spritzer" statt je Option eine eigene Storno-Zeile in den Artikelberichten
+        ...(p.artikelName && { artikelName: `Storno: ${p.artikelName}` }),
         menge:              p.menge,
         einzelpreisBreutto: -p.einzelpreisBreutto,
         mwstSatz:           p.mwstSatz,
