@@ -12,6 +12,7 @@ import {
   type ModifikatorErstellen,
 } from '@kassa/shared'
 import { artikelApi, kategorieApi, modifikatorApi, bonierdruckerApi, lieferantApi } from '../lib/api'
+import { getAuth } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
 import { Modal } from '../components/ui/Modal'
@@ -22,6 +23,7 @@ import { ArtikelFormular } from '../components/ArtikelFormular'
 import { KategorieFormular } from '../components/KategorieFormular'
 import { ArtikelImportModal } from '../components/ArtikelImportModal'
 import { LayoutImportModal } from '../components/LayoutImportModal'
+import { LayoutExportModal } from '../components/LayoutExportModal'
 import { exportArtikelVorlage } from '../lib/artikel-excel'
 import { artikelUpdateAusInput } from '../lib/artikel-update'
 import {
@@ -74,6 +76,8 @@ export function ArtikelPage() {
   const [importModalOpen, setImportModalOpen] = useState(false)
   /** Layout-Import-Modal (Gruppenbaum, Raster, Farben, Favoriten aus JSON) */
   const [layoutImportOpen, setLayoutImportOpen] = useState(false)
+  /** Layout-Export-Modal (Warengruppen samt Artikeln als JSON für eine andere Kassa) */
+  const [layoutExportOpen, setLayoutExportOpen] = useState(false)
 
   /** Modifikator, dessen Lagerstand gerade gesetzt wird */
   const [bestandModal, setBestandModal] = useState<{
@@ -331,7 +335,7 @@ export function ArtikelPage() {
               Artikelstamm verwalten — Bezeichnung, Preis, MwSt-Satz, Kategorie
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="secondary"
               onClick={() => { void exportArtikelVorlage(undefined, katList.data ?? []) }}
@@ -359,6 +363,16 @@ export function ArtikelPage() {
             >
               Layout importieren (JSON)
             </Button>
+            {/* Wie der Import nur für Admins (der Server verlangt es ebenso) */}
+            {getAuth()?.user.rolle === 'admin' && (
+              <Button
+                variant="secondary"
+                onClick={() => setLayoutExportOpen(true)}
+                title="Warengruppen samt Artikeln, Farben, Raster-Plätzen und Optionen in eine Layout-Datei (JSON) schreiben — zum Import in einer anderen Kassa"
+              >
+                Layout exportieren (JSON)
+              </Button>
+            )}
             <Button onClick={openNew}>+ Neuer Artikel</Button>
           </div>
         </div>
@@ -922,6 +936,14 @@ export function ArtikelPage() {
       <LayoutImportModal
         open={layoutImportOpen}
         onClose={() => setLayoutImportOpen(false)}
+      />
+
+      {/* Layout-Export Modal: Warengruppen samt Artikeln für eine andere Kassa */}
+      <LayoutExportModal
+        open={layoutExportOpen}
+        onClose={() => setLayoutExportOpen(false)}
+        kategorien={aktiveKategorien}
+        artikel={list.data ?? []}
       />
 
       {/* Artikel-Gruppen-Zuweisung Modal */}

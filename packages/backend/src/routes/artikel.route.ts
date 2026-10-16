@@ -3,6 +3,7 @@
  *   POST   /api/artikel              Anlegen
  *   POST   /api/artikel/bulk         Bulk-Import (Array von Artikel-Inputs)
  *   POST   /api/artikel/layout-import  Layout-Import (Gruppenbaum, Raster, Farben, Favoriten; nur Admin)
+ *   GET    /api/artikel/layout-export  Layout-Export (Warengruppen samt Artikeln im Import-Format; nur Admin)
  *   GET    /api/artikel              Auflisten (mandantId aus JWT; ?nurAktive=true|false, Standard true)
  *   PUT    /api/artikel/:id          Aktualisieren
  *   DELETE /api/artikel/:id          Deaktivieren (soft delete)
@@ -21,6 +22,7 @@ import {
   aktualisiereArtikel,
   deaktiviereArtikel,
 } from '../services/artikel.service.js'
+import { exportiereLayout } from '../services/layout-export.service.js'
 import { wendeLayoutAn } from '../services/layout-import.service.js'
 import { queryBool } from './query-bool.js'
 
@@ -56,7 +58,40 @@ const LayoutImportQuerySchema = z.object({
   katalogLoeschen: queryBool(false),
 })
 
+const LayoutExportQuerySchema = z.object({
+  /** Kommagetrennte Warengruppen-IDs (samt Untergruppen); fehlt sie, werden alle aktiven Gruppen exportiert */
+  kategorieIds: z.string().optional()
+    .transform(s => (s ? s.split(',').map(x => x.trim()).filter(x => x !== '') : undefined))
+    .pipe(z.array(z.string().uuid()).max(2000).optional()),
+})
+
 export const artikelRoute: FastifyPluginAsync<ArtikelRouteOptions> = async (fastify, opts) => {
+
+  /**
+   * GET /artikel/layout-export?kategorieIds=a,b — der Katalog (Warengruppen samt Untergruppen, Artikel, Farben,
+   * Raster-Plätze, Optionen) im Format des Layout-Imports: hier exportieren, in einer anderen Kassa (einem anderen
+   * Mandanten) per „Layout importieren" einlesen. Nur Admin, mandantId aus dem JWT — fremde Gruppen-IDs bleiben ohne Wirkung.
+   */
+  fastify.get('/artikel/layout-export', {
+    onRequest: [fastify.requireRolle('admin')],
+  }, async (request, reply) => {
+    const query = LayoutExportQuerySchema.safeParse(request.query)
+    if (!query.success) return reply.status(400).send({ fehler: query.error.issues })
+
+    const ergebnis = await exportiereLayout(opts.db, request.user.mandantId, {
+      kategorieIds: query.data.kategorieIds,
+      datum:        new Date().toISOString().slice(0, 10),
+    })
+    if (ergebnis.zusammenfassung.gruppen === 0) {
+      return reply.status(422).send({ fehler: 'Keine Warengruppen zum Exportieren gefunden.' })
+    }
+    // Die Datei muss der Import wieder lesen können (Tiefe, Größe) — sonst lieber jetzt eine klare Meldung
+    const pruefung = LayoutImportSchema.safeParse(ergebnis.layout)
+    if (!pruefung.success) {
+      return reply.status(422).send({ fehler: `Der Export wäre nicht importierbar: ${pruefung.error.issues[0]?.message ?? 'ungültiges Layout'}` })
+    }
+    return reply.send(ergebnis)
+  })
 
   /**
    * POST /artikel/layout-import?dryRun=true|false — wendet ein Layout (Gruppenbaum mit

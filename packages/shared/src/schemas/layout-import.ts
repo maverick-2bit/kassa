@@ -1,10 +1,13 @@
 import { z } from 'zod'
+import { AllergeneEingabeSchema } from './artikel.js'
 import { HexFarbeSchema, KATEGORIE_MAX_TIEFE } from './kategorie.js'
 import { StationSchema } from './station.js'
 
 // ---------------------------------------------------------------------------
 // Layout-Import (z. B. aus der alten Asello-Kasse): Gruppenbaum, Raster-Slots,
 // Farben und Favoriten als JSON — wird per POST /artikel/layout-import angewendet.
+// Dasselbe Format schreibt der Layout-EXPORT (GET /artikel/layout-export): so wandern
+// Warengruppen samt Artikeln von einer Kassa (einem Mandanten) in eine andere.
 // ---------------------------------------------------------------------------
 
 /** Optionsgruppe eines Artikels (Asello: „Variante" / „Optionen") samt Optionen. */
@@ -14,6 +17,10 @@ export const LayoutOptionsgruppeSchema = z.object({
   pflicht: z.boolean().default(false),
   /** true → beliebig viele Optionen (maxAuswahl null), sonst genau eine (maxAuswahl 1) */
   mehrfach: z.boolean().default(false),
+  /** Kassa-Export: `gruppe` ist schon der volle Name der Optionsgruppe und bleibt unverändert (sonst hängt der Import die Optionen als Vorschau an: „Variante (mit Eis / mit Zitrone)") */
+  exakterName: z.boolean().optional(),
+  /** Kassa-Export: genaue Obergrenze der Auswahl (null = unbegrenzt); fehlt sie, gilt `mehrfach` */
+  maxAuswahl: z.number().int().positive().nullable().optional(),
   optionen: z.array(z.object({
     name:          z.string().trim().min(1).max(100),
     /** Aufschlag in Cent, kann negativ sein („Ohne Soda") */
@@ -35,6 +42,8 @@ export const LayoutArtikelSchema = z.object({
   slot:        z.number().int().positive().max(999),
   individuell: z.boolean().optional(),
   variante:    z.string().nullable().optional(),
+  /** Allergen-Buchstaben ("A,C,G"), nur für NEU angelegte Artikel; bestehende bleiben unberührt */
+  allergene:   AllergeneEingabeSchema,
   optionen:    z.array(LayoutOptionsgruppeSchema).max(50).default([]),
 })
 export type LayoutArtikel = z.infer<typeof LayoutArtikelSchema>
@@ -99,6 +108,18 @@ export const LayoutImportSchema = z.object({
   }
 })
 export type LayoutImport = z.infer<typeof LayoutImportSchema>
+
+// ---------------------------------------------------------------------------
+// Export (GET /artikel/layout-export)
+// ---------------------------------------------------------------------------
+
+/** Antwort des Layout-Exports: die Datei (`layout`) und was darin steckt — bzw. was nicht mitkam. */
+export interface LayoutExport {
+  layout:          LayoutImport
+  zusammenfassung: { gruppen: number; artikel: number; optionsgruppen: number }
+  /** Lesbare Hinweise (deutsch), z. B. ausgelassene Artikel mit unbekanntem Steuersatz */
+  hinweise:        string[]
+}
 
 // ---------------------------------------------------------------------------
 // Bericht

@@ -1,5 +1,6 @@
 import type {
   LayoutBericht,
+  LayoutExport,
   DienstplanSchichtInput,
   DienstplanSchichtResponse,
   DienstplanSchichtUpdate,
@@ -541,6 +542,9 @@ export const artikelApi = {
       `/api/artikel/layout-import?dryRun=${opts.dryRun}&fehlendeAnlegen=${opts.fehlendeAnlegen}&spaltenSetzen=${opts.spaltenSetzen}&katalogLoeschen=${opts.katalogLoeschen}`,
       layout,
     ),
+  /** Layout-Export (nur Admin): Warengruppen samt Untergruppen und Artikeln im Format des Layout-Imports; ohne IDs alle aktiven */
+  layoutExport: (kategorieIds: readonly string[] = []) =>
+    request<LayoutExport>('GET', `/api/artikel/layout-export${kategorieIds.length > 0 ? `?kategorieIds=${kategorieIds.join(',')}` : ''}`),
 }
 
 // ---------------------------------------------------------------------------
