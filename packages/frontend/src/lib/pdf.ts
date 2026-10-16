@@ -371,14 +371,14 @@ export async function downloadKassenbuchPdf(
 // Bericht (generisch aus Tabellenzeilen, erste Zeile = Überschriften)
 // ---------------------------------------------------------------------------
 
-export async function downloadBerichtPdf(
+/** Baut das Berichts-PDF (ohne zu speichern) — Download und Bildschirm-Vorschau teilen sich dasselbe Dokument. */
+async function baueBerichtPdf(
   titel:      string,
   zeitraum:   string | undefined,
   firmenname: string,
   zeilen:     string[][],
-  dateiname:  string,
   kassen?:    string,
-): Promise<void> {
+) {
   const [{ jsPDF }, { default: autoTable }] = await Promise.all([
     import('jspdf'),
     import('jspdf-autotable'),
@@ -432,5 +432,32 @@ export async function downloadBerichtPdf(
     },
   })
 
+  return doc
+}
+
+export async function downloadBerichtPdf(
+  titel:      string,
+  zeitraum:   string | undefined,
+  firmenname: string,
+  zeilen:     string[][],
+  dateiname:  string,
+  kassen?:    string,
+): Promise<void> {
+  const doc = await baueBerichtPdf(titel, zeitraum, firmenname, zeilen, kassen)
   doc.save(dateiname)
+}
+
+/**
+ * Berichts-PDF für die Ansicht am Bildschirm: liefert eine Blob-Adresse, die ein <iframe> anzeigen kann.
+ * Wer sie nicht mehr braucht, gibt sie mit URL.revokeObjectURL frei.
+ */
+export async function berichtPdfVorschauUrl(
+  titel:      string,
+  zeitraum:   string | undefined,
+  firmenname: string,
+  zeilen:     string[][],
+  kassen?:    string,
+): Promise<string> {
+  const doc = await baueBerichtPdf(titel, zeitraum, firmenname, zeilen, kassen)
+  return URL.createObjectURL(doc.output('blob'))
 }
