@@ -240,6 +240,10 @@ export {
 } from './start-reiter.js'
 export type { ReiterLage, StartEinstellung } from './start-reiter.js'
 
+// Optionen-Dialog: Auswahl → Positionen (optional je Auswahl ein eigener Artikel)
+export { baueAuswahlPositionen, auswahlGueltig, gruppenSumme } from './optionen-auswahl.js'
+export type { AuswahlPosition, OptionenMengen } from './optionen-auswahl.js'
+
 // Optionen-/Varianten-Abfrage im Direktverkauf (Artikel → Warengruppe → Kasse)
 export { fragtNachOptionen, warengruppenWahl } from './optionen-abfrage.js'
 export type { OptionenAbfrageLage, OptionenAbfrageWahl } from './optionen-abfrage.js'

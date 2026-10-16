@@ -45,7 +45,8 @@ interface Props {
   kategorien:           Kategorie[]
   /** Wenn gesetzt: Artikel mit Modifikator-Gruppen öffnen erst einen Auswahl-Dialog */
   artikelGruppen?:      Map<string, ModifikatorGruppe[]>
-  onArtikelClick:       (a: Artikel, modifikatoren: ModifikatorAuswahl[]) => void
+  /** `menge` > 1, wenn der Optionen-Dialog eine Option mehrfach gewählt hat (Gruppe „Jede Auswahl = eigener Artikel") */
+  onArtikelClick:       (a: Artikel, modifikatoren: ModifikatorAuswahl[], menge?: number) => void
   loading?:             boolean
   /** Wenn gesetzt: nur diese Kategorie-IDs im Tab anzeigen (leer = alle) */
   sichtbareKategorieIds?: string[] | undefined
@@ -536,9 +537,10 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
         open={!!modArtikel}
         artikel={modArtikel}
         gruppen={modArtikel ? (artikelGruppen?.get(modArtikel.id) ?? []) : []}
-        onOk={(a, auswahl) => {
+        onOk={(a, positionen) => {
           setModArtikel(null)
-          onArtikelClick(a, auswahl)
+          // Meist eine Position; bei „Jede Auswahl = eigener Artikel" eine je gewählter Option (mit ihrer Anzahl)
+          for (const p of positionen) onArtikelClick(a, p.modifikatoren, p.menge)
         }}
         onClose={() => setModArtikel(null)}
       />

@@ -456,6 +456,13 @@
       "when": 1791590400000,
       "tag": "0066_optionen_abfrage",
       "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1791676800000,
+      "tag": "0067_optionsgruppe_je_artikel",
+      "breakpoints": true
     }
   ]
 }

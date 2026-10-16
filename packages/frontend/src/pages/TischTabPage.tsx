@@ -267,7 +267,7 @@ export function TischTabPage() {
     return m
   }, [preisregelnQuery.data, artikelQuery.data, aktionsMinute])
 
-  const addArtikel = (a: Artikel, modifikatoren: ModifikatorAuswahl[]) => {
+  const addArtikel = (a: Artikel, modifikatoren: ModifikatorAuswahl[], menge = 1) => {
     setFehler(null)
     // Aktionen: Artikel-Basispreis ggf. senken, Modifikatoren zum vollen Preis dazu
     const regeln    = preisregelnQuery.data ?? []
@@ -280,10 +280,10 @@ export function TischTabPage() {
       if (modifikatoren.length === 0) {
         const ex = prev.find(p => p.artikel.id === a.id && p.modifikatoren.length === 0 && p.gang === gang)
         if (ex) return prev.map(p =>
-          p.artikel.id === a.id && p.modifikatoren.length === 0 && p.gang === gang ? { ...p, menge: p.menge + 1 } : p,
+          p.artikel.id === a.id && p.modifikatoren.length === 0 && p.gang === gang ? { ...p, menge: p.menge + menge } : p,
         )
       }
-      return [...prev, { artikel: a, menge: 1, modifikatoren, preisCent, happyHourProzent: hhProzent, gang }]
+      return [...prev, { artikel: a, menge, modifikatoren, preisCent, happyHourProzent: hhProzent, gang }]
     })
   }
 

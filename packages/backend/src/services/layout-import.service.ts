@@ -134,7 +134,7 @@ export interface LayoutPlan {
   kassenFavoritenLoeschen: boolean
   kassenUpdates: { id: string; artikelProZeile: number }[]
   /** Optionsgruppen je Artikel (artikelId = bestehender oder neu angelegter Artikel) */
-  optionen: { artikelId: string; name: string; typ: 'pflicht' | 'optional'; maxAuswahl: number | null
+  optionen: { artikelId: string; name: string; typ: 'pflicht' | 'optional'; maxAuswahl: number | null; jeAuswahlArtikel?: boolean
     optionen: { name: string; aufschlagCent: number }[] }[]
   /** katalogLoeschen: vorab auszuführende Löschung (inkl. Fallback-Deaktivierung) */
   loeschung: LoeschPlan | null
@@ -464,6 +464,7 @@ export function planeLayout(ist: KassaZustand, layout: LayoutImport, opts: Layou
           name: o.exakterName ? o.gruppe : optionsgruppenName(o.gruppe, o.optionen),
           typ: (o.pflicht ? 'pflicht' : 'optional') as 'pflicht' | 'optional',
           maxAuswahl: o.maxAuswahl !== undefined ? o.maxAuswahl : (o.mehrfach ? null : 1),
+          ...(o.jeAuswahlArtikel !== undefined && { jeAuswahlArtikel: o.jeAuswahlArtikel }),
           optionen: o.optionen.map(x => ({ name: x.name, aufschlagCent: x.aufschlagCent })),
         }
         optionenZeilen.push({ artikelId, ...eintrag })

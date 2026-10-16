@@ -38,7 +38,7 @@ export interface ExportArtikel {
   allergene: string | null; aktiv: boolean; istBestandteil: boolean
 }
 export interface ExportOptionsgruppe {
-  id: string; name: string; typ: string; maxAuswahl: number | null
+  id: string; name: string; typ: string; maxAuswahl: number | null; jeAuswahlArtikel?: boolean
   /** nur aktive Optionen */
   optionen: { name: string; aufschlagCent: number; reihenfolge: number }[]
 }
@@ -122,6 +122,7 @@ export function baueLayoutExport(z: ExportZustand, opts: ExportOptionen = {}): L
         pflicht:     og.typ === 'pflicht',
         mehrfach:    og.maxAuswahl === null,
         maxAuswahl:  og.maxAuswahl !== null && og.maxAuswahl > 0 ? og.maxAuswahl : null,
+        ...(og.jeAuswahlArtikel && { jeAuswahlArtikel: true }),
         optionen:    optionen.slice(0, MAX_OPTIONEN_JE_GRUPPE).map(o => ({ name: kuerze(o.name, 100), aufschlagCent: o.aufschlagCent })),
       })
     }
@@ -243,7 +244,7 @@ export async function exportiereLayout(db: Db, mandantId: string, opts: ExportOp
     gruppen,
     artikel: artikelRows,
     optionsgruppen: ogRows.map(g => ({
-      id: g.id, name: g.name, typ: g.typ, maxAuswahl: g.maxAuswahl,
+      id: g.id, name: g.name, typ: g.typ, maxAuswahl: g.maxAuswahl, jeAuswahlArtikel: g.jeAuswahlArtikel,
       optionen: modRows.filter(m => m.gruppeId === g.id).map(m => ({ name: m.name, aufschlagCent: m.aufschlagCent, reihenfolge: m.reihenfolge })),
     })),
     zuordnungen,

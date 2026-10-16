@@ -309,7 +309,7 @@ export function KassePage() {
   // Warenkorb-Aktionen
   // ---------------------------------------------------------------------------
 
-  const addArtikel = (a: Artikel, modifikatoren: ModifikatorAuswahl[]) => {
+  const addArtikel = (a: Artikel, modifikatoren: ModifikatorAuswahl[], menge = 1) => {
     setFehler(null)
     // Aktionen: den Artikel-Basispreis ggf. senken (Fixpreis oder Prozent),
     // Modifikatoren kommen zum vollen Preis dazu
@@ -325,12 +325,12 @@ export function KassePage() {
         if (existing) {
           return prev.map((p) =>
             p.typ === 'artikel' && p.artikel.id === a.id && p.modifikatoren.length === 0
-              ? { ...p, menge: p.menge + 1 }
+              ? { ...p, menge: p.menge + menge }
               : p,
           )
         }
       }
-      return [...prev, { typ: 'artikel', artikel: a, menge: 1, modifikatoren, preisCent, originalPreisCent: preisCent, happyHourProzent: hhProzent }]
+      return [...prev, { typ: 'artikel', artikel: a, menge, modifikatoren, preisCent, originalPreisCent: preisCent, happyHourProzent: hhProzent }]
     })
   }
 

@@ -11,15 +11,15 @@
 
 import type { RabattInput } from '@kassa/shared'
 
-/** Aufsummierter Aufschlag gewählter Modifikator-Optionen. */
-export function modifikatorAufschlagCent(modifikatoren: { aufschlagCent: number }[]): number {
-  return modifikatoren.reduce((s, m) => s + m.aufschlagCent, 0)
+/** Aufsummierter Aufschlag gewählter Modifikator-Optionen; eine mehrfach gewählte Option (`menge`) zählt entsprechend oft. */
+export function modifikatorAufschlagCent(modifikatoren: { aufschlagCent: number; menge?: number | undefined }[]): number {
+  return modifikatoren.reduce((s, m) => s + m.aufschlagCent * (m.menge ?? 1), 0)
 }
 
 /** Effektiver Positionspreis = Artikel-Bruttopreis + Summe der Modifikator-Aufschläge. */
 export function positionsPreisCent(
   artikelPreisBruttoCent: number,
-  modifikatoren: { aufschlagCent: number }[],
+  modifikatoren: { aufschlagCent: number; menge?: number | undefined }[],
 ): number {
   return artikelPreisBruttoCent + modifikatorAufschlagCent(modifikatoren)
 }

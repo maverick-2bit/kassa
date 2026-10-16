@@ -3,11 +3,18 @@
  *
  * Pflicht-Gruppen müssen ausgewählt werden (mindestens 1 Option).
  * Optional-Gruppen können übersprungen werden.
- * Bei maxAuswahl > 1 können mehrere Optionen ausgewählt werden.
+ * Jede Option lässt sich mehrfach antippen (Anzahl); bei einer Obergrenze (maxAuswahl) gilt sie für die Summe der
+ * Anzahlen der Gruppe, bei maxAuswahl 1 wählt ein Tipp die Option wie bei Radio-Knöpfen.
+ *
+ * Ist an einer Gruppe „Jede Auswahl = eigener Artikel" gesetzt (z. B. Spritzer süß/Sommer/weiß), wird aus jeder gewählten
+ * Option — samt Anzahl — eine eigene Position (@kassa/shared baueAuswahlPositionen); sonst bleibt es eine Position.
  */
 
 import { useMemo, useState } from 'react'
-import type { Artikel, ModifikatorAuswahl, ModifikatorGruppe } from '@kassa/shared'
+import {
+  auswahlGueltig, baueAuswahlPositionen, gruppenSumme,
+  type Artikel, type AuswahlPosition, type ModifikatorGruppe,
+} from '@kassa/shared'
 import { formatPreis } from '../lib/format'
 import { Modal } from './ui/Modal'
 import { Button } from './ui/Button'
@@ -16,88 +23,76 @@ interface Props {
   open:     boolean
   artikel:  Artikel | null
   gruppen:  ModifikatorGruppe[]
-  onOk:     (artikel: Artikel, auswahl: ModifikatorAuswahl[]) => void
+  /** Eine Position je Auswahl-Aufteilung (meist genau eine) */
+  onOk:     (artikel: Artikel, positionen: AuswahlPosition[]) => void
   onClose:  () => void
 }
 
+/** gruppeId → (optionId → Anzahl) */
+type Mengen = Map<string, Map<string, number>>
+
 export function ModifikatorModal({ open, artikel, gruppen, onOk, onClose }: Props) {
-  // auswahl: gruppeId → Set<modifikatorId>
-  const [auswahl, setAuswahl] = useState<Map<string, Set<string>>>(new Map())
+  const [mengen, setMengen] = useState<Mengen>(new Map())
 
   const aktiveGruppen = useMemo(
-    () => gruppen.filter(g => g.aktiv && g.modifikatoren.some(m => m.aktiv)),
+    () => gruppen.filter(g => g.aktiv && g.modifikatoren.some(m => m.aktiv))
+      // Nur aktive Optionen in die Auswahl — eine deaktivierte soll auch nicht über alte Mengen hineinrutschen
+      .map(g => ({ ...g, modifikatoren: g.modifikatoren.filter(m => m.aktiv) })),
     [gruppen],
   )
 
   // Zurücksetzen bei Öffnung
-  if (!open && auswahl.size > 0) {
-    setAuswahl(new Map())
+  if (!open && mengen.size > 0) {
+    setMengen(new Map())
   }
 
-  const toggleOption = (gruppe: ModifikatorGruppe, modId: string) => {
-    setAuswahl(prev => {
-      const next = new Map(prev)
-      const sel  = new Set(next.get(gruppe.id) ?? [])
-      const max  = gruppe.maxAuswahl ?? Infinity
+  const anzahlVon = (gruppeId: string, modId: string) => mengen.get(gruppeId)?.get(modId) ?? 0
 
-      if (sel.has(modId)) {
-        sel.delete(modId)
-      } else {
+  /** Eine Option um `delta` ändern (+1 = antippen, −1 = zurücknehmen); Radio bei maxAuswahl 1, sonst Obergrenze auf die Summe. */
+  const aendere = (gruppe: ModifikatorGruppe, modId: string, delta: 1 | -1) => {
+    setMengen(prev => {
+      const next    = new Map(prev)
+      const gruppeM = new Map(next.get(gruppe.id) ?? [])
+      const aktuell = gruppeM.get(modId) ?? 0
+      const max     = gruppe.maxAuswahl ?? Infinity
+
+      if (delta === 1) {
         if (max === 1) {
-          // Radio-Modus: nur eine Option möglich
-          sel.clear()
-          sel.add(modId)
-        } else if (sel.size < max) {
-          sel.add(modId)
+          // Radio-Modus: nur eine Option, einmal
+          gruppeM.clear()
+          gruppeM.set(modId, 1)
+        } else {
+          if (gruppenSumme(prev, gruppe.id) >= max) return prev
+          gruppeM.set(modId, aktuell + 1)
         }
-        // wenn max bereits erreicht: ignorieren
+      } else {
+        if (aktuell <= 1) gruppeM.delete(modId)
+        else gruppeM.set(modId, aktuell - 1)
       }
-
-      next.set(gruppe.id, sel)
+      next.set(gruppe.id, gruppeM)
       return next
     })
   }
 
-  const isValid = aktiveGruppen
-    .filter(g => g.typ === 'pflicht')
-    .every(g => (auswahl.get(g.id)?.size ?? 0) > 0)
+  /** Bei maxAuswahl 1 nimmt ein zweiter Tipp die Option wieder zurück (wie bisher). */
+  const tippe = (gruppe: ModifikatorGruppe, modId: string) =>
+    (gruppe.maxAuswahl === 1 && anzahlVon(gruppe.id, modId) > 0) ? aendere(gruppe, modId, -1) : aendere(gruppe, modId, 1)
 
-  const gesamtAufschlag = useMemo(() => {
-    let sum = 0
-    for (const gruppe of aktiveGruppen) {
-      const sel = auswahl.get(gruppe.id) ?? new Set()
-      for (const modId of sel) {
-        const mod = gruppe.modifikatoren.find(m => m.id === modId)
-        if (mod) sum += mod.aufschlagCent
-      }
-    }
-    return sum
-  }, [auswahl, aktiveGruppen])
+  const isValid = auswahlGueltig(aktiveGruppen, mengen)
+  const positionen = useMemo(() => baueAuswahlPositionen(aktiveGruppen, mengen), [aktiveGruppen, mengen])
+
+  const basisPreis = artikel?.preisBruttoCent ?? 0
+  // Summe über ALLE Positionen (bei aufgeteilter Auswahl: jede Position mal ihre Anzahl)
+  const gesamtPreis = positionen.reduce(
+    (s, p) => s + (basisPreis + p.modifikatoren.reduce((a, m) => a + m.aufschlagCent * (m.menge ?? 1), 0)) * p.menge, 0)
+  const anzahlArtikel = positionen.reduce((s, p) => s + p.menge, 0)
+  const gesamtAufschlag = gesamtPreis - basisPreis * anzahlArtikel
 
   const handleOk = () => {
     if (!artikel || !isValid) return
-    const result: ModifikatorAuswahl[] = []
-    for (const gruppe of aktiveGruppen) {
-      const sel = auswahl.get(gruppe.id) ?? new Set()
-      for (const modId of sel) {
-        const mod = gruppe.modifikatoren.find(m => m.id === modId)
-        if (mod) {
-          result.push({
-            modifikatorId:  mod.id,
-            gruppeId:       gruppe.id,
-            gruppeName:     gruppe.name,
-            name:           mod.name,
-            aufschlagCent:  mod.aufschlagCent,
-          })
-        }
-      }
-    }
-    onOk(artikel, result)
-    setAuswahl(new Map())
+    onOk(artikel, positionen)
+    setMengen(new Map())
   }
-
-  const basisPreis = artikel?.preisBruttoCent ?? 0
-  const gesamtPreis = basisPreis + gesamtAufschlag
 
   return (
     <Modal
@@ -111,14 +106,14 @@ export function ModifikatorModal({ open, artikel, gruppen, onOk, onClose }: Prop
       ) : (
         <div className="space-y-5">
           {aktiveGruppen.map(gruppe => {
-            const sel     = auswahl.get(gruppe.id) ?? new Set()
-            const max     = gruppe.maxAuswahl ?? Infinity
+            const summe     = gruppenSumme(mengen, gruppe.id)
+            const max       = gruppe.maxAuswahl ?? Infinity
             const isPflicht = gruppe.typ === 'pflicht'
-            const isErfuellt = sel.size > 0
+            const isErfuellt = summe > 0
 
             return (
               <div key={gruppe.id}>
-                <div className="flex items-baseline gap-2 mb-2">
+                <div className="flex flex-wrap items-baseline gap-2 mb-2">
                   <h3 className="text-sm font-semibold text-ink">{gruppe.name}</h3>
                   {isPflicht && (
                     <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full ${
@@ -135,55 +130,92 @@ export function ModifikatorModal({ open, artikel, gruppen, onOk, onClose }: Prop
                   {max !== Infinity && max > 1 && (
                     <span className="text-xs text-ink-subtle">max. {max}</span>
                   )}
+                  {gruppe.jeAuswahlArtikel && (
+                    <span className="text-xs text-ink-subtle" data-testid="je-auswahl-hinweis">
+                      · jede Auswahl wird ein eigener Artikel (mehrfach antippen = mehrfach)
+                    </span>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-1.5">
-                  {gruppe.modifikatoren.filter(m => m.aktiv).map(mod => {
-                    const isGewählt     = sel.has(mod.id)
+                  {gruppe.modifikatoren.map(mod => {
+                    const n              = anzahlVon(gruppe.id, mod.id)
+                    const isGewählt      = n > 0
                     // lagerstandMenge === null → kein Countdown, unbegrenzt
                     // lagerstandMenge === 0   → ausverkauft, nicht wählbar
                     const istAusverkauft = mod.lagerstandMenge === 0
-                    const istDeaktiviert = istAusverkauft || (!isGewählt && sel.size >= max)
+                    // Lagerstand begrenzt die Anzahl dieser Option
+                    const lagerErreicht  = mod.lagerstandMenge !== null && n >= mod.lagerstandMenge
+                    const maxErreicht    = max !== Infinity && max > 1 && summe >= max
+                    const istDeaktiviert = istAusverkauft || (!isGewählt && maxErreicht)
+                    const kannMehr       = !istAusverkauft && !lagerErreicht && !maxErreicht && max !== 1
 
                     return (
-                      <button
+                      <div
                         key={mod.id}
-                        type="button"
-                        disabled={istDeaktiviert}
-                        onClick={() => !istAusverkauft && toggleOption(gruppe, mod.id)}
                         className={`
-                          flex flex-col rounded-lg border px-3 py-2.5 text-sm
-                          transition text-left
+                          flex flex-col rounded-lg border text-sm transition
                           ${isGewählt
                             ? 'border-brand-500 bg-brand-50 text-brand-800 font-medium ring-1 ring-brand-400'
-                            : istAusverkauft
-                            ? 'border-line bg-panel-2 text-ink-subtle cursor-not-allowed'
                             : istDeaktiviert
-                            ? 'border-line bg-panel-2 text-ink-subtle cursor-not-allowed'
+                            ? 'border-line bg-panel-2 text-ink-subtle'
                             : 'border-line bg-panel hover:border-brand-300 hover:bg-brand-50 text-ink'
                           }
                         `}
                       >
-                        <div className="flex items-center justify-between w-full">
-                          <span>{mod.name}</span>
-                          {mod.aufschlagCent !== 0 && (
-                            <span className={`ml-2 text-xs font-mono ${
-                              mod.aufschlagCent > 0 ? 'text-orange-600' : 'text-green-600'
-                            }`}>
-                              {mod.aufschlagCent > 0 ? '+' : ''}{formatPreis(mod.aufschlagCent)}
+                        <button
+                          type="button"
+                          data-testid={`option-${mod.id}`}
+                          disabled={istDeaktiviert || (isGewählt && max !== 1 && !kannMehr)}
+                          onClick={() => !istAusverkauft && (lagerErreicht && max !== 1 ? undefined : tippe(gruppe, mod.id))}
+                          className="flex flex-col px-3 py-2.5 text-left disabled:cursor-not-allowed"
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <span>{mod.name}</span>
+                            <span className="flex items-center gap-1.5">
+                              {mod.aufschlagCent !== 0 && (
+                                <span className={`text-xs font-mono ${
+                                  mod.aufschlagCent > 0 ? 'text-orange-600' : 'text-green-600'
+                                }`}>
+                                  {mod.aufschlagCent > 0 ? '+' : ''}{formatPreis(mod.aufschlagCent)}
+                                </span>
+                              )}
+                              {n > 1 && (
+                                <span data-testid={`anzahl-${mod.id}`} className="rounded-full bg-brand-600 px-1.5 text-xs font-semibold text-white">×{n}</span>
+                              )}
+                            </span>
+                          </div>
+                          {/* Lagerstand-Badge pro Variante */}
+                          {istAusverkauft && (
+                            <span className="mt-1 text-[10px] text-red-400 font-medium">Ausverkauft</span>
+                          )}
+                          {!istAusverkauft && mod.lagerstandMenge !== null && mod.lagerstandMenge > 0 && (
+                            <span className="mt-1 text-[10px] text-amber-600">
+                              noch {mod.lagerstandMenge} verfügbar
                             </span>
                           )}
-                        </div>
-                        {/* Lagerstand-Badge pro Variante */}
-                        {istAusverkauft && (
-                          <span className="mt-1 text-[10px] text-red-400 font-medium">Ausverkauft</span>
+                        </button>
+                        {isGewählt && max !== 1 && (
+                          <div className="flex items-center justify-between border-t border-brand-200 px-2 py-1">
+                            <button
+                              type="button"
+                              aria-label={`${mod.name} weniger`}
+                              data-testid={`weniger-${mod.id}`}
+                              onClick={() => aendere(gruppe, mod.id, -1)}
+                              className="h-6 w-6 rounded border border-brand-300 bg-panel text-brand-700 hover:bg-brand-100"
+                            >−</button>
+                            <span className="text-xs text-brand-700">{n}×</span>
+                            <button
+                              type="button"
+                              aria-label={`${mod.name} mehr`}
+                              data-testid={`mehr-${mod.id}`}
+                              disabled={!kannMehr}
+                              onClick={() => aendere(gruppe, mod.id, 1)}
+                              className="h-6 w-6 rounded border border-brand-300 bg-panel text-brand-700 hover:bg-brand-100 disabled:opacity-40"
+                            >+</button>
+                          </div>
                         )}
-                        {!istAusverkauft && mod.lagerstandMenge !== null && mod.lagerstandMenge > 0 && (
-                          <span className="mt-1 text-[10px] text-amber-600">
-                            noch {mod.lagerstandMenge} verfügbar
-                          </span>
-                        )}
-                      </button>
+                      </div>
                     )
                   })}
                 </div>
@@ -194,7 +226,7 @@ export function ModifikatorModal({ open, artikel, gruppen, onOk, onClose }: Prop
           {/* Gesamtpreis-Vorschau */}
           <div className="flex items-center justify-between pt-2 border-t border-line">
             <span className="text-sm text-ink-muted">
-              {formatPreis(basisPreis)}
+              {anzahlArtikel > 1 ? `${anzahlArtikel} × ` : ''}{formatPreis(basisPreis)}
               {gesamtAufschlag !== 0 && (
                 <span className={`ml-1 text-xs ${gesamtAufschlag > 0 ? 'text-orange-600' : 'text-green-600'}`}>
                   {gesamtAufschlag > 0 ? '+' : ''}{formatPreis(gesamtAufschlag)}
@@ -213,7 +245,7 @@ export function ModifikatorModal({ open, artikel, gruppen, onOk, onClose }: Prop
           <div className="flex gap-2 pt-1">
             <Button variant="secondary" onClick={onClose} className="flex-1">Abbrechen</Button>
             <Button onClick={handleOk} disabled={!isValid} className="flex-1">
-              Hinzufügen · {formatPreis(gesamtPreis)}
+              {anzahlArtikel > 1 ? `${anzahlArtikel} hinzufügen` : 'Hinzufügen'} · {formatPreis(gesamtPreis)}
             </Button>
           </div>
         </div>
