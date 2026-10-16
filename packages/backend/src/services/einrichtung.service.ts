@@ -158,9 +158,9 @@ export async function setzeRoutingAusnahmen(db: Db, mandantId: string, aenderung
       .from(bonierdrucker)
       .where(and(inArray(bonierdrucker.id, druckerIds), eq(bonierdrucker.mandantId, mandantId)))
     if (gefunden.length !== druckerIds.length) throw new EinrichtungError(404, 'Bonierdrucker nicht gefunden')
-    // Ein Backup-Drucker bekommt jeden Bon als Kopie, aber nie als Ziel einer Zuordnung — er würde hier still nichts drucken
+    // Ein Zweitdrucker bekommt jeden Bon als Kopie, aber nie als Ziel einer Zuordnung — er würde hier still nichts drucken
     if (gefunden.some(d => d.istBackup)) {
-      throw new EinrichtungError(400, 'Ein Backup-Drucker kann keiner Warengruppe oder keinem Artikel zugeordnet werden')
+      throw new EinrichtungError(400, 'Ein Zweitdrucker kann keiner Warengruppe oder keinem Artikel zugeordnet werden — er bekommt ohnehin eine Kopie jedes Bons')
     }
   }
 

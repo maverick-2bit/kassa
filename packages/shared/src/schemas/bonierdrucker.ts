@@ -10,8 +10,9 @@ export const BonierdruckerSchema = z.object({
   name:       z.string(),
   ip:         z.string(),
   port:       z.number().int(),
+  /** Zweitdrucker: bekommt zusätzlich eine Kopie jedes Bons (Feldname aus Altgründen) — NICHT der Ersatz bei Ausfall */
   istBackup:  z.boolean(),
-  /** UUID des Fallback-Druckers (wenn dieser nicht erreichbar ist) */
+  /** Backup-Drucker: UUID des Druckers, der einspringt, wenn dieser nicht erreichbar ist */
   fallbackId: z.string().uuid().nullable(),
   aktiv:      z.boolean(),
   createdAt:  z.string(),

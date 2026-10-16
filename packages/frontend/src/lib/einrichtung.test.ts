@@ -3,6 +3,7 @@ import type { Kategorie, RoutingAusnahme } from '@kassa/shared'
 import {
   ausnahmenNachZelle,
   wendeAenderungenAn,
+  bonierdruckerBackup,
   bonierdruckerVerwendung,
   hatAngabe,
   kassenIdsFolge,
@@ -141,6 +142,26 @@ describe('bonierdruckerVerwendung: wofür ein Bonierdrucker eingesetzt ist', () 
   it('ein ungenutzter Drucker hat überall nichts', () => {
     const v = bonierdruckerVerwendung('d9', { kategorien: [], artikel: [], ausnahmen: [], stationDrucker: [], fallbackId: null })
     expect(v).toEqual({ warengruppen: [], artikel: 0, ausnahmen: 0, stationen: [], fallback: false })
+  })
+})
+
+describe('bonierdruckerBackup: wer springt für wen ein', () => {
+  const dr = (id: string, fallbackId: string | null = null, aktiv = true) => ({ id, name: `Drucker ${id}`, aktiv, fallbackId })
+
+  it('der Backup-Drucker eines Druckers — und für wen ein Drucker selbst einspringt', () => {
+    const liste = [dr('kueche', 'schank'), dr('schank'), dr('bar', 'schank')]
+    expect(bonierdruckerBackup('kueche', liste)).toEqual({ backup: { name: 'Drucker schank', aktiv: true }, backupFuer: [] })
+    expect(bonierdruckerBackup('schank', liste)).toEqual({ backup: null, backupFuer: ['Drucker kueche', 'Drucker bar'] })
+    expect(bonierdruckerBackup('bar', liste).backup?.name).toBe('Drucker schank')
+  })
+
+  it('ein deaktivierter Backup-Drucker wird als solcher gemeldet (er springt nicht ein)', () => {
+    expect(bonierdruckerBackup('kueche', [dr('kueche', 'schank'), dr('schank', null, false)]).backup).toEqual({ name: 'Drucker schank', aktiv: false })
+  })
+
+  it('ohne Backup-Beziehung oder bei unbekanntem Drucker: nichts', () => {
+    expect(bonierdruckerBackup('kueche', [dr('kueche'), dr('schank')])).toEqual({ backup: null, backupFuer: [] })
+    expect(bonierdruckerBackup('gibtesnicht', [dr('kueche', 'schank'), dr('schank')])).toEqual({ backup: null, backupFuer: [] })
   })
 })
 

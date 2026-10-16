@@ -3,7 +3,8 @@
  * sendet Bonierbons parallel an:
  *   - KDS-Stationen (Küche/Schank/...) wenn kdsAktiv = true
  *   - ESC/POS-Bonierdrucker je nach Artikel- oder Kategorie-Zuweisung
- *   - Backup-Bonierdrucker (empfangen ALLE Positionen automatisch)
+ *   - Zweitdrucker (empfangen ALLE Positionen automatisch als Kopie; ein Backup-Drucker dagegen springt
+ *     nur ein, wenn sein Drucker nicht erreichbar ist — siehe sendeMitErsatz)
  *
  * Dies ist KEIN RKSV-Vorgang — es wird kein Beleg signiert oder persistiert.
  */
@@ -292,8 +293,8 @@ export async function bonierBestellung(
       preisLabel:  '',
     }))
     try {
-      // Hauptdrucker: bei Ausfall an den eigenen Fallback bzw. den festen Fallback-Drucker umleiten —
-      // so geht kein Bon verloren. Eine Backup-KOPIE bleibt ohne Umleitung (sonst käme sie doppelt an).
+      // Hauptdrucker: bei Ausfall an den eigenen Backup-Drucker bzw. den festen Fallback-Drucker umleiten —
+      // so geht kein Bon verloren. Die Kopie des Zweitdruckers bleibt ohne Umleitung (sonst käme sie doppelt an).
       let benutzt = drucker
       if (istBackup) {
         await druckeBonierbonDirekt(drucker.ip, drucker.port, tischLabel, input.kellner, zeilen, optionen.storno === true)
@@ -328,7 +329,7 @@ export async function bonierBestellung(
     await sendeAnDrucker(drucker, positionen, false)
   }
 
-  // 9. Backup-Drucker: erhalten alle SOFORT zu druckenden Positionen —
+  // 9. Zweitdrucker: erhalten alle SOFORT zu druckenden Positionen —
   //    KDS-Positionen (Druck erst beim Erledigen) gehören auch hier nicht drauf.
   for (const backup of backupDrucker) {
     if (sofortDruckPositionen.length === 0) break

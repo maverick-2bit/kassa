@@ -297,7 +297,7 @@ export async function kdsArchivBons(
   }))
 }
 
-/** Nachdrucken: KDS-Bon an alle aktiven (nicht-Backup) Bonierdrucker senden */
+/** Nachdrucken: KDS-Bon an alle aktiven Bonierdrucker (außer Zweitdruckern) senden */
 export async function kdsBonNachdrucken(
   db:        Db,
   bonId:     string,

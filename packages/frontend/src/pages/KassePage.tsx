@@ -1378,7 +1378,7 @@ export function KassePage() {
                     >
                       <span className="font-medium">
                         {d.name}
-                        {d.istBackup && <span className="ml-1.5 text-[10px] rounded-full bg-black/10 px-1.5 py-0.5">Backup</span>}
+                        {d.istBackup && <span className="ml-1.5 text-[10px] rounded-full bg-black/10 px-1.5 py-0.5">Zweitdrucker</span>}
                         {' '}<span className="font-mono text-xs opacity-60">({d.ip})</span>
                       </span>
                       <span>

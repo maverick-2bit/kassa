@@ -1,8 +1,8 @@
 /**
  * Integrationstest: Papierdruck der KDS-Bons je Station auf einen gewählten Bonierdrucker.
  *
- * Vorher druckten Erledigt-Bon, Teilbon und Nachdrucken IMMER an alle aktiven Nicht-Backup-
- * Bonierdrucker — hat ein Betrieb Bon-, Rechnungs- und Küchendrucker angelegt, kam der KDS-
+ * Vorher druckten Erledigt-Bon, Teilbon und Nachdrucken IMMER an alle aktiven Bonierdrucker
+ * (außer Zweitdruckern) — hat ein Betrieb Bon-, Rechnungs- und Küchendrucker angelegt, kam der KDS-
  * Bon auch dort an, wo er nichts zu suchen hat. Jetzt: Station → Drucker (KDS-Zuordnung).
  * Echte TCP-Listener stehen für die Drucker.
  */
@@ -105,7 +105,7 @@ describe('KDS-Papierdruck je Station (Integration, echtes PostgreSQL + TCP-Liste
     await srv?.close(); await idb?.zerstoeren()
   })
 
-  it('ohne Zuordnung: wie bisher an ALLE aktiven Nicht-Backup-Drucker', async () => {
+  it('ohne Zuordnung: wie bisher an ALLE aktiven Drucker (außer Zweitdruckern)', async () => {
     const r = await nachdrucken()
     expect(r.gedruckt).toBe(2)
     expect(a.empfangen()).toBe(1)
@@ -131,7 +131,7 @@ describe('KDS-Papierdruck je Station (Integration, echtes PostgreSQL + TCP-Liste
     expect(b.empfangen()).toBe(2)
   })
 
-  it('unbekannter Drucker → 404, Zweitdrucker (Backup) → 400, ungültige Station → 400', async () => {
+  it('unbekannter Drucker → 404, Zweitdrucker → 400, ungültige Station → 400', async () => {
     expect((await zuordnen('schank', '00000000-0000-4000-8000-000000000001')).statusCode).toBe(404)
     expect((await zuordnen('schank', backupId)).statusCode).toBe(400)
     expect((await zuordnen('gibtesnicht', druckerA)).statusCode).toBe(400)
@@ -161,7 +161,7 @@ describe('KDS-Papierdruck je Station (Integration, echtes PostgreSQL + TCP-Liste
     beforeAll(async () => {
       // Drucker, der nicht erreichbar ist (Port 1 → sofort "Connection refused")
       defekt = (await post('/api/bonierdrucker', { name: 'Defekt', ip: '127.0.0.1', port: 1 })).id
-      // Der Zweitdrucker (Backup) soll die Fälle unten nicht verfälschen
+      // Der Zweitdrucker soll die Fälle unten nicht verfälschen
       expect((await srv.fastify.inject({ method: 'PATCH', url: `/api/bonierdrucker/${backupId}`, headers: auth(), payload: { aktiv: false } })).statusCode).toBe(200)
     })
 
@@ -272,7 +272,7 @@ describe('KDS-Papierdruck je Station (Integration, echtes PostgreSQL + TCP-Liste
       expect(b.empfangen()).toBe(vorher + 1)
     })
 
-    it('ein als Zweitdrucker (Backup) markierter Drucker darf der Backup-Drucker sein — er muss aktiv und erreichbar sein', async () => {
+    it('ein Zweitdrucker darf auch der Backup-Drucker eines anderen sein — er muss aktiv und erreichbar sein', async () => {
       expect((await aktiv(backupId, true)).statusCode).toBe(200)
       expect((await setzeBackup(defekt, backupId)).statusCode).toBe(200)
       // Port 9 des Zweitdruckers ist nicht erreichbar → der Bon geht trotzdem verloren (kein weiterer Ersatz)
@@ -308,6 +308,53 @@ describe('KDS-Papierdruck je Station (Integration, echtes PostgreSQL + TCP-Liste
     it('Backup entfernen (null): wieder kein Ersatz', async () => {
       expect((await setzeBackup(defekt, null)).json().fallbackId).toBeNull()
       expect(await nachdrucken()).toEqual({ gedruckt: 0, fehler: 1 })
+    })
+
+    // Beim Bonieren (nicht nur beim Nachdrucken): Warengruppe → Drucker, Direktverkauf ohne KDS-Station
+    const bonierenAn = async (druckerId: string, tisch: string, name: string, reihenfolge: number) => {
+      const kat = (await post('/api/kategorien', { name, farbe: 'blau', reihenfolge, bonierdruckerId: druckerId })).id
+      const art = (await post('/api/artikel', { bezeichnung: `${name}-Artikel`, preisBruttoCent: 300, mwstSatz: 'normal', kategorieId: kat })).id
+      const res = await srv.fastify.inject({
+        method: 'POST', url: '/api/bestellung/bonieren', headers: auth(),
+        payload: { kasseId, tisch, kellner: 'Anna', positionen: [{ artikelId: art, menge: 1 }] },
+      })
+      await kurzWarten()
+      return res
+    }
+
+    it('Bonieren: ist der Drucker nicht erreichbar, druckt sein Backup-Drucker — als zugestellt gemeldet, mit Hinweis', async () => {
+      expect((await setzeBackup(defekt, druckerB)).statusCode).toBe(200)
+      const vorher = b.empfangen()
+      const res = await bonierenAn(defekt, 'T20', 'Backup-Bonieren', 20)
+      expect(res.statusCode, res.body).toBe(200)           // zugestellt → keine rote Meldung "Bon NICHT angekommen"
+      const d = res.json().drucker[0]
+      expect(d).toMatchObject({ erfolgreich: true, druckerId: defekt, istBackup: false })
+      expect(d.name).toContain('→')
+      expect(d.fehler).toMatch(/umgeleitet/)
+      expect(b.empfangen()).toBe(vorher + 1)
+    })
+
+    it('Der Backup-Drucker ist KEIN Zweitdrucker: solange der Drucker erreichbar ist, bekommt er keine Kopie', async () => {
+      // Der Bondrucker (druckerA, weiter oben deaktiviert) arbeitet wieder und hat druckerB als Backup-Drucker
+      expect((await aktiv(druckerA, true)).statusCode).toBe(200)
+      expect((await setzeBackup(druckerA, druckerB)).statusCode).toBe(200)
+
+      const aVorher = a.empfangen(), bVorher = b.empfangen()
+      const res = await bonierenAn(druckerA, 'T21', 'Backup-Keine-Kopie', 21)
+      expect(res.statusCode, res.body).toBe(200)
+      expect(res.json().drucker).toHaveLength(1)           // nur der eigentliche Drucker, kein zweiter Eintrag
+      expect(res.json().drucker[0]).toMatchObject({ druckerId: druckerA, erfolgreich: true })
+      expect(res.json().drucker[0].fehler).toBeUndefined()  // nicht umgeleitet
+      expect(a.empfangen()).toBe(aVorher + 1)
+      expect(b.empfangen()).toBe(bVorher)                  // der Backup-Drucker bleibt stumm
+
+      // Nachdrucken genauso: nur der Stationsdrucker
+      expect((await zuordnen('schank', druckerA)).statusCode).toBe(204)
+      expect(await nachdrucken()).toEqual({ gedruckt: 1, fehler: 0 })
+      expect(a.empfangen()).toBe(aVorher + 2)
+      expect(b.empfangen()).toBe(bVorher)
+
+      expect((await setzeBackup(druckerA, null)).statusCode).toBe(200)
     })
   })
 })

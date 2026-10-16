@@ -56,7 +56,7 @@ export const BonierungErgebnisSchema = z.object({
     erfolgreich: z.boolean(),
     fehler:      z.string().optional(),
   })),
-  /** Ergebnisse für ESC/POS Bonierdrucker (inkl. Backup-Drucker) */
+  /** Ergebnisse für ESC/POS Bonierdrucker (inkl. Zweitdrucker; bei einer Umleitung auf den Backup-Drucker steht der Hinweis in `fehler`) */
   drucker: z.array(z.object({
     druckerId:   z.string().uuid(),
     name:        z.string(),

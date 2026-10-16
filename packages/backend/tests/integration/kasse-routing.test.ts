@@ -256,12 +256,12 @@ describe('Kassen-Ausnahmen beim Bon-Routing (Integration, echtes PostgreSQL + TC
       expect((await ausnahmen([{ kasseId: kasse1, kategorieId: speisen, drucker: randomUUID() }])).statusCode).toBe(404)
     })
 
-    it('ein Backup-Drucker ist kein Ziel → 400', async () => {
-      // (Ein Backup-Drucker bekäme jeden Bon als Kopie — er steht deshalb nur hier, nicht in den Routing-Tests)
+    it('ein Zweitdrucker ist kein Ziel → 400', async () => {
+      // (Ein Zweitdrucker bekäme jeden Bon als Kopie — er steht deshalb nur hier, nicht in den Routing-Tests)
       const backupId = (await post('/api/bonierdrucker', { name: 'Zweit', ip: '127.0.0.1', port: 9, istBackup: true })).id
       const res = await ausnahmen([{ kasseId: kasse1, kategorieId: speisen, drucker: backupId }])
       expect(res.statusCode).toBe(400)
-      expect(res.json().fehler).toMatch(/Backup/)
+      expect(res.json().fehler).toMatch(/Zweitdrucker/)
       expect((await srv.fastify.inject({ method: 'DELETE', url: `/api/bonierdrucker/${backupId}`, headers: auth() })).statusCode).toBe(204)
     })
 

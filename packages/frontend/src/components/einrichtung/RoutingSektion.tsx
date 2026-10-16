@@ -82,7 +82,7 @@ export function RoutingSektion() {
   })
 
   const kategorien = useMemo(() => kategorienQuery.data ?? [], [kategorienQuery.data])
-  // Backup-Drucker bekommen jeden Bon als Kopie, sind aber nie ein Ziel einer Zuordnung
+  // Zweitdrucker bekommen jeden Bon als Kopie, sind aber nie ein Ziel einer Zuordnung
   const druckerListe = useMemo(() => (bonierQuery.data ?? []).filter(d => !d.istBackup), [bonierQuery.data])
   const ausnahmen = daten?.ausnahmen ?? []
   const nachZelle = useMemo(() => ausnahmenNachZelle(ausnahmen), [ausnahmen])
@@ -95,7 +95,7 @@ export function RoutingSektion() {
   )
   const merkmalName = merkmal === 'drucker' ? 'Drucker' : 'Station'
   const wertName = (r: KategorieRouting): string => {
-    if (merkmal === 'drucker') return r.bonierdruckerId ? (druckerListe.find(d => d.id === r.bonierdruckerId)?.name ?? '(Backup/gelöscht)') : 'keiner'
+    if (merkmal === 'drucker') return r.bonierdruckerId ? (druckerListe.find(d => d.id === r.bonierdruckerId)?.name ?? '(Zweitdrucker/gelöscht)') : 'keiner'
     return r.station ? (STATION_LABELS[r.station as Station] ?? r.station) : 'keine'
   }
 
