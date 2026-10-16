@@ -17,7 +17,7 @@ const art = (bezeichnung: string, kategorieId: string | null, extra: Partial<Art
     farbe: null, kategorieId, rasterPosition: null, aktiv: true, lagerstandAktiv: false, lagerstandMenge: null,
     mindestbestand: null, seriennummernAktiv: false, istFavorit: false, reihenfolge: 0, favoritenReihenfolge: 0,
     bonierdruckerId: null, bonierBeiDirektverkauf: false, istBestandteil: false, bestandteile: [], lieferantId: null,
-    terminalSichtbar: null, createdAt: '', updatedAt: '', ...extra,
+    terminalSichtbar: null, optionenAbfrage: null, createdAt: '', updatedAt: '', ...extra,
   }
 }
 const kategorien = asselloBaum()

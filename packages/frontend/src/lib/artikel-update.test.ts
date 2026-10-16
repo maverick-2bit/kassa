@@ -30,6 +30,7 @@ const BEISPIEL = {
   bestandteile:           [{ bestandteilArtikelId: ID(4), menge: 2 }],
   lieferantId:            ID(5),
   terminalSichtbar:       true,
+  optionenAbfrage:        false,
   bild:                   'data:image/jpeg;base64,AAAA',
 } satisfies Record<keyof ArtikelInput, unknown>
 
@@ -86,8 +87,15 @@ describe('artikelUpdateAusInput: leere Werte leeren das Feld (null / []), statt 
       bezeichnung: 'Leer', preisBruttoCent: 100, mwstSatz: 'normal',
       allergene: null, station: null, farbe: null, kategorieId: null, istFavorit: false, bonierdruckerId: null,
       bonierBeiDirektverkauf: false, istBestandteil: false, bestandteile: [], lieferantId: null,
-      lagerstandAktiv: false, lagerstandMenge: null, mindestbestand: null, seriennummernAktiv: false, bild: null,
+      lagerstandAktiv: false, lagerstandMenge: null, mindestbestand: null, seriennummernAktiv: false,
+      optionenAbfrage: null, bild: null,
     })
+  })
+
+  it('Optionen-Abfrage „wie Warengruppe" (fehlt/null) leert das Feld, eine Wahl geht mit', () => {
+    expect(artikelUpdateAusInput({ ...eingabe, optionenAbfrage: null }).optionenAbfrage).toBeNull()
+    expect(artikelUpdateAusInput({ ...eingabe, optionenAbfrage: false }).optionenAbfrage).toBe(false)
+    expect(artikelUpdateAusInput({ ...eingabe, optionenAbfrage: true }).optionenAbfrage).toBe(true)
   })
 
   it('„Kein Lieferant" / Rezept geleert / Farbe automatisch / Bild entfernt gehen als Leerung mit', () => {

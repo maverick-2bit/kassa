@@ -74,6 +74,7 @@ function toDto(row: typeof kategorien.$inferSelect): Kategorie {
     bonierdruckerId: row.bonierdruckerId,
     station:         row.station as Kategorie['station'],
     terminalSichtbar: row.terminalSichtbar,
+    optionenAbfrage: row.optionenAbfrage,
     createdAt:       row.createdAt.toISOString(),
     updatedAt:       row.updatedAt.toISOString(),
   }
@@ -94,6 +95,7 @@ export async function erstelleKategorie(
     bonierdruckerId: input.bonierdruckerId ?? null,
     station:         input.station ?? null,
     terminalSichtbar: input.terminalSichtbar ?? false,
+    optionenAbfrage: input.optionenAbfrage ?? null,
   }).returning()
   if (!created) throw new Error('Kategorie konnte nicht angelegt werden')
   return toDto(created)
@@ -148,6 +150,7 @@ export async function aktualisiereKategorie(
   if (update.bonierdruckerId !== undefined) values.bonierdruckerId = update.bonierdruckerId
   if (update.station         !== undefined) values.station         = update.station
   if (update.terminalSichtbar !== undefined) values.terminalSichtbar = update.terminalSichtbar
+  if (update.optionenAbfrage !== undefined) values.optionenAbfrage = update.optionenAbfrage
 
   const [updated] = await db
     .update(kategorien)

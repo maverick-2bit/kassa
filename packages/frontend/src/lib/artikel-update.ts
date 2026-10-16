@@ -43,6 +43,8 @@ export function artikelUpdateAusInput(input: ArtikelInput): ArtikelUpdate {
     lagerstandMenge:        input.lagerstandMenge ?? null,
     mindestbestand:         input.mindestbestand  ?? null,
     seriennummernAktiv:     input.seriennummernAktiv,
-    bild:                   input.bild            ?? null,
+    // null = „wie die Warengruppe" — wer die Auswahl zurücksetzt, will genau das (leert das Feld)
+    optionenAbfrage:        input.optionenAbfrage ?? null,
+    bild:                  input.bild            ?? null,
   }
 }

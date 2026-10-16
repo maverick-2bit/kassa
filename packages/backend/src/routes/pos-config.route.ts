@@ -35,6 +35,7 @@ const PosConfigBodySchema = z.object({
   kellnerFavoritenAktiv: z.boolean().optional(),
   startFavoriten:        z.boolean().optional(),
   startKategorieId:      z.string().uuid().nullable().optional(),
+  optionenAbfrage:       z.boolean().optional(),
 })
 
 export const posConfigRoute: FastifyPluginAsync<PosConfigRouteOptions> = async (fastify, opts) => {
@@ -55,6 +56,7 @@ export const posConfigRoute: FastifyPluginAsync<PosConfigRouteOptions> = async (
         kellnerFavoritenAktiv: kassen.kellnerFavoritenAktiv,
         startFavoriten:        kassen.startFavoriten,
         startKategorieId:      kassen.startKategorieId,
+        optionenAbfrage:       kassen.optionenAbfrage,
       })
       .from(kassen)
       .where(and(eq(kassen.id, p.data.kasseId), eq(kassen.mandantId, request.user.mandantId)))
@@ -94,6 +96,7 @@ export const posConfigRoute: FastifyPluginAsync<PosConfigRouteOptions> = async (
       kellnerFavoritenAktiv: kasse.kellnerFavoritenAktiv,
       startFavoriten:        kasse.startFavoriten,
       startKategorieId:      kasse.startKategorieId,
+      optionenAbfrage:       kasse.optionenAbfrage,
     })
   })
 
@@ -158,6 +161,7 @@ export const posConfigRoute: FastifyPluginAsync<PosConfigRouteOptions> = async (
         ...(body.data.kellnerTischwahl      !== undefined && { kellnerTischwahl:      body.data.kellnerTischwahl }),
         ...(body.data.kellnerFavoritenAktiv !== undefined && { kellnerFavoritenAktiv: body.data.kellnerFavoritenAktiv }),
         ...(body.data.startFavoriten        !== undefined && { startFavoriten:        body.data.startFavoriten }),
+        ...(body.data.optionenAbfrage       !== undefined && { optionenAbfrage:       body.data.optionenAbfrage }),
         ...(startKategorieId                !== undefined && { startKategorieId }),
       }
       if (Object.keys(kassenPatch).length > 0) {

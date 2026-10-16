@@ -60,6 +60,9 @@ export const EinrichtungKasseSchema = z.object({
   startFavoriten:   z.boolean(),
   startKategorieId: z.string().uuid().nullable(),
 
+  /** Direktverkauf: Optionen/Varianten abfragen (Warengruppe/Artikel können abweichen; Tische fragen immer) */
+  optionenAbfrage:  z.boolean(),
+
   /** Sichtbare Warengruppen (leer = alle) */
   sichtbareKategorieIds:     z.array(z.string().uuid()),
   /** Aktive Bonierdrucker dieser Kasse (leer = alle) */

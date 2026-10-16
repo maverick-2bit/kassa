@@ -93,6 +93,7 @@ function toDto(
     verfuegbareMenge:     berechneVerfuegbareMenge(bestandteile),
     lieferantId:          row.lieferantId,
     terminalSichtbar:     row.terminalSichtbar,
+    optionenAbfrage:      row.optionenAbfrage,
     ...(row.bild != null  && { bild: row.bild }),
     createdAt:            row.createdAt.toISOString(),
     updatedAt:            row.updatedAt.toISOString(),
@@ -131,6 +132,7 @@ export async function erstelleArtikel(db: Db, input: ArtikelInput): Promise<Arti
       bonierBeiDirektverkauf: input.bonierBeiDirektverkauf ?? false,
       istBestandteil:  input.istBestandteil ?? false,
       terminalSichtbar: input.terminalSichtbar ?? null,
+      optionenAbfrage:  input.optionenAbfrage ?? null,
       ...(input.bild != null && { bild: input.bild }),
     }).returning()
     if (!row) throw new Error('Artikel konnte nicht angelegt werden')
@@ -198,6 +200,7 @@ export async function aktualisiereArtikel(
   if (update.istBestandteil       !== undefined) values.istBestandteil       = update.istBestandteil
   if (update.lieferantId          !== undefined) values.lieferantId          = update.lieferantId
   if (update.terminalSichtbar     !== undefined) values.terminalSichtbar     = update.terminalSichtbar
+  if (update.optionenAbfrage      !== undefined) values.optionenAbfrage      = update.optionenAbfrage
   if (update.bild                 !== undefined) values.bild                 = update.bild ?? null
 
   const updated = await db.transaction(async (tx) => {
