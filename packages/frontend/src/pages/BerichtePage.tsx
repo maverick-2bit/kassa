@@ -5,7 +5,8 @@ import { STATION_LABELS, beginnFuer } from '@kassa/shared'
 import { berichtApi } from '../lib/api'
 import { getAuth, hasBerechtigung, tagesRegel } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
-import { downloadBerichtPdf } from '../lib/pdf'
+import { berichtPdfVorschauUrl, downloadBerichtPdf } from '../lib/pdf'
+import { PdfVorschauModal } from '../components/PdfVorschauModal'
 import { formatPreis } from '../lib/format'
 import { addTage, endeDesMonats, heuteGeschaeftstag, heuteKalendertag, montagDerWoche } from '../lib/geschaeftstag'
 import { Button } from '../components/ui/Button'
@@ -966,9 +967,36 @@ function DruckenButtons({ dateiBasis, titel, zeitraum, kassen, zeilen }: {
       setPdf(false)
     }
   }
+  // Direkt am Bildschirm ansehen (statt Download): dasselbe PDF in einem Fenster
+  const [vorschauUrl, setVorschauUrl] = useState<string | null>(null)
+  const [vorschauLaeuft, setVorschauLaeuft] = useState(false)
+  const vorschau = async () => {
+    setVorschauLaeuft(true); setMeldung(null)
+    try {
+      setVorschauUrl(await berichtPdfVorschauUrl(titel, zeitraum, getAuth()?.mandant.firmenname ?? '', zeilen(), kassen))
+    } catch (err) {
+      setMeldung({ ok: false, text: err instanceof Error ? err.message : 'Vorschau fehlgeschlagen' })
+    } finally {
+      setVorschauLaeuft(false)
+    }
+  }
+  const schliesseVorschau = () => {
+    if (vorschauUrl) URL.revokeObjectURL(vorschauUrl)
+    setVorschauUrl(null)
+  }
 
   return (
     <>
+      <button
+        type="button"
+        disabled={vorschauLaeuft}
+        onClick={vorschau}
+        data-testid="bericht-ansehen"
+        className="text-xs font-medium text-brand-700 hover:underline disabled:opacity-50"
+      >
+        {vorschauLaeuft ? 'Wird erzeugt …' : 'Ansehen'}
+      </button>
+      <PdfVorschauModal url={vorschauUrl} titel={titel} dateiname={`${dateiBasis}.pdf`} onClose={schliesseVorschau} />
       <button
         type="button"
         disabled={druckt}
@@ -1153,14 +1181,27 @@ function GesamtumsatzBericht() {
     enabled:  geladenerFilter !== null,
   })
 
+  // Dieselbe Auswahl auch als Artikelauflistung (Hauptartikel, Menge und Umsatz) — nicht nur die Umsatzsummen
+  const artikel = useQuery({
+    queryKey: ['bericht-gesamt-artikel', geladenerFilter],
+    queryFn:  () => berichtApi.artikel({ kasseIds: geladenerFilter!.kasseIds, von: geladenerFilter!.von, bis: geladenerFilter!.bis }),
+    enabled:  geladenerFilter !== null,
+  })
+
   return (
     <div className="space-y-6">
       <FilterPanel preset={preset} onPreset={waehlePreset} von={von} onVon={setVon} bis={bis} onBis={setBis}
-        kasseIds={kasseIds} onToggleKasse={toggleKasse} isLoading={isLoading}
+        kasseIds={kasseIds} onToggleKasse={toggleKasse} isLoading={isLoading || artikel.isLoading}
         onLaden={() => setGeladenerFilter({ kasseIds, von, bis, gruppierung: 'monat' })} />
 
       {isError && <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error instanceof Error ? error.message : 'Fehler'}</div>}
       {data && <GesamtumsatzErgebnis data={data.gesamt} von={data.von} bis={data.bis} kasseIds={data.kasseIds} />}
+      {data && artikel.isError && (
+        <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          Artikelauflistung konnte nicht geladen werden: {artikel.error instanceof Error ? artikel.error.message : 'Fehler'}
+        </div>
+      )}
+      {data && artikel.data && <ArtikelBerichtTabelle data={artikel.data} />}
     </div>
   )
 }
