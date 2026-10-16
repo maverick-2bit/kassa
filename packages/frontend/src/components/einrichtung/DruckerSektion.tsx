@@ -15,6 +15,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { STATION_LABELS, type Bonierdrucker, type DruckerPool, type DruckerPoolInput } from '@kassa/shared'
 import { artikelApi, bonierdruckerApi, druckerPoolApi, kategorieApi, kdsDruckerApi } from '../../lib/api'
 import { getAuth } from '../../lib/auth'
+import { useServerHost } from '../../lib/serverHost'
 import { bonierdruckerBackup, bonierdruckerVerwendung, kassenMitRechnungsdrucker, kassenName } from '../../lib/einrichtung'
 import { Button } from '../ui/Button'
 import { Field } from '../ui/Field'
@@ -226,6 +227,43 @@ export function DruckerSektion() {
 // Anlegen / Bearbeiten
 // ---------------------------------------------------------------------------
 
+const IPV4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.\d{1,3}$/
+
+/**
+ * Anhaltspunkt für die Drucker-IP: die Adresse dieser Kassa im Netzwerk. Der Drucker muss im selben Netz liegen,
+ * also meist mit denselben ersten drei Zahlen beginnen (z. B. 192.168.1.x). Die Adresse kommt aus lib/serverHost —
+ * im Docker-Betrieb kann das Backend sie nicht selbst ermitteln, dann zählt die Adresse, über die der Browser die Kassa erreicht.
+ */
+function NetzHinweis({ ip, onPraefix }: { ip: string; onPraefix: (ip: string) => void }) {
+  const { host, fertig } = useServerHost()
+  if (!fertig) return null
+  const teile = host ? IPV4.exec(host) : null
+  if (!host || !teile) {
+    return (
+      <p data-testid="drucker-netz-hinweis" className="rounded-md border border-line bg-panel-2 px-3 py-2 text-xs text-ink-muted">
+        Die Netzwerk-Adresse dieser Kassa ist von hier aus nicht zu erkennen{host ? ` (Zugriff über „${host}")` : ' (Zugriff über „localhost")'}.
+        Drucker müssen im selben Netz liegen — die Adresse des Kassen-PCs findest du in Windows unter <em>ipconfig</em> (IPv4-Adresse);
+        der Drucker beginnt meist mit denselben drei Zahlen. Tipp: die Kassa einmal über diese Adresse öffnen, dann zeigt sie sie hier an.
+      </p>
+    )
+  }
+  const praefix = `${teile[1]}.${teile[2]}.${teile[3]}.`
+  return (
+    <p data-testid="drucker-netz-hinweis" className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-brand-200 bg-brand-50 px-3 py-2 text-xs text-ink">
+      <span>
+        Diese Kassa: <span className="font-mono font-semibold">{host}</span> — der Drucker liegt im selben Netz und beginnt meist mit{' '}
+        <span className="font-mono font-semibold">{praefix}</span>
+      </span>
+      {ip.trim() === '' && (
+        <button type="button" onClick={() => onPraefix(praefix)}
+          className="rounded border border-line-strong bg-panel px-2 py-0.5 text-ink hover:border-brand-400">
+          {praefix} übernehmen
+        </button>
+      )}
+    </p>
+  )
+}
+
 function DruckerFormular({ art: startArt, eintrag, istGastro, bonierListe, onClose, onGespeichert }: {
   art:           Art
   eintrag:       Eintrag | null
@@ -292,6 +330,7 @@ function DruckerFormular({ art: startArt, eintrag, istGastro, bonierListe, onClo
         <Field label="Name" hint={art === 'bon' ? 'z. B. Kasse vorne oder Theke' : 'z. B. „Küchendrucker" oder „Schankdrucker"'}>
           <Input aria-label="Name" value={name} onChange={e => setName(e.target.value)} placeholder={art === 'bon' ? 'Kasse vorne' : 'Küchendrucker'} autoFocus />
         </Field>
+        <NetzHinweis ip={ip} onPraefix={setIp} />
         <div className="grid grid-cols-3 gap-3">
           <div className="col-span-2">
             <Field label="IP-Adresse" hint="z. B. 192.168.1.100">
