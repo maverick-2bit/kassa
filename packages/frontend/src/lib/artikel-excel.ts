@@ -16,6 +16,8 @@ import {
   MWST_LABELS,
   STATION_LABELS,
   ALLE_STATIONEN,
+  allergeneAnzeige,
+  parseAllergene,
   type Artikel,
   type ArtikelInput,
   type Kategorie,
@@ -77,6 +79,7 @@ const SPALTEN = [
   { header: 'Lagerstand',    wch: 13 },
   { header: 'Anfangsbestand', wch: 15 },
   { header: 'Mindestbestand', wch: 15 },
+  { header: 'Allergene',      wch: 14 },
 ]
 
 const BEISPIEL_ZEILE = [
@@ -86,6 +89,7 @@ const BEISPIEL_ZEILE = [
   STATION_LABELS.schank,
   'Getränke',
   'Nein',
+  '',
   '',
   '',
 ]
@@ -123,6 +127,7 @@ export async function exportArtikelVorlage(
       a.lagerstandAktiv ? 'Ja' : 'Nein',
       a.lagerstandMenge    !== null ? a.lagerstandMenge    : '',
       a.mindestbestand     !== null ? a.mindestbestand     : '',
+      allergeneAnzeige(a.allergene),
     ])
   } else {
     // Leere Vorlage mit einem Beispiel-Datensatz
@@ -216,6 +221,7 @@ export async function exportArtikelVorlage(
     ['Lagerstand',     'Nein',    'Ja oder Nein (Standard: Nein)'],
     ['Anfangsbestand', 'Nein',    'Ganzzahl ≥ 0, nur sinnvoll wenn Lagerstand = Ja'],
     ['Mindestbestand', 'Nein',    'Ganzzahl ≥ 0 — Warnung im Lagerstand wenn Bestand darunter fällt'],
+    ['Allergene',      'Nein',    'Buchstaben kommagetrennt, z. B. A, C, G (A Gluten, B Krebstiere, C Eier, D Fisch, E Erdnüsse, F Soja, G Milch, H Nüsse, L Sellerie, M Senf, N Sesam, O Sulfite, P Lupinen, R Weichtiere)'],
     ['Artikelnummer',  '—',       'Wird automatisch vergeben — bitte keine Spalte dafür eintragen'],
   ]
   const wsH = XLSX.utils.aoa_to_sheet(hinweise)
@@ -280,7 +286,7 @@ function parseZeile(
   zeile:      number,
   kategorien: Kategorie[],
 ): GeparsterArtikel | null {
-  // Spalten: A=Bezeichnung, B=Preis, C=MwSt, D=Station, E=Kategorie, F=Lagerstand, G=Anfangsbestand, H=Mindestbestand
+  // Spalten: A=Bezeichnung, B=Preis, C=MwSt, D=Station, E=Kategorie, F=Lagerstand, G=Anfangsbestand, H=Mindestbestand, I=Allergene
   const [
     bezeichnungRaw  = '',
     preisRaw        = '',
@@ -290,6 +296,7 @@ function parseZeile(
     lagerstandRaw   = '',
     bestandRaw      = '',
     mindestRaw      = '',
+    allergeneRaw    = '',
   ] = row
 
   const bezeichnung   = bezeichnungRaw.trim()
@@ -359,7 +366,13 @@ function parseZeile(
     else warnungen.push(`Mindestbestand "${mindestStr}" ungültig — wird ignoriert`)
   }
 
-  if (fehler.length > 0) {
+  // ---- Allergene (optional) ----
+  const allergene = parseAllergene(allergeneRaw)
+  if (!allergene.ok) {
+    fehler.push(`Allergene ungültig: ${allergene.ungueltig.join(', ')} — erlaubt sind A–H, L–P, R`)
+  }
+
+  if (fehler.length > 0 || !allergene.ok) {
     return { zeile, gueltig: false, fehler, warnungen, kategorieStr }
   }
 
@@ -373,6 +386,7 @@ function parseZeile(
       bezeichnung,
       preisBruttoCent: preisCent,
       mwstSatz:        mwstSatz as MwStSatz,
+      allergene:       allergene.wert,
       station,
       kategorieId,
       istFavorit:      false,
