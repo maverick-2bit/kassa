@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
 import { QRCodeSVG } from 'qrcode.react'
-import type { BonierUmleitung, BonierungErgebnis, BonierungInput, BonierZielFehler, TabPosition } from '@kassa/shared'
+import type { BonierUmleitung, BonierungErgebnis, BonierungInput, BonierZielFehler, BonRueckmeldung, TabPosition } from '@kassa/shared'
 import { bonierFehlschlaege, bonierUmleitungen, neueUuid, vereinigeUmleitungen } from '@kassa/shared'
 import { tischTabApi, bonierApi, druckerApi, oeffentlicherBelegApi, zvtApi, ApiError } from '../lib/api'
 import { getAuth, gaengeAktiv as istGaengeAktiv, gaengeAnzahl } from '../lib/auth'
@@ -77,6 +77,28 @@ export function TabPage() {
     return true
   }
 
+  /** Grüne Bestätigung „Bon wurde gesendet“ — verschwindet nach ein paar Sekunden von selbst */
+  const zeigeGesendet = () => {
+    setBonierErfolg(true)
+    setTimeout(() => setBonierErfolg(false), 3000)
+  }
+
+  /**
+   * Gang abrufen und Nachschicken boniert der SERVER — die App sieht das Bonierergebnis nie, er meldet in `bon`
+   * nur, wenn etwas nicht stimmt: ein Ziel hat den Bon NICHT bekommen (rote Meldung, „Nochmal senden“ mit der
+   * Bestell-ID des Servers) oder er liegt am Backup-Drucker (bernsteinfarbener Hinweis). Ohne `bon` bleibt alles
+   * wie bisher — auch eine frühere, noch offene Meldung: ein anderer Bon macht sie nicht gegenstandslos.
+   */
+  const meldeBon = (bon: BonRueckmeldung | null | undefined) => {
+    if (!bon) { zeigeGesendet(); return }
+    if (bon.umleitungen.length > 0) setUmleitungen(vorher => vereinigeUmleitungen(vorher, bon.umleitungen))
+    if (bon.fehler.length > 0) {
+      setNichtZugestellt({ ziele: bon.fehler, nachsenden: bon.nachsenden })
+      return                                  // nicht angekommen: keine grüne Bestätigung
+    }
+    zeigeGesendet()
+  }
+
   const nachsendenMutation = useMutation({
     mutationFn: (input: BonierungInput) => bonierApi.bonieren(input),
     onSuccess:  (ergebnis, input) => { meldeBonierFehler(ergebnis, input) },
@@ -139,20 +161,18 @@ export function TabPage() {
   // Gänge: nächsten offenen Gang feuern / Position nachschicken / Gang umhängen
   const gangAbrufenMutation = useMutation({
     mutationFn: () => tischTabApi.gangAbrufen(tabId!),
-    onSuccess: () => {
-      setBonierErfolg(true)
+    onSuccess: (antwort) => {
       qc.invalidateQueries({ queryKey: ['tisch-tab', tabId] })
-      setTimeout(() => setBonierErfolg(false), 3000)
+      meldeBon(antwort.bon)
     },
     onError: (err) => setBonierFehler(err instanceof Error ? err.message : 'Fehler beim Gang-Abruf'),
   })
 
   const nachschickenMutation = useMutation({
     mutationFn: (positionIndex: number) => tischTabApi.positionNachschicken(tabId!, positionIndex),
-    onSuccess: () => {
-      setBonierErfolg(true)
+    onSuccess: (antwort) => {
       qc.invalidateQueries({ queryKey: ['tisch-tab', tabId] })
-      setTimeout(() => setBonierErfolg(false), 3000)
+      meldeBon(antwort?.bon)
     },
     onError: (err) => setBonierFehler(err instanceof Error ? err.message : 'Fehler beim Nachschicken'),
   })
@@ -254,7 +274,11 @@ export function TabPage() {
         qc.invalidateQueries({ queryKey: ['tisch-tab', tabId] })
         // Das Backend schickt automatisch einen Korrekturbon an Küche/Schank.
         // Erreicht er sein Ziel nicht, steht dort weiter das stornierte Gericht
-        // auf der Liste — das muss der Kellner am Tisch erfahren.
+        // auf der Liste — das muss der Kellner am Tisch erfahren. Liegt er am
+        // Backup-Drucker statt am vorgesehenen Drucker, ist er zwar angekommen,
+        // muss aber weitergegeben werden (bernsteinfarbener Hinweis).
+        const umgeleitet = antwort.stornoUmleitungen ?? []
+        if (umgeleitet.length > 0) setUmleitungen(vorher => vereinigeUmleitungen(vorher, umgeleitet))
         if (!antwort.stornoBon) return
         setNichtZugestellt({
           ziele: antwort.stornoBon.fehler,

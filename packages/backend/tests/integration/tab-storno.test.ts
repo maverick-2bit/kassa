@@ -11,6 +11,10 @@
  * der Grund im stornoBon-Ergebnis, nur Fachmeldungen im Wortlaut. Ein DB-Fehler
  * („Failed query: <SQL> params: …") kommt als 'Interner Serverfehler' an, die
  * Einzelheiten stehen im Log.
+ *
+ * Liegt der Korrekturbon am Backup-Drucker statt am vorgesehenen Drucker, ist er
+ * angekommen (kein stornoBon) — dann steht der Hinweis in stornoUmleitungen. Beide
+ * Felder sind nur gesetzt, wenn es etwas zu melden gibt.
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
@@ -51,6 +55,8 @@ describe('Tab-Storno + Verwerfen (Integration, echtes PostgreSQL)', () => {
   let srv: TestServer
   let token: string
   let kasseId: string
+  let mandantId: string
+  let kuecheDruckerId: string
   let schnitzelId: string
   let brotId: string
   let fakeDrucker: net.Server
@@ -86,7 +92,7 @@ describe('Tab-Storno + Verwerfen (Integration, echtes PostgreSQL)', () => {
     })).json()
     token   = login.token
     kasseId = login.kassen[0].id
-    const mandantId = login.mandant.id
+    mandantId = login.mandant.id
 
     // Fake-Bonierdrucker + Artikel, der auf ihn geroutet wird
     fakeDrucker = net.createServer((sock) => { sock.on('data', (c) => empfangen.push(c)) })
@@ -96,6 +102,7 @@ describe('Tab-Storno + Verwerfen (Integration, echtes PostgreSQL)', () => {
     const [d] = await idb.db.insert(bonierdrucker).values({
       mandantId, name: 'Küche (Fake)', ip: '127.0.0.1', port,
     }).returning()
+    kuecheDruckerId = d!.id
 
     const [a] = await idb.db.insert(artikel).values({
       mandantId,
@@ -132,6 +139,23 @@ describe('Tab-Storno + Verwerfen (Integration, echtes PostgreSQL)', () => {
     const put = await srv.fastify.inject({
       method: 'PUT', url: `/api/tisch-tabs/${tab.id}/positionen`, headers: auth(),
       payload: { positionen: [{ artikelId: schnitzelId, bezeichnung: 'Schnitzel', preisBruttoCent: 1450, menge }] },
+    })
+    expect(put.statusCode).toBe(200)
+    return tab.id
+  }
+
+  /** Tisch mit beliebigen Positionen (Artikel, Bezeichnung, Menge) */
+  async function erstelleTabMitPositionen(
+    tisch: string,
+    zeilen: Array<{ id: string; name: string; menge: number }>,
+  ): Promise<string> {
+    const tab = (await srv.fastify.inject({
+      method: 'POST', url: '/api/tisch-tabs', headers: auth(),
+      payload: { kasseId, tischNummer: tisch, kellner: 'Kellner Karl' },
+    })).json()
+    const put = await srv.fastify.inject({
+      method: 'PUT', url: `/api/tisch-tabs/${tab.id}/positionen`, headers: auth(),
+      payload: { positionen: zeilen.map(z => ({ artikelId: z.id, bezeichnung: z.name, preisBruttoCent: 1450, menge: z.menge })) },
     })
     expect(put.statusCode).toBe(200)
     return tab.id
@@ -214,6 +238,7 @@ describe('Tab-Storno + Verwerfen (Integration, echtes PostgreSQL)', () => {
     expect(put.statusCode).toBe(200)
     // Fake-Drucker läuft → alles zugestellt → die Oberfläche soll NICHT warnen
     expect(put.json().stornoBon).toBeUndefined()
+    expect(put.json().stornoUmleitungen).toBeUndefined()
   })
 
   it('toter Drucker: Antwort meldet den nicht zugestellten Korrekturbon', async () => {
@@ -257,6 +282,7 @@ describe('Tab-Storno + Verwerfen (Integration, echtes PostgreSQL)', () => {
     await vi.waitFor(() => { expect(empfangen.length).toBeGreaterThan(0) })
     // Bon ist angekommen → die Kasse soll NICHT warnen
     expect(res.json().stornoBon).toBeUndefined()
+    expect(res.json().stornoUmleitungen).toBeUndefined()
   })
 
   it('Verwerfen bei totem Drucker: Tab verworfen, Antwort meldet den Korrekturbon', async () => {
@@ -397,6 +423,117 @@ describe('Tab-Storno + Verwerfen (Integration, echtes PostgreSQL)', () => {
     expect(put.statusCode).toBe(200)
     expect(put.json().stornoBon).toBeUndefined()
     expect(log.korrekturbonFehler()).toHaveLength(0)
+  })
+
+  /**
+   * Korrekturbon am Backup-Drucker: Der Bon ist angekommen — aber am falschen Gerät. Bis hierher erfuhr das
+   * der Kellner nicht (erst das Nachsenden zeigte es): `stornoBon` ist nur bei einem Fehlschlag gesetzt.
+   */
+  describe('Korrekturbon am Backup-Drucker', () => {
+    let fischId = '', salatId = ''
+    let kuehlraumDruckerId = ''
+
+    /** `port: 9` hat keinen Listener → sofort „Connection refused“ */
+    beforeAll(async () => {
+      const [grill] = await idb.db.insert(bonierdrucker).values({
+        mandantId, name: 'Grill (Ausfall)', ip: '127.0.0.1', port: 9, fallbackId: kuecheDruckerId,
+      }).returning()
+      const [kuehl] = await idb.db.insert(bonierdrucker).values({
+        mandantId, name: 'Kühlraum (Ausfall)', ip: '127.0.0.1', port: 9,   // zunächst OHNE Backup-Drucker
+      }).returning()
+      kuehlraumDruckerId = kuehl!.id
+      const [fisch] = await idb.db.insert(artikel).values({
+        mandantId, bezeichnung: 'Fisch', preisBruttoCent: 1450, mwstSatz: 'ermaessigt1', bonierdruckerId: grill!.id,
+      }).returning()
+      const [salat] = await idb.db.insert(artikel).values({
+        mandantId, bezeichnung: 'Salat', preisBruttoCent: 1450, mwstSatz: 'ermaessigt1', bonierdruckerId: kuehl!.id,
+      }).returning()
+      fischId = fisch!.id
+      salatId = salat!.id
+    })
+
+    const bonText = () => Buffer.concat(empfangen).toString('latin1')
+    const erwarteUmleitung = {
+      von: 'Grill (Ausfall)', an: 'Küche (Fake)', ip: '127.0.0.1',
+      hinweis: 'Grill (Ausfall) nicht erreichbar — Bon kam an Küche (Fake). Bitte weitergeben.',
+    }
+
+    it('Positions-Storno: kein stornoBon (nichts nachzusenden), dafür stornoUmleitungen — der Bon liegt wirklich dort', async () => {
+      const tabId = await erstelleTabMitPositionen('U1', [{ id: fischId, name: 'Fisch', menge: 3 }])
+      empfangen = []
+
+      const put = await srv.fastify.inject({
+        method: 'PUT', url: `/api/tisch-tabs/${tabId}/positionen`, headers: auth(),
+        payload: { positionen: [{ artikelId: fischId, bezeichnung: 'Fisch', preisBruttoCent: 1450, menge: 1 }] },
+      })
+      expect(put.statusCode).toBe(200)
+      expect(put.json().stornoBon).toBeUndefined()                  // KEIN Fehlschlag: ein älteres Frontend zeigt nichts Falsches
+      expect(put.json().stornoUmleitungen).toEqual([erwarteUmleitung])
+
+      await vi.waitFor(() => { expect(empfangen.length).toBeGreaterThan(0) })
+      expect(bonText()).toContain('*** STORNO ***')
+      expect(bonText()).toContain('2x Fisch')
+    })
+
+    it('Verwerfen: dasselbe — stornoUmleitungen statt stornoBon', async () => {
+      const tabId = await erstelleTabMitPositionen('U2', [{ id: fischId, name: 'Fisch', menge: 2 }])
+      empfangen = []
+
+      const res = await srv.fastify.inject({
+        method: 'POST', url: `/api/tisch-tabs/${tabId}/verwerfen`, headers: auth(), payload: {},
+      })
+      expect(res.statusCode).toBe(200)
+      expect(res.json().status).toBe('verworfen')
+      expect(res.json().stornoBon).toBeUndefined()
+      expect(res.json().stornoUmleitungen).toEqual([erwarteUmleitung])
+      await vi.waitFor(() => { expect(empfangen.length).toBeGreaterThan(0) })
+      expect(bonText()).toContain('2x Fisch')
+    })
+
+    it('Fehlschlag UND Umleitung nebeneinander; „Nochmal senden“ bedient nur das gescheiterte Ziel', async () => {
+      const tabId = await erstelleTabMitPositionen('U3', [
+        { id: fischId, name: 'Fisch', menge: 2 },     // Grill → Backup-Drucker Küche
+        { id: salatId, name: 'Salat', menge: 2 },     // Kühlraum → kein Backup-Drucker
+      ])
+      empfangen = []
+
+      const put = await srv.fastify.inject({
+        method: 'PUT', url: `/api/tisch-tabs/${tabId}/positionen`, headers: auth(),
+        payload: { positionen: [
+          { artikelId: fischId, bezeichnung: 'Fisch', preisBruttoCent: 1450, menge: 1 },
+          { artikelId: salatId, bezeichnung: 'Salat', preisBruttoCent: 1450, menge: 1 },
+        ] },
+      })
+      expect(put.statusCode).toBe(200)
+      const antwort = put.json()
+      expect(antwort.stornoBon.fehler.map((f: { ziel: string }) => f.ziel)).toEqual(['Kühlraum (Ausfall)'])
+      expect(antwort.stornoUmleitungen).toEqual([erwarteUmleitung])
+      await vi.waitFor(() => { expect(bonText()).toContain('1x Fisch') })      // der Fisch-Bon liegt am Backup-Drucker …
+      expect(bonText()).not.toContain('Salat')                                  // … der Salat-Bon fehlt
+
+      // „Nochmal senden“, wie es die Oberfläche tut: dieselben Positionen mit der Bestell-ID des ersten Versuchs.
+      // Der Kühlraum bekommt jetzt einen Backup-Drucker — der Fisch wird NICHT noch einmal gedruckt.
+      await idb.db.update(bonierdrucker).set({ fallbackId: kuecheDruckerId }).where(eq(bonierdrucker.id, kuehlraumDruckerId))
+      try {
+        empfangen = []
+        const nochmal = await srv.fastify.inject({
+          method: 'POST', url: '/api/bestellung/bonieren', headers: auth(),
+          payload: {
+            kasseId, tabId, tisch: 'U3', kellner: 'Kellner Karl', ohneLagerabzug: true, storno: true,
+            positionen: antwort.stornoBon.positionen, bestellId: antwort.stornoBon.bestellId,
+          },
+        })
+        expect(nochmal.statusCode).toBe(200)                         // jetzt ist alles zugestellt
+        await vi.waitFor(() => { expect(bonText()).toContain('1x Salat') })
+        await new Promise(r => setTimeout(r, 200))
+        expect(bonText()).not.toContain('Fisch')                     // nichts doppelt gedruckt
+        // Der Hinweis zum Fisch-Bon steckt weiter im Ergebnis (die Oberfläche vereinigt gleiche Hinweise)
+        const namen = nochmal.json().drucker.map((d: { name: string }) => d.name).sort()
+        expect(namen).toEqual(['Grill (Ausfall) → Küche (Fake)', 'Kühlraum (Ausfall) → Küche (Fake)'])
+      } finally {
+        await idb.db.update(bonierdrucker).set({ fallbackId: null }).where(eq(bonierdrucker.id, kuehlraumDruckerId))
+      }
+    })
   })
 
   it('Verwerfen eines bezahlten Tabs → 409', async () => {

@@ -9,6 +9,8 @@ import type {
   BonierungInput,
   BonierungErgebnis,
   BonierZielFehler,
+  BonierUmleitung,
+  BonRueckmeldung,
   ModifikatorGruppe,
   TischTabBezahlenInput,
   ZvtConfig,
@@ -201,12 +203,16 @@ export const tischTabApi = {
       { positionen, ...(freigabePin ? { freigabePin } : {}) }),
   bezahle: (id: string, input: TischTabBezahlenInput) =>
     request<{ tab: TischTabResponse; belegId: string }>('POST', `/api/tisch-tabs/${id}/bezahlen`, input),
-  /** Gänge-Steuerung: nächsten offenen Gang an die Küche/Schank feuern */
+  /**
+   * Gänge-Steuerung: nächsten offenen Gang an die Küche/Schank feuern. `bon` steht NUR drin, wenn der Bon nicht
+   * (überall) am vorgesehenen Gerät angekommen ist — der Server boniert hier selbst, die App sieht das
+   * Bonierergebnis nie.
+   */
   gangAbrufen: (id: string) =>
-    request<{ tab: TischTabResponse; gang: number }>('POST', `/api/tisch-tabs/${id}/gang-abrufen`),
-  /** Gänge-Steuerung: eine Position erneut schicken (Re-Print) */
+    request<{ tab: TischTabResponse; gang: number; bon?: BonRueckmeldung }>('POST', `/api/tisch-tabs/${id}/gang-abrufen`),
+  /** Gänge-Steuerung: eine Position erneut schicken (Re-Print). Ohne Befund antwortet der Server leer (204), sonst mit `bon`. */
   positionNachschicken: (id: string, positionIndex: number) =>
-    request<void>('POST', `/api/tisch-tabs/${id}/position-nachschicken`, { positionIndex }),
+    request<{ bon?: BonRueckmeldung } | null>('POST', `/api/tisch-tabs/${id}/position-nachschicken`, { positionIndex }),
 
   // ---- Tisch-Aktionen (wie am PC) ----
   /** Tisch komplett verwerfen: alle Positionen werden storniert (Storno-Bon an die Stationen). */
@@ -250,6 +256,12 @@ export interface TabPositionenAntwort extends TischTabResponse {
     /** Bestell-ID des Korrekturbons — beim Nachsenden wieder mitschicken (kein zweiter Bon an Stationen, die ihn schon haben) */
     bestellId?: string
   }
+  /**
+   * Korrekturbons, die ANGEKOMMEN sind, aber am Backup-Drucker statt am vorgesehenen Drucker liegen — kein
+   * Fehlschlag (nichts nachzusenden), aber der Bon muss weitergegeben werden. Nur gesetzt, wenn es welche gibt;
+   * `stornoBon` bleibt davon unberührt.
+   */
+  stornoUmleitungen?: BonierUmleitung[]
 }
 
 /** Beleg, dessen Bon nicht aus dem Drucker kam (und seither nicht nachgedruckt wurde). */

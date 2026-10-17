@@ -163,6 +163,40 @@ export function bonierUmleitungen(ergebnis: BonierungErgebnis): BonierUmleitung[
 }
 
 /**
+ * Rückmeldung zu einem Bon, den ein Tisch-Vorgang SELBST an Küche/Schank geschickt hat: Gang abrufen und
+ * eine Position nachschicken. Dort löst der Kellner keine Bonierung aus (die Oberfläche sieht das
+ * Bonierergebnis nie), der Server boniert für ihn — ohne diese Rückmeldung bliebe sowohl ein ganz
+ * gescheiterter Abruf als auch ein Bon am Backup-Drucker stumm.
+ *
+ * Die Antwort des Vorgangs trägt sie nur, wenn es etwas zu melden gibt (wie `stornoBon` beim Storno):
+ * `fehler` → rote Leiste „Bon NICHT angekommen“, `umleitungen` → bernsteinfarbener Hinweis.
+ */
+export interface BonRueckmeldung {
+  /** Ziele, die den Bon NICHT bekommen haben */
+  fehler:      BonierZielFehler[]
+  /** Bons, die ankamen, aber am Backup-Drucker statt am vorgesehenen Drucker liegen */
+  umleitungen: BonierUmleitung[]
+  /**
+   * Die Bonierung, wie sie an POST /api/bestellung/bonieren geht — für „Nochmal senden“. Sie trägt die Bestell-ID
+   * des ersten Versuchs: der Server bedient dann nur noch die Ziele, die den Bon nicht haben (kein zweiter
+   * KDS-Bon, kein zweiter Ausdruck dort, wo er schon liegt, kein Lagerabzug).
+   */
+  nachsenden:  BonierungInput
+}
+
+/**
+ * Wertet das Bonierergebnis eines Tisch-Vorgangs aus: `null`, wenn der Bon überall am vorgesehenen Gerät
+ * ankam (bzw. es nichts zu bonieren gab) — dann steht nichts in der Antwort, und ältere Oberflächen
+ * bemerken keinen Unterschied.
+ */
+export function bonRueckmeldung(ergebnis: BonierungErgebnis | null, nachsenden: BonierungInput): BonRueckmeldung | null {
+  if (!ergebnis) return null
+  const fehler      = bonierFehlschlaege(ergebnis)
+  const umleitungen = bonierUmleitungen(ergebnis)
+  return fehler.length === 0 && umleitungen.length === 0 ? null : { fehler, umleitungen, nachsenden }
+}
+
+/**
  * Fügt neue Umleitungen zu den schon angezeigten hinzu, ohne etwas doppelt aufzuführen.
  *
  * Der Hinweis bleibt stehen, bis das Personal „Verstanden“ drückt: Ein späterer Bon, der wieder

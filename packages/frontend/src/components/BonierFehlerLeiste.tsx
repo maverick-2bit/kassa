@@ -9,7 +9,7 @@
 
 import { useEffect } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import type { BonierungInput, BonierUmleitung, BonierZielFehler } from '@kassa/shared'
+import type { BonierungInput, BonierUmleitung, BonierZielFehler, BonRueckmeldung } from '@kassa/shared'
 import { bonierFehlschlaege, bonierUmleitungen } from '@kassa/shared'
 import { bonierApi, type TabPositionenAntwort } from '../lib/api'
 import { Button } from './ui/Button'
@@ -18,6 +18,17 @@ import { Button } from './ui/Button'
 export interface BonierFehler {
   ziele:      BonierZielFehler[]
   nachsenden: BonierungInput
+}
+
+/**
+ * Rote Leiste für die Rückmeldung eines Tisch-Vorgangs, den der SERVER selbst boniert hat (Gang abrufen,
+ * Position nachschicken): null, wenn kein Ziel den Bon verpasst hat. Die Bonierung zum Nachsenden trägt die
+ * Bestell-ID des ersten Versuchs — „Nochmal senden“ bedient damit nur die Ziele, die den Bon nicht haben,
+ * und druckt dort, wo er schon liegt, nichts ein zweites Mal.
+ */
+export function rueckmeldungFehler(bon: BonRueckmeldung | null | undefined): BonierFehler | null {
+  if (!bon || bon.fehler.length === 0) return null
+  return { ziele: bon.fehler, nachsenden: bon.nachsenden }
 }
 
 /**

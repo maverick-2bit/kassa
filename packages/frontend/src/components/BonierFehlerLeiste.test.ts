@@ -6,8 +6,9 @@
  */
 
 import { describe, it, expect } from 'vitest'
+import type { BonRueckmeldung } from '@kassa/shared'
 import type { TabPositionenAntwort } from '../lib/api'
-import { korrekturbonFehler } from './BonierFehlerLeiste'
+import { korrekturbonFehler, rueckmeldungFehler } from './BonierFehlerLeiste'
 
 const KASSE_ID   = '11111111-1111-4111-8111-111111111111'
 const TAB_ID     = '22222222-2222-4222-8222-222222222222'
@@ -55,5 +56,59 @@ describe('korrekturbonFehler', () => {
     const fehler = korrekturbonFehler({ ...antwort, stornoBon })
     expect(fehler?.nachsenden).not.toHaveProperty('tabId')
     expect(fehler?.nachsenden).toMatchObject({ kasseId: KASSE_ID, tisch: 'T5', storno: true })
+  })
+})
+
+describe('korrekturbonFehler: Umleitung ist kein Fehlschlag', () => {
+  it('Korrekturbon am Backup-Drucker (nur stornoUmleitungen) → keine rote Leiste', () => {
+    const umgeleitet: TabPositionenAntwort = {
+      ...antwort,
+      stornoUmleitungen: [{ von: 'Küchendrucker', an: 'Schankdrucker', ip: '192.168.1.51', hinweis: 'Küchendrucker nicht erreichbar — Bon kam an Schankdrucker. Bitte weitergeben.' }],
+    }
+    expect(korrekturbonFehler(umgeleitet, TAB_ID)).toBeNull()
+  })
+
+  it('beides: der Fehlschlag bleibt eine Leiste, die Umleitung ändert sie nicht', () => {
+    const beides: TabPositionenAntwort = {
+      ...antwort,
+      stornoBon,
+      stornoUmleitungen: [{ von: 'Grill', an: 'Schankdrucker', ip: '192.168.1.51', hinweis: 'Grill nicht erreichbar — Bon kam an Schankdrucker. Bitte weitergeben.' }],
+    }
+    expect(korrekturbonFehler(beides, TAB_ID)?.ziele).toEqual(stornoBon.fehler)
+  })
+})
+
+/**
+ * rueckmeldungFehler: Gang abrufen und Position nachschicken boniert der Server selbst; seine Rückmeldung (`bon`)
+ * wird zur roten Leiste — mit der fertigen Bonierung (Bestell-ID!) für „Nochmal senden“.
+ */
+describe('rueckmeldungFehler', () => {
+  const nachsenden = {
+    kasseId:    KASSE_ID,
+    tabId:      TAB_ID,
+    tisch:      'T5 · 2. Gang',
+    kellner:    'Kellner Karl',
+    positionen: [{ artikelId: ARTIKEL_ID, menge: 3, gang: 2 }],
+    ohneLagerabzug: true,
+    bestellId:  '44444444-4444-4444-8444-444444444444',
+  }
+  const bon: BonRueckmeldung = {
+    fehler:      [{ ziel: 'Küche', ip: '192.168.192.50', fehler: 'connect ECONNREFUSED', istBackup: false }],
+    umleitungen: [],
+    nachsenden,
+  }
+
+  it('Bon nicht angekommen → rote Leiste mit der Nachsende-Bonierung des Servers (samt Bestell-ID)', () => {
+    expect(rueckmeldungFehler(bon)).toEqual({ ziele: bon.fehler, nachsenden })
+    expect(rueckmeldungFehler(bon)?.nachsenden.bestellId).toBe('44444444-4444-4444-8444-444444444444')
+  })
+
+  it('keine Rückmeldung (alles angekommen) → keine Leiste', () => {
+    expect(rueckmeldungFehler(undefined)).toBeNull()
+    expect(rueckmeldungFehler(null)).toBeNull()
+  })
+
+  it('nur Umleitung (kein Fehlschlag) → keine rote Leiste, der bernsteinfarbene Hinweis kommt aus `umleitungen`', () => {
+    expect(rueckmeldungFehler({ ...bon, fehler: [], umleitungen: [{ von: 'Küche', an: 'Schank', ip: '1.2.3.4', hinweis: 'x' }] })).toBeNull()
   })
 })
