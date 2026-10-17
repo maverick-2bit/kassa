@@ -79,13 +79,24 @@ async function anmelden(page: Page, login: Login, kasseId: string) {
   })
 }
 
-/** TCP-Drucker-Attrappe: zählt, wie viele Verbindungen mit Daten ankamen (= gedruckte Bons). */
+/** Der Keep-Alive-Ping des Backends (alle 60 s an jeden aktiven Drucker, DLE EOT 1): druckt nichts, ist kein Bon. */
+const KEEPALIVE_PING = Buffer.from([0x10, 0x04, 0x01])
+
+/**
+ * TCP-Drucker-Attrappe: zählt, wie viele Verbindungen einen Bon brachten (= gedruckte Bons).
+ * Der Keep-Alive-Ping zählt nicht mit: fiel er in ein Zählfenster, sah der Test einen Ausdruck zu viel
+ * („Expected 5, Received 6“ — Flake, der im Gesamtlauf nur gelegentlich auftrat).
+ */
 function druckerAttrappe(): Promise<Attrappe> {
   return new Promise(resolve => {
     let n = 0
     const server = createServer(socket => {
-      let hatDaten = false
-      socket.on('data', () => { if (!hatDaten) { hatDaten = true; n++ } })
+      const teile: Buffer[] = []
+      socket.on('data', c => teile.push(c))
+      socket.on('close', () => {
+        const daten = Buffer.concat(teile)
+        if (daten.length > 0 && !daten.equals(KEEPALIVE_PING)) n++
+      })
       socket.on('error', () => undefined)
     })
     server.listen(0, '127.0.0.1', () => resolve({ server, port: (server.address() as AddressInfo).port, empfangen: () => n }))
