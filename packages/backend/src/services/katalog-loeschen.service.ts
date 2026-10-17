@@ -15,7 +15,12 @@
  *    verschwindet also mit ihnen; für behaltene/deaktivierte bleibt sie als unsichtbarer Altbestand),
  *    kasse_routing (Kassen-Ausnahmen beim Bon-Routing: Drucker/KDS-Station je Warengruppe bzw. Artikel an einer
  *    Kasse — jede Zeile hängt an Warengruppe ODER Artikel und verschwindet mit ihnen; wird im Bericht gezählt),
- *    kasse_kategorie_sichtbarkeit, kassen.start_kategorie_id, kategorien.parent_id.
+ *    kasse_kategorie_sichtbarkeit, kassen.start_kategorie_id, kategorien.parent_id,
+ *    artikel_variante_erledigt (welche bepreiste Variante eines Artikels schon aufgeloest ist): haengt am
+ *    Artikel (cascade) UND an der Option (cascade) — mit den Artikeln bzw. den Optionsgruppen ist es weg,
+ *    auch bei BEHALTENEN Artikeln, deren Optionen ja mitgeloescht werden. Nichts bleibt haengen, und nichts
+ *    geht verloren, was man vermisst: nach einem Katalog-Neustart sind die Artikel neu, also auch die
+ *    Entscheidungen. Deshalb steht es bewusst NICHT im Loeschbericht.
  *  - jsonb ohne FK: preisregeln (kategorie_ids, artikel_ids, artikel_preise) → bereinigt; wird eine
  *    eingegrenzte Regel dadurch scope-los (würde sonst für ALLE Artikel gelten), wird sie deaktiviert.
  *  - FALLBACK: Artikel mit laufenden Vorgängen (offener Tisch, laufende SB-/Gast-Bestellung, offene

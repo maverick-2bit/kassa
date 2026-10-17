@@ -29,7 +29,7 @@ export class ModifikatorError extends Error {
 // Helper: DB-Rows → Response-Typ
 // ---------------------------------------------------------------------------
 
-async function fetchGruppenMitModifikatoren(
+export async function fetchGruppenMitModifikatoren(
   mandantId: string,
   db: Db,
   filter?: { gruppenIds: string[] },

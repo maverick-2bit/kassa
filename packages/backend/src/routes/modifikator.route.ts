@@ -7,6 +7,7 @@ import {
   ModifikatorAktualisierenSchema,
   ArtikelGruppenZuweisungSchema,
   OptionenImportSchema,
+  VariantenAufloesenSchema,
 } from '@kassa/shared'
 import {
   listeGruppen,
@@ -22,6 +23,11 @@ import {
   importiereOptionen,
   ModifikatorError,
 } from '../services/modifikator.service.js'
+import {
+  listeVariantenErledigt,
+  loeseVariantenAuf,
+  nimmVarianteZurueck,
+} from '../services/varianten.service.js'
 import type { Db } from '../db/client.js'
 
 export interface ModifikatorRouteOptions {
@@ -172,6 +178,44 @@ export const modifikatorRoute: FastifyPluginAsync<ModifikatorRouteOptions> = asy
     try {
       const gruppen = await setzeGruppenFuerArtikel(artikelId, parsed.data, request.user.mandantId, db)
       return reply.send(gruppen)
+    } catch (err) {
+      if (err instanceof ModifikatorError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      throw err
+    }
+  })
+
+  // -------------------------------------------------------------------------
+  // Bepreiste Varianten (Artikel, deren Preis an der Option hängt)
+  // -------------------------------------------------------------------------
+
+  // Welche Varianten sind schon aufgelöst? Die Übersicht trennt damit offen von erledigt.
+  fastify.get('/artikel-varianten-erledigt', auth, async (request, reply) => {
+    const erledigt = await listeVariantenErledigt(request.user.mandantId, db)
+    return reply.send(erledigt)
+  })
+
+  // Varianten einer Optionsgruppe auflösen: eigene Artikel anlegen und/oder Varianten verwerfen
+  fastify.post('/artikel/:artikelId/varianten-aufloesen', auth, async (request, reply) => {
+    const params = ArtikelIdParam.safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
+    const parsed = VariantenAufloesenSchema.safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
+    try {
+      const ergebnis = await loeseVariantenAuf(params.data.artikelId, parsed.data, request.user.mandantId, db)
+      return reply.send(ergebnis)
+    } catch (err) {
+      if (err instanceof ModifikatorError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      throw err
+    }
+  })
+
+  // Entscheidung zurücknehmen: die Variante gilt wieder als offen
+  fastify.delete('/artikel/:artikelId/varianten-erledigt/:modifikatorId', auth, async (request, reply) => {
+    const params = ArtikelIdParam.merge(z.object({ modifikatorId: z.string().uuid() })).safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
+    try {
+      await nimmVarianteZurueck(params.data.artikelId, params.data.modifikatorId, request.user.mandantId, db)
+      return reply.status(204).send()
     } catch (err) {
       if (err instanceof ModifikatorError) return reply.status(err.httpStatus).send({ fehler: err.message })
       throw err

@@ -967,6 +967,28 @@ export const artikelModifikatorGruppen = pgTable('artikel_modifikator_gruppen', 
 }))
 
 // ---------------------------------------------------------------------------
+// Bepreiste Varianten: welche Option eines Artikels schon aufgelöst ist
+//
+// Artikel aus dem Altsystem haben ihren Preis in der Option („Bier" 0,00 mit „0,5l" +5,00). Ist die
+// Optionen-Abfrage abgeschaltet, fällt die Preisauswahl weg. In der Verwaltung entscheidet der Benutzer je
+// Variante: eigener Artikel ('angelegt') oder keiner ('verworfen'). Gemerkt wird je Paar Artikel + Option,
+// weil Optionsgruppen geteilt sind — gelöst wird die Gruppe am Ende nur von DIESEM Artikel.
+// ---------------------------------------------------------------------------
+
+export const artikelVarianteErledigt = pgTable('artikel_variante_erledigt', {
+  artikelId:     uuid('artikel_id').notNull().references((): AnyPgColumn => artikel.id, { onDelete: 'cascade' }),
+  modifikatorId: uuid('modifikator_id').notNull().references(() => modifikatoren.id, { onDelete: 'cascade' }),
+  /** 'angelegt' = es gibt jetzt einen eigenen Artikel | 'verworfen' = diese Variante wird nicht übernommen */
+  art:           varchar('art', { length: 20 }).notNull(),
+  /** Der daraus entstandene Artikel (nur bei 'angelegt'); wird er gelöscht, bleibt die Entscheidung */
+  artikelNeuId:  uuid('artikel_neu_id').references((): AnyPgColumn => artikel.id, { onDelete: 'set null' }),
+  createdAt:     timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  pk:         primaryKey({ columns: [t.artikelId, t.modifikatorId] }),
+  artikelIdx: index('ave_artikel_idx').on(t.artikelId),
+}))
+
+// ---------------------------------------------------------------------------
 // Tischplan-Bereiche (Räume / Zonen)
 // ---------------------------------------------------------------------------
 

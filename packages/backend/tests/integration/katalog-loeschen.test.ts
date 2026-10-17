@@ -15,6 +15,7 @@ import { validiereDEP7, dep7AusJson, type FinanzOnlineClient } from '@kassa/rksv
 import type { BelegResponse, LayoutImport } from '@kassa/shared'
 import {
   artikel, artikelBestandteile, artikelModifikatorGruppen, belege, inventuren, inventurPositionen, kassekategorieSichtbarkeit,
+  artikelVarianteErledigt,
   kassen, kasseFavoriten, kasseRouting, kategorien, modifikatoren, modifikatorGruppen, preisregeln, seriennummern,
 } from '../../src/db/schema.js'
 import { buildTestServer, type TestServer } from '../helpers/testServer.js'
@@ -109,8 +110,15 @@ describe('Sauberer Neustart: Katalog löschen (Integration, echtes PostgreSQL)',
     // Option am Altartikel
     const [og] = await idb.db.insert(modifikatorGruppen).values({ mandantId: mandantA, name: 'Alt Option' }).returning()
     optGruppe = og!.id
-    await idb.db.insert(modifikatoren).values({ mandantId: mandantA, gruppeId: optGruppe, name: 'klein', aufschlagCent: 0, reihenfolge: 0 })
+    const [optKlein] = await idb.db.insert(modifikatoren)
+      .values({ mandantId: mandantA, gruppeId: optGruppe, name: 'klein', aufschlagCent: 0, reihenfolge: 0 }).returning()
     await idb.db.insert(artikelModifikatorGruppen).values({ artikelId: altX, gruppeId: optGruppe, reihenfolge: 0 })
+    // Bepreiste Varianten: je eine erledigte Entscheidung an einem GELÖSCHTEN (X) und an einem BEHALTENEN
+    // Artikel (Y, wird nur deaktiviert). Beide müssen verschwinden — X über den Artikel, Y über die Option.
+    await idb.db.insert(artikelVarianteErledigt).values([
+      { artikelId: altX, modifikatorId: optKlein!.id, art: 'angelegt',  artikelNeuId: altW },
+      { artikelId: altY, modifikatorId: optKlein!.id, art: 'verworfen', artikelNeuId: null },
+    ])
 
     // Seriennummern (harter FK ohne Cascade)
     await idb.db.insert(seriennummern).values([
@@ -183,6 +191,10 @@ describe('Sauberer Neustart: Katalog löschen (Integration, echtes PostgreSQL)',
       'artikel_bestandteile.verkaufsartikel_id -> artikel (CASCADE)',
       'artikel_modifikator_gruppen.artikel_id -> artikel (CASCADE)',
       'artikel_modifikator_gruppen.gruppe_id -> modifikator_gruppen (CASCADE)',
+      // Bepreiste Varianten: haengt am Artikel und an der Option, verschwindet per Cascade mit beiden
+      'artikel_variante_erledigt.artikel_id -> artikel (CASCADE)',
+      'artikel_variante_erledigt.artikel_neu_id -> artikel (SET NULL)',
+      'artikel_variante_erledigt.modifikator_id -> modifikatoren (CASCADE)',
       'inventur_positionen.artikel_id -> artikel (NO ACTION)',
       'kasse_artikel_layout.artikel_id -> artikel (CASCADE)',
       'kasse_artikel_layout.kategorie_id -> kategorien (CASCADE)',
@@ -239,6 +251,9 @@ describe('Sauberer Neustart: Katalog löschen (Integration, echtes PostgreSQL)',
     expect((await idb.db.select().from(inventurPositionen)).filter(p => p.artikelId === altY)).toHaveLength(1)
     expect(await idb.db.select().from(artikelBestandteile).where(eq(artikelBestandteile.mandantId, mandantA))).toHaveLength(0)
     expect(await idb.db.select().from(kasseFavoriten).where(eq(kasseFavoriten.mandantId, mandantA))).toHaveLength(0)
+    // Bepreiste Varianten: nichts bleibt haengen — weder am geloeschten Artikel X noch am behaltenen Y,
+    // dessen Optionen mit den Optionsgruppen weg sind (Schema-Waechter oben listet die drei Fremdschluessel)
+    expect(await idb.db.select().from(artikelVarianteErledigt)).toHaveLength(0)
     expect(await idb.db.select().from(kassekategorieSichtbarkeit).where(eq(kassekategorieSichtbarkeit.kasseId, kasseA))).toHaveLength(0)
     expect((await idb.db.select().from(kassen).where(eq(kassen.id, kasseA)))[0]).toMatchObject({ startKategorieId: null, artikelProZeile: 3 })
     // Preisregeln bereinigt: „Nur X" scope-los → deaktiviert (nicht plötzlich global!), „X und Y" behält nur Y, „Global" unverändert

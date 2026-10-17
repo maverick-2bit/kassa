@@ -63,6 +63,9 @@ import type {
   ArtikelGruppenZuweisung,
   OptionenImport,
   OptionenImportErgebnis,
+  VarianteErledigt,
+  VariantenAufloesen,
+  VariantenAufloesenErgebnis,
   ArtikelBerichtResponse,
   WarengruppeBerichtResponse,
   StundenBerichtResponse,
@@ -1104,6 +1107,14 @@ export const modifikatorApi = {
     request<ModifikatorGruppe[]>('PUT', `/api/artikel/${artikelId}/modifikator-gruppen`, input),
   importiere: (input: OptionenImport) =>
     request<OptionenImportErgebnis>('POST', '/api/modifikator-gruppen/import', input),
+
+  // Bepreiste Varianten: Artikel, deren Preis an der Option haengt (siehe shared/bepreiste-varianten)
+  listeVariantenErledigt: () =>
+    request<VarianteErledigt[]>('GET', '/api/artikel-varianten-erledigt'),
+  loeseVariantenAuf: (artikelId: string, input: VariantenAufloesen) =>
+    request<VariantenAufloesenErgebnis>('POST', `/api/artikel/${artikelId}/varianten-aufloesen`, input),
+  nimmVarianteZurueck: (artikelId: string, modifikatorId: string) =>
+    request<void>('DELETE', `/api/artikel/${artikelId}/varianten-erledigt/${modifikatorId}`),
 }
 
 export type { Modifikator, ModifikatorGruppe }

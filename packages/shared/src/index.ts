@@ -134,6 +134,7 @@ export {
   ArtikelGruppenZuweisungSchema,
   OptionenImportSchema,
   OptionenImportEintragSchema,
+  VariantenAufloesenSchema,
 } from './schemas/modifikator.js'
 export type {
   Modifikator,
@@ -148,6 +149,9 @@ export type {
   OptionenImport,
   OptionenImportEintrag,
   OptionenImportErgebnis,
+  VarianteErledigt,
+  VariantenAufloesen,
+  VariantenAufloesenErgebnis,
 } from './schemas/modifikator.js'
 
 // Kategorie
@@ -247,6 +251,16 @@ export type { AuswahlPosition, OptionenMengen } from './optionen-auswahl.js'
 // Optionen-/Varianten-Abfrage im Direktverkauf (Artikel → Warengruppe → Kasse)
 export { fragtNachOptionen, warengruppenWahl } from './optionen-abfrage.js'
 export type { OptionenAbfrageLage, OptionenAbfrageWahl } from './optionen-abfrage.js'
+
+// Bepreiste Varianten: Artikel, deren Preis an der Option hängt (Bier 0,00 + „0,5l" +5,00)
+export {
+  findeBepreisteVarianten, istAkut, planeVariantenArtikel,
+  ursprungDeaktivieren, variantenBezeichnung, variantenPreisCent,
+} from './bepreiste-varianten.js'
+export type {
+  BepreisteOption, BetroffeneGruppe, BetroffenerArtikel, VariantenArtikel,
+  VariantenGruppe, VariantenKasse, VariantenKategorie, VariantenPlanEintrag,
+} from './bepreiste-varianten.js'
 
 // Raster-Platzierung (Untergruppen-Kacheln, Slots, Leerfelder)
 export { baueRaster, baueKassenRaster, loeseAnordnungAuf, ausgeblendeteArtikelIds, kompakteArtikelListe, RASTER_MAX_SLOT } from './raster.js'

@@ -26,6 +26,7 @@ import { Modal } from '../components/ui/Modal'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { OptionenImportModal } from '../components/OptionenImportModal'
+import { BepreisteVariantenAnsicht, useBepreisteVarianten } from '../components/BepreisteVariantenAnsicht'
 import { exportOptionenVorlage } from '../lib/optionen-excel'
 
 // ---------------------------------------------------------------------------
@@ -56,6 +57,8 @@ export function ModifikatorenPage() {
   const [zuweisungModal,     setZuweisungModal]     = useState<{ gruppe: ModifikatorGruppe } | null>(null)
   const [fehler,             setFehler]             = useState<string | null>(null)
   const [importOpen,         setImportOpen]         = useState(false)
+  // Zweite Ansicht: Artikel, deren Preis an der Option haengt (Bier 0,00 + „0,5l" +5,00)
+  const [ansicht,            setAnsicht]            = useState<'gruppen' | 'varianten'>('gruppen')
 
   // ── Queries ───────────────────────────────────────────────────────────────
   const gruppenQuery = useQuery({
@@ -84,6 +87,9 @@ export function ModifikatorenPage() {
   }, [gruppen, gewählteGruppeId])
 
   const gewählteGruppe = gruppen.find(g => g.id === gewählteGruppeId) ?? null
+
+  // Anzahl offener bepreister Varianten — steht am Umschalter, auch wenn die Ansicht zu ist
+  const { anzahl: variantenAnzahl } = useBepreisteVarianten(gruppen)
 
   // Anzahl Artikel pro Gruppe
   const artikelAnzahlProGruppe = (gruppeId: string) =>
@@ -163,6 +169,30 @@ export function ModifikatorenPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {/* Umschalter: Gruppenpflege oder die Artikel, deren Preis an der Option haengt */}
+          <div className="flex rounded-lg border border-line overflow-hidden mr-2">
+            {([
+              ['gruppen',   'Gruppen',             null],
+              ['varianten', 'Bepreiste Varianten', variantenAnzahl],
+            ] as const).map(([wert, text, zahl]) => (
+              <button
+                key={wert}
+                onClick={() => setAnsicht(wert)}
+                className={`px-3 py-1.5 text-sm transition-colors ${
+                  ansicht === wert ? 'bg-brand-500 text-white font-medium' : 'bg-panel text-ink hover:bg-panel-2'
+                }`}
+              >
+                {text}
+                {zahl != null && zahl > 0 && (
+                  <span className={`ml-1.5 text-[11px] px-1.5 py-0.5 rounded-full ${
+                    ansicht === wert ? 'bg-white/25' : 'bg-red-100 text-red-700'
+                  }`}>
+                    {zahl}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
           <Button
             variant="secondary"
             onClick={() => { void exportOptionenVorlage() }}
@@ -190,6 +220,8 @@ export function ModifikatorenPage() {
 
       {gruppenQuery.isLoading ? (
         <div className="flex-1 flex items-center justify-center text-ink-subtle text-sm">Wird geladen…</div>
+      ) : ansicht === 'varianten' ? (
+        <BepreisteVariantenAnsicht gruppen={gruppen} />
       ) : gruppen.length === 0 ? (
         <LeereZustand onNeu={() => setGruppeModalOpen(true)} />
       ) : (
