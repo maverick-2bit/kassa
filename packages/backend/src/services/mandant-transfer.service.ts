@@ -155,6 +155,8 @@ export async function exportiereMandant(sql: Sql, mandantId: string, passphrase:
     }
   }
 
+  // Der Export ist ein Schnappschuss „in Betrieb“ — auch wenn die Quelle schon gesperrt ist, startet das Ziel aktiv
+  for (const z of tabellen['mandanten']!) z['status'] = 'aktiv'
   for (const [t, zeilen] of Object.entries(tabellen)) {
     tabellen[t] = zeilen.map(z => entschluesseleZeile(t, z, passphrase))
   }
@@ -164,6 +166,51 @@ export async function exportiereMandant(sql: Sql, mandantId: string, passphrase:
     format: MANDANT_EXPORT_FORMAT, version: MANDANT_EXPORT_VERSION,
     erstellt: new Date().toISOString(), mandantId: mandant.id, name: mandant.name,
     tabellen, uebersprungen,
+  }
+}
+
+/**
+ * Schutz vor manipulierten Dateien (jeder Admin darf importieren, die Datei kann von überall kommen):
+ * Es darf ausschließlich der EINE Mandant der Datei entstehen — keine Zeile mit fremder mandant_id,
+ * keine Tabellen ohne Mandantenbezug, keine Verweise auf Zeilen außerhalb der Datei (also auch keine
+ * auf Daten anderer Mandanten im Ziel).
+ */
+export function pruefeNurEigeneDaten(daten: MandantExport, kat: Katalog): void {
+  const fehler = (m: string): never => { throw new Error(`Ungültige Übergabedatei: ${m}`) }
+  const vorhanden = new Set(Object.keys(daten.tabellen))
+  const mandanten = daten.tabellen['mandanten']
+  if (!mandanten || mandanten.length !== 1 || mandanten[0]!['id'] !== daten.mandantId) fehler('Mandant fehlt oder ist nicht eindeutig.')
+
+  for (const [t, zeilen] of Object.entries(daten.tabellen)) {
+    if (AUSGENOMMEN.has(t)) fehler(`Tabelle '${t}' ist nicht übertragbar.`)
+    if (t === 'mandanten') continue
+    if (kat.mitMandant.has(t)) {
+      if (zeilen.some(z => z['mandant_id'] !== daten.mandantId)) fehler(`'${t}' enthält Daten eines anderen Mandanten.`)
+    } else if (!kat.fks.some(f => f.kind === t && vorhanden.has(f.eltern))) {
+      fehler(`Tabelle '${t}' gehört nicht zu einem Mandanten.`)
+    }
+  }
+
+  // Verweise nur auf Zeilen der Datei
+  const werte = new Map<string, Set<unknown>>()
+  const menge = (t: string, c: string) => {
+    const k = `${t}.${c}`
+    let m = werte.get(k)
+    if (!m) { m = new Set((daten.tabellen[t] ?? []).map(z => z[c])); werte.set(k, m) }
+    return m
+  }
+  for (const [t, zeilen] of Object.entries(daten.tabellen)) {
+    const eigene = kat.fks.filter(f => f.kind === t)
+    for (const f of eigene) {
+      const erlaubt = vorhanden.has(f.eltern) ? menge(f.eltern, f.elternSpalte) : new Set<unknown>()
+      if (zeilen.some(z => z[f.spalte] != null && !erlaubt.has(z[f.spalte]))) {
+        fehler(`'${t}.${f.spalte}' verweist auf Daten außerhalb des Mandanten.`)
+      }
+    }
+    if (t !== 'mandanten' && !kat.mitMandant.has(t)) {
+      const verknuepfungen = eigene.filter(f => vorhanden.has(f.eltern))
+      if (zeilen.some(z => !verknuepfungen.some(f => z[f.spalte] != null))) fehler(`'${t}' enthält unverknüpfte Zeilen.`)
+    }
   }
 }
 
@@ -209,6 +256,7 @@ export async function importiereMandant(sql: Sql, daten: MandantExport, passphra
     const fremd = new Set(zeilen.flatMap(z => Object.keys(z)).filter(k => !zielSpalten.includes(k)))
     if (fremd.size > 0) throw new Error(`Spalte(n) ${[...fremd].map(k => `${t}.${k}`).join(', ')} gibt es in dieser Kassa nicht — Ziel-Kassa zuerst aktualisieren.`)
   }
+  pruefeNurEigeneDaten(daten, kat)
   const [vorhanden] = await sql`SELECT 1 FROM mandanten WHERE id = ${daten.mandantId}`
   if (vorhanden) throw new Error(`Der Mandant '${daten.name}' existiert in dieser Kassa bereits (gleiche ID). Es wird nichts überschrieben.`)
 
