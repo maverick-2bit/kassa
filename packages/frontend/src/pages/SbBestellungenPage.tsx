@@ -13,7 +13,9 @@ import { SB_STATUS_LABELS, formatSbNummer } from '@kassa/shared'
 import { sbBestellungApi } from '../lib/api'
 import { useKasseEvents } from '../lib/sse'
 import { formatPreis } from '../lib/format'
+import { getKasseIdentity } from '../lib/kasse'
 import { Button } from '../components/ui/Button'
+import { BonProblemeBanner } from '../components/BonProblemeBanner'
 
 const STATUS_BADGE: Record<SbBestellungStatus, string> = {
   zahlung:     'bg-panel-2 text-ink-muted',
@@ -55,6 +57,7 @@ export function SbBestellungenPage() {
     onSuccess:  () => queryClient.invalidateQueries({ queryKey: ['sb-bestellungen'] }),
   })
 
+  const kasseId      = getKasseIdentity()?.kasseId
   const bestellungen = (liste.data ?? []).filter(b => b.status !== 'zahlung')
   const aktive       = bestellungen.filter(b => b.status === 'offen' || b.status === 'bereit')
   const erledigte    = bestellungen.filter(b => b.status === 'abgeholt' || b.status === 'abgebrochen')
@@ -71,6 +74,9 @@ export function SbBestellungenPage() {
         </div>
         <span className="text-sm text-ink-muted">{aktive.length} aktiv</span>
       </header>
+
+      {/* Kam der Bon einer SB-Bestellung nicht in der Küche an, steht es hier (bezahlt ist längst) */}
+      {kasseId && <BonProblemeBanner kasseId={kasseId} />}
 
       {liste.isLoading ? (
         <p className="text-sm text-ink-muted">Lade Bestellungen…</p>

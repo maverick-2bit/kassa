@@ -1,3 +1,4 @@
+import type { BonProblem } from '@kassa/shared'
 import type {
   LayoutBericht,
   LayoutExport,
@@ -818,6 +819,20 @@ export const kdsApi = {
 export const bonierApi = {
   bonieren: (input: BonierungInput) =>
     request<BonierungErgebnis>('POST', '/api/bestellung/bonieren', input),
+}
+
+/**
+ * Meldungen zu Bons, die der SERVER selbst ausgelöst hat (Direktverkauf-Beleg, Gast-, SB-Bestellung): dort wartet
+ * niemand auf die Antwort der Bonierung, der Server merkt sich den Stand je Kasse.
+ */
+export const bonProblemeApi = {
+  liste:      (kasseId: string) =>
+    request<BonProblem[]>('GET', `/api/kassen/${kasseId}/bon-probleme`),
+  /** Dieselbe Bonierung noch einmal (selbe Bestell-ID): bedient nur die Ziele, die den Bon nicht haben */
+  nochmal:    (id: string) =>
+    request<{ problem: BonProblem | null }>('POST', `/api/bon-probleme/${id}/nochmal`),
+  verstanden: (id: string) =>
+    request<void>('POST', `/api/bon-probleme/${id}/verstanden`),
 }
 
 export const belegApi = {

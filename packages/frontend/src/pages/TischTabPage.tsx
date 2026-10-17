@@ -23,6 +23,7 @@ import { getKasseIdentity } from '../lib/kasse'
 import { hasModul, gaengeAnzahl } from '../lib/auth'
 import { formatPreis } from '../lib/format'
 import { DruckproblemeBanner } from '../components/DruckproblemeBanner'
+import { BonProblemeBanner } from '../components/BonProblemeBanner'
 import { BonierFehlerLeiste, korrekturbonFehler, rueckmeldungFehler, type BonierFehler } from '../components/BonierFehlerLeiste'
 import { BonierUmleitungHinweis } from '../components/BonierUmleitungHinweis'
 import { warenkorbSummeCent, positionsPreisCent, gesamtRabattCent } from '../lib/warenkorb'
@@ -734,8 +735,9 @@ export function TischTabPage() {
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_400px] lg:grid-rows-[minmax(0,1fr)] gap-4 lg:flex-1 lg:min-h-[28rem]">
         <div className="flex flex-col">
           {/* Belege, deren Bon nicht gedruckt wurde — auch am Tisch wird kassiert. */}
-          <div className="mb-3 empty:mb-0">
+          <div className="mb-3 empty:mb-0 flex flex-col gap-3">
             <DruckproblemeBanner kasseId={identity.kasseId} />
+            <BonProblemeBanner kasseId={identity.kasseId} />
           </div>
 
           {/* Kopfzeile */}

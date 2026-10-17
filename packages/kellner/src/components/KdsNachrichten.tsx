@@ -5,6 +5,7 @@
  */
 
 import { useCallback, useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import type { KasseEvent, KdsNachrichtEvent } from '@kassa/shared'
 import { useKasseEvents } from '../lib/sse'
 import { getKasseIdentity } from '../lib/kasse'
@@ -100,8 +101,14 @@ function NachrichtKarte({ nachricht, onSchliessen }: { nachricht: KdsNachrichtEv
 export function KdsNachrichten() {
   const [nachrichten, setNachrichten] = useState<KdsNachrichtEvent[]>([])
   const audioCtxRef = useRef<AudioContext | null>(null)
+  const queryClient = useQueryClient()
 
   const handleEvent = useCallback((event: KasseEvent) => {
+    // Meldungen zu Bons, die der Server selbst ausgelöst hat: nur ein Anstoß, die Leiste lädt die Liste neu
+    if (event.typ === 'bon_probleme') {
+      void queryClient.invalidateQueries({ queryKey: ['bon-probleme', event.kasseId] })
+      return
+    }
     if (event.typ !== 'kds_nachricht') return
 
     // Gezielte Nachricht? Nur annehmen, wenn die Kasse dieses Geräts gemeint ist.
@@ -127,7 +134,7 @@ export function KdsNachrichten() {
     } catch { /* AudioContext nicht verfügbar */ }
 
     setNachrichten(prev => [...prev, event])
-  }, [])
+  }, [queryClient])
 
   useKasseEvents(handleEvent)
 

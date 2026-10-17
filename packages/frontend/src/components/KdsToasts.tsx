@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import type { BonierbonEvent, GastBestellungEvent, KasseEvent, LagerstandWarnungEvent, SbBestellungEvent, ZahlungAngefordertEvent } from '@kassa/shared'
 import { STATION_LABELS, formatSbNummer } from '@kassa/shared'
@@ -22,8 +23,14 @@ export function KdsToasts({ kassenAnsicht = false }: { kassenAnsicht?: boolean }
   const [gastBestellungen, setGastBest] = useState<GastBestellungEvent[]>([])
   const [zahlungen, setZahlungen]       = useState<ZahlungAngefordertEvent[]>([])
   const [sbBestellungen, setSbBest]     = useState<SbBestellungEvent[]>([])
+  const queryClient                     = useQueryClient()
 
   const handleEvent = useCallback((event: KasseEvent) => {
+    // Meldungen zu Bons, die der Server selbst ausgelöst hat: nur ein Anstoß, die Leiste lädt die Liste neu
+    if (event.typ === 'bon_probleme') {
+      void queryClient.invalidateQueries({ queryKey: ['bon-probleme', event.kasseId] })
+      return
+    }
     if (event.typ === 'neue_gastbestellung') {
       setGastBest(prev => [...prev, event])
       return
@@ -51,7 +58,7 @@ export function KdsToasts({ kassenAnsicht = false }: { kassenAnsicht?: boolean }
       },
     ])
     setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), ttl)
-  }, [])
+  }, [queryClient])
 
   useKasseEvents(handleEvent)
 

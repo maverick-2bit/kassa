@@ -11,6 +11,7 @@ import { formatPreis } from '../lib/format'
 import { ABBRUCH_ZU_SPAET, KartenzahlungOverlay } from '../components/KartenzahlungOverlay'
 import { BonierUmleitungHinweis } from '../components/BonierUmleitungHinweis'
 import { DruckproblemeBanner } from '../components/DruckproblemeBanner'
+import { BonProblemeBanner } from '../components/BonProblemeBanner'
 import { TischAktionen } from '../components/TischAktionen'
 
 /** Anzeige-Label eines Gangs (0 = Sofort). */
@@ -460,6 +461,7 @@ export function TabPage() {
         {/* Nicht gedruckte Belege — der Kellner kassiert hier, also muss er es
             hier erfahren und nicht erst am Haupt-POS. */}
         <DruckproblemeBanner />
+        <BonProblemeBanner />
 
         {gruppen.length === 0 ? (
           <>

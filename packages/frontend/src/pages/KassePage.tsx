@@ -45,6 +45,7 @@ import { Input } from '../components/ui/Input'
 import { BonAnzeige } from '../components/BonAnzeige'
 import { BonierUmleitungHinweis } from '../components/BonierUmleitungHinweis'
 import { DruckproblemeBanner } from '../components/DruckproblemeBanner'
+import { BonProblemeBanner } from '../components/BonProblemeBanner'
 import { ABBRUCH_ZU_SPAET, KartenzahlungModal } from '../components/KartenzahlungModal'
 import { SerialAuswahlModal, type SerialPos } from '../components/SerialAuswahlModal'
 import { RabattModal } from '../components/RabattModal'
@@ -661,8 +662,10 @@ export function KassePage() {
           {/* Belege, deren Bon nicht gedruckt wurde — steht ganz oben und bleibt,
               bis nachgedruckt ist. Die grüne Bestätigung darunter sagt nur, dass der
               Beleg ERSTELLT wurde; ob er aus dem Drucker kam, weiß erst diese Leiste. */}
-          <div className="mb-3 empty:mb-0">
+          <div className="mb-3 empty:mb-0 flex flex-col gap-3">
             <DruckproblemeBanner kasseId={identity.kasseId} />
+            {/* Bons, die der Server selbst ausgelöst hat (Direktverkauf-Beleg, Gast-, SB-Bestellung) */}
+            <BonProblemeBanner kasseId={identity.kasseId} />
           </div>
 
           {/* Beleg-erstellt-Bestätigung (Druck-Modus: kein Dialog, nur kurze Rückmeldung

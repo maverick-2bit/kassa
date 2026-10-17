@@ -7,6 +7,7 @@ import { getAuth, clearAuth } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
 import { DruckproblemeBanner } from '../components/DruckproblemeBanner'
+import { BonProblemeBanner } from '../components/BonProblemeBanner'
 
 function dauerText(geoffnetAm: string): string {
   const minuten = Math.floor((Date.now() - new Date(geoffnetAm).getTime()) / 60_000)
@@ -133,6 +134,9 @@ export function TischePage() {
         {/* Nicht gedruckte Belege — auch hier sichtbar, damit es auffällt,
             wenn der Kellner nach dem Kassieren zur Übersicht zurückkehrt. */}
         <DruckproblemeBanner />
+
+        {/* Bons, die der Server selbst ausgelöst hat (Gast-Bestellung, SB-Terminal, Direktverkauf) */}
+        <BonProblemeBanner />
 
         {tabsQuery.isLoading && (
           <div className="flex justify-center py-12">

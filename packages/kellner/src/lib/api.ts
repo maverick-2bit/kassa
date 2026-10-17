@@ -11,6 +11,7 @@ import type {
   BonierZielFehler,
   BonierUmleitung,
   BonRueckmeldung,
+  BonProblem,
   ModifikatorGruppe,
   TischTabBezahlenInput,
   ZvtConfig,
@@ -335,4 +336,14 @@ export const kdsAntwortApi = {
 export const bonierApi = {
   bonieren: (input: BonierungInput) =>
     request<BonierungErgebnis>('POST', '/api/bestellung/bonieren', input),
+}
+
+/** Meldungen zu Bons, die der SERVER selbst ausgelöst hat (Direktverkauf-Beleg, Gast-, SB-Bestellung). */
+export const bonProblemeApi = {
+  liste:      (kasseId: string) =>
+    request<BonProblem[]>('GET', `/api/kassen/${kasseId}/bon-probleme`),
+  nochmal:    (id: string) =>
+    request<{ problem: BonProblem | null }>('POST', `/api/bon-probleme/${id}/nochmal`),
+  verstanden: (id: string) =>
+    request<void>('POST', `/api/bon-probleme/${id}/verstanden`),
 }

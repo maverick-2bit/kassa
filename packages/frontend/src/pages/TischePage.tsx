@@ -14,6 +14,7 @@ import { UmbuchenForm, ZusammenfuehrenForm, TeilUmbuchenForm } from '../componen
 import { TischEtikettenModal } from '../components/TischEtikettenModal'
 import { BonierFehlerLeiste, type BonierFehler } from '../components/BonierFehlerLeiste'
 import { BonierUmleitungHinweis } from '../components/BonierUmleitungHinweis'
+import { BonProblemeBanner } from '../components/BonProblemeBanner'
 
 // ---------------------------------------------------------------------------
 // Haupt-Seite
@@ -178,6 +179,11 @@ export function TischePage() {
           <BonierUmleitungHinweis umleitungen={umleitungen} onVerstanden={() => setUmleitungen([])} />
         </div>
       )}
+
+      {/* Gast-Bestellungen kommen an den Tisch: kam ihr Bon nicht an, steht es hier */}
+      <div className="mb-5 empty:mb-0">
+        <BonProblemeBanner kasseId={identity.kasseId} />
+      </div>
 
       {/* Der abgerechnete Tisch ist aus der Liste verschwunden, obwohl der Kassier
           abbrechen wollte — ohne Hinweis hielte er das für einen Fehler */}
