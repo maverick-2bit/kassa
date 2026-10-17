@@ -397,10 +397,11 @@ test('Kassen-Tabelle: passt bei 1280 px Fensterbreite ohne seitliches Scrollen (
     expect(res.ok(), `${url}: ${await res.text()}`).toBe(true)
     return (await res.json()) as T
   }
-  // Die breitesten Inhalte: Chips in jeder Zeile (ein gewöhnlicher Bonierdrucker und ein Zweitdrucker) und eine zweite
-  // aktive Kasse — nur Zeilen anderer Kassen haben den Knopf „Wechseln" (bei nur einer Kasse wäre die Tabelle schmaler)
+  // Die breitesten Inhalte: Chips in jeder Zeile (ein gewöhnlicher Bonierdrucker und ein Zweitdrucker mit einem langen
+  // Wort im Namen — das längste Wort darf die Mindestbreite der Spalte nicht vorgeben) und eine zweite aktive Kasse —
+  // nur Zeilen anderer Kassen haben den Knopf „Wechseln" (bei nur einer Kasse wäre die Tabelle schmaler)
   const normal = await post('/api/bonierdrucker', { name: `${p} Küche`, ip: '127.0.0.1', port: 9106 })
-  const zweit  = await post('/api/bonierdrucker', { name: `${p} Kopie Büro`, ip: '127.0.0.1', port: 9107, istBackup: true })
+  const zweit  = await post('/api/bonierdrucker', { name: `${p} Getränkeausgabe`, ip: '127.0.0.1', port: 9107, istBackup: true })
   const kasse  = await post<{ kasseId: string }>('/api/kassen', { kassenId: `E2E-BR-${p}`, bezeichnung: `${p} Zweite Kasse`, umgebung: 'test' })
   try {
     await anmelden(page, login)
@@ -412,7 +413,7 @@ test('Kassen-Tabelle: passt bei 1280 px Fensterbreite ohne seitliches Scrollen (
     await expect(tabelle.locator('thead th')).toHaveCount(9)                   // mit Gastro: die Bonierdrucker-Spalte ist da
     // Erst messen, wenn die Zeilen vollständig sind: Auswahlfelder (bzw. „öffnet … automatisch"), Chips und Knöpfe stehen da
     await expect(tabelle.locator('select[aria-label^="Artikelwahl startet mit"], [data-testid^="start-reiter-einzige-"]').first()).toBeVisible()
-    await expect(tabelle.getByRole('button', { name: new RegExp(`${p} Kopie Büro`) }).first()).toBeVisible()
+    await expect(tabelle.getByRole('button', { name: new RegExp(`${p} Getränkeausgabe`) }).first()).toBeVisible()
     await expect(tabelle.getByRole('button', { name: new RegExp(`${p} Küche`) }).first()).toBeVisible()
     await expect(tabelle.getByTestId(`kasse-zeile-E2E-BR-${p}`).getByRole('button', { name: 'Wechseln' })).toBeVisible()
 

@@ -266,7 +266,10 @@ function KasseZeile({ kasse: k, spalten, kategorien, kategorienGeladen, istDiese
                             an ? 'bg-brand-600 border-brand-600 text-white' : 'bg-panel border-line-strong text-ink-muted hover:border-brand-400'
                           } ${b.aktiv ? '' : 'line-through opacity-60'}`}
                         >
-                          <span aria-hidden>{an ? '✓' : '+'}</span>{b.name}{b.istBackup && <span className="opacity-80">· Zweitdrucker</span>}
+                          <span aria-hidden>{an ? '✓' : '+'}</span>
+                          {/* Der Name darf überall umbrechen: sonst gäbe sein längstes Wort die Mindestbreite der Spalte vor (bei 1280 px zählt jeder Pixel) */}
+                          <span className="wrap-anywhere">{b.name}</span>
+                          {b.istBackup && <span className="whitespace-nowrap opacity-80">· Zweitdrucker</span>}
                         </button>
                       )
                     })}
