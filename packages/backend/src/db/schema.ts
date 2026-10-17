@@ -1269,6 +1269,37 @@ export const bonierBestellungen = pgTable('bonier_bestellungen', {
 }))
 
 /**
+ * Offene Meldungen zu Bons, die der SERVER selbst ausgelöst hat (Direktverkauf-Beleg, Gast-Bestellung,
+ * SB-Terminal): dort wartet an der Kasse niemand auf die Antwort der Bonierung. Eine Zeile je Bestellung, solange
+ * der Bon nicht (am vorgesehenen Gerät) ankam bzw. am Backup-Drucker liegt und das Personal es nicht bestätigt hat.
+ * `eingabe` + `sb` sind die Bonierung für „Nochmal senden“ — mit derselben Bestell-ID, damit nichts doppelt druckt.
+ */
+export const bonProbleme = pgTable('bon_probleme', {
+  id:          uuid('id').primaryKey().defaultRandom(),
+  mandantId:   uuid('mandant_id').notNull().references(() => mandanten.id, { onDelete: 'cascade' }),
+  kasseId:     uuid('kasse_id').notNull().references(() => kassen.id, { onDelete: 'cascade' }),
+  /** 'direktverkauf' | 'gast' | 'sb' */
+  quelle:      varchar('quelle', { length: 20 }).notNull(),
+  tisch:       varchar('tisch', { length: 60 }).notNull(),
+  bestellId:   uuid('bestell_id').notNull(),
+  /** Die Bonierung (BonierungInput samt bestellId) */
+  eingabe:     jsonb('eingabe').notNull(),
+  /** SB-Option der Bonierung (Browser-KDS-Badge); null bei Direktverkauf */
+  sb:          jsonb('sb'),
+  /** BonierZielFehler[] — Ziele ohne Bon */
+  fehler:      jsonb('fehler').notNull().default(sql`'[]'::jsonb`),
+  /** BonierUmleitung[] — Bons am Backup-Drucker statt am vorgesehenen Drucker */
+  umleitungen: jsonb('umleitungen').notNull().default(sql`'[]'::jsonb`),
+  /** gesetzt: „Verstanden“ bzw. alles zugestellt — erscheint nicht mehr */
+  erledigtAt:  timestamp('erledigt_at', { withTimezone: true }),
+  createdAt:   timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:   timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  bestellIdx: uniqueIndex('bon_probleme_bestell_idx').on(t.bestellId),
+  kasseIdx:   index('bon_probleme_kasse_idx').on(t.kasseId, t.erledigtAt),
+}))
+
+/**
  * Papierdruck der KDS-Bons (Erledigt-Bon, Teilbon, Nachdrucken) je Station: dieser
  * Bonierdrucker druckt für diese Station. Ohne Eintrag gilt wie früher "alle aktiven
  * Bonierdrucker, die keine Zweitdrucker sind".

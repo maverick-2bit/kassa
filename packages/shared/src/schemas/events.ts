@@ -87,6 +87,17 @@ export const SbBestellungEventSchema = z.object({
 })
 export type SbBestellungEvent = z.infer<typeof SbBestellungEventSchema>
 
+/**
+ * Die Liste offener Bon-Probleme einer Kasse hat sich geändert (neue Meldung, „Nochmal senden“, „Verstanden“).
+ * Nur ein Anstoß zum Neuladen: maßgeblich ist GET /api/kassen/:id/bon-probleme — ein verpasstes Ereignis
+ * (Kasse war zu) geht deshalb nichts verloren. Betrifft nur die genannte Kasse.
+ */
+export const BonProblemeEventSchema = z.object({
+  typ:     z.literal('bon_probleme'),
+  kasseId: z.string().uuid(),
+})
+export type BonProblemeEvent = z.infer<typeof BonProblemeEventSchema>
+
 export const KasseEventSchema = z.discriminatedUnion('typ', [
   BonierbonEventSchema,
   NeueBestellungEventSchema,
@@ -96,5 +107,6 @@ export const KasseEventSchema = z.discriminatedUnion('typ', [
   NeueReservierungEventSchema,
   ZahlungAngefordertEventSchema,
   SbBestellungEventSchema,
+  BonProblemeEventSchema,
 ])
 export type KasseEvent = z.infer<typeof KasseEventSchema>

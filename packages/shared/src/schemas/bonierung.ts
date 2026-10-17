@@ -197,6 +197,56 @@ export function bonRueckmeldung(ergebnis: BonierungErgebnis | null, nachsenden: 
 }
 
 /**
+ * Stand eines Bonierergebnisses als Meldung für das Personal: `null`, wenn der Bon überall am vorgesehenen
+ * Gerät ankam. Der Teil von `bonRueckmeldung`, der ohne „Nochmal senden“-Bonierung auskommt — die
+ * serverseitig ausgelösten Bons (Direktverkauf-Beleg, Gast-, SB-Bestellung) merkt sich der Server selbst
+ * (Tabelle `bon_probleme`), die Oberfläche schickt nichts zurück.
+ */
+export function bonStand(ergebnis: BonierungErgebnis): { fehler: BonierZielFehler[]; umleitungen: BonierUmleitung[] } | null {
+  const fehler      = bonierFehlschlaege(ergebnis)
+  const umleitungen = bonierUmleitungen(ergebnis)
+  return fehler.length === 0 && umleitungen.length === 0 ? null : { fehler, umleitungen }
+}
+
+/** Wo der Server selbst geboniert hat, ohne dass jemand an der Kasse darauf wartet. */
+export const BonProblemQuelleSchema = z.enum(['direktverkauf', 'gast', 'sb'])
+export type BonProblemQuelle = z.infer<typeof BonProblemQuelleSchema>
+
+/**
+ * Überschrift einer Meldung: woher der Bon stammt. Für den Gast- und SB-Fall steht die Tischbezeichnung bzw.
+ * die Bestellnummer dabei — das Personal muss wissen, WELCHE Bestellung in der Küche fehlt.
+ */
+export function bonProblemTitel(quelle: BonProblemQuelle, tisch: string): string {
+  switch (quelle) {
+    case 'direktverkauf': return 'Direktverkauf'
+    case 'gast':          return `Gast-Bestellung · Tisch ${tisch}`
+    case 'sb':            return `SB-Bestellung · ${tisch}`
+  }
+}
+
+/**
+ * Eine offene Meldung zu einem Bon, den der Server selbst ausgelöst hat (Direktverkauf-Beleg mit Küchenartikeln,
+ * Gast-Bestellung, SB-Terminal). Dort wartet niemand auf die Antwort der Bonierung, und der Gast hat schon
+ * bezahlt — ohne diese Liste bliebe ein toter Küchendrucker bzw. ein Bon am Backup-Drucker stumm.
+ *
+ * Bleibt offen, bis „Verstanden“ gedrückt wird oder „Nochmal senden“ alles zugestellt hat. Kommt der Bon bei
+ * „Nochmal senden“ nur über den Backup-Drucker an, wandelt sich die rote Meldung in den bernsteinfarbenen Hinweis.
+ */
+export interface BonProblem {
+  id:          string
+  quelle:      BonProblemQuelle
+  /** Tisch bzw. SB-Nummer, soweit die Bestellung eine hat („Direkt“ beim Direktverkauf) */
+  tisch:       string
+  titel:       string
+  /** Ziele, die den Bon NICHT bekommen haben (leer = nur ein Hinweis auf Umleitung) */
+  fehler:      BonierZielFehler[]
+  /** Bons, die am Backup-Drucker statt am vorgesehenen Drucker liegen */
+  umleitungen: BonierUmleitung[]
+  /** ISO-Zeitpunkt */
+  erstelltAt:  string
+}
+
+/**
  * Fügt neue Umleitungen zu den schon angezeigten hinzu, ohne etwas doppelt aufzuführen.
  *
  * Der Hinweis bleibt stehen, bis das Personal „Verstanden“ drückt: Ein späterer Bon, der wieder

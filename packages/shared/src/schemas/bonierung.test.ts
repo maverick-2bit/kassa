@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { BonierungErgebnisSchema, bonRueckmeldung, bonierFehlschlaege, bonierUmleitungen, vereinigeUmleitungen } from './bonierung.js'
+import { BonierungErgebnisSchema, bonProblemTitel, bonRueckmeldung, bonStand, bonierFehlschlaege, bonierUmleitungen, vereinigeUmleitungen } from './bonierung.js'
 import type { BonierungErgebnis, BonierungInput } from './bonierung.js'
 
 /**
@@ -238,5 +238,49 @@ describe('BonierungErgebnisSchema: Umleitung', () => {
     const gelesen = BonierungErgebnisSchema.parse({ ...leer, drucker: [drucker(true)] })
     expect(gelesen.drucker[0]!.umleitung).toBeUndefined()
     expect(bonierUmleitungen(gelesen)).toEqual([])
+  })
+})
+
+/**
+ * Serverseitig ausgelöste Bons (Direktverkauf-Beleg, Gast-, SB-Bestellung): niemand wartet auf die Antwort, der
+ * Server merkt sich den Stand. `bonStand` ist die Frage „gibt es etwas zu melden?“ — dieselbe Auswertung wie
+ * an den Stellen, an denen die Oberfläche selbst boniert.
+ */
+describe('bonStand', () => {
+  const umgeleitet = () => ({
+    ...drucker(true), name: 'Küchendrucker → Schankdrucker', ip: '192.168.1.51',
+    fehler: 'Küchendrucker nicht erreichbar — Bon wurde an Schankdrucker umgeleitet',
+    umleitung: { von: 'Küchendrucker', an: 'Schankdrucker' },
+  })
+
+  it('alles angekommen (oder nichts zu bonieren) → nichts zu melden', () => {
+    expect(bonStand(leer)).toBeNull()
+    expect(bonStand({ ...leer, stationen: [station(true)], drucker: [drucker(true)] })).toBeNull()
+  })
+
+  it('Fehlschlag → rote Meldung mit dem Ziel, keine Umleitung', () => {
+    const s = bonStand({ ...leer, drucker: [drucker(false, false, 'ECONNREFUSED')] })
+    expect(s?.fehler.map(f => f.ziel)).toEqual(['Küchendrucker'])
+    expect(s?.umleitungen).toEqual([])
+  })
+
+  it('Umleitung auf den Backup-Drucker → bernsteinfarbener Hinweis ohne Fehlschlag', () => {
+    const s = bonStand({ ...leer, drucker: [umgeleitet()] })
+    expect(s?.fehler).toEqual([])
+    expect(s?.umleitungen.map(u => u.hinweis)).toEqual([
+      'Küchendrucker nicht erreichbar — Bon kam an Schankdrucker. Bitte weitergeben.',
+    ])
+  })
+
+  it('Zweitdrucker-Kopie am Backup-Drucker ist keine Meldung', () => {
+    expect(bonStand({ ...leer, drucker: [drucker(true, true)] })).toBeNull()
+  })
+})
+
+describe('bonProblemTitel', () => {
+  it('nennt, woher der Bon stammt — Gast und SB mit Tisch bzw. Nummer', () => {
+    expect(bonProblemTitel('direktverkauf', 'Direkt')).toBe('Direktverkauf')
+    expect(bonProblemTitel('gast', '12')).toBe('Gast-Bestellung · Tisch 12')
+    expect(bonProblemTitel('sb', 'SB 007')).toBe('SB-Bestellung · SB 007')
   })
 })

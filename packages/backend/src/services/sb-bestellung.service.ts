@@ -29,7 +29,7 @@ import {
 } from '../db/schema.js'
 import type { BelegServiceDeps } from './beleg.service.js'
 import { erstelleBarzahlungsbeleg } from './beleg.service.js'
-import { bonierBestellung } from './bonier.service.js'
+import { bonierUndMelde } from './bon-probleme.service.js'
 import { berechneVerfuegbareMenge, ladeRezepteAngereichert } from './bestandteil.service.js'
 import { starteZahlung, getJob, abbrechen } from './zvt/zvt.service.js'
 import { emitAbholungEvent } from '../sse/abholung-event-bus.js'
@@ -399,21 +399,18 @@ async function finalisiereSbBestellung(id: string, deps: SbServiceDeps): Promise
     .returning()
   const row = fertig ?? claimed
 
-  // 3. KDS bonieren — Fehler nicht fatal (Bestellung + Beleg existieren bereits)
-  try {
-    await bonierBestellung(
-      {
-        kasseId:    claimed.kasseId,
-        tisch:      `SB ${formatSbNummer(nummer)}`,
-        kellner:    'SB-Terminal',
-        positionen: claimed.positionen.map(p => ({ artikelId: p.artikelId, menge: p.menge })),
-      },
-      { db: deps.db },
-      { sb: { bestellungId: id, bestellNummer: formatSbNummer(nummer) } },
-    )
-  } catch (err) {
-    console.error('SB-Bonierung fehlgeschlagen:', err)
-  }
+  // 3. KDS bonieren — Fehler nicht fatal (Bestellung + Beleg existieren bereits). Kam der Bon nicht an (oder liegt er
+  //    am Backup-Drucker), landet eine Meldung in der Liste der Kasse.
+  await bonierUndMelde(
+    deps.db,
+    {
+      kasseId:    claimed.kasseId,
+      tisch:      `SB ${formatSbNummer(nummer)}`,
+      kellner:    'SB-Terminal',
+      positionen: claimed.positionen.map(p => ({ artikelId: p.artikelId, menge: p.menge })),
+    },
+    { quelle: 'sb', mandantId: claimed.mandantId, sb: { bestellungId: id, bestellNummer: formatSbNummer(nummer) } },
+  )
 
   // 4. Events: Abholmonitor + zentrale Kassa
   emitAbholungEvent(claimed.mandantId, { typ: 'update', bestellung: abholungEintrag(row) })

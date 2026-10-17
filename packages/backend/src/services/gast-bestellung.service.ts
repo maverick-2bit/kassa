@@ -16,7 +16,7 @@ import type { Config } from '../config.js'
 import { artikel, belege, gastBestellungen, kassen, mandanten, type GastBestellungRow } from '../db/schema.js'
 import type { BelegServiceDeps } from './beleg.service.js'
 import { erstelleBarzahlungsbeleg } from './beleg.service.js'
-import { bonierBestellung } from './bonier.service.js'
+import { bonierUndMelde } from './bon-probleme.service.js'
 import { berechneVerfuegbareMenge, ladeRezepteAngereichert } from './bestandteil.service.js'
 import { belegRowZuDto } from './drucker.service.js'
 import { emitKasseEvent } from '../sse/event-bus.js'
@@ -245,21 +245,18 @@ export async function finalisiereGastBestellung(id: string, deps: GastServiceDep
     .returning()
   const row = fertig ?? claimed
 
-  // Bonieren an KDS/Warengruppen-Drucker mit dem echten Tisch — Fehler nicht fatal
-  try {
-    await bonierBestellung(
-      {
-        kasseId:    claimed.kasseId,
-        tisch:      claimed.tischNummer,
-        kellner:    'Gast',
-        positionen: claimed.positionen.map(p => ({ artikelId: p.artikelId, menge: p.menge })),
-      },
-      { db: deps.db },
-      { sb: { bestellungId: id, bestellNummer: String(belegNummer) } },
-    )
-  } catch (err) {
-    console.error('Gast-Bonierung fehlgeschlagen:', err)
-  }
+  // Bonieren an KDS/Warengruppen-Drucker mit dem echten Tisch — Fehler nicht fatal. Der Gast hat schon bezahlt:
+  // kam der Bon nicht an (oder liegt er am Backup-Drucker), landet eine Meldung in der Liste der Kasse.
+  await bonierUndMelde(
+    deps.db,
+    {
+      kasseId:    claimed.kasseId,
+      tisch:      claimed.tischNummer,
+      kellner:    'Gast',
+      positionen: claimed.positionen.map(p => ({ artikelId: p.artikelId, menge: p.menge })),
+    },
+    { quelle: 'gast', mandantId: claimed.mandantId, sb: { bestellungId: id, bestellNummer: String(belegNummer) } },
+  )
 
   // POS-Toast (bestehendes Event der Gast-Bestellung)
   emitKasseEvent(claimed.mandantId, {

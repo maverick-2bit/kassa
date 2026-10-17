@@ -470,6 +470,13 @@
       "when": 1791763200000,
       "tag": "0068_variante_erledigt",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1791849600000,
+      "tag": "0069_bon_probleme",
+      "breakpoints": true
     }
   ]
 }

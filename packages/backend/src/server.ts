@@ -18,6 +18,7 @@ import { artikelRoute } from './routes/artikel.route.js'
 import { belegRoute } from './routes/beleg.route.js'
 import { druckerRoute } from './routes/drucker.route.js'
 import { bonierRoute } from './routes/bonier.route.js'
+import { bonProblemeRoute } from './routes/bon-probleme.route.js'
 import { tischTabRoute } from './routes/tisch-tab.route.js'
 import { userRoute } from './routes/user.route.js'
 import { zvtRoute } from './routes/zvt.route.js'
@@ -199,6 +200,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     await api.register(belegRoute,   { deps: deps.belegDeps, config: deps.config })
     await api.register(druckerRoute, { db:   deps.db })
     await api.register(bonierRoute,  { deps: { db: deps.db } })
+    await api.register(bonProblemeRoute, { db: deps.db })
     await api.register(tischTabRoute, { deps: { db: deps.db, belegDeps: deps.belegDeps } })
     await api.register(userRoute,     { db:   deps.db })
     await api.register(zvtRoute,      { deps: { db: deps.db } })

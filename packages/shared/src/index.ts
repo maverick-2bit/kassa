@@ -300,6 +300,9 @@ export {
   bonierFehlschlaege,
   bonierUmleitungen,
   bonRueckmeldung,
+  bonStand,
+  bonProblemTitel,
+  BonProblemQuelleSchema,
   vereinigeUmleitungen,
 } from './schemas/bonierung.js'
 export type {
@@ -308,6 +311,8 @@ export type {
   BonierZielFehler,
   BonierUmleitung,
   BonRueckmeldung,
+  BonProblem,
+  BonProblemQuelle,
 } from './schemas/bonierung.js'
 
 // ZVT-Kartenterminal
@@ -610,6 +615,7 @@ export {
   NeueReservierungEventSchema,
   ZahlungAngefordertEventSchema,
   SbBestellungEventSchema,
+  BonProblemeEventSchema,
   KasseEventSchema,
 } from './schemas/events.js'
 export type {
@@ -621,6 +627,7 @@ export type {
   NeueReservierungEvent,
   ZahlungAngefordertEvent,
   SbBestellungEvent,
+  BonProblemeEvent,
   KasseEvent,
 } from './schemas/events.js'
 

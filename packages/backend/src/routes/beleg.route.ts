@@ -39,7 +39,7 @@ import {
   TagesabschlussError,
 } from '../services/tagesabschluss.service.js'
 import { tryDruckeBeleg, druckerConfigVonKasse, resolveZielDrucker, sendBytes, DruckerError } from '../services/drucker.service.js'
-import { bonierBestellung } from '../services/bonier.service.js'
+import { bonierUndMelde } from '../services/bon-probleme.service.js'
 import { baueBonRouting, ladeKasseRoutingAusnahmen, ladeKategorieRoutingZeilen, wirksamesRoutingVonArtikel } from '../services/kategorie-routing.service.js'
 import { hatBonRouting } from '@kassa/shared'
 import { baueZBon, baueKassensturzBon } from '../services/escpos/layout.js'
@@ -142,9 +142,10 @@ async function pruefeKasseScope(
  * Kategorieebene) — nur wirklich geroutete Positionen gehen an `bonierBestellung`.
  */
 function tryBonierDirektverkauf(
-  deps:   BelegServiceDeps,
-  input:  BarzahlungsbelegInput,
-  logger: { error: (obj: unknown, msg?: string) => void },
+  deps:      BelegServiceDeps,
+  input:     BarzahlungsbelegInput,
+  mandantId: string,
+  logger:    { error: (obj: unknown, msg?: string) => void },
 ): void {
   void (async () => {
     try {
@@ -180,9 +181,13 @@ function tryBonierDirektverkauf(
         .map(p => ({ artikelId: p.artikelId, menge: p.menge }))
       if (positionen.length === 0) return
 
-      await bonierBestellung(
+      // Niemand wartet hier auf die Antwort: ein toter Küchendrucker bzw. ein Bon am Backup-Drucker landet als
+      // Meldung in der Liste der Kasse (bon-probleme.service), statt stumm zu bleiben.
+      await bonierUndMelde(
+        deps.db,
         { kasseId: input.kasseId, tisch: 'Direkt', kellner: 'Kassa', positionen },
-        deps,
+        { quelle: 'direktverkauf', mandantId },
+        logger,
       )
     } catch (err) {
       logger.error({ err }, 'Direktverkauf-Bonierung fehlgeschlagen')
@@ -201,7 +206,7 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
     return fuehreAus(fastify, reply, opts.deps, () => erstelleBarzahlungsbeleg(parsed.data, opts.deps, { freigabeKontext }), 201,
       {
         skipAutodruck: parsed.data.keinAutodruck ?? false,
-        onErstellt: () => tryBonierDirektverkauf(opts.deps, parsed.data, fastify.log),
+        onErstellt: () => tryBonierDirektverkauf(opts.deps, parsed.data, request.user.mandantId, fastify.log),
       })
   })
 
