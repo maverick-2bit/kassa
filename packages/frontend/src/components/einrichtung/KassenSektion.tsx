@@ -32,7 +32,17 @@ const STARTSEITEN: { value: Startseite; label: string }[] = [
   { value: 'dashboard',       label: 'Dashboard' },
 ]
 
-const ZELLEN_AUSWAHL = 'block w-full min-w-[7.5rem] rounded-md border border-line-strong bg-panel px-2 py-1.5 text-sm text-ink shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500/40 disabled:opacity-50'
+// Die Tabelle hat mit Gastro 9 Spalten und muss bei 1280 px (Kassen-PC, davon 15 px Scrollbalken) ohne seitliches
+// Scrollen passen: schmale Zellen, je Auswahlfeld eine eigene Mindestbreite (der längste feste Text — „Dashboard",
+// „Erste Warengruppe", „Nicht abfragen", „— kein Druck —" — plus Polster und Pfeil, zusammen ≈ 38 px) und die Knöpfe
+// untereinander. Neue Spalten oder Mindestbreiten dagegen messen: e2e/zzz-einrichtung-uebersicht.spec.ts prüft, dass
+// der Tabellen-Wrapper bei 1280 px nicht seitlich scrollt.
+const TH = 'px-1.5 py-2'
+const TD = 'px-1.5 py-2.5'
+
+// Die Mindestbreite steht NICHT hier, sondern kommt je Spalte als eigene Klasse dazu: bei zwei min-w-Klassen am
+// selben Element entscheidet die Reihenfolge im gebauten CSS, nicht die im className.
+const ZELLEN_AUSWAHL = 'block w-full rounded-md border border-line-strong bg-panel px-2 py-1.5 text-sm text-ink shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500/40 disabled:opacity-50'
 
 export function KassenSektion() {
   const { kassen, laedt, istGastro, neuLaden } = useEinrichtung()
@@ -92,15 +102,15 @@ export function KassenSektion() {
           <table className="w-full text-sm" data-testid="kassen-tabelle">
             <thead className="bg-panel-2 text-ink-muted">
               <tr className="text-left text-xs font-medium">
-                <th className="px-3 py-2">Kasse</th>
-                <th className="px-3 py-2">Startseite</th>
-                <th className="px-3 py-2" title="Mit welchem Reiter die Artikelwahl öffnet: Favoriten oder eine Warengruppe (Direktverkauf, Tische, Kellner-App)">Artikelwahl startet mit</th>
-                <th className="px-3 py-2" title="Ob im Direktverkauf (Kasse, Kellner-App im Theken-Modus) nach Optionen/Varianten gefragt wird. Warengruppen und Artikel können abweichen (dort einstellbar); Tisch-Bestellungen fragen immer.">Optionen im Direktverkauf</th>
-                <th className="px-3 py-2">Belegausgabe</th>
-                <th className="px-3 py-2">Rechnungsdrucker</th>
-                {istGastro && <th className="px-3 py-2">Bonierdrucker (Küche/Schank)</th>}
-                <th className="px-3 py-2">KDS</th>
-                <th className="px-3 py-2 text-right" />
+                <th className={TH}>Kasse</th>
+                <th className={TH}>Startseite</th>
+                <th className={TH} title="Mit welchem Reiter die Artikelwahl öffnet: Favoriten oder eine Warengruppe (Direktverkauf, Tische, Kellner-App)">Artikelwahl startet mit</th>
+                <th className={TH} title="Ob im Direktverkauf (Kasse, Kellner-App im Theken-Modus) nach Optionen/Varianten gefragt wird. Warengruppen und Artikel können abweichen (dort einstellbar); Tisch-Bestellungen fragen immer.">Optionen im Direktverkauf</th>
+                <th className={TH}>Belegausgabe</th>
+                <th className={TH}>Rechnungsdrucker</th>
+                {istGastro && <th className={TH}>Bonierdrucker (Küche/Schank)</th>}
+                <th className={TH}>KDS</th>
+                <th className={`${TH} text-right`} />
               </tr>
             </thead>
             {kassen.map(k => (
@@ -159,7 +169,7 @@ function KasseZeile({ kasse: k, spalten, kategorien, kategorienGeladen, istDiese
   return (
     <tbody data-testid={`kasse-zeile-${k.kassenId}`} className="border-t border-line first:border-t-0">
       <tr className={`${istDiesesGeraet && !stillgelegt ? 'bg-brand-50' : ''} ${stillgelegt ? 'bg-panel-2/60' : ''} align-top`}>
-        <td className={`px-3 py-2.5 min-w-[10rem] ${stillgelegt ? 'opacity-70' : ''}`}>
+        <td className={`${TD} min-w-[8rem] ${stillgelegt ? 'opacity-70' : ''}`}>
           <p className="font-medium text-ink">
             {name}
             {istDiesesGeraet && !stillgelegt && <span className="ml-2 text-xs font-semibold text-brand-700">● aktiv</span>}
@@ -177,34 +187,34 @@ function KasseZeile({ kasse: k, spalten, kategorien, kategorienGeladen, istDiese
         </td>
 
         {stillgelegt ? (
-          <td colSpan={spalten - 2} className="px-3 py-2.5 text-xs text-ink-subtle">Diese Kasse ist stillgelegt — keine Einstellungen mehr nötig.</td>
+          <td colSpan={spalten - 2} className={`${TD} text-xs text-ink-subtle`}>Diese Kasse ist stillgelegt — keine Einstellungen mehr nötig.</td>
         ) : (
           <>
-            <td className="px-3 py-2.5">
+            <td className={TD}>
               <select
                 aria-label={`Startseite ${name}`}
-                className={ZELLEN_AUSWAHL}
+                className={`${ZELLEN_AUSWAHL} min-w-[7rem]`}
                 value={k.startseite}
                 onChange={e => void speichern(k.id, { startseite: e.target.value as Startseite })}
               >
                 {STARTSEITEN.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
               </select>
             </td>
-            <td className="px-3 py-2.5">
+            <td className={TD}>
               <StartReiterAuswahl
                 kasse={k}
                 name={name}
                 kategorien={kategorien}
                 geladen={kategorienGeladen}
                 speichern={speichern}
-                // Lange Gruppennamen (mit Pfad) sollen die Spalte nicht aufblähen
-                className={`${ZELLEN_AUSWAHL} max-w-[10.5rem]`}
+                // Lange Gruppennamen (mit Pfad) sollen die Spalte nicht aufblähen; „Erste Warengruppe" soll noch passen
+                className={`${ZELLEN_AUSWAHL} min-w-[10.5rem] max-w-[10.5rem]`}
               />
             </td>
-            <td className="px-3 py-2.5">
+            <td className={TD}>
               <select
                 aria-label={`Optionen im Direktverkauf ${name}`}
-                className={ZELLEN_AUSWAHL}
+                className={`${ZELLEN_AUSWAHL} min-w-[8.75rem]`}
                 value={k.optionenAbfrage ? 'fragen' : 'nie'}
                 onChange={e => void speichern(k.id, { optionenAbfrage: e.target.value === 'fragen' })}
               >
@@ -212,10 +222,10 @@ function KasseZeile({ kasse: k, spalten, kategorien, kategorienGeladen, istDiese
                 <option value="nie" title="Keine Abfrage — außer eine Warengruppe oder ein Artikel steht auf „Immer fragen“">Nicht abfragen</option>
               </select>
             </td>
-            <td className="px-3 py-2.5">
+            <td className={TD}>
               <select
                 aria-label={`Belegausgabe ${name}`}
-                className={ZELLEN_AUSWAHL}
+                className={`${ZELLEN_AUSWAHL} min-w-[6.25rem]`}
                 value={k.belegModus}
                 onChange={e => void speichern(k.id, { belegModus: e.target.value as EinrichtungKasse['belegModus'] })}
               >
@@ -224,10 +234,10 @@ function KasseZeile({ kasse: k, spalten, kategorien, kategorienGeladen, istDiese
                 <option value="beides" title="Papier-Bon UND digital">Beides</option>
               </select>
             </td>
-            <td className="px-3 py-2.5">
+            <td className={TD}>
               <select
                 aria-label={k.belegModus === 'digital' ? `Ausweich-Bondrucker ${name}` : `Rechnungsdrucker ${name}`}
-                className={ZELLEN_AUSWAHL}
+                className={`${ZELLEN_AUSWAHL} min-w-[9.25rem]`}
                 value={k.druckerId ?? ''}
                 onChange={e => void speichern(k.id, { druckerId: e.target.value || null })}
               >
@@ -238,7 +248,7 @@ function KasseZeile({ kasse: k, spalten, kategorien, kategorienGeladen, istDiese
               </select>
             </td>
             {istGastro && (
-              <td className="px-3 py-2.5 min-w-[11rem]">
+              <td className={`${TD} min-w-[8rem]`}>
                 {bonier.length === 0 ? (
                   <span className="text-xs text-ink-subtle">Noch kein Bonierdrucker angelegt.</span>
                 ) : (
@@ -256,7 +266,10 @@ function KasseZeile({ kasse: k, spalten, kategorien, kategorienGeladen, istDiese
                             an ? 'bg-brand-600 border-brand-600 text-white' : 'bg-panel border-line-strong text-ink-muted hover:border-brand-400'
                           } ${b.aktiv ? '' : 'line-through opacity-60'}`}
                         >
-                          <span aria-hidden>{an ? '✓' : '+'}</span>{b.name}{b.istBackup && <span className="opacity-80">· Zweitdrucker</span>}
+                          <span aria-hidden>{an ? '✓' : '+'}</span>
+                          {/* Der Name darf überall umbrechen: sonst gäbe sein längstes Wort die Mindestbreite der Spalte vor (bei 1280 px zählt jeder Pixel) */}
+                          <span className="wrap-anywhere">{b.name}</span>
+                          {b.istBackup && <span className="whitespace-nowrap opacity-80">· Zweitdrucker</span>}
                         </button>
                       )
                     })}
@@ -264,14 +277,15 @@ function KasseZeile({ kasse: k, spalten, kategorien, kategorienGeladen, istDiese
                 )}
               </td>
             )}
-            <td className="px-3 py-2.5">
+            <td className={TD}>
               <Schalter an={k.kdsAktiv} label={`KDS ${name}`} onChange={an => void speichern(k.id, { kdsAktiv: an })} />
             </td>
           </>
         )}
 
-        <td className="px-3 py-2.5 text-right whitespace-nowrap">
-          <div className="flex items-center justify-end gap-2">
+        <td className={`${TD} text-right whitespace-nowrap`}>
+          {/* Mit Gastro untereinander: spart rund 80 px Breite, und die Zeilen sind dort durch die Bonierdrucker-Chips ohnehin höher */}
+          <div className={istGastro ? 'flex flex-col items-stretch gap-1.5' : 'flex items-center justify-end gap-2'}>
             {!stillgelegt && !istDiesesGeraet && (
               <Button variant="secondary" size="sm" onClick={onWechseln}>Wechseln</Button>
             )}
