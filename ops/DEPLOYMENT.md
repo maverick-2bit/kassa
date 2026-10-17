@@ -364,6 +364,24 @@ Container, die Daten (Postgres-Volume) bleiben erhalten.
   Vorschub vor dem Schnitt (Kopf-zu-Messer-Abstand ~12–15 mm; erledigt die Kassa
   automatisch).
 
+## 9b. Kassa übertragen (Büro → Kunden-Hardware)
+
+Eine im Büro eingerichtete Kassa (alle Daten, Layout, Benutzer, Signaturschlüssel) auf den PC
+des Kunden übertragen — verschlüsselt, optional über ein **privates** GitHub-Repo
+(`maverick-2bit/kassa-uebergaben`, vorher anlegen):
+
+```powershell
+# Büro-PC (Skript liegt im Installationsverzeichnis unter ops\):
+.\uebergabe.ps1 -Export -Name kunde-mustermann -Hochladen -Stilllegen
+# Kunden-PC: erst Kassa-Setup normal ausführen, dann:
+.\uebergabe.ps1 -Import -Herunterladen -Name kunde-mustermann     # oder -Datei X.kuep (USB)
+```
+
+- Das **Übergabe-Passwort** wird abgefragt (min. 10 Zeichen) und gehört nie ins Repo.
+- Enthalten: komplette Datenbank + `MASTER_PASSPHRASE` (sonst sind die RKSV-Schlüssel unlesbar).
+- **RKSV:** immer nur EINE Kassa darf produktiv laufen (`-Stilllegen`); am besten Übergabe vor dem ersten Echt-Beleg.
+- Danach beim Kunden Drucker-IPs und Kartenterminal anpassen. Ziel mit vorhandenen Belegen nur mit `-Ueberschreiben`.
+
 ## 10. Fernwartung (TeamViewer Host)
 
 Mietkassen aus der Ferne warten und bei Problemen eingreifen: Der Installer richtet auf der Box
