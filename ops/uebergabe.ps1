@@ -27,6 +27,12 @@
 param(
   [switch]$Export,
   [switch]$Import,
+  # Nur EINEN Mandanten übertragen (statt der ganzen Datenbank): Export aus der Quell-Kassa und
+  # Import als zusätzlicher Mandant in eine bereits laufende, befüllte Ziel-Kassa. Vorhandene
+  # Daten und Mandanten im Ziel bleiben unangetastet; die MASTER_PASSPHRASE des Ziels bleibt.
+  [switch]$Mandant,
+  # Export -Mandant: ID des Mandanten (ohne Angabe: Auswahlliste)
+  [string]$MandantId = '',
   # Installationsverzeichnis der Kassa (Standard wie Kassa-Setup)
   [string]$Ziel = 'C:\kassa-pos',
   # Kurzname der Übergabe (nur a-z, 0-9, Bindestrich) — Teil des Dateinamens
@@ -142,6 +148,22 @@ if (-not (Test-Path $envDatei)) { Abbruch "Keine Kassa-Installation in '$Ziel' g
 Docker-Pruefen
 Set-Location $Ziel
 
+function Backend-Bereit {
+  docker compose up -d backend | Out-Null
+  for ($i = 0; $i -lt 40; $i++) {
+    docker compose exec -T backend node -e "process.exit(0)" *> $null
+    if ($LASTEXITCODE -eq 0) { return }
+    Start-Sleep -Seconds 2
+  }
+  Abbruch 'Das Backend startet nicht.'
+}
+
+function Mandanten-Liste {
+  $zeilen = docker compose exec -T backend node dist/cli/mandant-transfer.js liste
+  if ($LASTEXITCODE -ne 0) { Abbruch 'Mandanten konnten nicht gelesen werden (ist die Kassa auf dem aktuellen Stand?).' }
+  return @($zeilen | Where-Object { $_ -match "`t" })
+}
+
 # Läuft die Datenbank? (compose up -d startet sonst nur postgres)
 function Postgres-Bereit {
   docker compose up -d postgres | Out-Null
@@ -161,19 +183,41 @@ try {
 # =============================================================================
 if ($Export) {
   if ($Name -notmatch '^[a-z0-9][a-z0-9-]{1,40}$') { Abbruch "-Name fehlt oder ist ungültig (nur a-z, 0-9, Bindestrich; z. B. kunde-mustermann)." }
-  Schritt 'Datenbank sichern'
-  Postgres-Bereit
-  docker compose exec -T postgres sh -c 'pg_dump -U kassa -d kassa -Fc -f /tmp/uebergabe.dump'
-  if ($LASTEXITCODE -ne 0) { Abbruch 'pg_dump ist fehlgeschlagen.' }
-  docker compose cp postgres:/tmp/uebergabe.dump (Join-Path $temp 'db.dump')
-  if ($LASTEXITCODE -ne 0) { Abbruch 'Dump konnte nicht aus dem Container kopiert werden.' }
-  docker compose exec -T postgres rm -f /tmp/uebergabe.dump | Out-Null
-  $dump = Join-Path $temp 'db.dump'
-  Ok ('Dump: ' + [math]::Round((Get-Item $dump).Length / 1MB, 1) + ' MB')
+  if ($Mandant) {
+    Schritt 'Mandanten wählen'
+    Backend-Bereit
+    if (-not $MandantId) {
+      $liste = @(Mandanten-Liste)
+      if ($liste.Count -eq 0) { Abbruch 'Keine Mandanten gefunden.' }
+      for ($i = 0; $i -lt $liste.Count; $i++) { Write-Host ('    [' + ($i + 1) + '] ' + $liste[$i].Split("`t")[1]) }
+      $wahl = Read-Host 'Nummer des Mandanten'
+      if ($wahl -notmatch '^[0-9]+$' -or [int]$wahl -lt 1 -or [int]$wahl -gt $liste.Count) { Abbruch 'Ungültige Auswahl.' }
+      $MandantId = $liste[[int]$wahl - 1].Split("`t")[0]
+    }
+    if ($MandantId -notmatch '^[0-9a-fA-F-]{36}$') { Abbruch '-MandantId ist keine gültige ID.' }
+    Schritt 'Mandanten exportieren'
+    docker compose exec -T backend node dist/cli/mandant-transfer.js export $MandantId /tmp/mandant-export.json
+    if ($LASTEXITCODE -ne 0) { Abbruch 'Mandanten-Export ist fehlgeschlagen.' }
+    docker compose cp backend:/tmp/mandant-export.json (Join-Path $temp 'mandant.json')
+    if ($LASTEXITCODE -ne 0) { Abbruch 'Exportdatei konnte nicht aus dem Container kopiert werden.' }
+    docker compose exec -T backend rm -f /tmp/mandant-export.json | Out-Null
+    $dump   = Join-Path $temp 'mandant.json'
+    $master = ''   # im Export steht alles im Klartext; das Ziel verschlüsselt mit seiner eigenen Passphrase neu
+  } else {
+    Schritt 'Datenbank sichern'
+    Postgres-Bereit
+    docker compose exec -T postgres sh -c 'pg_dump -U kassa -d kassa -Fc -f /tmp/uebergabe.dump'
+    if ($LASTEXITCODE -ne 0) { Abbruch 'pg_dump ist fehlgeschlagen.' }
+    docker compose cp postgres:/tmp/uebergabe.dump (Join-Path $temp 'db.dump')
+    if ($LASTEXITCODE -ne 0) { Abbruch 'Dump konnte nicht aus dem Container kopiert werden.' }
+    docker compose exec -T postgres rm -f /tmp/uebergabe.dump | Out-Null
+    $dump = Join-Path $temp 'db.dump'
+    $master = Env-Wert $envDatei 'MASTER_PASSPHRASE'
+    if ($master.Length -lt 16) { Abbruch 'MASTER_PASSPHRASE in der .env fehlt oder ist zu kurz.' }
+  }
+  Ok ('Daten: ' + [math]::Round((Get-Item $dump).Length / 1MB, 1) + ' MB')
 
-  $master = Env-Wert $envDatei 'MASTER_PASSPHRASE'
-  if ($master.Length -lt 16) { Abbruch 'MASTER_PASSPHRASE in der .env fehlt oder ist zu kurz.' }
-  $meta = @{ name = $Name; erstellt = (Get-Date).ToString('o'); rechner = $env:COMPUTERNAME; masterPassphrase = $master } | ConvertTo-Json -Compress
+  $meta = @{ typ = $(if ($Mandant) { 'mandant' } else { 'komplett' }); name = $Name; erstellt = (Get-Date).ToString('o'); rechner = $env:COMPUTERNAME; masterPassphrase = $master } | ConvertTo-Json -Compress
   Set-Content -Path (Join-Path $temp 'meta.json') -Value $meta -Encoding UTF8
 
   Schritt 'Paket schnüren und verschlüsseln'
@@ -203,11 +247,13 @@ if ($Export) {
     Ok 'Hochgeladen'
   }
 
-  if ($Stilllegen) {
+  if ($Stilllegen -and $Mandant) {
+    Hinweis '-Stilllegen gilt nur für die komplette Übergabe und wird beim Mandanten-Export ignoriert.'
+  } elseif ($Stilllegen) {
     Schritt 'Quell-Kassa stilllegen'
     docker compose stop
     Ok 'Alle Container gestoppt — diese Kassa darf nicht mehr produktiv laufen.'
-  } else {
+  } elseif (-not $Mandant) {
     Hinweis 'Die Quell-Kassa läuft noch. Nach der Übergabe NICHT mehr produktiv verwenden (doppelte Belege!) — oder gleich mit -Stilllegen exportieren.'
   }
   Write-Host "`nFertig. Passwort getrennt von der Datei aufbewahren." -ForegroundColor Green
@@ -237,6 +283,24 @@ if ($Import) {
   Expand-Archive -Path $zip -DestinationPath $entpackt -Force
   $meta = Get-Content -Raw (Join-Path $entpackt 'meta.json') | ConvertFrom-Json
   Ok ("Übergabe '" + $meta.name + "' vom " + $meta.erstellt + " (Rechner " + $meta.rechner + ")")
+
+  if ($meta.typ -eq 'mandant' -and -not $Mandant) { Abbruch 'Das ist ein Mandanten-Export — mit -Import -Mandant einspielen.' }
+  if ($meta.typ -ne 'mandant' -and $Mandant) { Abbruch 'Das ist eine komplette Übergabe, kein Mandanten-Export — ohne -Mandant einspielen.' }
+
+  if ($Mandant) {
+    Schritt "Mandant '$($meta.name)' zusätzlich in diese Kassa einspielen"
+    Backend-Bereit
+    docker compose cp (Join-Path $entpackt 'mandant.json') backend:/tmp/mandant-import.json
+    if ($LASTEXITCODE -ne 0) { Abbruch 'Datei konnte nicht in den Container kopiert werden.' }
+    docker compose exec -T backend node dist/cli/mandant-transfer.js import /tmp/mandant-import.json
+    $code = $LASTEXITCODE
+    docker compose exec -T backend rm -f /tmp/mandant-import.json | Out-Null
+    if ($code -ne 0) { Abbruch 'Mandanten-Import fehlgeschlagen — in dieser Kassa wurde nichts geändert.' }
+    Ok 'Mandant eingespielt (vorhandene Daten unverändert)'
+    Hinweis 'Jetzt in der Kassa mit dem Login des übertragenen Mandanten anmelden; danach erscheint er im Mandanten-Umschalter.'
+    Hinweis 'Drucker-IPs / Kartenterminal prüfen. Der Mandant darf nur noch HIER laufen (nicht mehr an der Quelle).'
+    return
+  }
 
   Schritt 'Ziel-Kassa prüfen'
   Postgres-Bereit

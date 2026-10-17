@@ -377,6 +377,20 @@ des Kunden übertragen — verschlüsselt, optional über ein **privates** GitHu
 .\uebergabe.ps1 -Import -Herunterladen -Name kunde-mustermann     # oder -Datei X.kuep (USB)
 ```
 
+**Nur einen Mandanten dazu übertragen** (Ziel-Kassa hat schon eigene Daten, soll sie behalten):
+
+```powershell
+# Quelle: Auswahlliste der Mandanten, oder -MandantId <id>
+.\uebergabe.ps1 -Export -Mandant -Name laptop-test -Hochladen
+# Ziel: spielt den Mandanten ZUSÄTZLICH ein; vorhandene Mandanten/Daten bleiben unberührt
+.\uebergabe.ps1 -Import -Mandant -Herunterladen -Name laptop-test
+```
+
+Danach am Ziel mit dem Login des übertragenen Mandanten anmelden — er erscheint im
+Mandanten-Umschalter. Die RKSV-Schlüssel werden mit der `MASTER_PASSPHRASE` des Ziels neu
+verschlüsselt. Bricht irgendetwas ab (z. B. Mandant schon vorhanden, Version zu alt), wird
+nichts geändert. Beide Kassen müssen auf demselben Stand sein (Ziel zuerst updaten).
+
 - Das **Übergabe-Passwort** wird abgefragt (min. 10 Zeichen) und gehört nie ins Repo.
 - Enthalten: komplette Datenbank + `MASTER_PASSPHRASE` (sonst sind die RKSV-Schlüssel unlesbar).
 - **RKSV:** immer nur EINE Kassa darf produktiv laufen (`-Stilllegen`); am besten Übergabe vor dem ersten Echt-Beleg.
