@@ -9,8 +9,8 @@
 
 import { useEffect } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import type { BonierungInput, BonierZielFehler } from '@kassa/shared'
-import { bonierFehlschlaege } from '@kassa/shared'
+import type { BonierungInput, BonierUmleitung, BonierZielFehler } from '@kassa/shared'
+import { bonierFehlschlaege, bonierUmleitungen } from '@kassa/shared'
 import { bonierApi, type TabPositionenAntwort } from '../lib/api'
 import { Button } from './ui/Button'
 
@@ -44,10 +44,16 @@ export function korrekturbonFehler(antwort: TabPositionenAntwort, tabId?: string
   }
 }
 
-export function BonierFehlerLeiste({ fehler, onAenderung }: {
+export function BonierFehlerLeiste({ fehler, onAenderung, onUmleitungen }: {
   fehler:      BonierFehler
   /** Nach dem Nachsenden die verbliebenen Ziele; null = alles angekommen oder weggeklickt */
   onAenderung: (fehler: BonierFehler | null) => void
+  /**
+   * Nach dem Nachsenden die Bons, die zugestellt wurden, aber am Backup-Drucker statt am
+   * vorgesehenen Drucker liegen. Ohne diese Rückmeldung verschwände die Leiste bei einem
+   * Nachsenden über den Backup-Drucker, und niemand erführe, wo der Bon liegt.
+   */
+  onUmleitungen?: (umleitungen: BonierUmleitung[]) => void
 }) {
   const nachsenden = useMutation({
     mutationFn: (input: BonierungInput) => bonierApi.bonieren(input),
@@ -55,6 +61,7 @@ export function BonierFehlerLeiste({ fehler, onAenderung }: {
     // Teil, bleibt sie mit den verbliebenen Zielen stehen.
     onSuccess: (ergebnis, input) => {
       const ziele = bonierFehlschlaege(ergebnis)
+      onUmleitungen?.(bonierUmleitungen(ergebnis))
       onAenderung(ziele.length > 0 ? { ziele, nachsenden: input } : null)
     },
   })

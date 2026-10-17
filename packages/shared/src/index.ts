@@ -284,11 +284,14 @@ export {
   BonierungErgebnisSchema,
   BonierungPositionSchema,
   bonierFehlschlaege,
+  bonierUmleitungen,
+  vereinigeUmleitungen,
 } from './schemas/bonierung.js'
 export type {
   BonierungInput,
   BonierungErgebnis,
   BonierZielFehler,
+  BonierUmleitung,
 } from './schemas/bonierung.js'
 
 // ZVT-Kartenterminal

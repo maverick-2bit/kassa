@@ -65,6 +65,12 @@ export const BonierungErgebnisSchema = z.object({
     erfolgreich: z.boolean(),
     fehler:      z.string().optional(),
     istBackup:   z.boolean(),
+    /**
+     * Nur bei einer Umleitung (`erfolgreich` bleibt true): der Bon liegt NICHT am vorgesehenen Drucker.
+     * `von` = vorgesehener Drucker (nicht erreichbar), `an` = Drucker, der ihn bekommen hat — dessen
+     * Backup-Drucker bzw. der feste Fallback-Drucker. `ip` ist dann die des Ersatzes, `name` lautet „von → an“.
+     */
+    umleitung:   z.object({ von: z.string(), an: z.string() }).optional(),
   })).default([]),
 })
 export type BonierungErgebnis = z.infer<typeof BonierungErgebnisSchema>
@@ -116,4 +122,54 @@ export function bonierFehlschlaege(ergebnis: BonierungErgebnis): BonierZielFehle
   }
 
   return fehlend
+}
+
+/** Ein Bon, der zugestellt wurde — aber an einem anderen Drucker als vorgesehen. */
+export interface BonierUmleitung {
+  /** Vorgesehener Bonierdrucker, der nicht erreichbar war */
+  von:     string
+  /** Drucker, an dem der Bon jetzt liegt (Backup-Drucker bzw. fester Fallback-Drucker) */
+  an:      string
+  /** IP des Druckers, an dem der Bon liegt */
+  ip:      string
+  /** Fertiger Satz für das Personal, z. B. „Küchendrucker nicht erreichbar — Bon kam an Schankdrucker. Bitte weitergeben.“ */
+  hinweis: string
+}
+
+/**
+ * Bons, die zwar ankamen, aber NICHT am vorgesehenen Bonierdrucker: dessen Backup-Drucker
+ * bzw. der feste Fallback-Drucker ist eingesprungen. Das Gegenstück zu `bonierFehlschlaege`
+ * für den Fall „zugestellt, aber woanders" — der Bon liegt am falschen Gerät, und ohne
+ * Hinweis holt ihn in der Küche niemand ab.
+ *
+ * Zählt nur Hauptdrucker, die den Bon bekommen haben. Fehlschläge (`erfolgreich: false`)
+ * gehören zu `bonierFehlschlaege`; der Zweitdrucker (`istBackup`) bekommt immer eine Kopie
+ * und wird nie ersetzt — seine Kopie ist keine Umleitung.
+ */
+export function bonierUmleitungen(ergebnis: BonierungErgebnis): BonierUmleitung[] {
+  const umleitungen: BonierUmleitung[] = []
+
+  for (const d of ergebnis.drucker) {
+    if (!d.erfolgreich || d.istBackup || !d.umleitung) continue
+    umleitungen.push({
+      von:     d.umleitung.von,
+      an:      d.umleitung.an,
+      ip:      d.ip,
+      hinweis: `${d.umleitung.von} nicht erreichbar — Bon kam an ${d.umleitung.an}. Bitte weitergeben.`,
+    })
+  }
+
+  return umleitungen
+}
+
+/**
+ * Fügt neue Umleitungen zu den schon angezeigten hinzu, ohne etwas doppelt aufzuführen.
+ *
+ * Der Hinweis bleibt stehen, bis das Personal „Verstanden“ drückt: Ein späterer Bon, der wieder
+ * normal ankam, darf ihn nicht wegnehmen — der frühere liegt ja weiter am falschen Drucker.
+ */
+export function vereinigeUmleitungen(vorhanden: BonierUmleitung[], neu: BonierUmleitung[]): BonierUmleitung[] {
+  const zusaetzlich = neu.filter((u, i) =>
+    !vorhanden.some(v => v.hinweis === u.hinweis) && neu.findIndex(x => x.hinweis === u.hinweis) === i)
+  return zusaetzlich.length === 0 ? vorhanden : [...vorhanden, ...zusaetzlich]
 }

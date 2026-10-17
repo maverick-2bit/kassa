@@ -19,7 +19,7 @@ import type {
   TischTabErstellenInput,
   TischTabResponse,
 } from '@kassa/shared'
-import { GUTSCHEIN_STATUS_LABELS, MWST_LABELS, STATION_LABELS, aktionsPreisCent, aktiverRabattProzent, aktiveAktion, fragtNachOptionen, warengruppenWahl } from '@kassa/shared'
+import { GUTSCHEIN_STATUS_LABELS, MWST_LABELS, STATION_LABELS, aktionsPreisCent, aktiverRabattProzent, aktiveAktion, bonierUmleitungen, fragtNachOptionen, warengruppenWahl } from '@kassa/shared'
 import type { AktiveAktion } from '@kassa/shared'
 import { angebotApi, artikelApi, belegApi, bonierApi, druckerApi, emailApi, gutscheinApi, kategorieApi, lieferscheinApi, modifikatorApi, offenerPostenApi, posConfigApi, preisregelApi, tischTabApi, zvtApi, displayApi, ApiError } from '../lib/api'
 import { FreigabePinModal } from '../components/FreigabePinModal'
@@ -43,6 +43,7 @@ import { gewaehlterDrucker } from '../components/AbrechnungsDrucker'
 import { Modal } from '../components/ui/Modal'
 import { Input } from '../components/ui/Input'
 import { BonAnzeige } from '../components/BonAnzeige'
+import { BonierUmleitungHinweis } from '../components/BonierUmleitungHinweis'
 import { DruckproblemeBanner } from '../components/DruckproblemeBanner'
 import { ABBRUCH_ZU_SPAET, KartenzahlungModal } from '../components/KartenzahlungModal'
 import { SerialAuswahlModal, type SerialPos } from '../components/SerialAuswahlModal'
@@ -545,6 +546,9 @@ export function KassePage() {
     },
     onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
   })
+
+  /** Bons, die zugestellt wurden, aber am Backup-Drucker statt am vorgesehenen Drucker liegen */
+  const umleitungen = bonierungErgebnis ? bonierUmleitungen(bonierungErgebnis) : []
 
   const handleBonieren = () => {
     setFehler(null)
@@ -1348,6 +1352,12 @@ export function KassePage() {
       >
         {bonierungErgebnis && (
           <div className="space-y-4">
+            {/* Zugestellt, aber am Backup-Drucker statt am vorgesehenen: die Zeile unten ist grün/bernstein,
+                übersehen wäre sie schnell — der Bon muss in die Küche getragen werden */}
+            {umleitungen.length > 0 && (
+              <BonierUmleitungHinweis umleitungen={umleitungen} onVerstanden={() => setBonierungErgebnis(null)} />
+            )}
+
             {bonierungErgebnis.stationen.length > 0 && (
               <div className="space-y-2">
                 <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">KDS-Stationen</p>
@@ -1383,9 +1393,11 @@ export function KassePage() {
                     <li
                       key={d.druckerId}
                       className={`flex items-center justify-between rounded-md border px-3 py-2 text-sm ${
-                        d.erfolgreich
-                          ? 'border-green-200 bg-green-50 text-green-800'
-                          : 'border-red-200 bg-red-50 text-red-700'
+                        !d.erfolgreich
+                          ? 'border-red-200 bg-red-50 text-red-700'
+                          : d.umleitung
+                            ? 'border-amber-300 bg-amber-50 text-amber-900'   // am Backup-Drucker statt am vorgesehenen
+                            : 'border-green-200 bg-green-50 text-green-800'
                       }`}
                     >
                       <span className="font-medium">

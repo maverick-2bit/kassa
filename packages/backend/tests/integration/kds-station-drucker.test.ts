@@ -203,6 +203,8 @@ describe('KDS-Papierdruck je Station (Integration, echtes PostgreSQL + TCP-Liste
       expect(d).toMatchObject({ erfolgreich: true })
       expect(d.name).toContain('→')
       expect(d.fehler).toMatch(/umgeleitet/)
+      // maschinenlesbar für den Hinweis an das Personal (bonierUmleitungen): vorgesehener Drucker → Ersatz
+      expect(d.umleitung).toEqual({ von: 'Defekt', an: 'Küche .202' })
       expect(b.empfangen()).toBe(vorher + 1)
     })
 
@@ -216,6 +218,7 @@ describe('KDS-Papierdruck je Station (Integration, echtes PostgreSQL + TCP-Liste
       })
       expect(res.statusCode, res.body).toBe(207)
       expect(res.json().drucker[0]).toMatchObject({ erfolgreich: false })
+      expect(res.json().drucker[0].umleitung).toBeUndefined()   // gescheitert ≠ umgeleitet
     })
   })
 
@@ -331,6 +334,7 @@ describe('KDS-Papierdruck je Station (Integration, echtes PostgreSQL + TCP-Liste
       expect(d).toMatchObject({ erfolgreich: true, druckerId: defekt, istBackup: false })
       expect(d.name).toContain('→')
       expect(d.fehler).toMatch(/umgeleitet/)
+      expect(d.umleitung).toEqual({ von: 'Defekt-Station', an: 'Küche .202' })
       expect(b.empfangen()).toBe(vorher + 1)
     })
 
@@ -345,6 +349,7 @@ describe('KDS-Papierdruck je Station (Integration, echtes PostgreSQL + TCP-Liste
       expect(res.json().drucker).toHaveLength(1)           // nur der eigentliche Drucker, kein zweiter Eintrag
       expect(res.json().drucker[0]).toMatchObject({ druckerId: druckerA, erfolgreich: true })
       expect(res.json().drucker[0].fehler).toBeUndefined()  // nicht umgeleitet
+      expect(res.json().drucker[0].umleitung).toBeUndefined()
       expect(a.empfangen()).toBe(aVorher + 1)
       expect(b.empfangen()).toBe(bVorher)                  // der Backup-Drucker bleibt stumm
 
