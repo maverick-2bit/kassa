@@ -23,7 +23,7 @@ import { buildTestServer, type TestServer } from '../helpers/testServer.js'
 import { erstelleIntegrationsDb, type IntegrationsDb } from './helpers/integrationsDb.js'
 import { bonProbleme } from '../../src/db/schema.js'
 import { onKasseEvent } from '../../src/sse/event-bus.js'
-import { bonierUndMelde } from '../../src/services/bon-probleme.service.js'
+import { bonierUndMelde, holeOffeneBonProbleme } from '../../src/services/bon-probleme.service.js'
 
 const ADMIN_EMAIL = 'admin@bon-probleme.at', ADMIN_PASSWORT = 'bon-probleme-passwort-123'
 const FREMD_EMAIL = 'admin@fremd-bon-probleme.at', FREMD_PASSWORT = 'fremd-bon-probleme-123'
@@ -61,7 +61,7 @@ const kurzWarten = (ms = 300) => new Promise(r => setTimeout(r, ms))
 describe('Bon-Probleme: Direktverkauf-Beleg, Gast- und SB-Bestellung (Integration, echtes PostgreSQL + TCP-Listener)', () => {
   let idb: IntegrationsDb
   let srv: TestServer
-  let token = '', tokenFremd = '', kasseId = '', kasse2Id = '', kasseFremdId = '', mandantId = ''
+  let token = '', tokenFremd = '', kasseId = '', kasse2Id = '', kasseFremdId = '', mandantId = '', mandantFremdId = ''
   let schank: Attrappe, ersatz: Attrappe
   const drucker = { schank: '', ersatz: '', kueche: '', grill: '' }
   const art = { cola: '', steak: '', fisch: '', gastSteak: '', sbSteak: '' }
@@ -123,7 +123,7 @@ describe('Bon-Probleme: Direktverkauf-Beleg, Gast- und SB-Bestellung (Integratio
     const a = await setup('A', 'ATU99999921', ADMIN_EMAIL, ADMIN_PASSWORT)
     token = a.token; kasseId = a.kassen[0]!.id; mandantId = a.mandant.id
     const b = await setup('B', 'ATU99999922', FREMD_EMAIL, FREMD_PASSWORT)
-    tokenFremd = b.token; kasseFremdId = b.kassen[0]!.id
+    tokenFremd = b.token; kasseFremdId = b.kassen[0]!.id; mandantFremdId = b.mandant.id
     eventsAbmelden = onKasseEvent(mandantId, e => { events.push(e) })
 
     // Eine zweite Kasse desselben Mandanten: ihre Liste muss leer bleiben
@@ -333,6 +333,11 @@ describe('Bon-Probleme: Direktverkauf-Beleg, Gast- und SB-Bestellung (Integratio
     it('die Liste ist an den Mandanten gebunden, auch wenn eine fremde Kasse-ID verwendet wird', async () => {
       // Ein Benutzer des fremden Mandanten fragt mit der eigenen Kasse — und bekommt nur eigene Zeilen
       expect(await liste(kasseFremdId, tokenFremd)).toEqual([])
+    })
+
+    it('der Service filtert selbst nach Mandant (zusätzlich zur Kassen-Prüfung der Route): eine fremde Mandanten-ID bekommt nichts', async () => {
+      expect(await holeOffeneBonProbleme(idb.db, mandantFremdId, kasseId)).toEqual([])
+      expect(await holeOffeneBonProbleme(idb.db, mandantId, kasseId)).toHaveLength(1)
     })
 
     it('ungültige IDs → 400', async () => {
