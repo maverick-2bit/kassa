@@ -280,6 +280,39 @@ export const systemApi = {
   fernwartung: () => request<FernwartungStatus>('GET', '/api/system/fernwartung'),
 }
 
+export const mandantUebergabeApi = {
+  /** Eigenen Mandanten als verschlüsselte Datei (.kuep) herunterladen (Admin). */
+  status: () => request<{ gesperrt: boolean }>('GET', '/api/mandant-uebergabe/status'),
+  sperreAufheben: () => request<{ gesperrt: boolean }>('POST', '/api/mandant-uebergabe/sperre-aufheben'),
+  exportieren: async (passwort: string, sperren: boolean): Promise<string> => {
+    const token = getToken()
+    const res = await fetch('/api/mandant-uebergabe/export', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: token ? `Bearer ${token}` : '' },
+      body: JSON.stringify({ passwort, sperren }),
+    })
+    if (res.status === 401) { handleUnauthorized(); throw new ApiError(401, 'Nicht angemeldet') }
+    if (!res.ok) {
+      const data = (await res.json().catch(() => null)) as { fehler?: unknown } | null
+      throw new ApiError(res.status, typeof data?.fehler === 'string' ? data.fehler : `HTTP ${res.status}`)
+    }
+    const name = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') ?? '')?.[1] ?? 'kassa-mandant.kuep'
+    const url  = URL.createObjectURL(await res.blob())
+    const a    = document.createElement('a')
+    a.href = url; a.download = name
+    document.body.appendChild(a); a.click(); document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    return name
+  },
+  /** Datei als zusätzlichen Mandanten einspielen (Admin). */
+  importieren: async (datei: File, passwort: string) => {
+    const bytes = new Uint8Array(await datei.arrayBuffer())
+    let binaer = ''
+    for (let i = 0; i < bytes.length; i += 0x8000) binaer += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+    return request<{ name: string; tabellen: number; zeilen: number }>('POST', '/api/mandant-uebergabe/import', { passwort, datei: btoa(binaer) })
+  },
+}
+
 export const kdsGeraetApi = {
   /** Langlebiger Geräte-Token für KDS-Bildschirme (nur Admin) — wandert in den Geräte-QR. */
   token: () => request<{ token: string }>('POST', '/api/kds/geraete-token'),
