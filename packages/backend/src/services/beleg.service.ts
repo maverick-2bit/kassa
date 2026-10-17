@@ -114,6 +114,9 @@ interface SigniereInput {
   nachPersist?: (tx: Tx, belegId: string) => Promise<void>
 }
 
+/** mandanten.status nach der Übergabe an eine andere Kassa: keine neuen Belege mehr */
+export const MANDANT_UEBERTRAGEN = 'uebertragen'
+
 async function signiereImTx(
   input: SigniereInput,
   deps:  BelegServiceDeps,
@@ -129,6 +132,11 @@ async function signiereImTx(
     const kasse = kasseRows[0]
     if (!kasse)                    throw new BelegError(404, 'Kasse nicht gefunden')
     if (kasse.status !== 'aktiv')  throw new BelegError(409, `Kasse ist ${kasse.status}, keine neuen Belege möglich`)
+    // Mandant wurde auf eine andere Kassa übertragen (Mandanten-Übergabe): hier darf die Signaturkette nicht weiterlaufen
+    const [mandantStatus] = await tx.select({ status: mandanten.status }).from(mandanten).where(eq(mandanten.id, kasse.mandantId))
+    if (mandantStatus?.status === MANDANT_UEBERTRAGEN) {
+      throw new BelegError(409, 'Dieser Mandant wurde auf eine andere Kassa übertragen — hier sind keine Belege mehr möglich. (Einstellungen → System → Mandant übertragen → Sperre aufheben)')
+    }
     // Hinweis: Eine NICHT bei FinanzOnline registrierte Kasse darf provisorisch
     // Belege ausstellen (Event-Einrichtung ohne FON-Daten). Die Belege werden
     // regulär signiert; die FON-Registrierung ist zeitnah nachzutragen. Das UI

@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { QRCodeSVG } from 'qrcode.react'
 import { beginnFuer, type Artikel, type Kategorie, type SeeTyp } from '@kassa/shared'
-import { druckerApi, druckerPoolApi, kdsGeraetApi, seeApi, downloadDepExport, healthApi, monitoringApi, mandantApi, stripeApi, kasseErweiterungApi, kategorieApi, artikelApi, tischplanApi, dbBackupApi, belegApi, systemApi, rksvSelbsttestApi, type DbSicherungRow, type MonitoringStatus } from '../lib/api'
+import { druckerApi, druckerPoolApi, kdsGeraetApi, seeApi, downloadDepExport, healthApi, monitoringApi, mandantApi, stripeApi, kasseErweiterungApi, kategorieApi, artikelApi, tischplanApi, dbBackupApi, mandantUebergabeApi, belegApi, systemApi, rksvSelbsttestApi, type DbSicherungRow, type MonitoringStatus } from '../lib/api'
 import { FernwartungKarte } from '../components/FernwartungKarte'
 import { EinrichtungSeite } from '../components/einrichtung/EinrichtungSeite'
 import { formatAusfallDauer } from '../components/SeeStatusBanner'
@@ -108,6 +108,7 @@ export function EinstellungenPage() {
           <FernwartungKarte />
           <DruckerStatusSektion />
           <DbBackupSektion />
+          <MandantUebergabeSektion />
           <SystemInfoSektion />
         </>
       )}
@@ -1779,6 +1780,108 @@ function DbBackupSektion() {
       {!listeQuery.isLoading && liste.length === 0 && (
         <p className="text-sm text-ink-subtle">Noch keine Backups vorhanden. Täglich um 3:00 Uhr wird automatisch eines erstellt.</p>
       )}
+    </section>
+  )
+}
+
+function MandantUebergabeSektion() {
+  const auth = getAuth()!
+  if (auth.user.rolle !== 'admin') return null
+
+  const [expPw, setExpPw]       = useState('')
+  const [expPw2, setExpPw2]     = useState('')
+  const qc = useQueryClient()
+  const [sperren, setSperren] = useState(true)
+  const statusQuery = useQuery({ queryKey: ['mandant-uebergabe-status'], queryFn: mandantUebergabeApi.status })
+  const aufheben = useMutation({
+    mutationFn: mandantUebergabeApi.sperreAufheben,
+    onSuccess:  () => { void qc.invalidateQueries({ queryKey: ['mandant-uebergabe-status'] }) },
+  })
+  const [expFehler, setExpFehler] = useState<string | null>(null)
+  const [expOk, setExpOk]       = useState<string | null>(null)
+  const [datei, setDatei]       = useState<File | null>(null)
+  const [impPw, setImpPw]       = useState('')
+  const [impFehler, setImpFehler] = useState<string | null>(null)
+  const [impOk, setImpOk]       = useState<{ name: string; zeilen: number } | null>(null)
+
+  const exportMut = useMutation({
+    mutationFn: () => mandantUebergabeApi.exportieren(expPw, sperren),
+    onSuccess:  (name) => { void qc.invalidateQueries({ queryKey: ['mandant-uebergabe-status'] }); setExpFehler(null); setExpOk(name); setExpPw(''); setExpPw2('') },
+    onError:    (e) => { setExpOk(null); setExpFehler(e instanceof Error ? e.message : String(e)) },
+  })
+  const importMut = useMutation({
+    mutationFn: () => mandantUebergabeApi.importieren(datei!, impPw),
+    onSuccess:  (r) => { setImpFehler(null); setImpOk({ name: r.name, zeilen: r.zeilen }); setImpPw(''); setDatei(null) },
+    onError:    (e) => { setImpOk(null); setImpFehler(e instanceof Error ? e.message : String(e)) },
+  })
+
+  const expBereit = expPw.length >= 10 && expPw === expPw2
+
+  return (
+    <section className="rounded-xl border border-line bg-panel p-6 space-y-5">
+      <div>
+        <h2 className="text-lg font-semibold text-ink">Mandant übertragen</h2>
+        <p className="mt-0.5 text-sm text-ink-muted">
+          Diese Kassa (Mandant mit Artikeln, Layout, Benutzern, Belegen und Signaturschlüsseln) als verschlüsselte Datei
+          mitnehmen und in einer anderen Kassa als <strong>zusätzlichen</strong> Mandanten einspielen. Vorhandene Daten dort bleiben unverändert.
+          Danach nur noch dort arbeiten — an zwei Orten gleichzeitig entstehen doppelte Belegnummern.
+        </p>
+      </div>
+
+      {statusQuery.data?.gesperrt && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 space-y-2" data-testid="uebergabe-gesperrt">
+          <p><strong>Dieser Mandant ist für Belege gesperrt</strong> — er wurde auf eine andere Kassa übertragen. Hier kann nicht mehr kassiert werden, damit die Signaturkette nicht an zwei Orten weiterläuft.</p>
+          <Button variant="secondary" disabled={aufheben.isPending} data-testid="uebergabe-sperre-aufheben" onClick={() => { if (window.confirm('Sperre wirklich aufheben? Läuft der Mandant gleichzeitig in der anderen Kassa weiter, entstehen doppelte Belegnummern und eine gegabelte Signaturkette.')) aufheben.mutate() }}>
+            Sperre aufheben
+          </Button>
+        </div>
+      )}
+
+      <div className="grid gap-6 md:grid-cols-2">
+        <div className="space-y-3">
+          <h3 className="text-sm font-semibold text-ink">Exportieren</h3>
+          <Field label="Übergabe-Passwort (mind. 10 Zeichen)">
+            <Input type="password" autoComplete="new-password" value={expPw} onChange={(e) => setExpPw(e.target.value)} data-testid="uebergabe-export-pw" />
+          </Field>
+          <Field label="Passwort wiederholen">
+            <Input type="password" autoComplete="new-password" value={expPw2} onChange={(e) => setExpPw2(e.target.value)} data-testid="uebergabe-export-pw2" />
+          </Field>
+          <label className="flex items-start gap-2 text-sm text-ink">
+            <input type="checkbox" checked={sperren} onChange={(e) => setSperren(e.target.checked)} className="mt-1" data-testid="uebergabe-sperren" />
+            <span>Diese Kassa danach für Belege sperren (empfohlen) — verhindert doppelte Belegnummern und eine gegabelte Signaturkette.</span>
+          </label>
+          <Button variant="secondary" disabled={!expBereit || exportMut.isPending} onClick={() => { setExpFehler(null); setExpOk(null); exportMut.mutate() }} data-testid="uebergabe-export">
+            {exportMut.isPending ? 'Erstelle Datei…' : 'Datei herunterladen'}
+          </Button>
+          <p className="text-xs text-ink-muted">Das Passwort steht nicht in der Datei — ohne es ist sie wertlos. Gut aufbewahren, aber nicht neben der Datei.</p>
+          {expFehler && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{expFehler}</p>}
+          {expOk && <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-4 py-2" data-testid="uebergabe-export-ok">✓ Heruntergeladen: {expOk}{sperren ? ' — diese Kassa ist jetzt für Belege gesperrt.' : ''}</p>}
+        </div>
+
+        <div className="space-y-3">
+          <h3 className="text-sm font-semibold text-ink">Einspielen</h3>
+          <Field label="Übergabedatei (.kuep)">
+            <input
+              type="file" accept=".kuep" data-testid="uebergabe-import-datei"
+              onChange={(e) => { setDatei(e.target.files?.[0] ?? null); setImpOk(null); setImpFehler(null) }}
+              className="block w-full text-sm text-ink"
+            />
+          </Field>
+          <Field label="Übergabe-Passwort">
+            <Input type="password" autoComplete="off" value={impPw} onChange={(e) => setImpPw(e.target.value)} data-testid="uebergabe-import-pw" />
+          </Field>
+          <Button variant="secondary" disabled={!datei || impPw.length === 0 || importMut.isPending} onClick={() => { setImpFehler(null); setImpOk(null); importMut.mutate() }} data-testid="uebergabe-import">
+            {importMut.isPending ? 'Spiele ein…' : 'Als zusätzlichen Mandanten einspielen'}
+          </Button>
+          {impFehler && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2" data-testid="uebergabe-import-fehler">{impFehler}</p>}
+          {impOk && (
+            <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-4 py-2" data-testid="uebergabe-import-ok">
+              ✓ Mandant „{impOk.name}“ eingespielt ({impOk.zeilen} Datensätze). Jetzt mit dem Login dieses Mandanten anmelden —
+              er erscheint danach im Mandanten-Umschalter der Kopfleiste.
+            </p>
+          )}
+        </div>
+      </div>
     </section>
   )
 }
