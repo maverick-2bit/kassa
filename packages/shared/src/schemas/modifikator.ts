@@ -101,6 +101,45 @@ export const ModifikatorAuswahlSchema = z.object({
 export type ModifikatorAuswahl = z.infer<typeof ModifikatorAuswahlSchema>
 
 // ---------------------------------------------------------------------------
+// Bepreiste Varianten auflösen (siehe bepreiste-varianten.ts)
+//
+// Pro Artikel + Optionsgruppe wird je Option entschieden: `anlegen` macht einen eigenen Artikel daraus
+// („Bier 0,5l" für 5,00), `verwerfen` übernimmt sie nicht. Sind danach alle bepreisten Optionen der Gruppe
+// erledigt, wird die Gruppe von diesem Artikel gelöst — an anderen Artikeln bleibt sie unberührt.
+// ---------------------------------------------------------------------------
+
+export const VariantenAufloesenSchema = z.object({
+  gruppeId:  z.string().uuid(),
+  anlegen:   z.array(z.string().uuid()).max(200).default([]),
+  verwerfen: z.array(z.string().uuid()).max(200).default([]),
+}).refine(
+  d => d.anlegen.length + d.verwerfen.length > 0,
+  { message: 'Mindestens eine Option angeben' },
+)
+export type VariantenAufloesen = z.infer<typeof VariantenAufloesenSchema>
+
+export interface VariantenAufloesenErgebnis {
+  /** Neu entstandene Artikel */
+  angelegt: { modifikatorId: string; artikelId: string; bezeichnung: string; preisBruttoCent: number }[]
+  /** Nicht angelegt, weil es den Artikel in der Warengruppe schon gibt (gilt trotzdem als erledigt) */
+  uebersprungen: { modifikatorId: string; bezeichnung: string; grund: string }[]
+  /** Anzahl verworfener Varianten */
+  verworfen: number
+  /** Die Gruppe wurde von diesem Artikel gelöst (alle bepreisten Optionen erledigt) */
+  gruppeGeloest: boolean
+  /** Der Ursprungsartikel wurde deaktiviert (Basispreis 0,00 und alles aufgelöst) */
+  ursprungDeaktiviert: boolean
+}
+
+/** Eine schon getroffene Entscheidung — damit die Übersicht offene von erledigten Varianten trennt. */
+export interface VarianteErledigt {
+  artikelId:     string
+  modifikatorId: string
+  art:           'angelegt' | 'verworfen'
+  artikelNeuId:  string | null
+}
+
+// ---------------------------------------------------------------------------
 // Excel-Import: Optionsgruppen samt Optionen und Artikel-Zuordnung
 // ---------------------------------------------------------------------------
 
