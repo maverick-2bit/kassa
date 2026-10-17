@@ -8,6 +8,8 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
+import { createServer } from 'node:net'
+import type { AddressInfo } from 'node:net'
 import { eq } from 'drizzle-orm'
 import type { FinanzOnlineClient } from '@kassa/rksv'
 import { buildTestServer, type TestServer } from '../helpers/testServer.js'
@@ -145,5 +147,39 @@ describe('Bonieren mit Bestell-ID: "Nochmal senden" verdoppelt nichts (Integrati
     const res = await bonieren(ID(5))
     // Entweder die Fremd-Zeile konnte nicht angelegt werden (FK) → normale neue Bestellung, oder 409
     expect([200, 207, 409]).toContain(res.statusCode)
+  })
+
+  it('Umleitung auf den Backup-Drucker: bleibt bei "Nochmal senden" erhalten, der Bon wird nicht noch einmal gedruckt', async () => {
+    // Backup-Drucker mit echtem Listener; der vorgesehene Drucker ist nicht erreichbar (Port 1 → sofort "Connection refused")
+    let empfangen = 0
+    const live = createServer(socket => {
+      let hatDaten = false
+      socket.on('data', () => { if (!hatDaten) { hatDaten = true; empfangen++ } })
+      socket.on('error', () => undefined)
+    })
+    await new Promise<void>(r => live.listen(0, '127.0.0.1', r))
+    try {
+      const backup = (await post('/api/bonierdrucker', { name: 'Schankdrucker', ip: '127.0.0.1', port: (live.address() as AddressInfo).port })).id
+      const defekt = (await post('/api/bonierdrucker', { name: 'Küchendrucker', ip: '127.0.0.1', port: 1, fallbackId: backup })).id
+      const kat = (await post('/api/kategorien', { name: 'Küche direkt', farbe: 'blau', reihenfolge: 9, bonierdruckerId: defekt })).id
+      const art = (await post('/api/artikel', { bezeichnung: 'Schnitzel', preisBruttoCent: 1450, mwstSatz: 'normal', kategorieId: kat })).id
+      const warten = () => new Promise(r => setTimeout(r, 150))
+
+      const erst = await bonieren(ID(6), art)
+      await warten()
+      expect(erst.statusCode, erst.body).toBe(200)                    // zugestellt (am Backup-Drucker) → kein Fehlschlag
+      expect(erst.json().drucker[0]).toMatchObject({ erfolgreich: true, umleitung: { von: 'Küchendrucker', an: 'Schankdrucker' } })
+      expect(empfangen).toBe(1)
+
+      // Dieselbe Bestell-ID noch einmal: Der Bon ist angekommen und wird nicht wiederholt — der Hinweis, wo er liegt, bleibt
+      const nochmal = await bonieren(ID(6), art)
+      await warten()
+      expect(nochmal.statusCode, nochmal.body).toBe(200)
+      expect(nochmal.json().bonNummer).toBe(erst.json().bonNummer)
+      expect(nochmal.json().drucker[0]).toMatchObject({ erfolgreich: true, umleitung: { von: 'Küchendrucker', an: 'Schankdrucker' } })
+      expect(empfangen).toBe(1)
+    } finally {
+      live.close()
+    }
   })
 })

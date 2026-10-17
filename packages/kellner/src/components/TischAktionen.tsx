@@ -10,11 +10,12 @@
 
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import type { BonierZielFehler, BonierungInput, TabPosition, TischTabResponse } from '@kassa/shared'
-import { bonierFehlschlaege } from '@kassa/shared'
+import type { BonierUmleitung, BonierZielFehler, BonierungInput, TabPosition, TischTabResponse } from '@kassa/shared'
+import { bonierFehlschlaege, bonierUmleitungen, vereinigeUmleitungen } from '@kassa/shared'
 import { ApiError, bonierApi, tischTabApi } from '../lib/api'
 import { getAuth } from '../lib/auth'
 import { formatPreis } from '../lib/format'
+import { BonierUmleitungHinweis } from './BonierUmleitungHinweis'
 
 type Ansicht = 'menu' | 'umbuchen' | 'kellner' | 'verschieben' | 'zusammenfuehren' | 'verwerfen' | 'verlauf' | 'korrekturbon'
 
@@ -68,6 +69,8 @@ export function TischAktionen({ tab, onClose, onGeaendert, onZurUebersicht }: Pr
   const [pin, setPin]               = useState('')
   const [pinNoetig, setPinNoetig]   = useState(false)
   const [korrektur, setKorrektur]   = useState<{ ziele: BonierZielFehler[]; nachsenden: BonierungInput } | null>(null)
+  /** Der nachgesendete Korrekturbon kam an, aber am Backup-Drucker statt am vorgesehenen Drucker */
+  const [umleitungen, setUmleitungen] = useState<BonierUmleitung[]>([])
 
   // Andere offene Tische dieser Kasse (für Verschieben/Zusammenführen)
   const tabsQuery = useQuery({
@@ -165,7 +168,10 @@ export function TischAktionen({ tab, onClose, onGeaendert, onZurUebersicht }: Pr
     await aktion(async () => {
       const ergebnis = await bonierApi.bonieren(korrektur.nachsenden)
       const ziele = bonierFehlschlaege(ergebnis)
-      if (ziele.length === 0) { onZurUebersicht(); return }
+      const neu   = bonierUmleitungen(ergebnis)
+      // Zugestellt, aber am Backup-Drucker: nicht wegblättern, bevor der Kellner es gelesen hat
+      if (ziele.length === 0 && neu.length === 0) { onZurUebersicht(); return }
+      if (neu.length > 0) setUmleitungen(vorher => vereinigeUmleitungen(vorher, neu))
       setKorrektur({ ziele, nachsenden: korrektur.nachsenden })
     }, 'Nachsenden fehlgeschlagen')
   }
@@ -180,7 +186,7 @@ export function TischAktionen({ tab, onClose, onGeaendert, onZurUebersicht }: Pr
     zusammenfuehren: 'Tische zusammenführen',
     verwerfen:       'Tisch verwerfen',
     verlauf:         'Verlauf',
-    korrekturbon:    'Storno-Bon nicht angekommen',
+    korrekturbon:    korrektur && korrektur.ziele.length === 0 ? 'Storno-Bon an anderem Drucker' : 'Storno-Bon nicht angekommen',
   }
 
   const eingabeKlasse = 'w-full rounded-xl border border-line-strong bg-surface px-4 py-3 text-base text-ink focus:outline-none focus:ring-2 focus:ring-brand-500'
@@ -430,24 +436,38 @@ export function TischAktionen({ tab, onClose, onGeaendert, onZurUebersicht }: Pr
         {/* ---------------- Korrekturbon nicht angekommen ---------------- */}
         {ansicht === 'korrekturbon' && korrektur && (
           <div className="space-y-3">
-            <div className="rounded-2xl border-2 border-red-500 bg-red-50 p-3 space-y-2">
-              <p className="text-sm font-bold text-red-800">⚠ Der Tisch ist verworfen — der Storno-Bon ist NICHT überall angekommen</p>
-              <ul className="space-y-1 text-xs text-red-700">
-                {korrektur.ziele.map((z, i) => (
-                  <li key={`${z.ziel}-${i}`}>
-                    <span className="font-semibold">{z.ziel}</span>
-                    <span className="block text-red-600">{z.fehler}</span>
-                  </li>
-                ))}
-              </ul>
-              <p className="text-xs text-red-700">Die Station bereitet sonst weiter zu. Nochmal senden oder in der Küche Bescheid geben.</p>
-            </div>
-            <button className="w-full py-4 rounded-2xl bg-red-600 text-white font-black text-base disabled:opacity-50" disabled={laeuft} onClick={() => void korrekturNachsenden()}>
-              {laeuft ? 'Sende …' : 'Nochmal senden'}
-            </button>
-            <button className="w-full py-3 rounded-2xl border border-line-strong text-ink font-bold text-sm" onClick={onZurUebersicht}>
-              OK, zur Übersicht
-            </button>
+            {korrektur.ziele.length > 0 && (
+              <>
+                <div className="rounded-2xl border-2 border-red-500 bg-red-50 p-3 space-y-2">
+                  <p className="text-sm font-bold text-red-800">⚠ Der Tisch ist verworfen — der Storno-Bon ist NICHT überall angekommen</p>
+                  <ul className="space-y-1 text-xs text-red-700">
+                    {korrektur.ziele.map((z, i) => (
+                      <li key={`${z.ziel}-${i}`}>
+                        <span className="font-semibold">{z.ziel}</span>
+                        <span className="block text-red-600">{z.fehler}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="text-xs text-red-700">Die Station bereitet sonst weiter zu. Nochmal senden oder in der Küche Bescheid geben.</p>
+                </div>
+                <button className="w-full py-4 rounded-2xl bg-red-600 text-white font-black text-base disabled:opacity-50" disabled={laeuft} onClick={() => void korrekturNachsenden()}>
+                  {laeuft ? 'Sende …' : 'Nochmal senden'}
+                </button>
+              </>
+            )}
+            {/* Der Storno-Bon kam an, aber am Backup-Drucker statt am vorgesehenen Drucker. Ohne offene Fehlschläge ist
+                „Verstanden" der Weg zurück zur Übersicht — der Kellner soll es gelesen haben, bevor das Blatt zugeht. */}
+            {umleitungen.length > 0 && (
+              <BonierUmleitungHinweis
+                umleitungen={umleitungen}
+                onVerstanden={korrektur.ziele.length === 0 ? onZurUebersicht : () => setUmleitungen([])}
+              />
+            )}
+            {(korrektur.ziele.length > 0 || umleitungen.length === 0) && (
+              <button className="w-full py-3 rounded-2xl border border-line-strong text-ink font-bold text-sm" onClick={onZurUebersicht}>
+                OK, zur Übersicht
+              </button>
+            )}
           </div>
         )}
       </div>

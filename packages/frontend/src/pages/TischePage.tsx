@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { TabPosition, TischTabErstellenInput, TischTabResponse } from '@kassa/shared'
+import type { BonierUmleitung, TabPosition, TischTabErstellenInput, TischTabResponse } from '@kassa/shared'
+import { vereinigeUmleitungen } from '@kassa/shared'
 import { tischTabApi, tischplanApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
@@ -12,6 +13,7 @@ import { TischplanAnsicht } from '../components/TischplanAnsicht'
 import { UmbuchenForm, ZusammenfuehrenForm, TeilUmbuchenForm } from '../components/tischAktionenForms'
 import { TischEtikettenModal } from '../components/TischEtikettenModal'
 import { BonierFehlerLeiste, type BonierFehler } from '../components/BonierFehlerLeiste'
+import { BonierUmleitungHinweis } from '../components/BonierUmleitungHinweis'
 
 // ---------------------------------------------------------------------------
 // Haupt-Seite
@@ -31,6 +33,11 @@ export function TischePage() {
   // … oder: Tisch per Karte abgerechnet, obwohl der Kassier „Abbrechen" gedrückt hatte
   const [zahlungsHinweis, setZahlungsHinweis] = useState<string | null>(
     () => (location.state as { zahlungsHinweis?: string } | null)?.zahlungsHinweis ?? null,
+  )
+  // … oder: Der Bon kam an, aber am Backup-Drucker statt am vorgesehenen Drucker (Kassieren/Parken
+  // hat die Tischseite sofort verlassen) — das Personal muss ihn weitergeben
+  const [umleitungen, setUmleitungen] = useState<BonierUmleitung[]>(
+    () => (location.state as { bonierUmleitungen?: BonierUmleitung[] } | null)?.bonierUmleitungen ?? [],
   )
   // Den mitgebrachten State gleich aus dem Browser-Verlauf nehmen — nach einem
   // Neuladen stünde die Leiste sonst wieder da, auch wenn längst nachgesendet.
@@ -157,7 +164,18 @@ export function TischePage() {
           ihn weiter zu. */}
       {bonierFehler && (
         <div className="mb-5">
-          <BonierFehlerLeiste fehler={bonierFehler} onAenderung={setBonierFehler} />
+          <BonierFehlerLeiste
+            fehler={bonierFehler}
+            onAenderung={setBonierFehler}
+            onUmleitungen={(neu) => setUmleitungen(vorher => vereinigeUmleitungen(vorher, neu))}
+          />
+        </div>
+      )}
+
+      {/* Bon zugestellt, aber am Backup-Drucker — bleibt bis „Verstanden“, auch nachdem die Tischseite verlassen wurde */}
+      {umleitungen.length > 0 && (
+        <div className="mb-5">
+          <BonierUmleitungHinweis umleitungen={umleitungen} onVerstanden={() => setUmleitungen([])} />
         </div>
       )}
 

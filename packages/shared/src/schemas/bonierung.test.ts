@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { bonierFehlschlaege } from './bonierung.js'
+import { BonierungErgebnisSchema, bonierFehlschlaege, bonierUmleitungen, vereinigeUmleitungen } from './bonierung.js'
 import type { BonierungErgebnis } from './bonierung.js'
 
 /**
@@ -75,5 +75,120 @@ describe('bonierFehlschlaege', () => {
   it('setzt einen Ersatztext, wenn kein Fehlertext mitkam', () => {
     const fehlend = bonierFehlschlaege({ ...leer, stationen: [station(false)] })
     expect(fehlend[0]!.fehler).toBe('unbekannter Fehler')
+  })
+})
+
+/**
+ * bonierUmleitungen ist das Gegenstück: der Bon ist zugestellt (kein Fehlschlag),
+ * liegt aber am Backup-Drucker statt am vorgesehenen Gerät. So wie der Server ihn
+ * meldet: erfolgreich, Name „A → B“, IP von B, Hinweis in `fehler`.
+ */
+const umgeleitet = (von = 'Küchendrucker', an = 'Schankdrucker', ip = '192.168.1.51') => ({
+  druckerId: '33333333-3333-3333-3333-333333333333',
+  name: `${von} → ${an}`, ip, positionen: 2, erfolgreich: true, istBackup: false,
+  fehler: `${von} nicht erreichbar — Bon wurde an ${an} umgeleitet`,
+  umleitung: { von, an },
+})
+
+describe('bonierUmleitungen', () => {
+  it('meldet nichts, wenn jeder Bon am vorgesehenen Drucker liegt', () => {
+    expect(bonierUmleitungen(leer)).toEqual([])
+    expect(bonierUmleitungen({
+      ...leer, stationen: [station(true)], drucker: [drucker(true)],
+    })).toEqual([])
+  })
+
+  it('meldet einen Bon, der am Backup-Drucker statt am vorgesehenen Drucker liegt', () => {
+    const ergebnis = { ...leer, drucker: [umgeleitet()] }
+    expect(bonierUmleitungen(ergebnis)).toEqual([{
+      von:     'Küchendrucker',
+      an:      'Schankdrucker',
+      ip:      '192.168.1.51',      // die IP des Druckers, an dem der Bon liegt
+      hinweis: 'Küchendrucker nicht erreichbar — Bon kam an Schankdrucker. Bitte weitergeben.',
+    }])
+    // Zugestellt ist zugestellt: das ist KEIN Fehlschlag (kein 207, keine rote Leiste)
+    expect(bonierFehlschlaege(ergebnis)).toEqual([])
+  })
+
+  it('zählt reine Fehlschläge nicht — dafür ist bonierFehlschlaege da', () => {
+    const ergebnis = {
+      ...leer,
+      stationen: [station(false, 'ETIMEDOUT')],
+      drucker:   [drucker(false, false, 'ECONNREFUSED')],
+    }
+    expect(bonierUmleitungen(ergebnis)).toEqual([])
+    expect(bonierFehlschlaege(ergebnis)).toHaveLength(2)
+    // auch dann nicht, wenn ein gescheiterter Eintrag eine Umleitung trüge (der Server setzt sie nur bei Erfolg)
+    expect(bonierUmleitungen({ ...leer, drucker: [{ ...umgeleitet(), erfolgreich: false }] })).toEqual([])
+  })
+
+  it('zählt Zweitdrucker-Kopien nicht — weder zugestellte noch gescheiterte', () => {
+    // Der Zweitdrucker bekommt IMMER eine Kopie und wird nie ersetzt: keine Umleitung
+    expect(bonierUmleitungen({
+      ...leer, drucker: [drucker(true, true), drucker(false, true, 'EHOSTUNREACH')],
+    })).toEqual([])
+    // und eine Kopie gilt auch dann nicht, wenn sie (fälschlich) eine Umleitung trüge
+    expect(bonierUmleitungen({ ...leer, drucker: [{ ...umgeleitet(), istBackup: true }] })).toEqual([])
+  })
+
+  it('meldet die Umleitung des Hauptdruckers, auch wenn daneben ein Zweitdrucker eine Kopie bekam', () => {
+    const umleitungen = bonierUmleitungen({
+      ...leer, drucker: [umgeleitet(), { ...drucker(true, true), druckerId: '44444444-4444-4444-4444-444444444444' }],
+    })
+    expect(umleitungen.map(u => u.von)).toEqual(['Küchendrucker'])
+  })
+
+  it('führt mehrere Umleitungen einzeln auf, auch wenn beide am selben Ersatz landen', () => {
+    const umleitungen = bonierUmleitungen({
+      ...leer,
+      drucker: [
+        umgeleitet('Küchendrucker', 'Schankdrucker'),
+        { ...umgeleitet('Grill', 'Schankdrucker'), druckerId: '55555555-5555-5555-5555-555555555555' },
+      ],
+    })
+    expect(umleitungen.map(u => u.hinweis)).toEqual([
+      'Küchendrucker nicht erreichbar — Bon kam an Schankdrucker. Bitte weitergeben.',
+      'Grill nicht erreichbar — Bon kam an Schankdrucker. Bitte weitergeben.',
+    ])
+  })
+
+  it('berichtet Umleitung und Fehlschlag desselben Bons nebeneinander', () => {
+    // Küchendrucker wich auf den Schank aus, die KDS-Station Küche blieb stumm
+    const ergebnis = { ...leer, stationen: [station(false, 'ETIMEDOUT')], drucker: [umgeleitet()] }
+    expect(bonierUmleitungen(ergebnis)).toHaveLength(1)
+    expect(bonierFehlschlaege(ergebnis).map(f => f.ziel)).toEqual(['Küche'])
+  })
+})
+
+describe('vereinigeUmleitungen', () => {
+  const kueche = bonierUmleitungen({ ...leer, drucker: [umgeleitet('Küchendrucker', 'Schankdrucker')] })
+  const grill  = bonierUmleitungen({ ...leer, drucker: [umgeleitet('Grill', 'Schankdrucker')] })
+
+  it('hängt Neues an, ohne das schon Angezeigte zu verlieren', () => {
+    expect(vereinigeUmleitungen(kueche, grill).map(u => u.von)).toEqual(['Küchendrucker', 'Grill'])
+  })
+
+  it('führt denselben Hinweis nur einmal auf (dritter Bon bei weiter defektem Drucker)', () => {
+    expect(vereinigeUmleitungen(kueche, kueche)).toEqual(kueche)
+    expect(vereinigeUmleitungen([], [...kueche, ...kueche])).toEqual(kueche)
+  })
+
+  it('ein Bon ohne Umleitung nimmt den Hinweis nicht weg — erst „Verstanden“ tut das', () => {
+    expect(vereinigeUmleitungen(kueche, [])).toBe(kueche)
+  })
+})
+
+describe('BonierungErgebnisSchema: Umleitung', () => {
+  // Wiederholt der Kellner eine Bestellung („Nochmal senden“), liest der Server das gespeicherte
+  // Ergebnis der ersten Runde durch dieses Schema — ein Feld, das es nicht kennt, ginge dabei still verloren.
+  it('behält die Umleitung beim Lesen (sonst verschwindet der Hinweis bei „Nochmal senden“)', () => {
+    const gelesen = BonierungErgebnisSchema.parse({ ...leer, drucker: [umgeleitet()] })
+    expect(bonierUmleitungen(gelesen)).toHaveLength(1)
+  })
+
+  it('liest auch Ergebnisse ohne Umleitung (Bestand vor diesem Feld)', () => {
+    const gelesen = BonierungErgebnisSchema.parse({ ...leer, drucker: [drucker(true)] })
+    expect(gelesen.drucker[0]!.umleitung).toBeUndefined()
+    expect(bonierUmleitungen(gelesen)).toEqual([])
   })
 })

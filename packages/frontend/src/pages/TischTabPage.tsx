@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
   Artikel,
   BelegResponse,
+  BonierUmleitung,
   BonierungErgebnis,
   BonierungInput,
   ModifikatorAuswahl,
@@ -14,7 +15,7 @@ import type {
   TischTabSplittenInput,
   TischTabResponse,
 } from '@kassa/shared'
-import { aktionsPreisCent, aktiverRabattProzent, aktiveAktion, bonierFehlschlaege, neueUuid } from '@kassa/shared'
+import { aktionsPreisCent, aktiverRabattProzent, aktiveAktion, bonierFehlschlaege, bonierUmleitungen, neueUuid, vereinigeUmleitungen } from '@kassa/shared'
 import type { AktiveAktion } from '@kassa/shared'
 import { artikelApi, belegApi, bonierApi, druckerApi, kategorieApi, modifikatorApi, posConfigApi, preisregelApi, tischTabApi, zvtApi, ApiError } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
@@ -22,6 +23,7 @@ import { hasModul, gaengeAnzahl } from '../lib/auth'
 import { formatPreis } from '../lib/format'
 import { DruckproblemeBanner } from '../components/DruckproblemeBanner'
 import { BonierFehlerLeiste, korrekturbonFehler, type BonierFehler } from '../components/BonierFehlerLeiste'
+import { BonierUmleitungHinweis } from '../components/BonierUmleitungHinweis'
 import { warenkorbSummeCent, positionsPreisCent, gesamtRabattCent } from '../lib/warenkorb'
 import {
   summeMitPosRabattenCent,
@@ -83,6 +85,34 @@ export function TischTabPage() {
    * verschwinden wie die grüne Bestätigung.
    */
   const [bonierFehler, setBonierFehler]             = useState<BonierFehler | null>(null)
+  /**
+   * Bons, die ZUGESTELLT wurden, aber am Backup-Drucker statt am vorgesehenen Drucker liegen.
+   * Kein Fehlschlag (nichts zu wiederholen), aber das Personal muss den Bon weitergeben — der
+   * Hinweis bleibt bis „Verstanden“ stehen und ersetzt sich nicht durch einen späteren Bon.
+   * Das Ref hält denselben Stand für Mutationen, deren Callbacks mit altem State laufen
+   * (Kassieren nimmt die Umleitung mit in die Tischübersicht).
+   */
+  const [umleitungen, setUmleitungen]               = useState<BonierUmleitung[]>([])
+  const umleitungenRef                              = useRef<BonierUmleitung[]>([])
+  const merkeUmleitungen = (neu: BonierUmleitung[]) => {
+    umleitungenRef.current = vereinigeUmleitungen(umleitungenRef.current, neu)
+    setUmleitungen(umleitungenRef.current)
+  }
+  const bestaetigeUmleitungen = () => {
+    umleitungenRef.current = []
+    setUmleitungen([])
+  }
+  /**
+   * Zurück zur Tischübersicht — und was hier noch nicht bestätigt ist, reist mit: ein Bon am Backup-Drucker
+   * soll nicht verschwinden, nur weil der Kellner nach dem Parken/Kassieren weitergeht.
+   */
+  const zurUebersicht = (mitnehmen: { zahlungsHinweis?: string; bonierFehler?: BonierFehler } = {}) => {
+    const state = {
+      ...mitnehmen,
+      ...(umleitungenRef.current.length > 0 ? { bonierUmleitungen: umleitungenRef.current } : {}),
+    }
+    navigate('/tische', Object.keys(state).length > 0 ? { state } : undefined)
+  }
   const [rabatt, setRabatt]                         = useState<RabattInput | null>(null)
   const [rabattOffen, setRabattOffen]               = useState(false)
   const [posRabatteOffen, setPosRabatteOffen]       = useState(false)
@@ -311,11 +341,14 @@ export function TischTabPage() {
   /**
    * Bonierergebnis bewerten. Liefert true, wenn ein Ziel den Bon NICHT bekommen
    * hat — dann steht die rote Meldung, bis nachgesendet oder weggeklickt wurde.
+   * Ein Bon, der nur am Backup-Drucker statt am vorgesehenen Drucker liegt, ist
+   * KEIN Fehlschlag (liefert false), bekommt aber den bernsteinfarbenen Hinweis.
    */
   const meldeBonierFehler = (
     ergebnis: BonierungErgebnis | null,
     gesendet: BonierungInput | null,
   ): boolean => {
+    if (ergebnis) merkeUmleitungen(bonierUmleitungen(ergebnis))
     const ziele = ergebnis ? bonierFehlschlaege(ergebnis) : []
     if (ziele.length === 0 || !gesendet) {
       setBonierFehler(null)
@@ -436,7 +469,7 @@ export function TischTabPage() {
         const beleg = await belegApi.list(identity.kasseId, 1).then(l => l[0] ?? null)
         if (beleg && beleg.id === belegId) { setLetzterBon(beleg); return }
       }
-      navigate('/tische', hinweis ? { state: { zahlungsHinweis: hinweis } } : undefined)
+      zurUebersicht(hinweis ? { zahlungsHinweis: hinweis } : {})
     },
     onError: (err, variables) => {
       setZahlartLaeuft(null)
@@ -505,7 +538,7 @@ export function TischTabPage() {
       // bereitet die Station den ganzen Tisch weiter zu. Ohne tabId: Nachsenden
       // braucht nur Kasse, Tisch und Positionen, nicht den geschlossenen Tab.
       const bonierFehler = korrekturbonFehler(antwort)
-      navigate('/tische', bonierFehler ? { state: { bonierFehler } } : undefined)
+      zurUebersicht(bonierFehler ? { bonierFehler } : {})
     },
     onError: (err) => {
       if (err instanceof ApiError && err.code === 'freigabe_erforderlich') {
@@ -545,7 +578,7 @@ export function TischTabPage() {
       setSplitOffen(false)
       qc.invalidateQueries({ queryKey: ['tisch-tabs'] })
       qc.invalidateQueries({ queryKey: ['belege'] })
-      navigate('/tische')
+      zurUebersicht()
     },
     onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
   })
@@ -645,7 +678,7 @@ export function TischTabPage() {
 
   const handleBonGeschlossen = () => {
     setLetzterBon(null)
-    navigate('/tische', zahlungsHinweis ? { state: { zahlungsHinweis } } : undefined)
+    zurUebersicht(zahlungsHinweis ? { zahlungsHinweis } : {})
   }
 
   // ---------------------------------------------------------------------------
@@ -673,7 +706,7 @@ export function TischTabPage() {
           <div className="mb-4 flex flex-wrap items-center gap-3">
             <button
               type="button"
-              onClick={() => navigate('/tische')}
+              onClick={() => zurUebersicht()}
               className="text-sm text-ink-muted hover:text-ink"
             >
               ← Tische
@@ -1019,7 +1052,13 @@ export function TischTabPage() {
             {/* Küchen- oder Korrekturbon nicht zugestellt — bleibt stehen, bis
                 nachgesendet oder weggeklickt. Gebucht ist schon, nur der Bon fehlt. */}
             {bonierFehler && (
-              <BonierFehlerLeiste fehler={bonierFehler} onAenderung={setBonierFehler} />
+              <BonierFehlerLeiste fehler={bonierFehler} onAenderung={setBonierFehler} onUmleitungen={merkeUmleitungen} />
+            )}
+
+            {/* Bon zugestellt, aber am Backup-Drucker statt am vorgesehenen — kein Fehler, blockiert nichts,
+                bleibt bis „Verstanden“ stehen: das Personal muss den Bon weitergeben. */}
+            {umleitungen.length > 0 && (
+              <BonierUmleitungHinweis umleitungen={umleitungen} onVerstanden={bestaetigeUmleitungen} />
             )}
 
             {/* Warenkorb-Aktion: „Parken" bucht die neuen Positionen auf den Tisch

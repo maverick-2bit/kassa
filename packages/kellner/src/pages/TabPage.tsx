@@ -2,13 +2,14 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
 import { QRCodeSVG } from 'qrcode.react'
-import type { BonierungErgebnis, BonierungInput, BonierZielFehler, TabPosition } from '@kassa/shared'
-import { bonierFehlschlaege, neueUuid } from '@kassa/shared'
+import type { BonierUmleitung, BonierungErgebnis, BonierungInput, BonierZielFehler, TabPosition } from '@kassa/shared'
+import { bonierFehlschlaege, bonierUmleitungen, neueUuid, vereinigeUmleitungen } from '@kassa/shared'
 import { tischTabApi, bonierApi, druckerApi, oeffentlicherBelegApi, zvtApi, ApiError } from '../lib/api'
 import { getAuth, gaengeAktiv as istGaengeAktiv, gaengeAnzahl } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
 import { ABBRUCH_ZU_SPAET, KartenzahlungOverlay } from '../components/KartenzahlungOverlay'
+import { BonierUmleitungHinweis } from '../components/BonierUmleitungHinweis'
 import { DruckproblemeBanner } from '../components/DruckproblemeBanner'
 import { TischAktionen } from '../components/TischAktionen'
 
@@ -35,6 +36,12 @@ export function TabPage() {
   const [nichtZugestellt, setNichtZugestellt] = useState<
     { ziele: BonierZielFehler[]; nachsenden: BonierungInput } | null
   >(null)
+  /**
+   * Bons, die ZUGESTELLT wurden, aber am Backup-Drucker statt am vorgesehenen Drucker liegen.
+   * Kein Fehlschlag (nichts nachzusenden), aber der Bon muss weitergegeben werden: bleibt bis
+   * „Verstanden" stehen, ein späterer Bon ohne Umleitung nimmt ihn nicht weg.
+   */
+  const [umleitungen, setUmleitungen] = useState<BonierUmleitung[]>([])
 
   // Gänge-Steuerung (Modul)
   const gaenge = istGaengeAktiv()
@@ -49,12 +56,18 @@ export function TabPage() {
 
   /**
    * Bonierergebnis bewerten. true = ein Ziel hat den Bon nicht bekommen; dann
-   * bleibt die rote Meldung stehen statt der grünen Bestätigung.
+   * bleibt die rote Meldung stehen statt der grünen Bestätigung. Ein Bon, der nur
+   * am Backup-Drucker liegt, ist KEIN Fehlschlag (false), bekommt aber den
+   * bernsteinfarbenen Hinweis neben der grünen Bestätigung.
    */
   const meldeBonierFehler = (
     ergebnis: BonierungErgebnis | null,
     gesendet: BonierungInput | null,
   ): boolean => {
+    if (ergebnis) {
+      const neu = bonierUmleitungen(ergebnis)
+      if (neu.length > 0) setUmleitungen(vorher => vereinigeUmleitungen(vorher, neu))
+    }
     const ziele = ergebnis ? bonierFehlschlaege(ergebnis) : []
     if (ziele.length === 0 || !gesendet) {
       setNichtZugestellt(null)
@@ -568,6 +581,12 @@ export function TabPage() {
                 </button>
               </div>
             </div>
+          )}
+
+          {/* Bon zugestellt, aber am Backup-Drucker statt am vorgesehenen — kein Fehler, blockiert nichts,
+              bleibt bis „Verstanden": der Bon muss weitergegeben werden. */}
+          {umleitungen.length > 0 && (
+            <BonierUmleitungHinweis umleitungen={umleitungen} onVerstanden={() => setUmleitungen([])} />
           )}
 
           {/* Gänge-Modul: nächsten offenen Gang mit einem Tastendruck abrufen */}

@@ -308,8 +308,14 @@ export async function bonierBestellung(
         ip:          benutzt.ip,
         positionen:  positionen.length,
         erfolgreich: true,
-        // Zugestellt, aber nicht auf dem vorgesehenen Gerät — der Hinweis erscheint in der Ergebnisliste
-        ...(umgeleitet ? { fehler: `${drucker.name} nicht erreichbar — Bon wurde an ${benutzt.name} umgeleitet` } : {}),
+        // Zugestellt, aber nicht auf dem vorgesehenen Gerät — der Hinweis erscheint in der Ergebnisliste;
+        // `umleitung` ist der maschinenlesbare Teil davon (bonierUmleitungen → Hinweis für das Personal)
+        ...(umgeleitet
+          ? {
+              fehler:    `${drucker.name} nicht erreichbar — Bon wurde an ${benutzt.name} umgeleitet`,
+              umleitung: { von: drucker.name, an: benutzt.name },
+            }
+          : {}),
         istBackup,
       })
     } catch (err) {
