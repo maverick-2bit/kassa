@@ -337,13 +337,33 @@ describe('listeVariantenErledigt', () => {
 describe('nimmVarianteZurueck', () => {
   it('löscht die Entscheidung und hängt die Gruppe wieder an den Artikel', async () => {
     const { db, log } = fakeDb({
-      artikel:       [[{ id: BIER }]],
+      artikel:       [[{ id: BIER, aktiv: true, preisBruttoCent: 0 }]],
       modifikatoren: [[{ gruppeId: GRUPPE }]],
     })
     await nimmVarianteZurueck(BIER, M_05, MANDANT, db)
 
     expect(log.deletes).toContain('ave')
     expect(log.inserts).toEqual([{ tabelle: 'amg', rows: [{ artikelId: BIER, gruppeId: GRUPPE, reihenfolge: 0 }] }])
+  })
+
+  it('aktiviert den beim Auflösen deaktivierten Artikel wieder — sonst bleibt der Fall unsichtbar', async () => {
+    const { db, log } = fakeDb({
+      artikel:       [[{ id: BIER, aktiv: false, preisBruttoCent: 0 }]],
+      modifikatoren: [[{ gruppeId: GRUPPE }]],
+    })
+    await nimmVarianteZurueck(BIER, M_05, MANDANT, db)
+
+    expect(log.updates).toEqual([{ tabelle: 'artikel', werte: expect.objectContaining({ aktiv: true }) }])
+  })
+
+  it('rührt einen deaktivierten Artikel MIT eigenem Preis nicht an (den hat der Benutzer selbst abgedreht)', async () => {
+    const { db, log } = fakeDb({
+      artikel:       [[{ id: BIER, aktiv: false, preisBruttoCent: 400 }]],
+      modifikatoren: [[{ gruppeId: GRUPPE }]],
+    })
+    await nimmVarianteZurueck(BIER, M_05, MANDANT, db)
+
+    expect(log.updates).toEqual([])
   })
 
   it('404 wenn der Artikel nicht zum Mandanten gehört', async () => {

@@ -252,6 +252,10 @@ export async function loeseVariantenAuf(
  * Nimmt eine Entscheidung zurück — die Variante gilt wieder als offen und erscheint erneut in der Übersicht.
  * Angelegte Artikel bleiben bestehen (die löscht man in der Artikelverwaltung); die Optionsgruppe wird dem
  * Artikel wieder zugeordnet, falls sie beim Auflösen gelöst wurde.
+ *
+ * War der Artikel beim Auflösen deaktiviert worden (Basispreis 0,00), wird er wieder aktiv — sonst bliebe er
+ * deaktiviert, die Übersicht übergeht deaktivierte Artikel, und der zurückgenommene Fall wäre unsichtbar.
+ * Deaktiviert wird nur bei Basispreis 0,00, deshalb wird auch nur dieser Fall rückgängig gemacht.
  */
 export async function nimmVarianteZurueck(
   artikelId: string,
@@ -260,7 +264,7 @@ export async function nimmVarianteZurueck(
   db: Db,
 ): Promise<void> {
   const [ursprung] = await db
-    .select({ id: artikel.id })
+    .select({ id: artikel.id, aktiv: artikel.aktiv, preisBruttoCent: artikel.preisBruttoCent })
     .from(artikel)
     .where(and(eq(artikel.id, artikelId), eq(artikel.mandantId, mandantId)))
     .limit(1)
@@ -281,5 +285,11 @@ export async function nimmVarianteZurueck(
     await tx.insert(artikelModifikatorGruppen)
       .values({ artikelId, gruppeId: option.gruppeId, reihenfolge: 0 })
       .onConflictDoNothing()
+
+    if (!ursprung.aktiv && ursprungDeaktivieren(ursprung.preisBruttoCent, true)) {
+      await tx.update(artikel)
+        .set({ aktiv: true, updatedAt: new Date() })
+        .where(eq(artikel.id, artikelId))
+    }
   })
 }
