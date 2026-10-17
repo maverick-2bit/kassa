@@ -380,3 +380,54 @@ test('Einrichtungs-Übersicht: Kassen anlegen und einrichten, Drucker/Station je
     await request.delete(`/api/drucker/${rechnung.id}`, { headers: auth })
   }
 })
+
+/**
+ * Die Kassen-Tabelle passt bei 1280 px Fensterbreite ohne seitliches Scrollen. Der Kassen-PC hat 1280×800, davon
+ * 15 px Scrollbalken (der Browser im Test zeigt keinen) → gemessen wird bei 1265 px Seitenbreite. Mit Gastro hat die
+ * Tabelle 9 Spalten; weder ihr Wrapper (overflow-x-auto) noch die Seite darf seitlich scrollen — auch nicht mit den
+ * breitesten Inhalten (Bonierdrucker-Chip mit „· Zweitdrucker"). Neue Spalten oder Mindestbreiten in
+ * KassenSektion.tsx müssen sich an diesem Test messen lassen.
+ */
+test('Kassen-Tabelle: passt bei 1280 px Fensterbreite ohne seitliches Scrollen (mit Gastro, 9 Spalten)', async ({ page, request }) => {
+  const login = await adminLogin(request)
+  const auth = { Authorization: `Bearer ${login.token}` }
+  const p = `Br${Date.now() % 1_000_000}`
+  const post = async <T = { id: string }>(url: string, data: unknown): Promise<T> => {
+    const res = await request.post(url, { headers: auth, data })
+    expect(res.ok(), `${url}: ${await res.text()}`).toBe(true)
+    return (await res.json()) as T
+  }
+  // Die breitesten Inhalte: Chips in jeder Zeile (ein gewöhnlicher Bonierdrucker und ein Zweitdrucker mit einem langen
+  // Wort im Namen — das längste Wort darf die Mindestbreite der Spalte nicht vorgeben) und eine zweite aktive Kasse —
+  // nur Zeilen anderer Kassen haben den Knopf „Wechseln" (bei nur einer Kasse wäre die Tabelle schmaler)
+  const normal = await post('/api/bonierdrucker', { name: `${p} Küche`, ip: '127.0.0.1', port: 9106 })
+  const zweit  = await post('/api/bonierdrucker', { name: `${p} Getränkeausgabe`, ip: '127.0.0.1', port: 9107, istBackup: true })
+  const kasse  = await post<{ kasseId: string }>('/api/kassen', { kassenId: `E2E-BR-${p}`, bezeichnung: `${p} Zweite Kasse`, umgebung: 'test' })
+  try {
+    await anmelden(page, login)
+    await page.setViewportSize({ width: 1280 - 15, height: 800 })
+    await page.goto('/einstellungen?bereich=kassen')
+
+    const tabelle = page.getByTestId('kassen-tabelle')
+    await expect(tabelle).toBeVisible()
+    await expect(tabelle.locator('thead th')).toHaveCount(9)                   // mit Gastro: die Bonierdrucker-Spalte ist da
+    // Erst messen, wenn die Zeilen vollständig sind: Auswahlfelder (bzw. „öffnet … automatisch"), Chips und Knöpfe stehen da
+    await expect(tabelle.locator('select[aria-label^="Artikelwahl startet mit"], [data-testid^="start-reiter-einzige-"]').first()).toBeVisible()
+    await expect(tabelle.getByRole('button', { name: new RegExp(`${p} Getränkeausgabe`) }).first()).toBeVisible()
+    await expect(tabelle.getByRole('button', { name: new RegExp(`${p} Küche`) }).first()).toBeVisible()
+    await expect(tabelle.getByTestId(`kasse-zeile-E2E-BR-${p}`).getByRole('button', { name: 'Wechseln' })).toBeVisible()
+
+    const mass = () => tabelle.evaluate(t => {
+      const wrapper = t.parentElement!
+      const seite = document.documentElement
+      return { wrapperScroll: wrapper.scrollWidth, wrapperClient: wrapper.clientWidth, seiteScroll: seite.scrollWidth, seiteClient: seite.clientWidth }
+    })
+    await expect.poll(async () => { const m = await mass(); return m.wrapperScroll - m.wrapperClient },
+      { message: 'Überbreite der Kassen-Tabelle in px (> 0 = scrollt seitlich)' }).toBeLessThanOrEqual(0)
+    const m = await mass()
+    expect(m.seiteScroll, 'die Seite selbst scrollt nicht seitlich').toBeLessThanOrEqual(m.seiteClient)
+  } finally {
+    await request.post(`/api/kassen/${kasse.kasseId}/ausser-betrieb`, { headers: auth, data: {} })
+    for (const d of [normal, zweit]) await request.delete(`/api/bonierdrucker/${d.id}`, { headers: auth })
+  }
+})
