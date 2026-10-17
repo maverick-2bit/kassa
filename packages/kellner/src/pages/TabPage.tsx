@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
 import { QRCodeSVG } from 'qrcode.react'
-import type { BonierUmleitung, BonierungErgebnis, BonierungInput, BonierZielFehler, TabPosition } from '@kassa/shared'
+import type { BonierUmleitung, BonierungErgebnis, BonierungInput, BonierZielFehler, BonRueckmeldung, TabPosition } from '@kassa/shared'
 import { bonierFehlschlaege, bonierUmleitungen, neueUuid, vereinigeUmleitungen } from '@kassa/shared'
 import { tischTabApi, bonierApi, druckerApi, oeffentlicherBelegApi, zvtApi, ApiError } from '../lib/api'
 import { getAuth, gaengeAktiv as istGaengeAktiv, gaengeAnzahl } from '../lib/auth'
@@ -77,6 +77,28 @@ export function TabPage() {
     return true
   }
 
+  /** Grüne Bestätigung „Bon wurde gesendet“ — verschwindet nach ein paar Sekunden von selbst */
+  const zeigeGesendet = () => {
+    setBonierErfolg(true)
+    setTimeout(() => setBonierErfolg(false), 3000)
+  }
+
+  /**
+   * Gang abrufen und Nachschicken boniert der SERVER — die App sieht das Bonierergebnis nie, er meldet in `bon`
+   * nur, wenn etwas nicht stimmt: ein Ziel hat den Bon NICHT bekommen (rote Meldung, „Nochmal senden“ mit der
+   * Bestell-ID des Servers) oder er liegt am Backup-Drucker (bernsteinfarbener Hinweis). Ohne `bon` bleibt alles
+   * wie bisher — auch eine frühere, noch offene Meldung: ein anderer Bon macht sie nicht gegenstandslos.
+   */
+  const meldeBon = (bon: BonRueckmeldung | null | undefined) => {
+    if (!bon) { zeigeGesendet(); return }
+    if (bon.umleitungen.length > 0) setUmleitungen(vorher => vereinigeUmleitungen(vorher, bon.umleitungen))
+    if (bon.fehler.length > 0) {
+      setNichtZugestellt({ ziele: bon.fehler, nachsenden: bon.nachsenden })
+      return                                  // nicht angekommen: keine grüne Bestätigung
+    }
+    zeigeGesendet()
+  }
+
   const nachsendenMutation = useMutation({
     mutationFn: (input: BonierungInput) => bonierApi.bonieren(input),
     onSuccess:  (ergebnis, input) => { meldeBonierFehler(ergebnis, input) },
@@ -139,20 +161,18 @@ export function TabPage() {
   // Gänge: nächsten offenen Gang feuern / Position nachschicken / Gang umhängen
   const gangAbrufenMutation = useMutation({
     mutationFn: () => tischTabApi.gangAbrufen(tabId!),
-    onSuccess: () => {
-      setBonierErfolg(true)
+    onSuccess: (antwort) => {
       qc.invalidateQueries({ queryKey: ['tisch-tab', tabId] })
-      setTimeout(() => setBonierErfolg(false), 3000)
+      meldeBon(antwort.bon)
     },
     onError: (err) => setBonierFehler(err instanceof Error ? err.message : 'Fehler beim Gang-Abruf'),
   })
 
   const nachschickenMutation = useMutation({
     mutationFn: (positionIndex: number) => tischTabApi.positionNachschicken(tabId!, positionIndex),
-    onSuccess: () => {
-      setBonierErfolg(true)
+    onSuccess: (antwort) => {
       qc.invalidateQueries({ queryKey: ['tisch-tab', tabId] })
-      setTimeout(() => setBonierErfolg(false), 3000)
+      meldeBon(antwort?.bon)
     },
     onError: (err) => setBonierFehler(err instanceof Error ? err.message : 'Fehler beim Nachschicken'),
   })
@@ -254,7 +274,11 @@ export function TabPage() {
         qc.invalidateQueries({ queryKey: ['tisch-tab', tabId] })
         // Das Backend schickt automatisch einen Korrekturbon an Küche/Schank.
         // Erreicht er sein Ziel nicht, steht dort weiter das stornierte Gericht
-        // auf der Liste — das muss der Kellner am Tisch erfahren.
+        // auf der Liste — das muss der Kellner am Tisch erfahren. Liegt er am
+        // Backup-Drucker statt am vorgesehenen Drucker, ist er zwar angekommen,
+        // muss aber weitergegeben werden (bernsteinfarbener Hinweis).
+        const umgeleitet = antwort.stornoUmleitungen ?? []
+        if (umgeleitet.length > 0) setUmleitungen(vorher => vereinigeUmleitungen(vorher, umgeleitet))
         if (!antwort.stornoBon) return
         setNichtZugestellt({
           ziele: antwort.stornoBon.fehler,
@@ -353,6 +377,55 @@ export function TabPage() {
     ? tab.positionen.some(p => (p.gang ?? 0) === 0 && !p.gesendetAm)
     : true
 
+  /**
+   * Meldungen zum Bon: nicht angekommen (rot, „Nochmal senden“) und am Backup-Drucker (bernstein, „Verstanden“).
+   * Sie stehen in der Fußleiste neben den Knöpfen — und auf dem leeren Tisch: Wer die LETZTE Position storniert,
+   * hat dort keine Fußleiste mehr, und der Korrekturbon bliebe sonst spurlos (er ist ja gerade der Anlass).
+   */
+  const zustellMeldungen = (
+    <>
+      {/* Bon nicht zugestellt: bleibt stehen, bis nachgesendet oder bestätigt.
+          Die Positionen sind gebucht — nur der Ausdruck fehlt. */}
+      {nichtZugestellt && (
+        <div className="rounded-lg border-2 border-red-500 bg-red-50 p-3 space-y-2">
+          <p className="text-sm font-bold text-red-800">⚠ Bon NICHT angekommen</p>
+          <ul className="space-y-1 text-xs text-red-700">
+            {nichtZugestellt.ziele.map((z, i) => (
+              <li key={`${z.ziel}-${i}`}>
+                <span className="font-semibold">{z.ziel}</span>
+                {z.istBackup && ' (Zweitdrucker)'}
+                <span className="block text-red-600">{z.fehler}</span>
+              </li>
+            ))}
+          </ul>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              className="flex-1 rounded-lg bg-red-600 py-3 text-sm font-bold text-white active:bg-red-700 disabled:opacity-50"
+              disabled={nachsendenMutation.isPending}
+              onClick={() => nachsendenMutation.mutate(nichtZugestellt.nachsenden)}
+            >
+              {nachsendenMutation.isPending ? 'Sende …' : 'Nochmal senden'}
+            </button>
+            <button
+              type="button"
+              className="rounded-lg border border-red-300 px-4 py-3 text-sm font-bold text-red-700"
+              onClick={() => setNichtZugestellt(null)}
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Bon zugestellt, aber am Backup-Drucker statt am vorgesehenen — kein Fehler, blockiert nichts,
+          bleibt bis „Verstanden": der Bon muss weitergegeben werden. */}
+      {umleitungen.length > 0 && (
+        <BonierUmleitungHinweis umleitungen={umleitungen} onVerstanden={() => setUmleitungen([])} />
+      )}
+    </>
+  )
+
   return (
     <div className="min-h-screen bg-surface flex flex-col max-w-lg mx-auto">
       {/* Header */}
@@ -389,16 +462,20 @@ export function TabPage() {
         <DruckproblemeBanner />
 
         {gruppen.length === 0 ? (
-          <div className="text-center py-16 space-y-2">
-            <p className="text-4xl">🍽</p>
-            <p className="text-ink-subtle text-sm">Noch keine Artikel</p>
-            <button
-              onClick={() => navigate(`/tab/${tabId}/artikel`)}
-              className="text-brand-600 font-bold text-sm"
-            >
-              Artikel hinzufügen
-            </button>
-          </div>
+          <>
+            {/* Die Fußleiste mit den Meldungen gibt es erst ab der ersten Position */}
+            {(nichtZugestellt || umleitungen.length > 0) && <div className="space-y-3">{zustellMeldungen}</div>}
+            <div className="text-center py-16 space-y-2">
+              <p className="text-4xl">🍽</p>
+              <p className="text-ink-subtle text-sm">Noch keine Artikel</p>
+              <button
+                onClick={() => navigate(`/tab/${tabId}/artikel`)}
+                className="text-brand-600 font-bold text-sm"
+              >
+                Artikel hinzufügen
+              </button>
+            </div>
+          </>
         ) : !gaenge ? (
           gruppen.map(g => (
             <div key={g.key} className="bg-panel rounded-2xl border border-line px-4 py-3 flex items-start gap-3">
@@ -549,45 +626,7 @@ export function TabPage() {
             </div>
           )}
 
-          {/* Bon nicht zugestellt: bleibt stehen, bis nachgesendet oder bestätigt.
-              Die Positionen sind gebucht — nur der Ausdruck fehlt. */}
-          {nichtZugestellt && (
-            <div className="rounded-lg border-2 border-red-500 bg-red-50 p-3 space-y-2">
-              <p className="text-sm font-bold text-red-800">⚠ Bon NICHT angekommen</p>
-              <ul className="space-y-1 text-xs text-red-700">
-                {nichtZugestellt.ziele.map((z, i) => (
-                  <li key={`${z.ziel}-${i}`}>
-                    <span className="font-semibold">{z.ziel}</span>
-                    {z.istBackup && ' (Zweitdrucker)'}
-                    <span className="block text-red-600">{z.fehler}</span>
-                  </li>
-                ))}
-              </ul>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  className="flex-1 rounded-lg bg-red-600 py-3 text-sm font-bold text-white active:bg-red-700 disabled:opacity-50"
-                  disabled={nachsendenMutation.isPending}
-                  onClick={() => nachsendenMutation.mutate(nichtZugestellt.nachsenden)}
-                >
-                  {nachsendenMutation.isPending ? 'Sende …' : 'Nochmal senden'}
-                </button>
-                <button
-                  type="button"
-                  className="rounded-lg border border-red-300 px-4 py-3 text-sm font-bold text-red-700"
-                  onClick={() => setNichtZugestellt(null)}
-                >
-                  OK
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Bon zugestellt, aber am Backup-Drucker statt am vorgesehenen — kein Fehler, blockiert nichts,
-              bleibt bis „Verstanden": der Bon muss weitergegeben werden. */}
-          {umleitungen.length > 0 && (
-            <BonierUmleitungHinweis umleitungen={umleitungen} onVerstanden={() => setUmleitungen([])} />
-          )}
+          {zustellMeldungen}
 
           {/* Gänge-Modul: nächsten offenen Gang mit einem Tastendruck abrufen */}
           {gaenge && naechsterOffenerGang !== null && (

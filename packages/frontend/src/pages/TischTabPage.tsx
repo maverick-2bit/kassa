@@ -7,6 +7,7 @@ import type {
   BonierUmleitung,
   BonierungErgebnis,
   BonierungInput,
+  BonRueckmeldung,
   ModifikatorAuswahl,
   ModifikatorGruppe,
   RabattInput,
@@ -22,7 +23,7 @@ import { getKasseIdentity } from '../lib/kasse'
 import { hasModul, gaengeAnzahl } from '../lib/auth'
 import { formatPreis } from '../lib/format'
 import { DruckproblemeBanner } from '../components/DruckproblemeBanner'
-import { BonierFehlerLeiste, korrekturbonFehler, type BonierFehler } from '../components/BonierFehlerLeiste'
+import { BonierFehlerLeiste, korrekturbonFehler, rueckmeldungFehler, type BonierFehler } from '../components/BonierFehlerLeiste'
 import { BonierUmleitungHinweis } from '../components/BonierUmleitungHinweis'
 import { warenkorbSummeCent, positionsPreisCent, gesamtRabattCent } from '../lib/warenkorb'
 import {
@@ -84,7 +85,16 @@ export function TischTabPage() {
    * eine Bestellung, die nicht in der Küche ankommt, darf nicht nach 3 Sekunden
    * verschwinden wie die grüne Bestätigung.
    */
-  const [bonierFehler, setBonierFehler]             = useState<BonierFehler | null>(null)
+  const [bonierFehler, setBonierFehlerState]        = useState<BonierFehler | null>(null)
+  /**
+   * Derselbe Stand als Ref: Mutationen laufen mit dem State des Renderns, in dem sie gestartet wurden —
+   * Sofort-Kassieren bonierte und wechselte dann die Seite mit einem Callback, der die rote Leiste nie sah.
+   */
+  const bonierFehlerRef                             = useRef<BonierFehler | null>(null)
+  const setBonierFehler = (fehler: BonierFehler | null) => {
+    bonierFehlerRef.current = fehler
+    setBonierFehlerState(fehler)
+  }
   /**
    * Bons, die ZUGESTELLT wurden, aber am Backup-Drucker statt am vorgesehenen Drucker liegen.
    * Kein Fehlschlag (nichts zu wiederholen), aber das Personal muss den Bon weitergeben — der
@@ -103,12 +113,18 @@ export function TischTabPage() {
     setUmleitungen([])
   }
   /**
-   * Zurück zur Tischübersicht — und was hier noch nicht bestätigt ist, reist mit: ein Bon am Backup-Drucker
-   * soll nicht verschwinden, nur weil der Kellner nach dem Parken/Kassieren weitergeht.
+   * Zurück zur Tischübersicht — und was hier noch nicht bestätigt ist, reist mit: ein Bon, der nicht
+   * angekommen ist (rote Leiste), und ein Bon am Backup-Drucker (bernsteinfarbener Hinweis) sollen nicht
+   * verschwinden, nur weil der Kellner nach dem Parken/Kassieren weitergeht.
+   *
+   * `bonierFehler` gilt ausdrücklich, wenn angegeben — auch `null`: Beim Verwerfen ersetzt der Korrekturbon die
+   * Leiste, ein früherer, nie zugestellter Bestellbon wäre jetzt falsch (der Tisch ist storniert).
    */
-  const zurUebersicht = (mitnehmen: { zahlungsHinweis?: string; bonierFehler?: BonierFehler } = {}) => {
+  const zurUebersicht = (mitnehmen: { zahlungsHinweis?: string; bonierFehler?: BonierFehler | null } = {}) => {
+    const fehler = 'bonierFehler' in mitnehmen ? mitnehmen.bonierFehler : bonierFehlerRef.current
     const state = {
-      ...mitnehmen,
+      ...(mitnehmen.zahlungsHinweis ? { zahlungsHinweis: mitnehmen.zahlungsHinweis } : {}),
+      ...(fehler ? { bonierFehler: fehler } : {}),
       ...(umleitungenRef.current.length > 0 ? { bonierUmleitungen: umleitungenRef.current } : {}),
     }
     navigate('/tische', Object.keys(state).length > 0 ? { state } : undefined)
@@ -431,7 +447,9 @@ export function TischTabPage() {
         }
         try {
           // Auch hier gilt: nicht zugestellte Ziele melden. Der Gast zahlt gerade,
-          // die Küche muss die Bestellung trotzdem bekommen.
+          // die Küche muss die Bestellung trotzdem bekommen. Nach dem Bezahlen wechselt die
+          // Seite in die Tischübersicht — die rote Leiste reist über zurUebersicht mit
+          // (früher ging sie dabei verloren, und niemand erfuhr, dass die Küche nichts bekam).
           meldeBonierFehler(await bonierApi.bonieren(gesendet), gesendet)
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
@@ -510,7 +528,9 @@ export function TischTabPage() {
       setFreigabePinEingabe('')
       // Korrekturbon: Das Backend sendet ihn selbst an Küche/Schank — kommt er
       // NICHT an, steht dort weiter das stornierte Gericht auf der Liste. Dann
-      // dieselbe Leiste wie beim Bonieren.
+      // dieselbe Leiste wie beim Bonieren. Liegt er am Backup-Drucker statt am
+      // vorgesehenen Drucker, ist er zwar angekommen, muss aber weitergegeben werden.
+      merkeUmleitungen(antwort.stornoUmleitungen ?? [])
       setBonierFehler(korrekturbonFehler(antwort, tabId))
     },
     onError: (err, variables) => {
@@ -537,8 +557,9 @@ export function TischTabPage() {
       // Korrekturbon nicht an, nimmt die Tischübersicht die Leiste mit, sonst
       // bereitet die Station den ganzen Tisch weiter zu. Ohne tabId: Nachsenden
       // braucht nur Kasse, Tisch und Positionen, nicht den geschlossenen Tab.
-      const bonierFehler = korrekturbonFehler(antwort)
-      zurUebersicht(bonierFehler ? { bonierFehler } : {})
+      // Ein Korrekturbon am Backup-Drucker reist als bernsteinfarbener Hinweis mit.
+      merkeUmleitungen(antwort.stornoUmleitungen ?? [])
+      zurUebersicht({ bonierFehler: korrekturbonFehler(antwort) })
     },
     onError: (err) => {
       if (err instanceof ApiError && err.code === 'freigabe_erforderlich') {
@@ -585,20 +606,35 @@ export function TischTabPage() {
 
   // ── Gänge-Steuerung ────────────────────────────────────────────────────────
 
+  /**
+   * Gang abrufen und Nachschicken boniert der SERVER — die Kasse sieht das Bonierergebnis nie, der Server meldet
+   * in `bon` nur, wenn etwas nicht stimmt: ein Ziel hat den Bon NICHT bekommen (rote Leiste, „Nochmal senden“
+   * mit der Bestell-ID des Servers) oder er liegt am Backup-Drucker (bernsteinfarbener Hinweis). Ohne `bon`
+   * bleibt alles wie bisher — auch eine frühere, noch offene Meldung: ein anderer Bon macht sie nicht gegenstandslos.
+   */
+  const meldeBon = (bon: BonRueckmeldung | null | undefined) => {
+    if (!bon) return
+    merkeUmleitungen(bon.umleitungen)
+    const fehler = rueckmeldungFehler(bon)
+    if (fehler) setBonierFehler(fehler)
+  }
+
   const gangAbrufenMutation = useMutation({
     mutationFn: () => tischTabApi.gangAbrufen(tabId!),
-    onSuccess: () => {
+    onSuccess: (antwort) => {
       qc.invalidateQueries({ queryKey: ['tisch-tab', tabId] })
       setFehler(null)
+      meldeBon(antwort.bon)
     },
     onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
   })
 
   const nachschickenMutation = useMutation({
     mutationFn: (positionIndex: number) => tischTabApi.positionNachschicken(tabId!, positionIndex),
-    onSuccess: () => {
+    onSuccess: (antwort) => {
       qc.invalidateQueries({ queryKey: ['tisch-tab', tabId] })
       setFehler(null)
+      meldeBon(antwort?.bon)
     },
     onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
   })

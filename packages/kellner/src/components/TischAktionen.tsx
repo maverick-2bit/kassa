@@ -68,8 +68,13 @@ export function TischAktionen({ tab, onClose, onGeaendert, onZurUebersicht }: Pr
   const [grund, setGrund]           = useState('')
   const [pin, setPin]               = useState('')
   const [pinNoetig, setPinNoetig]   = useState(false)
-  const [korrektur, setKorrektur]   = useState<{ ziele: BonierZielFehler[]; nachsenden: BonierungInput } | null>(null)
-  /** Der nachgesendete Korrekturbon kam an, aber am Backup-Drucker statt am vorgesehenen Drucker */
+  /**
+   * Der Tisch ist verworfen, aber der Korrekturbon ist nicht überall am vorgesehenen Gerät: `ziele` = die Ziele, die
+   * ihn NICHT bekommen haben (mit `nachsenden` für „Nochmal senden“); leer = alles angekommen, dann geht es nur
+   * noch um den Hinweis auf den Backup-Drucker (`umleitungen`) und es gibt nichts nachzusenden.
+   */
+  const [korrektur, setKorrektur]   = useState<{ ziele: BonierZielFehler[]; nachsenden: BonierungInput | null } | null>(null)
+  /** Der Korrekturbon kam an, aber am Backup-Drucker statt am vorgesehenen Drucker */
   const [umleitungen, setUmleitungen] = useState<BonierUmleitung[]>([])
 
   // Andere offene Tische dieser Kasse (für Verschieben/Zusammenführen)
@@ -135,19 +140,24 @@ export function TischAktionen({ tab, onClose, onGeaendert, onZurUebersicht }: Pr
       try {
         const res = await tischTabApi.verwerfe(tab.id, grund.trim() || undefined, pinNoetig ? pin.trim() || undefined : undefined)
         onGeaendert()
-        // Korrekturbon nicht überall angekommen → Kellner muss es erfahren, die Station bereitet sonst weiter zu
-        if (res.stornoBon) {
-          const nachsenden: BonierungInput = {
-            kasseId:    tab.kasseId,
-            tabId:      tab.id,
-            tisch:      tab.tischNummer,
-            kellner:    auth?.user.name ?? tab.kellner,
-            positionen: res.stornoBon.positionen,
-            ohneLagerabzug: true,
-            storno:     true,
-            ...(res.stornoBon.bestellId ? { bestellId: res.stornoBon.bestellId } : {}),
-          }
-          setKorrektur({ ziele: res.stornoBon.fehler, nachsenden })
+        // Korrekturbon nicht überall angekommen → Kellner muss es erfahren, die Station bereitet sonst weiter zu.
+        // Ebenso, wenn er am Backup-Drucker statt am vorgesehenen Drucker liegt: angekommen, aber am falschen Gerät.
+        const umgeleitet = res.stornoUmleitungen ?? []
+        if (res.stornoBon || umgeleitet.length > 0) {
+          const nachsenden: BonierungInput | null = res.stornoBon
+            ? {
+                kasseId:    tab.kasseId,
+                tabId:      tab.id,
+                tisch:      tab.tischNummer,
+                kellner:    auth?.user.name ?? tab.kellner,
+                positionen: res.stornoBon.positionen,
+                ohneLagerabzug: true,
+                storno:     true,
+                ...(res.stornoBon.bestellId ? { bestellId: res.stornoBon.bestellId } : {}),
+              }
+            : null
+          setUmleitungen(vorher => vereinigeUmleitungen(vorher, umgeleitet))
+          setKorrektur({ ziele: res.stornoBon?.fehler ?? [], nachsenden })
           setAnsicht('korrekturbon')
           return
         }
@@ -164,15 +174,16 @@ export function TischAktionen({ tab, onClose, onGeaendert, onZurUebersicht }: Pr
   }
 
   async function korrekturNachsenden() {
-    if (!korrektur) return
+    const nachsenden = korrektur?.nachsenden
+    if (!nachsenden) return
     await aktion(async () => {
-      const ergebnis = await bonierApi.bonieren(korrektur.nachsenden)
+      const ergebnis = await bonierApi.bonieren(nachsenden)
       const ziele = bonierFehlschlaege(ergebnis)
       const neu   = bonierUmleitungen(ergebnis)
       // Zugestellt, aber am Backup-Drucker: nicht wegblättern, bevor der Kellner es gelesen hat
-      if (ziele.length === 0 && neu.length === 0) { onZurUebersicht(); return }
+      if (ziele.length === 0 && neu.length === 0 && umleitungen.length === 0) { onZurUebersicht(); return }
       if (neu.length > 0) setUmleitungen(vorher => vereinigeUmleitungen(vorher, neu))
-      setKorrektur({ ziele, nachsenden: korrektur.nachsenden })
+      setKorrektur({ ziele, nachsenden })
     }, 'Nachsenden fehlgeschlagen')
   }
 

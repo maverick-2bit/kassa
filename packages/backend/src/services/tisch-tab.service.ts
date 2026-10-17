@@ -3,6 +3,9 @@ import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import type { FastifyBaseLogger } from 'fastify'
 import type {
   BarzahlungsbelegInput,
+  BonRueckmeldung,
+  BonierUmleitung,
+  BonierungErgebnis,
   ModifikatorAuswahl,
   TabEreignis,
   TabPosition,
@@ -16,7 +19,7 @@ import type {
   TischTabResponse,
   BonierZielFehler,
 } from '@kassa/shared'
-import { bonierFehlschlaege } from '@kassa/shared'
+import { bonRueckmeldung, bonierFehlschlaege, bonierUmleitungen } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import { artikel, auditLogs, kassen, modifikatoren, tabEreignisse, tischTabs } from '../db/schema.js'
 import type { BelegServiceDeps } from './beleg.service.js'
@@ -37,6 +40,17 @@ export interface StornoBonErgebnis {
   positionen: Array<{ artikelId: string; menge: number }>
   /** Bestell-ID des Korrekturbons: "Nochmal senden" schickt sie wieder mit → kein zweiter Bon an Stationen, die ihn schon haben */
   bestellId:  string
+}
+
+/**
+ * Ergebnis der Storno-Nacharbeit (Position korrigiert, Tisch verworfen). `stornoBon` bleibt wie bisher
+ * NUR bei einem Fehlschlag gesetzt — eine ältere Oberfläche zeigt dann weiter genau die rote Leiste und
+ * sonst nichts. Ein Korrekturbon, der am Backup-Drucker statt am vorgesehenen Drucker liegt, ist kein
+ * Fehlschlag und steht deshalb daneben in `umleitungen`.
+ */
+export interface StornoNacharbeit {
+  stornoBon:   StornoBonErgebnis | null
+  umleitungen: BonierUmleitung[]
 }
 
 export class TischTabError extends Error {
@@ -331,7 +345,7 @@ export async function aktualisierePositionen(
     /** Log der Anfrage — Einzelheiten, falls der Korrekturbon unerwartet scheitert */
     log?: FastifyBaseLogger
   },
-): Promise<{ tab: TischTabResponse; stornoBon: StornoBonErgebnis | null }> {
+): Promise<{ tab: TischTabResponse; stornoBon: StornoBonErgebnis | null; stornoUmleitungen: BonierUmleitung[] }> {
   // Unter Tab-Sperre: Storno und Freigabe werden gegen den Stand gerechnet, der
   // wirklich gespeichert ist — auch wenn gerade bezahlt oder von einem zweiten
   // Gerät geändert wird. Lager, Verlauf und Korrekturbon laufen erst nach dem
@@ -386,14 +400,14 @@ export async function aktualisierePositionen(
   // Lagerstand automatisch anpassen
   await aktualisiereStockDeltas(altePositionen, positionen, deps.db)
 
-  let stornoBon: StornoBonErgebnis | null = null
+  let nacharbeit: StornoNacharbeit = { stornoBon: null, umleitungen: [] }
   if (stornoItems.length > 0) {
     await logEreignis(id, mandantId, 'storno', {
       positionen: stornoItems,
       ...(kontext?.userName ? { durch: kontext.userName } : {}),
       ...(kontext?.grund    ? { grund: kontext.grund } : {}),
     }, deps.db)
-    stornoBon = await verarbeiteStorno(row, stornoItems, mandantId, deps, kontext)
+    nacharbeit = await verarbeiteStorno(row, stornoItems, mandantId, deps, kontext)
   }
 
   await logEreignis(id, mandantId, 'positionen_aktualisiert', {
@@ -404,7 +418,7 @@ export async function aktualisierePositionen(
     })),
   }, deps.db)
 
-  return { tab: toResponse(row), stornoBon }
+  return { tab: toResponse(row), stornoBon: nacharbeit.stornoBon, stornoUmleitungen: nacharbeit.umleitungen }
 }
 
 /**
@@ -412,9 +426,11 @@ export async function aktualisierePositionen(
  * Stationen/Bonierdrucker. Der Bon läuft best-effort — ein Druckerausfall darf
  * den Storno selbst nie blockieren (er ist bereits persistiert).
  *
- * @returns die nicht erreichten Ziele samt der stornierten Positionen (damit die
- *          Oberfläche gezielt nachsenden kann), oder null wenn alles zugestellt
- *          wurde bzw. es nichts zuzustellen gab.
+ * @returns `stornoBon`: die nicht erreichten Ziele samt der stornierten Positionen (damit die
+ *          Oberfläche gezielt nachsenden kann), oder null wenn alles zugestellt wurde bzw. es
+ *          nichts zuzustellen gab. `umleitungen`: Korrekturbons, die zwar ankamen, aber am
+ *          Backup-Drucker statt am vorgesehenen Drucker liegen — dort steht sonst weiter das
+ *          stornierte Gericht auf der Liste, und niemand holt den Bon am falschen Gerät ab.
  */
 async function verarbeiteStorno(
   tab: { id: string; kasseId: string; tischNummer: string; kellner: string },
@@ -422,7 +438,7 @@ async function verarbeiteStorno(
   mandantId: string,
   deps: TischTabServiceDeps,
   kontext?: { userId?: string | null; userName?: string; grund?: string; log?: FastifyBaseLogger },
-): Promise<StornoBonErgebnis | null> {
+): Promise<StornoNacharbeit> {
   await deps.db.insert(auditLogs).values({
     mandantId,
     userId: kontext?.userId ?? null,
@@ -456,9 +472,13 @@ async function verarbeiteStorno(
     // Der Korrekturbon ist der ganze Sinn der Übung: an der Station steht sonst
     // weiter das stornierte Gericht auf der Liste und wird zubereitet. Kommt er
     // nicht an, muss es der Kellner erfahren — bis v0.7.149 verschwand das
-    // Ergebnis hier stillschweigend.
+    // Ergebnis hier stillschweigend. Liegt er am Backup-Drucker statt am
+    // vorgesehenen Drucker, ist er zwar angekommen, aber am falschen Gerät.
     const fehler = bonierFehlschlaege(ergebnis)
-    return fehler.length > 0 ? { fehler, positionen, bestellId } : null
+    return {
+      stornoBon:   fehler.length > 0 ? { fehler, positionen, bestellId } : null,
+      umleitungen: bonierUmleitungen(ergebnis),
+    }
   } catch (err) {
     // Fachmeldungen (BonierError: Kasse/Artikel nicht mehr verfügbar …) gehen im
     // Wortlaut an Kasse und Kellner-App, alles andere nur ins Log — ein DB-Fehler
@@ -469,16 +489,19 @@ async function verarbeiteStorno(
     if (err instanceof Error && status !== undefined && status < 500) {
       // „nichts zu bonieren" = kein Artikel hat Station oder Drucker. Dann gibt es
       // auch nichts zu melden — kein Fehlerfall.
-      if (/nichts zu bonieren/i.test(err.message)) return null
+      if (/nichts zu bonieren/i.test(err.message)) return { stornoBon: null, umleitungen: [] }
       meldung = err.message
     } else {
       kontext?.log?.error({ err, tabId: tab.id }, 'Korrekturbon unerwartet fehlgeschlagen')
       meldung = 'Interner Serverfehler'
     }
     return {
-      fehler: [{ ziel: 'Küche/Schank', ip: '', fehler: meldung, istBackup: false }],
-      positionen,
-      bestellId,
+      stornoBon: {
+        fehler: [{ ziel: 'Küche/Schank', ip: '', fehler: meldung, istBackup: false }],
+        positionen,
+        bestellId,
+      },
+      umleitungen: [],
     }
   }
 }
@@ -488,7 +511,9 @@ async function verarbeiteStorno(
  * an die Küche), Tab schließen. Der Tab verschwindet aus der offenen Liste.
  *
  * @returns den verworfenen Tab und — wie beim Positions-Storno — den nicht
- *          zugestellten Korrekturbon (null = zugestellt oder nichts zu bonieren).
+ *          zugestellten Korrekturbon (null = zugestellt oder nichts zu bonieren)
+ *          sowie die Korrekturbons, die am Backup-Drucker statt am vorgesehenen
+ *          Drucker liegen.
  */
 export async function verwerfeTab(
   id: string,
@@ -499,7 +524,7 @@ export async function verwerfeTab(
     freigabe?: FreigabeKontext
     log?: FastifyBaseLogger
   },
-): Promise<{ tab: TischTabResponse; stornoBon: StornoBonErgebnis | null }> {
+): Promise<{ tab: TischTabResponse; stornoBon: StornoBonErgebnis | null; stornoUmleitungen: BonierUmleitung[] }> {
   // Unter Tab-Sperre wie aktualisierePositionen: Ein gerade bezahlter Tab wird
   // nicht mehr verworfen (kein Korrekturbon, keine Lager-Rückbuchung für Ware
   // mit gültigem Beleg). Lager, Verlauf und Korrekturbon erst nach dem COMMIT.
@@ -545,11 +570,11 @@ export async function verwerfeTab(
 
   // Kommt der Korrekturbon nicht an, bereitet die Station den ganzen Tisch weiter
   // zu — das Ergebnis darf hier nicht verschwinden.
-  const stornoBon = stornoItems.length > 0
+  const nacharbeit: StornoNacharbeit = stornoItems.length > 0
     ? await verarbeiteStorno(row, stornoItems, mandantId, deps, kontext)
-    : null
+    : { stornoBon: null, umleitungen: [] }
 
-  return { tab: toResponse(row), stornoBon }
+  return { tab: toResponse(row), stornoBon: nacharbeit.stornoBon, stornoUmleitungen: nacharbeit.umleitungen }
 }
 
 /**
@@ -1156,22 +1181,41 @@ export async function logBonierEreignis(
 // Gänge-Steuerung (Coursing) — nächsten Gang feuern / Position nachschicken
 // ---------------------------------------------------------------------------
 
+type BonEingabe = Parameters<typeof bonierBestellung>[0]
+
 /**
  * Boniert Positionen, die am Tisch schon gebucht sind (Gang abrufen, nachschicken):
  * nur drucken, KEIN Lagerabzug — den hat aktualisiereStockDeltas beim Buchen
  * erledigt. „nichts zu bonieren" (Artikel ohne Station/Drucker) schlucken — wie im
  * Frontend.
+ *
+ * @returns das Bonierergebnis, damit der Aufrufer dem Personal melden kann, wo der
+ *          Bon NICHT angekommen ist bzw. am Backup-Drucker liegt; null bei „nichts
+ *          zu bonieren". Bis hierher verschwand es, ein komplett gescheiterter Abruf
+ *          blieb stumm.
  */
-async function bonierTolerant(
-  input: Parameters<typeof bonierBestellung>[0],
-  db:    Db,
-): Promise<void> {
+async function bonierTolerant(input: BonEingabe, db: Db): Promise<BonierungErgebnis | null> {
   try {
-    await bonierBestellung(input, { db }, { ohneLagerabzug: true })
+    return await bonierBestellung(input, { db }, { ohneLagerabzug: true })
   } catch (err) {
     const msg = err instanceof Error ? err.message : ''
     if (!/nichts zu bonieren/i.test(msg)) throw err
+    return null
   }
+}
+
+/**
+ * Was das Personal über einen solchen Bon erfährt (null = überall am vorgesehenen Gerät angekommen).
+ * „Nochmal senden“ der Oberfläche geht mit derselben Bestell-ID noch einmal durch POST /bestellung/bonieren:
+ * der Server bedient dann nur die Ziele, die den Bon nicht haben — nichts wird doppelt gedruckt.
+ */
+function bonRueckmeldungFuer(ergebnis: BonierungErgebnis | null, eingabe: BonEingabe): BonRueckmeldung | null {
+  return bonRueckmeldung(ergebnis, {
+    ...eingabe,
+    // Die Bonier-Route begrenzt den Namen auf 60 Zeichen (der Tisch erlaubt 100) — sonst scheiterte das Nachsenden mit 400
+    kellner:        eingabe.kellner.slice(0, 60),
+    ohneLagerabzug: true,
+  })
 }
 
 /**
@@ -1183,12 +1227,16 @@ async function bonierTolerant(
  * bonieren: Bonieren geht übers Netz und darf die Sperre nicht halten. (Bisher
  * schrieb der Abruf NACH dem Bonieren seine vorher gelesene Positionsliste
  * zurück: eine Nachbestellung aus der Zwischenzeit war weg, ein inzwischen
- * bezahlter Tab wurde überschrieben.) Scheitert das Bonieren, wird die
+ * bezahlter Tab wurde überschrieben.) Scheitert das Bonieren (wirft), wird die
  * Markierung zurückgenommen — der Gang bleibt abrufbar.
+ *
+ * Kommt der Bon nur nicht an (totes Ziel: das Bonierergebnis meldet `erfolgreich: false`,
+ * es wirft nicht), bleibt der Gang gesendet — wie beim Parken: gebucht ist gebucht, nur der
+ * Bon fehlt. Das Personal erfährt es in `bon` und sendet mit derselben Bestell-ID nach.
  */
 export async function rufeNaechstenGangAb(
   id: string, mandantId: string, deps: TischTabServiceDeps,
-): Promise<{ tab: TischTabResponse; gang: number }> {
+): Promise<{ tab: TischTabResponse; gang: number; bon: BonRueckmeldung | null }> {
   const jetzt = new Date().toISOString()
   const { row, naechster, gangPositionen } = await deps.db.transaction(async (tx) => {
     const tab = await sperreOffenenTab(tx, id, mandantId)
@@ -1210,20 +1258,23 @@ export async function rufeNaechstenGangAb(
     return { row, naechster, gangPositionen }
   })
 
+  const eingabe: BonEingabe = {
+    kasseId:    row.kasseId,
+    tabId:      row.id,
+    tisch:      `${row.tischNummer} · ${naechster}. Gang`.slice(0, 40),
+    kellner:    row.kellner,
+    positionen: gangPositionen.map(p => ({ artikelId: p.artikelId, menge: p.menge, gang: naechster })),
+    bestellId:  randomUUID(),
+  }
+  let ergebnis: BonierungErgebnis | null
   try {
-    await bonierTolerant({
-      kasseId:    row.kasseId,
-      tabId:      row.id,
-      tisch:      `${row.tischNummer} · ${naechster}. Gang`.slice(0, 40),
-      kellner:    row.kellner,
-      positionen: gangPositionen.map(p => ({ artikelId: p.artikelId, menge: p.menge, gang: naechster })),
-    }, deps.db)
+    ergebnis = await bonierTolerant(eingabe, deps.db)
   } catch (err) {
     await gibGangFrei(id, mandantId, naechster, jetzt, deps)
     throw err
   }
   await logEreignis(id, mandantId, 'gang_gefeuert', { gang: naechster, positionen: gangPositionen.length }, deps.db)
-  return { tab: toResponse(row), gang: naechster }
+  return { tab: toResponse(row), gang: naechster, bon: bonRueckmeldungFuer(ergebnis, eingabe) }
 }
 
 /**
@@ -1254,10 +1305,13 @@ async function gibGangFrei(
  * Schickt genau eine Position erneut an Küche/Schank (Re-Print) — Status unverändert.
  * Nur bei offenem Tab; die Sperre gilt nur für die Prüfung (ein gerade laufendes
  * Bezahlen oder Verwerfen wird abgewartet), gedruckt wird danach ohne Sperre.
+ *
+ * @returns was das Personal über den Bon erfährt (nicht angekommen / am Backup-Drucker); null,
+ *          wenn er überall am vorgesehenen Gerät liegt oder es nichts zu bonieren gab.
  */
 export async function schickePositionNach(
   id: string, positionIndex: number, mandantId: string, deps: TischTabServiceDeps,
-): Promise<void> {
+): Promise<BonRueckmeldung | null> {
   const tab = await deps.db.transaction(tx => sperreOffenenTab(tx, id, mandantId))
   const positionen = (tab.positionen as TabPosition[]) ?? []
   const p = positionen[positionIndex]
@@ -1265,12 +1319,16 @@ export async function schickePositionNach(
 
   const gang = p.gang ?? 0
   const label = gang > 0 ? `${tab.tischNummer} · ${gang}. Gang ↻` : `${tab.tischNummer} · ↻`
-  await bonierTolerant({
+  const eingabe: BonEingabe = {
     kasseId:    tab.kasseId,
     tabId:      tab.id,
     tisch:      label.slice(0, 40),
     kellner:    tab.kellner,
     positionen: [{ artikelId: p.artikelId, menge: p.menge, gang }],
-  }, deps.db)
+    // Jeder Klick auf ↻ ist ein eigener Ausdruck (neue ID); "Nochmal senden" desselben Klicks nutzt diese ID wieder
+    bestellId:  randomUUID(),
+  }
+  const ergebnis = await bonierTolerant(eingabe, deps.db)
   await logEreignis(id, mandantId, 'gang_nachgeschickt', { bezeichnung: p.bezeichnung, gang }, deps.db)
+  return bonRueckmeldungFuer(ergebnis, eingabe)
 }

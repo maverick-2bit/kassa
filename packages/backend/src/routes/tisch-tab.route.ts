@@ -10,6 +10,7 @@ import {
   TischTabZusammenfuehrenInputSchema,
   TischTabVerschiebenInputSchema,
 } from '@kassa/shared'
+import type { BonierUmleitung, TischTabResponse } from '@kassa/shared'
 import {
   listOffeneTabs,
   erstelleTab,
@@ -26,6 +27,7 @@ import {
   rufeNaechstenGangAb,
   schickePositionNach,
   TischTabError,
+  type StornoBonErgebnis,
   type TischTabServiceDeps,
 } from '../services/tisch-tab.service.js'
 import { tryDruckeBeleg } from '../services/drucker.service.js'
@@ -35,6 +37,20 @@ import { uuidParam, uuidQuery } from './uuid-param.js'
 
 export interface TischTabRouteOptions {
   deps: TischTabServiceDeps
+}
+
+/**
+ * Antwort von Positions-Update und Verwerfen: der Tab, dazu NUR bei Bedarf die Rückmeldung zum Korrekturbon.
+ * Ohne Befund bleibt die Antwort der reine Tab (wie vor diesen Feldern). `stornoBon` heißt weiter „Fehlschlag“
+ * und wird bei einer bloßen Umleitung NICHT gesetzt: Eine ältere Oberfläche, die nur `stornoBon` kennt, würde
+ * sonst eine rote Leiste ohne Ziel zeigen, obwohl der Bon angekommen ist.
+ */
+function storno(tab: TischTabResponse, stornoBon: StornoBonErgebnis | null, stornoUmleitungen: BonierUmleitung[]) {
+  return {
+    ...tab,
+    ...(stornoBon ? { stornoBon } : {}),
+    ...(stornoUmleitungen.length > 0 ? { stornoUmleitungen } : {}),
+  }
 }
 
 export const tischTabRoute: FastifyPluginAsync<TischTabRouteOptions> = async (fastify, opts) => {
@@ -75,7 +91,7 @@ export const tischTabRoute: FastifyPluginAsync<TischTabRouteOptions> = async (fa
     const parsed = TischTabPositionenUpdateSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     try {
-      const { tab, stornoBon } = await aktualisierePositionen(
+      const { tab, stornoBon, stornoUmleitungen } = await aktualisierePositionen(
         id, parsed.data.positionen, request.user.mandantId, opts.deps, {
           userId:   (request.user as { id?: string }).id ?? null,
           userName: request.user.name,
@@ -86,7 +102,8 @@ export const tischTabRoute: FastifyPluginAsync<TischTabRouteOptions> = async (fa
       )
       // stornoBon nur mitschicken, wenn der Korrekturbon NICHT zugestellt wurde —
       // die Oberfläche zeigt dann dieselbe Leiste wie beim normalen Bonieren.
-      return reply.send(stornoBon ? { ...tab, stornoBon } : tab)
+      // stornoUmleitungen nur, wenn er am Backup-Drucker statt am vorgesehenen Drucker liegt.
+      return reply.send(storno(tab, stornoBon, stornoUmleitungen))
     } catch (err) {
       if (err instanceof FreigabeError)
         return reply.status(err.httpStatus).send({ fehler: err.message, code: err.code, abCent: err.abCent })
@@ -106,7 +123,7 @@ export const tischTabRoute: FastifyPluginAsync<TischTabRouteOptions> = async (fa
     }).safeParse(request.body ?? {})
     if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
     try {
-      const { tab, stornoBon } = await verwerfeTab(id, request.user.mandantId, opts.deps, {
+      const { tab, stornoBon, stornoUmleitungen } = await verwerfeTab(id, request.user.mandantId, opts.deps, {
         userId:   (request.user as { id?: string }).id ?? null,
         userName: request.user.name,
         ...(body.data.grund ? { grund: body.data.grund } : {}),
@@ -114,8 +131,9 @@ export const tischTabRoute: FastifyPluginAsync<TischTabRouteOptions> = async (fa
         freigabe: freigabeKontextAus(request),
         log:      request.log,
       })
-      // Wie bei /positionen: stornoBon nur, wenn der Korrekturbon NICHT zugestellt wurde
-      return reply.send(stornoBon ? { ...tab, stornoBon } : tab)
+      // Wie bei /positionen: stornoBon nur, wenn der Korrekturbon NICHT zugestellt wurde,
+      // stornoUmleitungen nur, wenn er am Backup-Drucker liegt
+      return reply.send(storno(tab, stornoBon, stornoUmleitungen))
     } catch (err) {
       if (err instanceof FreigabeError)
         return reply.status(err.httpStatus).send({ fehler: err.message, code: err.code, abCent: err.abCent })
@@ -229,8 +247,9 @@ export const tischTabRoute: FastifyPluginAsync<TischTabRouteOptions> = async (fa
   fastify.post('/tisch-tabs/:id/gang-abrufen', auth, async (request, reply) => {
     const id = uuidParam(request.params)
     try {
-      const result = await rufeNaechstenGangAb(id, request.user.mandantId, opts.deps)
-      return reply.send(result)
+      const { tab, gang, bon } = await rufeNaechstenGangAb(id, request.user.mandantId, opts.deps)
+      // bon nur, wenn der Bon nicht (überall) am vorgesehenen Gerät angekommen ist — sonst bleibt die Antwort wie bisher
+      return reply.send({ tab, gang, ...(bon ? { bon } : {}) })
     } catch (err) {
       if (err instanceof TischTabError) return reply.status(err.httpStatus).send({ fehler: err.message })
       throw err
@@ -243,8 +262,9 @@ export const tischTabRoute: FastifyPluginAsync<TischTabRouteOptions> = async (fa
     const parsed = z.object({ positionIndex: z.number().int().nonnegative() }).safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     try {
-      await schickePositionNach(id, parsed.data.positionIndex, request.user.mandantId, opts.deps)
-      return reply.status(204).send()
+      const bon = await schickePositionNach(id, parsed.data.positionIndex, request.user.mandantId, opts.deps)
+      // Bon am vorgesehenen Gerät angekommen: 204 wie bisher; sonst 200 mit der Rückmeldung für das Personal
+      return bon ? reply.status(200).send({ bon }) : reply.status(204).send()
     } catch (err) {
       if (err instanceof TischTabError) return reply.status(err.httpStatus).send({ fehler: err.message })
       throw err

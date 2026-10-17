@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { BonierungErgebnisSchema, bonierFehlschlaege, bonierUmleitungen, vereinigeUmleitungen } from './bonierung.js'
-import type { BonierungErgebnis } from './bonierung.js'
+import { BonierungErgebnisSchema, bonRueckmeldung, bonierFehlschlaege, bonierUmleitungen, vereinigeUmleitungen } from './bonierung.js'
+import type { BonierungErgebnis, BonierungInput } from './bonierung.js'
 
 /**
  * bonierFehlschlaege beantwortet die betrieblich teuerste Frage: ist der
@@ -175,6 +175,54 @@ describe('vereinigeUmleitungen', () => {
 
   it('ein Bon ohne Umleitung nimmt den Hinweis nicht weg — erst „Verstanden“ tut das', () => {
     expect(vereinigeUmleitungen(kueche, [])).toBe(kueche)
+  })
+})
+
+/**
+ * bonRueckmeldung: Was ein Tisch-Vorgang (Gang abrufen, Position nachschicken) dem Personal meldet. Nur wenn es
+ * etwas zu melden gibt — sonst bleibt die Antwort des Vorgangs wie vor diesem Feld.
+ */
+describe('bonRueckmeldung', () => {
+  const nachsenden: BonierungInput = {
+    kasseId:    '11111111-1111-4111-8111-111111111111',
+    tabId:      '22222222-2222-4222-8222-222222222222',
+    tisch:      'T5 · 2. Gang',
+    kellner:    'Kellner Karl',
+    positionen: [{ artikelId: '33333333-3333-4333-8333-333333333333', menge: 2, gang: 2 }],
+    ohneLagerabzug: true,
+    bestellId:  '44444444-4444-4444-8444-444444444444',
+  }
+
+  it('alles am vorgesehenen Gerät angekommen (oder nichts zu bonieren) → keine Rückmeldung', () => {
+    expect(bonRueckmeldung(null, nachsenden)).toBeNull()
+    expect(bonRueckmeldung(leer, nachsenden)).toBeNull()
+    expect(bonRueckmeldung({ ...leer, stationen: [station(true)], drucker: [drucker(true)] }, nachsenden)).toBeNull()
+  })
+
+  it('Fehlschlag → Ziele samt der Bonierung zum Nachsenden (mit der Bestell-ID des ersten Versuchs)', () => {
+    const r = bonRueckmeldung({ ...leer, drucker: [drucker(false, false, 'ECONNREFUSED')] }, nachsenden)
+    expect(r?.fehler.map(f => f.ziel)).toEqual(['Küchendrucker'])
+    expect(r?.umleitungen).toEqual([])
+    expect(r?.nachsenden).toBe(nachsenden)
+    expect(r?.nachsenden.bestellId).toBe('44444444-4444-4444-8444-444444444444')
+  })
+
+  it('Umleitung auf den Backup-Drucker → Hinweis ohne Fehlschlag', () => {
+    const r = bonRueckmeldung({ ...leer, drucker: [umgeleitet()] }, nachsenden)
+    expect(r?.fehler).toEqual([])
+    expect(r?.umleitungen.map(u => u.hinweis)).toEqual([
+      'Küchendrucker nicht erreichbar — Bon kam an Schankdrucker. Bitte weitergeben.',
+    ])
+  })
+
+  it('beides nebeneinander: ein Drucker wich aus, ein anderes Ziel blieb stumm', () => {
+    const r = bonRueckmeldung({ ...leer, stationen: [station(false, 'ETIMEDOUT')], drucker: [umgeleitet()] }, nachsenden)
+    expect(r?.fehler.map(f => f.ziel)).toEqual(['Küche'])
+    expect(r?.umleitungen).toHaveLength(1)
+  })
+
+  it('Zweitdrucker-Kopie am Backup-Drucker zählt nicht als Umleitung → keine Rückmeldung', () => {
+    expect(bonRueckmeldung({ ...leer, drucker: [drucker(true, true)] }, nachsenden)).toBeNull()
   })
 })
 
