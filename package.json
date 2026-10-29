@@ -20,7 +20,7 @@
   "pnpm": {
     "overrides": {
       "fast-jwt": "^6.3.5",
-      "fast-uri": "^3.1.5",
+      "fast-uri": "^3.1.9",
       "find-my-way": "^9.7.0",
       "dompurify": "^3.4.17"
     }
