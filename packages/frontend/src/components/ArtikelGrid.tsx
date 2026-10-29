@@ -16,7 +16,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { allergeneAnzeige, allergeneBeschreibung, ausgeblendeteArtikelIds, farbeZuHex, type AktiveAktion, type Artikel, type KasseArtikelLayout, type Kategorie, type ModifikatorAuswahl, type ModifikatorGruppe, type RasterZelle } from '@kassa/shared'
+import { allergeneAnzeige, allergeneBeschreibung, ausgeblendeteArtikelIds, farbeZuHex, nachbarReiter, type AktiveAktion, type Artikel, type KasseArtikelLayout, type Kategorie, type ModifikatorAuswahl, type ModifikatorGruppe, type RasterZelle } from '@kassa/shared'
 import { formatPreis } from '../lib/format'
 import {
   artikelErlaubt,
@@ -29,6 +29,7 @@ import {
   type ReiterLage,
 } from '../lib/artikel-reiter'
 import { nachkommenIds, wurzelIdVon } from '../lib/kategorie-baum'
+import { useSwipe } from '../lib/useSwipe'
 import { ModifikatorModal } from './ModifikatorModal'
 import { BoxSymbol, schriftAuf } from './RasterBausteine'
 import { Input } from './ui/Input'
@@ -196,6 +197,17 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
     if (gewaehlteEbene && nachkommenIds(aktiveKategorien, aktivKategorieId).includes(gewaehlteEbene)) return gewaehlteEbene
     return aktivKategorieId
   }, [aktivKategorieId, gewaehlteEbene, aktiveKategorien])
+  // Wischen links/rechts wechselt den Reiter (zusätzlich zu den Tasten): Reihenfolge wie in der Leiste
+  const reiterIds = useMemo(() => [
+    ...(favoriten.length > 0 ? [FAVORITEN_TAB_ID] : []),
+    ...reiterGruppen.map(k => k.id),
+    ...(sonstige.length > 0 ? [SONSTIGE_TAB_ID] : []),
+  ], [favoriten.length, reiterGruppen, sonstige.length])
+  const swipe = useSwipe((richtung) => {
+    if (suche.trim() !== '') return                      // bei aktiver Suche gibt es keine Reiter
+    const ziel = nachbarReiter(reiterIds, aktivKategorieId, richtung)
+    if (ziel) setGewaehlterReiter(ziel)
+  })
   const aktuelleGruppe = aktuelleGruppeId ? aktiveKategorien.find(k => k.id === aktuelleGruppeId) ?? null : null
   const elterGruppe    = aktuelleGruppe && aktuelleGruppe.id !== aktivKategorieId && aktuelleGruppe.parentId
     ? aktiveKategorien.find(k => k.id === aktuelleGruppe.parentId) ?? null
@@ -258,7 +270,7 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full" data-testid="artikel-grid" {...swipe}>
 
       {/* ---- Suchfeld (Name oder Artikelnummer) ---- */}
       {(!sucheKlein || suche !== '') && <div className="relative shrink-0 mb-2">
@@ -282,7 +294,7 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
       </div>}
 
       {/* ---- Kategorie-Leiste (bleibt oben) + Knopf zum Ein-/Ausklappen der Suche ---- */}
-      <div className="flex items-start gap-2 shrink-0 mb-3">
+      <div className="flex items-start gap-2 shrink-0 mb-3" data-swipe-aus>
       {(aktiveKategorien.length > 0 || favoriten.length > 0 || sonstige.length > 0) && (
         <div className="relative min-w-0 flex-1">
           {fadeLinks && (
@@ -563,10 +575,16 @@ function TabBtn({
   farbeHex: string
   children: React.ReactNode
 }) {
+  // Wird der Reiter per Wisch aktiv, soll er in der (scrollbaren) Leiste sichtbar bleiben
+  const ref = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    if (aktiv) ref.current?.scrollIntoView?.({ inline: 'nearest', block: 'nearest', behavior: 'smooth' })
+  }, [aktiv])
   // Aktiv = Vollton mit weißer Schrift, inaktiv = zarter Farbton mit
   // Farbtext — direkt aus der Hex-Palette, damit alle 20 Farben tragen.
   return (
     <button
+      ref={ref}
       type="button"
       onClick={onClick}
       aria-pressed={aktiv}
