@@ -252,6 +252,10 @@ export type { SwipePunkt, SwipeRichtung } from './swipe.js'
 export { baueAuswahlPositionen, auswahlGueltig, gruppenSumme } from './optionen-auswahl.js'
 export type { AuswahlPosition, OptionenMengen } from './optionen-auswahl.js'
 
+// Hilfe-Fenster der Apps: Themen, Zuordnung zur Adresse, Suche
+export { findeHilfe, passtPfad, suchHilfe } from './hilfe.js'
+export type { HilfeAbschnitt, HilfeThema } from './hilfe.js'
+
 // Optionen-/Varianten-Abfrage im Direktverkauf (Artikel → Warengruppe → Kasse)
 export { fragtNachOptionen, warengruppenWahl } from './optionen-abfrage.js'
 export type { OptionenAbfrageLage, OptionenAbfrageWahl } from './optionen-abfrage.js'
