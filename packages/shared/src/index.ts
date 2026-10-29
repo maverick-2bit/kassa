@@ -244,6 +244,10 @@ export {
 } from './start-reiter.js'
 export type { ReiterLage, StartEinstellung } from './start-reiter.js'
 
+// Wischen zwischen den Warengruppen-Reitern (Kasse, Tisch, Kellner-App)
+export { swipeRichtung, nachbarReiter, SWIPE_MIN_PX } from './swipe.js'
+export type { SwipePunkt, SwipeRichtung } from './swipe.js'
+
 // Optionen-Dialog: Auswahl → Positionen (optional je Auswahl ein eigener Artikel)
 export { baueAuswahlPositionen, auswahlGueltig, gruppenSumme } from './optionen-auswahl.js'
 export type { AuswahlPosition, OptionenMengen } from './optionen-auswahl.js'

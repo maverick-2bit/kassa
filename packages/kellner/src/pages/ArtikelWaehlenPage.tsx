@@ -1,11 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
-import { allergeneAnzeige, artikelErlaubt, baueAuswahlPositionen, ausgeblendeteArtikelIds, FAVORITEN_TAB_ID, farbeZuHex, fragtNachOptionen, warengruppenWahl, kategorieAnzeigeNamen, kompakteArtikelListe, sichtbareGruppenFlach, sichtbarkeitsMengen, startReiter, type Artikel, type Kategorie, type ModifikatorGruppe, type ModifikatorAuswahl } from '@kassa/shared'
+import { allergeneAnzeige, artikelErlaubt, baueAuswahlPositionen, ausgeblendeteArtikelIds, FAVORITEN_TAB_ID, farbeZuHex, fragtNachOptionen, nachbarReiter, warengruppenWahl, kategorieAnzeigeNamen, kompakteArtikelListe, sichtbareGruppenFlach, sichtbarkeitsMengen, startReiter, type Artikel, type Kategorie, type ModifikatorGruppe, type ModifikatorAuswahl } from '@kassa/shared'
 import { artikelApi, kategorieApi, modifikatorApi, tischTabApi, kellnerKonfigApi } from '../lib/api'
 import { getAuth, clearAuth, gaengeAktiv as istGaengeAktiv, gaengeAnzahl } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
+import { useSwipe } from '../lib/useSwipe'
 
 // ---------------------------------------------------------------------------
 // Typen
@@ -164,6 +165,17 @@ export function ArtikelWaehlenPage() {
   function mengeImKorb(artikelId: string) {
     return korb.filter(k => k.artikel.id === artikelId).reduce((s, k) => s + k.menge, 0)
   }
+
+  // Wischen links/rechts wechselt den Reiter (zusätzlich zu den Tasten); Reihenfolge wie in der Leiste
+  const reiterIds = [...(favoritenAktiv ? [FAVORITEN_KAT] : []), ...kategorien.map(k => k.id)]
+  const swipe = useSwipe((richtung) => {
+    const ziel = nachbarReiter(reiterIds, aktivKat, richtung)
+    if (ziel) setAktivKat(ziel)
+  })
+  // Der gewählte Reiter bleibt in der scrollbaren Leiste sichtbar (auch wenn er per Wisch gewechselt wurde)
+  useEffect(() => {
+    document.querySelector('[data-reiter-aktiv="true"]')?.scrollIntoView?.({ inline: 'nearest', block: 'nearest', behavior: 'smooth' })
+  }, [aktivKat])
 
   // ---------------------------------------------------------------------------
   // Modifikator-Mengen-Helfer
@@ -534,7 +546,7 @@ export function ArtikelWaehlenPage() {
 
         {/* Gang-Wähler: neu gebuchte Artikel erben den aktiven Gang (0 = Sofort) */}
         {gaenge && (
-          <div className="mt-3 flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+          <div className="mt-3 flex gap-1.5 overflow-x-auto pb-1 scrollbar-none" data-swipe-aus>
             {[0, ...Array.from({ length: anzahl }, (_, i) => i + 1)].map(g => (
               <button
                 key={g}
@@ -552,9 +564,10 @@ export function ArtikelWaehlenPage() {
         )}
 
         {kategorien.length > 0 && (
-          <div className="mt-3 flex gap-1 overflow-x-auto pb-1 scrollbar-none">
+          <div className="mt-3 flex gap-1 overflow-x-auto pb-1 scrollbar-none" data-swipe-aus>
             {favoritenAktiv && (
               <button
+                data-reiter-aktiv={aktivKat === FAVORITEN_KAT}
                 onClick={() => setAktivKat(FAVORITEN_KAT)}
                 className={`px-4 py-1.5 rounded-xl text-sm font-bold whitespace-nowrap transition shrink-0 ${
                   aktivKat === FAVORITEN_KAT
@@ -568,6 +581,7 @@ export function ArtikelWaehlenPage() {
             {kategorien.map(k => (
               <button
                 key={k.id}
+                data-reiter-aktiv={aktivKat === k.id}
                 onClick={() => setAktivKat(k.id)}
                 className={`px-4 py-1.5 rounded-xl text-sm font-bold whitespace-nowrap transition shrink-0 ${
                   aktivKat === k.id
@@ -585,7 +599,7 @@ export function ArtikelWaehlenPage() {
       {/* Artikel — kompakte Kacheln (Spaltenzahl = gemeinsame Kassen-Einstellung
           „Artikel je Zeile"): Antippen bucht +1, das kleine − nimmt wieder raus.
           Name groß, Preis klein. */}
-      <div className="flex-1 p-3 pb-36">
+      <div className="flex-1 p-3 pb-36" data-testid="artikel-bereich" {...swipe}>
         {isLoading && (
           <div className="flex justify-center py-12">
             <div className="w-8 h-8 border-4 border-brand-500 border-t-transparent rounded-full animate-spin" />
