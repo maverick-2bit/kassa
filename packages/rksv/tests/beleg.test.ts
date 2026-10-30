@@ -17,6 +17,7 @@ import {
   signiereBeleg,
   erstelleStartbeleg,
   berechneBetraege,
+  rundeCent,
   verifiziereBelegSignatur,
   verifiziereQrCode,
   qrCodeZuJwsCompact,
@@ -67,6 +68,26 @@ describe('berechneBetraege', () => {
     expect(betraege.ermaessigt2).toBe(0)
     expect(betraege.null).toBe(0)
     expect(betraege.besonders).toBe(0)
+  })
+
+  it('halbe Cent runden von Null weg: ein Storno ist exakt das Negativ des Originals', () => {
+    // Regression (RKSV-Burn-in): 1,5 kg zu 3,33 € = 4,995 € → Original 5,00 €; der Storno rechnete −4,99 €
+    // (Math.round rundet −499,5 zu −499) und ließ sich nicht buchen.
+    for (const [menge, preis] of [[1.5, 333], [0.5, 333], [2.5, 333], [4.5, 333], [0.25, 22], [10.5, 77], [3.5, 1]] as const) {
+      const original = berechneBetraege([{ bezeichnung: 'Ware', menge, einzelpreisBreutto:  preis, mwstSatz: 'normal' }])
+      const storno   = berechneBetraege([{ bezeichnung: 'Ware', menge, einzelpreisBreutto: -preis, mwstSatz: 'normal' }])
+      expect(storno.normal, `${menge} × ${preis}`).toBe(-original.normal)
+    }
+    expect(berechneBetraege([{ bezeichnung: 'x', menge: 1.5, einzelpreisBreutto: 333, mwstSatz: 'normal' }]).normal).toBe(500)
+  })
+
+  it('rundeCent: ganze Werte unverändert, halbe von Null weg, sonst zur nächsten Zahl', () => {
+    expect(rundeCent(0)).toBe(0)
+    expect(rundeCent(166.5)).toBe(167)
+    expect(rundeCent(-166.5)).toBe(-167)
+    expect(rundeCent(166.49)).toBe(166)
+    expect(rundeCent(-166.49)).toBe(-166)
+    expect(rundeCent(-0.4)).toBe(0)
   })
 })
 

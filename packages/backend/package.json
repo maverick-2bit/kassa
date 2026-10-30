@@ -1,6 +1,6 @@
 {
   "name": "@kassa/backend",
-  "version": "0.8.72",
+  "version": "0.8.73",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
@@ -12,6 +12,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:burnin": "vitest run --config vitest.burnin.config.ts",
     "check:migrations": "node scripts/check-migrations.mjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
