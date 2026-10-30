@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, sql } from 'drizzle-orm'
 import {
   ersteVertragsperiode,
-  letzteVertragsperiode,
+  letzterVertragsmonat,
   positionFaellig,
   rechnungsBlockEnde,
   vertragsPerioden,
@@ -41,6 +41,13 @@ export const MAX_NACHHOL_MONATE = 12
 type VertragRow = typeof wartungsvertraege.$inferSelect
 type PosRow     = typeof wartungsvertragPositionen.$inferSelect
 
+/** Laufzeit aus der Häufigkeit (Anzahl × Rechnungsintervall); null = unbefristet */
+function laufzeitVon(row: VertragRow): { anzahl: number; intervall: WartungsIntervall } | null {
+  return row.anzahlAbrechnungen != null
+    ? { anzahl: row.anzahlAbrechnungen, intervall: row.rechnungsIntervall as WartungsIntervall }
+    : null
+}
+
 // ---------------------------------------------------------------------------
 // DTO
 // ---------------------------------------------------------------------------
@@ -62,6 +69,8 @@ async function zuDto(db: Db, row: VertragRow): Promise<WartungsvertragResponse> 
   let kunde: KundeSnapshot | undefined
   try { kunde = await ladeKundeSnapshot(db, row.kundeId, row.mandantId) } catch { /* Kunde gelöscht → ohne Snapshot */ }
 
+  const letzteAbrechnung = letzterVertragsmonat(row.beginn, row.ende, laufzeitVon(row))
+
   return {
     id:                  row.id,
     nummer:              row.nummer,
@@ -72,6 +81,8 @@ async function zuDto(db: Db, row: VertragRow): Promise<WartungsvertragResponse> 
     beginn:              row.beginn,
     ...(row.ende  && { ende:  row.ende }),
     rechnungsIntervall:  row.rechnungsIntervall as WartungsIntervall,
+    ...(row.anzahlAbrechnungen != null && { anzahlAbrechnungen: row.anzahlAbrechnungen }),
+    ...(letzteAbrechnung && { letzteAbrechnung }),
     status:              row.status as WartungsvertragStatus,
     ...(row.notiz && { notiz: row.notiz }),
     positionen: positionen.map((p: PosRow) => ({
@@ -81,7 +92,7 @@ async function zuDto(db: Db, row: VertragRow): Promise<WartungsvertragResponse> 
       menge:              p.menge,
       einzelpreisBreutto: p.einzelpreisBruttoCent,
       mwstSatz:           p.mwstSatz as WartungsvertragResponse['positionen'][number]['mwstSatz'],
-      intervall:          p.intervall as WartungsIntervall,
+      ...(p.intervall && { intervall: p.intervall as WartungsIntervall }),
       ...(p.ankerMonat != null && { ankerMonat: p.ankerMonat }),
     })),
     ...(letzte && { letztePeriode: letzte }),
@@ -135,7 +146,7 @@ function posWerte(vertragId: string, positionen: WartungsvertragInput['positione
     menge:                 p.menge,
     einzelpreisBruttoCent: p.einzelpreisBreutto,
     mwstSatz:              p.mwstSatz,
-    intervall:             p.intervall,
+    intervall:             p.intervall ?? null,
     ankerMonat:            p.ankerMonat ?? null,
   }))
 }
@@ -160,6 +171,7 @@ export async function erstelleWartungsvertrag(
       beginn:             input.beginn,
       ende:               input.ende ?? null,
       rechnungsIntervall: input.rechnungsIntervall,
+      anzahlAbrechnungen: input.anzahlAbrechnungen ?? null,
       status:             input.status,
       notiz:              input.notiz ?? null,
     }).returning({ id: wartungsvertraege.id })
@@ -194,6 +206,7 @@ export async function aktualisiereWartungsvertrag(
       ...(input.beginn             !== undefined && { beginn:             input.beginn }),
       ...(input.ende               !== undefined && { ende:               input.ende }),
       ...(input.rechnungsIntervall !== undefined && { rechnungsIntervall: input.rechnungsIntervall }),
+      ...(input.anzahlAbrechnungen !== undefined && { anzahlAbrechnungen: input.anzahlAbrechnungen }),
       ...(input.status             !== undefined && { status:             input.status }),
       ...(input.notiz              !== undefined && { notiz:              input.notiz }),
       updatedAt: new Date(),
@@ -221,7 +234,7 @@ function periodeText(periode: string): string {
 function faelligePositionen(v: WartungsvertragResponse, periode: string): AngebotPosition[] {
   const erste = ersteVertragsperiode(v.beginn)
   return v.positionen
-    .filter(p => positionFaellig(p, periode, erste))
+    .filter(p => positionFaellig({ ...p, intervall: p.intervall ?? v.rechnungsIntervall }, periode, erste))
     .map(p => ({
       bezeichnung:        `${p.bezeichnung} (${periodeText(periode)})`.slice(0, 200),
       menge:              p.menge,
@@ -263,7 +276,7 @@ export async function fuehreWartungslaufDurch(
           .map(l => l.periode),
       )
 
-      const perioden = vertragsPerioden(v.beginn, v.ende, aktuellePeriode)
+      const perioden = vertragsPerioden(v.beginn, v.ende, aktuellePeriode, laufzeitVon(row))
         .filter(p => p >= fruehestens && !vorhanden.has(p))
 
       for (const periode of perioden) {
@@ -358,7 +371,7 @@ export async function ermittleFaelligeRechnungen(
     if (offene.length === 0) continue
 
     const erste   = ersteVertragsperiode(row.beginn)
-    const endeMon = row.ende ? letzteVertragsperiode(row.ende) : undefined
+    const endeMon = letzterVertragsmonat(row.beginn, row.ende, laufzeitVon(row))
     const faellig = offene.filter(l => {
       const blockEnde = rechnungsBlockEnde(row.rechnungsIntervall as WartungsIntervall, l.periode!, erste)
       return blockEnde <= aktuellePeriode || (endeMon !== undefined && endeMon <= aktuellePeriode)

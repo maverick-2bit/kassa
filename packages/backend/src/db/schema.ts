@@ -460,6 +460,8 @@ export const wartungsvertraege = pgTable('wartungsvertraege', {
 
   /** Sammelrechnung: monatlich | quartal | halbjahr | jahr */
   rechnungsIntervall: varchar('rechnungs_intervall', { length: 12 }).notNull().default('monatlich'),
+  /** Häufigkeit: Anzahl Abrechnungen im Rechnungsintervall (monatlich × 12 = 1 Jahr); null = unbefristet */
+  anzahlAbrechnungen: integer('anzahl_abrechnungen'),
   status:             varchar('status', { length: 12 }).notNull().default('aktiv'),
   notiz:              text('notiz'),
 
@@ -482,8 +484,8 @@ export const wartungsvertragPositionen = pgTable('wartungsvertrag_positionen', {
   einzelpreisBruttoCent: integer('einzelpreis_brutto_cent').notNull(),
   mwstSatz:           varchar('mwst_satz', { length: 20 }).notNull(),
 
-  /** Eigenes Abrechnungsintervall je Position (z. B. Zertifikat jährlich) */
-  intervall:  varchar('intervall', { length: 12 }).notNull().default('monatlich'),
+  /** Abweichendes Intervall je Position (z. B. Zertifikat jährlich); null = wie das Rechnungsintervall des Vertrags */
+  intervall:  varchar('intervall', { length: 12 }),
   /** Fälligkeitsmonat 1–12; null = Monat des Vertragsbeginns */
   ankerMonat: integer('anker_monat'),
 }, (t) => ({

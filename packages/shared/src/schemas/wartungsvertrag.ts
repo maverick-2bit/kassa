@@ -60,10 +60,35 @@ export function letzteVertragsperiode(ende: string): string {
   return ende.slice(0, 7)
 }
 
+/** Laufzeit über die Häufigkeit: `anzahl` Abrechnungen im Rechnungsintervall (z. B. monatlich × 12 = 1 Jahr). */
+export interface Laufzeit { anzahl: number; intervall: WartungsIntervall }
+
+/**
+ * Letzter abzurechnender Monat des Vertrags — das frühere von Vertragsende und Häufigkeit
+ * (Anzahl × Intervall ab der ersten Periode); `undefined` = unbefristet.
+ */
+export function letzterVertragsmonat(
+  beginn:  string,
+  ende:    string | null | undefined,
+  laufzeit?: Laufzeit | null,
+): string | undefined {
+  const kandidaten: string[] = []
+  if (ende) kandidaten.push(letzteVertragsperiode(ende))
+  if (laufzeit && laufzeit.anzahl >= 1) {
+    kandidaten.push(addMonate(ersteVertragsperiode(beginn), laufzeit.anzahl * WARTUNGS_INTERVALL_MONATE[laufzeit.intervall] - 1))
+  }
+  return kandidaten.sort()[0]
+}
+
 /** Alle Perioden von der ersten bis `bisPeriode` — begrenzt durch die letzte Vertragsperiode. */
-export function vertragsPerioden(beginn: string, ende: string | null | undefined, bisPeriode: string): string[] {
+export function vertragsPerioden(
+  beginn: string,
+  ende: string | null | undefined,
+  bisPeriode: string,
+  laufzeit?: Laufzeit | null,
+): string[] {
   const erste = ersteVertragsperiode(beginn)
-  const endePeriode = ende ? letzteVertragsperiode(ende) : undefined
+  const endePeriode = letzterVertragsmonat(beginn, ende, laufzeit)
   const letzte = endePeriode && endePeriode < bisPeriode ? endePeriode : bisPeriode
   const ergebnis: string[] = []
   for (let i = monatsIndex(erste); i <= monatsIndex(letzte); i++) ergebnis.push(periodeVonIndex(i))
@@ -124,7 +149,8 @@ export const WartungsPositionInputSchema = z.object({
   menge:              z.number().int().min(1).max(9999).default(1),
   einzelpreisBreutto: z.number().int(),
   mwstSatz:           MwStSatzSchema,
-  intervall:          WartungsIntervallSchema.default('monatlich'),
+  /** Abweichendes Intervall dieser Position; leer = wie das Rechnungsintervall des Vertrags */
+  intervall:          WartungsIntervallSchema.optional(),
   /** Monat des Jahres (1–12), in dem die Position fällig wird; leer = Monat des Vertragsbeginns */
   ankerMonat:         z.number().int().min(1).max(12).optional(),
 })
@@ -133,7 +159,6 @@ export type WartungsPositionInput = z.infer<typeof WartungsPositionInputSchema>
 export const WartungsPositionResponseSchema = WartungsPositionInputSchema.extend({
   id:         z.string().guid(),
   menge:      z.number().int(),
-  intervall:  WartungsIntervallSchema,
 })
 export type WartungsPositionResponse = z.infer<typeof WartungsPositionResponseSchema>
 
@@ -150,6 +175,8 @@ export const WartungsvertragInputSchema = z.object({
   beginn:             Datum,
   ende:               Datum.optional(),
   rechnungsIntervall: WartungsIntervallSchema.default('monatlich'),
+  /** Häufigkeit: Anzahl Abrechnungen im Rechnungsintervall (monatlich × 12 = 1 Jahr); leer = unbefristet */
+  anzahlAbrechnungen: z.number().int().min(1).max(600).optional(),
   status:             WartungsvertragStatusSchema.default('aktiv'),
   notiz:              z.string().trim().max(2000).optional(),
   positionen:         z.array(WartungsPositionInputSchema).min(1, 'Mindestens eine Position erforderlich').max(100),
@@ -163,6 +190,8 @@ export const WartungsvertragUpdateSchema = z.object({
   /** null = unbefristet */
   ende:               Datum.nullable().optional(),
   rechnungsIntervall: WartungsIntervallSchema.optional(),
+  /** null = unbefristet */
+  anzahlAbrechnungen: z.number().int().min(1).max(600).nullable().optional(),
   status:             WartungsvertragStatusSchema.optional(),
   notiz:              z.string().trim().max(2000).nullable().optional(),
   positionen:         z.array(WartungsPositionInputSchema).min(1).max(100).optional(),
@@ -179,6 +208,9 @@ export const WartungsvertragResponseSchema = z.object({
   beginn:             Datum,
   ende:               Datum.optional(),
   rechnungsIntervall: WartungsIntervallSchema,
+  anzahlAbrechnungen: z.number().int().optional(),
+  /** Letzter abzurechnender Monat (aus Ende bzw. Häufigkeit), "YYYY-MM"; fehlt bei unbefristet */
+  letzteAbrechnung:   z.string().optional(),
   status:             WartungsvertragStatusSchema,
   notiz:              z.string().optional(),
   positionen:         z.array(WartungsPositionResponseSchema),

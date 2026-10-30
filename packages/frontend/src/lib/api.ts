@@ -16,6 +16,12 @@ import type {
   LiferscheinResponse,
   LiferscheinStatus,
   LiferscheinUpdate,
+  WartungsvertragInput,
+  WartungsvertragResponse,
+  WartungsvertragStatus,
+  WartungsvertragUpdate,
+  WartungslaufResponse,
+  WartungRechnungFaellig,
   SammelrechnungInput,
   GutscheinInput,
   GutscheinResponse,
@@ -1257,6 +1263,28 @@ export const sammelrechnungApi = {
       { kasseId, ...(druckerId ? { druckerId } : {}) }),
   email: (id: string, empfaenger: string): Promise<{ erfolgreich: boolean }> =>
     request<{ erfolgreich: boolean }>('POST', `/api/sammelrechnungen/${id}/email`, { empfaenger }),
+}
+
+export const wartungsvertragApi = {
+  list: (opts: { kundeId?: string; status?: WartungsvertragStatus } = {}): Promise<WartungsvertragResponse[]> => {
+    const p = new URLSearchParams()
+    if (opts.kundeId) p.set('kundeId', opts.kundeId)
+    if (opts.status)  p.set('status',  opts.status)
+    return request<WartungsvertragResponse[]>('GET', `/api/wartungsvertraege?${p.toString()}`)
+  },
+  get: (id: string): Promise<WartungsvertragResponse> =>
+    request<WartungsvertragResponse>('GET', `/api/wartungsvertraege/${id}`),
+  create: (input: WartungsvertragInput): Promise<WartungsvertragResponse> =>
+    request<WartungsvertragResponse>('POST', '/api/wartungsvertraege', input),
+  update: (id: string, input: WartungsvertragUpdate): Promise<WartungsvertragResponse> =>
+    request<WartungsvertragResponse>('PATCH', `/api/wartungsvertraege/${id}`, input),
+  /** Monatslauf: Vorschau (nichts wird angelegt) oder echt */
+  lauf: (vorschau: boolean): Promise<WartungslaufResponse> =>
+    request<WartungslaufResponse>('POST', '/api/wartungsvertraege/lauf', { vorschau }),
+  faelligeRechnungen: (): Promise<WartungRechnungFaellig[]> =>
+    request<WartungRechnungFaellig[]>('GET', '/api/wartungsvertraege/faellige-rechnungen'),
+  abrechnen: (id: string): Promise<SammelrechnungResponse> =>
+    request<SammelrechnungResponse>('POST', `/api/wartungsvertraege/${id}/abrechnen`),
 }
 
 export const gutscheinApi = {

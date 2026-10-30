@@ -748,6 +748,7 @@ export {
   addMonate,
   ersteVertragsperiode,
   letzteVertragsperiode,
+  letzterVertragsmonat,
   vertragsPerioden,
   positionFaellig,
   rechnungFaellig,
@@ -765,6 +766,7 @@ export {
 export type {
   WartungsIntervall,
   WartungsvertragStatus,
+  Laufzeit as WartungsLaufzeit,
   WartungsPositionInput,
   WartungsPositionResponse,
   WartungsvertragInput,

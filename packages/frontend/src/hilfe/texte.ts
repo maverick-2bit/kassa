@@ -161,6 +161,24 @@ export const HILFE_THEMEN: HilfeThema[] = [
     ],
   },
   {
+    id: 'wartungsvertraege',
+    titel: 'Wartungsverträge',
+    zweck: 'Wiederkehrende Leistungen je Kunde (z. B. Kassa-Miete, Support, Zertifikat) automatisch als Lieferschein erfassen und gesammelt verrechnen.',
+    pfade: ['/wartungsvertraege'],
+    stichworte: ['wartung', 'vertrag', 'abo', 'monatlich', 'intervall', 'sammelrechnung', 'lieferschein'],
+    schritte: [
+      '„Neuer Vertrag": Kunde, Beginn und das Abrechnungsintervall wählen (monatlich, vierteljährlich, halbjährlich oder jährlich). Mit der Häufigkeit legst du die Laufzeit fest, z. B. monatlich × 12 = 1 Jahr; leer bedeutet unbefristet.',
+      'Positionen hinzufügen: Artikel wählen oder frei eintippen. Standard ist „Wie Vertrag"; bei einzelnen Artikeln kannst du ein abweichendes Intervall einstellen — z. B. das RKSV-Zertifikat läuft ein Jahr und wird nur 1× jährlich im gewählten Monat verrechnet.',
+      'Zum Monatswechsel erzeugt die Kassa automatisch je Vertrag einen Wartungslieferschein mit den Positionen, die in diesem Monat fällig sind. „Monatslauf" zeigt vorab, was erzeugt würde, und startet ihn auch von Hand.',
+      'Reiter „Zur Verrechnung": Hier stehen die Verträge, deren Rechnungsblock abgeschlossen ist. „Sammelrechnung erstellen" fasst die offenen Wartungslieferscheine zu einer Rechnung zusammen.',
+    ],
+    tipps: [
+      'Der Startmonat wird nie verrechnet — die erste Abrechnung ist der Monat nach dem Beginn. Der Endmonat wird immer verrechnet, auch wenn er nur angefangen ist.',
+      'Ein beendeter Vertrag erzeugt keine neuen Lieferscheine; offene können weiter verrechnet werden.',
+      'Der Beginn lässt sich nur ändern, solange noch kein Lieferschein erzeugt wurde.',
+    ],
+  },
+  {
     id: 'lieferungen',
     titel: 'Lieferungen',
     zweck: 'Eingehende Bestellungen von Lieferando, Mergeport und eigenen Quellen.',
