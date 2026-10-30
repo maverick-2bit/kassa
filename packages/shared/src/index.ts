@@ -748,7 +748,6 @@ export {
   addMonate,
   ersteVertragsperiode,
   letzteVertragsperiode,
-  ersterMonatFaktor,
   vertragsPerioden,
   positionFaellig,
   rechnungFaellig,

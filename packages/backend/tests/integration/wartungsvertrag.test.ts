@@ -112,17 +112,17 @@ describe('Wartungsverträge: Monatslauf + Sammelabrechnung (Integration)', () =>
 
     const lauf = await fuehreWartungslaufDurch(idb.db, { jetzt: am('2026-10-30'), mandantId })
     const erzeugt = lauf.eintraege.filter(e => e.vertragId === v.id)
-    expect(erzeugt.map(e => e.periode)).toEqual(['2026-08', '2026-09', '2026-10'])
-    // Aug/Sep nur Support (2 × 10,00 €); Okt zusätzlich das jährliche Zertifikat
-    expect(erzeugt.map(e => e.betragCent)).toEqual([2000, 2000, 7000])
-    expect(erzeugt.map(e => e.positionen)).toEqual([1, 1, 2])
+    // Der Startmonat (August) zählt nicht; Sep nur Support (2 × 10,00 €), Okt zusätzlich das jährliche Zertifikat
+    expect(erzeugt.map(e => e.periode)).toEqual(['2026-09', '2026-10'])
+    expect(erzeugt.map(e => e.betragCent)).toEqual([2000, 7000])
+    expect(erzeugt.map(e => e.positionen)).toEqual([1, 2])
     expect(erzeugt.every(e => e.lieferscheinNummer !== undefined)).toBe(true)
 
     const wiederholt = await fuehreWartungslaufDurch(idb.db, { jetzt: am('2026-10-30'), mandantId })
     expect(wiederholt.eintraege.filter(e => e.vertragId === v.id)).toHaveLength(0)
 
     const ls = await idb.db.select().from(lieferscheine).where(eq(lieferscheine.wartungsvertragId, v.id))
-    expect(ls).toHaveLength(3)
+    expect(ls).toHaveLength(2)
     expect(ls.every(l => l.angebotId === null && l.kasseId === kasseId)).toBe(true)
 
     // Monatswechsel: November erzeugt genau einen weiteren Lieferschein (ohne Zertifikat)
@@ -139,47 +139,24 @@ describe('Wartungsverträge: Monatslauf + Sammelabrechnung (Integration)', () =>
     expect(wartung[0]!.angebotId).toBeUndefined()
   })
 
-  it('Stichtag 15.: Beginn und Ende mitten im Monat; beendete Verträge erzeugen nichts mehr', async () => {
+  it('Startmonat zählt nie, Endmonat immer; beendete Verträge erzeugen nichts mehr', async () => {
     const pos = [{ bezeichnung: 'Y', einzelpreisBreutto: 100, mwstSatz: 'normal' }]
-    const beendet   = await legeVertragAn({ bezeichnung: 'Beendet', beginn: '2026-09-01', status: 'beendet', positionen: pos })
-    const bis30     = await legeVertragAn({ bezeichnung: 'Ende 30.', beginn: '2026-09-01', ende: '2026-09-30', positionen: pos })
-    const bis14     = await legeVertragAn({ bezeichnung: 'Ende 14.', beginn: '2026-09-01', ende: '2026-10-14', positionen: pos })
-    const ab15      = await legeVertragAn({ bezeichnung: 'Ab 15.',   beginn: '2026-09-15', positionen: pos })
-    const ab16      = await legeVertragAn({ bezeichnung: 'Ab 16.',   beginn: '2026-09-16', positionen: pos })
+    const beendet = await legeVertragAn({ bezeichnung: 'Beendet', beginn: '2026-09-01', status: 'beendet', positionen: pos })
+    const ende30  = await legeVertragAn({ bezeichnung: 'Ende 30.', beginn: '2026-09-01', ende: '2026-09-30', positionen: pos })
+    const ende14  = await legeVertragAn({ bezeichnung: 'Ende 14.', beginn: '2026-09-01', ende: '2026-10-14', positionen: pos })
+    const ab01    = await legeVertragAn({ bezeichnung: 'Ab 1.',    beginn: '2026-09-01', positionen: pos })
+    const ab16    = await legeVertragAn({ bezeichnung: 'Ab 16.',   beginn: '2026-09-16', positionen: pos })
+    const ab30    = await legeVertragAn({ bezeichnung: 'Ab 30.',   beginn: '2026-09-30', positionen: pos })
 
     const lauf = await fuehreWartungslaufDurch(idb.db, { jetzt: am('2026-11-15'), mandantId })
     const perioden = (id: string) => lauf.eintraege.filter(e => e.vertragId === id).map(e => e.periode)
     expect(perioden(beendet.id)).toEqual([])
-    expect(perioden(bis30.id)).toEqual(['2026-09'])
-    expect(perioden(bis14.id)).toEqual(['2026-09'])
-    expect(perioden(ab15.id)).toEqual(['2026-09', '2026-10', '2026-11'])
-    expect(perioden(ab16.id)).toEqual(['2026-09', '2026-10', '2026-11'])
-
-    // Ab dem 16. nur 50 % im ersten Monat, danach voll; bis zum 15. von Anfang an voll
-    const betraege = (id: string) => lauf.eintraege.filter(e => e.vertragId === id).map(e => e.betragCent)
-    expect(betraege(ab15.id)).toEqual([100, 100, 100])
-    expect(betraege(ab16.id)).toEqual([50, 100, 100])
+    expect(perioden(ende30.id)).toEqual([])                    // Start im Sep, Ende im Sep: kein Monat dazwischen
+    expect(perioden(ende14.id)).toEqual(['2026-10'])           // angefangener Endmonat wird verrechnet
+    // Egal an welchem Tag begonnen wurde: erste Rechnungsperiode ist der Folgemonat, immer voller Preis
+    for (const v of [ab01, ab16, ab30]) expect(perioden(v.id)).toEqual(['2026-10', '2026-11'])
+    expect(lauf.eintraege.filter(e => e.vertragId === ab16.id).map(e => e.betragCent)).toEqual([100, 100])
   })
-
-  it('50 % im ersten Monat gelten nur für monatliche Positionen; ungerade Cent werden gerundet', async () => {
-    const v = await legeVertragAn({
-      bezeichnung: 'Halbmonat', beginn: '2026-10-20',
-      positionen: [
-        { bezeichnung: 'Support', menge: 3, einzelpreisBreutto: 1001, mwstSatz: 'normal' },
-        { bezeichnung: 'Zertifikat', einzelpreisBreutto: 6000, mwstSatz: 'normal', intervall: 'jahr', ankerMonat: 10 },
-      ],
-    })
-    await fuehreWartungslaufDurch(idb.db, { jetzt: am('2026-11-02'), mandantId })
-    const ls = await idb.db.select().from(lieferscheine).where(eq(lieferscheine.wartungsvertragId, v.id))
-    const okt = ls.find(l => l.periode === '2026-10')!
-    const pos = okt.positionen as Array<{ bezeichnung: string; menge: number; einzelpreisBreutto: number }>
-    expect(pos[0]).toMatchObject({ menge: 3, einzelpreisBreutto: 501 })          // 1001 / 2 → 501 (aufgerundet)
-    expect(pos[0]!.bezeichnung).toContain('anteilig 50 %')
-    expect(pos[1]).toMatchObject({ einzelpreisBreutto: 6000 })                    // Zertifikat voll
-    const nov = ls.find(l => l.periode === '2026-11')!
-    expect((nov.positionen as Array<{ einzelpreisBreutto: number }>)[0]!.einzelpreisBreutto).toBe(1001)
-  })
-
   it('Nachholen ist auf 12 Monate begrenzt', async () => {
     const alt = await legeVertragAn({
       bezeichnung: 'Alt', beginn: '2020-01-01',
@@ -194,17 +171,17 @@ describe('Wartungsverträge: Monatslauf + Sammelabrechnung (Integration)', () =>
 
   it('Sammelabrechnung: quartalsweise wird erst mit dem letzten Monat des Blocks fällig', async () => {
     const q = await legeVertragAn({
-      bezeichnung: 'Quartal', beginn: '2027-01-01', rechnungsIntervall: 'quartal',
+      bezeichnung: 'Quartal', beginn: '2027-01-15', rechnungsIntervall: 'quartal',
       positionen: [{ bezeichnung: 'Q', einzelpreisBreutto: 3000, mwstSatz: 'normal' }],
     })
 
     // Die Route nutzt die echte Uhr; den Zeitpunkt prüfen wir deshalb am Service direkt.
-    await fuehreWartungslaufDurch(idb.db, { jetzt: am('2027-02-10'), mandantId })
-    expect((await ermittleFaelligeRechnungen(idb.db, mandantId, am('2027-02-10'), q.id))).toHaveLength(0)
+    await fuehreWartungslaufDurch(idb.db, { jetzt: am('2027-03-10'), mandantId })
+    expect((await ermittleFaelligeRechnungen(idb.db, mandantId, am('2027-03-10'), q.id))).toHaveLength(0)
 
-    await fuehreWartungslaufDurch(idb.db, { jetzt: am('2027-03-01'), mandantId })
-    const [f] = await ermittleFaelligeRechnungen(idb.db, mandantId, am('2027-03-01'), q.id)
-    expect(f?.perioden).toEqual(['2027-01', '2027-02', '2027-03'])
+    await fuehreWartungslaufDurch(idb.db, { jetzt: am('2027-04-01'), mandantId })
+    const [f] = await ermittleFaelligeRechnungen(idb.db, mandantId, am('2027-04-01'), q.id)
+    expect(f?.perioden).toEqual(['2027-02', '2027-03', '2027-04'])
     expect(f?.betragCent).toBe(9000)
 
     const route = await srv.fastify.inject({ method: 'GET', url: '/api/wartungsvertraege/faellige-rechnungen', headers: auth() })
@@ -239,7 +216,7 @@ describe('Wartungsverträge: Monatslauf + Sammelabrechnung (Integration)', () =>
 
   it('Beginn lässt sich nach erzeugten Lieferscheinen nicht mehr ändern; Positionen schon', async () => {
     const v = await legeVertragAn({
-      bezeichnung: 'Ändern', beginn: '2026-10-01',
+      bezeichnung: 'Ändern', beginn: '2026-09-01',
       positionen: [{ bezeichnung: 'A', einzelpreisBreutto: 100, mwstSatz: 'normal' }],
     })
     await fuehreWartungslaufDurch(idb.db, { jetzt: am('2026-10-02'), mandantId })

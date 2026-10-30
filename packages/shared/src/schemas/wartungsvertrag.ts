@@ -50,23 +50,14 @@ export function addMonate(periode: string, n: number): string {
   return periodeVonIndex(monatsIndex(periode) + n)
 }
 
-/** Erste abzurechnende Periode: immer der Monat des Vertragsbeginns. */
+/** Erste abzurechnende Periode: der Monat nach dem Beginn — der Startmonat zählt nie, egal an welchem Tag. */
 export function ersteVertragsperiode(beginn: string): string {
-  return beginn.slice(0, 7)
+  return addMonate(beginn.slice(0, 7), 1)
 }
 
-/**
- * Anteil der monatlichen Positionen im ersten Monat: Beginn bis zum 15. = voller Monat,
- * ab dem 16. = 50 %.
- */
-export function ersterMonatFaktor(beginn: string): 1 | 0.5 {
-  return Number(beginn.slice(8, 10)) >= 16 ? 0.5 : 1
-}
-
-/** Letzte abzurechnende Periode: Endet der Vertrag vor dem 15., zählt der Monat nicht mehr. */
+/** Letzte abzurechnende Periode: der Endmonat zählt immer, auch wenn er nur angefangen ist. */
 export function letzteVertragsperiode(ende: string): string {
-  const monat = ende.slice(0, 7)
-  return Number(ende.slice(8, 10)) >= 15 ? monat : addMonate(monat, -1)
+  return ende.slice(0, 7)
 }
 
 /** Alle Perioden von der ersten bis `bisPeriode` — begrenzt durch die letzte Vertragsperiode. */

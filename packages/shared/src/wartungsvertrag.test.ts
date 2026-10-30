@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import {
   addMonate,
   ersteVertragsperiode,
-  ersterMonatFaktor,
   letzteVertragsperiode,
   positionFaellig,
   rechnungFaellig,
@@ -18,28 +17,25 @@ describe('Wartungsvertrag: Perioden', () => {
     expect(addMonate('2026-05', 24)).toBe('2028-05')
   })
 
-  it('erste Periode ist immer der Beginn-Monat; ab dem 16. nur 50 % im ersten Monat', () => {
-    expect(ersteVertragsperiode('2026-03-01')).toBe('2026-03')
-    expect(ersteVertragsperiode('2026-03-16')).toBe('2026-03')
-    expect(ersteVertragsperiode('2026-12-20')).toBe('2026-12')
-    expect(ersterMonatFaktor('2026-03-01')).toBe(1)
-    expect(ersterMonatFaktor('2026-03-15')).toBe(1)
-    expect(ersterMonatFaktor('2026-03-16')).toBe(0.5)
-    expect(ersterMonatFaktor('2026-03-31')).toBe(0.5)
+  it('Startmonat zählt nie: erste Periode ist der Folgemonat, egal an welchem Tag', () => {
+    expect(ersteVertragsperiode('2026-03-01')).toBe('2026-04')
+    expect(ersteVertragsperiode('2026-03-16')).toBe('2026-04')
+    expect(ersteVertragsperiode('2026-03-31')).toBe('2026-04')
+    expect(ersteVertragsperiode('2026-12-20')).toBe('2027-01')
   })
 
-  it('Stichtag 15.: Ende ab dem 15. verrechnet den Monat noch, davor nicht mehr', () => {
+  it('Endmonat zählt immer, auch wenn er nur angefangen ist', () => {
     expect(letzteVertragsperiode('2026-09-30')).toBe('2026-09')
-    expect(letzteVertragsperiode('2026-09-15')).toBe('2026-09')
-    expect(letzteVertragsperiode('2026-09-14')).toBe('2026-08')
-    expect(letzteVertragsperiode('2027-01-05')).toBe('2026-12')
+    expect(letzteVertragsperiode('2026-09-14')).toBe('2026-09')
+    expect(letzteVertragsperiode('2026-09-01')).toBe('2026-09')
   })
 
   it('vertragsPerioden endet am aktuellen Monat bzw. Vertragsende', () => {
-    expect(vertragsPerioden('2026-08-01', undefined, '2026-10')).toEqual(['2026-08', '2026-09', '2026-10'])
-    expect(vertragsPerioden('2026-08-01', '2026-09-15', '2026-12')).toEqual(['2026-08', '2026-09'])
-    expect(vertragsPerioden('2026-08-01', '2026-09-14', '2026-12')).toEqual(['2026-08'])
-    expect(vertragsPerioden('2026-11-01', undefined, '2026-10')).toEqual([])
+    expect(vertragsPerioden('2026-08-01', undefined, '2026-10')).toEqual(['2026-09', '2026-10'])
+    expect(vertragsPerioden('2026-08-01', '2026-09-15', '2026-12')).toEqual(['2026-09'])
+    expect(vertragsPerioden('2026-08-31', '2026-09-01', '2026-12')).toEqual(['2026-09'])
+    expect(vertragsPerioden('2026-10-05', undefined, '2026-10')).toEqual([])
+    expect(vertragsPerioden('2026-08-01', '2026-08-20', '2026-12')).toEqual([])
   })
 })
 
