@@ -48,8 +48,13 @@ export const LiferscheinResponseSchema = z.object({
   nummer:        z.number().int(),
   datum:         z.string(),
   status:        LiferscheinStatusSchema,
-  angebotId:     z.string().guid(),
-  angebotNummer: z.number().int(),
+  /** Bei Wartungslieferscheinen fehlt der Angebotsbezug — dafür gibt es den Vertragsbezug */
+  angebotId:     z.string().guid().optional(),
+  angebotNummer: z.number().int().optional(),
+  wartungsvertragId:     z.string().guid().optional(),
+  wartungsvertragNummer: z.number().int().optional(),
+  /** Abrechnungsmonat eines Wartungslieferscheins ("YYYY-MM") */
+  periode:       z.string().optional(),
   positionen:    z.array(AngebotPositionSchema),
   notiz:         z.string().optional(),
   kunde:         KundeSnapshotSchema.optional(),

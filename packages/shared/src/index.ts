@@ -736,6 +736,45 @@ export type {
   SammelrechnungResponse,
 } from './schemas/lieferschein.js'
 
+// Wartungsverträge
+export {
+  WartungsIntervallSchema,
+  WARTUNGS_INTERVALL_LABELS,
+  WARTUNGS_INTERVALL_MONATE,
+  WartungsvertragStatusSchema,
+  WARTUNGSVERTRAG_STATUS_LABELS,
+  monatsIndex,
+  periodeVonIndex,
+  addMonate,
+  ersteVertragsperiode,
+  vertragsPerioden,
+  positionFaellig,
+  rechnungFaellig,
+  rechnungsBlockEnde,
+  WartungsPositionInputSchema,
+  WartungsPositionResponseSchema,
+  WartungsvertragInputSchema,
+  WartungsvertragUpdateSchema,
+  WartungsvertragResponseSchema,
+  WartungslaufInputSchema,
+  WartungslaufEintragSchema,
+  WartungslaufResponseSchema,
+  WartungRechnungFaelligSchema,
+} from './schemas/wartungsvertrag.js'
+export type {
+  WartungsIntervall,
+  WartungsvertragStatus,
+  WartungsPositionInput,
+  WartungsPositionResponse,
+  WartungsvertragInput,
+  WartungsvertragUpdate,
+  WartungsvertragResponse,
+  WartungslaufInput,
+  WartungslaufEintrag,
+  WartungslaufResponse,
+  WartungRechnungFaellig,
+} from './schemas/wartungsvertrag.js'
+
 // Gutscheine
 export {
   GutscheinStatusSchema,

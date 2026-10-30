@@ -405,7 +405,11 @@ export const lieferscheine = pgTable('lieferscheine', {
   id:        uuid('id').primaryKey().defaultRandom(),
   mandantId: uuid('mandant_id').notNull().references(() => mandanten.id),
   kasseId:   uuid('kasse_id').notNull().references(() => kassen.id),
-  angebotId: uuid('angebot_id').notNull().references(() => angebote.id),
+  /** Fehlt bei Wartungslieferscheinen (die hängen am Vertrag) */
+  angebotId: uuid('angebot_id').references(() => angebote.id),
+  wartungsvertragId: uuid('wartungsvertrag_id').references((): AnyPgColumn => wartungsvertraege.id),
+  /** Abrechnungsmonat eines Wartungslieferscheins (YYYY-MM) */
+  periode: varchar('periode', { length: 7 }),
 
   /** Laufende Lieferscheinnummer pro Mandant */
   nummer: integer('nummer').notNull(),
@@ -427,10 +431,67 @@ export const lieferscheine = pgTable('lieferscheine', {
   nummerIdx: uniqueIndex('lieferscheine_mandant_nummer_idx').on(t.mandantId, t.nummer),
   kundeIdx:  index('lieferscheine_kunde_idx').on(t.mandantId, t.kundeId),
   statusIdx: index('lieferscheine_status_idx').on(t.mandantId, t.status),
+  // Pro Vertrag und Monat höchstens ein Wartungslieferschein → der Monatslauf ist wiederholbar
+  periodeIdx: uniqueIndex('lieferscheine_vertrag_periode_idx').on(t.wartungsvertragId, t.periode)
+    .where(sql`${t.wartungsvertragId} IS NOT NULL`),
 }))
 
 export type Lieferschein    = typeof lieferscheine.$inferSelect
 export type NewLiferschein  = typeof lieferscheine.$inferInsert
+
+// ---------------------------------------------------------------------------
+// Wartungsverträge — wiederkehrende Leistungen je Kunde; zum Monatswechsel entsteht
+// daraus ein Wartungslieferschein, später die Sammelrechnung. Nicht RKSV-relevant.
+// ---------------------------------------------------------------------------
+
+export const wartungsvertraege = pgTable('wartungsvertraege', {
+  id:        uuid('id').primaryKey().defaultRandom(),
+  mandantId: uuid('mandant_id').notNull().references(() => mandanten.id),
+  kasseId:   uuid('kasse_id').notNull().references(() => kassen.id),
+  kundeId:   uuid('kunde_id').notNull().references(() => kunden.id),
+
+  /** Laufende Vertragsnummer pro Mandant */
+  nummer:      integer('nummer').notNull(),
+  bezeichnung: varchar('bezeichnung', { length: 200 }).notNull(),
+
+  /** Vertragsbeginn / -ende (YYYY-MM-DD); ende = null → unbefristet */
+  beginn: varchar('beginn', { length: 10 }).notNull(),
+  ende:   varchar('ende',   { length: 10 }),
+
+  /** Sammelrechnung: monatlich | quartal | halbjahr | jahr */
+  rechnungsIntervall: varchar('rechnungs_intervall', { length: 12 }).notNull().default('monatlich'),
+  status:             varchar('status', { length: 12 }).notNull().default('aktiv'),
+  notiz:              text('notiz'),
+
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  nummerIdx: uniqueIndex('wartungsvertraege_mandant_nummer_idx').on(t.mandantId, t.nummer),
+  kundeIdx:  index('wartungsvertraege_kunde_idx').on(t.mandantId, t.kundeId),
+  statusIdx: index('wartungsvertraege_status_idx').on(t.status),
+}))
+
+export const wartungsvertragPositionen = pgTable('wartungsvertrag_positionen', {
+  id:         uuid('id').primaryKey().defaultRandom(),
+  vertragId:  uuid('vertrag_id').notNull().references(() => wartungsvertraege.id, { onDelete: 'cascade' }),
+  reihenfolge: integer('reihenfolge').notNull().default(0),
+
+  artikelId:          uuid('artikel_id'),
+  bezeichnung:        varchar('bezeichnung', { length: 200 }).notNull(),
+  menge:              integer('menge').notNull().default(1),
+  einzelpreisBruttoCent: integer('einzelpreis_brutto_cent').notNull(),
+  mwstSatz:           varchar('mwst_satz', { length: 20 }).notNull(),
+
+  /** Eigenes Abrechnungsintervall je Position (z. B. Zertifikat jährlich) */
+  intervall:  varchar('intervall', { length: 12 }).notNull().default('monatlich'),
+  /** Fälligkeitsmonat 1–12; null = Monat des Vertragsbeginns */
+  ankerMonat: integer('anker_monat'),
+}, (t) => ({
+  vertragIdx: index('wartungsvertrag_positionen_vertrag_idx').on(t.vertragId),
+}))
+
+export type Wartungsvertrag    = typeof wartungsvertraege.$inferSelect
+export type WartungsvertragPos = typeof wartungsvertragPositionen.$inferSelect
 
 // ---------------------------------------------------------------------------
 // Sammelrechnungen — fasst mehrere Lieferscheine zu einer Rechnung zusammen
