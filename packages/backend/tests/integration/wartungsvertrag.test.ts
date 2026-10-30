@@ -153,7 +153,31 @@ describe('Wartungsverträge: Monatslauf + Sammelabrechnung (Integration)', () =>
     expect(perioden(bis30.id)).toEqual(['2026-09'])
     expect(perioden(bis14.id)).toEqual(['2026-09'])
     expect(perioden(ab15.id)).toEqual(['2026-09', '2026-10', '2026-11'])
-    expect(perioden(ab16.id)).toEqual(['2026-10', '2026-11'])
+    expect(perioden(ab16.id)).toEqual(['2026-09', '2026-10', '2026-11'])
+
+    // Ab dem 16. nur 50 % im ersten Monat, danach voll; bis zum 15. von Anfang an voll
+    const betraege = (id: string) => lauf.eintraege.filter(e => e.vertragId === id).map(e => e.betragCent)
+    expect(betraege(ab15.id)).toEqual([100, 100, 100])
+    expect(betraege(ab16.id)).toEqual([50, 100, 100])
+  })
+
+  it('50 % im ersten Monat gelten nur für monatliche Positionen; ungerade Cent werden gerundet', async () => {
+    const v = await legeVertragAn({
+      bezeichnung: 'Halbmonat', beginn: '2026-10-20',
+      positionen: [
+        { bezeichnung: 'Support', menge: 3, einzelpreisBreutto: 1001, mwstSatz: 'normal' },
+        { bezeichnung: 'Zertifikat', einzelpreisBreutto: 6000, mwstSatz: 'normal', intervall: 'jahr', ankerMonat: 10 },
+      ],
+    })
+    await fuehreWartungslaufDurch(idb.db, { jetzt: am('2026-11-02'), mandantId })
+    const ls = await idb.db.select().from(lieferscheine).where(eq(lieferscheine.wartungsvertragId, v.id))
+    const okt = ls.find(l => l.periode === '2026-10')!
+    const pos = okt.positionen as Array<{ bezeichnung: string; menge: number; einzelpreisBreutto: number }>
+    expect(pos[0]).toMatchObject({ menge: 3, einzelpreisBreutto: 501 })          // 1001 / 2 → 501 (aufgerundet)
+    expect(pos[0]!.bezeichnung).toContain('anteilig 50 %')
+    expect(pos[1]).toMatchObject({ einzelpreisBreutto: 6000 })                    // Zertifikat voll
+    const nov = ls.find(l => l.periode === '2026-11')!
+    expect((nov.positionen as Array<{ einzelpreisBreutto: number }>)[0]!.einzelpreisBreutto).toBe(1001)
   })
 
   it('Nachholen ist auf 12 Monate begrenzt', async () => {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   addMonate,
   ersteVertragsperiode,
+  ersterMonatFaktor,
   letzteVertragsperiode,
   positionFaellig,
   rechnungFaellig,
@@ -17,11 +18,14 @@ describe('Wartungsvertrag: Perioden', () => {
     expect(addMonate('2026-05', 24)).toBe('2028-05')
   })
 
-  it('Stichtag 15.: Beginn bis 15. zählt für den Monat, ab 16. erst für den Folgemonat', () => {
+  it('erste Periode ist immer der Beginn-Monat; ab dem 16. nur 50 % im ersten Monat', () => {
     expect(ersteVertragsperiode('2026-03-01')).toBe('2026-03')
-    expect(ersteVertragsperiode('2026-03-15')).toBe('2026-03')
-    expect(ersteVertragsperiode('2026-03-16')).toBe('2026-04')
-    expect(ersteVertragsperiode('2026-12-20')).toBe('2027-01')
+    expect(ersteVertragsperiode('2026-03-16')).toBe('2026-03')
+    expect(ersteVertragsperiode('2026-12-20')).toBe('2026-12')
+    expect(ersterMonatFaktor('2026-03-01')).toBe(1)
+    expect(ersterMonatFaktor('2026-03-15')).toBe(1)
+    expect(ersterMonatFaktor('2026-03-16')).toBe(0.5)
+    expect(ersterMonatFaktor('2026-03-31')).toBe(0.5)
   })
 
   it('Stichtag 15.: Ende ab dem 15. verrechnet den Monat noch, davor nicht mehr', () => {

@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, sql } from 'drizzle-orm'
 import {
   ersteVertragsperiode,
+  ersterMonatFaktor,
   letzteVertragsperiode,
   positionFaellig,
   rechnungsBlockEnde,
