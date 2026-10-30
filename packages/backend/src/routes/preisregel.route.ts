@@ -23,7 +23,7 @@ export interface PreisregelRouteOptions {
   db: Db
 }
 
-const IdParamSchema = z.object({ id: z.string().uuid() })
+const IdParamSchema = z.object({ id: z.string().guid() })
 
 async function gehoertZuMandant(db: Db, id: string, mandantId: string): Promise<boolean> {
   const [row] = await db

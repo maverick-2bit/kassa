@@ -34,9 +34,9 @@ export interface ModifikatorRouteOptions {
   db: Db
 }
 
-const IdParam        = z.object({ id: z.string().uuid() })
-const GruppeIdParam  = z.object({ gruppeId: z.string().uuid() })
-const ArtikelIdParam = z.object({ artikelId: z.string().uuid() })
+const IdParam        = z.object({ id: z.string().guid() })
+const GruppeIdParam  = z.object({ gruppeId: z.string().guid() })
+const ArtikelIdParam = z.object({ artikelId: z.string().guid() })
 
 export const modifikatorRoute: FastifyPluginAsync<ModifikatorRouteOptions> = async (fastify, opts) => {
   const auth = { onRequest: [fastify.authenticate] }
@@ -211,7 +211,7 @@ export const modifikatorRoute: FastifyPluginAsync<ModifikatorRouteOptions> = asy
 
   // Entscheidung zurücknehmen: die Variante gilt wieder als offen
   fastify.delete('/artikel/:artikelId/varianten-erledigt/:modifikatorId', auth, async (request, reply) => {
-    const params = ArtikelIdParam.merge(z.object({ modifikatorId: z.string().uuid() })).safeParse(request.params)
+    const params = ArtikelIdParam.merge(z.object({ modifikatorId: z.string().guid() })).safeParse(request.params)
     if (!params.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
     try {
       await nimmVarianteZurueck(params.data.artikelId, params.data.modifikatorId, request.user.mandantId, db)

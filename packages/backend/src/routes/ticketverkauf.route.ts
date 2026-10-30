@@ -43,9 +43,9 @@ export interface TicketverkaufRouteOptions {
   stripe?:   ShopStripe
 }
 
-const IdParam          = z.object({ id: z.string().uuid() })
-const EventParam       = z.object({ eventId: z.string().uuid() })
-const VeranstalterParam = z.object({ mandantId: z.string().uuid() })
+const IdParam          = z.object({ id: z.string().guid() })
+const EventParam       = z.object({ eventId: z.string().guid() })
+const VeranstalterParam = z.object({ mandantId: z.string().guid() })
 
 /**
  * Limit je Gast (Client-IP + App-nginx, siehe auth/rate-limit.ts), nicht je

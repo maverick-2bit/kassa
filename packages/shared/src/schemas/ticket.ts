@@ -274,7 +274,7 @@ export type TicketArtUpdate = z.infer<typeof TicketArtUpdateSchema>
 export const TicketAusstellenInputSchema = z.object({
   typ:          TicketTypSchema,
   /** Einzelticket: Pflicht. Mehrfachticket: optional (Preis/MwSt 0). */
-  ticketArtId:  z.string().uuid().nullable().optional(),
+  ticketArtId:  z.string().guid().nullable().optional(),
   /** Mehrfachticket: Pflicht — steht groß auf Ticket und am Einlass */
   rolle:        z.string().trim().min(1).max(60).optional(),
   anzahl:       z.number().int().min(1).max(200),

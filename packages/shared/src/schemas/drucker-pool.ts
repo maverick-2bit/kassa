@@ -7,8 +7,8 @@ import { z } from 'zod'
 // ---------------------------------------------------------------------------
 
 export const DruckerPoolSchema = z.object({
-  id:         z.string().uuid(),
-  mandantId:  z.string().uuid(),
+  id:         z.string().guid(),
+  mandantId:  z.string().guid(),
   name:       z.string(),
   ip:         z.string(),
   port:       z.number().int(),

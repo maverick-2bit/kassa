@@ -43,7 +43,7 @@ function pruefeEindeutig(
  * gezählt NACH den Untergruppen-Kacheln) oder an dieser Kasse ausgeblendet (position null).
  */
 export const KasseArtikelLayoutEintragSchema = z.object({
-  artikelId:    z.string().uuid(),
+  artikelId:    z.string().guid(),
   position:     z.number().int().min(1).max(KASSEN_LAYOUT_MAX_POSITION).nullable(),
   ausgeblendet: z.boolean(),
 }).superRefine((e, ctx) => {
@@ -58,7 +58,7 @@ export type KasseArtikelLayoutEintrag = z.infer<typeof KasseArtikelLayoutEintrag
 
 /** Anordnung einer Warengruppe an einer Kasse (ein Element der Antwort von GET /kassen/:kasseId/artikel-layouts). */
 export const KasseArtikelLayoutSchema = z.object({
-  kategorieId: z.string().uuid(),
+  kategorieId: z.string().guid(),
   eintraege:   z.array(KasseArtikelLayoutEintragSchema),
 })
 export type KasseArtikelLayout = z.infer<typeof KasseArtikelLayoutSchema>
@@ -74,7 +74,7 @@ export type KasseArtikelLayoutUpdate = z.infer<typeof KasseArtikelLayoutUpdateSc
 
 /** Ein Artikel im Standard-Layout: Slot (artikel.raster_position) oder null = hinten anhängen. */
 export const StandardRasterEintragSchema = z.object({
-  artikelId: z.string().uuid(),
+  artikelId: z.string().guid(),
   position:  z.number().int().min(1).max(STANDARD_RASTER_MAX_POSITION).nullable(),
 })
 export type StandardRasterEintrag = z.infer<typeof StandardRasterEintragSchema>

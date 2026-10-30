@@ -31,7 +31,7 @@ import { TicketError, holeEinlassStand, ladeBaender, ladeEvent } from '../servic
 
 export interface EinlassRouteOptions { db: Db }
 
-const EventParam = z.object({ eventId: z.string().uuid() })
+const EventParam = z.object({ eventId: z.string().guid() })
 const SeitQuery  = z.object({ seit: z.string().datetime({ offset: true }).optional() })
 
 /**

@@ -25,8 +25,8 @@ import {
 
 export interface ZvtRouteOptions { deps: ZvtServiceDeps }
 
-const IdParamSchema    = z.object({ id:    z.string().uuid() })
-const JobIdParamSchema = z.object({ jobId: z.string().uuid() })
+const IdParamSchema    = z.object({ id:    z.string().guid() })
+const JobIdParamSchema = z.object({ jobId: z.string().guid() })
 
 export const zvtRoute: FastifyPluginAsync<ZvtRouteOptions> = async (fastify, opts) => {
   const auth = { onRequest: [fastify.authenticate] }

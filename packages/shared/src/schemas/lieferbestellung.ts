@@ -48,8 +48,8 @@ export type LieferbestellungPosition = z.infer<typeof LieferbestellungPositionSc
 // ---------------------------------------------------------------------------
 
 export const LieferbestellungResponseSchema = z.object({
-  id:               z.string().uuid(),
-  kasseId:          z.string().uuid(),
+  id:               z.string().guid(),
+  kasseId:          z.string().guid(),
   externeId:        z.string(),
   provider:         z.string(),
   status:           LieferbestellungStatusSchema,

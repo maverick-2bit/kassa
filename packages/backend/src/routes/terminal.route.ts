@@ -28,8 +28,8 @@ import { onAbholungEvent } from '../sse/abholung-event-bus.js'
 
 export interface TerminalRouteOptions { deps: SbServiceDeps }
 
-const KasseQuery = z.object({ kasseId: z.string().uuid() })
-const IdParam    = z.object({ id: z.string().uuid() })
+const KasseQuery = z.object({ kasseId: z.string().guid() })
+const IdParam    = z.object({ id: z.string().guid() })
 
 function fehlerAntwort(reply: { status: (code: number) => { send: (body: unknown) => unknown } }, err: unknown): unknown {
   if (err instanceof SbBestellungError) return reply.status(err.httpStatus).send({ fehler: err.message })
@@ -108,7 +108,7 @@ export async function registerTerminalRoutes(fastify: FastifyInstance, opts: Ter
     },
     async (request, reply) => {
       const { kasseId } = request.query
-      if (!kasseId || !z.string().uuid().safeParse(kasseId).success) {
+      if (!kasseId || !z.string().guid().safeParse(kasseId).success) {
         return reply.status(400).send({ fehler: 'kasseId fehlt oder ungültig' })
       }
 

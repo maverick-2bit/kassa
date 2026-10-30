@@ -11,8 +11,8 @@ export const DIENSTPLAN_STATUS_LABELS: Record<DienstplanStatus, string> = {
 }
 
 export const DienstplanSchichtInputSchema = z.object({
-  kasseId:       z.string().uuid(),
-  userId:        z.string().uuid(),
+  kasseId:       z.string().guid(),
+  userId:        z.string().guid(),
   datum:         z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   beginnGeplant: z.string().regex(/^\d{2}:\d{2}$/),
   endeGeplant:   z.string().regex(/^\d{2}:\d{2}$/),
@@ -27,10 +27,10 @@ export const DienstplanSchichtUpdateSchema = DienstplanSchichtInputSchema.partia
 export type DienstplanSchichtUpdate = z.infer<typeof DienstplanSchichtUpdateSchema>
 
 export const DienstplanSchichtResponseSchema = z.object({
-  id:            z.string().uuid(),
-  mandantId:     z.string().uuid(),
-  kasseId:       z.string().uuid(),
-  userId:        z.string().uuid(),
+  id:            z.string().guid(),
+  mandantId:     z.string().guid(),
+  kasseId:       z.string().guid(),
+  userId:        z.string().guid(),
   userName:      z.string(),
   datum:         z.string(),
   beginnGeplant: z.string(),

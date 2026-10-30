@@ -34,16 +34,16 @@ import { pruefeKasseGehoertZuMandant } from '../auth/scope.js'
 export interface LieferbestellungRouteOptions { db: Db }
 
 const ListQuerySchema = z.object({
-  kasseId: z.string().uuid(),
+  kasseId: z.string().guid(),
   limit:   z.coerce.number().int().min(1).max(500).optional(),
   nurNeu:  z.enum(['true', 'false']).optional(),
 })
 
-const IdParam = z.object({ id: z.string().uuid() })
+const IdParam = z.object({ id: z.string().guid() })
 
 const WebhookParams = z.object({
   provider: z.enum(['lieferando', 'mergeport', 'custom']),
-  kasseId:  z.string().uuid(),
+  kasseId:  z.string().guid(),
 })
 
 const WebhookQuery = z.object({
@@ -94,7 +94,7 @@ export const lieferbestellungRoute: FastifyPluginAsync<LieferbestellungRouteOpti
   fastify.post('/lieferbestellungen/:id/drucken', guard, async (request, reply) => {
     const p = IdParam.safeParse(request.params)
     if (!p.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
-    const body = z.object({ druckerId: z.string().uuid().optional() }).safeParse(request.body ?? {})
+    const body = z.object({ druckerId: z.string().guid().optional() }).safeParse(request.body ?? {})
     if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
 
     try {
@@ -111,7 +111,7 @@ export const lieferbestellungRoute: FastifyPluginAsync<LieferbestellungRouteOpti
   // ---- GET /kassen/:kasseId/webhook-url ----
   // Gibt die Webhook-URLs + Secret für die Einstellungsseite zurück
   fastify.get('/kassen/:kasseId/webhook-url', guard, async (request, reply) => {
-    const p = z.object({ kasseId: z.string().uuid() }).safeParse(request.params)
+    const p = z.object({ kasseId: z.string().guid() }).safeParse(request.params)
     if (!p.success) return reply.status(400).send({ fehler: 'Ungültige Kassen-ID' })
 
     const [kasse] = await opts.db

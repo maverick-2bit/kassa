@@ -85,8 +85,8 @@ export type EinrichtungsSchrittDto = z.infer<typeof EinrichtungsSchrittSchema>
 
 export const SetupResponseSchema = z.object({
   erfolgreich: z.boolean(),
-  mandantId:   z.string().uuid().optional(),
-  kasseId:     z.string().uuid().optional(),
+  mandantId:   z.string().guid().optional(),
+  kasseId:     z.string().guid().optional(),
   startbelegNummer: z.number().int().optional(),
   startbelegMaschinenlesbareCode: z.string().optional(),
   pruefwert:   z.string().optional(),
@@ -128,7 +128,7 @@ export type WeitereKasseInput = z.infer<typeof WeitereKasseInputSchema>
 
 export const WeitereKasseResponseSchema = z.object({
   erfolgreich:      z.boolean(),
-  kasseId:          z.string().uuid().optional(),
+  kasseId:          z.string().guid().optional(),
   startbelegNummer: z.number().int().optional(),
   schritte:         z.array(EinrichtungsSchrittSchema),
   fehler:           z.string().optional(),
@@ -137,7 +137,7 @@ export type WeitereKasseResponse = z.infer<typeof WeitereKasseResponseSchema>
 
 /** Ein Eintrag der Kassen-Liste (Verwaltung/Umschalter). */
 export const KasseListeItemSchema = z.object({
-  id:               z.string().uuid(),
+  id:               z.string().guid(),
   kassenId:         z.string(),
   bezeichnung:      z.string().nullable(),
   status:           z.string(),

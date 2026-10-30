@@ -164,7 +164,7 @@ export const authRoute: FastifyPluginAsync<AuthRouteOptions> = async (fastify, o
   // Öffentlich: wie viele Ziffern das PIN-Feld braucht (4 oder 6). Verrät nur
   // die Einstellung des Betriebs, nichts über einzelne PINs.
   fastify.get('/auth/pin-info', async (request, reply) => {
-    const q = z.object({ kasseId: z.string().uuid() }).safeParse(request.query)
+    const q = z.object({ kasseId: z.string().guid() }).safeParse(request.query)
     if (!q.success) return reply.status(400).send({ fehler: 'kasseId fehlt oder ist ungültig' })
     const [row] = await opts.db
       .select({ pinLaenge: mandanten.pinLaenge })

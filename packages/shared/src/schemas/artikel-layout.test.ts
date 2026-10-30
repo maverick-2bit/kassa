@@ -13,7 +13,7 @@ const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')
 const platziert = (n: number, position: number) => ({ artikelId: id(n), position, ausgeblendet: false })
 const versteckt = (n: number) => ({ artikelId: id(n), position: null, ausgeblendet: true })
 
-const meldungen = (r: { success: boolean; error?: { issues: { path: (string | number)[]; message: string }[] } }) =>
+const meldungen = (r: { success: boolean; error?: { issues: { path: PropertyKey[]; message: string }[] } }) =>
   (r.error?.issues ?? []).map(i => `${i.path.join('.')}: ${i.message}`)
 
 describe('KasseArtikelLayoutEintragSchema', () => {

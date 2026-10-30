@@ -15,8 +15,8 @@ export const WerbefolieUpdateSchema = WerbefolieInputSchema.partial()
 export type WerbefolieUpdate = z.infer<typeof WerbefolieUpdateSchema>
 
 export const WerbefolieResponseSchema = z.object({
-  id:               z.string().uuid(),
-  mandantId:        z.string().uuid(),
+  id:               z.string().guid(),
+  mandantId:        z.string().guid(),
   titel:            z.string(),
   bildBase64:       z.string(),
   mimeType:         z.string(),

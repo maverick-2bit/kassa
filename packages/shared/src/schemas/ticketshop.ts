@@ -20,7 +20,7 @@ export const TICKETSHOP_KAUFHINWEIS_VORSCHLAG =
 
 /** Ein Ticket im Kaufformular — je Gast, denn das Band hängt am Geburtsdatum des Gastes */
 export const ShopTicketEingabeSchema = z.object({
-  ticketArtId:  z.string().uuid(),
+  ticketArtId:  z.string().guid(),
   /** Pflicht, wenn das Event personalisierte Tickets verlangt (prüft der Server) */
   name:         z.string().trim().max(200).optional(),
   geburtsdatum: GeburtsdatumSchema,
@@ -39,14 +39,14 @@ export const ShopRechnungSchema = z.object({
 export type ShopRechnung = z.infer<typeof ShopRechnungSchema>
 
 export const ShopBestellungInputSchema = z.object({
-  eventId: z.string().uuid(),
+  eventId: z.string().guid(),
   kaeufer: z.object({
     name:  z.string().trim().min(1, 'Name erforderlich').max(200),
     email: z.string().trim().email('Ungültige E-Mail-Adresse').max(254),
   }),
   tickets:  z.array(ShopTicketEingabeSchema).min(1, 'Mindestens ein Ticket wählen').max(50),
   rechnung: ShopRechnungSchema.nullable().optional(),
-  agbAkzeptiert: z.literal(true, { errorMap: () => ({ message: 'Bitte den Bedingungen zustimmen' }) }),
+  agbAkzeptiert: z.literal(true, { error: 'Bitte den Bedingungen zustimmen' }),
 })
 export type ShopBestellungInput = z.infer<typeof ShopBestellungInputSchema>
 
@@ -150,7 +150,7 @@ const UrlOderNull = z.string().trim().url('Vollständige Adresse inkl. https://'
 
 export const TicketShopEinstellungenSchema = z.object({
   /** Kasse, auf der die RKSV-Belege der Online-Verkäufe entstehen; null = Verkauf aus */
-  verkaufKasseId: z.string().uuid().nullable(),
+  verkaufKasseId: z.string().guid().nullable(),
   agbUrl:         UrlOderNull,
   datenschutzUrl: UrlOderNull,
   impressumUrl:   UrlOderNull,

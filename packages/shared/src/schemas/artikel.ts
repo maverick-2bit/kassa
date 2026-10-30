@@ -18,7 +18,7 @@ export const AllergeneEingabeSchema = z.string().max(80).nullable().optional().t
     return z.NEVER
   }
   return r.wert
-})
+}).optional()   // zod 4: nach einem transform muss das Feld erneut ausdrücklich optional sein, sonst wird der Schlüssel Pflicht
 
 /** Österreichische MwSt-Sätze gemäß RKSV */
 export const MwStSatzSchema = z.enum(['normal', 'ermaessigt1', 'ermaessigt2', 'null', 'besonders'])
@@ -38,7 +38,7 @@ export const MWST_LABELS: Record<MwStSatz, string> = {
 
 /** Bestandteil in der Response (mit Bezeichnung zur Anzeige). */
 export const ArtikelBestandteilSchema = z.object({
-  bestandteilArtikelId: z.string().uuid(),
+  bestandteilArtikelId: z.string().guid(),
   bezeichnung:          z.string(),
   menge:                z.number().int().positive(),
 })
@@ -46,7 +46,7 @@ export type ArtikelBestandteil = z.infer<typeof ArtikelBestandteilSchema>
 
 /** Bestandteil im Input/Update (ohne Bezeichnung — wird serverseitig aufgelöst). */
 export const ArtikelBestandteilInputSchema = z.object({
-  bestandteilArtikelId: z.string().uuid(),
+  bestandteilArtikelId: z.string().guid(),
   menge:                z.number().int().positive('Menge muss positiv sein'),
 })
 
@@ -55,8 +55,8 @@ export const ArtikelBestandteilInputSchema = z.object({
 // ---------------------------------------------------------------------------
 
 export const ArtikelSchema = z.object({
-  id:                   z.string().uuid(),
-  mandantId:            z.string().uuid(),
+  id:                   z.string().guid(),
+  mandantId:            z.string().guid(),
   bezeichnung:          z.string(),
   preisBruttoCent:      z.number().int(),
   mwstSatz:             MwStSatzSchema,
@@ -66,7 +66,7 @@ export const ArtikelSchema = z.object({
   station:              StationSchema.nullable(),
   /** Eigene Kachel-Farbe; null = Farbe der Warengruppe (Muster wie station) */
   farbe:                KategorieFarbeSchema.nullable(),
-  kategorieId:          z.string().uuid().nullable(),
+  kategorieId:          z.string().guid().nullable(),
   /** Slot (1..n) im Raster der Warengruppe; fehlende Nummern = leere Felder; null = nach reihenfolge anhängen */
   rasterPosition:       z.number().int().positive().nullable(),
   aktiv:                z.boolean(),
@@ -78,7 +78,7 @@ export const ArtikelSchema = z.object({
   istFavorit:           z.boolean(),
   reihenfolge:          z.number().int(),
   favoritenReihenfolge: z.number().int(),
-  bonierdruckerId:      z.string().uuid().nullable(),
+  bonierdruckerId:      z.string().guid().nullable(),
   /** Bonierbon auch beim direkten „Bon erstellen" drucken (sonst nur bei Tischbuchung) */
   bonierBeiDirektverkauf: z.boolean(),
   /** Rohstoff/Bestandteil: nur Lager, nicht direkt verkäuflich */
@@ -87,7 +87,7 @@ export const ArtikelSchema = z.object({
   bestandteile:         z.array(ArtikelBestandteilSchema).default([]),
   /** Abgeleitete Verfügbarkeit aus dem Rezept (min über Bestandteile); null = kein Rezept */
   verfuegbareMenge:     z.number().int().nonnegative().nullable().optional(),
-  lieferantId:          z.string().uuid().nullable(),
+  lieferantId:          z.string().guid().nullable(),
   /** SB-Terminal-Sichtbarkeit: null = erbt von der Kategorie, true/false = Override */
   terminalSichtbar:     z.boolean().nullable(),
   /** Optionen-Abfrage im Direktverkauf: null = wie die Warengruppe, true = immer fragen, false = nie fragen */
@@ -100,7 +100,7 @@ export const ArtikelSchema = z.object({
 export type Artikel = z.infer<typeof ArtikelSchema>
 
 export const ArtikelInputSchema = z.object({
-  mandantId:       z.string().uuid(),
+  mandantId:       z.string().guid(),
   bezeichnung:     z.string().trim().min(1, 'Bezeichnung erforderlich').max(200),
   /** Cent; negativ erlaubt (Pfand-/Retourartikel wie „Becher retour") */
   preisBruttoCent: z.number().int(),
@@ -109,18 +109,18 @@ export const ArtikelInputSchema = z.object({
   allergene:       AllergeneEingabeSchema,
   station:         StationSchema.optional().nullable(),
   farbe:           KategorieFarbeSchema.optional().nullable(),
-  kategorieId:     z.string().uuid().optional().nullable(),
+  kategorieId:     z.string().guid().optional().nullable(),
   rasterPosition:  z.number().int().positive().max(999).optional().nullable(),
   lagerstandAktiv: z.boolean().default(false),
   lagerstandMenge: z.number().int().nonnegative().nullable().default(null),
   mindestbestand:  z.number().int().nonnegative().nullable().default(null),
   seriennummernAktiv: z.boolean().default(false),
   istFavorit:      z.boolean().default(false),
-  bonierdruckerId: z.string().uuid().optional().nullable(),
+  bonierdruckerId: z.string().guid().optional().nullable(),
   bonierBeiDirektverkauf: z.boolean().default(false),
   istBestandteil:  z.boolean().default(false),
   bestandteile:    z.array(ArtikelBestandteilInputSchema).default([]),
-  lieferantId:     z.string().uuid().optional().nullable(),
+  lieferantId:     z.string().guid().optional().nullable(),
   terminalSichtbar: z.boolean().nullable().default(null),
   optionenAbfrage:  z.boolean().nullable().optional(),
   bild:            z.string().nullable().optional(),
@@ -134,7 +134,7 @@ export const ArtikelUpdateSchema = z.object({
   allergene:            AllergeneEingabeSchema,
   station:              StationSchema.optional().nullable(),
   farbe:                KategorieFarbeSchema.optional().nullable(),
-  kategorieId:          z.string().uuid().optional().nullable(),
+  kategorieId:          z.string().guid().optional().nullable(),
   rasterPosition:       z.number().int().positive().max(999).optional().nullable(),
   aktiv:                z.boolean().optional(),
   lagerstandAktiv:      z.boolean().optional(),
@@ -144,11 +144,11 @@ export const ArtikelUpdateSchema = z.object({
   istFavorit:           z.boolean().optional(),
   reihenfolge:          z.number().int().nonnegative().optional(),
   favoritenReihenfolge: z.number().int().nonnegative().optional(),
-  bonierdruckerId:      z.string().uuid().nullable().optional(),
+  bonierdruckerId:      z.string().guid().nullable().optional(),
   bonierBeiDirektverkauf: z.boolean().optional(),
   istBestandteil:       z.boolean().optional(),
   bestandteile:         z.array(ArtikelBestandteilInputSchema).optional(),
-  lieferantId:          z.string().uuid().nullable().optional(),
+  lieferantId:          z.string().guid().nullable().optional(),
   terminalSichtbar:     z.boolean().nullable().optional(),
   optionenAbfrage:      z.boolean().nullable().optional(),
   bild:                 z.string().nullable().optional(),

@@ -11,7 +11,7 @@ import {
 
 export interface LieferantRouteOptions { db: Db }
 
-const IdParam = z.object({ id: z.string().uuid() })
+const IdParam = z.object({ id: z.string().guid() })
 
 export const lieferantRoute: FastifyPluginAsync<LieferantRouteOptions> = async (fastify, opts) => {
   const guard = { onRequest: [fastify.authenticate] }

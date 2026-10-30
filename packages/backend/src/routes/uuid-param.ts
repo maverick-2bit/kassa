@@ -14,7 +14,7 @@
 
 import { z } from 'zod'
 
-const Uuid = z.string().uuid()
+const Uuid = z.string().guid()
 
 export class UngueltigeIdError extends Error {
   readonly httpStatus = 400

@@ -22,14 +22,14 @@ import {
 export interface DienstplanRouteOptions { db: Db }
 
 const ListQuerySchema = z.object({
-  kasseId:  z.string().uuid().optional(),
-  userId:   z.string().uuid().optional(),
+  kasseId:  z.string().guid().optional(),
+  userId:   z.string().guid().optional(),
   datumVon: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   datumBis: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   limit:    z.coerce.number().int().min(1).max(1000).optional(),
 })
 
-const IdParam = z.object({ id: z.string().uuid() })
+const IdParam = z.object({ id: z.string().guid() })
 
 export const dienstplanRoute: FastifyPluginAsync<DienstplanRouteOptions> = async (fastify, opts) => {
   const guard = { onRequest: [fastify.authenticate] }

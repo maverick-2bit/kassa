@@ -140,8 +140,8 @@ export const gutscheinRoute: FastifyPluginAsync<GutscheinRouteOptions> = async (
   // Zieldrucker: Kassen-Bondrucker der angegebenen Kasse (Beleg-Modus zählt hier
   // nicht — Gutschein ≠ Beleg, Muster Tisch-Etiketten) ODER ein Bibliotheks-Drucker.
   const GutscheinDruckSchema = z.object({
-    kasseId:   z.string().uuid(),
-    druckerId: z.string().uuid().optional(),
+    kasseId:   z.string().guid(),
+    druckerId: z.string().guid().optional(),
   })
 
   fastify.post('/gutscheine/:id/drucken', auth, async (request, reply) => {

@@ -5,15 +5,15 @@ import { z } from 'zod'
 // ---------------------------------------------------------------------------
 
 export const BonierdruckerSchema = z.object({
-  id:         z.string().uuid(),
-  mandantId:  z.string().uuid(),
+  id:         z.string().guid(),
+  mandantId:  z.string().guid(),
   name:       z.string(),
   ip:         z.string(),
   port:       z.number().int(),
   /** Zweitdrucker: bekommt zusätzlich eine Kopie jedes Bons (Feldname aus Altgründen) — NICHT der Ersatz bei Ausfall */
   istBackup:  z.boolean(),
   /** Backup-Drucker: UUID des Druckers, der einspringt, wenn dieser nicht erreichbar ist */
-  fallbackId: z.string().uuid().nullable(),
+  fallbackId: z.string().guid().nullable(),
   aktiv:      z.boolean(),
   createdAt:  z.string(),
   updatedAt:  z.string(),
@@ -25,7 +25,7 @@ export const BonierdruckerInputSchema = z.object({
   ip:         z.string().trim().min(1, 'IP-Adresse erforderlich').max(64),
   port:       z.number().int().min(1).max(65535).default(9100),
   istBackup:  z.boolean().default(false),
-  fallbackId: z.string().uuid().nullable().default(null),
+  fallbackId: z.string().guid().nullable().default(null),
 })
 export type BonierdruckerInput = z.infer<typeof BonierdruckerInputSchema>
 
@@ -34,7 +34,7 @@ export const BonierdruckerUpdateSchema = z.object({
   ip:         z.string().trim().min(1).max(64).optional(),
   port:       z.number().int().min(1).max(65535).optional(),
   istBackup:  z.boolean().optional(),
-  fallbackId: z.string().uuid().nullable().optional(),
+  fallbackId: z.string().guid().nullable().optional(),
   aktiv:      z.boolean().optional(),
 })
 export type BonierdruckerUpdate = z.infer<typeof BonierdruckerUpdateSchema>
@@ -85,9 +85,9 @@ export type KellnerModus = z.infer<typeof KellnerModusEnum>
 
 export const PosKonfigSchema = z.object({
   /** IDs der Kategorien, die in dieser Kasse im POS sichtbar sind */
-  sichtbareKategorieIds: z.array(z.string().uuid()),
+  sichtbareKategorieIds: z.array(z.string().guid()),
   /** IDs der Bonierdrucker, die für diese Kasse aktiv sind (leer = alle) */
-  sichtbareBonierdruckerIds: z.array(z.string().uuid()),
+  sichtbareBonierdruckerIds: z.array(z.string().guid()),
   /** Erlaubte Zahlungsarten */
   erlaubteZahlungsarten: z.array(z.enum(['bar', 'karte', 'sonstige'])),
   /** Artikelbilder im Kassen-Raster anzeigen (default: true) */
@@ -105,15 +105,15 @@ export const PosKonfigSchema = z.object({
   /** Artikelwahl (Kasse, Tisch, Kellner-App) öffnet mit den Favoriten */
   startFavoriten:        z.boolean(),
   /** Sonst mit dieser Warengruppe (null = erste sichtbare) */
-  startKategorieId:      z.string().uuid().nullable(),
+  startKategorieId:      z.string().guid().nullable(),
   /** Direktverkauf: Optionen/Varianten abfragen (Warengruppe/Artikel können abweichen; Tische fragen immer) */
   optionenAbfrage:       z.boolean(),
 })
 export type PosKonfig= z.infer<typeof PosKonfigSchema>
 
 export const PosKonfigUpdateSchema = z.object({
-  sichtbareKategorieIds: z.array(z.string().uuid()).optional(),
-  sichtbareBonierdruckerIds: z.array(z.string().uuid()).optional(),
+  sichtbareKategorieIds: z.array(z.string().guid()).optional(),
+  sichtbareBonierdruckerIds: z.array(z.string().guid()).optional(),
   erlaubteZahlungsarten: z.array(z.enum(['bar', 'karte', 'sonstige'])).optional(),
   artikelbilderAktiv:    z.boolean().optional(),
   artikelProZeile:       z.number().int().min(2).max(6).optional(),
@@ -122,7 +122,7 @@ export const PosKonfigUpdateSchema = z.object({
   kellnerTischwahl:      KellnerTischwahlEnum.optional(),
   kellnerFavoritenAktiv: z.boolean().optional(),
   startFavoriten:        z.boolean().optional(),
-  startKategorieId:      z.string().uuid().nullable().optional(),
+  startKategorieId:      z.string().guid().nullable().optional(),
   optionenAbfrage:       z.boolean().optional(),
 })
 export type PosKonfigUpdate = z.infer<typeof PosKonfigUpdateSchema>
@@ -136,21 +136,21 @@ export type PosKonfigUpdate = z.infer<typeof PosKonfigUpdateSchema>
 // ---------------------------------------------------------------------------
 
 export const KasseFavoritEintragSchema = z.object({
-  artikelId: z.string().uuid().nullable(),
+  artikelId: z.string().guid().nullable(),
 })
 export type KasseFavoritEintrag = z.infer<typeof KasseFavoritEintragSchema>
 
 export const KasseFavoritenUpdateSchema = z.object({
   eintraege: z.array(KasseFavoritEintragSchema).max(200),
   /** Dieselbe Liste zusätzlich bei diesen Kassen übernehmen (ersetzt dort deren Favoriten) — atomar mit dem Speichern */
-  uebernehmenFuer: z.array(z.string().uuid()).max(100).optional(),
+  uebernehmenFuer: z.array(z.string().guid()).max(100).optional(),
 })
 export type KasseFavoritenUpdate = z.infer<typeof KasseFavoritenUpdateSchema>
 
 export const ReihenfolgeUpdateSchema = z.object({
   /** Array von { id, reihenfolge } — wird als Bulk-Update angewendet */
   eintraege: z.array(z.object({
-    id:          z.string().uuid(),
+    id:          z.string().guid(),
     reihenfolge: z.number().int().nonnegative(),
   })).min(1),
 })
@@ -158,7 +158,7 @@ export type ReihenfolgeUpdate = z.infer<typeof ReihenfolgeUpdateSchema>
 
 export const FavoritenReihenfolgeUpdateSchema = z.object({
   eintraege: z.array(z.object({
-    id:                   z.string().uuid(),
+    id:                   z.string().guid(),
     favoritenReihenfolge: z.number().int().nonnegative(),
   })).min(1),
 })

@@ -62,7 +62,7 @@ export interface LayoutGruppe {
   untergruppen:  LayoutGruppe[]
 }
 
-export const LayoutGruppeSchema: z.ZodType<LayoutGruppe, z.ZodTypeDef, unknown> = z.lazy(() => z.object({
+export const LayoutGruppeSchema: z.ZodType<LayoutGruppe, unknown> = z.lazy(() => z.object({
   name:          z.string().trim().min(1).max(80),
   pfad:          z.string().optional(),
   farbe:         HexFarbeSchema,

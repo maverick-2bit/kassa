@@ -1,8 +1,8 @@
 import { z } from 'zod'
 
 export const LieferantSchema = z.object({
-  id:        z.string().uuid(),
-  mandantId: z.string().uuid(),
+  id:        z.string().guid(),
+  mandantId: z.string().guid(),
   name:      z.string(),
   kontakt:   z.string().nullable(),
   email:     z.string().nullable(),

@@ -20,8 +20,8 @@ export const OFFENER_POSTEN_STATUS_LABELS: Record<OffenerPostenStatus, string> =
 
 /** Vom Frontend/Backend beim Erstellen eines Offenen Postens */
 export const OffenerPostenInputSchema = z.object({
-  kundeId:    z.string().uuid(),
-  belegId:    z.string().uuid().optional(),
+  kundeId:    z.string().guid(),
+  belegId:    z.string().guid().optional(),
   betragCent: z.number().int().positive(),
   notiz:      z.string().trim().max(2000).optional(),
 })
@@ -36,13 +36,13 @@ export type OffenerPostenZahlung = z.infer<typeof OffenerPostenZahlungSchema>
 
 /** Antwort-DTO */
 export const OffenerPostenResponseSchema = z.object({
-  id:          z.string().uuid(),
+  id:          z.string().guid(),
   nummer:      z.number().int(),
   datum:       z.string(),
   status:      OffenerPostenStatusSchema,
-  kundeId:     z.string().uuid().nullable(),
+  kundeId:     z.string().guid().nullable(),
   kunde:       KundeSnapshotSchema.optional(),
-  belegId:     z.string().uuid().nullable().optional(),
+  belegId:     z.string().guid().nullable().optional(),
   belegNummer: z.number().int().nullable().optional(),
   betragCent:  z.number().int(),
   bezahltCent: z.number().int(),

@@ -19,7 +19,7 @@ import { belegRowZuDto } from '../services/drucker.service.js'
 
 export interface OeffentlicherBelegRouteOptions { db: Db }
 
-const BelegIdParam = z.object({ belegId: z.string().uuid() })
+const BelegIdParam = z.object({ belegId: z.string().guid() })
 
 export const oeffentlicherBelegRoute: FastifyPluginAsync<OeffentlicherBelegRouteOptions> = async (fastify, opts) => {
   // Kein auth-Guard — bewusst öffentlich.

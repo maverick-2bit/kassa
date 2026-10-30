@@ -299,7 +299,7 @@ export const mandantRoute: FastifyPluginAsync<MandantRouteOptions> = async (fast
   })
 
   fastify.delete('/mandanten/tagesbeginn/:id', adminOnly, async (request, reply) => {
-    const p = z.object({ id: z.string().uuid() }).safeParse(request.params)
+    const p = z.object({ id: z.string().guid() }).safeParse(request.params)
     if (!p.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
 
     try {

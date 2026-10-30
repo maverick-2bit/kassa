@@ -44,7 +44,7 @@ export const EINLASS_ERGEBNIS_TITEL: Record<EinlassErgebnisArt, string> = {
 }
 
 export const EinlassScanInputSchema = z.object({
-  eventId: z.string().uuid(),
+  eventId: z.string().guid(),
   /** Roher QR-Inhalt oder eingetippter Code — der Server erkennt den Code selbst */
   inhalt:  z.string().trim().min(1).max(500),
 })
@@ -171,10 +171,10 @@ export interface EinlassOfflineListe {
 
 /** Scans, die ein Gerät ohne Verbindung entschieden hat — kommen gesammelt nach. */
 export const EinlassSyncInputSchema = z.object({
-  eventId: z.string().uuid(),
+  eventId: z.string().guid(),
   scans: z.array(z.object({
     /** Vom Gerät vergeben — macht das Nachreichen wiederholbar (kein doppeltes Einlösen) */
-    scanId:    z.string().uuid(),
+    scanId:    z.string().guid(),
     inhalt:    z.string().trim().min(1).max(500),
     zeitpunkt: z.string().datetime({ offset: true }),
     /** Entscheidung des Geräts ohne Verbindung */

@@ -5,8 +5,8 @@ export const Arbeitszeit_QuelleSchema = z.enum(['pin', 'admin'])
 export type ArbeitszeiteQuelle = z.infer<typeof Arbeitszeit_QuelleSchema>
 
 export const ArbeitszeitInputSchema = z.object({
-  kasseId:       z.string().uuid(),
-  userId:        z.string().uuid(),
+  kasseId:       z.string().guid(),
+  userId:        z.string().guid(),
   beginn:        z.string().datetime(),
   ende:          z.string().datetime().optional(),
   pauseMinuten:  z.number().int().min(0).max(480).optional(),
@@ -23,9 +23,9 @@ export const ArbeitszeitUpdateSchema = z.object({
 export type ArbeitszeitUpdate = z.infer<typeof ArbeitszeitUpdateSchema>
 
 export const ArbeitszeitResponseSchema = z.object({
-  id:            z.string().uuid(),
-  kasseId:       z.string().uuid(),
-  userId:        z.string().uuid(),
+  id:            z.string().guid(),
+  kasseId:       z.string().guid(),
+  userId:        z.string().guid(),
   userName:      z.string(),
   beginn:        z.string(),
   /** Geschäftstag des Schichtbeginns (YYYY-MM-DD) — eine Schicht über Mitternacht gehört zu ihrem Starttag */
@@ -43,7 +43,7 @@ export type ArbeitszeitResponse = z.infer<typeof ArbeitszeitResponseSchema>
 
 // PIN-Stempel-Endpoint
 export const StempelInputSchema = z.object({
-  kasseId: z.string().uuid(),
+  kasseId: z.string().guid(),
   pin:     PinSchema,
   /** Geräte-Merkmal der Kasse (siehe GeraetTokenSchema) — eigener Fehlversuchs-Topf */
   geraetToken: GeraetTokenSchema.optional(),
@@ -52,7 +52,7 @@ export type StempelInput = z.infer<typeof StempelInputSchema>
 
 export const StempelResponseSchema = z.object({
   aktion:   z.enum(['eingestempelt', 'ausgestempelt']),
-  userId:   z.string().uuid(),
+  userId:   z.string().guid(),
   userName: z.string(),
   zeitpunkt: z.string(),
   beginn:   z.string().optional(),

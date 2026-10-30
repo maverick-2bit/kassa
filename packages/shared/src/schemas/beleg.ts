@@ -37,7 +37,7 @@ export type RabattInput = z.infer<typeof RabattInputSchema>
 
 /** Position aus dem Artikelstamm */
 export const ArtikelPositionSchema = z.object({
-  artikelId:              z.string().uuid(),
+  artikelId:              z.string().guid(),
   menge:                  z.number().positive('Menge muss positiv sein'),
   /** Preis-Override (Modifikatoren oder Rabatt; 0 = Artikel gratis; negativ bei Pfand-Rückgabe) */
   einzelpreisBreuttoCent: z.number().int().optional(),
@@ -61,7 +61,7 @@ export const BelegInputPositionSchema = z.union([ArtikelPositionSchema, FreiePos
 export type BelegInputPosition = z.infer<typeof BelegInputPositionSchema>
 
 export const BarzahlungsbelegInputSchema = z.object({
-  kasseId:    z.string().uuid(),
+  kasseId:    z.string().guid(),
   positionen: z.array(BelegInputPositionSchema).min(1, 'Mindestens eine Position erforderlich'),
   zahlung: z.object({
     // Negativ nur bei einem Beleg unter 0 (Retoure, Pfand-Rückgabe) — der Service prüft das Vorzeichen
@@ -71,7 +71,7 @@ export const BarzahlungsbelegInputSchema = z.object({
   }),
   rabatt:     RabattInputSchema.optional(),
   /** Bestehenden Kunden zuordnen */
-  kundeId:    z.string().uuid().optional(),
+  kundeId:    z.string().guid().optional(),
   /** Neuen Kunden anlegen und direkt verknüpfen */
   neuerKunde: KundeInputSchema.optional(),
   /** Auto-Druck unterdrücken (für „Alternativdruck": Ausgabe wird im Dialog gewählt).
@@ -90,8 +90,8 @@ export type BarzahlungsbelegInput = z.infer<typeof BarzahlungsbelegInputSchema>
 // ---------------------------------------------------------------------------
 
 export const StornobelegInputSchema = z.object({
-  kasseId:        z.string().uuid(),
-  verweisBelegId: z.string().uuid(),
+  kasseId:        z.string().guid(),
+  verweisBelegId: z.string().guid(),
   /** Optional: Grund (für interne Dokumentation, nicht im Bon-QR-Code) */
   grund:          z.string().trim().max(200).optional(),
   /**
@@ -107,7 +107,7 @@ export type StornobelegInput = z.infer<typeof StornobelegInputSchema>
 // ---------------------------------------------------------------------------
 
 export const NullbelegInputSchema = z.object({
-  kasseId: z.string().uuid(),
+  kasseId: z.string().guid(),
 })
 export type NullbelegInput = z.infer<typeof NullbelegInputSchema>
 
@@ -116,7 +116,7 @@ export type NullbelegInput = z.infer<typeof NullbelegInputSchema>
 // ---------------------------------------------------------------------------
 
 export const MonatsbelegInputSchema = z.object({
-  kasseId: z.string().uuid(),
+  kasseId: z.string().guid(),
 })
 export type MonatsbelegInput = z.infer<typeof MonatsbelegInputSchema>
 
@@ -125,7 +125,7 @@ export type MonatsbelegInput = z.infer<typeof MonatsbelegInputSchema>
 // ---------------------------------------------------------------------------
 
 export const JahresbelegInputSchema = z.object({
-  kasseId: z.string().uuid(),
+  kasseId: z.string().guid(),
 })
 export type JahresbelegInput = z.infer<typeof JahresbelegInputSchema>
 
@@ -134,7 +134,7 @@ export type JahresbelegInput = z.infer<typeof JahresbelegInputSchema>
 // ---------------------------------------------------------------------------
 
 export const BelegResponseSchema = z.object({
-  id:           z.string().uuid(),
+  id:           z.string().guid(),
   belegNummer:  z.number().int(),
   belegDatum:   z.string(),
   belegTyp:     z.string(),
@@ -155,7 +155,7 @@ export const BelegResponseSchema = z.object({
   positionen: z.array(BelegPositionSchema),
 
   /** Nur bei Stornobeleg: ID des Original-Belegs */
-  verweisBelegId: z.string().uuid().optional(),
+  verweisBelegId: z.string().guid().optional(),
 
   zertifikatSn:                z.string(),
   sigVorbeleg:                 z.string(),

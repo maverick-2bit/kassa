@@ -33,15 +33,15 @@ import { PinLaengeError, sendePinLaengeFehler } from '../services/pin-laenge.js'
 export interface ZeiterfassungRouteOptions { db: Db }
 
 const ListQuerySchema = z.object({
-  kasseId:   z.string().uuid().optional(),
-  userId:    z.string().uuid().optional(),
+  kasseId:   z.string().guid().optional(),
+  userId:    z.string().guid().optional(),
   datumVon:  z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   datumBis:  z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   nurOffen:  z.enum(['true', 'false']).optional(),
   limit:     z.coerce.number().int().min(1).max(1000).optional(),
 })
 
-const IdParam = z.object({ id: z.string().uuid() })
+const IdParam = z.object({ id: z.string().guid() })
 
 export const zeiterfassungRoute: FastifyPluginAsync<ZeiterfassungRouteOptions> = async (fastify, opts) => {
   const guard = { onRequest: [fastify.authenticate] }

@@ -81,14 +81,14 @@ import {
 
 export interface TicketingRouteOptions { db: Db; config: Config; belegDeps: BelegServiceDeps }
 
-const EventParam  = z.object({ eventId:  z.string().uuid() })
-const BestellungParam = z.object({ bestellungId: z.string().uuid() })
-const ArtParam    = z.object({ artId:    z.string().uuid() })
-const TicketParam = z.object({ ticketId: z.string().uuid() })
-const GeraetParam = z.object({ geraetId: z.string().uuid() })
+const EventParam  = z.object({ eventId:  z.string().guid() })
+const BestellungParam = z.object({ bestellungId: z.string().guid() })
+const ArtParam    = z.object({ artId:    z.string().guid() })
+const TicketParam = z.object({ ticketId: z.string().guid() })
+const GeraetParam = z.object({ geraetId: z.string().guid() })
 
 const SendenSchema = z.object({
-  ticketIds: z.array(z.string().uuid()).min(1).max(200),
+  ticketIds: z.array(z.string().guid()).min(1).max(200),
   email:     z.string().trim().email('Ungültige E-Mail-Adresse').max(254),
 })
 
@@ -298,7 +298,7 @@ export const ticketingRoute: FastifyPluginAsync<TicketingRouteOptions> = async (
   fastify.get('/ticketing/tickets/pdf', guard, async (request, reply) => {
     const q = z.object({ ids: z.string().max(200 * 37) }).safeParse(request.query)
     if (!q.success) return reply.status(400).send({ fehler: 'ids fehlt' })
-    const ids = z.array(z.string().uuid()).min(1).max(200).safeParse(q.data.ids.split(',').filter(Boolean))
+    const ids = z.array(z.string().guid()).min(1).max(200).safeParse(q.data.ids.split(',').filter(Boolean))
     if (!ids.success) return reply.status(400).send({ fehler: 'Ungültige Ticket-IDs' })
     const codes = await codesFuerTicketIds(db, request.user.mandantId, ids.data)
     if (codes.length === 0) return reply.status(404).send({ fehler: 'Tickets nicht gefunden' })

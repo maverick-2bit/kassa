@@ -13,14 +13,14 @@ export const SeriennummerStatusSchema = z.enum(['verfuegbar', 'verkauft'])
 export type SeriennummerStatus = z.infer<typeof SeriennummerStatusSchema>
 
 export const SeriennummerSchema = z.object({
-  id:             z.string().uuid(),
-  artikelId:      z.string().uuid(),
+  id:             z.string().guid(),
+  artikelId:      z.string().guid(),
   seriennummer:   z.string(),
   status:         SeriennummerStatusSchema,
   /** Bei Verkauf über eine Rechnung/Beleg */
-  belegId:        z.string().uuid().nullable(),
+  belegId:        z.string().guid().nullable(),
   /** Bei Verkauf über einen Lieferschein */
-  lieferscheinId: z.string().uuid().nullable(),
+  lieferscheinId: z.string().guid().nullable(),
   verkauftAm:     z.string().nullable(),
   createdAt:      z.string(),
 })
@@ -28,7 +28,7 @@ export type Seriennummer = z.infer<typeof SeriennummerSchema>
 
 /** Seriennummern für einen Artikel erfassen (Wareneingang). */
 export const SeriennummernErfassenInputSchema = z.object({
-  artikelId:    z.string().uuid(),
+  artikelId:    z.string().guid(),
   seriennummern: z.array(z.string().trim().min(1).max(100)).min(1).max(1000),
 })
 export type SeriennummernErfassenInput = z.infer<typeof SeriennummernErfassenInputSchema>

@@ -28,8 +28,8 @@ import { EmailVersandError, isEmailAktiv, sendeBelegzweigEmail } from '../servic
 export interface LiferscheinRouteOptions { db: Db; config: Config }
 
 const AusgabeBody = z.object({
-  kasseId:   z.string().uuid(),
-  druckerId: z.string().uuid().optional(),
+  kasseId:   z.string().guid(),
+  druckerId: z.string().guid().optional(),
 })
 const EmailBody = z.object({ empfaenger: z.string().trim().email() })
 

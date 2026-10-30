@@ -13,12 +13,12 @@ export const KASSENBUCH_TYP_LABELS: Record<KassenbuchBuchungTyp, string> = {
 }
 
 export const KassenbuchBuchungSchema = z.object({
-  id:         z.string().uuid(),
-  kasseId:    z.string().uuid(),
+  id:         z.string().guid(),
+  kasseId:    z.string().guid(),
   typ:        KassenbuchBuchungTypSchema,
   betragCent: z.number().int().positive(),
   grund:      z.string().nullable(),
-  userId:     z.string().uuid().nullable(),
+  userId:     z.string().guid().nullable(),
   userName:   z.string().nullable(),
   datum:      z.string(), // YYYY-MM-DD (Buchungstag)
   createdAt:  z.string(),
@@ -26,7 +26,7 @@ export const KassenbuchBuchungSchema = z.object({
 export type KassenbuchBuchung = z.infer<typeof KassenbuchBuchungSchema>
 
 export const KassenbuchBuchungInputSchema = z.object({
-  kasseId:    z.string().uuid(),
+  kasseId:    z.string().guid(),
   typ:        KassenbuchBuchungTypSchema,
   betragCent: z.number().int().min(1, 'Betrag muss mindestens 1 Cent sein'),
   grund:      z.string().trim().max(200).optional().nullable(),
@@ -35,7 +35,7 @@ export const KassenbuchBuchungInputSchema = z.object({
 export type KassenbuchBuchungInput = z.infer<typeof KassenbuchBuchungInputSchema>
 
 export const KassenbuchQuerySchema = z.object({
-  kasseId: z.string().uuid(),
+  kasseId: z.string().guid(),
   von:     z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   bis:     z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 })

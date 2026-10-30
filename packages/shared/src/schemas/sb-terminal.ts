@@ -25,7 +25,7 @@ export const SB_STATUS_LABELS: Record<SbBestellungStatus, string> = {
 
 /** Positions-Snapshot (Preise server-seitig eingefroren) */
 export const SbPositionSchema = z.object({
-  artikelId:       z.string().uuid(),
+  artikelId:       z.string().guid(),
   bezeichnung:     z.string(),
   menge:           z.number().int().positive(),
   preisBruttoCent: z.number().int(),
@@ -33,15 +33,15 @@ export const SbPositionSchema = z.object({
 export type SbPosition = z.infer<typeof SbPositionSchema>
 
 export const SbBestellungSchema = z.object({
-  id:           z.string().uuid(),
-  kasseId:      z.string().uuid(),
+  id:           z.string().guid(),
+  kasseId:      z.string().guid(),
   /** 4-stellig, täglich ab 1 je Mandant (Anzeige mit führenden Nullen) */
   bestellNummer: z.number().int(),
   datum:        z.string(),
   positionen:   z.array(SbPositionSchema),
   summeCent:    z.number().int(),
   status:       SbBestellungStatusSchema,
-  belegId:      z.string().uuid().nullable(),
+  belegId:      z.string().guid().nullable(),
   erstelltAt:   z.string(),
   bereitAt:     z.string().nullable(),
   abgeholtAt:   z.string().nullable(),
@@ -58,10 +58,10 @@ export function formatSbNummer(nummer: number): string {
 // ---------------------------------------------------------------------------
 
 export const TerminalBestellungInputSchema = z.object({
-  kasseId: z.string().uuid(),
+  kasseId: z.string().guid(),
   positionen: z
     .array(z.object({
-      artikelId: z.string().uuid(),
+      artikelId: z.string().guid(),
       menge:     z.number().int().min(1).max(99),
     }))
     .min(1, 'Mindestens eine Position erforderlich')
@@ -74,22 +74,22 @@ export const TerminalBestellungInputSchema = z.object({
 export type TerminalBestellungInput = z.infer<typeof TerminalBestellungInputSchema>
 
 export const TerminalArtikelSchema = z.object({
-  id:              z.string().uuid(),
+  id:              z.string().guid(),
   bezeichnung:     z.string(),
   preisBruttoCent: z.number().int(),
-  kategorieId:     z.string().uuid().nullable(),
+  kategorieId:     z.string().guid().nullable(),
   bild:            z.string().nullable(),
 })
 export type TerminalArtikel = z.infer<typeof TerminalArtikelSchema>
 
 export const TerminalSortimentSchema = z.object({
   kasse: z.object({
-    id:          z.string().uuid(),
+    id:          z.string().guid(),
     bezeichnung: z.string().nullable(),
     firmenname:  z.string(),
   }),
   kategorien: z.array(z.object({
-    id:    z.string().uuid(),
+    id:    z.string().guid(),
     name:  z.string(),
     farbe: z.string(),
   })),
@@ -99,7 +99,7 @@ export type TerminalSortiment = z.infer<typeof TerminalSortimentSchema>
 
 /** Antwort auf POST /terminal/bestellung + GET /terminal/bestellung/:id */
 export const TerminalBestellungStatusSchema = z.object({
-  id:        z.string().uuid(),
+  id:        z.string().guid(),
   status:    SbBestellungStatusSchema,
   summeCent: z.number().int(),
   /** erst nach erfolgreicher Zahlung gesetzt */
@@ -120,7 +120,7 @@ export type TerminalBestellungStatus = z.infer<typeof TerminalBestellungStatusSc
 
 /** Monitor zeigt NUR Nummern + Zeiten — keine Positionen/Beträge (öffentlich!) */
 export const AbholungEintragSchema = z.object({
-  id:            z.string().uuid(),
+  id:            z.string().guid(),
   bestellNummer: z.number().int(),
   status:        z.enum(['offen', 'bereit']),
   erstelltAt:    z.string(),
@@ -133,6 +133,6 @@ export const AbholungEventSchema = z.discriminatedUnion('typ', [
   /** offen→bereit (Spaltenwechsel) oder neue Bestellung */
   z.object({ typ: z.literal('update'), bestellung: AbholungEintragSchema }),
   /** abgeholt/storniert → vom Monitor entfernen */
-  z.object({ typ: z.literal('entfernt'), bestellungId: z.string().uuid() }),
+  z.object({ typ: z.literal('entfernt'), bestellungId: z.string().guid() }),
 ])
 export type AbholungEvent = z.infer<typeof AbholungEventSchema>

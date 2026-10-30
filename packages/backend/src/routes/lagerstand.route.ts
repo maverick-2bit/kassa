@@ -41,8 +41,8 @@ export const lagerstandRoute: FastifyPluginAsync<LagerstandRouteOptions> = async
    */
   fastify.post('/lagerstand/wareneingang-ausgabe', auth, async (request, reply) => {
     const body = z.object({
-      kasseId:    z.string().uuid(),
-      druckerId:  z.string().uuid().optional(),
+      kasseId:    z.string().guid(),
+      druckerId:  z.string().guid().optional(),
       lieferant:  z.string().trim().max(120).optional(),
       positionen: WareneingangPositionen,
     }).safeParse(request.body)

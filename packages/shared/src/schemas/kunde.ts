@@ -56,7 +56,7 @@ export const KundeUpdateSchema = z.object({
 export type KundeUpdate = z.infer<typeof KundeUpdateSchema>
 
 export const KundeSchema = z.object({
-  id:          z.string().uuid(),
+  id:          z.string().guid(),
   nummer:      z.number().int(),
   bezeichnung: z.string(),
   firma:       z.string().optional(),
@@ -79,7 +79,7 @@ export type Kunde = z.infer<typeof KundeSchema>
 
 /** Eingefrierter Snapshot zum Zeitpunkt des Belegs */
 export const KundeSnapshotSchema = z.object({
-  id:          z.string().uuid(),
+  id:          z.string().guid(),
   nummer:      z.number().int(),
   bezeichnung: z.string(),
   firma:       z.string().optional(),
@@ -98,7 +98,7 @@ export type KundeSnapshot = z.infer<typeof KundeSnapshotSchema>
 
 /** Kompakte Beleg-Zusammenfassung für die Rechnungshistorie eines Kunden */
 export const KundeBelegVorschauSchema = z.object({
-  id:               z.string().uuid(),
+  id:               z.string().guid(),
   belegNummer:      z.number().int(),
   belegDatum:       z.string(),
   belegTyp:         z.string(),

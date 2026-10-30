@@ -26,7 +26,7 @@ export type MwStZeile = z.infer<typeof MwStZeileSchema>
 export const TagesabschlussSchema = z.object({
   /** YYYY-MM-DD – Geschäftstag (Standard: Wiener Kalendertag; mit verschobenem Tagesbeginn der Tag, der dort beginnt) */
   datum:                   z.string(),
-  kasseId:                 z.string().uuid(),
+  kasseId:                 z.string().guid(),
 
   /** Anzahl Barzahlungsbelege (inkl. durch Storno annullierter) */
   anzahlBarzahlungsbelege: z.number().int(),
@@ -56,7 +56,7 @@ export const TagesabschlussSchema = z.object({
 export type Tagesabschluss = z.infer<typeof TagesabschlussSchema>
 
 export const TagesabschlussQuerySchema = z.object({
-  kasseId: z.string().uuid(),
+  kasseId: z.string().guid(),
   /** YYYY-MM-DD */
   datum:   z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Ungültiges Datumsformat (YYYY-MM-DD)'),
 })
@@ -65,6 +65,6 @@ export type TagesabschlussQuery = z.infer<typeof TagesabschlussQuerySchema>
 
 /** Z-Bon drucken: optional auf einem Drucker der Bibliothek statt dem Kassen-Bondrucker. */
 export const TagesabschlussDruckenSchema = TagesabschlussQuerySchema.extend({
-  druckerId: z.string().uuid().optional(),
+  druckerId: z.string().guid().optional(),
 })
 export type TagesabschlussDrucken = z.infer<typeof TagesabschlussDruckenSchema>
