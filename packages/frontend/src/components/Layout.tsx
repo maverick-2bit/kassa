@@ -17,6 +17,7 @@ import { MandantenUmschalter } from './MandantenUmschalter'
 import { SeeStatusBanner } from './SeeStatusBanner'
 import { FoStatusBanner } from './FoStatusBanner'
 import { ErrorBoundary } from './ErrorBoundary'
+import { HilfeKnopf } from './HilfeFenster'
 
 /** Einklapp-Zustand der Kopfleiste, pro Gerät (Standard: ausgeklappt). */
 const KOPFLEISTE_KEY = 'kassa:kopfleisteEingeklappt'
@@ -299,6 +300,7 @@ function Header({ eingeklappt, onUmschalten, vollbild, onVollbild }: {
             {auth.user.name}
             {kasse && umschaltKassen.length < 2 && <> · Kasse: <span className="font-mono">{kasse.bezeichnung || kasse.kassenId}</span></>}
           </span>
+          <HilfeKnopf />
           <MandantenUmschalter kompakt />
           <KassenUmschalter kompakt />
           <UpdateHinweis>{null}</UpdateHinweis>
@@ -354,6 +356,7 @@ function Header({ eingeklappt, onUmschalten, vollbild, onVollbild }: {
               <p className="font-medium text-white">{auth.user.name}</p>
               <MandantenUmschalter />
             </div>
+            <HilfeKnopf />
             <button
               type="button"
               onClick={logout}
