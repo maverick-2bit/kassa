@@ -73,10 +73,22 @@ export class Umsatzzaehler {
 // Betragsberechnung
 // ---------------------------------------------------------------------------
 
+/**
+ * Rundet auf ganze Cent, halbe Cent von Null weg (4,5 → 5, −4,5 → −5).
+ *
+ * `Math.round` rundet bei negativen Werten zur Null hin (−4,5 → −4). Ein Storno (negierter Preis,
+ * gleiche Menge) ergab dadurch bei halben Cent, z. B. 1,5 kg zu 3,33 €, einen Cent weniger als das
+ * Original — der Storno ließ sich nicht buchen. So ist der Storno immer exakt das Negativ des Originals.
+ */
+export function rundeCent(wert: number): number {
+  const gerundet = wert < 0 ? -Math.round(-wert) : Math.round(wert)
+  return gerundet === 0 ? 0 : gerundet   // kein „−0"
+}
+
 export function berechneBetraege(positionen: BelegPosition[]): BetraegeSummen {
   const summen: BetraegeSummen = { normal: 0, ermaessigt1: 0, ermaessigt2: 0, null: 0, besonders: 0 }
   for (const pos of positionen) {
-    const brutto = Math.round(pos.menge * pos.einzelpreisBreutto)
+    const brutto = rundeCent(pos.menge * pos.einzelpreisBreutto)
     summen[pos.mwstSatz] += brutto
   }
   return summen
