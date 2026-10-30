@@ -15,6 +15,7 @@ import {
   lieferscheine,
   sammelrechnungen,
   seriennummern,
+  wartungsvertraege,
 } from '../db/schema.js'
 
 export class LiferscheinError extends Error {
@@ -28,7 +29,8 @@ export class LiferscheinError extends Error {
 // ---------------------------------------------------------------------------
 
 type LiferscheinRow = typeof lieferscheine.$inferSelect & {
-  angebotNummer: number
+  angebotNummer:         number | null
+  wartungsvertragNummer: number | null
 }
 
 function toDto(row: LiferscheinRow): LiferscheinResponse {
@@ -37,8 +39,11 @@ function toDto(row: LiferscheinRow): LiferscheinResponse {
     nummer:        row.nummer,
     datum:         row.datum.toISOString(),
     status:        row.status as LiferscheinStatus,
-    angebotId:     row.angebotId,
-    angebotNummer: row.angebotNummer,
+    ...(row.angebotId             && { angebotId:             row.angebotId }),
+    ...(row.angebotNummer != null && { angebotNummer:         row.angebotNummer }),
+    ...(row.wartungsvertragId     && { wartungsvertragId:     row.wartungsvertragId }),
+    ...(row.wartungsvertragNummer != null && { wartungsvertragNummer: row.wartungsvertragNummer }),
+    ...(row.periode               && { periode:               row.periode }),
     positionen:    row.positionen as LiferscheinResponse['positionen'],
     ...(row.notiz         && { notiz: row.notiz }),
     ...(row.kundeSnapshot != null
@@ -49,43 +54,52 @@ function toDto(row: LiferscheinRow): LiferscheinResponse {
 }
 
 // ---------------------------------------------------------------------------
-// Queries mit Angebots-Join (für angebotNummer)
+// Queries mit Angebots-/Vertrags-Join (für angebotNummer / wartungsvertragNummer)
 // ---------------------------------------------------------------------------
+
+const lsSpalten = {
+  id:                    lieferscheine.id,
+  mandantId:             lieferscheine.mandantId,
+  kasseId:               lieferscheine.kasseId,
+  angebotId:             lieferscheine.angebotId,
+  angebotNummer:         angebote.nummer,
+  wartungsvertragId:     lieferscheine.wartungsvertragId,
+  wartungsvertragNummer: wartungsvertraege.nummer,
+  periode:               lieferscheine.periode,
+  nummer:                lieferscheine.nummer,
+  datum:                 lieferscheine.datum,
+  status:                lieferscheine.status,
+  notiz:                 lieferscheine.notiz,
+  positionen:            lieferscheine.positionen,
+  kundeId:               lieferscheine.kundeId,
+  kundeSnapshot:         lieferscheine.kundeSnapshot,
+  createdAt:             lieferscheine.createdAt,
+  updatedAt:             lieferscheine.updatedAt,
+}
+
+function lsBasis(db: Db) {
+  return db
+    .select(lsSpalten)
+    .from(lieferscheine)
+    .leftJoin(angebote,          eq(lieferscheine.angebotId, angebote.id))
+    .leftJoin(wartungsvertraege, eq(lieferscheine.wartungsvertragId, wartungsvertraege.id))
+}
 
 async function listeQuery(
   db:        Db,
   mandantId: string,
-  opts: { kundeId?: string; angebotId?: string; status?: LiferscheinStatus; limit?: number } = {},
+  opts: { kundeId?: string; angebotId?: string; wartungsvertragId?: string; status?: LiferscheinStatus; limit?: number } = {},
 ): Promise<LiferscheinRow[]> {
   const conditions = [eq(lieferscheine.mandantId, mandantId)]
-  if (opts.kundeId)   conditions.push(eq(lieferscheine.kundeId,   opts.kundeId))
-  if (opts.angebotId) conditions.push(eq(lieferscheine.angebotId, opts.angebotId))
-  if (opts.status)    conditions.push(eq(lieferscheine.status,    opts.status))
+  if (opts.kundeId)           conditions.push(eq(lieferscheine.kundeId,           opts.kundeId))
+  if (opts.angebotId)         conditions.push(eq(lieferscheine.angebotId,         opts.angebotId))
+  if (opts.wartungsvertragId) conditions.push(eq(lieferscheine.wartungsvertragId, opts.wartungsvertragId))
+  if (opts.status)            conditions.push(eq(lieferscheine.status,            opts.status))
 
-  const rows = await db
-    .select({
-      id:            lieferscheine.id,
-      mandantId:     lieferscheine.mandantId,
-      kasseId:       lieferscheine.kasseId,
-      angebotId:     lieferscheine.angebotId,
-      angebotNummer: angebote.nummer,
-      nummer:        lieferscheine.nummer,
-      datum:         lieferscheine.datum,
-      status:        lieferscheine.status,
-      notiz:         lieferscheine.notiz,
-      positionen:    lieferscheine.positionen,
-      kundeId:       lieferscheine.kundeId,
-      kundeSnapshot: lieferscheine.kundeSnapshot,
-      createdAt:     lieferscheine.createdAt,
-      updatedAt:     lieferscheine.updatedAt,
-    })
-    .from(lieferscheine)
-    .innerJoin(angebote, eq(lieferscheine.angebotId, angebote.id))
+  return lsBasis(db)
     .where(and(...conditions))
     .orderBy(desc(lieferscheine.createdAt))
     .limit(opts.limit ?? 200)
-
-  return rows
 }
 
 // ---------------------------------------------------------------------------
@@ -95,7 +109,7 @@ async function listeQuery(
 export async function listeLiferscheine(
   db:        Db,
   mandantId: string,
-  opts: { kundeId?: string; angebotId?: string; status?: LiferscheinStatus; limit?: number } = {},
+  opts: { kundeId?: string; angebotId?: string; wartungsvertragId?: string; status?: LiferscheinStatus; limit?: number } = {},
 ): Promise<LiferscheinResponse[]> {
   const rows = await listeQuery(db, mandantId, opts)
   return rows.map(toDto)
@@ -106,33 +120,9 @@ export async function holeLiferschein(
   id:        string,
   mandantId: string,
 ): Promise<LiferscheinResponse> {
-  const rows = await listeQuery(db, mandantId, { limit: 1 })
-  const row  = rows.find(r => r.id === id)
-    ?? await (async () => {
-      const rs = await db
-        .select({
-          id:            lieferscheine.id,
-          mandantId:     lieferscheine.mandantId,
-          kasseId:       lieferscheine.kasseId,
-          angebotId:     lieferscheine.angebotId,
-          angebotNummer: angebote.nummer,
-          nummer:        lieferscheine.nummer,
-          datum:         lieferscheine.datum,
-          status:        lieferscheine.status,
-          notiz:         lieferscheine.notiz,
-          positionen:    lieferscheine.positionen,
-          kundeId:       lieferscheine.kundeId,
-          kundeSnapshot: lieferscheine.kundeSnapshot,
-          createdAt:     lieferscheine.createdAt,
-          updatedAt:     lieferscheine.updatedAt,
-        })
-        .from(lieferscheine)
-        .innerJoin(angebote, eq(lieferscheine.angebotId, angebote.id))
-        .where(and(eq(lieferscheine.id, id), eq(lieferscheine.mandantId, mandantId)))
-        .limit(1)
-      return rs[0] ?? null
-    })()
-
+  const [row] = await lsBasis(db)
+    .where(and(eq(lieferscheine.id, id), eq(lieferscheine.mandantId, mandantId)))
+    .limit(1)
   if (!row) throw new LiferscheinError(404, 'Lieferschein nicht gefunden')
   return toDto(row)
 }
@@ -212,7 +202,7 @@ export async function erstelleLiferschein(
         ))
     }
 
-    return toDto({ ...row, angebotNummer: angebot.nummer })
+    return toDto({ ...row, angebotNummer: angebot.nummer, wartungsvertragNummer: null })
   })
 }
 
@@ -249,25 +239,7 @@ export async function erstelleSammelrechnung(
     throw new LiferscheinError(400, 'Mindestens ein Lieferschein erforderlich')
 
   // Alle Lieferscheine laden
-  const rows = await db
-    .select({
-      id:            lieferscheine.id,
-      mandantId:     lieferscheine.mandantId,
-      kasseId:       lieferscheine.kasseId,
-      angebotId:     lieferscheine.angebotId,
-      angebotNummer: angebote.nummer,
-      nummer:        lieferscheine.nummer,
-      datum:         lieferscheine.datum,
-      status:        lieferscheine.status,
-      notiz:         lieferscheine.notiz,
-      positionen:    lieferscheine.positionen,
-      kundeId:       lieferscheine.kundeId,
-      kundeSnapshot: lieferscheine.kundeSnapshot,
-      createdAt:     lieferscheine.createdAt,
-      updatedAt:     lieferscheine.updatedAt,
-    })
-    .from(lieferscheine)
-    .innerJoin(angebote, eq(lieferscheine.angebotId, angebote.id))
+  const rows = await lsBasis(db)
     .where(
       and(
         eq(lieferscheine.mandantId, mandantId),
@@ -351,25 +323,7 @@ async function srZuDto(
   mandantId: string,
 ): Promise<SammelrechnungResponse> {
   const ids = (row.lieferscheinIds as string[]) ?? []
-  const lsRows = ids.length === 0 ? [] : await db
-    .select({
-      id:            lieferscheine.id,
-      mandantId:     lieferscheine.mandantId,
-      kasseId:       lieferscheine.kasseId,
-      angebotId:     lieferscheine.angebotId,
-      angebotNummer: angebote.nummer,
-      nummer:        lieferscheine.nummer,
-      datum:         lieferscheine.datum,
-      status:        lieferscheine.status,
-      notiz:         lieferscheine.notiz,
-      positionen:    lieferscheine.positionen,
-      kundeId:       lieferscheine.kundeId,
-      kundeSnapshot: lieferscheine.kundeSnapshot,
-      createdAt:     lieferscheine.createdAt,
-      updatedAt:     lieferscheine.updatedAt,
-    })
-    .from(lieferscheine)
-    .innerJoin(angebote, eq(lieferscheine.angebotId, angebote.id))
+  const lsRows = ids.length === 0 ? [] : await lsBasis(db)
     .where(and(eq(lieferscheine.mandantId, mandantId), inArray(lieferscheine.id, ids)))
 
   return {

@@ -10,6 +10,7 @@ import { buildServer } from './server.js'
 import { starteDepSicherungsCron } from './services/dep-sicherung.cron.js'
 import { starteDbBackupCron }      from './services/db-backup.cron.js'
 import { starteAutoAbschlussCron } from './services/auto-abschluss.cron.js'
+import { starteWartungCron } from './services/wartung.cron.js'
 import { starteDruckerKeepAliveCron } from './services/drucker-keepalive.cron.js'
 import { starteTicketshopCron } from './services/ticketshop.cron.js'
 import { starteTicketDatenschutzCron } from './services/ticket-datenschutz.cron.js'
@@ -57,6 +58,7 @@ async function main(): Promise<void> {
   const stopDepCron  = starteDepSicherungsCron(db, config.DEP_BACKUP_DIR, server.log)
   const stopDbCron   = starteDbBackupCron(db, config.DATABASE_URL, config.DB_BACKUP_DIR, config.DB_BACKUP_RETENTION, server.log)
   const stopAutoCron = starteAutoAbschlussCron(db, config, server.log)
+  const stopWartungCron = starteWartungCron(db, server.log)
   const stopKeepAlive = starteDruckerKeepAliveCron(db, server.log)
   const stopTicketshop = starteTicketshopCron(db, {
     db,
@@ -93,6 +95,7 @@ async function main(): Promise<void> {
       stopDepCron()
       stopDbCron()
       stopAutoCron()
+      stopWartungCron()
       stopKeepAlive()
       stopTicketshop()
       stopTicketDatenschutz()
