@@ -747,6 +747,8 @@ export {
   periodeVonIndex,
   addMonate,
   ersteVertragsperiode,
+  letzteVertragsperiode,
+  ersterMonatFaktor,
   vertragsPerioden,
   positionFaellig,
   rechnungFaellig,

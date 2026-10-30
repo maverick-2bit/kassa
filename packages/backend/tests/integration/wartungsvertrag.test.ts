@@ -139,25 +139,21 @@ describe('Wartungsverträge: Monatslauf + Sammelabrechnung (Integration)', () =>
     expect(wartung[0]!.angebotId).toBeUndefined()
   })
 
-  it('pausierte Verträge, Vertragsende und Beginn mitten im Monat', async () => {
-    const pausiert = await legeVertragAn({
-      bezeichnung: 'Pausiert', beginn: '2026-09-01', status: 'pausiert',
-      positionen: [{ bezeichnung: 'X', einzelpreisBreutto: 100, mwstSatz: 'normal' }],
-    })
-    const befristet = await legeVertragAn({
-      bezeichnung: 'Befristet', beginn: '2026-09-01', ende: '2026-09-30',
-      positionen: [{ bezeichnung: 'Y', einzelpreisBreutto: 100, mwstSatz: 'normal' }],
-    })
-    const mittendrin = await legeVertragAn({
-      bezeichnung: 'Mittendrin', beginn: '2026-09-15',
-      positionen: [{ bezeichnung: 'Z', einzelpreisBreutto: 100, mwstSatz: 'normal' }],
-    })
+  it('Stichtag 15.: Beginn und Ende mitten im Monat; beendete Verträge erzeugen nichts mehr', async () => {
+    const pos = [{ bezeichnung: 'Y', einzelpreisBreutto: 100, mwstSatz: 'normal' }]
+    const beendet   = await legeVertragAn({ bezeichnung: 'Beendet', beginn: '2026-09-01', status: 'beendet', positionen: pos })
+    const bis30     = await legeVertragAn({ bezeichnung: 'Ende 30.', beginn: '2026-09-01', ende: '2026-09-30', positionen: pos })
+    const bis14     = await legeVertragAn({ bezeichnung: 'Ende 14.', beginn: '2026-09-01', ende: '2026-10-14', positionen: pos })
+    const ab15      = await legeVertragAn({ bezeichnung: 'Ab 15.',   beginn: '2026-09-15', positionen: pos })
+    const ab16      = await legeVertragAn({ bezeichnung: 'Ab 16.',   beginn: '2026-09-16', positionen: pos })
 
     const lauf = await fuehreWartungslaufDurch(idb.db, { jetzt: am('2026-11-15'), mandantId })
     const perioden = (id: string) => lauf.eintraege.filter(e => e.vertragId === id).map(e => e.periode)
-    expect(perioden(pausiert.id)).toEqual([])
-    expect(perioden(befristet.id)).toEqual(['2026-09'])
-    expect(perioden(mittendrin.id)).toEqual(['2026-10', '2026-11'])
+    expect(perioden(beendet.id)).toEqual([])
+    expect(perioden(bis30.id)).toEqual(['2026-09'])
+    expect(perioden(bis14.id)).toEqual(['2026-09'])
+    expect(perioden(ab15.id)).toEqual(['2026-09', '2026-10', '2026-11'])
+    expect(perioden(ab16.id)).toEqual(['2026-10', '2026-11'])
   })
 
   it('Nachholen ist auf 12 Monate begrenzt', async () => {

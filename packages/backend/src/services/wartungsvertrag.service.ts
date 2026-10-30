@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, sql } from 'drizzle-orm'
 import {
   ersteVertragsperiode,
+  letzteVertragsperiode,
   positionFaellig,
   rechnungsBlockEnde,
   vertragsPerioden,
@@ -219,15 +220,23 @@ function periodeText(periode: string): string {
 /** Positionen, die der Vertrag in dieser Periode berechnet (aufgelöst für den Lieferschein). */
 function faelligePositionen(v: WartungsvertragResponse, periode: string): AngebotPosition[] {
   const erste = ersteVertragsperiode(v.beginn)
+  // Beginn ab dem 16.: im ersten Monat nur 50 % der monatlichen Positionen
+  const halb  = periode === erste && ersterMonatFaktor(v.beginn) === 0.5
   return v.positionen
     .filter(p => positionFaellig(p, periode, erste))
-    .map(p => ({
-      bezeichnung:        `${p.bezeichnung} (${periodeText(periode)})`.slice(0, 200),
-      menge:              p.menge,
-      einzelpreisBreutto: p.einzelpreisBreutto,
-      mwstSatz:           p.mwstSatz,
-      ...(p.artikelId && { artikelId: p.artikelId }),
-    }))
+    .map(p => {
+      const anteilig = halb && p.intervall === 'monatlich'
+      const preis    = anteilig
+        ? (p.einzelpreisBreutto < 0 ? -Math.round(-p.einzelpreisBreutto / 2) : Math.round(p.einzelpreisBreutto / 2))
+        : p.einzelpreisBreutto
+      return {
+        bezeichnung:        `${p.bezeichnung} (${periodeText(periode)}${anteilig ? ', anteilig 50 %' : ''})`.slice(0, 200),
+        menge:              p.menge,
+        einzelpreisBreutto: preis,
+        mwstSatz:           p.mwstSatz,
+        ...(p.artikelId && { artikelId: p.artikelId }),
+      }
+    })
 }
 
 function betrag(positionen: AngebotPosition[]): number {
@@ -357,7 +366,7 @@ export async function ermittleFaelligeRechnungen(
     if (offene.length === 0) continue
 
     const erste   = ersteVertragsperiode(row.beginn)
-    const endeMon = row.ende?.slice(0, 7)
+    const endeMon = row.ende ? letzteVertragsperiode(row.ende) : undefined
     const faellig = offene.filter(l => {
       const blockEnde = rechnungsBlockEnde(row.rechnungsIntervall as WartungsIntervall, l.periode!, erste)
       return blockEnde <= aktuellePeriode || (endeMon !== undefined && endeMon <= aktuellePeriode)

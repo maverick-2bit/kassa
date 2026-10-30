@@ -23,12 +23,11 @@ export const WARTUNGS_INTERVALL_MONATE: Record<WartungsIntervall, number> = {
   jahr:      12,
 }
 
-export const WartungsvertragStatusSchema = z.enum(['aktiv', 'pausiert', 'beendet'])
+export const WartungsvertragStatusSchema = z.enum(['aktiv', 'beendet'])
 export type  WartungsvertragStatus = z.infer<typeof WartungsvertragStatusSchema>
 
 export const WARTUNGSVERTRAG_STATUS_LABELS: Record<WartungsvertragStatus, string> = {
   aktiv:    'Aktiv',
-  pausiert: 'Pausiert',
   beendet:  'Beendet',
 }
 
@@ -51,19 +50,30 @@ export function addMonate(periode: string, n: number): string {
   return periodeVonIndex(monatsIndex(periode) + n)
 }
 
-/**
- * Erste abzurechnende Periode: Beginnt der Vertrag am 1., zählt dieser Monat —
- * sonst der erste volle Monat danach (keine anteilige Abrechnung).
- */
+/** Erste abzurechnende Periode: immer der Monat des Vertragsbeginns. */
 export function ersteVertragsperiode(beginn: string): string {
-  const monat = beginn.slice(0, 7)
-  return beginn.slice(8, 10) === '01' ? monat : addMonate(monat, 1)
+  return beginn.slice(0, 7)
 }
 
-/** Alle Perioden von der ersten bis `bisPeriode` — begrenzt durch den Monat des Vertragsendes. */
+/**
+ * Anteil der monatlichen Positionen im ersten Monat: Beginn bis zum 15. = voller Monat,
+ * ab dem 16. = 50 %.
+ */
+export function ersterMonatFaktor(beginn: string): 1 | 0.5 {
+  return Number(beginn.slice(8, 10)) >= 16 ? 0.5 : 1
+}
+
+/** Letzte abzurechnende Periode: Endet der Vertrag vor dem 15., zählt der Monat nicht mehr. */
+export function letzteVertragsperiode(ende: string): string {
+  const monat = ende.slice(0, 7)
+  return Number(ende.slice(8, 10)) >= 15 ? monat : addMonate(monat, -1)
+}
+
+/** Alle Perioden von der ersten bis `bisPeriode` — begrenzt durch die letzte Vertragsperiode. */
 export function vertragsPerioden(beginn: string, ende: string | null | undefined, bisPeriode: string): string[] {
   const erste = ersteVertragsperiode(beginn)
-  const letzte = ende && ende.slice(0, 7) < bisPeriode ? ende.slice(0, 7) : bisPeriode
+  const endePeriode = ende ? letzteVertragsperiode(ende) : undefined
+  const letzte = endePeriode && endePeriode < bisPeriode ? endePeriode : bisPeriode
   const ergebnis: string[] = []
   for (let i = monatsIndex(erste); i <= monatsIndex(letzte); i++) ergebnis.push(periodeVonIndex(i))
   return ergebnis
