@@ -7,6 +7,7 @@ import { getAuth, clearAuth, gaengeAktiv as istGaengeAktiv, gaengeAnzahl } from 
 import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
 import { useSwipe } from '../lib/useSwipe'
+import { HilfeKnopf } from '../components/HilfeFenster'
 
 // ---------------------------------------------------------------------------
 // Typen
@@ -542,6 +543,7 @@ export function ArtikelWaehlenPage() {
               ? `${konfigQuery.data?.kellnerModus === 'theke' ? 'Kassieren' : `${tabQuery.data.positionen.length} Pos.`} · ${formatPreis(tabQuery.data.summeGesamtCent)}`
               : 'Übersicht'} ›
           </button>
+          <HilfeKnopf />
         </div>
 
         {/* Gang-Wähler: neu gebuchte Artikel erben den aktiven Gang (0 = Sofort) */}

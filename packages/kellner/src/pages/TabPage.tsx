@@ -8,6 +8,7 @@ import { tischTabApi, bonierApi, druckerApi, oeffentlicherBelegApi, zvtApi, ApiE
 import { getAuth, gaengeAktiv as istGaengeAktiv, gaengeAnzahl } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
+import { HilfeKnopf } from '../components/HilfeFenster'
 import { ABBRUCH_ZU_SPAET, KartenzahlungOverlay } from '../components/KartenzahlungOverlay'
 import { BonierUmleitungHinweis } from '../components/BonierUmleitungHinweis'
 import { DruckproblemeBanner } from '../components/DruckproblemeBanner'
@@ -453,6 +454,7 @@ export function TabPage() {
           >
             + Artikel
           </button>
+          <HilfeKnopf />
         </div>
       </div>
 

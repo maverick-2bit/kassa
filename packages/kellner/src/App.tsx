@@ -4,6 +4,7 @@ import { BrowserRouter as Router, Navigate, Route, Routes, useNavigate } from 'r
 import { istNeuereServerVersion, istNeuererServiceWorker } from '@kassa/shared'
 import { LoginPage }         from './pages/LoginPage'
 import { KdsNachrichten }    from './components/KdsNachrichten'
+import { HilfeKnopf }        from './components/HilfeFenster'
 import { TischePage }        from './pages/TischePage'
 import { TabPage }           from './pages/TabPage'
 import { ArtikelWaehlenPage } from './pages/ArtikelWaehlenPage'
@@ -96,7 +97,8 @@ function AppRoutes() {
   return (
     <>
       <Routes>
-        <Route path="/login" element={<LoginPage />} />
+        {/* Anmeldung: der Hilfe-Knopf schwebt oben rechts (die Maske hat keine Kopfzeile) */}
+        <Route path="/login" element={<><LoginPage /><HilfeKnopf className="fixed right-3 top-3 z-20" /></>} />
         <Route path="/"            element={<RequireAuth><TischePage /></RequireAuth>} />
         <Route path="/tab/:tabId"  element={<RequireAuth><TabPage /></RequireAuth>} />
         <Route path="/tab/:tabId/artikel" element={<RequireAuth><ArtikelWaehlenPage /></RequireAuth>} />
