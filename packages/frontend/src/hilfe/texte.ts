@@ -167,8 +167,8 @@ export const HILFE_THEMEN: HilfeThema[] = [
     pfade: ['/wartungsvertraege'],
     stichworte: ['wartung', 'vertrag', 'abo', 'monatlich', 'intervall', 'sammelrechnung', 'lieferschein'],
     schritte: [
-      '„Neuer Vertrag": Kunde, Beginn, optional Ende und das Rechnungsintervall wählen (monatlich, vierteljährlich, halbjährlich oder jährlich).',
-      'Positionen hinzufügen: Artikel wählen oder frei eintippen. Jede Position hat ihr eigenes Intervall — z. B. Support monatlich, das RKSV-Zertifikat nur jährlich im gewählten Monat.',
+      '„Neuer Vertrag": Kunde, Beginn und das Abrechnungsintervall wählen (monatlich, vierteljährlich, halbjährlich oder jährlich). Mit der Häufigkeit legst du die Laufzeit fest, z. B. monatlich × 12 = 1 Jahr; leer bedeutet unbefristet.',
+      'Positionen hinzufügen: Artikel wählen oder frei eintippen. Standard ist „Wie Vertrag"; bei einzelnen Artikeln kannst du ein abweichendes Intervall einstellen — z. B. das RKSV-Zertifikat läuft ein Jahr und wird nur 1× jährlich im gewählten Monat verrechnet.',
       'Zum Monatswechsel erzeugt die Kassa automatisch je Vertrag einen Wartungslieferschein mit den Positionen, die in diesem Monat fällig sind. „Monatslauf" zeigt vorab, was erzeugt würde, und startet ihn auch von Hand.',
       'Reiter „Zur Verrechnung": Hier stehen die Verträge, deren Rechnungsblock abgeschlossen ist. „Sammelrechnung erstellen" fasst die offenen Wartungslieferscheine zu einer Rechnung zusammen.',
     ],

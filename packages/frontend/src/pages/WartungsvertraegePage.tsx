@@ -13,6 +13,7 @@ import {
   WARTUNGS_INTERVALL_LABELS,
   WARTUNGSVERTRAG_STATUS_LABELS,
   ersteVertragsperiode,
+  letzterVertragsmonat,
 } from '@kassa/shared'
 import { artikelApi, kundeApi, sammelrechnungApi, wartungsvertragApi, ApiError } from '../lib/api'
 import { getAuth } from '../lib/auth'
@@ -47,12 +48,12 @@ interface PosEntwurf {
   menge:      string
   preis:      string          // Euro, wie getippt
   mwstSatz:   MwStSatz
-  intervall:  WartungsIntervall
+  intervall:  WartungsIntervall | ''   // '' = wie das Rechnungsintervall des Vertrags
   ankerMonat: string          // '' = Monat nach dem Beginn
 }
 
 const leerePosition = (): PosEntwurf => ({
-  artikelId: '', bezeichnung: '', menge: '1', preis: '', mwstSatz: 'normal', intervall: 'monatlich', ankerMonat: '',
+  artikelId: '', bezeichnung: '', menge: '1', preis: '', mwstSatz: 'normal', intervall: '', ankerMonat: '',
 })
 
 function VertragFormular({ vertrag, onFertig }: { vertrag: WartungsvertragResponse | null; onFertig: () => void }) {
@@ -72,6 +73,7 @@ function VertragFormular({ vertrag, onFertig }: { vertrag: WartungsvertragRespon
   const [beginn, setBeginn]         = useState(vertrag?.beginn ?? '')
   const [ende, setEnde]             = useState(vertrag?.ende ?? '')
   const [rechnungsIntervall, setRechnungsIntervall] = useState<WartungsIntervall>(vertrag?.rechnungsIntervall ?? 'monatlich')
+  const [anzahl, setAnzahl]         = useState(vertrag?.anzahlAbrechnungen ? String(vertrag.anzahlAbrechnungen) : '')
   const [status, setStatus]         = useState<WartungsvertragStatus>(vertrag?.status ?? 'aktiv')
   const [notiz, setNotiz]           = useState(vertrag?.notiz ?? '')
   const [positionen, setPositionen] = useState<PosEntwurf[]>(
@@ -82,14 +84,20 @@ function VertragFormular({ vertrag, onFertig }: { vertrag: WartungsvertragRespon
           menge:       String(p.menge),
           preis:       (p.einzelpreisBreutto / 100).toFixed(2).replace('.', ','),
           mwstSatz:    p.mwstSatz,
-          intervall:   p.intervall,
+          intervall:   p.intervall ?? '',
           ankerMonat:  p.ankerMonat ? String(p.ankerMonat) : '',
         }))
       : [leerePosition()],
   )
   const [fehler, setFehler] = useState<string | null>(null)
 
-  const setPos = (i: number, patch: Partial<PosEntwurf>) =>
+  // Letzte Abrechnung aus Häufigkeit bzw. Ende — nur zur Anzeige
+  const anzahlAnzeige = parseInt(anzahl, 10)
+  const letzteAbrechnung = beginn
+    ? letzterVertragsmonat(beginn, ende || null, anzahlAnzeige >= 1 ? { anzahl: anzahlAnzeige, intervall: rechnungsIntervall } : null)
+    : undefined
+
+  const setPos =(i: number, patch: Partial<PosEntwurf>) =>
     setPositionen(ps => ps.map((p, idx) => (idx === i ? { ...p, ...patch } : p)))
 
   const artikelWaehlen = (i: number, id: string) => {
@@ -117,24 +125,27 @@ function VertragFormular({ vertrag, onFertig }: { vertrag: WartungsvertragRespon
           menge,
           einzelpreisBreutto: cent,
           mwstSatz:           p.mwstSatz,
-          intervall:          p.intervall,
-          ...(p.intervall !== 'monatlich' && p.ankerMonat && { ankerMonat: parseInt(p.ankerMonat, 10) }),
+          ...(p.intervall && { intervall: p.intervall }),
+          ...((p.intervall || rechnungsIntervall) !== 'monatlich' && p.ankerMonat && { ankerMonat: parseInt(p.ankerMonat, 10) }),
         }
       })
       if (!kundeId) throw new Error('Bitte einen Kunden wählen')
       if (!beginn)  throw new Error('Bitte den Vertragsbeginn angeben')
+      const anzahlZahl = anzahl.trim() ? parseInt(anzahl, 10) : null
+      if (anzahlZahl !== null && !(anzahlZahl >= 1)) throw new Error('Die Häufigkeit muss mindestens 1 sein')
 
       if (!bearbeite) {
         return wartungsvertragApi.create({
           kasseId: identity.kasseId, kundeId, bezeichnung: bezeichnung.trim(), beginn,
-          ...(ende && { ende }), rechnungsIntervall, status, ...(notiz.trim() && { notiz: notiz.trim() }),
+          ...(ende && { ende }), rechnungsIntervall, ...(anzahlZahl !== null && { anzahlAbrechnungen: anzahlZahl }),
+          status, ...(notiz.trim() && { notiz: notiz.trim() }),
           positionen: pos,
         })
       }
       return wartungsvertragApi.update(vertrag.id, {
         kundeId, bezeichnung: bezeichnung.trim(),
         ...(!gesperrterBeginn && { beginn }),
-        ende: ende || null, rechnungsIntervall, status, notiz: notiz.trim() || null,
+        ende: ende || null, rechnungsIntervall, anzahlAbrechnungen: anzahlZahl, status, notiz: notiz.trim() || null,
         positionen: pos,
       })
     },
@@ -173,11 +184,20 @@ function VertragFormular({ vertrag, onFertig }: { vertrag: WartungsvertragRespon
         <Field label="Vertragsende (optional)" htmlFor="wv-ende" hint="Der Endmonat wird auf jeden Fall verrechnet, auch wenn er nur angefangen ist.">
           <Input id="wv-ende" type="date" value={ende} onChange={e => setEnde(e.target.value)} className="w-full" />
         </Field>
-        <Field label="Rechnungsintervall" htmlFor="wv-intervall" hint="Wie oft die offenen Wartungslieferscheine zur Sammelrechnung werden.">
+        <Field label="Abrechnungsintervall" htmlFor="wv-intervall" hint="Wie oft abgerechnet wird. Gilt für alle Positionen, die kein eigenes Intervall haben.">
           <Select id="wv-intervall" value={rechnungsIntervall}
                   onChange={e => setRechnungsIntervall(e.target.value as WartungsIntervall)} className="w-full">
             {INTERVALLE.map(i => <option key={i} value={i}>{WARTUNGS_INTERVALL_LABELS[i]}</option>)}
           </Select>
+        </Field>
+        <Field
+          label="Häufigkeit (Anzahl Abrechnungen)" htmlFor="wv-anzahl"
+          hint={letzteAbrechnung
+            ? `Letzte Abrechnung: ${periodeText(letzteAbrechnung)}. Beispiel: monatlich × 12 = 1 Jahr.`
+            : 'Leer = unbefristet. Beispiel: monatlich × 12 = 1 Jahr.'}
+        >
+          <Input id="wv-anzahl" inputMode="numeric" placeholder="unbefristet" value={anzahl}
+                 onChange={e => setAnzahl(e.target.value.replace(/\D/g, ''))} className="w-full" />
         </Field>
         {bearbeite && (
           <Field label="Status" htmlFor="wv-status">
@@ -220,15 +240,17 @@ function VertragFormular({ vertrag, onFertig }: { vertrag: WartungsvertragRespon
                 </Select>
               </div>
               <div className="flex flex-wrap items-end gap-3">
-                <Field label="Abgerechnet" htmlFor={`wv-pi-${i}`}>
+                <Field label="Abgerechnet" htmlFor={`wv-pi-${i}`}
+                       {...(p.intervall ? { hint: 'Abweichend vom Vertrag.' } : {})}>
                   <Select id={`wv-pi-${i}`} value={p.intervall}
-                          onChange={e => setPos(i, { intervall: e.target.value as WartungsIntervall })} className="w-44">
+                          onChange={e => setPos(i, { intervall: e.target.value as WartungsIntervall | '' })} className="w-52">
+                    <option value="">Wie Vertrag ({WARTUNGS_INTERVALL_LABELS[rechnungsIntervall]})</option>
                     {INTERVALLE.map(iv => <option key={iv} value={iv}>{WARTUNGS_INTERVALL_LABELS[iv]}</option>)}
                   </Select>
                 </Field>
-                {p.intervall !== 'monatlich' && (
+                {(p.intervall || rechnungsIntervall) !== 'monatlich' && (
                   <Field label="Fällig im Monat" htmlFor={`wv-pa-${i}`}
-                         hint={p.intervall === 'jahr' ? 'Einmal im Jahr, in diesem Monat.' : 'Erster Fälligkeitsmonat; danach im Takt.'}>
+                         hint={(p.intervall || rechnungsIntervall) === 'jahr' ? 'Einmal im Jahr, in diesem Monat.' : 'Erster Fälligkeitsmonat; danach im Takt.'}>
                     <Select id={`wv-pa-${i}`} value={p.ankerMonat}
                             onChange={e => setPos(i, { ankerMonat: e.target.value })} className="w-44">
                       <option value="">Monat nach Beginn</option>

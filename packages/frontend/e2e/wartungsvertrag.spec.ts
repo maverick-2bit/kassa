@@ -82,6 +82,9 @@ test('Wartungsvertrag: anlegen, Monatslauf, Sammelrechnung durch die UI', async 
     await dialog.getByLabel('Kunde', { exact: false }).first().selectOption({ label: kundenName })
     await dialog.getByLabel('Vertragsbeginn').fill(beginnVorDreiMonaten())
     await expect(dialog.getByText(/Erste Abrechnung:/)).toBeVisible()
+    // Häufigkeit: monatlich × 12 = 1 Jahr → die letzte Abrechnung wird angezeigt
+    await dialog.getByLabel('Häufigkeit').fill('12')
+    await expect(dialog.getByText(/Letzte Abrechnung: \d{2}\/\d{4}/)).toBeVisible()
 
     await dialog.getByLabel('Bezeichnung Position 1').fill('Support')
     await dialog.getByLabel('Einzelpreis Position 1').fill('10,00')
@@ -89,6 +92,7 @@ test('Wartungsvertrag: anlegen, Monatslauf, Sammelrechnung durch die UI', async 
     await dialog.getByRole('button', { name: '+ Position' }).click()
     await dialog.getByLabel('Bezeichnung Position 2').fill('RKSV-Zertifikat')
     await dialog.getByLabel('Einzelpreis Position 2').fill('50,00')
+    // Position 2 weicht vom Vertragsintervall ab: nur 1× jährlich
     await dialog.locator('#wv-pi-1').selectOption('jahr')
     // „Fällig im Monat" erscheint nur bei nicht-monatlichen Positionen
     await expect(dialog.getByText('Fällig im Monat')).toBeVisible()

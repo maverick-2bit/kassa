@@ -172,7 +172,8 @@ describe('Wartungsverträge: Monatslauf + Sammelabrechnung (Integration)', () =>
   it('Sammelabrechnung: quartalsweise wird erst mit dem letzten Monat des Blocks fällig', async () => {
     const q = await legeVertragAn({
       bezeichnung: 'Quartal', beginn: '2027-01-15', rechnungsIntervall: 'quartal',
-      positionen: [{ bezeichnung: 'Q', einzelpreisBreutto: 3000, mwstSatz: 'normal' }],
+      // Position weicht vom Vertragsintervall ab: monatlich geliefert, vierteljährlich verrechnet
+      positionen: [{ bezeichnung: 'Q', einzelpreisBreutto: 3000, mwstSatz: 'normal', intervall: 'monatlich' }],
     })
 
     // Die Route nutzt die echte Uhr; den Zeitpunkt prüfen wir deshalb am Service direkt.
@@ -189,6 +190,45 @@ describe('Wartungsverträge: Monatslauf + Sammelabrechnung (Integration)', () =>
     expect(Array.isArray(route.json())).toBe(true)
   })
 
+  it('Positionen ohne eigenes Intervall folgen dem Vertrag; abweichende Intervalle gelten je Position', async () => {
+    const v = await legeVertragAn({
+      bezeichnung: 'Erbt', beginn: '2026-12-10', rechnungsIntervall: 'quartal',
+      positionen: [
+        { bezeichnung: 'Wartung', einzelpreisBreutto: 3000, mwstSatz: 'normal' },                          // wie Vertrag: quartalsweise
+        { bezeichnung: 'Hosting', einzelpreisBreutto: 500, mwstSatz: 'normal', intervall: 'monatlich' },   // abweichend: monatlich
+        { bezeichnung: 'Zertifikat', einzelpreisBreutto: 9000, mwstSatz: 'normal', intervall: 'jahr' },     // abweichend: jährlich
+      ],
+    })
+    const dto = (await srv.fastify.inject({ method: 'GET', url: `/api/wartungsvertraege/${v.id}`, headers: auth() })).json()
+    expect(dto.positionen[0].intervall).toBeUndefined()
+    expect(dto.positionen[1].intervall).toBe('monatlich')
+
+    const lauf = await fuehreWartungslaufDurch(idb.db, { jetzt: am('2027-04-05'), mandantId })
+    const e = lauf.eintraege.filter(x => x.vertragId === v.id).map(x => [x.periode, x.positionen, x.betragCent])
+    // erste Periode Jänner 2027: alle drei; Feb/Mär nur Hosting; April (Quartalsanfang) Wartung + Hosting
+    expect(e).toEqual([
+      ['2027-01', 3, 12500], ['2027-02', 1, 500], ['2027-03', 1, 500], ['2027-04', 2, 3500],
+    ])
+  })
+
+  it('Häufigkeit: monatlich 12× = ein Jahr, danach wird nichts mehr erzeugt', async () => {
+    const v = await legeVertragAn({
+      bezeichnung: 'Jahresvertrag', beginn: '2026-01-15', rechnungsIntervall: 'monatlich', anzahlAbrechnungen: 12,
+      positionen: [{ bezeichnung: 'M', einzelpreisBreutto: 1000, mwstSatz: 'normal' }],
+    })
+    const dto = (await srv.fastify.inject({ method: 'GET', url: `/api/wartungsvertraege/${v.id}`, headers: auth() })).json()
+    expect(dto.anzahlAbrechnungen).toBe(12)
+    expect(dto.letzteAbrechnung).toBe('2027-01')          // Feb 2026 … Jän 2027
+
+    const lauf = await fuehreWartungslaufDurch(idb.db, { jetzt: am('2027-01-20'), mandantId })
+    const p = lauf.eintraege.filter(x => x.vertragId === v.id).map(x => x.periode)
+    expect(p).toHaveLength(12)
+    expect(p[0]).toBe('2026-02')
+    expect(p[11]).toBe('2027-01')
+
+    const spaeter = await fuehreWartungslaufDurch(idb.db, { jetzt: am('2027-04-01'), mandantId })
+    expect(spaeter.eintraege.filter(x => x.vertragId === v.id)).toHaveLength(0)
+  })
   it('Abrechnen bündelt die Wartungslieferscheine in einer Sammelrechnung und schließt sie ab', async () => {
     const m = await legeVertragAn({
       bezeichnung: 'Monatlich', beginn: '2026-01-01', rechnungsIntervall: 'monatlich',

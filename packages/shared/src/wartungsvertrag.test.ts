@@ -3,6 +3,7 @@ import {
   addMonate,
   ersteVertragsperiode,
   letzteVertragsperiode,
+  letzterVertragsmonat,
   positionFaellig,
   rechnungFaellig,
   rechnungsBlockEnde,
@@ -39,6 +40,27 @@ describe('Wartungsvertrag: Perioden', () => {
   })
 })
 
+describe('Wartungsvertrag: Häufigkeit (Laufzeit)', () => {
+  it('monatlich × 12 = ein Jahr ab der ersten Periode', () => {
+    expect(letzterVertragsmonat('2026-01-15', undefined, { anzahl: 12, intervall: 'monatlich' })).toBe('2027-01')
+  })
+
+  it('quartal × 4 = ein Jahr, jahr × 2 = zwei Jahre', () => {
+    expect(letzterVertragsmonat('2026-01-01', undefined, { anzahl: 4, intervall: 'quartal' })).toBe('2027-01')
+    expect(letzterVertragsmonat('2026-01-01', undefined, { anzahl: 2, intervall: 'jahr' })).toBe('2028-01')
+  })
+
+  it('das frühere von Ende und Häufigkeit gilt; ohne beides unbefristet', () => {
+    expect(letzterVertragsmonat('2026-01-01', '2026-06-30', { anzahl: 12, intervall: 'monatlich' })).toBe('2026-06')
+    expect(letzterVertragsmonat('2026-01-01', '2030-01-01', { anzahl: 3, intervall: 'monatlich' })).toBe('2026-04')
+    expect(letzterVertragsmonat('2026-01-01', undefined, null)).toBeUndefined()
+  })
+
+  it('vertragsPerioden begrenzt durch die Häufigkeit', () => {
+    expect(vertragsPerioden('2026-01-10', undefined, '2026-12', { anzahl: 3, intervall: 'monatlich' }))
+      .toEqual(['2026-02', '2026-03', '2026-04'])
+  })
+})
 describe('Wartungsvertrag: Positions-Fälligkeit', () => {
   const erste = '2026-03'
 
@@ -107,11 +129,12 @@ describe('Wartungsvertrag: Eingabe-Schema', () => {
     positionen: [{ bezeichnung: 'Support', einzelpreisBreutto: 5000, mwstSatz: 'normal' }],
   }
 
-  it('setzt Standardwerte (monatlich, aktiv, Menge 1)', () => {
+  it('setzt Standardwerte (monatlich, aktiv, Menge 1, Position erbt das Intervall)', () => {
     const r = WartungsvertragInputSchema.parse(basis)
     expect(r.rechnungsIntervall).toBe('monatlich')
     expect(r.status).toBe('aktiv')
-    expect(r.positionen[0]).toMatchObject({ menge: 1, intervall: 'monatlich' })
+    expect(r.positionen[0]).toMatchObject({ menge: 1 })
+    expect(r.positionen[0]!.intervall).toBeUndefined()   // leer = wie das Rechnungsintervall des Vertrags
   })
 
   it('lehnt Ende vor Beginn und leere Positionen ab', () => {
