@@ -14,5 +14,6 @@
     "strict": true,
     "exactOptionalPropertyTypes": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["src/hilfe/weitere-apps.test.ts"]
 }
