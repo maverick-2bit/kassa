@@ -22,7 +22,7 @@ import {
 
 export interface BonProblemeRouteOptions { db: Db }
 
-const IdParamSchema = z.object({ id: z.string().uuid() })
+const IdParamSchema = z.object({ id: z.string().guid() })
 
 export const bonProblemeRoute: FastifyPluginAsync<BonProblemeRouteOptions> = async (fastify, opts) => {
   const auth = { onRequest: [fastify.authenticate] }

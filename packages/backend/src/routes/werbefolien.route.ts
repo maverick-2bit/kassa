@@ -18,8 +18,8 @@ import { WerbefolieInputSchema, WerbefolieUpdateSchema } from '@kassa/shared'
 
 export interface WerbefolienRouteOptions { db: Db }
 
-const IdParam       = z.object({ id: z.string().uuid() })
-const MandantParam  = z.object({ mandantId: z.string().uuid() })
+const IdParam       = z.object({ id: z.string().guid() })
+const MandantParam  = z.object({ mandantId: z.string().guid() })
 
 function toDto(row: typeof werbefolien.$inferSelect) {
   return {

@@ -16,7 +16,7 @@ import { fuehreSignaturSelbsttestAus } from '../services/rksv-selbsttest.service
 
 export interface RksvSelbsttestRouteOptions { db: Db }
 
-const Query = z.object({ kasseId: z.string().uuid() })
+const Query = z.object({ kasseId: z.string().guid() })
 
 const STATUS_LABEL: Record<string, string> = {
   ausfall:       'SEE-Ausfall (erwartet unsigniert)',

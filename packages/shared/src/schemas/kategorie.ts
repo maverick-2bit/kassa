@@ -98,15 +98,15 @@ export const KATEGORIE_MAX_TIEFE = 4
 // ---------------------------------------------------------------------------
 
 export const KategorieSchema = z.object({
-  id:              z.string().uuid(),
-  mandantId:       z.string().uuid(),
+  id:              z.string().guid(),
+  mandantId:       z.string().guid(),
   name:            z.string(),
   farbe:           KategorieFarbeSchema,
   reihenfolge:     z.number().int(),
   aktiv:           z.boolean(),
   /** Übergeordnete Warengruppe (null = Hauptgruppe/Reiter) */
-  parentId:        z.string().uuid().nullable(),
-  bonierdruckerId: z.string().uuid().nullable(),
+  parentId:        z.string().guid().nullable(),
+  bonierdruckerId: z.string().guid().nullable(),
   /** KDS-Stations-Vorgabe für alle Artikel dieser Warengruppe (Artikel können einzeln abweichen) */
   station:         StationSchema.nullable(),
   /** SB-Terminal: Artikel dieser Warengruppe am Bestellterminal anzeigen */
@@ -122,8 +122,8 @@ export const KategorieInputSchema = z.object({
   name:            z.string().trim().min(1, 'Name erforderlich').max(80),
   farbe:           KategorieFarbeSchema,
   reihenfolge:     z.number().int().nonnegative().default(0),
-  parentId:        z.string().uuid().optional().nullable(),
-  bonierdruckerId: z.string().uuid().optional().nullable(),
+  parentId:        z.string().guid().optional().nullable(),
+  bonierdruckerId: z.string().guid().optional().nullable(),
   station:         StationSchema.optional().nullable(),
   terminalSichtbar: z.boolean().default(false),
   optionenAbfrage: z.boolean().nullable().optional(),
@@ -135,8 +135,8 @@ export const KategorieUpdateSchema = z.object({
   farbe:           KategorieFarbeSchema.optional(),
   reihenfolge:     z.number().int().nonnegative().optional(),
   aktiv:           z.boolean().optional(),
-  parentId:        z.string().uuid().nullable().optional(),
-  bonierdruckerId: z.string().uuid().nullable().optional(),
+  parentId:        z.string().guid().nullable().optional(),
+  bonierdruckerId: z.string().guid().nullable().optional(),
   station:         StationSchema.nullable().optional(),
   terminalSichtbar: z.boolean().optional(),
   optionenAbfrage: z.boolean().nullable().optional(),

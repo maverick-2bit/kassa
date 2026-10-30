@@ -17,15 +17,15 @@ import { kassen, kassekategorieSichtbarkeit, kasseBonierdruckerSichtbarkeit, kas
 
 export interface PosConfigRouteOptions { db: Db }
 
-const KasseIdParam = z.object({ kasseId: z.string().uuid() })
+const KasseIdParam = z.object({ kasseId: z.string().guid() })
 
 const StartseitenEnum      = z.enum(['tische', 'kasse', 'kasse_favoriten', 'dashboard'])
 const KellnerTischwahlEnum = z.enum(['manuell', 'liste', 'plan'])
 const KellnerModusEnum     = z.enum(['tische', 'theke'])
 
 const PosConfigBodySchema = z.object({
-  sichtbareKategorieIds:     z.array(z.string().uuid()).optional(),
-  sichtbareBonierdruckerIds: z.array(z.string().uuid()).optional(),
+  sichtbareKategorieIds:     z.array(z.string().guid()).optional(),
+  sichtbareBonierdruckerIds: z.array(z.string().guid()).optional(),
   erlaubteZahlungsarten: z.array(z.enum(['bar', 'karte', 'sonstige'])).optional(),
   artikelbilderAktiv:    z.boolean().optional(),
   artikelProZeile:       z.number().int().min(2).max(6).optional(),
@@ -34,7 +34,7 @@ const PosConfigBodySchema = z.object({
   kellnerTischwahl:      KellnerTischwahlEnum.optional(),
   kellnerFavoritenAktiv: z.boolean().optional(),
   startFavoriten:        z.boolean().optional(),
-  startKategorieId:      z.string().uuid().nullable().optional(),
+  startKategorieId:      z.string().guid().nullable().optional(),
   optionenAbfrage:       z.boolean().optional(),
 })
 

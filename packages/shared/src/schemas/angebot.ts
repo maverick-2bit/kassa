@@ -12,7 +12,7 @@ export const AngebotPositionSchema = z.object({
   einzelpreisBreutto: z.number().int(),
   mwstSatz:           MwStSatzSchema,
   /** Referenz auf den Artikel (für Seriennummern-Zuordnung; fehlt bei freien Positionen) */
-  artikelId:          z.string().uuid().optional(),
+  artikelId:          z.string().guid().optional(),
   /** Zugewiesene Seriennummern (auf Lieferschein/Rechnung; für den Aufdruck) */
   seriennummern:      z.array(z.string()).optional(),
 })
@@ -23,11 +23,11 @@ export type AngebotPosition = z.infer<typeof AngebotPositionSchema>
 // ---------------------------------------------------------------------------
 
 export const AngebotInputSchema = z.object({
-  kasseId:    z.string().uuid(),
+  kasseId:    z.string().guid(),
   positionen: z.array(AngebotPositionSchema).min(1, 'Mindestens eine Position erforderlich'),
   gueltigBis: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   notiz:      z.string().trim().max(2000).optional(),
-  kundeId:    z.string().uuid().optional(),
+  kundeId:    z.string().guid().optional(),
   neuerKunde: KundeInputSchema.optional(),
 })
 export type AngebotInput = z.infer<typeof AngebotInputSchema>
@@ -51,7 +51,7 @@ export const ANGEBOT_STATUS_LABELS: Record<AngebotStatus, string> = {
 // ---------------------------------------------------------------------------
 
 export const AngebotResponseSchema = z.object({
-  id:               z.string().uuid(),
+  id:               z.string().guid(),
   nummer:           z.number().int(),
   datum:            z.string(),
   gueltigBis:       z.string().optional(),

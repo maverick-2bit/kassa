@@ -35,14 +35,14 @@ import {
 export interface ReservierungRouteOptions { db: Db; config: Config }
 
 const ListQuerySchema = z.object({
-  kasseId:  z.string().uuid().optional(),
+  kasseId:  z.string().guid().optional(),
   datumVon: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   datumBis: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   limit:    z.coerce.number().int().min(1).max(1000).optional(),
 })
 
-const IdParam    = z.object({ id: z.string().uuid() })
-const KasseParam = z.object({ kasseId: z.string().uuid() })
+const IdParam    = z.object({ id: z.string().guid() })
+const KasseParam = z.object({ kasseId: z.string().guid() })
 
 export const reservierungRoute: FastifyPluginAsync<ReservierungRouteOptions> = async (fastify, opts) => {
   const guard = { onRequest: [fastify.authenticate] }
@@ -69,11 +69,11 @@ export const reservierungRoute: FastifyPluginAsync<ReservierungRouteOptions> = a
   // ---- GET /reservierungen/tische — Verfügbarkeit im Zeitraum ----
   fastify.get('/reservierungen/tische', guard, async (request, reply) => {
     const q = z.object({
-      kasseId:  z.string().uuid(),
+      kasseId:  z.string().guid(),
       datum:    z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
       zeitVon:  z.string().regex(/^\d{2}:\d{2}$/),
       dauer:    z.coerce.number().int().min(15).max(720).default(90),
-      ausserId: z.string().uuid().optional(),
+      ausserId: z.string().guid().optional(),
     }).safeParse(request.query)
     if (!q.success) return reply.status(400).send({ fehler: q.error.issues })
 

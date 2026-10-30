@@ -7,7 +7,7 @@ import { RabattInputSchema } from './beleg.js'
 // ---------------------------------------------------------------------------
 
 export const TabPositionSchema = z.object({
-  artikelId:       z.string().uuid(),
+  artikelId:       z.string().guid(),
   bezeichnung:     z.string(),
   /** Cent; negativ erlaubt (Pfand-Rückgabe) */
   preisBruttoCent: z.number().int(),
@@ -27,7 +27,7 @@ export type TabPosition = z.infer<typeof TabPositionSchema>
 // ---------------------------------------------------------------------------
 
 export const TischTabErstellenInputSchema = z.object({
-  kasseId:     z.string().uuid(),
+  kasseId:     z.string().guid(),
   tischNummer: z.string().min(1).max(40).trim(),
   kellner:     z.string().min(1).max(100).trim(),
 })
@@ -56,7 +56,7 @@ export type TischTabUmbenennenInput = z.infer<typeof TischTabUmbenennenInputSche
 
 // Mehrere offene Tabs (Gruppen) in einen Ziel-Tab zusammenführen.
 export const TischTabZusammenfuehrenInputSchema = z.object({
-  quellTabIds: z.array(z.string().uuid()).min(1).max(20),
+  quellTabIds: z.array(z.string().guid()).min(1).max(20),
 })
 export type TischTabZusammenfuehrenInput = z.infer<typeof TischTabZusammenfuehrenInputSchema>
 
@@ -107,7 +107,7 @@ export type TischTabBezahlenInput = z.infer<typeof TischTabBezahlenInputSchema>
 // ---------------------------------------------------------------------------
 
 export const TabEreignisSchema = z.object({
-  id:        z.string().uuid(),
+  id:        z.string().guid(),
   typ:       z.enum([
     'geoeffnet',
     'bonierung',
@@ -122,7 +122,7 @@ export const TabEreignisSchema = z.object({
     'gang_gefeuert',
     'gang_nachgeschickt',
   ]),
-  details:   z.record(z.unknown()),
+  details:   z.record(z.string(), z.unknown()),
   createdAt: z.string(),
 })
 export type TabEreignis = z.infer<typeof TabEreignisSchema>
@@ -132,8 +132,8 @@ export type TabEreignis = z.infer<typeof TabEreignisSchema>
 // ---------------------------------------------------------------------------
 
 export const TischTabResponseSchema = z.object({
-  id:              z.string().uuid(),
-  kasseId:         z.string().uuid(),
+  id:              z.string().guid(),
+  kasseId:         z.string().guid(),
   tischNummer:     z.string(),
   kellner:         z.string(),
   positionen:      z.array(TabPositionSchema),

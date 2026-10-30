@@ -34,7 +34,7 @@ const ListQuerySchema = z.object({
   nurAktive: queryBool(true),
 })
 
-const IdParamSchema = z.object({ id: z.string().uuid() })
+const IdParamSchema = z.object({ id: z.string().guid() })
 
 /** Prüft ob ein Artikel zum Mandanten des angemeldeten Users gehört */
 async function gehortArtikelZuMandant(db: Db, artikelId: string, mandantId: string): Promise<boolean> {
@@ -47,7 +47,7 @@ async function gehortArtikelZuMandant(db: Db, artikelId: string, mandantId: stri
 }
 
 // mandantId fehlt absichtlich — kommt aus dem JWT und wird serverseitig gesetzt
-const BulkImportSchema = z.array(z.record(z.unknown())).min(1).max(500)
+const BulkImportSchema = z.array(z.record(z.string(), z.unknown())).min(1).max(500)
 
 const LayoutImportQuerySchema = z.object({
   /** Standard true: ohne ausdrückliches dryRun=false wird nichts geschrieben */
@@ -62,7 +62,7 @@ const LayoutExportQuerySchema = z.object({
   /** Kommagetrennte Warengruppen-IDs (samt Untergruppen); fehlt sie, werden alle aktiven Gruppen exportiert */
   kategorieIds: z.string().optional()
     .transform(s => (s ? s.split(',').map(x => x.trim()).filter(x => x !== '') : undefined))
-    .pipe(z.array(z.string().uuid()).max(2000).optional()),
+    .pipe(z.array(z.string().guid()).max(2000).optional()),
 })
 
 export const artikelRoute: FastifyPluginAsync<ArtikelRouteOptions> = async (fastify, opts) => {
@@ -192,7 +192,7 @@ export const artikelRoute: FastifyPluginAsync<ArtikelRouteOptions> = async (fast
    */
   fastify.post('/artikel/lager-aktivieren', { onRequest: [fastify.authenticate] }, async (request, reply) => {
     const parsed = z.object({
-      kategorieId: z.string().uuid().nullable(),
+      kategorieId: z.string().guid().nullable(),
     }).safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
 
@@ -222,7 +222,7 @@ export const artikelRoute: FastifyPluginAsync<ArtikelRouteOptions> = async (fast
    */
   fastify.post('/artikel/kds-zuruecksetzen', { onRequest: [fastify.authenticate] }, async (request, reply) => {
     const parsed = z.object({
-      artikelIds: z.array(z.string().uuid()).min(1).max(10000),
+      artikelIds: z.array(z.string().guid()).min(1).max(10000),
     }).safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
 

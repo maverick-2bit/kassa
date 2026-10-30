@@ -26,7 +26,7 @@ export const SerialZuweisungSchema = z.object({
 export type SerialZuweisung = z.infer<typeof SerialZuweisungSchema>
 
 export const LiferscheinInputSchema = z.object({
-  angebotId: z.string().uuid(),
+  angebotId: z.string().guid(),
   notiz:     z.string().trim().max(2000).optional(),
   /** Pro serialisierter Position die gewählten Seriennummern aus dem Pool */
   serialZuweisungen: z.array(SerialZuweisungSchema).optional(),
@@ -44,11 +44,11 @@ export type LiferscheinUpdate = z.infer<typeof LiferscheinUpdateSchema>
 // ---------------------------------------------------------------------------
 
 export const LiferscheinResponseSchema = z.object({
-  id:            z.string().uuid(),
+  id:            z.string().guid(),
   nummer:        z.number().int(),
   datum:         z.string(),
   status:        LiferscheinStatusSchema,
-  angebotId:     z.string().uuid(),
+  angebotId:     z.string().guid(),
   angebotNummer: z.number().int(),
   positionen:    z.array(AngebotPositionSchema),
   notiz:         z.string().optional(),
@@ -62,12 +62,12 @@ export type LiferscheinResponse = z.infer<typeof LiferscheinResponseSchema>
 // ---------------------------------------------------------------------------
 
 export const SammelrechnungInputSchema = z.object({
-  lieferscheinIds: z.array(z.string().uuid()).min(1).max(100),
+  lieferscheinIds: z.array(z.string().guid()).min(1).max(100),
 })
 export type SammelrechnungInput = z.infer<typeof SammelrechnungInputSchema>
 
 export const SammelrechnungResponseSchema = z.object({
-  id:               z.string().uuid(),
+  id:               z.string().guid(),
   nummer:           z.number().int(),
   datum:            z.string(),
   kunde:            KundeSnapshotSchema.optional(),

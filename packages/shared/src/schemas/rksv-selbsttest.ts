@@ -23,7 +23,7 @@ export const SelbsttestBelegDetailSchema = z.object({
 export type SelbsttestBelegDetail = z.infer<typeof SelbsttestBelegDetailSchema>
 
 export const SignaturSelbsttestErgebnisSchema = z.object({
-  kasseId:           z.string().uuid(),
+  kasseId:           z.string().guid(),
   /** externe Kassen-ID (KID), wie am Beleg */
   kassenId:          z.string(),
   geprueft:          z.number().int(),

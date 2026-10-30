@@ -49,7 +49,7 @@ export type ZvtErgebnis = z.infer<typeof ZvtErgebnisSchema>
 // ---------------------------------------------------------------------------
 
 export const ZvtJobSchema = z.object({
-  id:          z.string().uuid(),
+  id:          z.string().guid(),
   status:      ZvtJobStatusSchema,
   betragCent:  z.number().int().positive(),
   /** Kurze Status-Meldung für die UI ("Warte auf Karte", "PIN-Eingabe", …) */
@@ -66,7 +66,7 @@ export type ZvtJob = z.infer<typeof ZvtJobSchema>
 // ---------------------------------------------------------------------------
 
 export const ZvtZahlungInputSchema = z.object({
-  kasseId:    z.string().uuid(),
+  kasseId:    z.string().guid(),
   betragCent: z.number().int().positive(),
 })
 export type ZvtZahlungInput = z.infer<typeof ZvtZahlungInputSchema>

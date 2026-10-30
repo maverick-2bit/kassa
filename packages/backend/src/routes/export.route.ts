@@ -18,7 +18,7 @@ import { ladeTagesRegel } from '../services/geschaeftstag.service.js'
 export interface ExportRouteOptions { db: Db }
 
 const BmdQuerySchema = z.object({
-  kasseId:  z.string().uuid(),
+  kasseId:  z.string().guid(),
   vonDatum: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   bisDatum: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 })

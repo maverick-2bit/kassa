@@ -18,7 +18,7 @@ import {
 
 export interface SbBestellungRouteOptions { db: Db }
 
-const IdParam     = z.object({ id: z.string().uuid() })
+const IdParam     = z.object({ id: z.string().guid() })
 const DatumQuery  = z.object({ datum: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() })
 
 export const sbBestellungRoute: FastifyPluginAsync<SbBestellungRouteOptions> = async (fastify, opts) => {

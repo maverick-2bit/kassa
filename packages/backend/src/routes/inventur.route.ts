@@ -33,7 +33,7 @@ import { EmailVersandError, isEmailAktiv, sendeInventurEmail } from '../services
 
 export interface InventurRouteOptions { db: Db; config: Config }
 
-const IdParam = z.object({ id: z.string().uuid() })
+const IdParam = z.object({ id: z.string().guid() })
 
 export const inventurRoute: FastifyPluginAsync<InventurRouteOptions> = async (fastify, opts) => {
   const auth = { onRequest: [fastify.authenticate] }
@@ -135,8 +135,8 @@ export const inventurRoute: FastifyPluginAsync<InventurRouteOptions> = async (fa
     const p = IdParam.safeParse(request.params)
     if (!p.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
     const body = z.object({
-      kasseId:   z.string().uuid(),
-      druckerId: z.string().uuid().optional(),
+      kasseId:   z.string().guid(),
+      druckerId: z.string().guid().optional(),
     }).safeParse(request.body)
     if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
 

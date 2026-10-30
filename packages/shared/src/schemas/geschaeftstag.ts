@@ -27,7 +27,7 @@ export type TagesbeginnInput = z.infer<typeof TagesbeginnInputSchema>
 
 /** Gespeicherter Eintrag mit Kennung (zum Zurücknehmen eines geplanten Wechsels). */
 export const TagesbeginnZeileSchema = TagesbeginnEintragSchema.extend({
-  id:        z.string().uuid(),
+  id:        z.string().guid(),
   createdAt: z.string(),
 })
 export type TagesbeginnZeile = z.infer<typeof TagesbeginnZeileSchema>

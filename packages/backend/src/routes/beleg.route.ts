@@ -64,14 +64,14 @@ export interface BelegRouteOptions {
 }
 
 const ListQuerySchema = z.object({
-  kasseId: z.string().uuid(),
+  kasseId: z.string().guid(),
   limit:   z.coerce.number().int().min(1).max(500).optional(),
-  kundeId: z.string().uuid().optional(),
+  kundeId: z.string().guid().optional(),
 })
 
 /** SEE-Meldung: kasseId + optionale FinanzOnline-Zugangsdaten (für die FON-Meldung). */
 const SeeMeldungBodySchema = z.object({
-  kasseId: z.string().uuid(),
+  kasseId: z.string().guid(),
   credentials: z.object({
     teilnehmerId:    z.string().min(1),
     benutzerkennung: z.string().min(1),
@@ -80,7 +80,7 @@ const SeeMeldungBodySchema = z.object({
 })
 
 const DepExportQuerySchema = z.object({
-  kasseId:  z.string().uuid(),
+  kasseId:  z.string().guid(),
   vonDatum: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   bisDatum: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 })
@@ -296,7 +296,7 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
   // -------------------------------------------------------------------------
 
   fastify.get('/belege/see-status', guard, async (request, reply) => {
-    const parsed = z.object({ kasseId: z.string().uuid() }).safeParse(request.query)
+    const parsed = z.object({ kasseId: z.string().guid() }).safeParse(request.query)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     if (!(await pruefeKasseScope(request, reply, opts.deps, parsed.data.kasseId))) return
     try {
@@ -345,7 +345,7 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
   // -------------------------------------------------------------------------
 
   fastify.get('/belege/fo-status', guard, async (request, reply) => {
-    const parsed = z.object({ kasseId: z.string().uuid() }).safeParse(request.query)
+    const parsed = z.object({ kasseId: z.string().guid() }).safeParse(request.query)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     if (!(await pruefeKasseScope(request, reply, opts.deps, parsed.data.kasseId))) return
     try {
@@ -358,7 +358,7 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
 
   fastify.post('/belege/fo-registrierung', guard, async (request, reply) => {
     const parsed = z.object({
-      kasseId: z.string().uuid(),
+      kasseId: z.string().guid(),
       credentials: z.object({
         teilnehmerId:    z.string().min(1),
         benutzerkennung: z.string().min(1),
@@ -461,9 +461,9 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
   // ---------------------------------------------------------------------------
 
   const KassensturzDruckenSchema = z.object({
-    kasseId:       z.string().uuid(),
+    kasseId:       z.string().guid(),
     datum:         z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    druckerId:     z.string().uuid().optional(),
+    druckerId:     z.string().guid().optional(),
     istCent:       z.number().int(),
     sollCent:      z.number().int(),
     differenzCent: z.number().int(),

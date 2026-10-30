@@ -28,7 +28,7 @@ export type Zeitfenster = z.infer<typeof ZeitfensterSchema>
 
 /** Fixer Aktionspreis für genau einen Artikel */
 export const ArtikelPreisSchema = z.object({
-  artikelId: z.string().uuid(),
+  artikelId: z.string().guid(),
   preisCent: z.number().int().nonnegative(),
 })
 export type ArtikelPreis = z.infer<typeof ArtikelPreisSchema>
@@ -50,10 +50,10 @@ const PreisregelBaseSchema = z.object({
   /** Fixe Aktionspreise je Artikel — schlagen den Prozentsatz */
   artikelPreise: z.array(ArtikelPreisSchema).max(500).default([]),
   /** Betroffene Warengruppen (leer = keine Einschränkung über Warengruppen) */
-  kategorieIds:  z.array(z.string().uuid()).max(200).default([]),
+  kategorieIds:  z.array(z.string().guid()).max(200).default([]),
   /** Betroffene Einzel-Artikel (leer = keine Einschränkung über Artikel).
    *  kategorieIds UND artikelIds leer = gilt für ALLE Artikel. */
-  artikelIds:    z.array(z.string().uuid()).max(500).default([]),
+  artikelIds:    z.array(z.string().guid()).max(500).default([]),
 })
 
 export const PreisregelInputSchema = PreisregelBaseSchema
@@ -71,7 +71,7 @@ export const PreisregelUpdateSchema = PreisregelBaseSchema.partial()
 export type PreisregelUpdate = z.infer<typeof PreisregelUpdateSchema>
 
 export const PreisregelSchema = z.object({
-  id:            z.string().uuid(),
+  id:            z.string().guid(),
   name:          z.string(),
   aktiv:         z.boolean(),
   wochentage:    z.array(WochentagSchema),
@@ -81,8 +81,8 @@ export const PreisregelSchema = z.object({
   gueltigBis:    z.string().nullable(),
   rabattProzent: z.number().int(),
   artikelPreise: z.array(ArtikelPreisSchema),
-  kategorieIds:  z.array(z.string().uuid()),
-  artikelIds:    z.array(z.string().uuid()),
+  kategorieIds:  z.array(z.string().guid()),
+  artikelIds:    z.array(z.string().guid()),
   createdAt:     z.string(),
   updatedAt:     z.string(),
 })

@@ -32,7 +32,7 @@ import { druckeErledigtBon } from '../services/bonierdrucker.service.js'
 
 export interface KdsRouteOptions { db: Db }
 
-const IdParam          = z.object({ id: z.string().uuid() })
+const IdParam          = z.object({ id: z.string().guid() })
 const StationQuery     = z.object({ station: z.string().min(1) })
 const ArchivQuery      = z.object({
   station: z.string().optional(),
@@ -41,7 +41,7 @@ const ArchivQuery      = z.object({
 })
 const TeilbonBody      = z.object({
   positionsMengen: z.array(z.object({
-    id:    z.string().uuid(),
+    id:    z.string().guid(),
     menge: z.number().int().positive().max(999),
   })).min(1).refine(
     arr => new Set(arr.map(p => p.id)).size === arr.length,
@@ -52,7 +52,7 @@ const NachrichtBody    = z.object({
   text:     z.string().min(1).max(500),
   station:  z.string().min(1),
   /** Leer = Broadcast an alle Kassen des Mandanten */
-  kasseIds: z.array(z.string().uuid()).default([]),
+  kasseIds: z.array(z.string().guid()).default([]),
 })
 const AntwortBody      = z.object({
   text:    z.string().min(1).max(500),
@@ -381,7 +381,7 @@ export const kdsRoute: FastifyPluginAsync<KdsRouteOptions> = async (fastify, opt
     const body = z.object({
       station:         StationSchema,
       /** null = Zuordnung aufheben (wie früher: alle aktiven Bonierdrucker) */
-      bonierdruckerId: z.string().uuid().nullable(),
+      bonierdruckerId: z.string().guid().nullable(),
     }).safeParse(request.body)
     if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
     const mandantId = request.user.mandantId
@@ -422,7 +422,7 @@ export const kdsRoute: FastifyPluginAsync<KdsRouteOptions> = async (fastify, opt
   })
 
   fastify.put('/kds/fallback-drucker', { onRequest: [fastify.authenticate] }, async (request, reply) => {
-    const body = z.object({ bonierdruckerId: z.string().uuid().nullable() }).safeParse(request.body)
+    const body = z.object({ bonierdruckerId: z.string().guid().nullable() }).safeParse(request.body)
     if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
     const mandantId = request.user.mandantId
     const { bonierdruckerId } = body.data
@@ -465,7 +465,7 @@ export const kdsRoute: FastifyPluginAsync<KdsRouteOptions> = async (fastify, opt
     async (request, reply) => {
       const p = IdParam.safeParse(request.params)
       if (!p.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
-      const b = z.object({ positionId: z.string().uuid() }).safeParse(request.body)
+      const b = z.object({ positionId: z.string().guid() }).safeParse(request.body)
       if (!b.success) return reply.status(400).send({ fehler: 'positionId fehlt oder ungültig' })
 
       const result = await kdsPositionHaken(opts.db, p.data.id, request.user.mandantId, b.data.positionId)

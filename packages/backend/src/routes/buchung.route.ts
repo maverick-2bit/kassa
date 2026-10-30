@@ -33,8 +33,8 @@ import {
 
 export interface BuchungRouteOptions { db: Db; config: Config }
 
-const KasseParam    = z.object({ kasseId: z.string().uuid() })
-const StorniereParam = z.object({ kasseId: z.string().uuid(), token: z.string().uuid() })
+const KasseParam    = z.object({ kasseId: z.string().guid() })
+const StorniereParam = z.object({ kasseId: z.string().guid(), token: z.string().guid() })
 
 export const buchungRoute: FastifyPluginAsync<BuchungRouteOptions> = async (fastify, opts) => {
   // ---- GET /buchung/:kasseId ----

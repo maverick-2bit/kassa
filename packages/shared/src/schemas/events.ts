@@ -17,7 +17,7 @@ export type BonierbonEvent = z.infer<typeof BonierbonEventSchema>
 
 export const NeueBestellungEventSchema = z.object({
   typ:              z.literal('neue_bestellung'),
-  bestellungId:     z.string().uuid(),
+  bestellungId:     z.string().guid(),
   provider:         z.string(),
   gesamtbetragCent: z.number().int(),
   positionen:       z.number().int(),
@@ -26,7 +26,7 @@ export type NeueBestellungEvent = z.infer<typeof NeueBestellungEventSchema>
 
 export const LagerstandWarnungEventSchema = z.object({
   typ:            z.literal('lagerstand_warnung'),
-  artikelId:      z.string().uuid(),
+  artikelId:      z.string().guid(),
   bezeichnung:    z.string(),
   menge:          z.number().int(),
   mindestbestand: z.number().int(),
@@ -45,13 +45,13 @@ export const KdsNachrichtEventSchema = z.object({
    * Gezielte Empfänger-Kassen (UUIDs).
    * Leer = Broadcast an alle Kassen des Mandanten.
    */
-  kasseIds: z.array(z.string().uuid()).default([]),
+  kasseIds: z.array(z.string().guid()).default([]),
 })
 export type KdsNachrichtEvent = z.infer<typeof KdsNachrichtEventSchema>
 
 export const GastBestellungEventSchema = z.object({
   typ:              z.literal('neue_gastbestellung'),
-  kasseId:          z.string().uuid(),
+  kasseId:          z.string().guid(),
   tischNummer:      z.string(),
   anzahlPositionen: z.number().int(),
   gesamtbetragCent: z.number().int(),
@@ -60,8 +60,8 @@ export type GastBestellungEvent = z.infer<typeof GastBestellungEventSchema>
 
 export const NeueReservierungEventSchema = z.object({
   typ:            z.literal('neue_reservierung'),
-  reservierungId: z.string().uuid(),
-  kasseId:        z.string().uuid(),
+  reservierungId: z.string().guid(),
+  kasseId:        z.string().guid(),
   datum:          z.string(),
   zeitVon:        z.string(),
   name:           z.string(),
@@ -70,17 +70,17 @@ export type NeueReservierungEvent = z.infer<typeof NeueReservierungEventSchema>
 
 export const ZahlungAngefordertEventSchema = z.object({
   typ:         z.literal('zahlung_angefordert'),
-  kasseId:     z.string().uuid(),
+  kasseId:     z.string().guid(),
   tischNummer: z.string(),
-  tabId:       z.string().uuid(),
+  tabId:       z.string().guid(),
   summeCent:   z.number().int(),
 })
 export type ZahlungAngefordertEvent = z.infer<typeof ZahlungAngefordertEventSchema>
 
 export const SbBestellungEventSchema = z.object({
   typ:              z.literal('neue_sb_bestellung'),
-  bestellungId:     z.string().uuid(),
-  kasseId:          z.string().uuid(),
+  bestellungId:     z.string().guid(),
+  kasseId:          z.string().guid(),
   bestellNummer:    z.number().int(),
   anzahlPositionen: z.number().int(),
   summeCent:        z.number().int(),
@@ -94,7 +94,7 @@ export type SbBestellungEvent = z.infer<typeof SbBestellungEventSchema>
  */
 export const BonProblemeEventSchema = z.object({
   typ:     z.literal('bon_probleme'),
-  kasseId: z.string().uuid(),
+  kasseId: z.string().guid(),
 })
 export type BonProblemeEvent = z.infer<typeof BonProblemeEventSchema>
 

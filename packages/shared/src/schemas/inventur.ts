@@ -13,7 +13,7 @@ export type InventurAnlage = z.infer<typeof InventurAnlageSchema>
 /** Bulk-Erfassung gezählter Mengen. istMenge = null → wieder als „ungezählt" markieren. */
 export const InventurZaehlSchema = z.object({
   positionen: z.array(z.object({
-    artikelId: z.string().uuid(),
+    artikelId: z.string().guid(),
     istMenge:  z.number().int().min(0).max(1_000_000).nullable(),
   })).min(1).max(5000),
 })

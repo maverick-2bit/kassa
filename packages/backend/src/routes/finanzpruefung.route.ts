@@ -16,12 +16,12 @@ export interface FinanzpruefungRouteOptions {
 }
 
 const TokenErstellenSchema = z.object({
-  kasseId:          z.string().uuid(),
+  kasseId:          z.string().guid(),
   gueltigkeitsTage: z.coerce.number().int().min(1).max(90).default(30),
   beschreibung:     z.string().max(200).optional(),
 })
-const TokenQuerySchema  = z.object({ kasseId: z.string().uuid() })
-const IdParamSchema     = z.object({ id: z.string().uuid() })
+const TokenQuerySchema  = z.object({ kasseId: z.string().guid() })
+const IdParamSchema     = z.object({ id: z.string().guid() })
 const PublicParamSchema = z.object({ token: z.string().length(64).regex(/^[0-9a-f]+$/) })
 
 export const finanzpruefungRoute: FastifyPluginAsync<FinanzpruefungRouteOptions> = async (fastify, opts) => {

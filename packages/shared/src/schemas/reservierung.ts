@@ -21,7 +21,7 @@ export const ReservierungQuelleSchema = z.enum(['intern', 'online'])
 export type ReservierungQuelle = z.infer<typeof ReservierungQuelleSchema>
 
 export const ReservierungInputSchema = z.object({
-  kasseId:        z.string().uuid(),
+  kasseId:        z.string().guid(),
   datum:          z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   zeitVon:        z.string().regex(/^\d{2}:\d{2}$/),
   dauer:          z.number().int().min(15).max(480).optional(),
@@ -32,7 +32,7 @@ export const ReservierungInputSchema = z.object({
   notiz:          z.string().max(500).optional(),
   tischLabel:     z.string().max(50).optional(),
   /** Echte Bindung an einen Tisch des Tischplans (Kollisionsprüfung) */
-  tischId:        z.string().uuid().nullable().optional(),
+  tischId:        z.string().guid().nullable().optional(),
 })
 export type ReservierungInput = z.infer<typeof ReservierungInputSchema>
 
@@ -47,14 +47,14 @@ export const ReservierungUpdateSchema = z.object({
   notiz:          z.string().max(500).optional(),
   tischLabel:     z.string().max(50).optional(),
   /** Echte Bindung an einen Tisch des Tischplans (Kollisionsprüfung) */
-  tischId:        z.string().uuid().nullable().optional(),
+  tischId:        z.string().guid().nullable().optional(),
   status:         ReservierungStatusSchema.optional(),
 })
 export type ReservierungUpdate = z.infer<typeof ReservierungUpdateSchema>
 
 export const ReservierungResponseSchema = z.object({
-  id:             z.string().uuid(),
-  kasseId:        z.string().uuid(),
+  id:             z.string().guid(),
+  kasseId:        z.string().guid(),
   datum:          z.string(),
   zeitVon:        z.string(),
   dauer:          z.number().int(),
@@ -64,10 +64,10 @@ export const ReservierungResponseSchema = z.object({
   email:          z.string().optional(),
   notiz:          z.string().optional(),
   tischLabel:     z.string().optional(),
-  tischId:        z.string().uuid().optional(),
+  tischId:        z.string().guid().optional(),
   status:         ReservierungStatusSchema,
   quelle:         ReservierungQuelleSchema,
-  onlineToken:    z.string().uuid().optional(),
+  onlineToken:    z.string().guid().optional(),
   createdAt:      z.string(),
   updatedAt:      z.string(),
 })
@@ -75,7 +75,7 @@ export type ReservierungResponse = z.infer<typeof ReservierungResponseSchema>
 
 // Öffentliche Buchungsinfo (kein JWT)
 export const OnlineBuchungInfoSchema = z.object({
-  kasseId:      z.string().uuid(),
+  kasseId:      z.string().guid(),
   firmenname:   z.string(),
   aktiv:        z.boolean(),
 })
@@ -91,6 +91,6 @@ export const OnlineBuchungInputSchema = z.object({
   email:          z.string().email().optional(),
   notiz:          z.string().max(500).optional(),
   /** Vom Gast gewählter Tisch — muss online freigegeben und frei sein */
-  tischId:        z.string().uuid().optional(),
+  tischId:        z.string().guid().optional(),
 })
 export type OnlineBuchungInput = z.infer<typeof OnlineBuchungInputSchema>

@@ -13,10 +13,10 @@ import { BelegModusEnum, GastModusEnum, StartseitenEnum } from './bonierdrucker.
  * Genau eines von kategorieId / artikelId ist gesetzt. „keiner" = ausdrücklich kein Drucker / keine Station.
  */
 export const RoutingAusnahmeSchema = z.object({
-  kasseId:         z.string().uuid(),
-  kategorieId:     z.string().uuid().nullable(),
-  artikelId:       z.string().uuid().nullable(),
-  bonierdruckerId: z.string().uuid().nullable(),
+  kasseId:         z.string().guid(),
+  kategorieId:     z.string().guid().nullable(),
+  artikelId:       z.string().guid().nullable(),
+  bonierdruckerId: z.string().guid().nullable(),
   keinDrucker:     z.boolean(),
   station:         StationSchema.nullable(),
   keineStation:    z.boolean(),
@@ -25,7 +25,7 @@ export type RoutingAusnahme = z.infer<typeof RoutingAusnahmeSchema>
 
 /** Eine Kasse mit allem, was die Übersicht je Kasse zeigt und ändert. */
 export const EinrichtungKasseSchema = z.object({
-  id:               z.string().uuid(),
+  id:               z.string().guid(),
   kassenId:         z.string(),
   bezeichnung:      z.string().nullable(),
   status:           z.string(),
@@ -37,7 +37,7 @@ export const EinrichtungKasseSchema = z.object({
 
   // Belegausgabe + Rechnungsdrucker (Bibliothek „drucker")
   belegModus: BelegModusEnum,
-  druckerId:  z.string().uuid().nullable(),
+  druckerId:  z.string().guid().nullable(),
 
   // Gast-Bestellung per Tisch-QR
   gastModus:    GastModusEnum,
@@ -47,7 +47,8 @@ export const EinrichtungKasseSchema = z.object({
   kdsAktiv:     z.boolean(),
   kdsPort:      z.number().int(),
   /** Stations-Slug → IP (nur TCP-Hardware-Displays; für Browser-Displays leer) */
-  kdsStationen: z.record(StationSchema, z.string()),
+  // zod 4: z.record mit Enum-Schlüsseln verlangt ALLE Schlüssel — hier sind es nur die eingerichteten Stationen
+  kdsStationen: z.partialRecord(StationSchema, z.string()),
 
   startseite:            StartseitenEnum,
   erlaubteZahlungsarten: z.array(z.enum(['bar', 'karte', 'sonstige'])),
@@ -58,15 +59,15 @@ export const EinrichtungKasseSchema = z.object({
    * Hat die Kasse genau eine Warengruppe, öffnet sie sich ohnehin von selbst (shared/start-reiter).
    */
   startFavoriten:   z.boolean(),
-  startKategorieId: z.string().uuid().nullable(),
+  startKategorieId: z.string().guid().nullable(),
 
   /** Direktverkauf: Optionen/Varianten abfragen (Warengruppe/Artikel können abweichen; Tische fragen immer) */
   optionenAbfrage:  z.boolean(),
 
   /** Sichtbare Warengruppen (leer = alle) */
-  sichtbareKategorieIds:     z.array(z.string().uuid()),
+  sichtbareKategorieIds:     z.array(z.string().guid()),
   /** Aktive Bonierdrucker dieser Kasse (leer = alle) */
-  sichtbareBonierdruckerIds: z.array(z.string().uuid()),
+  sichtbareBonierdruckerIds: z.array(z.string().guid()),
 })
 export type EinrichtungKasse = z.infer<typeof EinrichtungKasseSchema>
 
@@ -84,10 +85,10 @@ export type Einrichtung = z.infer<typeof EinrichtungSchema>
  * Eine Ausnahme ohne jede Angabe wird gelöscht.
  */
 export const RoutingAenderungSchema = z.object({
-  kasseId:     z.string().uuid(),
-  kategorieId: z.string().uuid().optional(),
-  artikelId:   z.string().uuid().optional(),
-  drucker:     z.union([z.literal('keiner'), z.string().uuid()]).nullable().optional(),
+  kasseId:     z.string().guid(),
+  kategorieId: z.string().guid().optional(),
+  artikelId:   z.string().guid().optional(),
+  drucker:     z.union([z.literal('keiner'), z.string().guid()]).nullable().optional(),
   station:     z.union([z.literal('keine'), StationSchema]).nullable().optional(),
 })
   .refine(a => (a.kategorieId === undefined) !== (a.artikelId === undefined), {
@@ -105,6 +106,6 @@ export type RoutingAenderungen = z.infer<typeof RoutingAenderungenSchema>
 
 /** Einrichtung einer Kasse von einer anderen übernehmen (z. B. nach dem Anlegen). */
 export const EinrichtungKopierenSchema = z.object({
-  vonKasseId: z.string().uuid(),
+  vonKasseId: z.string().guid(),
 })
 export type EinrichtungKopieren = z.infer<typeof EinrichtungKopierenSchema>

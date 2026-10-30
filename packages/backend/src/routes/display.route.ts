@@ -20,7 +20,7 @@ const DisplayPositionSchema = z.object({
 })
 
 const DisplayPushSchema = z.object({
-  kasseId: z.string().uuid(),
+  kasseId: z.string().guid(),
   event:   z.discriminatedUnion('typ', [
     z.object({
       typ:        z.literal('warenkorb'),
@@ -31,7 +31,7 @@ const DisplayPushSchema = z.object({
       typ:         z.literal('beleg_erstellt'),
       belegNummer: z.number().int(),
       summeCent:   z.number().int(),
-      belegId:     z.string().uuid().optional(),
+      belegId:     z.string().guid().optional(),
     }),
     z.object({ typ: z.literal('leer') }),
   ]),

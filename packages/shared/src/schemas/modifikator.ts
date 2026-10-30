@@ -8,8 +8,8 @@ export const ModifikatorGruppeTypSchema = z.enum(['pflicht', 'optional'])
 export type ModifikatorGruppeTyp = z.infer<typeof ModifikatorGruppeTypSchema>
 
 export const ModifikatorSchema = z.object({
-  id:              z.string().uuid(),
-  gruppeId:        z.string().uuid(),
+  id:              z.string().guid(),
+  gruppeId:        z.string().guid(),
   name:            z.string(),
   aufschlagCent:   z.number().int(),
   reihenfolge:     z.number().int(),
@@ -21,8 +21,8 @@ export const ModifikatorSchema = z.object({
 export type Modifikator = z.infer<typeof ModifikatorSchema>
 
 export const ModifikatorGruppeSchema = z.object({
-  id:          z.string().uuid(),
-  mandantId:   z.string().uuid(),
+  id:          z.string().guid(),
+  mandantId:   z.string().guid(),
   name:        z.string(),
   typ:         ModifikatorGruppeTypSchema,
   maxAuswahl:  z.number().int().nullable(),
@@ -81,7 +81,7 @@ export type ModifikatorAktualisieren = z.infer<typeof ModifikatorAktualisierenSc
 // ---------------------------------------------------------------------------
 
 export const ArtikelGruppenZuweisungSchema = z.object({
-  gruppenIds: z.array(z.string().uuid()),
+  gruppenIds: z.array(z.string().guid()),
 })
 export type ArtikelGruppenZuweisung = z.infer<typeof ArtikelGruppenZuweisungSchema>
 
@@ -90,8 +90,8 @@ export type ArtikelGruppenZuweisung = z.infer<typeof ArtikelGruppenZuweisungSche
 // ---------------------------------------------------------------------------
 
 export const ModifikatorAuswahlSchema = z.object({
-  modifikatorId:  z.string().uuid(),
-  gruppeId:       z.string().uuid(),
+  modifikatorId:  z.string().guid(),
+  gruppeId:       z.string().guid(),
   gruppeName:     z.string(),
   name:           z.string(),
   aufschlagCent:  z.number().int(),
@@ -109,9 +109,9 @@ export type ModifikatorAuswahl = z.infer<typeof ModifikatorAuswahlSchema>
 // ---------------------------------------------------------------------------
 
 export const VariantenAufloesenSchema = z.object({
-  gruppeId:  z.string().uuid(),
-  anlegen:   z.array(z.string().uuid()).max(200).default([]),
-  verwerfen: z.array(z.string().uuid()).max(200).default([]),
+  gruppeId:  z.string().guid(),
+  anlegen:   z.array(z.string().guid()).max(200).default([]),
+  verwerfen: z.array(z.string().guid()).max(200).default([]),
 }).refine(
   d => d.anlegen.length + d.verwerfen.length > 0,
   { message: 'Mindestens eine Option angeben' },

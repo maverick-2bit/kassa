@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 export const LagerstandEintragSchema = z.object({
-  id:    z.string().uuid(),
+  id:    z.string().guid(),
   menge: z.number().int().nonnegative(),
 })
 export type LagerstandEintrag = z.infer<typeof LagerstandEintragSchema>

@@ -104,7 +104,7 @@ export async function registerStripeWebhook(
 
     // Pro-Mandant: mandantId aus der URL → dessen (eigene oder Fallback-)Keys.
     stripe.post('/api/stripe/webhook/:mandantId', async (request, reply) => {
-      const p = z.object({ mandantId: z.string().uuid() }).safeParse(request.params)
+      const p = z.object({ mandantId: z.string().guid() }).safeParse(request.params)
       if (!p.success) return reply.status(400).send({ fehler: 'Ungültige Mandant-ID' })
       const konfig = await ladeStripeKonfig(opts.deps.db, p.data.mandantId, opts.deps.config)
       return verarbeiteWebhook(request, reply, konfig, opts.deps, p.data.mandantId)

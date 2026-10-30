@@ -10,7 +10,7 @@ export type BerichtGruppierung = z.infer<typeof BerichtGruppierungSchema>
 
 export const BerichtFilterSchema = z.object({
   /** Kassen-IDs; leer = alle zugänglichen Kassen des Mandanten */
-  kasseIds:          z.array(z.string().uuid()).default([]),
+  kasseIds:          z.array(z.string().guid()).default([]),
   /** Startdatum YYYY-MM-DD (Geschäftstag; ohne verschobenen Tagesbeginn = Wiener Kalendertag) */
   von:               z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Ungültiges Datum (YYYY-MM-DD)'),
   /** Enddatum YYYY-MM-DD (Geschäftstag, inklusiv) */
@@ -61,7 +61,7 @@ export type BerichtGesamt = z.infer<typeof BerichtGesamtSchema>
 export const BerichtResponseSchema = z.object({
   von:         z.string(),
   bis:         z.string(),
-  kasseIds:    z.array(z.string().uuid()),
+  kasseIds:    z.array(z.string().guid()),
   zeilen:      z.array(BerichtZeileSchema),
   gesamt:      BerichtGesamtSchema,
 })
@@ -72,7 +72,7 @@ export type BerichtResponse = z.infer<typeof BerichtResponseSchema>
 // ---------------------------------------------------------------------------
 
 export const ArtikelBerichtFilterSchema = z.object({
-  kasseIds: z.array(z.string().uuid()).default([]),
+  kasseIds: z.array(z.string().guid()).default([]),
   von:      z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Ungültiges Datum (YYYY-MM-DD)'),
   bis:      z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Ungültiges Datum (YYYY-MM-DD)'),
   /** Maximale Anzahl zurückgegebener Artikel (Standard: 200) */
@@ -90,7 +90,7 @@ export type ArtikelBerichtZeile = z.infer<typeof ArtikelBerichtZeileSchema>
 export const ArtikelBerichtResponseSchema = z.object({
   von:      z.string(),
   bis:      z.string(),
-  kasseIds: z.array(z.string().uuid()),
+  kasseIds: z.array(z.string().guid()),
   zeilen:   z.array(ArtikelBerichtZeileSchema),
 })
 export type ArtikelBerichtResponse = z.infer<typeof ArtikelBerichtResponseSchema>
@@ -111,7 +111,7 @@ export type WarengruppeBerichtZeile = z.infer<typeof WarengruppeBerichtZeileSche
 export const WarengruppeBerichtResponseSchema = z.object({
   von:      z.string(),
   bis:      z.string(),
-  kasseIds: z.array(z.string().uuid()),
+  kasseIds: z.array(z.string().guid()),
   zeilen:   z.array(WarengruppeBerichtZeileSchema),
 })
 export type WarengruppeBerichtResponse = z.infer<typeof WarengruppeBerichtResponseSchema>
@@ -121,7 +121,7 @@ export type WarengruppeBerichtResponse = z.infer<typeof WarengruppeBerichtRespon
 // ---------------------------------------------------------------------------
 
 export const StundenBerichtFilterSchema = z.object({
-  kasseIds: z.array(z.string().uuid()).default([]),
+  kasseIds: z.array(z.string().guid()).default([]),
   von:      z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Ungültiges Datum (YYYY-MM-DD)'),
   bis:      z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Ungültiges Datum (YYYY-MM-DD)'),
 })
@@ -141,7 +141,7 @@ export type StundenBerichtZeile = z.infer<typeof StundenBerichtZeileSchema>
 export const StundenBerichtResponseSchema = z.object({
   von:      z.string(),
   bis:      z.string(),
-  kasseIds: z.array(z.string().uuid()),
+  kasseIds: z.array(z.string().guid()),
   /** Immer 24 Einträge (Stunde 0–23), Stunden ohne Umsatz mit Nullwerten. Die Reihenfolge beginnt bei der Stunde des Tagesbeginns (06:00 → 6, 7, …, 23, 0, …, 5). */
   zeilen:   z.array(StundenBerichtZeileSchema),
   gesamt:   BerichtGesamtSchema,
@@ -153,7 +153,7 @@ export type StundenBerichtResponse = z.infer<typeof StundenBerichtResponseSchema
 // ---------------------------------------------------------------------------
 
 export const KellnerBerichtFilterSchema = z.object({
-  kasseIds: z.array(z.string().uuid()).default([]),
+  kasseIds: z.array(z.string().guid()).default([]),
   von:      z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Ungültiges Datum (YYYY-MM-DD)'),
   bis:      z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Ungültiges Datum (YYYY-MM-DD)'),
 })
@@ -173,7 +173,7 @@ export type KellnerBerichtZeile = z.infer<typeof KellnerBerichtZeileSchema>
 export const KellnerBerichtResponseSchema = z.object({
   von:      z.string(),
   bis:      z.string(),
-  kasseIds: z.array(z.string().uuid()),
+  kasseIds: z.array(z.string().guid()),
   zeilen:   z.array(KellnerBerichtZeileSchema),
   gesamt:   BerichtGesamtSchema,
 })
@@ -190,7 +190,7 @@ export const KassenVergleichFilterSchema = z.object({
 export type KassenVergleichFilter = z.infer<typeof KassenVergleichFilterSchema>
 
 export const KassenVergleichZeileSchema = z.object({
-  kasseId:       z.string().uuid(),
+  kasseId:       z.string().guid(),
   kassenId:      z.string(),
   bezeichnung:   z.string().nullable(),
   anzahlBelege:  z.number().int(),
@@ -216,7 +216,7 @@ export type KassenVergleichResponse = z.infer<typeof KassenVergleichResponseSche
 // ---------------------------------------------------------------------------
 
 export const BuchungsjournalFilterSchema = z.object({
-  kasseIds: z.array(z.string().uuid()).default([]),
+  kasseIds: z.array(z.string().guid()).default([]),
   von:      z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Ungültiges Datum (YYYY-MM-DD)'),
   bis:      z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Ungültiges Datum (YYYY-MM-DD)'),
 })
@@ -290,9 +290,9 @@ export type KuechenBerichtResponse = z.infer<typeof KuechenBerichtResponseSchema
  * braucht es für jeden Bericht keinen eigenen Drucker-Code.
  */
 export const BerichtDruckInputSchema = z.object({
-  kasseId:    z.string().uuid(),
+  kasseId:    z.string().guid(),
   /** Drucker der Bibliothek; fehlt er, druckt der Bondrucker der Kasse */
-  druckerId:  z.string().uuid().optional(),
+  druckerId:  z.string().guid().optional(),
   titel:      z.string().min(1).max(60),
   /** Zeitraum / Hinweis unter dem Titel, z. B. "01.10.2026 – 07.10.2026" */
   zeitraum:   z.string().max(80).optional(),

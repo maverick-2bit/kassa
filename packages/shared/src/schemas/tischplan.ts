@@ -27,8 +27,8 @@ export const TISCHPLAN_FARBE_LABELS: Record<TischplanFarbe, string> = {
 // ---------------------------------------------------------------------------
 
 export const TischplanElementSchema = z.object({
-  id:          z.string().uuid(),
-  bereichId:   z.string().uuid(),
+  id:          z.string().guid(),
+  bereichId:   z.string().guid(),
   bezeichnung: z.string(),
   form:        TischplanFormSchema,
   farbe:       TischplanFarbeSchema,
@@ -44,8 +44,8 @@ export const TischplanElementSchema = z.object({
 export type TischplanElement = z.infer<typeof TischplanElementSchema>
 
 export const TischplanElementErstellenSchema = z.object({
-  kasseId:     z.string().uuid(),
-  bereichId:   z.string().uuid(),
+  kasseId:     z.string().guid(),
+  bereichId:   z.string().guid(),
   bezeichnung: z.string().trim().min(1).max(40),
   form:        TischplanFormSchema.default('rechteck'),
   farbe:       TischplanFarbeSchema.default('grau'),
@@ -76,8 +76,8 @@ export type TischplanElementAktualisieren = z.infer<typeof TischplanElementAktua
 // ---------------------------------------------------------------------------
 
 export const TischplanBereichSchema = z.object({
-  id:          z.string().uuid(),
-  kasseId:     z.string().uuid(),
+  id:          z.string().guid(),
+  kasseId:     z.string().guid(),
   name:        z.string(),
   reihenfolge: z.number().int(),
   elemente:    z.array(TischplanElementSchema),
@@ -85,7 +85,7 @@ export const TischplanBereichSchema = z.object({
 export type TischplanBereich = z.infer<typeof TischplanBereichSchema>
 
 export const TischplanBereichErstellenSchema = z.object({
-  kasseId: z.string().uuid(),
+  kasseId: z.string().guid(),
   name:    z.string().trim().min(1).max(60),
 })
 export type TischplanBereichErstellen = z.infer<typeof TischplanBereichErstellenSchema>

@@ -15,7 +15,7 @@ import { EmailVersandError, isEmailAktiv, sendeBelegEmail } from '../services/em
 
 export interface EmailRouteOptions { db: Db; config: Config }
 
-const IdParam    = z.object({ id: z.string().uuid() })
+const IdParam    = z.object({ id: z.string().guid() })
 const EmailBody  = z.object({
   empfaenger: z.string().email('Ungültige E-Mail-Adresse'),
 })

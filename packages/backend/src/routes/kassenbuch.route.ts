@@ -67,8 +67,8 @@ export const kassenbuchRoute: FastifyPluginAsync<KassenbuchRouteOptions> = async
   // -------------------------------------------------------------------------
 
   const DruckenSchema = z.object({
-    kasseId: z.string().uuid(),
-    druckerId: z.string().uuid().optional(),
+    kasseId: z.string().guid(),
+    druckerId: z.string().guid().optional(),
     von:     z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     bis:     z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   })

@@ -35,14 +35,14 @@ export const GUTSCHEIN_BUCHUNG_TYP_LABELS: Record<GutscheinBuchungTyp, string> =
 }
 
 export const GutscheinBuchungResponseSchema = z.object({
-  id:                      z.string().uuid(),
-  gutscheinId:             z.string().uuid(),
+  id:                      z.string().guid(),
+  gutscheinId:             z.string().guid(),
   typ:                     GutscheinBuchungTypSchema,
   /** Positiv = Gut (Ausstellung), negativ = Belastung (Einlösung/Storno) */
   betragCent:              z.number().int(),
   restCentNach:            z.number().int(),
-  belegId:                 z.string().uuid().optional(),
-  verknuepfterGutscheinId: z.string().uuid().optional(),
+  belegId:                 z.string().guid().optional(),
+  verknuepfterGutscheinId: z.string().guid().optional(),
   notiz:                   z.string().optional(),
   createdAt:               z.string(),
 })
@@ -57,7 +57,7 @@ export const GutscheinInputSchema = z.object({
   /** Optionaler benutzerdefinierter Code (EAN/QR-Code). Leer = automatisch generieren. */
   code:       z.string().trim().min(1).max(50).optional(),
   gueltigBis: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), // YYYY-MM-DD
-  kundeId:    z.string().uuid().optional(),
+  kundeId:    z.string().guid().optional(),
   notiz:      z.string().trim().max(2000).optional(),
 })
 export type GutscheinInput = z.infer<typeof GutscheinInputSchema>
@@ -71,12 +71,12 @@ export const GutscheinEinloesenSchema = z.object({
    */
   erstelleRestgutschein: z.boolean().default(false),
   /** Optional: Beleg-ID für die Buchungsreferenz */
-  belegId:             z.string().uuid().optional(),
+  belegId:             z.string().guid().optional(),
 })
 export type GutscheinEinloesen = z.infer<typeof GutscheinEinloesenSchema>
 
 export const GutscheinResponseSchema = z.object({
-  id:          z.string().uuid(),
+  id:          z.string().guid(),
   code:        z.string(),
   nummer:      z.number().int(),
   datum:       z.string(),
@@ -85,7 +85,7 @@ export const GutscheinResponseSchema = z.object({
   bezahltCent: z.number().int(),
   restCent:    z.number().int(),
   gueltigBis:  z.string().optional(),
-  kundeId:     z.string().uuid().nullable().optional(),
+  kundeId:     z.string().guid().nullable().optional(),
   kunde:       KundeSnapshotSchema.optional(),
   notiz:       z.string().optional(),
   createdAt:   z.string(),

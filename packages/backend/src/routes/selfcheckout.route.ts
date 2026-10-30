@@ -18,12 +18,12 @@ import { emitKasseEvent } from '../sse/event-bus.js'
 export interface SelfCheckoutRouteOptions { db: Db }
 
 const TabQuerySchema = z.object({
-  kasseId: z.string().uuid(),
+  kasseId: z.string().guid(),
   tisch:   z.string().min(1).max(40),
 })
 
 const ZahlungAnfordernSchema = z.object({
-  kasseId: z.string().uuid(),
+  kasseId: z.string().guid(),
   tisch:   z.string().min(1).max(40),
 })
 

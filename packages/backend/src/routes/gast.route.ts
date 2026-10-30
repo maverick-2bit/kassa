@@ -32,12 +32,12 @@ import { uuidQuery } from './uuid-param.js'
 export interface GastRouteOptions { db: Db; belegDeps: BelegServiceDeps; config: Config }
 
 const BestellPosition = z.object({
-  artikelId: z.string().uuid(),
+  artikelId: z.string().guid(),
   menge:     z.number().int().min(1).max(50),
 })
 
 const BestellungBody = z.object({
-  kasseId:     z.string().uuid(),
+  kasseId:     z.string().guid(),
   tischNummer: z.string().min(1).max(40),
   positionen:  z.array(BestellPosition).min(1).max(50).refine(
     arr => new Set(arr.map(p => p.artikelId)).size === arr.length,
@@ -250,7 +250,7 @@ export const gastRoute: FastifyPluginAsync<GastRouteOptions> = async (fastify, o
 
   // ── Bestell-/Zahlungsstatus (öffentlich, über die nicht erratbare Bestell-ID) ─
   fastify.get<{ Params: { id: string } }>('/gast/bestellung/:id', async (request, reply) => {
-    const p = z.object({ id: z.string().uuid() }).safeParse(request.params)
+    const p = z.object({ id: z.string().guid() }).safeParse(request.params)
     if (!p.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
     const gastDeps: GastServiceDeps = { db: opts.db, belegDeps: opts.belegDeps, config: opts.config }
     try {

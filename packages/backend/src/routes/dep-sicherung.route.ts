@@ -13,9 +13,9 @@ export interface DepSicherungRouteOptions {
   backupDir: string
 }
 
-const QuerySchema   = z.object({ kasseId: z.string().uuid() })
-const BodySchema    = z.object({ kasseId: z.string().uuid() })
-const IdParamSchema = z.object({ id: z.string().uuid() })
+const QuerySchema   = z.object({ kasseId: z.string().guid() })
+const BodySchema    = z.object({ kasseId: z.string().guid() })
+const IdParamSchema = z.object({ id: z.string().guid() })
 
 export const depSicherungRoute: FastifyPluginAsync<DepSicherungRouteOptions> = async (fastify, opts) => {
   const guard = { onRequest: [fastify.authenticate] }

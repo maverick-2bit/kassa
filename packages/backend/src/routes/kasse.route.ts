@@ -42,7 +42,7 @@ export const kasseRoute: FastifyPluginAsync<KasseRouteOptions> = async (fastify,
    * Abholmonitor-URLs.
    */
   fastify.get('/kassen/auswahl', async (request, reply) => {
-    const q = z.object({ mandantId: z.string().uuid() }).safeParse(request.query)
+    const q = z.object({ mandantId: z.string().guid() }).safeParse(request.query)
     if (!q.success) return reply.status(400).send({ fehler: 'mandantId fehlt oder ungültig' })
 
     const rows = await opts.db

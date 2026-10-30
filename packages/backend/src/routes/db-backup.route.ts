@@ -16,7 +16,7 @@ export interface DbBackupRouteOptions {
   retention:   number
 }
 
-const IdParamSchema = z.object({ id: z.string().uuid() })
+const IdParamSchema = z.object({ id: z.string().guid() })
 
 export const dbBackupRoute: FastifyPluginAsync<DbBackupRouteOptions> = async (fastify, opts) => {
   const guard = { onRequest: [fastify.authenticate] }

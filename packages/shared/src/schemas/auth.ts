@@ -88,13 +88,13 @@ export type PinInfo = z.infer<typeof PinInfoSchema>
 // ---------------------------------------------------------------------------
 
 export const UserSchema = z.object({
-  id:             z.string().uuid(),
-  mandantId:      z.string().uuid(),
+  id:             z.string().guid(),
+  mandantId:      z.string().guid(),
   email:          z.string().email(),
   name:           z.string(),
   rolle:          RolleSchema,
   berechtigungen: z.array(BerechtigungSchema),
-  kassenIds:      z.array(z.string().uuid()),
+  kassenIds:      z.array(z.string().guid()),
   hatPin:         z.boolean(),
   /** Ziffernzahl des gesetzten PINs — weicht sie vom Betrieb ab, gilt der PIN nicht mehr. */
   pinLaenge:      PinLaengeSchema,
@@ -116,7 +116,7 @@ export const LoginInputSchema = z.object({
 export type LoginInput = z.infer<typeof LoginInputSchema>
 
 export const PinLoginInputSchema = z.object({
-  kasseId: z.string().uuid(),
+  kasseId: z.string().guid(),
   pin:     PinSchema,
   geraetToken: GeraetTokenSchema.optional(),
 })
@@ -128,7 +128,7 @@ export const LoginResponseSchema = z.object({
   geraetToken: z.string().optional(),
   user:    UserSchema,
   mandant: z.object({
-    id:                  z.string().uuid(),
+    id:                  z.string().guid(),
     firmenname:          z.string(),
     uid:                 z.string(),
     modulGastroAktiv:         z.boolean(),
@@ -151,7 +151,7 @@ export const LoginResponseSchema = z.object({
     tagesRegel:               z.array(TagesbeginnEintragSchema),
   }),
   kassen: z.array(z.object({
-    id:          z.string().uuid(),
+    id:          z.string().guid(),
     kassenId:    z.string(),
     bezeichnung: z.string().nullable(),
     umgebung:    z.string(),
@@ -175,7 +175,7 @@ export const UserCreateInputSchema = z.object({
   passwort:       z.string().min(8, 'Passwort muss mindestens 8 Zeichen lang sein').optional(),
   rolle:          RolleSchema,
   berechtigungen: z.array(BerechtigungSchema),
-  kassenIds:      z.array(z.string().uuid()),
+  kassenIds:      z.array(z.string().guid()),
   pin:            PinSchema.optional(),
 }).superRefine((u, ctx) => {
   const hatZugang = !!u.email && !!u.passwort
@@ -196,7 +196,7 @@ export const UserUpdateInputSchema = z.object({
   email:          z.string().email().optional(),
   passwort:       z.string().min(8).optional(),
   berechtigungen: z.array(BerechtigungSchema).optional(),
-  kassenIds:      z.array(z.string().uuid()).optional(),
+  kassenIds:      z.array(z.string().guid()).optional(),
   pin:            PinSchema.nullable().optional(),
   aktiv:          z.boolean().optional(),
 })

@@ -8,7 +8,7 @@ import { z } from 'zod'
 import { StationSchema, STATION_LABELS } from './station.js'
 
 export const BonierungPositionSchema = z.object({
-  artikelId: z.string().uuid(),
+  artikelId: z.string().guid(),
   menge:     z.number().int().positive(),
   details:   z.string().trim().max(120).optional(),
   /** Gang-Nummer (Coursing) — nur zur Sortierung/Gruppierung auf dem Bon */
@@ -16,9 +16,9 @@ export const BonierungPositionSchema = z.object({
 })
 
 export const BonierungInputSchema = z.object({
-  kasseId: z.string().uuid(),
+  kasseId: z.string().guid(),
   /** Optionaler Verweis auf den Tisch-Tab — wenn gesetzt, wird das Ereignis im Verlauf protokolliert */
-  tabId:   z.string().uuid().optional(),
+  tabId:   z.string().guid().optional(),
   /** Tischbezeichnung. Optional: leer = Direktverkauf an der Schank (Bon-Label „Direkt"). */
   tisch:   z.string().trim().max(40).optional(),
   bereich: z.string().trim().max(60).optional(),
@@ -43,7 +43,7 @@ export const BonierungInputSchema = z.object({
    * Lagerstand nicht ein zweites Mal ab und sendet nur an die Ziele, die vorher scheiterten.
    * Fehlt sie, verhält sich die Bonierung wie bisher (jeder Aufruf ist eine neue Bestellung).
    */
-  bestellId:      z.string().uuid().optional(),
+  bestellId:      z.string().guid().optional(),
 })
 export type BonierungInput = z.infer<typeof BonierungInputSchema>
 
@@ -58,7 +58,7 @@ export const BonierungErgebnisSchema = z.object({
   })),
   /** Ergebnisse für ESC/POS Bonierdrucker (inkl. Zweitdrucker; bei einer Umleitung auf den Backup-Drucker steht der Hinweis in `fehler`) */
   drucker: z.array(z.object({
-    druckerId:   z.string().uuid(),
+    druckerId:   z.string().guid(),
     name:        z.string(),
     ip:          z.string(),
     positionen:  z.number().int(),

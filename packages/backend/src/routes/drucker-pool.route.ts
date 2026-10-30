@@ -24,7 +24,7 @@ import { and, eq } from 'drizzle-orm'
 
 export interface DruckerPoolRouteOptions { db: Db }
 
-const IdParam = z.object({ id: z.string().uuid() })
+const IdParam = z.object({ id: z.string().guid() })
 
 export const druckerPoolRoute: FastifyPluginAsync<DruckerPoolRouteOptions> = async (fastify, opts) => {
 

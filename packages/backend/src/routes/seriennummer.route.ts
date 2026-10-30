@@ -21,11 +21,11 @@ export interface SeriennummerRouteOptions {
 }
 
 const ListQuerySchema = z.object({
-  artikelId: z.string().uuid().optional(),
+  artikelId: z.string().guid().optional(),
   status:    z.enum(['verfuegbar', 'verkauft']).optional(),
 })
 
-const IdParamSchema = z.object({ id: z.string().uuid() })
+const IdParamSchema = z.object({ id: z.string().guid() })
 
 export const seriennummerRoute: FastifyPluginAsync<SeriennummerRouteOptions> = async (fastify, opts) => {
   const auth = { onRequest: [fastify.authenticate] }

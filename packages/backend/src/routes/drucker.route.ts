@@ -33,11 +33,11 @@ import { baueTischEtikett } from '../services/escpos/layout.js'
 
 export interface DruckerRouteOptions { db: Db }
 
-const IdParamSchema = z.object({ id: z.string().uuid() })
+const IdParamSchema = z.object({ id: z.string().guid() })
 
 const DruckerConfigInputSchema = z.object({
   // Auswahl aus der Bondrucker-Bibliothek (null = kein Drucker). Setzt den Snapshot.
-  druckerId:          z.string().uuid().nullable().optional(),
+  druckerId:          z.string().guid().nullable().optional(),
   druckerIp:          z.string().trim().min(1).max(64).nullable().optional(),
   druckerPort:        z.number().int().min(1).max(65535).optional(),
   druckerAktiv:       z.boolean().optional(),
@@ -190,7 +190,7 @@ export const druckerRoute: FastifyPluginAsync<DruckerRouteOptions> = async (fast
     // druckerId (Ausgabe-Dialog): gezielt auf einen Bibliotheks-Drucker ausgeben.
     const b = z.object({
       ausweich:  z.boolean().optional(),
-      druckerId: z.string().uuid().optional(),
+      druckerId: z.string().guid().optional(),
     }).safeParse(request.body ?? {})
     if (!b.success) return reply.status(400).send({ fehler: b.error.issues })
     const ausweich = b.data.ausweich === true
@@ -229,7 +229,8 @@ export const druckerRoute: FastifyPluginAsync<DruckerRouteOptions> = async (fast
     const KdsConfigSchema = z.object({
       kdsAktiv:     z.boolean().optional(),
       kdsPort:      z.number().int().min(1).max(65535).optional(),
-      kdsStationen: z.record(
+      // partialRecord: in zod 4 verlangt z.record mit Enum-Schlüsseln ALLE Stationen; hier genügen die eingerichteten
+      kdsStationen: z.partialRecord(
         StationSchema,
         z.string().trim().min(1).max(64).refine(
           istGueltigeStationsIp,
@@ -313,7 +314,7 @@ export const druckerRoute: FastifyPluginAsync<DruckerRouteOptions> = async (fast
     tische:    z.array(z.string().trim().min(1).max(40)).min(1).max(50),
     mitQr:     z.boolean().default(false),
     /** Optional: gezielt einen Drucker aus der Bibliothek verwenden (statt Kassen-Bondrucker) */
-    druckerId: z.string().uuid().optional(),
+    druckerId: z.string().guid().optional(),
     /** Test-Etikett: druckt den QR auch OHNE konfigurierte Gast-Basis-URL (Demo-URL) —
      *  damit sich das Etikett-Layout vor der Einrichtung prüfen lässt. */
     testQr:    z.boolean().default(false),

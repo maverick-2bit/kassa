@@ -28,7 +28,7 @@ const ListQuerySchema = z.object({
   nurAktive: queryBool(false),
 })
 
-const IdParamSchema = z.object({ id: z.string().uuid() })
+const IdParamSchema = z.object({ id: z.string().guid() })
 
 async function gehoertKategorieZuMandant(db: Db, id: string, mandantId: string): Promise<boolean> {
   const [row] = await db
