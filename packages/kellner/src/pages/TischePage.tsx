@@ -6,6 +6,7 @@ import { tischTabApi, kellnerKonfigApi, tischplanApi } from '../lib/api'
 import { getAuth, clearAuth } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
+import { HilfeKnopf } from '../components/HilfeFenster'
 import { DruckproblemeBanner } from '../components/DruckproblemeBanner'
 import { BonProblemeBanner } from '../components/BonProblemeBanner'
 
@@ -119,6 +120,7 @@ export function TischePage() {
           >
             + Tisch
           </button>
+          <HilfeKnopf />
           <button
             onClick={abmelden}
             className="text-ink-subtle hover:text-ink-muted p-2 rounded-xl hover:bg-panel-2 transition text-sm"

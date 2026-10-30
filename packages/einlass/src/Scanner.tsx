@@ -14,6 +14,8 @@ import { uhrzeit } from './lib/format'
 import { OfflineEinlass } from './lib/offline'
 import { Kamera } from './Kamera'
 import { Ergebnis, type Anzeige } from './Ergebnis'
+import { HilfeKnopf } from './components/HilfeFenster'
+import { HILFE_SCANNER } from './hilfe/texte'
 
 /** So lange bleibt das Ergebnis stehen, wenn niemand tippt. */
 const ANZEIGE_MS = 3000
@@ -176,11 +178,14 @@ export function Scanner({ ich, event, onEventWechseln, onAbgemeldet }: {
           <p className="truncate text-lg font-bold">{event.titel}</p>
           <p className="text-xs text-leise">{ich.geraet.name} · Event wechseln</p>
         </button>
-        <div className="text-right">
-          <p className="text-4xl font-black tabular-nums leading-none">
-            {!online && besucher !== null && <span className="text-2xl align-top">≈</span>}{besucher ?? '–'}
-          </p>
-          <p className="mt-1 text-[11px] uppercase tracking-wide text-leise">Besucher</p>
+        <div className="flex shrink-0 items-start gap-3">
+          <div className="text-right">
+            <p className="text-4xl font-black tabular-nums leading-none">
+              {!online && besucher !== null && <span className="text-2xl align-top">≈</span>}{besucher ?? '–'}
+            </p>
+            <p className="mt-1 text-[11px] uppercase tracking-wide text-leise">Besucher</p>
+          </div>
+          <HilfeKnopf aktuell={HILFE_SCANNER} />
         </div>
       </header>
 

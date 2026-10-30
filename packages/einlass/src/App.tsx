@@ -17,6 +17,8 @@ import {
 import { Einrichtung } from './Einrichtung'
 import { EventWahl } from './EventWahl'
 import { Scanner } from './Scanner'
+import { HilfeKnopf } from './components/HilfeFenster'
+import { HILFE_EINRICHTUNG, HILFE_EVENT } from './hilfe/texte'
 
 type Phase =
   | { art: 'laedt' }
@@ -71,14 +73,22 @@ export function App() {
     case 'laedt':
       return <p className="p-8 text-center text-leise">Einlass wird gestartet …</p>
     case 'einrichtung':
-      return <Einrichtung hinweis={phase.hinweis} onFertig={() => { setPhase({ art: 'laedt' }); void starten() }} />
+      return (
+        <>
+          <Einrichtung hinweis={phase.hinweis} onFertig={() => { setPhase({ art: 'laedt' }); void starten() }} />
+          <HilfeKnopf aktuell={HILFE_EINRICHTUNG} className="fixed right-3 top-3 z-20" />
+        </>
+      )
     case 'eventwahl':
       return (
-        <EventWahl
-          ich={phase.ich}
-          onGewaehlt={(event) => { merkeEventId(event.id); merkeEvent(event); setPhase({ art: 'scanner', ich: phase.ich, event }) }}
-          onAbmelden={() => { abmelden(); setPhase({ art: 'einrichtung' }) }}
-        />
+        <>
+          <EventWahl
+            ich={phase.ich}
+            onGewaehlt={(event) => { merkeEventId(event.id); merkeEvent(event); setPhase({ art: 'scanner', ich: phase.ich, event }) }}
+            onAbmelden={() => { abmelden(); setPhase({ art: 'einrichtung' }) }}
+          />
+          <HilfeKnopf aktuell={HILFE_EVENT} className="fixed right-3 top-3 z-20" />
+        </>
       )
     case 'scanner':
       return (
