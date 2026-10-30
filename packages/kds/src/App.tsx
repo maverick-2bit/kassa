@@ -7,6 +7,8 @@ import { useKdsSse } from './hooks/useKdsSse'
 import { BonKarte } from './components/BonKarte'
 import { GrossAnzeige } from './components/GrossAnzeige'
 import { BonArchiv } from './components/BonArchiv'
+import { HilfeKnopf } from './components/HilfeFenster'
+import { HILFE_BONS, HILFE_EINRICHTUNG } from './hilfe/texte'
 
 // Konfiguration aus URL-Parametern; localStorage als Rückfallebene, damit ein
 // Neustart ohne Parameter (z. B. nach URL-Bereinigung) eingerichtet bleibt.
@@ -103,6 +105,7 @@ function SetupScreen({ vorhandenerToken, onSave }: { vorhandenerToken: string; o
 
   return (
     <div className="min-h-screen bg-surface flex items-center justify-center p-6">
+      <HilfeKnopf aktuell={HILFE_EINRICHTUNG} className="fixed right-3 top-3 z-20" />
       <div className="bg-panel rounded-2xl p-8 w-full max-w-md space-y-6">
         <h1 className="text-2xl font-black text-ink">KDS Einrichtung</h1>
 
@@ -604,6 +607,7 @@ export default function App() {
             <span>💬</span>
             <span className="hidden sm:inline">Nachricht</span>
           </button>
+          <HilfeKnopf aktuell={HILFE_BONS} />
           <ThemeToggle />
           <UhrDisplay />
         </div>

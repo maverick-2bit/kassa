@@ -189,6 +189,40 @@ export const HILFE_THEMEN: HilfeThema[] = [
     schritte: ['Hier erscheinen die Bestellungen der Gäste vom Terminal. Sie wandern automatisch an Küche oder Schank und auf den Abholmonitor.'],
   },
   {
+    id: 'gaeste-bildschirme',
+    titel: 'Bildschirme für Gäste',
+    zweck: 'Gast-Bestellung, SB-Terminal, Kundendisplay und Abholmonitor: wozu sie dienen und wie du sie einrichtest.',
+    stichworte: ['gast', 'qr', 'terminal', 'kundendisplay', 'abholmonitor', 'selbstbedienung', 'tisch-qr', 'bildschirm'],
+    schritte: [
+      'Diese Bildschirme sind für Gäste gedacht und haben bewusst keinen Hilfe-Knopf. Alles Weitere stellst du hier in der Kassa ein.',
+    ],
+    abschnitte: [
+      {
+        titel: 'Gast-Bestellung (QR am Tisch)',
+        schritte: [
+          'Der Gast scannt den QR-Code am Tisch und bestellt mit dem eigenen Handy. Die Karte gibt es auf Deutsch, Englisch und Italienisch.',
+          'Je nach Einstellung landet die Bestellung auf dem offenen Tisch (bezahlt wird später) oder der Gast zahlt gleich online.',
+          'Den QR-Code holst du unter „Einstellungen → Geräte". Ist die Gast-Bestellung für eine Kasse ausgeschaltet, zeigt die Seite keine Karte.',
+        ],
+      },
+      {
+        titel: 'SB-Terminal (Selbstbedienung)',
+        schritte: [
+          'Gäste bestellen am Terminal selbst. Die Bestellungen siehst du unter „SB-Bestellungen"; sie gehen automatisch an Küche oder Schank.',
+          'Ist eine Bestellung fertig, erscheint ihre Nummer auf dem Abholmonitor. Holt der Gast sie ab, tippt die Küche die Nummer am KDS an („✓ abgeholt").',
+        ],
+      },
+      {
+        titel: 'Kundendisplay und Abholmonitor',
+        schritte: [
+          'Das Kundendisplay zeigt dem Gast beim Kassieren die Positionen und den Betrag; ohne Verkauf laufen die Werbefolien.',
+          'Der Abholmonitor zeigt die Nummern der Bestellungen, die zur Abholung bereit sind.',
+          'Das Kundendisplay richtest du über den QR-Code unter „Einstellungen → Geräte" ein.',
+        ],
+      },
+    ],
+  },
+  {
     id: 'tickets',
     titel: 'Events & Tickets',
     zweck: 'Veranstaltungen anlegen, Tickets ausstellen oder online verkaufen und am Einlass prüfen.',
