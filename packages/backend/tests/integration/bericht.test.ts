@@ -9,7 +9,7 @@
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import { sql } from 'drizzle-orm'
-import type { BerichtResponse, ArtikelBerichtResponse, KassenVergleichResponse, BelegResponse } from '@kassa/shared'
+import { addTage, type BerichtResponse, type ArtikelBerichtResponse, type KassenVergleichResponse, type BelegResponse } from '@kassa/shared'
 import type { FinanzOnlineClient } from '@kassa/rksv'
 import { buildTestServer, type TestServer } from '../helpers/testServer.js'
 import { erstelleIntegrationsDb, type IntegrationsDb } from './helpers/integrationsDb.js'
@@ -159,6 +159,15 @@ describe('Berichte (Integration, echtes PostgreSQL)', () => {
   it('Uhrzeit-Filter grenzt auf ein Tagesfenster ein', async () => {
     const heute = heuteWien()
 
+    // Die Testbelege auf eine feste Wiener Uhrzeit legen. Sie tragen sonst die Uhrzeit des Testlaufs, und
+    // dann hinge das Ergebnis von ihr ab: um 00:00 liegen sie im Fenster 00:00–00:01 (das leer sein soll),
+    // um 23:59 außerhalb von 00:00–23:59 (die Obergrenze ist exklusiv; das Fenster soll sie enthalten).
+    const mittags = `${heute} 12:30:00`
+    await idb.db.execute(sql`
+      UPDATE belege
+         SET beleg_datum = ${mittags}::timestamp AT TIME ZONE 'Europe/Vienna'
+       WHERE kasse_id = ${kasseId}::uuid`)
+
     // Volles Fenster enthält alle Belege des Tages
     const ganz = await srv.fastify.inject({
       method: 'GET', headers: auth(),
@@ -167,7 +176,7 @@ describe('Berichte (Integration, echtes PostgreSQL)', () => {
     expect(ganz.statusCode).toBe(200)
     expect(ganz.json().gesamt.anzahlBelege).toBeGreaterThan(0)
 
-    // Fenster in der Vergangenheit (die Testbelege entstanden gerade eben)
+    // Fenster, in dem die Belege (12:30) nicht liegen
     const leer = await srv.fastify.inject({
       method: 'GET', headers: auth(),
       url: `/api/berichte/umsatz?kasseIds=${kasseId}&von=${heute}&bis=${heute}&zeitVon=00:00&zeitBis=00:01`,
@@ -191,8 +200,10 @@ describe('Berichte (Integration, echtes PostgreSQL)', () => {
     // wird aus „(Mandant AND Kasse AND Datum) AND (a OR b)" ein
     // „(Mandant AND Kasse AND Datum) OR a OR b" — dann tauchen Belege fremder
     // Tage (und fremder Mandanten) im Bericht auf.
-    const gestern = new Date(Date.now() - 86_400_000)
-      .toLocaleDateString('sv-SE', { timeZone: 'Europe/Vienna' })
+
+    // Der Vortag als Kalendertag, nicht als „jetzt minus 24 Stunden": Am 25.10.2026 (Umstellung auf Winterzeit)
+    // hat der Tag 25 Stunden, und in seiner letzten Stunde fiele „jetzt − 24 h" noch auf denselben Tag.
+    const gestern = addTage(heuteWien(), -1)
 
     // Zwei Nachtfenster, die praktisch den ganzen Tag abdecken. Ihre „toten
     // Minuten" (23:58–23:59 bzw. 12:00–12:01) überschneiden sich nicht, damit

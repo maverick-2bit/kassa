@@ -10,6 +10,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import { eq } from 'drizzle-orm'
 import type { FinanzOnlineClient } from '@kassa/rksv'
+import { heuteKalendertagWien } from '@kassa/shared'
 import { kassen } from '../../src/db/schema.js'
 import { buildTestServer, type TestServer } from '../helpers/testServer.js'
 import { erstelleIntegrationsDb, type IntegrationsDb } from './helpers/integrationsDb.js'
@@ -69,8 +70,10 @@ describe('Jahresbeleg-Status (Integration, echtes PostgreSQL)', () => {
   })
 
   it('Kasse, die ein Kalenderjahr ohne Jahresbeleg durchlaufen hat, ist fällig', async () => {
-    // createdAt auf Mitte des Vorjahres zurückdatieren → Kasse hat das Vorjahr durchlaufen
-    const vorjahr = new Date().getFullYear() - 1
+    // createdAt auf Mitte des Vorjahres zurückdatieren → Kasse hat das Vorjahr durchlaufen.
+    // „Vorjahr" wie im Produkt: Wiener Kalenderjahr, nicht das der Prozess-Zeitzone — auf einem UTC-Rechner
+    // (CI) zeigt getFullYear() am 1. Januar von 00:00 bis 01:00 Uhr Wiener Zeit noch das alte Jahr.
+    const vorjahr = Number(heuteKalendertagWien().slice(0, 4)) - 1
     await idb.db
       .update(kassen)
       .set({ createdAt: new Date(Date.UTC(vorjahr, 5, 15)) })
