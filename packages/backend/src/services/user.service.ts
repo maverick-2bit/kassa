@@ -117,6 +117,20 @@ async function pruefeBetreiberKonto(
   if (!anderer) throw new UserError(409, 'Der letzte Betreiber kann nicht deaktiviert werden')
 }
 
+/**
+ * E-Mail ist über ALLE Mandanten eindeutig (Login per E-Mail, Unique-Index
+ * users_email_idx) — vorab prüfen, sonst meldet erst der Index die Kollision,
+ * und der Admin sieht nur einen Serverfehler. Erwartet die E-Mail kleingeschrieben.
+ */
+async function pruefeEmailFrei(db: Db, email: string, ausnehmenUserId?: string): Promise<void> {
+  const where = ausnehmenUserId
+    ? and(eq(users.email, email), ne(users.id, ausnehmenUserId))
+    : eq(users.email, email)
+
+  const [vergeben] = await db.select({ id: users.id }).from(users).where(where).limit(1)
+  if (vergeben) throw new UserError(409, 'E-Mail bereits vergeben')
+}
+
 export async function listUsers(mandantId: string, deps: UserServiceDeps): Promise<PublicUser[]> {
   const rows = await deps.db
     .select()
@@ -139,12 +153,7 @@ export async function createUser(
   const email = (input.email ?? `${randomBytes(9).toString('hex')}@pin.kellner.lokal`).toLowerCase()
   const passwort = input.passwort ?? randomBytes(24).toString('hex')
 
-  const existing = await deps.db
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.email, email))
-    .limit(1)
-  if (existing[0]) throw new UserError(409, 'E-Mail bereits vergeben')
+  await pruefeEmailFrei(deps.db, email)
 
   if (input.pin) {
     await pruefePinLaengeDesBetriebs(deps.db, input.pin, mandantId)
@@ -215,6 +224,9 @@ export async function updateUser(
   if (input.berechtigungen !== undefined) {
     updates.berechtigungen = existing.rolle === 'admin' ? [] : input.berechtigungen
   }
+
+  // E-Mail: die eigene (auch unverändert mitgeschickte) zählt nicht als vergeben
+  if (updates.email !== undefined) await pruefeEmailFrei(deps.db, updates.email, id)
 
   // PIN: null = PIN entfernen, string = neuen PIN setzen
   if (input.pin !== undefined) {

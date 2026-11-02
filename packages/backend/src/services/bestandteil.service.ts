@@ -17,6 +17,12 @@ import { artikel, artikelBestandteile } from '../db/schema.js'
 /** Db oder laufende Transaktion — beide teilen die Query-Builder-Oberfläche. */
 export type DbOrTx = Db | Parameters<Parameters<Db['transaction']>[0]>[0]
 
+export class BestandteilError extends Error {
+  constructor(public readonly httpStatus: number, message: string) {
+    super(message)
+  }
+}
+
 /** Ein Bestandteil im Rezept (schlanke Form für die Abbuchung). */
 export interface RezeptBestandteil {
   bestandteilArtikelId: string
@@ -138,14 +144,17 @@ export async function schreibeRezept(
   }
   if (summiert.size === 0) return
 
-  // Mandanten-Zugehörigkeit der Bestandteil-Artikel absichern
+  // Mandanten-Zugehörigkeit der Bestandteil-Artikel absichern. 400 statt 404:
+  // Die Route meldet mit 404 schon „Artikel nicht gefunden" für den Artikel selbst.
+  // Der Fehler rollt die Transaktion des Aufrufers zurück — Artikel und altes
+  // Rezept bleiben unverändert.
   const ids = [...summiert.keys()]
   const vorhandene = await tx
     .select({ id: artikel.id })
     .from(artikel)
     .where(and(inArray(artikel.id, ids), eq(artikel.mandantId, mandantId)))
   if (vorhandene.length !== ids.length) {
-    throw new Error('Mindestens ein Bestandteil-Artikel gehört nicht zum Mandanten')
+    throw new BestandteilError(400, 'Mindestens ein Bestandteil-Artikel gehört nicht zum Mandanten')
   }
 
   await tx.insert(artikelBestandteile).values(
