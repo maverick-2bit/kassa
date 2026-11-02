@@ -59,6 +59,10 @@ export default defineConfig({
         MASTER_PASSPHRASE: 'e2e-master-passphrase-0123456789',
         JWT_SECRET:        'e2e-jwt-secret-key-mindestens-32-zeichen-lang',
         SETUP_TOKEN:       E2E_SETUP_TOKEN,
+        // POST /api/auth/login: Standard 10/min je IP. Die Suite meldet sich im Sekundentakt von 127.0.0.1 an;
+        // bei 429 fielen ältere Specs in den Setup-Rückfall ("E-Mail bereits vergeben") — Login-Limit-Kaskade,
+        // auf GitHub-Runnern ebenso wie lokal. Das Limit selbst prüft rate-limit.test.ts.
+        LOGIN_RATE_LIMIT_MAX: '1000',
       },
     },
     {

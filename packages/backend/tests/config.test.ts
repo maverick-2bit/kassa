@@ -43,6 +43,20 @@ describe('loadConfig', () => {
     expect(() => loadConfig(env)).toThrow(/LOG_LEVEL/)
   })
 
+  describe('LOGIN_RATE_LIMIT_MAX (Anmeldungen je Minute und IP)', () => {
+    it('Standard 10 — wie bisher fest verdrahtet', () => {
+      expect(loadConfig(validEnv as NodeJS.ProcessEnv).LOGIN_RATE_LIMIT_MAX).toBe(10)
+      expect(loadConfig({ ...validEnv, LOGIN_RATE_LIMIT_MAX: '' } as NodeJS.ProcessEnv).LOGIN_RATE_LIMIT_MAX).toBe(10)
+    })
+
+    it('lässt sich setzen (E2E), aber nur sinnvoll: ganze Zahl von 1 bis 100000', () => {
+      expect(loadConfig({ ...validEnv, LOGIN_RATE_LIMIT_MAX: '1000' } as NodeJS.ProcessEnv).LOGIN_RATE_LIMIT_MAX).toBe(1000)
+      for (const falsch of ['0', '-5', '2.5', 'viele', '100001']) {
+        expect(() => loadConfig({ ...validEnv, LOGIN_RATE_LIMIT_MAX: falsch } as NodeJS.ProcessEnv), falsch).toThrow(/LOGIN_RATE_LIMIT_MAX/)
+      }
+    })
+  })
+
   describe('SETUP_TOKEN (Einrichtungs-Schlüssel für weitere Mandanten)', () => {
     it('ist optional: nicht gesetzt oder leer (docker-compose reicht bei fehlendem Eintrag "" durch) = Weg zu', () => {
       expect(loadConfig(validEnv as NodeJS.ProcessEnv).SETUP_TOKEN).toBeUndefined()
