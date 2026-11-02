@@ -360,7 +360,9 @@ describe('Alle Belegtypen', () => {
     const { kontext } = await erstelleStartbeleg(KASSE, see)
     const beleg = await signiereBeleg({
       kassenId: KASSE, belegNummer: 2,
-      datumUhrzeit: new Date('2026-06-16T09:00:00'), belegTyp: 'Barzahlungsbeleg',
+      // 07:00 UTC = 09:00 österreichische Sommerzeit — unabhängig von der Zeitzone des Prozesses (Anlage 1 Z 4: Lokalzeit Österreich).
+      // Ohne „Z" wäre es die Ortszeit der Maschine und der Test nur in Wien grün (in der CI, UTC, lieferte er 11:00).
+      datumUhrzeit: new Date('2026-06-16T07:00:00Z'), belegTyp: 'Barzahlungsbeleg',
       positionen: [{ bezeichnung: 'Test', menge: 1, einzelpreisBreutto: 1000, mwstSatz: 'normal' }],
     }, kontext)
 
