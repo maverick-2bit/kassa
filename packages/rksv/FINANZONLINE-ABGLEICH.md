@@ -1,5 +1,11 @@
 # FinanzOnline-Webservice — Umsetzungsstand
 
+> **Korrektur 2026-11-02:** Die Aussage unten, der Client sei „verifiziert gegen die offiziellen Schemas", **trifft nicht zu.**
+> Die Prüfung der erzeugten Requests mit libxml2 gegen `session.xsd`/`regKasseWs.xsd` (`tests/fon-xsd.test.ts`) ergibt: **kein**
+> Request des Clients ist schema-gültig (u. a. `login` statt `loginRequest`, `status_se` statt `status_see`, Datensätze ohne
+> Namespace, Pflichtfelder `paket_nr`/`ts_erstellung`/`satznr` fehlen, Antwort-Auswertung von `abfrage_ergebnis`). Befunde F-1 bis F-11
+> und die Soll-Beispiele: `PRUEFSTRECKE.md`, `tests/fixtures/fon-beispiele.ts`. Endpunkte und SOAPAction stimmen mit den WSDL-Dateien überein.
+
 **Stand:** 2026-07-08 · **Ergebnis:** ✅ Der Client (`src/finanz-online.ts` +
 `src/fon/`) ist gegen die **echte** BMF-Schnittstelle neu implementiert
 (Session-Login → `rkdb` → Logout). Verifiziert gegen die offiziellen Schemas

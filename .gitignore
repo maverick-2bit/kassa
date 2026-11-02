@@ -18,3 +18,7 @@ db-backups/
 # Assignment-ID) und gehoert NIE ins Repo. Vorlage: ops/fernwartung.example.json
 ops/fernwartung.json
 ops/fernwartung*.local.json
+
+# Mutationstests (Stryker)
+.stryker-tmp/
+packages/rksv/reports/

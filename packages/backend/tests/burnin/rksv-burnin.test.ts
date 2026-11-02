@@ -13,6 +13,15 @@
  *   BURNIN_MINUTEN  alternativ: Mindestlaufzeit in Minuten (läuft, bis die Zeit um ist; Belege-Ziel entfällt)
  *   BURNIN_SEED     Startwert des Zufallsgenerators (Standard: aus der Uhrzeit; wird ausgegeben → Lauf wiederholbar)
  *   BURNIN_PARALLEL Größe der Parallel-Wellen (Standard 20)
+ *   BURNIN_ZWEITPRUEFER  0 = Python-Zweitprüfer auslassen (Standard: läuft, wenn Python 3 gefunden wird)
+ *   BURNIN_BEKANNTE_REGELN  Komma-Liste von Regelnamen (z. B. pruefer-verkettung,zweitpruefer-verkettung), die als
+ *                           Hinweis statt als Fehler zählen — für bekannte, noch nicht behobene Befunde
+ *   BMF_PRUEFTOOL_DIR  entpacktes BMF-Prüftool (Java): dann läuft es am Ende über den Export (Nacht-Workflow)
+ *
+ * Am Ende werden die Belege als DEP7 + cryptographicMaterialContainer.json (Format des BMF-Prüftools) nach
+ * test-results/burnin-<seed>/ geschrieben und an die externen Prüfer gegeben:
+ *   - Python-Zweitprüfer (scripts/rksv/dep7_pruefer.py, nur Standardbibliothek)
+ *   - BMF-Prüftool (scripts/rksv/bmf-pruefer.mjs, Java)
  *
  * Aufruf (im Ordner packages/backend):  pnpm test:burnin
  * Ergebnis: test-results/burnin-<seed>.json und .md
@@ -31,6 +40,9 @@ import {
   pruefeBelegfolge, pruefeDep7, summeBetraege,
   type PrueferBeleg, type Verstoss,
 } from './rksv-pruefer.js'
+import {
+  findePython, fuehreBmfPrueftoolAus, fuehreZweitpruefungAus, schreibePruefDateien, type PruefDateien,
+} from '../helpers/externePruefer.js'
 
 // ---------------------------------------------------------------------------
 // Parameter
@@ -40,6 +52,7 @@ const ZIEL_BELEGE = Number(process.env.BURNIN_BELEGE ?? 2000)
 const MINUTEN     = process.env.BURNIN_MINUTEN ? Number(process.env.BURNIN_MINUTEN) : null
 const SEED        = Number(process.env.BURNIN_SEED ?? (Date.now() % 1_000_000_000))
 const WELLE       = Number(process.env.BURNIN_PARALLEL ?? 20)
+const BEKANNT     = new Set((process.env.BURNIN_BEKANNTE_REGELN ?? '').split(',').map(s => s.trim()).filter(Boolean))
 
 const ADMIN_EMAIL    = 'admin@burnin.at'
 const ADMIN_PASSWORT = 'burnin-passwort-123'
@@ -122,6 +135,8 @@ const zaehlerProRegel = new Map<string, number>()
 
 let aktuelleRunde = 0
 function melde(art: 'fehler' | 'hinweis', regel: string, detail: string): void {
+  // Bekannte, noch nicht behobene Befunde werden als Hinweis geführt (BURNIN_BEKANNTE_REGELN) — sichtbar, aber nicht rot.
+  if (art === 'fehler' && BEKANNT.has(regel)) { art = 'hinweis'; detail = `[bekannter Befund] ${detail}` }
   const liste = art === 'fehler' ? fehler : hinweise
   zaehlerProRegel.set(`${art}:${regel}`, (zaehlerProRegel.get(`${art}:${regel}`) ?? 0) + 1)
   if (liste.filter(m => m.regel === regel).length < 20) liste.push({ runde: aktuelleRunde, regel, detail })
@@ -340,6 +355,52 @@ describe('RKSV-Burn-in (Integration, echtes PostgreSQL)', () => {
     statistik.neustarts++
   }
 
+  // ---- Externe Prüfer ---------------------------------------------------------------
+
+  const externes: { ordner?: string; python?: unknown; bmf?: unknown } = {}
+
+  /**
+   * Schreibt den Export in test-results/burnin-<seed>/ (dep-export.json + cryptographicMaterialContainer.json, so liest
+   * ihn auch das BMF-Prüftool) und lässt die unabhängigen Prüfer darüber laufen. Deren Befunde sind Fehler des Burn-in.
+   */
+  async function externePruefung(dep7: unknown, aes: Buffer, zertDER: Buffer): Promise<void> {
+    const dateien: PruefDateien = schreibePruefDateien(`test-results/burnin-${SEED}`, dep7, aes, zertDER)
+    externes.ordner = dateien.ordner
+
+    if (process.env.BURNIN_ZWEITPRUEFER === '0') {
+      melde('hinweis', 'zweitpruefer-uebersprungen', 'BURNIN_ZWEITPRUEFER=0')
+    } else if (!findePython()) {
+      melde('hinweis', 'zweitpruefer-uebersprungen', 'kein Python 3 gefunden — der Python-Zweitprüfer lief nicht')
+    } else {
+      const lauf = fuehreZweitpruefungAus(dateien)
+      externes.python = lauf.bericht
+        ? { geprueft: lauf.bericht.geprueft, signaturen: lauf.bericht.signaturenGeprueft, ausfall: lauf.bericht.ausfallbelege, verstoesse: lauf.bericht.verstoesseJeRegel }
+        : { exit: lauf.exit, ausgabe: lauf.ausgabe.slice(-400) }
+      if (!lauf.bericht) {
+        melde('fehler', 'zweitpruefer-lauf', `Python-Zweitprüfer lieferte keinen Bericht (Exit ${lauf.exit}): ${lauf.ausgabe.slice(-300)}`)
+      } else {
+        pruefe(lauf.bericht.geprueft === lokal.size, 'zweitpruefer-anzahl', () => `Zweitprüfer sah ${lauf.bericht!.geprueft} Belege, Testtreiber ${lokal.size}`)
+        for (const v of lauf.bericht.verstoesse) melde('fehler', `zweitpruefer-${v.regel}`, `Beleg ${v.beleg}: ${v.detail}`)
+        // Die Anzahl je Regel zählt, nicht nur die ersten Beispiele
+        for (const [regel, n] of Object.entries(lauf.bericht.verstoesseJeRegel)) {
+          zaehlerProRegel.set(`${BEKANNT.has('zweitpruefer-' + regel) ? 'hinweis' : 'fehler'}:zweitpruefer-${regel}`, n)
+        }
+        console.log(`    Python-Zweitprüfer: ${lauf.bericht.geprueft} Belege, ${lauf.bericht.signaturenGeprueft} Signaturen, ${lauf.bericht.ausfallbelege} Ausfallbelege, Verstöße ${lauf.bericht.verstoesseGesamt}`)
+      }
+    }
+
+    const bmf = fuehreBmfPrueftoolAus(dateien)
+    externes.bmf = bmf
+    if (!bmf.ausgefuehrt) {
+      melde('hinweis', 'bmf-pruefer-uebersprungen', bmf.hinweis ?? 'nicht ausgeführt')
+    } else if (!bmf.ok) {
+      if (bmf.fehlgeschlagen.length === 0) melde('fehler', 'bmf-pruefer-lauf', bmf.hinweis ?? 'BMF-Prüftool meldet Fehler ohne Einzelheiten')
+      for (const f of bmf.fehlgeschlagen) melde('fehler', `bmf-${f.name}`, `${f.datei}: ${f.meldung}`)
+    } else {
+      console.log(`    BMF-Prüftool: bestanden (${JSON.stringify(bmf.zaehler)})`)
+    }
+  }
+
   // ---- Prüfung des Gesamtbestands ---------------------------------------------------
 
   async function pruefeBestand(abschliessend: boolean): Promise<void> {
@@ -383,6 +444,8 @@ describe('RKSV-Burn-in (Integration, echtes PostgreSQL)', () => {
     pruefe(dep7Res.statusCode === 200, 'dep7-abruf', () => `HTTP ${dep7Res.statusCode}`)
     if (dep7Res.statusCode === 200) {
       for (const v of pruefeDep7(dep7Res.json(), belege, k!.seeZertifikatDer)) melde('fehler', `pruefer-${v.regel}`, `Beleg ${v.belegNummer}: ${v.detail}`)
+      // 3b) Am Ende: derselbe Export an die EXTERNEN Prüfer (Python-Zweitprüfer, BMF-Prüftool)
+      if (abschliessend) await externePruefung(dep7Res.json(), aes, zertDER)
     }
 
     // 4) Signatur-Selbsttest der Kassa
@@ -542,6 +605,7 @@ describe('RKSV-Burn-in (Integration, echtes PostgreSQL)', () => {
       umsatzzaehlerCent: zaehlerErwartet.toString(),
       statistik, fehlerAnzahl: fehler.length, hinweisAnzahl: hinweise.length,
       haeufigkeit: Object.fromEntries(zaehlerProRegel),
+      externePruefer: externes,
       fehler, hinweise,
     }
     mkdirSync('test-results', { recursive: true })
@@ -567,7 +631,8 @@ describe('RKSV-Burn-in (Integration, echtes PostgreSQL)', () => {
 function bericht(e: {
   seed: number; dauerSekunden: number; runden: number; belege: number; umsatzzaehlerCent: string
   statistik: Record<string, number>; fehlerAnzahl: number; hinweisAnzahl: number
-  haeufigkeit: Record<string, number>; fehler: Meldung[]; hinweise: Meldung[]
+  haeufigkeit: Record<string, number>; externePruefer: { ordner?: string; python?: unknown; bmf?: unknown }
+  fehler: Meldung[]; hinweise: Meldung[]
 }): string {
   const zeilen: string[] = []
   zeilen.push(`# RKSV-Burn-in – Ergebnis`, '')
@@ -585,7 +650,13 @@ function bericht(e: {
     '- Beträge je Steuersatz gegen exakte Ganzzahl-Rechnung; Storno = Negativ des Originals je Satz und Zahlungsart',
     '- Verbotene Stornos (doppelt, Storno eines Stornos, Nullbeleg) und fehlerhafte Anfragen werden abgelehnt, ohne Lücke',
     '- SEE-Ausfall: Marker statt Signatur, Sammelbeleg signiert; Neustart mitten im Betrieb; parallele Zugriffe',
-    '- DEP131 und DEP7 (Inhalt = Belege), Signatur-Selbsttest der Kassa, Tagesabschluss gegen Summen des Testtreibers')
+    '- DEP131 und DEP7 (Inhalt = Belege), Signatur-Selbsttest der Kassa, Tagesabschluss gegen Summen des Testtreibers',
+    '- EXTERN: derselbe Export (dep-export.json + cryptographicMaterialContainer.json) durch den Python-Zweitprüfer ' +
+      '(eigene ES256-/AES-Rechnung, nur Standardbibliothek) und — im Nacht-Workflow — das BMF-Prüftool (Java)')
+  if (e.externePruefer.ordner) {
+    zeilen.push('', '## Externe Prüfer', '', `Export für die Prüfer: \`${e.externePruefer.ordner}\``, '',
+      '```json', JSON.stringify({ python: e.externePruefer.python, bmf: e.externePruefer.bmf }, null, 2), '```')
+  }
   if (e.fehler.length) {
     zeilen.push('', '## Fehler', '', '| Regel | Anzahl | Beispiele (Runde: Detail) |', '|---|---|---|')
     const regeln = [...new Set(e.fehler.map(f => f.regel))]
