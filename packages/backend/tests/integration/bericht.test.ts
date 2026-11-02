@@ -7,10 +7,11 @@
  * sowie Validierung (von>bis, unbekannte Kasse).
  */
 
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
-import { sql } from 'drizzle-orm'
+import { describe, it, expect, beforeAll, afterAll, onTestFinished, vi } from 'vitest'
+import { eq, sql } from 'drizzle-orm'
 import { addTage, type BerichtResponse, type ArtikelBerichtResponse, type KassenVergleichResponse, type BelegResponse } from '@kassa/shared'
 import type { FinanzOnlineClient } from '@kassa/rksv'
+import { belege } from '../../src/db/schema.js'
 import { buildTestServer, type TestServer } from '../helpers/testServer.js'
 import { erstelleIntegrationsDb, type IntegrationsDb } from './helpers/integrationsDb.js'
 
@@ -162,6 +163,18 @@ describe('Berichte (Integration, echtes PostgreSQL)', () => {
     // Die Testbelege auf eine feste Wiener Uhrzeit legen. Sie tragen sonst die Uhrzeit des Testlaufs, und
     // dann hinge das Ergebnis von ihr ab: um 00:00 liegen sie im Fenster 00:00–00:01 (das leer sein soll),
     // um 23:59 außerhalb von 00:00–23:59 (die Obergrenze ist exklusiv; das Fenster soll sie enthalten).
+    // Nach dem Test zurücksetzen: Die Uhr-Prüfung der Belegzeit (beleg-zeit.ts) lässt keinen Beleg zu, der mehr als
+    // eine Minute vor seinem Vorbeleg liegt. Blieben die Belege auf 12:30, scheiterten vor 12:30 (Wiener Zeit) alle
+    // Belege der folgenden Tests mit 409.
+    const urspruenglich = await idb.db
+      .select({ id: belege.id, belegDatum: belege.belegDatum })
+      .from(belege)
+      .where(eq(belege.kasseId, kasseId))
+    onTestFinished(async () => {
+      for (const b of urspruenglich) {
+        await idb.db.update(belege).set({ belegDatum: b.belegDatum }).where(eq(belege.id, b.id))
+      }
+    })
     const mittags = `${heute} 12:30:00`
     await idb.db.execute(sql`
       UPDATE belege
