@@ -413,6 +413,16 @@ Container, die Daten (Postgres-Volume) bleiben erhalten.
   signiert wurden, tragen im QR-Code die Zeit in UTC** (signiert, nicht mehr änderbar).
   Einstellungen → RKSV → Signatur-Selbsttest meldet sie als „QR-Zeit in UTC" — sie bleiben
   gültig, das CSV-Protokoll dokumentiert sie.
+- **Signatur-Selbsttest meldet „Verkettung im Altformat: Belege 2–m":** Belege bis Version 0.8.77
+  tragen ab dem 2. Beleg als Verkettungswert den Hash des QR-Codes ihres Vorgängers statt seiner
+  JWS-Form (RKSV Anlage 1 Z 4, Befund A der RKSV-Prüfstrecke). Der Wert steckt im signierten Code
+  und lässt sich nicht mehr ändern; schon der erste Beleg nach dem Update ist richtig verkettet.
+  Die Kassa erkennt die Altstrecke aus den Daten, hält die Kette für geschlossen und
+  dokumentiert den Belegbereich im CSV-Protokoll. Das BMF-Prüftool meldet in dieser Strecke je
+  Beleg einen Verkettungsfehler (`DEP_CHAINING_VALUE`) und lehnt DEP-Auszüge ohne Startbeleg ab.
+  Erscheint das Altformat NACH dem Umstieg wieder (gelber Hinweis), läuft vermutlich eine ältere
+  Programmversion — Update prüfen. „Signaturkette unterbrochen bei Beleg N" dagegen ist ein echter
+  Bruch (gelöschter, vertauschter oder veränderter Beleg).
 - **Signatureinheit (A-Trust) fällt aus:** Ist sie nicht erreichbar (Netz, Timeout, HTTP 5xx),
   geht die Kassa in den Ausfallmodus (roter Banner, Belege mit Marker statt Signatur) und
   prüft die Verbindung selbst jede Minute; kommt die Einheit wieder, stellt die Kassa die

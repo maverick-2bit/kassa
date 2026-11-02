@@ -14,6 +14,7 @@ import {
   verkettungswertFolgebeleg,
   verkettungswertAusJwsCompact,
   pruefeKette,
+  analysiereKette,
 } from '../src/crypto/chain.js'
 import { JWS_HEADER_B64URL, qrCodeZuJwsCompact } from '../src/crypto/jws.js'
 import { SEE_AUSFALL_SIGNATUR } from '../src/beleg.js'
@@ -98,26 +99,31 @@ describe('verkettungswertFolgebeleg (Eingabe: gespeicherter QR-Code des Vorbeleg
   })
 })
 
-describe('pruefeKette', () => {
-  const KASSE = 'KETTE-KASSE-1'
+const KASSE = 'KETTE-KASSE-1'
 
-  /** Baut eine synthetische, korrekt verkettete Belegfolge (Codes in QR-Form, wie sie gespeichert werden). */
-  function baueKette(anzahl: number, verketteMit = verkettungswertFolgebeleg): { maschinenlesbareCode: string; sigVorbeleg: string }[] {
-    const belege: { maschinenlesbareCode: string; sigVorbeleg: string }[] = []
-    for (let i = 0; i < anzahl; i++) {
-      const vorheriger = belege[i - 1]
-      const sigVorbeleg = vorheriger === undefined
-        ? verkettungswertStartbeleg(KASSE)
-        : verketteMit(vorheriger.maschinenlesbareCode)
-      const signatur = Buffer.from(`signatur-${i}`, 'utf8').toString('base64')
-      belege.push({
-        maschinenlesbareCode: `_R1-AT0_${KASSE}_${i + 1}_2026-01-01T10:00:0${i}_0,00_0,00_0,00_0,00_0,00_enc${i}=_SN_${sigVorbeleg}_${signatur}`,
-        sigVorbeleg,
-      })
-    }
-    return belege
+type Form = 'spez' | 'alt'
+type KetteBeleg = { maschinenlesbareCode: string; sigVorbeleg: string }
+
+/**
+ * Baut eine synthetische Belegfolge (Codes in QR-Form, wie sie gespeichert werden). `form(i)` bestimmt, wie Beleg i (ab 1) mit seinem
+ * Vorgänger verkettet ist: 'spez' = JWS-Form nach Spezifikation, 'alt' = Hash des QR-Codes (Programmversionen bis 0.8.77).
+ */
+function baueKette(anzahl: number, form: (i: number) => Form = () => 'spez', signatur = (i: number) => Buffer.from(`signatur-${i}`, 'utf8').toString('base64')): KetteBeleg[] {
+  const belege: KetteBeleg[] = []
+  for (let i = 0; i < anzahl; i++) {
+    const vorheriger = belege[i - 1]
+    const sigVorbeleg = vorheriger === undefined
+      ? verkettungswertStartbeleg(KASSE)
+      : form(i) === 'alt' ? sha8(vorheriger.maschinenlesbareCode) : verkettungswertFolgebeleg(vorheriger.maschinenlesbareCode)
+    belege.push({
+      maschinenlesbareCode: `_R1-AT0_${KASSE}_${i + 1}_2026-01-01T10:00:${String(i).padStart(2, '0')}_0,00_0,00_0,00_0,00_0,00_enc${i}=_SN_${sigVorbeleg}_${signatur(i)}`,
+      sigVorbeleg,
+    })
   }
+  return belege
+}
 
+describe('pruefeKette', () => {
   it('leere Liste ist gültig', () => {
     expect(pruefeKette(KASSE, [])).toBe(true)
   })
@@ -158,9 +164,98 @@ describe('pruefeKette', () => {
   })
 
   it('die alte Lesart (Hash des QR-Codes statt der JWS-Form) ist keine gültige Verkettung mehr', () => {
-    const alt = baueKette(3, qr => sha8(qr))                           // wie bis v0.8.77: QR-Code gehasht
+    const alt = baueKette(3, () => 'alt')                              // wie bis v0.8.77: QR-Code gehasht
     expect(alt[0]!.sigVorbeleg).toBe(verkettungswertStartbeleg(KASSE)) // der Startbeleg war immer richtig
     expect(pruefeKette(KASSE, alt.slice(0, 1))).toBe(true)
     expect(pruefeKette(KASSE, alt)).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------------------------------------------------
+// analysiereKette — bestehende Ketten erkennen (Altform bis v0.8.77), echte Brüche weiter melden
+// ---------------------------------------------------------------------------------------------------------------------
+describe('analysiereKette', () => {
+  const sauber = { ok: true, altformat: 0, ersterAltformatIndex: null, letzterAltformatIndex: null, gemischt: false, ersterBruchIndex: null }
+
+  it('leere Folge und der Startbeleg allein: in Ordnung, kein Altformat', () => {
+    expect(analysiereKette(KASSE, [])).toEqual(sauber)
+    expect(analysiereKette(KASSE, baueKette(1))).toEqual(sauber)
+  })
+
+  it('Kette nach Spezifikation: in Ordnung, kein Altformat (wie pruefeKette)', () => {
+    const kette = baueKette(6)
+    expect(analysiereKette(KASSE, kette)).toEqual(sauber)
+    expect(pruefeKette(KASSE, kette)).toBe(true)
+  })
+
+  it('Bestandskasse nach dem Update: Belege 2…5 im Altformat, ab Beleg 6 nach Spezifikation — in Ordnung, Altstrecke ausgewiesen', () => {
+    const kette = baueKette(9, i => (i <= 4 ? 'alt' : 'spez'))        // Index 1…4 = Belege 2…5
+    expect(analysiereKette(KASSE, kette)).toEqual({ ...sauber, altformat: 4, ersterAltformatIndex: 1, letzterAltformatIndex: 4 })
+    expect(pruefeKette(KASSE, kette)).toBe(false)                     // streng nach Spezifikation ist die Altstrecke keine Verkettung
+  })
+
+  it('der Übergang ist nahtlos: der erste Beleg nach der Korrektur stimmt auf einen alt verketteten Vorgänger', () => {
+    const kette = baueKette(6, i => (i <= 3 ? 'alt' : 'spez'))
+    expect(kette[4]!.sigVorbeleg).toBe(verkettungswertFolgebeleg(kette[3]!.maschinenlesbareCode))
+    expect(kette[3]!.sigVorbeleg).not.toBe(verkettungswertFolgebeleg(kette[2]!.maschinenlesbareCode))
+    expect(analysiereKette(KASSE, kette).ok).toBe(true)
+  })
+
+  it('Kasse, die seit dem Update keinen Beleg mehr signiert hat (z. B. stillgelegt): die ganze Folge ist Altformat', () => {
+    expect(analysiereKette(KASSE, baueKette(5, () => 'alt'))).toEqual({ ...sauber, altformat: 4, ersterAltformatIndex: 1, letzterAltformatIndex: 4 })
+  })
+
+  it('Altformat NACH einem Beleg nach Spezifikation (ältere Programmversion eingespielt): kein Bruch, aber „gemischt"', () => {
+    const kette = baueKette(7, i => (i === 4 || i === 5 ? 'alt' : 'spez'))
+    expect(analysiereKette(KASSE, kette)).toEqual({ ...sauber, altformat: 2, ersterAltformatIndex: 4, letzterAltformatIndex: 5, gemischt: true })
+  })
+
+  it('Altstrecke ohne Rückfall ist nicht „gemischt"', () => {
+    expect(analysiereKette(KASSE, baueKette(8, i => (i <= 3 ? 'alt' : 'spez'))).gemischt).toBe(false)
+  })
+
+  it('gelöschter Beleg in der Altstrecke: Kettenbruch am Beleg danach', () => {
+    const kette = baueKette(8, i => (i <= 5 ? 'alt' : 'spez'))
+    kette.splice(3, 1)                                                // Beleg 4 fehlt
+    const a = analysiereKette(KASSE, kette)
+    expect(a.ok).toBe(false)
+    expect(a.ersterBruchIndex).toBe(3)                                // der frühere Beleg 5 steht jetzt auf Index 3
+    expect(a.altformat).toBe(2)                                       // Belege 2 und 3 waren noch in Ordnung
+  })
+
+  it('gelöschter Beleg in der neuen Strecke: Kettenbruch, auch wenn davor Altformat steht', () => {
+    const kette = baueKette(9, i => (i <= 3 ? 'alt' : 'spez'))
+    kette.splice(6, 1)
+    const a = analysiereKette(KASSE, kette)
+    expect(a.ok).toBe(false)
+    expect(a.ersterBruchIndex).toBe(6)
+  })
+
+  it('manipulierter Vorbeleg in der Altstrecke (Nutzlast oder Signatur): Kettenbruch', () => {
+    for (const aendere of [
+      (c: string) => c.replace('0,00', '9,99'),
+      (c: string) => `${c.slice(0, c.lastIndexOf('_') + 1)}${Buffer.from('gefaelscht').toString('base64')}`,
+    ]) {
+      const kette = baueKette(6, i => (i <= 3 ? 'alt' : 'spez'))
+      kette[2] = { ...kette[2]!, maschinenlesbareCode: aendere(kette[2]!.maschinenlesbareCode) }
+      const a = analysiereKette(KASSE, kette)
+      expect(a.ok).toBe(false)
+      expect(a.ersterBruchIndex).toBe(3)
+    }
+  })
+
+  it('weder Altform noch Spezifikation (fremder Wert): Kettenbruch', () => {
+    const kette = baueKette(5, i => (i <= 2 ? 'alt' : 'spez'))
+    kette[3] = { ...kette[3]!, sigVorbeleg: verkettungswertStartbeleg('FALSCH') }
+    expect(analysiereKette(KASSE, kette)).toMatchObject({ ok: false, ersterBruchIndex: 3, altformat: 2 })
+  })
+
+  it('falscher Startbeleg: Bruch am ersten Beleg, auch bei einer Altstrecke', () => {
+    expect(analysiereKette('ANDERE-KASSE', baueKette(4, () => 'alt'))).toMatchObject({ ok: false, ersterBruchIndex: 0, altformat: 0 })
+  })
+
+  it('Ausfallbeleg (Marker statt Signatur) in der Altstrecke: wird in der Altform wie in der neuen Form verkettet', () => {
+    const kette = baueKette(6, i => (i <= 3 ? 'alt' : 'spez'), i => (i === 2 ? SEE_AUSFALL_SIGNATUR : Buffer.from(`signatur-${i}`, 'utf8').toString('base64')))
+    expect(analysiereKette(KASSE, kette)).toMatchObject({ ok: true, altformat: 3, gemischt: false })
   })
 })

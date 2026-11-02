@@ -56,6 +56,24 @@ export const rksvSelbsttestRoute: FastifyPluginAsync<RksvSelbsttestRouteOptions>
         `${d.belegNummer};${d.belegDatum};${d.belegTyp};${STATUS_LABEL[d.status] ?? d.status}`),
     ]
 
+    // Die Verkettung ist eine Eigenschaft der Folge, kein Beleg-Status (ein Beleg kann zugleich DER-/Zeit-Altformat UND
+    // Teil der Altstrecke sein): Zusammenfassung unter der Tabelle, nur wenn es etwas zu dokumentieren gibt.
+    if (ergebnis.ketteAltformat > 0 || !ergebnis.ketteOk) {
+      zeilen.push('', 'Verkettung;Ergebnis')
+      zeilen.push(ergebnis.ketteOk
+        ? 'Signaturkette;geschlossen'
+        : `Signaturkette;UNTERBROCHEN${ergebnis.ketteBruchBeleg === null ? '' : ` bei Beleg ${ergebnis.ketteBruchBeleg}`}`)
+      if (ergebnis.ketteAltformat > 0) {
+        zeilen.push(
+          `Verkettung im Altformat (Hash des QR-Codes statt der JWS-Form, Programmversionen bis 0.8.77);` +
+          `Belege ${ergebnis.ketteAltformatVon}–${ergebnis.ketteAltformatBis} (${ergebnis.ketteAltformat} Belege), signiert und unverändert`,
+        )
+        if (ergebnis.ketteGemischt) {
+          zeilen.push('Hinweis;Altformat auch NACH dem Umstieg auf die neue Verkettung (ältere Programmversion eingespielt?)')
+        }
+      }
+    }
+
     const datum     = new Date().toISOString().slice(0, 10)
     const dateiname = `signatur-selbsttest_${ergebnis.kassenId}_${datum}.csv`
     return reply

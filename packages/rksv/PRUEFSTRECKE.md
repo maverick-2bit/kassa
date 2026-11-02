@@ -33,7 +33,7 @@ Befunde, die der Produktivcode noch nicht behoben hat, sind in den Tests als **`
 Mangel besteht; sobald er behoben ist, meldet vitest „Expect test to fail" — dann an der Stelle das `.fails` entfernen
 (und in den Zweitprüfer-Tests die Ausnahme `--ignoriere zksn-format` für Befund D streichen). Befund A ist so behoben worden.
 
-### A — Verkettung der Folgebelege war falsch (BEHOBEN; Altketten: Kennzeichnung im Selbsttest folgt)
+### A — Verkettung der Folgebelege war falsch (BEHOBEN; Altketten im Selbsttest als „Altformat" ausgewiesen)
 
 * Befund: `Sig-Voriger-Beleg` = Base64(SHA-256(**QR-Code** des Vorbelegs)[0..7]) — QR-Code = `payload + "_" + Signatur in Standard-Base64`
   (`beleg.service.ts` speichert `letzterBelegCode = signed.maschinenlesbareCode`; `beleg.ts signiereBeleg` → `crypto/chain.ts`).
@@ -52,8 +52,11 @@ Mangel besteht; sobald er behoben ist, meldet vitest „Expect test to fail" —
   seines (noch alt verketteten) Vorgängers und stimmt.
 * **Altbelege:** Belege 2…n einer vor der Korrektur betriebenen Kasse tragen die alte Verkettung. Sie ist Teil des signierten Codes und lässt sich nicht ändern — DEP-Export
   und Prüfwerkzeuge (BMF-Prüftool, Zweitprüfer, `pruefeKette`) melden in dieser Strecke weiter Verkettungsfehler, je einen pro Altbeleg ab dem 2. **Entschieden (User, 2026-11-02):**
-  die Altstrecke wird weder verändert noch neu begonnen, sondern im Signatur-Selbsttest aus den Daten erkannt und als „Verkettung im Altformat" sichtbar gemacht (wie `der_altformat` und
-  `zeit_altformat`, ohne Migration); gebaut nach dem Release der Karte „RKSV-Kern" (gleiche Dateien). Bis dahin zeigt der Selbsttest jeder Bestandskasse „Kette unterbrochen".
+  die Altstrecke wird weder verändert noch neu begonnen, sondern im Signatur-Selbsttest aus den Daten erkannt und ausgewiesen (wie `der_altformat` und `zeit_altformat`, ohne Migration).
+  Umsetzung: `analysiereKette` (`crypto/chain.ts`) erkennt je Folgebeleg die Altform (Hash des QR-Codes) oder die Form nach Spezifikation; beides gilt als geschlossene Kette, alles andere
+  ist ein Kettenbruch. Altform NACH einem Beleg nach Spezifikation (ältere Programmversion eingespielt) bricht die Kette nicht (die Signatur schützt den Wert, die Verkettung dient dem
+  Erkennen gelöschter oder vertauschter Belege), wird aber als „gemischt" gelb ausgewiesen. Der Selbsttest liefert `ketteAltformat`, `ketteAltformatVon/-Bis`, `ketteGemischt`,
+  `ketteBruchBeleg`; die Seite zeigt die Altstrecke blau mit Belegbereich, das CSV-Protokoll hat eine Zusammenfassung (`ops/DEPLOYMENT.md`, Troubleshooting). `pruefeKette` bleibt streng.
 * **Das BMF-Prüftool bestätigt die Korrektur** (CI-Probelauf 2026-11-02 auf dem Wegwerf-Branch `trial/verkettung-jws`, Export der Kassa als offenes System, 60 Belege):
   keine einzige Beanstandung (vorher `DEP_CHAINING_VALUE` bei 59 von 59). **Altkette** (Belege 2…30 nach der alten Lesart, ab 31 nach der Spezifikation): das Tool meldet genau die
   29 Altbelege (`DEP_CHAINING_VALUE`, dazu das Sammelurteil `DEP_RECEIPT_LIST`), der Übergang und alles danach besteht. **DEP-Auszug ohne Startbeleg** (gleich ob Altkette): das Tool
@@ -153,7 +156,8 @@ node scripts/rksv/bmf-pruefer.mjs --dep dep-export.json --crypto cryptographicMa
 ```
 
 Burn-in-Schalter: `BURNIN_BELEGE`, `BURNIN_MINUTEN`, `BURNIN_SEED`, `BURNIN_PARALLEL`, `BURNIN_ZWEITPRUEFER=0`,
-`BURNIN_BEKANNTE_REGELN=zweitpruefer-zksn-format` (bekannte Befunde, hier D, nur als Hinweis), `BMF_PRUEFTOOL_DIR`.
+`BURNIN_BEKANNTE_REGELN` (bekannte Befunde nur als Hinweis; für Befund D, das AT0-Format: `zweitpruefer-zksn-format,bmf-FORMAT_CLOSED_SYSTEM_SERIAL,bmf-DEP_STATE,bmf-VERIFICATION_FROM_APP,bmf-DEP_RECEIPT_LIST`),
+`BMF_PRUEFTOOL_DIR`.
 
 ## Der Nacht-Workflow (`rksv-nacht`)
 
@@ -163,7 +167,7 @@ Burn-in-Schalter: `BURNIN_BELEGE`, `BURNIN_MINUTEN`, `BURNIN_SEED`, `BURNIN_PARA
   (`NNNN_*.json`, `*_full.json`, `DEP-full.json`: 147 MB schon für den Kontrolllauf und zwei Kassa-Läufe); dafür das Skript lokal laufen lassen.
 * **zeit-matrix**, **schemas** (Drift der FinanzOnline-Schemas, neueres Prüftool?).
 * Manuell startbar (`workflow_dispatch`) mit Belegzahl, Minuten und bekannten Regeln.
-* **Rot ist gewollt, solange bekannte Befunde offen sind** (A ist behoben; D offen; B mit der Zeit-Korrektur der Karte „RKSV-Kern") — das ist der Zweck. Zum Beruhigen für einen manuellen Lauf `bekannte_regeln` setzen.
+* **Rot ist gewollt, solange bekannte Befunde offen sind** (A und B sind behoben; offen ist D, das AT0-Seriennummernformat) — das ist der Zweck. Zum Beruhigen für einen manuellen Lauf `bekannte_regeln` mit den Regeln zu D setzen (Liste oben bei den Burn-in-Schaltern).
 * Das BMF-Prüftool ist laut BMF „primär auf korrekte Implementierung ausgerichtet" und nicht verbindlich; ein Fehler dort ist ein Anlass zum Nachsehen,
   ein Bestehen ersetzt weder die Belegprüfung in FinanzOnline noch die BMF-Belegcheck-App.
 * Auswertung der Prüftool-Ausgabe (`scripts/rksv/lib/bmf-ergebnis.mjs`): Urteil sind nur die Wurzeln von `N_app/N_cashbox/N_dep.json` und `DEP-global.json`

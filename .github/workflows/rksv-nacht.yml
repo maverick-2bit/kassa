@@ -27,7 +27,7 @@ on:
         required: false
         default: ''
       bekannte_regeln:
-        description: 'Burn-in: Regeln, die nur als Hinweis zählen (Komma-Liste, z. B. zweitpruefer-zksn-format)'
+        description: 'Burn-in: Regeln, die nur als Hinweis zählen (Komma-Liste; Befund D: zweitpruefer-zksn-format,bmf-FORMAT_CLOSED_SYSTEM_SERIAL,bmf-DEP_STATE,bmf-VERIFICATION_FROM_APP,bmf-DEP_RECEIPT_LIST)'
         required: false
         default: ''
 
