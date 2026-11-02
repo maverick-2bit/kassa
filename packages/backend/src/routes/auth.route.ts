@@ -21,14 +21,9 @@ import { ipSchluessel } from '../auth/rate-limit.js'
 
 export interface AuthRouteOptions {
   db: Db
+  /** Anmeldungen je Minute und Client-IP; Standard 10 (nur der E2E-Lauf stellt das hoch, siehe config.ts) */
+  loginRateLimitMax?: number
 }
-
-/**
- * Strenges Rate-Limit für Login-Endpunkte (Brute-Force-Schutz via IP).
- * Bewusst NIE je Token wie das globale Limit: wer schon einen Token hat, darf
- * damit keinen eigenen Rate-Topf fürs PIN-Raten bekommen.
- */
-const loginRateLimit = { config: { rateLimit: { max: 10, timeWindow: '1 minute', keyGenerator: ipSchluessel } } }
 
 // ---------------------------------------------------------------------------
 // Account-Lockout (in-memory, pro E-Mail)
@@ -64,6 +59,15 @@ function lockoutLoeschen(email: string): void {
 // ---------------------------------------------------------------------------
 
 export const authRoute: FastifyPluginAsync<AuthRouteOptions> = async (fastify, opts) => {
+  /**
+   * Strenges Rate-Limit für Login-Endpunkte (Brute-Force-Schutz via IP).
+   * Bewusst NIE je Token wie das globale Limit: wer schon einen Token hat, darf
+   * damit keinen eigenen Rate-Topf fürs PIN-Raten bekommen.
+   */
+  const loginRateLimit = {
+    config: { rateLimit: { max: opts.loginRateLimitMax ?? 10, timeWindow: '1 minute', keyGenerator: ipSchluessel } },
+  }
+
   const loginDeps: LoginDeps = {
     db:              opts.db,
     signToken:       (payload) => fastify.jwt.sign(payload),

@@ -40,6 +40,15 @@ const ConfigSchema = z.object({
   SETUP_TOKEN: z.string().optional()
     .transform(v => (v === undefined || v.trim() === '' ? undefined : v.trim()))
     .refine(v => v === undefined || v.length >= 24, 'SETUP_TOKEN muss mindestens 24 Zeichen lang sein'),
+  /**
+   * Anmeldungen je Minute und Client-IP (POST /api/auth/login und /pin-login) — Brute-Force-Schutz, Standard 10.
+   * Nur der E2E-Lauf stellt das hoch: Seine Specs melden sich im Sekundentakt von EINER IP an, 143 Tests in wenigen
+   * Minuten; mit 10/min fielen ältere Specs bei 429 in den Setup-Rückfall und scheiterten (Login-Limit-Kaskade).
+   */
+  LOGIN_RATE_LIMIT_MAX: z.preprocess(
+    v => (typeof v === 'string' && v.trim() === '' ? undefined : v),   // leere Zeile in der .env = Standard
+    z.coerce.number().int().min(1).max(100_000).default(10),
+  ),
   /** Schwelle (Stunden), ab der die letzte DB-Sicherung als veraltet gilt. */
   DB_BACKUP_MAX_AGE_STUNDEN:  z.coerce.number().int().min(1).default(26),
   /** Schwelle (Stunden), ab der die letzte DEP-Sicherung als veraltet gilt. */
