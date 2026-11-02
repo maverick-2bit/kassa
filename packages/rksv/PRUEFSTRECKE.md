@@ -145,7 +145,9 @@ Burn-in-Schalter: `BURNIN_BELEGE`, `BURNIN_MINUTEN`, `BURNIN_SEED`, `BURNIN_PARA
 ## Der Nacht-Workflow (`rksv-nacht`)
 
 * **burnin:** BMF-Prüftool laden (festgelegte Version, SHA-256 geprüft), **Kontrolllauf** mit den 16 Beispiel-Szenarien des BMF (muss bestehen,
-  sonst sagt ein Ergebnis zu unseren Daten nichts), dann Burn-in mit Export an Python-Zweitprüfer und BMF-Prüftool. Berichte als Artefakt (30 Tage).
+  sonst sagt ein Ergebnis zu unseren Daten nichts), dann Burn-in mit Export an Python-Zweitprüfer und BMF-Prüftool. Als Artefakt (14 Tage) kommen Berichte, Zusammenfassungen
+  (`bmf-zusammenfassung.json` mit den ersten 200 beanstandeten Prüfungen), Konsolenausgabe und die Export-Dateien mit — nicht die Einzelergebnisse des Prüftools je Beleg
+  (`NNNN_*.json`, `*_full.json`, `DEP-full.json`: 147 MB schon für den Kontrolllauf und zwei Kassa-Läufe); dafür das Skript lokal laufen lassen.
 * **zeit-matrix**, **schemas** (Drift der FinanzOnline-Schemas, neueres Prüftool?).
 * Manuell startbar (`workflow_dispatch`) mit Belegzahl, Minuten und bekannten Regeln.
 * **Erste Läufe sind rot**, bis A und B im Produktivcode behoben sind — das ist der Zweck. Zum Beruhigen für einen manuellen Lauf `bekannte_regeln` setzen.
