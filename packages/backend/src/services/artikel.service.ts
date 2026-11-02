@@ -102,7 +102,7 @@ function toDto(
 
 /** Lädt einen einzelnen Artikel als DTO inkl. Rezept + abgeleiteter Verfügbarkeit. */
 async function ladeArtikelDto(db: Db, row: typeof artikel.$inferSelect): Promise<Artikel> {
-  const rezepte = await ladeRezepteAngereichert(db, [row.id])
+  const rezepte = await ladeRezepteAngereichert(db, row.mandantId, [row.id])
   return toDto(row, rezepte.get(row.id) ?? [])
 }
 
@@ -160,7 +160,7 @@ export async function listeArtikel(
     .orderBy(asc(artikel.bezeichnung))
 
   // Rezepte gebündelt nachladen (ein Join) → verfuegbareMenge + bestandteile je Artikel.
-  const rezepte = await ladeRezepteAngereichert(db, rows.map(r => r.id))
+  const rezepte = await ladeRezepteAngereichert(db, mandantId, rows.map(r => r.id))
   return rows.map(r => toDto(r, rezepte.get(r.id) ?? []))
 }
 

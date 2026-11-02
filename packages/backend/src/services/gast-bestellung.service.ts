@@ -93,7 +93,7 @@ export async function erstelleGastBestellung(
     .from(artikel)
     .where(and(eq(artikel.mandantId, kasse.mandantId), inArray(artikel.id, artikelIds)))
   const byId = new Map(rows.map(a => [a.id, a]))
-  const rezepte = await ladeRezepteAngereichert(deps.db, artikelIds)
+  const rezepte = await ladeRezepteAngereichert(deps.db, kasse.mandantId, artikelIds)
 
   for (const p of input.positionen) {
     const a = byId.get(p.artikelId)

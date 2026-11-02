@@ -95,10 +95,13 @@ interface PositionSnapshot {
 /**
  * Vergleicht alte und neue Positionen und passt den Lagerstand an.
  * delta > 0 = Abzug (mehr bestellt), delta < 0 = Rückbuchung (storniert).
+ * Artikel- und Options-IDs kommen vom Client — gebucht wird nur auf Artikel,
+ * Optionen und Rezepte des Mandanten; fremde IDs zählen wie unbekannte.
  */
 async function aktualisiereStockDeltas(
   altePositionen: TabPosition[],
   neuePositionen: TabPosition[],
+  mandantId: string,
   db: Db,
 ): Promise<void> {
   // Snapshots aufbauen
@@ -155,7 +158,7 @@ async function aktualisiereStockDeltas(
     const rows = await db
       .select({ id: artikel.id, lagerstandAktiv: artikel.lagerstandAktiv, lagerstandMenge: artikel.lagerstandMenge })
       .from(artikel)
-      .where(inArray(artikel.id, artikelIds))
+      .where(and(inArray(artikel.id, artikelIds), eq(artikel.mandantId, mandantId)))
 
     for (const row of rows) {
       if (!row.lagerstandAktiv || row.lagerstandMenge === null) continue
@@ -164,7 +167,7 @@ async function aktualisiereStockDeltas(
       const neueMenge = Math.max(0, row.lagerstandMenge - d.delta)
       await db.update(artikel)
         .set({ lagerstandMenge: neueMenge, updatedAt: new Date() })
-        .where(eq(artikel.id, row.id))
+        .where(and(eq(artikel.id, row.id), eq(artikel.mandantId, mandantId)))
     }
   }
 
@@ -175,7 +178,7 @@ async function aktualisiereStockDeltas(
     const rows = await db
       .select({ id: modifikatoren.id, lagerstandMenge: modifikatoren.lagerstandMenge })
       .from(modifikatoren)
-      .where(inArray(modifikatoren.id, modIds))
+      .where(and(inArray(modifikatoren.id, modIds), eq(modifikatoren.mandantId, mandantId)))
 
     for (const row of rows) {
       if (row.lagerstandMenge === null) continue
@@ -184,7 +187,7 @@ async function aktualisiereStockDeltas(
       const neueMenge = Math.max(0, row.lagerstandMenge - d.delta)
       await db.update(modifikatoren)
         .set({ lagerstandMenge: neueMenge })
-        .where(eq(modifikatoren.id, row.id))
+        .where(and(eq(modifikatoren.id, row.id), eq(modifikatoren.mandantId, mandantId)))
     }
   }
 
@@ -201,10 +204,11 @@ async function aktualisiereStockDeltas(
     if (artikelId) artikelNettoDelta.set(artikelId, (artikelNettoDelta.get(artikelId) ?? 0) + delta)
   }
   if (artikelNettoDelta.size > 0) {
-    const rezepte = await ladeRezepte(db, [...artikelNettoDelta.keys()])
+    const rezepte = await ladeRezepte(db, mandantId, [...artikelNettoDelta.keys()])
     if (rezepte.size > 0) {
       await wendeBestandteilDeltasAn(
         db,
+        mandantId,
         [...artikelNettoDelta.entries()].map(([artikelId, delta]) => ({ artikelId, delta })),
         rezepte,
       )
@@ -398,7 +402,7 @@ export async function aktualisierePositionen(
   })
 
   // Lagerstand automatisch anpassen
-  await aktualisiereStockDeltas(altePositionen, positionen, deps.db)
+  await aktualisiereStockDeltas(altePositionen, positionen, mandantId, deps.db)
 
   let nacharbeit: StornoNacharbeit = { stornoBon: null, umleitungen: [] }
   if (stornoItems.length > 0) {
@@ -553,7 +557,7 @@ export async function verwerfeTab(
   })
 
   // Lagerstand zurückbuchen (verworfene Positionen wurden nie verkauft)
-  await aktualisiereStockDeltas(positionen, [], deps.db)
+  await aktualisiereStockDeltas(positionen, [], mandantId, deps.db)
 
   const stornoItems = positionen.map(p => ({
     artikelId:       p.artikelId,
