@@ -20,16 +20,36 @@ export const AllergeneEingabeSchema = z.string().max(80).nullable().optional().t
   return r.wert
 }).optional()   // zod 4: nach einem transform muss das Feld erneut ausdrücklich optional sein, sonst wird der Schlüssel Pflicht
 
-/** Österreichische MwSt-Sätze gemäß RKSV */
-export const MwStSatzSchema = z.enum(['normal', 'ermaessigt1', 'ermaessigt2', 'null', 'besonders'])
+/**
+ * Österreichische MwSt-Sätze gemäß RKSV.
+ *
+ * `ermaessigt3` = 4,9 % für ausgewählte Nahrungsmittel (Lieferungen, UStG Anlage 3), seit
+ * 1.7.2026. In QR-Code und DEP steht er im Feld „Betrag-Satz-Besonders (19 %, 4,9 %)" mit dem
+ * 19-%-Satz; Belegzeilen, Berichte, Tagesabschluss und Exporte führen ihn getrennt.
+ */
+export const MwStSatzSchema = z.enum(['normal', 'ermaessigt1', 'ermaessigt2', 'ermaessigt3', 'null', 'besonders'])
 export type MwStSatz = z.infer<typeof MwStSatzSchema>
 
 export const MWST_LABELS: Record<MwStSatz, string> = {
   normal:      '20 % (Normal)',
   ermaessigt1: '10 % (Ermäßigt)',
   ermaessigt2: '13 % (Ermäßigt 2)',
+  ermaessigt3: '4,9 % (Ermäßigt 3)',
   null:        '0 %',
   besonders:   '19 % (Sondersteuersatz)',
+}
+
+/**
+ * Prozentwerte der Sätze — dieselben Zahlen wie `MWST_PROZENT` in @kassa/rksv (shared
+ * hängt nicht von rksv ab; ein Test hält beide gleich).
+ */
+export const MWST_PROZENT_SATZ: Record<MwStSatz, number> = {
+  normal:      20,
+  ermaessigt1: 10,
+  ermaessigt2: 13,
+  ermaessigt3: 4.9,
+  null:        0,
+  besonders:   19,
 }
 
 // ---------------------------------------------------------------------------

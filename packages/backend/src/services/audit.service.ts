@@ -30,6 +30,14 @@ export type AuditAktion =
   | 'rabatt.freigegeben'
   | 'tickets.ausgestellt'
   | 'ticket.storniert'
+  /** Signatureinheit nicht erreichbar/unbrauchbar: die Kasse wechselte selbst in den Ausfallmodus */
+  | 'see.ausfall_erkannt'
+  /** Signatureinheit hat die Anfrage abgelehnt (HTTP 4xx) oder das Schlüsselmaterial ist kaputt: kein Beleg */
+  | 'see.signatur_abgelehnt'
+  /** Die Kassa hat die Signatur nach einem Ausfall selbst wiederhergestellt (Hintergrundsonde) */
+  | 'see.automatisch_wiederhergestellt'
+  /** Systemuhr ging nach: der Beleg bekam die Zeit des Vorbelegs */
+  | 'beleg.zeit_angeglichen'
   | 'setup.mandant_angelegt'
   | 'setup.verweigert'
 

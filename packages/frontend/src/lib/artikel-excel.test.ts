@@ -13,6 +13,20 @@ function excel(zeilen: string[][]): ArrayBuffer {
 const KOPF = ['Bezeichnung', 'Preis (EUR)', 'MwSt-Satz', 'KDS-Station', 'Kategorie', 'Lagerstand', 'Anfangsbestand', 'Mindestbestand', 'Allergene']
 const NORMAL = '20 %'
 
+describe('parseArtikelExcel — Spalte „MwSt-Satz" mit 4,9 % (ausgewählte Nahrungsmittel, seit 1.7.2026)', () => {
+  it.each(['4,9 %', '4,9%', '4.9 %', '4.9%', '4,9 % (Ermäßigt 3)', 'ermaessigt3'])('liest „%s" als 4,9 %', async (label) => {
+    const [z] = await parseArtikelExcel(excel([KOPF, ['Semmel', '0,60', label, '', '', 'Nein', '', '', '']]), [])
+    expect(z?.fehler).toEqual([])
+    expect(z?.daten?.mwstSatz).toBe('ermaessigt3')
+  })
+
+  it('die Meldung bei einem unbekannten Satz nennt auch 4,9 % unter den gültigen Werten', async () => {
+    const [z] = await parseArtikelExcel(excel([KOPF, ['Semmel', '0,60', '5 %', '', '', 'Nein', '', '', '']]), [])
+    expect(z?.gueltig).toBe(false)
+    expect(z?.fehler.join(' ')).toContain('4,9 % (Ermäßigt 3)')
+  })
+})
+
 describe('parseArtikelExcel — Spalte „Allergene"', () => {
   it('liest Codes locker und legt sie sortiert ab', async () => {
     const [z] = await parseArtikelExcel(excel([KOPF, ['Schnitzel', '12,00', NORMAL, '', '', 'Nein', '', '', 'g, a c']]), [])

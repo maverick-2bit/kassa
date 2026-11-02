@@ -13,10 +13,10 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { berechneIV } from '../src/crypto/aes-icm.js'
 import { verkettungswertStartbeleg } from '../src/crypto/chain.js'
 import {
-  Umsatzzaehler, erstelleNullbeleg, erstelleStartbeleg, signiereBeleg, verifiziereBelegSignatur, verifiziereBelegSignaturAltDer,
+  Umsatzzaehler, erstelleNullbeleg, erstelleStartbeleg, jwsSigningInput, signiereBeleg, verifiziereBelegSignatur, verifiziereBelegSignaturAltDer,
   type SignierungsKontext,
 } from '../src/beleg.js'
-import { generateSEE, p1363ZuDer, verifiziere, verifiziereDerCodiert, zertifikatSN } from '../src/see.js'
+import { generateSEE, p1363ZuDer, signiereRoh, verifiziere, verifiziereDerCodiert, zertifikatSN } from '../src/see.js'
 import type { BelegPosition, BelegTyp, MwStSatz, SEEConfig, SignedBeleg } from '../src/types.js'
 import { zerlegeQr } from './helpers/pruef-export.js'
 
@@ -153,12 +153,23 @@ describe('Startbeleg und externe Signatureinheit', () => {
   })
 
   it('eine externe Einheit (A-Trust-HSM) signiert die Belegzeile statt des lokalen Schlüssels', async () => {
+    // Die Einheit liefert eine ECHTE Signatur: seit der Gegenprobe nach dem Signieren (signiereBeleg verifiziert jede frische
+    // Signatur gegen das Zertifikat) würde eine Fantasie-Signatur wie Buffer.alloc(64, 7) abgelehnt — das prüft
+    // signatur-gegenprobe.test.ts. ECDSA nimmt je Signatur einen neuen Zufallswert: Stimmt die gelieferte Signatur mit der
+    // im Beleg überein, stammt sie von der Einheit und nicht aus einer lokalen Neuberechnung.
     const aufrufe: string[] = []
-    const einheit = { signiereBelegzeile: async (zeile: string): Promise<Buffer> => { aufrufe.push(zeile); return Buffer.alloc(64, 7) } }
+    let geliefert: Buffer | undefined
+    const einheit = {
+      signiereBelegzeile: async (zeile: string): Promise<Buffer> => {
+        aufrufe.push(zeile)
+        geliefert = signiereRoh(jwsSigningInput(zeile), see)
+        return geliefert
+      },
+    }
     const { beleg, kontext } = await erstelleStartbeleg(KASSE, see, einheit)
     expect(aufrufe).toHaveLength(1)
     expect(beleg.maschinenlesbareCode.startsWith(`${aufrufe[0]}_`)).toBe(true)         // signiert wurde genau die Zeile ohne Signatur
-    expect(Buffer.from(beleg.signaturwert, 'base64')).toEqual(Buffer.alloc(64, 7))
+    expect(Buffer.from(beleg.signaturwert, 'base64')).toEqual(geliefert)
     expect(kontext.einheit).toBe(einheit)
   })
 

@@ -123,6 +123,8 @@ export function ExportPage() {
           <li>20% MwSt-Erlöse → 4000</li>
           <li>10% MwSt-Erlöse → 4010</li>
           <li>13% MwSt-Erlöse → 4013</li>
+          <li>4,9% MwSt-Erlöse (ausgewählte Nahrungsmittel) → 4049, Steuercode 049</li>
+          <li>19% MwSt-Erlöse (Sondersteuersatz) → 4019</li>
           <li>0% Erlöse → 4020</li>
         </ul>
         <p className="mt-2">Bitte überprüfen Sie die Kontonummern mit Ihrer Buchhaltung.</p>

@@ -10,11 +10,15 @@
  * Gewollte Layout-Änderung? Referenzen neu erzeugen und MIT committen:
  *   UPDATE_GOLDEN=1 npx vitest run tests/escpos-golden.test.ts
  *
- * Determinismus: TZ wird auf Europe/Vienna gepinnt (formatDatum nutzt die
- * Prozess-Zeitzone) und die „Gedruckt:"-Stempel laufen über Fake-Timer.
+ * Determinismus: Die „Gedruckt:"-Stempel laufen über Fake-Timer. Die Zeitzone des
+ * Prozesses ist bewusst NICHT Wien (America/New_York): Bons rechnen fest in Wiener
+ * Ortszeit. Früher pinnte dieser Test TZ=Europe/Vienna und verdeckte damit, dass ein
+ * Container ohne TZ (UTC) Uhrzeit und Tag auf dem Bon um 1–2 Stunden verschob — die
+ * Referenzdateien enthalten Wiener Zeit und müssen unter jeder Prozess-Zeitzone
+ * Byte für Byte gleich herauskommen.
  */
 
-process.env.TZ = 'Europe/Vienna'
+process.env.TZ = 'America/New_York'
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'

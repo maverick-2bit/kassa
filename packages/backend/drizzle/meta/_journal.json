@@ -498,6 +498,13 @@
       "when": 1792108800000,
       "tag": "0072_betreiber",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1792195200000,
+      "tag": "0073_ermaessigt3",
+      "breakpoints": true
     }
   ]
 }

@@ -4,6 +4,7 @@
  */
 
 import { and, asc, eq } from 'drizzle-orm'
+import { formatWienerUhrzeit } from '@kassa/rksv'
 import type { Bonierdrucker, BonierdruckerInput, BonierdruckerUpdate } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import { bonierdrucker } from '../db/schema.js'
@@ -181,7 +182,7 @@ export function baueBonierbon(tischNummer: string, kellner: string, zeilen: Boni
   add([ESC, 0x21, 0x18])
   add(`Tisch ${tischNummer}\n`)
   add([ESC, 0x21, 0x00])
-  add(`${kellner}  ${new Date().toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' })}\n`)
+  add(`${kellner}  ${formatWienerUhrzeit(new Date())}\n`)
   add('--------------------------------\n')
   add([ESC, 0x61, 0x00])
   // Artikel groß + fett (fett 0x08 + doppelte Höhe 0x10 = 0x18) für gute Lesbarkeit
@@ -241,7 +242,7 @@ export function baueErledigtBon(inhalt: ErledigtBonInhalt): Buffer {
   add([ESC, 0x21, 0x18])
   add(`Tisch ${inhalt.tischNummer}\n`)
   add([ESC, 0x21, 0x00])
-  add(`${inhalt.kellner}  ${new Date().toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' })}\n`)
+  add(`${inhalt.kellner}  ${formatWienerUhrzeit(new Date())}\n`)
   add('--------------------------------\n')
   add([ESC, 0x61, 0x00])
   // Fertige Positionen groß + fett

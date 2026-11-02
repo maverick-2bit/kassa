@@ -50,11 +50,13 @@ Mangel besteht; sobald er behoben ist, meldet vitest „Expect test to fail" —
   bereits signierten Altbelegen (deren Kette ab Beleg 2 historisch „falsch" ist; neuer Startbeleg/DEP-Abschnitt?). RKSV-Änderungen nur mit Zustimmung.
 * Tests: `bmf-referenz.test.ts` (3× `it.fails`), `dep7-zweitpruefer.test.ts`, `rksv-externe-pruefer.test.ts`, `bmf-prueftool.test.ts` (nachts); Burn-in und BMF-Prüftool melden es nachts.
 
-### B — Beleg-Zeit in der Zeitzone des Prozesses (Karte „RKSV-Kern")
+### B — Beleg-Zeit in der Zeitzone des Prozesses (Karte „RKSV-Kern") — BEHOBEN
 
-* `formatDatum` (`beleg.ts`) liest lokale Getter; die Spezifikation verlangt österreichische Lokalzeit. Im Container (kein `TZ`) ist
+* Befund: `formatDatum` (`beleg.ts`) las lokale Getter; die Spezifikation verlangt österreichische Lokalzeit. Im Container (kein `TZ`) ist
   das UTC → Beleg-Zeit 1–2 h daneben. `zeit-matrix.test.ts`: 128 von 145 Fällen rot (alle Zonen außer Europe/Vienna).
-* Das Test ist hinter `RKSV_ZEITMATRIX=1` (nachts). Nach dem Fix `describe.skipIf(!AKTIV)` → `describe`.
+* Behoben mit dem Fix der Karte „RKSV-Kern" (`rksv/src/zeit.ts`: Zeit fest Europe/Vienna über `Intl`, unabhängig von `TZ`; zusätzlich `TZ=Europe/Vienna` im
+  Compose/Image; Bon und Bonierbon ebenso): 145/145 grün, der Test läuft jetzt in jeder CI (kein `RKSV_ZEITMATRIX` mehr nötig). Altbelege mit der
+  Zeit in UTC bleiben gültig; der Signatur-Selbsttest führt sie als „QR-Zeit in UTC" (`zeit_altformat`).
 * Eigenheit des Formats (kein Defekt): In der Herbst-Umstellungsstunde läuft die Wanduhr zurück (02:50 Sommerzeit, 20 min später 02:10 Winterzeit).
   Ein Prüfer, der die Zeiten als Text liest, sieht „rückwärts" (`zeit-rueckwaerts` im Zweitprüfer, „chronologische Abfolge" im BMF-Prüftool).
 

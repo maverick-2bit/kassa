@@ -269,9 +269,12 @@ describe('Berichte (Integration, echtes PostgreSQL)', () => {
     expect(res.headers['content-type']).toContain('text/csv')
 
     const zeilen = res.body.replace(/^﻿/, '').split('\r\n')
+    // Die ersten 15 Spalten sind unverändert (bestehende Importprofile des Steuerberaters); seit dem Satz 4,9 %
+    // stehen HINTEN vier Spalten dazu — 4,9 % und 19 % getrennt.
     expect(zeilen[0]).toBe(
       'Datum;Belegnummer;Belegtyp;KassenID;Brutto;USt20%_Basis;USt20%;USt10%_Basis;USt10%;' +
-      'USt13%_Basis;USt13%;Steuerfrei;Bar;Karte;Sonstige',
+      'USt13%_Basis;USt13%;Steuerfrei;Bar;Karte;Sonstige;' +
+      'USt4,9%_Basis;USt4,9%;USt19%_Basis;USt19%',
     )
     // Kopf + je Beleg/Storno eine Zeile
     expect(zeilen.length - 1).toBe(Number(res.headers['x-anzahl-belege']))

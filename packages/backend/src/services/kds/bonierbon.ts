@@ -20,6 +20,8 @@
  *   - Positionen mit `^\d+\s+\S` (z. B. "2 Bier 0,5l")
  */
 
+import { formatWienerDatum, formatWienerUhrzeitSekunden } from '@kassa/rksv'
+
 export interface BonierbonInput {
   bonNummer:   string
   belegnummer: number
@@ -40,12 +42,13 @@ function pad2(n: number): string {
   return n.toString().padStart(2, '0')
 }
 
+// Wiener Ortszeit, nicht die Zeitzone des Prozesses (Container ohne TZ = UTC)
 function formatUhrzeit(d: Date): string {
-  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`
+  return formatWienerUhrzeitSekunden(d)
 }
 
 function formatDatum(d: Date): string {
-  return `${pad2(d.getDate())}.${pad2(d.getMonth() + 1)}.${d.getFullYear()}`
+  return formatWienerDatum(d)
 }
 
 export function baueBonierbon(input: BonierbonInput): string {

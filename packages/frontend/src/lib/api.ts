@@ -938,6 +938,8 @@ export interface SeeStatus {
   seit:             string | null
   dauerMinuten:     number | null
   fonMeldungNoetig: boolean
+  /** Die Kassa prüft die Signatureinheit selbst und stellt die Signatur von allein wieder her (A-Trust, < 48 h) */
+  automatischePruefung?: boolean
   fonMeldung?:      FonMeldung
 }
 

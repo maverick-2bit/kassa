@@ -143,6 +143,8 @@ export const BelegResponseSchema = z.object({
     normal:      z.number().int(),
     ermaessigt1: z.number().int(),
     ermaessigt2: z.number().int(),
+    /** 4,9 % — im QR-Code mit `besonders` zusammengefasst, hier getrennt (Default: Belege vor dem 4,9-%-Satz) */
+    ermaessigt3: z.number().int().default(0),
     null:        z.number().int(),
     besonders:   z.number().int(),
   }),

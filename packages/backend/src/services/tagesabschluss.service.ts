@@ -15,21 +15,15 @@
  */
 
 import { and, eq, inArray, sql } from 'drizzle-orm'
-import { MWST_LABELS, istKalendertag, tagesGrenzen, type MwStSatz, type Tagesabschluss } from '@kassa/shared'
+import { MWST_LABELS, MWST_PROZENT_SATZ, istKalendertag, tagesGrenzen, type MwStSatz, type Tagesabschluss } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import { tagesBereich } from '../db/datum.js'
 import { belege } from '../db/schema.js'
 import { pruefeKasseGehoertZuMandant } from '../auth/scope.js'
 import { ladeTagesRegel } from './geschaeftstag.service.js'
 
-/** Steuersätze in Prozent */
-const MWST_SAETZE: Record<MwStSatz, number> = {
-  normal:      20,
-  ermaessigt1: 10,
-  ermaessigt2: 13,
-  null:         0,
-  besonders:   19,
-}
+/** Steuersätze in Prozent (eine Tabelle für alle: @kassa/shared) */
+const MWST_SAETZE: Record<MwStSatz, number> = MWST_PROZENT_SATZ
 
 export class TagesabschlussError extends Error {
   constructor(public readonly httpStatus: number, message: string) {
@@ -85,6 +79,7 @@ export async function holeTagesabschluss(
     normal:      0,
     ermaessigt1: 0,
     ermaessigt2: 0,
+    ermaessigt3: 0,
     null:        0,
     besonders:   0,
   }
@@ -94,7 +89,7 @@ export async function holeTagesabschluss(
     if (row.belegTyp === 'Stornobeleg')      anzahlStornobelege++
 
     const gesamt = row.betragNormalCent + row.betragErmaessigt1Cent +
-                   row.betragErmaessigt2Cent + row.betragNullCent + row.betragBesondersCent
+                   row.betragErmaessigt2Cent + row.betragErmaessigt3Cent + row.betragNullCent + row.betragBesondersCent
 
     nettoUmsatzCent += gesamt
     barCent         += row.summeBarCent
@@ -104,12 +99,13 @@ export async function holeTagesabschluss(
     mwstSummen.normal      += row.betragNormalCent
     mwstSummen.ermaessigt1 += row.betragErmaessigt1Cent
     mwstSummen.ermaessigt2 += row.betragErmaessigt2Cent
+    mwstSummen.ermaessigt3 += row.betragErmaessigt3Cent
     mwstSummen.null        += row.betragNullCent
     mwstSummen.besonders   += row.betragBesondersCent
   }
 
   // MwSt-Zeilen aufbauen (nur Sätze mit ≠ 0)
-  const satzKeys: MwStSatz[] = ['normal', 'ermaessigt1', 'ermaessigt2', 'null', 'besonders']
+  const satzKeys: MwStSatz[] = ['normal', 'ermaessigt1', 'ermaessigt2', 'ermaessigt3', 'null', 'besonders']
   const mwst = satzKeys
     .filter((k) => mwstSummen[k] !== 0)
     .map((k) => {

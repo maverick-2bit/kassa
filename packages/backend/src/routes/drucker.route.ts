@@ -273,7 +273,7 @@ export const druckerRoute: FastifyPluginAsync<DruckerRouteOptions> = async (fast
       ep.textLine('TEST DRUCK'),
       ep.font(),
       ep.textLine(`Kasse: ${kasse.kassenId}`),
-      ep.textLine(new Date().toLocaleString('de-AT')),
+      ep.textLine(new Date().toLocaleString('de-AT', { timeZone: 'Europe/Vienna' })),
       ep.newline(),
       ep.textLine('Wenn Sie das lesen koennen,'),
       ep.textLine('ist die Verbindung in Ordnung.'),

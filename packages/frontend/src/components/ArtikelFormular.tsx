@@ -67,7 +67,12 @@ interface Props {
   onNeueKategorie?: (name: string) => Promise<Kategorie>
 }
 
-const MWST_OPTIONS: MwStSatz[] = ['normal', 'ermaessigt1', 'ermaessigt2', 'null', 'besonders']
+const MWST_OPTIONS: MwStSatz[] = ['normal', 'ermaessigt1', 'ermaessigt2', 'ermaessigt3', 'null', 'besonders']
+
+/** Hinweis am Satz 4,9 %: gilt nur für Lieferungen, nicht für Restaurantleistungen (BMF, Umsatzsteuersenkung auf ausgewählte Nahrungsmittel). */
+const HINWEIS_4_9 =
+  '4,9 % gilt nur für die Lieferung ausgewählter Nahrungsmittel (UStG Anlage 3, z. B. Brot, Milch, Eier) — ' +
+  'nicht für Speisen und Getränke zum Verzehr im Lokal und nicht für Catering. Im Zweifel den Steuerberater fragen.'
 
 export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker, lieferanten, alleArtikel, onSubmit, onCancel, loading, fehler, onNeueKategorie }: Props) {
   const [preisFehler, setPreisFehler] = useState<string | null>(null)
@@ -323,7 +328,7 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
             {...register('preisEuro', { required: true })}
           />
         </Field>
-        <Field label="MwSt-Satz" required>
+        <Field label="MwSt-Satz" required {...(watch('mwstSatz') === 'ermaessigt3' ? { hint: HINWEIS_4_9 } : {})}>
           <Select {...register('mwstSatz', { required: true })}>
             {MWST_OPTIONS.map((s) => (
               <option key={s} value={s}>{MWST_LABELS[s]}</option>

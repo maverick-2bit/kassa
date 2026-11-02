@@ -3,18 +3,26 @@
  * gegen ihr SEE-Zertifikat (nur öffentliches Material, kein Private-Key-Zugriff)
  * und prüft die Signaturkette sowie die Lückenlosigkeit der Belegnummern.
  *
- * Erkennt drei Auffälligkeits-Klassen:
- *  - ausfall:       SEE-Ausfallbelege (Marker statt Signatur) — RKSV-konform
- *  - der_altformat: vor dem P1363-Fix signierte Alt-Belege (Signatur DER-codiert;
- *                   kryptographisch korrekt → Beleg integer, nur Codierung alt)
- *  - ungueltig:     Signatur passt nicht zu den Feldern (Manipulation/Defekt)
+ * Erkennt vier Auffälligkeits-Klassen:
+ *  - ausfall:        SEE-Ausfallbelege (Marker statt Signatur) — RKSV-konform
+ *  - der_altformat:  vor dem P1363-Fix signierte Alt-Belege (Signatur DER-codiert;
+ *                    kryptographisch korrekt → Beleg integer, nur Codierung alt)
+ *  - zeit_altformat: vor v0.8.75 in einem Container ohne TZ signierte Belege: die
+ *                    Uhrzeit im QR-Code steht in UTC statt in Wiener Ortszeit
+ *                    (kryptographisch korrekt → Beleg integer, Uhrzeit 1–2 h daneben)
+ *  - ungueltig:      Signatur passt nicht zu den Feldern oder der gespeicherte
+ *                    QR-Code weicht von ihnen ab (Manipulation/Defekt)
+ *
+ * Geprüft wird gegen den GESPEICHERTEN maschinenlesbaren Code: Der aus den Feldern
+ * aufgebaute Code muss ihm gleichen, und seine Signatur muss zum Zertifikat passen.
+ * (Die Uhrzeit allein aus `belegDatum` plus der aktuellen Zeitzone aufzubauen
+ * würde nach der Umstellung auf feste Wiener Ortszeit jeden Altbeleg verwerfen.)
  */
 
 import {
   istAusfallBeleg,
+  pruefeBelegSignatur,
   pruefeKette,
-  verifiziereBelegSignatur,
-  verifiziereBelegSignaturAltDer,
   type VerifizierbarerBeleg,
 } from '@kassa/rksv'
 import type { SelbsttestBelegDetail, SelbsttestStatus, SignaturSelbsttestErgebnis } from '@kassa/shared'
@@ -47,7 +55,7 @@ export async function fuehreSignaturSelbsttestAus(
     .where(eq(belege.kasseId, kasse.id))
     .orderBy(asc(belege.belegNummer))
 
-  let gueltig = 0, ausfall = 0, derAltformat = 0, ungueltig = 0
+  let gueltig = 0, ausfall = 0, derAltformat = 0, zeitAltformat = 0, ungueltig = 0
   const alleDetails: SelbsttestBelegDetail[] = []
 
   for (const r of rows) {
@@ -60,6 +68,7 @@ export async function fuehreSignaturSelbsttestAus(
         normal:      r.betragNormalCent,
         ermaessigt1: r.betragErmaessigt1Cent,
         ermaessigt2: r.betragErmaessigt2Cent,
+        ermaessigt3: r.betragErmaessigt3Cent,
         null:        r.betragNullCent,
         besonders:   r.betragBesondersCent,
       },
@@ -67,17 +76,19 @@ export async function fuehreSignaturSelbsttestAus(
       zertifikatSN:                r.zertifikatSn,
       sigVorbeleg:                 r.sigVorbeleg,
       signaturwert:                r.signaturwert,
+      maschinenlesbareCode:        r.maschinenlesbareCode,
     }
 
     let status: SelbsttestStatus
     if (istAusfallBeleg(r.signaturwert)) {
       status = 'ausfall'; ausfall++
-    } else if (verifiziereBelegSignatur(v, zertifikatDER)) {
-      status = 'gueltig'; gueltig++
-    } else if (verifiziereBelegSignaturAltDer(v, zertifikatDER)) {
-      status = 'der_altformat'; derAltformat++
     } else {
-      status = 'ungueltig'; ungueltig++
+      switch (pruefeBelegSignatur(v, zertifikatDER)) {
+        case 'gueltig':        status = 'gueltig';        gueltig++;       break
+        case 'zeit_altformat': status = 'zeit_altformat'; zeitAltformat++; break
+        case 'der_altformat':  status = 'der_altformat';  derAltformat++;  break
+        default:               status = 'ungueltig';      ungueltig++
+      }
     }
 
     if (status !== 'gueltig') {
@@ -107,6 +118,7 @@ export async function fuehreSignaturSelbsttestAus(
     gueltig,
     ausfall,
     derAltformat,
+    zeitAltformat,
     ungueltig,
     ketteOk,
     nummernLueckenlos,

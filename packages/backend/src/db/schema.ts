@@ -292,6 +292,12 @@ export const belege = pgTable('belege', {
   betragNormalCent:      integer('betrag_normal_cent').notNull().default(0),
   betragErmaessigt1Cent: integer('betrag_ermaessigt1_cent').notNull().default(0),
   betragErmaessigt2Cent: integer('betrag_ermaessigt2_cent').notNull().default(0),
+  /**
+   * 4,9 % (ausgewählte Nahrungsmittel, seit 1.7.2026). Der QR-Code trägt ihn zusammen mit
+   * `betragBesondersCent` in EINEM Feld (Betrag-Satz-Besonders (19 %, 4,9 %)); hier bleibt er
+   * getrennt, damit Berichte, Tagesabschluss und Exporte beide Sätze unterscheiden.
+   */
+  betragErmaessigt3Cent: integer('betrag_ermaessigt3_cent').notNull().default(0),
   betragNullCent:        integer('betrag_null_cent').notNull().default(0),
   betragBesondersCent:   integer('betrag_besonders_cent').notNull().default(0),
 

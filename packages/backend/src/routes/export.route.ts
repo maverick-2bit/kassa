@@ -43,6 +43,9 @@ const MWST_ERLOES_KONTO: Record<string, { konto: string; steuercode: string }> =
   '20%':  { konto: '4000', steuercode: '022' },
   '10%':  { konto: '4010', steuercode: '011' },
   '13%':  { konto: '4013', steuercode: '013' },
+  // 4,9 % (ausgewählte Nahrungsmittel, ab 1.7.2026): Standardzuordnung wie die übrigen Sätze —
+  // Konto und Steuercode im Kontenplan des Betriebs bei Bedarf anpassen.
+  '4.9%': { konto: '4049', steuercode: '049' },
   '19%':  { konto: '4019', steuercode: '019' },
   '0%':   { konto: '4020', steuercode: '000' },
 }
@@ -118,6 +121,7 @@ export const exportRoute: FastifyPluginAsync<ExportRouteOptions> = async (fastif
       const normal      = beleg.betragNormalCent
       const ermaessigt1 = beleg.betragErmaessigt1Cent
       const ermaessigt2 = beleg.betragErmaessigt2Cent
+      const ermaessigt3 = beleg.betragErmaessigt3Cent
       const nullSatz    = beleg.betragNullCent
       const besonders   = beleg.betragBesondersCent
 
@@ -132,6 +136,7 @@ export const exportRoute: FastifyPluginAsync<ExportRouteOptions> = async (fastif
       addSatz(normal,      20, '20%')
       addSatz(ermaessigt1, 10, '10%')
       addSatz(ermaessigt2, 13, '13%')
+      addSatz(ermaessigt3, 4.9, '4.9%')
       addSatz(nullSatz,     0,  '0%')
       addSatz(besonders,   19, '19%')
 

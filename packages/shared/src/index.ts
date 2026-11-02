@@ -112,6 +112,7 @@ export {
   ArtikelBestandteilInputSchema,
   MwStSatzSchema,
   MWST_LABELS,
+  MWST_PROZENT_SATZ,
 } from './schemas/artikel.js'
 export type {
   Artikel,
@@ -642,6 +643,7 @@ export type {
 // Rechnung als druckfertiges A4-HTML (Frontend + KDS)
 export {
   MWST_SAETZE,
+  formatMwstProzent,
   centZuEuro,
   formatDatumDe,
   esc,

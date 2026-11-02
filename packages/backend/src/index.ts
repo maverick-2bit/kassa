@@ -10,6 +10,7 @@ import { buildServer } from './server.js'
 import { starteDepSicherungsCron } from './services/dep-sicherung.cron.js'
 import { starteDbBackupCron }      from './services/db-backup.cron.js'
 import { starteAutoAbschlussCron } from './services/auto-abschluss.cron.js'
+import { starteSeeSondeCron } from './services/see-sonde.cron.js'
 import { starteWartungCron } from './services/wartung.cron.js'
 import { starteDruckerKeepAliveCron } from './services/drucker-keepalive.cron.js'
 import { starteTicketshopCron } from './services/ticketshop.cron.js'
@@ -37,6 +38,12 @@ async function main(): Promise<void> {
     console.warn('⚠️  FO_STUB aktiv — FinanzOnline wird gestubt (nur für Entwicklung/Test).')
   }
 
+  const belegDeps = {
+    db,
+    masterPassphrase: config.MASTER_PASSPHRASE,
+    ...(rksvOptionen && { finanzOnlineClient: rksvOptionen.finanzOnlineClient }),
+  }
+
   const server = await buildServer({
     config,
     db,
@@ -45,11 +52,7 @@ async function main(): Promise<void> {
       masterPassphrase: config.MASTER_PASSPHRASE,
       ...(rksvOptionen && { rksvOptionen }),
     },
-    belegDeps: {
-      db,
-      masterPassphrase: config.MASTER_PASSPHRASE,
-      ...(rksvOptionen && { finanzOnlineClient: rksvOptionen.finanzOnlineClient }),
-    },
+    belegDeps,
     backupDir:         config.DEP_BACKUP_DIR,
     dbBackupDir:       config.DB_BACKUP_DIR,
     dbBackupRetention: config.DB_BACKUP_RETENTION,
@@ -58,6 +61,7 @@ async function main(): Promise<void> {
   const stopDepCron  = starteDepSicherungsCron(db, config.DEP_BACKUP_DIR, server.log)
   const stopDbCron   = starteDbBackupCron(db, config.DATABASE_URL, config.DB_BACKUP_DIR, config.DB_BACKUP_RETENTION, server.log)
   const stopAutoCron = starteAutoAbschlussCron(db, config, server.log)
+  const stopSeeSonde = starteSeeSondeCron(db, belegDeps, server.log)
   const stopWartungCron = starteWartungCron(db, server.log)
   const stopKeepAlive = starteDruckerKeepAliveCron(db, server.log)
   const stopTicketshop = starteTicketshopCron(db, {
@@ -95,6 +99,7 @@ async function main(): Promise<void> {
       stopDepCron()
       stopDbCron()
       stopAutoCron()
+      stopSeeSonde()
       stopWartungCron()
       stopKeepAlive()
       stopTicketshop()

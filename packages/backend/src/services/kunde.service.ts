@@ -186,6 +186,7 @@ export async function listeBelegeVonKunde(
       betragNormal:     belege.betragNormalCent,
       betragErm1:       belege.betragErmaessigt1Cent,
       betragErm2:       belege.betragErmaessigt2Cent,
+      betragErm3:       belege.betragErmaessigt3Cent,
       betragNull:       belege.betragNullCent,
       betragBes:        belege.betragBesondersCent,
       summeBarCent:     belege.summeBarCent,
@@ -202,7 +203,7 @@ export async function listeBelegeVonKunde(
     belegNummer:      r.belegNummer,
     belegDatum:       r.belegDatum.toISOString(),
     belegTyp:         r.belegTyp,
-    gesamtbetragCent: r.betragNormal + r.betragErm1 + r.betragErm2 + r.betragNull + r.betragBes,
+    gesamtbetragCent: r.betragNormal + r.betragErm1 + r.betragErm2 + r.betragErm3 + r.betragNull + r.betragBes,
     summeBarCent:     r.summeBarCent,
     summeKarteCent:   r.summeKarteCent,
   }))

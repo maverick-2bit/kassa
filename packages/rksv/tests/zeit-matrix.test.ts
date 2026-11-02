@@ -7,11 +7,10 @@
  * (formatDatum in src/beleg.ts) nimmt die Zeitzone des Prozesses; in einem Container ohne TZ ist das UTC, der Beleg
  * trägt dann 1–2 Stunden zu wenig.
  *
- * BEFUND B: Dieser Test ist ROT, solange der Fix aus der Karte „RKSV-Kern" fehlt — deshalb läuft er nur auf Anforderung
- * (RKSV_ZEITMATRIX=1; nachts im Workflow `rksv-nacht`). Sobald der Fix released ist, in der Datei
- * `describe.skipIf(!AKTIV)` durch `describe` ersetzen, dann läuft er in der regulären CI.
+ * BEFUND B (behoben mit dem Fix der Karte „RKSV-Kern": Beleg-Zeit fest Europe/Vienna, rksv/src/zeit.ts): Der Test war ROT, solange
+ * `formatDatum` die Zeit der Prozess-Zeitzone nahm (128 von 145 Fällen). Jetzt läuft er in jeder CI.
  *
- *   lokal:  RKSV_ZEITMATRIX=1 pnpm exec vitest run tests/zeit-matrix.test.ts
+ *   lokal:  pnpm exec vitest run tests/zeit-matrix.test.ts
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -19,8 +18,6 @@ import { signiereBeleg } from '../src/beleg.js'
 import { generateSEE } from '../src/see.js'
 import type { SEEConfig } from '../src/types.js'
 import { zerlegeQr } from './helpers/pruef-export.js'
-
-const AKTIV = process.env.RKSV_ZEITMATRIX === '1'
 
 /** Zeitzonen des Servers: Österreich, UTC (Docker-Standard), Westen, halbe/Dreiviertel-Stunden, Datumsgrenze in beide Richtungen. */
 const ZONEN = ['Europe/Vienna', 'UTC', 'Europe/London', 'America/New_York', 'Asia/Tokyo', 'Asia/Kolkata', 'Asia/Kathmandu', 'Pacific/Kiritimati', 'Pacific/Pago_Pago']
@@ -54,7 +51,7 @@ function wienerWanduhr(instant: Date): string {
   return `${t.year}-${t.month}-${t.day}T${t.hour}:${t.minute}:${t.second}`
 }
 
-describe.skipIf(!AKTIV)('Zeit-Matrix: Beleg-Datum-Uhrzeit = Wiener Wanduhr in jeder Prozess-Zeitzone (BEFUND B)', () => {
+describe('Zeit-Matrix: Beleg-Datum-Uhrzeit = Wiener Wanduhr in jeder Prozess-Zeitzone (BEFUND B, behoben)', () => {
   const ursprung = process.env.TZ
   let see: SEEConfig
 

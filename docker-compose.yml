@@ -39,6 +39,9 @@ services:
       LOG_LEVEL:         ${LOG_LEVEL:-info}
       CORS_ORIGIN:       ${CORS_ORIGIN:-http://localhost}
       NODE_ENV:          production
+      # Wiener Ortszeit für alles, was die Zeitzone des Prozesses nutzt (Container
+      # sonst UTC). QR-Code und Bons rechnen ohnehin fest in Europe/Vienna.
+      TZ:                Europe/Vienna
       DB_BACKUP_DIR:     /data/db-backups
       DB_BACKUP_RETENTION: ${DB_BACKUP_RETENTION:-30}
       DEP_BACKUP_DIR:    /data/dep-backups

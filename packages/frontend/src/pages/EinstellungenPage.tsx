@@ -855,6 +855,7 @@ function SignaturSelbsttestSektion() {
     const cfg: Record<string, { label: string; cls: string }> = {
       ausfall:       { label: 'SEE-Ausfall (erwartet)', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
       der_altformat: { label: 'Altformat DER (integer)', cls: 'bg-sky-50 text-sky-700 border-sky-200' },
+      zeit_altformat: { label: 'QR-Uhrzeit in UTC (integer)', cls: 'bg-sky-50 text-sky-700 border-sky-200' },
       ungueltig:     { label: 'UNGÜLTIG', cls: 'bg-red-50 text-red-700 border-red-200' },
     }
     const c = cfg[status] ?? { label: status, cls: 'bg-panel-2 text-ink-muted border-line' }
@@ -902,7 +903,7 @@ function SignaturSelbsttestSektion() {
           <div className={`rounded-md border p-3 text-sm mb-4 ${
             e.ungueltig > 0 || !e.ketteOk || !e.nummernLueckenlos
               ? 'border-red-200 bg-red-50 text-red-700'
-              : e.derAltformat > 0
+              : e.derAltformat > 0 || e.zeitAltformat > 0
                 ? 'border-sky-200 bg-sky-50 text-sky-700'
                 : 'border-green-200 bg-green-50 text-green-700'
           }`}>
@@ -913,20 +914,32 @@ function SignaturSelbsttestSektion() {
               <><strong>Kettenprüfung auffällig.</strong> Signaturen der einzelnen Belege sind in Ordnung,
               aber {!e.ketteOk && 'die Verkettung ist unterbrochen'}{!e.ketteOk && !e.nummernLueckenlos && ' und '}
               {!e.nummernLueckenlos && 'die Belegnummern haben Lücken'}.</>
-            ) : e.derAltformat > 0 ? (
-              <><strong>{e.derAltformat} Alt-Beleg{e.derAltformat === 1 ? '' : 'e'} im DER-Format</strong> (vor
-              dem Signaturformat-Fix erstellt): kryptographisch korrekt signiert und unverändert — nur die
-              Signatur-Codierung entsprach nicht der Norm. Mit dem CSV-Protokoll dokumentierbar.</>
+            ) : e.derAltformat > 0 || e.zeitAltformat > 0 ? (
+              <>
+                {e.derAltformat > 0 && (
+                  <><strong>{e.derAltformat} Alt-Beleg{e.derAltformat === 1 ? '' : 'e'} im DER-Format</strong> (vor
+                  dem Signaturformat-Fix erstellt): kryptographisch korrekt signiert und unverändert — nur die
+                  Signatur-Codierung entsprach nicht der Norm. </>
+                )}
+                {e.zeitAltformat > 0 && (
+                  <><strong>{e.zeitAltformat} Beleg{e.zeitAltformat === 1 ? '' : 'e'} mit der Uhrzeit in UTC im
+                  QR-Code</strong> (vor der Umstellung auf feste Wiener Ortszeit erstellt): kryptographisch korrekt
+                  signiert und unverändert — nur die Uhrzeit im QR-Code ist 1 bis 2 Stunden früher als die
+                  tatsächliche. Gedruckte Belege lassen sich nicht ändern. </>
+                )}
+                Mit dem CSV-Protokoll dokumentierbar.
+              </>
             ) : (
               <><strong>Alles in Ordnung</strong> — alle {e.gueltig} signierten Belege verifizieren korrekt.</>
             )}
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 mb-4">
             {kachel(e.geprueft, 'Geprüft')}
             {kachel(e.gueltig, 'Gültig')}
             {kachel(e.ausfall, 'SEE-Ausfall', 1, 'border-amber-200 bg-amber-50 text-amber-700')}
             {kachel(e.derAltformat, 'Altformat DER', 1, 'border-sky-200 bg-sky-50 text-sky-700')}
+            {kachel(e.zeitAltformat, 'QR-Zeit in UTC', 1, 'border-sky-200 bg-sky-50 text-sky-700')}
             {kachel(e.ungueltig, 'Ungültig', 1)}
           </div>
 
