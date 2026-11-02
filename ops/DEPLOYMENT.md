@@ -36,6 +36,14 @@ aktiviert das Setup sie und bittet um **einen Neustart** — danach einfach
 **Update später:** dieselbe Datei einfach erneut doppelklicken
 (`.env`, Datenbank und alle Belege bleiben erhalten).
 
+**Zugriffsrechte:** Der Installationsordner (Standard `C:\kassa-pos`) ist nur für SYSTEM, die
+Administratoren und das Konto zugänglich, mit dem installiert wurde (Docker Desktop läuft unter diesem
+Konto). Ein Ordner direkt unter `C:\` erbt sonst „Authentifizierte Benutzer: Ändern" — jedes andere
+Windows-Konto auf dem PC könnte die `.env` (JWT_SECRET, MASTER_PASSPHRASE, Datenbank-Passwort) lesen
+oder `ops\updater\updater.sh` ändern, das im Update-Dienst als Root mit Docker-Zugriff läuft. Das Setup
+setzt die Rechte bei jedem Lauf (auch beim Update) neu. Sollen weitere Windows-Konten in den Ordner
+sehen, braucht jedes einen ausdrücklichen Eintrag (`icacls C:\kassa-pos /grant <Konto>:(OI)(CI)M`).
+
 **Fernwartung (optional):** Liegt neben `Kassa-Setup.cmd` eine `fernwartung.json`, richtet das Setup
 zusätzlich **TeamViewer Host** ein und ordnet die Box Ihrem TeamViewer-Konto zu — so warten Sie
 Mietkassen aus der Ferne. Anleitung, Konfigurationsdatei und Sicherheitshinweise:
@@ -180,6 +188,55 @@ Das Kassen-Frontend im Browser öffnen (siehe Geräte-Tabelle unten) → der
 **Setup-Assistent** legt Mandant, Kasse und Signatureinheit an. Danach Admin-PIN
 notieren und sich anmelden. Für den Testbetrieb genügt die Software-SEE; für echt
 in **Einstellungen → RKSV → Signaturerstellungseinheit** auf A-Trust umstellen.
+(Die A-Trust-Adresse nimmt nur `https://hs.a-trust.at` und `https://hs-abnahme.a-trust.at`;
+wer sie ändert, gibt das Passwort neu ein — das gespeicherte geht nie an eine neue Adresse.)
+
+## 4b. Betreiber und weitere Mandanten
+
+Eine Installation kann mehrere Mandanten (Betriebe) beherbergen. Was den **ganzen Rechner** betrifft,
+darf nur der **Betreiber** — das Konto, das die Kassa betreibt, nicht jeder Mandanten-Admin:
+
+| Nur der Betreiber | Jeder Mandanten-Admin (für den eigenen Betrieb) |
+|-------------------|--------------------------------------------------|
+| Datenbank-Sicherung anlegen, ansehen, herunterladen (Dump der **ganzen** Datenbank, alle Mandanten) | Export des eigenen Mandanten („Mandant übertragen"), DEP-Sicherung der eigenen Kassen |
+| Kassa aktualisieren (Einstellungen → System → Aktualisierung) | Drucker-Status und Keep-Alive des eigenen Betriebs |
+| Systemwerte: Speicher, Platte, Laufzeit, Datenbank, Sicherungsalter | Version und Update-Hinweis ansehen |
+| Weitere Mandanten anlegen; eine Übergabedatei als Mandant einspielen | |
+
+**Wer ist Betreiber?** Der erste Admin einer frisch eingerichteten Installation. Auf einer bestehenden
+Installation macht das Update die aktiven Admins des **zuerst angelegten** Mandanten zu Betreibern
+(Migration 0072). In der Benutzerverwaltung trägt der Betreiber ein gelbes Schild „Betreiber". Sein Konto
+ändert oder sperrt nur ein Betreiber, und der letzte aktive Betreiber lässt sich nicht stilllegen. Die
+Prüfung geschieht bei jedem Aufruf in der Datenbank — ein deaktivierter Betreiber verliert die Rechte
+sofort, auch mit noch gültiger Anmeldung. Keine Oberfläche und kein Mandanten-Import vergibt die
+Betreiber-Rolle; weitere Betreiber (oder einen anderen als den automatisch gewählten) setzt man auf dem
+Kassen-PC:
+
+```bash
+docker compose exec postgres psql -U kassa -d kassa -c "UPDATE users SET ist_betreiber = true WHERE email = 'name@firma.at';"
+# entziehen: ... SET ist_betreiber = false ...; Übersicht: SELECT email, ist_betreiber FROM users WHERE ist_betreiber;
+```
+
+**Weiteren Mandanten anlegen:** als Betreiber anmelden → **Einstellungen → System → „Weiteren Mandanten
+anlegen"**. Die Einrichtungsseite `/setup` ist nur auf einer leeren Installation offen (Ersteinrichtung);
+auf einer eingerichteten antwortet sie allen außer dem angemeldeten Betreiber mit 403 und einem Hinweis.
+Notweg ohne Anmeldung (Skripte, Notfall): `SETUP_TOKEN` in der `.env` setzen (mind. 24 Zeichen,
+`node -e "console.log(require('crypto').randomBytes(24).toString('hex'))"`), Backend neu starten
+(`docker compose up -d`) und den Schlüssel als Header mitschicken:
+
+```bash
+curl -X POST https://kasse.example.com/api/setup -H "Content-Type: application/json" \
+  -H "x-setup-token: $SETUP_TOKEN" -d @neuer-mandant.json
+```
+
+Ohne `SETUP_TOKEN` ist dieser Weg zu (Standard). Versuche ohne Berechtigung stehen im Audit-Log
+(`setup.verweigert`), angelegte Mandanten ebenso (`setup.mandant_angelegt`); die Route erlaubt je Client
+nur 5 Anfragen pro Minute.
+
+**Demo-Zahlungen** (SB-Terminal ohne Kartenterminal mit dem öffentlichen „Bezahlt"-Knopf, ZVT-„IP" `stub`)
+gibt es nur an Kassen im **Testmodus** (RKSV-Umgebung „test" — das setzt die Einrichtung, nachträglich
+ändert sie keine Oberfläche). Eine Kasse im Produktivmodus lehnt beides ab; ein SB-Terminal braucht dort
+ein eingerichtetes Kartenterminal.
 
 ## 5. Geräte-URLs
 
@@ -319,7 +376,7 @@ Test-Events an die lokale Kassa weiter.
 
 **Am einfachsten — direkt in der Kassa (Ein-Klick):**
 **Einstellungen → System → Aktualisierung**. Zeigt installierte vs. neueste Version;
-ein Klick auf **„Jetzt aktualisieren"** (nur Admin) holt den neuen Stand und baut die
+ein Klick auf **„Jetzt aktualisieren"** (nur der Betreiber, siehe 4b) holt den neuen Stand und baut die
 Container neu. Die Kassa ist dabei ~1 Minute offline (nicht während des Kassierens
 starten). Nach Abschluss erscheint **„Jetzt neu laden"**.
 

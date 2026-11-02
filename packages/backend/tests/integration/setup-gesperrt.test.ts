@@ -42,6 +42,7 @@ describe('POST /api/setup — wer einrichten darf (Integration, echtes PostgreSQ
   let idb: IntegrationsDb
   let srv: TestServer
   let srvOhneSchluessel: TestServer
+  const finanzOnline = fo()
   let tokenBetreiber: string
   let tokenNormalerAdmin: string
 
@@ -64,7 +65,7 @@ describe('POST /api/setup — wer einrichten darf (Integration, echtes PostgreSQ
 
   beforeAll(async () => {
     idb = await erstelleIntegrationsDb()
-    srv = await buildTestServer(idb.db, { finanzOnlineClient: fo() })
+    srv = await buildTestServer(idb.db, { finanzOnlineClient: finanzOnline })
     // Dieselbe Datenbank, aber ohne konfigurierten Einrichtungs-Schlüssel (so läuft eine Installation ohne SETUP_TOKEN)
     srvOhneSchluessel = await buildTestServer(idb.db, { finanzOnlineClient: fo(), config: { SETUP_TOKEN: undefined } })
   })
@@ -96,6 +97,19 @@ describe('POST /api/setup — wer einrichten darf (Integration, echtes PostgreSQ
     // Der Versuch steht im Audit-Log
     const [versuch] = await idb.db.select({ n: count() }).from(auditLogs).where(eq(auditLogs.aktion, 'setup.verweigert'))
     expect(versuch!.n).toBeGreaterThanOrEqual(1)
+  })
+
+  it('ein Unberechtigter löst weder die RKSV-Einrichtung (FinanzOnline!) aus noch erfährt er, was schon vergeben ist', async () => {
+    const registrierungenVorher = vi.mocked(finanzOnline.kasseInBetriebNehmen).mock.calls.length
+    // UID und E-Mail des ersten Mandanten: mit Berechtigung käme "bereits vergeben" (400) — hier muss es 403 sein
+    const belegt = await srv.fastify.inject({
+      method: 'POST', url: '/api/setup', payload: einrichtung(1),
+    })
+    expect(belegt.statusCode).toBe(403)
+    expect(belegt.body).not.toMatch(/vergeben|registriert/)
+    // ... und mit ganz neuen Daten wird nichts bei FinanzOnline angemeldet
+    expect((await setup(2)).statusCode).toBe(403)
+    expect(vi.mocked(finanzOnline.kasseInBetriebNehmen).mock.calls.length).toBe(registrierungenVorher)
   })
 
   it('ein ungültiges Token zählt wie keines', async () => {

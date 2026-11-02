@@ -554,7 +554,7 @@ export const HILFE_THEMEN: HilfeThema[] = [
         titel: 'System',
         schritte: [
           'Zeigt die installierte Version. Gibt es eine neuere, erscheint „Neu laden" bzw. „Jetzt aktualisieren".',
-          'Hier laufen die Datenbank-Sicherungen und die Systeminfo.',
+          'Aktualisieren, die Datenbank-Sicherungen (sie enthalten die Daten aller Mandanten), die Systemwerte und „Weiteren Mandanten anlegen" sieht und darf nur der Betreiber der Kassa — der erste Admin der Installation. In der Benutzerverwaltung trägt er ein „Betreiber"-Schild. Alle anderen Admins sehen dort nur ihren eigenen Betrieb (Drucker, Mandant übertragen).',
         ],
       },
     ],

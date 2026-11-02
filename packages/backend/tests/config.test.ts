@@ -42,4 +42,23 @@ describe('loadConfig', () => {
     const env = { ...validEnv, LOG_LEVEL: 'ungueltig' } as NodeJS.ProcessEnv
     expect(() => loadConfig(env)).toThrow(/LOG_LEVEL/)
   })
+
+  describe('SETUP_TOKEN (Einrichtungs-Schlüssel für weitere Mandanten)', () => {
+    it('ist optional: nicht gesetzt oder leer (docker-compose reicht bei fehlendem Eintrag "" durch) = Weg zu', () => {
+      expect(loadConfig(validEnv as NodeJS.ProcessEnv).SETUP_TOKEN).toBeUndefined()
+      expect(loadConfig({ ...validEnv, SETUP_TOKEN: '' } as NodeJS.ProcessEnv).SETUP_TOKEN).toBeUndefined()
+      expect(loadConfig({ ...validEnv, SETUP_TOKEN: '   ' } as NodeJS.ProcessEnv).SETUP_TOKEN).toBeUndefined()
+    })
+
+    it('übernimmt einen ausreichend langen Schlüssel (Leerraum am Rand weg)', () => {
+      const schluessel = 'a'.repeat(24)
+      expect(loadConfig({ ...validEnv, SETUP_TOKEN: schluessel } as NodeJS.ProcessEnv).SETUP_TOKEN).toBe(schluessel)
+      expect(loadConfig({ ...validEnv, SETUP_TOKEN: `  ${schluessel}\n` } as NodeJS.ProcessEnv).SETUP_TOKEN).toBe(schluessel)
+    })
+
+    it('lehnt einen zu kurzen Schlüssel ab — er schützt die ganze Installation', () => {
+      expect(() => loadConfig({ ...validEnv, SETUP_TOKEN: 'kurz' } as NodeJS.ProcessEnv)).toThrow(/SETUP_TOKEN/)
+      expect(() => loadConfig({ ...validEnv, SETUP_TOKEN: 'a'.repeat(23) } as NodeJS.ProcessEnv)).toThrow(/SETUP_TOKEN/)
+    })
+  })
 })
