@@ -6,7 +6,8 @@
  *  2. Was sagt es zu Belegen, die die Signierlogik der Kassa erzeugt?
  *     - AT0 (Software-SEE, „geschlossenes Gesamtsystem"): scheitert schon am Format der Seriennummer (Befund D) und kommt
  *       deshalb nie zu Verkettung, Zähler und Signatur.
- *     - Derselbe Export als offenes System (ZDA AT100): hier greifen alle Prüfungen. Befund A (Verkettung) erscheint.
+ *     - Derselbe Export als offenes System (ZDA AT100): hier greifen alle Prüfungen, auch die Verkettung (Befund A, behoben:
+ *       bis v0.8.77 meldete das Tool `DEP_CHAINING_VALUE` bei jedem Folgebeleg).
  *
  * Die Einzelheiten der Prüfungen (verificationId je Fehler) landen im Ausgabeordner (RKSV_PRUEF_AUSGABE, sonst Temp).
  */
@@ -76,15 +77,13 @@ describe.skipIf(!AKTIV)('BMF-Prüftool über Exporte der Kassa', () => {
     }, 180_000)
 
     // Als offenes System (ZDA AT100, Zertifikat im Container) greifen alle Prüfungen des Tools: Einzelbeleg (Code, Signatur,
-    // Umsatzzähler) und Abfolge (Start, Sammelbeleg nach Ausfall) bestehen — beanstandet wird NUR die Verkettung (Befund A).
-    // Das Tool nennt als Eingabe der Verkettung die JWS-Compact-Form des Vorbelegs (CHAINING_INPUT) — wie die Spezifikation.
-    it('offenes System: beanstandet wird nur die Verkettung der Folgebelege (Befund A)', () => {
+    // Umsatzzähler), Abfolge (Start, Sammelbeleg nach Ausfall) und Verkettung. Das Tool nimmt als Eingabe der Verkettung die
+    // JWS-Compact-Form des Vorbelegs (CHAINING_INPUT) — wie die Spezifikation und seit der Korrektur auch die Kassa (Befund A).
+    // Bis v0.8.77 beanstandete es hier `DEP_CHAINING_VALUE` bei 59 von 59 Folgebelegen (und `DEP_RECEIPT_LIST` als Sammelurteil).
+    // Der Lauf mit der Korrektur steht noch aus (Java läuft nur im Nacht-Workflow): scheitert dieser Test, steht die Beanstandung im Ausgabeordner.
+    it('BEFUND A (behoben)  offenes System (ZDA AT100): das Tool beanstandet nichts — auch nicht die Verkettung', () => {
       const z = bmf('kassa-offen', offen.dep7, offen.container, 'certificate')
-      expect(arten(z)).toEqual(['DEP_CHAINING_VALUE', 'DEP_RECEIPT_LIST'])
-    }, 180_000)
-
-    it.fails('BEFUND A  offenes System (ZDA AT100): das Tool bestätigt den Export der Kassa', () => {
-      const z = bmf('kassa-offen-streng', offen.dep7, offen.container, 'certificate')
+      expect(arten(z)).toEqual([])
       expect(z.fehlgeschlagen.map(f => `${f.name}: ${f.meldung}`)).toEqual([])
       expect(z.ok).toBe(true)
     }, 180_000)

@@ -27,7 +27,7 @@ on:
         required: false
         default: ''
       bekannte_regeln:
-        description: 'Burn-in: Regeln, die nur als Hinweis zählen (Komma-Liste, z. B. pruefer-verkettung,zweitpruefer-verkettung)'
+        description: 'Burn-in: Regeln, die nur als Hinweis zählen (Komma-Liste, z. B. zweitpruefer-zksn-format)'
         required: false
         default: ''
 

@@ -37,7 +37,7 @@ export { MWST_PROZENT, BELEG_AENDERT_ZAEHLER } from './types.js'
 
 // Crypto
 export { generiereAesSchluessel, berechneIV, verschluesselUmsatzzaehler, entschluesselUmsatzzaehler } from './crypto/aes-icm.js'
-export { verkettungswertStartbeleg, verkettungswertFolgebeleg, pruefeKette } from './crypto/chain.js'
+export { verkettungswertStartbeleg, verkettungswertFolgebeleg, verkettungswertAusJwsCompact, pruefeKette } from './crypto/chain.js'
 
 // SEE
 export { generateSEE, ladeSeInfo, signiereRoh, verifiziere, verifiziereDerCodiert, zertifikatSN, derZuP1363, p1363ZuDer } from './see.js'

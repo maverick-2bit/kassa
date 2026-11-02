@@ -14,7 +14,7 @@
  *   BURNIN_SEED     Startwert des Zufallsgenerators (Standard: aus der Uhrzeit; wird ausgegeben → Lauf wiederholbar)
  *   BURNIN_PARALLEL Größe der Parallel-Wellen (Standard 20)
  *   BURNIN_ZWEITPRUEFER  0 = Python-Zweitprüfer auslassen (Standard: läuft, wenn Python 3 gefunden wird)
- *   BURNIN_BEKANNTE_REGELN  Komma-Liste von Regelnamen (z. B. pruefer-verkettung,zweitpruefer-verkettung), die als
+ *   BURNIN_BEKANNTE_REGELN  Komma-Liste von Regelnamen (z. B. zweitpruefer-zksn-format), die als
  *                           Hinweis statt als Fehler zählen — für bekannte, noch nicht behobene Befunde
  *   BMF_PRUEFTOOL_DIR  entpacktes BMF-Prüftool (Java): dann läuft es am Ende über den Export (Nacht-Workflow)
  *

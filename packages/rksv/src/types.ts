@@ -113,8 +113,9 @@ export interface SignedBeleg extends RawBeleg {
   zertifikatSN: string
   /**
    * Verkettungswert Vorbeleg: BASE64_STD( erste 8 Byte von SHA-256(Input) ).
-   * Startbeleg: Input = Kassen-ID; Folgebeleg: Input = kompletter
-   * maschinenlesbarer Code des Vorbelegs (Detailspezifikation).
+   * Startbeleg: Input = Kassen-ID; Folgebeleg: Input = JWS-Compact-Form des Vorbelegs
+   * (`header.payload.signatur`, RKSV Anlage 1 Z 4). Belege bis v0.8.77 tragen noch den Hash
+   * ihres QR-Codes (Altformat, siehe packages/rksv/PRUEFSTRECKE.md, Befund A).
    */
   sigVorbeleg: string
   /**

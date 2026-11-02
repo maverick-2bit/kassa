@@ -4,7 +4,7 @@
  * Ablauf pro Beleg:
  *   1. Betragsummen pro Steuersatz berechnen
  *   2. Umsatzzähler aktualisieren und verschlüsseln (AES-256-ICM, eigener Schlüssel)
- *   3. Verkettungswert ermitteln (8 Byte SHA-256; Start: Kassen-ID, sonst Vorbeleg-Code)
+ *   3. Verkettungswert ermitteln (8 Byte SHA-256; Start: Kassen-ID, sonst JWS-Compact-Form des Vorbelegs)
  *   4. Maschinenlesbaren Code (QR-Repräsentation) aufbauen — Base64-STANDARD-Felder
  *   5. Signieren als JWS: ES256 über base64url(header) + "." + base64url(code)
  *
@@ -28,8 +28,12 @@ import type {
 } from './types.js'
 import { verschluesselUmsatzzaehler } from './crypto/aes-icm.js'
 import { verkettungswertStartbeleg, verkettungswertFolgebeleg } from './crypto/chain.js'
+import { jwsSigningInput, qrCodeZuJwsCompact } from './crypto/jws.js'
 import { signiereRoh, verifiziere, verifiziereDerCodiert, zertifikatSN as ladeZertifikatSN } from './see.js'
 import { formatBelegDatumUhrzeit } from './zeit.js'
+
+// JWS-Hilfen leben in crypto/jws.ts (chain.ts braucht sie ebenfalls); hier unter den bisherigen Namen weiter exportiert.
+export { JWS_HEADER_B64URL, jwsSigningInput, qrCodeZuJwsCompact } from './crypto/jws.js'
 
 // ---------------------------------------------------------------------------
 // Umsatzzähler-State
@@ -201,32 +205,6 @@ function baueMaschinenlesbareCodeOhneSig(
 }
 
 // ---------------------------------------------------------------------------
-// JWS (RFC 7515) — RKSV signiert den Code als ES256-JWS
-// ---------------------------------------------------------------------------
-
-/** Fixer JWS-Header der RKSV-Suite R1: {"alg":"ES256"} (base64url) */
-export const JWS_HEADER_B64URL: string =
-  Buffer.from(JSON.stringify({ alg: 'ES256' }), 'utf8').toString('base64url')
-
-/** JWS-Signing-Input: base64url(header) + "." + base64url(codeOhneSig) */
-export function jwsSigningInput(codeOhneSig: string): string {
-  return `${JWS_HEADER_B64URL}.${Buffer.from(codeOhneSig, 'utf8').toString('base64url')}`
-}
-
-/**
- * Rechnet die QR-Repräsentation in die JWS-Compact-Repräsentation um
- * (für den DEP-Export): header.payload.signature, alles base64url.
- * Funktioniert auch für Ausfall-Belege (Marker wird base64url umkodiert).
- */
-export function qrCodeZuJwsCompact(maschinenlesbareCode: string): string {
-  const idx         = maschinenlesbareCode.lastIndexOf('_')
-  const codeOhneSig = maschinenlesbareCode.slice(0, idx)
-  const sigBase64   = maschinenlesbareCode.slice(idx + 1)
-  const sigB64url   = Buffer.from(sigBase64, 'base64').toString('base64url')
-  return `${jwsSigningInput(codeOhneSig)}.${sigB64url}`
-}
-
-// ---------------------------------------------------------------------------
 // SEE-Ausfall
 // ---------------------------------------------------------------------------
 
@@ -261,7 +239,10 @@ export interface BelegSignaturEinheit {
 export interface SignierungsKontext {
   see:             SEEConfig
   umsatzzaehler:   Umsatzzaehler
-  /** Kompletter maschinenlesbarer Code des zuletzt signierten Belegs, undefined für den ersten Beleg */
+  /**
+   * Kompletter maschinenlesbarer Code (QR-Form) des zuletzt signierten Belegs, undefined für den ersten Beleg.
+   * Gehasht wird seine JWS-Compact-Form (`verkettungswertFolgebeleg` rechnet um).
+   */
   letzterBelegCode?: string
   /** Optionale externe Signatureinheit — ohne sie signiert der lokale Software-Key aus `see` */
   einheit?: BelegSignaturEinheit

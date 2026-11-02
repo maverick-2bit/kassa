@@ -31,24 +31,29 @@ Workflows: `.github/workflows/rksv-nacht.yml`, `rksv-mutation.yml` (die regulär
 
 Befunde, die der Produktivcode noch nicht behoben hat, sind in den Tests als **`it.fails`** festgehalten: grün, solange der
 Mangel besteht; sobald er behoben ist, meldet vitest „Expect test to fail" — dann an der Stelle das `.fails` entfernen
-(und in den Zweitprüfer-Tests `--ignoriere verkettung` streichen).
+(und in den Zweitprüfer-Tests die Ausnahme `--ignoriere zksn-format` für Befund D streichen). Befund A ist so behoben worden.
 
-### A — KRITISCH: Verkettung der Folgebelege ist falsch
+### A — Verkettung der Folgebelege war falsch (BEHOBEN; Altketten: Entscheidung des Users offen)
 
-* Kassa: `Sig-Voriger-Beleg` = Base64(SHA-256(**QR-Code** des Vorbelegs)[0..7]) — QR-Code = `payload + "_" + Signatur in Standard-Base64`
+* Befund: `Sig-Voriger-Beleg` = Base64(SHA-256(**QR-Code** des Vorbelegs)[0..7]) — QR-Code = `payload + "_" + Signatur in Standard-Base64`
   (`beleg.service.ts` speichert `letzterBelegCode = signed.maschinenlesbareCode`; `beleg.ts signiereBeleg` → `crypto/chain.ts`).
 * Spezifikation (RKSV Anlage 1 Z 4/Z 6): gehasht wird das Ergebnis der Signaturerstellung = **JWS-Compact-Form** des Vorbelegs
   (`header.payload.signatur`, base64url). Startbeleg: Kassen-ID.
 * BMF-Referenzdaten (Release V1.0.0 des Mustercodes, 16 Szenarien): **1284 von 1284** Folgebelege passen zur JWS-Form, **0** zur QR-Form.
-* **Das BMF-Prüftool selbst bestätigt es** (CI-Probelauf 2026-11-02, Export der Kassa als offenes System, 60 Belege): `DEP_CHAINING_VALUE` — „Die Verkettung
+* **Das BMF-Prüftool selbst bestätigte es** (CI-Probelauf 2026-11-02, Export der Kassa als offenes System, 60 Belege): `DEP_CHAINING_VALUE` — „Die Verkettung
   zwischen dem vorigen Beleg und dem aktuellen Beleg ist ungültig" — bei **59 von 59** Folgebelegen; als Eingabe der Verkettung nennt das Tool die JWS-Compact-Form des
   Vorbelegs (`CHAINING_INPUT = eyJhbGciOiJFUzI1NiJ9.…`). Die Einzelbelegprüfung (Code, Signatur, Zähler) besteht bei allen 60 Belegen (`N_cashbox` 60× PASS).
-* Folge: Ab dem 2. Beleg ist die Kette in jedem DEP-Export ungültig (BMF-Prüftool „Gültige Verkettung", Finanzprüfung). Die
+* Folge (bis zur Korrektur): Ab dem 2. Beleg war die Kette in jedem DEP-Export ungültig (BMF-Prüftool „Gültige Verkettung", Finanzprüfung). Die
   BMF-Belegcheck-App sieht es nicht (Einzelbeleg, kein Vorgänger).
 * Warum unentdeckt: Selbstreferenz (siehe oben). Die einzige externe Referenz (`cg8hNU5ihto=`, Startbeleg) betrifft nur den ersten Beleg.
-* Fix (klein): in `signiereBeleg` `qrCodeZuJwsCompact(letzterBelegCode)` hashen. **Offen/Entscheidung des Users:** Umgang mit
-  bereits signierten Altbelegen (deren Kette ab Beleg 2 historisch „falsch" ist; neuer Startbeleg/DEP-Abschnitt?). RKSV-Änderungen nur mit Zustimmung.
-* Tests: `bmf-referenz.test.ts` (3× `it.fails`), `dep7-zweitpruefer.test.ts`, `rksv-externe-pruefer.test.ts`, `bmf-prueftool.test.ts` (nachts); Burn-in und BMF-Prüftool melden es nachts.
+* Behoben: `verkettungswertFolgebeleg` (`crypto/chain.ts`) nimmt weiter den gespeicherten QR-Code des Vorbelegs, rechnet ihn aber in die JWS-Compact-Form um (`crypto/jws.ts`)
+  und hasht diese; `signiereBeleg` und `pruefeKette` rufen es unverändert auf. Die reine Hash-Eingabe der Spezifikation ist `verkettungswertAusJwsCompact`. Gespeichert bleibt
+  der QR-Code (`kassen.letzter_beleg_code`), die Signaturberechnung ist unverändert. Der Übergang ist nahtlos: schon der erste Beleg nach der Umstellung hasht die JWS-Form
+  seines (noch alt verketteten) Vorgängers und stimmt.
+* **Altbelege:** Belege 2…n einer vor der Korrektur betriebenen Kasse tragen die alte Verkettung. Sie ist Teil des signierten Codes und lässt sich nicht ändern — DEP-Export
+  und Prüfwerkzeuge (BMF-Prüftool, Zweitprüfer, `pruefeKette`) melden in dieser Strecke weiter Verkettungsfehler, je einen pro Altbeleg ab dem 2. **Offen/Entscheidung des Users:**
+  Umgang mit den Altketten (Kennzeichnung im Selbsttest, ggf. Neubeginn mit neuem Startbeleg). RKSV-Änderungen nur mit Zustimmung.
+* Tests: `bmf-referenz.test.ts`, `dep7-zweitpruefer.test.ts`, `rksv-externe-pruefer.test.ts` (laufen streng, kein `.fails` mehr), `bmf-prueftool.test.ts` (nachts, Java: der Lauf mit der Korrektur steht aus).
 
 ### B — Beleg-Zeit in der Zeitzone des Prozesses (Karte „RKSV-Kern") — BEHOBEN
 
@@ -93,7 +98,7 @@ Laut RIS § 20 Abs. 3 steht bei geschlossenen Gesamtsystemen (AT0) statt der Zer
 214 von 214 Belegen — auch beim Startbeleg —, daraus folgt im DEP `DEP_STATE` („Am Beginn des exportierten RKSV-DEP befindet sich kein gültiger Startbeleg"). Das Tool kommt bei
 AT0 nie zu Verkettung, Zähler und Signatur. Folgen: Belege der Software-SEE bestehen die amtliche Belegprüfung nicht; echter Betrieb braucht ein offenes System (A-Trust). Und
 der Wechsel von AT0 auf A-Trust innerhalb einer Kette mischt geschlossenes und offenes System in einem DEP (Prüfung „keine Vermischung von Systemtypen").
-Als offenes System gelesen (ZDA `AT100`, Zertifikat im Container) besteht dagegen die Einzelbelegprüfung aller Belege; dort bleibt nur Befund A.
+Als offenes System gelesen (ZDA `AT100`, Zertifikat im Container) besteht dagegen die Einzelbelegprüfung aller Belege; dort blieb nur Befund A (inzwischen behoben).
 
 ### Bestätigt (positive Gegenproben)
 
@@ -102,8 +107,8 @@ Als offenes System gelesen (ZDA `AT100`, Zertifikat im Container) besteht dagege
 * QR ↔ JWS-Compact (`qrCodeZuJwsCompact`) liefert exakt die JWS-Form des BMF für alle 81 Belege.
 * Startbeleg-Verkettung (Hash der Kassen-ID) stimmt mit dem BMF überein.
 * Der Python-Zweitprüfer besteht alle 16 BMF-Szenarien (offen mit Ausnahme der Generator-Eigenheit bei der Seriennummer) und erkennt 12 gezielte Verfälschungen (Betrag, Signatur, gelöschter/vertauschter Beleg, Zähler, Kassen-ID, Datum, Header, Schlüssel …).
-* Für die echten Kassa-Daten (API → PostgreSQL → DEP7) findet er **nur** die Verkettung (A) und das AT0-Seriennummernformat (D): Signaturen, Zähler, Format, Belegnummern, Zeit, Sammelbeleg nach Ausfall sind sauber.
-* Das BMF-Prüftool besteht seine 16 eigenen Beispiele (Kontrolllauf) und bestätigt für den Kassa-Export im offenen System: Einzelbeleg (Code, Signatur, Zähler) 60/60, Abfolge (Start, Sammelbeleg) — nur die Verkettung nicht (A).
+* Für die echten Kassa-Daten (API → PostgreSQL → DEP7) fand er **nur** die Verkettung (A, behoben) und findet das AT0-Seriennummernformat (D): Signaturen, Zähler, Format, Belegnummern, Zeit, Sammelbeleg nach Ausfall sind sauber.
+* Das BMF-Prüftool besteht seine 16 eigenen Beispiele (Kontrolllauf) und bestätigte für den Kassa-Export im offenen System: Einzelbeleg (Code, Signatur, Zähler) 60/60, Abfolge (Start, Sammelbeleg) — nur die Verkettung nicht (A). Der Lauf mit der Korrektur steht aus (nur im Nacht-Workflow).
 
 ## Mutationstests (Stryker) — was die Tests nicht festnagelten
 
@@ -121,8 +126,8 @@ den Code-Inhalt an), **Selbstsignatur und Gültigkeitsdauer** des Software-Zerti
 Die verbleibenden Überlebenden sind **äquivalent oder unerreichbar**: Kodierungsnamen (`'utf8'` → `""`, gleiches Ergebnis), Schutzabfragen für `noUncheckedIndexedAccess`,
 nicht minimale DER-Längen/Vorzeichen-Bytes, die OpenSSL toleriert, Langform-Längen, die ECDSA-Signaturen nie erreichen, Fehlerzweige der OID-Kodierung.
 
-**Was Mutationstests nicht können:** `aes-icm.ts` (92 %) und `chain.ts` (84 %) sind nach Mutation fest — die Überlebenden sind äquivalent/unerreichbar —, und trotzdem ist die Verkettung
-gegenüber der Spezifikation falsch (Befund A). Die Tests nageln die *Implementierung* fest, nicht die *Spezifikation*. Einen Lesefehler der Spezifikation findet nur ein externer Maßstab
+**Was Mutationstests nicht können:** `aes-icm.ts` (92 %) und `chain.ts` (84 %) sind nach Mutation fest — die Überlebenden sind äquivalent/unerreichbar —, und trotzdem war die Verkettung
+gegenüber der Spezifikation falsch (Befund A, behoben). Die Tests nageln die *Implementierung* fest, nicht die *Spezifikation*. Einen Lesefehler der Spezifikation findet nur ein externer Maßstab
 (BMF-Daten, BMF-Prüftool, Zweitprüfer) — genau dafür ist diese Strecke da.
 
 Aufruf: `pnpm --filter @kassa/rksv test:mutation` (3–4 Minuten, Bericht `packages/rksv/reports/mutation/mutation.html`); Überlebende als Liste:
@@ -142,7 +147,7 @@ node scripts/rksv/bmf-pruefer.mjs --dep dep-export.json --crypto cryptographicMa
 ```
 
 Burn-in-Schalter: `BURNIN_BELEGE`, `BURNIN_MINUTEN`, `BURNIN_SEED`, `BURNIN_PARALLEL`, `BURNIN_ZWEITPRUEFER=0`,
-`BURNIN_BEKANNTE_REGELN=pruefer-verkettung,zweitpruefer-verkettung` (bekannte Befunde nur als Hinweis), `BMF_PRUEFTOOL_DIR`.
+`BURNIN_BEKANNTE_REGELN=zweitpruefer-zksn-format` (bekannte Befunde, hier D, nur als Hinweis), `BMF_PRUEFTOOL_DIR`.
 
 ## Der Nacht-Workflow (`rksv-nacht`)
 
@@ -152,7 +157,7 @@ Burn-in-Schalter: `BURNIN_BELEGE`, `BURNIN_MINUTEN`, `BURNIN_SEED`, `BURNIN_PARA
   (`NNNN_*.json`, `*_full.json`, `DEP-full.json`: 147 MB schon für den Kontrolllauf und zwei Kassa-Läufe); dafür das Skript lokal laufen lassen.
 * **zeit-matrix**, **schemas** (Drift der FinanzOnline-Schemas, neueres Prüftool?).
 * Manuell startbar (`workflow_dispatch`) mit Belegzahl, Minuten und bekannten Regeln.
-* **Erste Läufe sind rot**, bis A und B im Produktivcode behoben sind — das ist der Zweck. Zum Beruhigen für einen manuellen Lauf `bekannte_regeln` setzen.
+* **Rot ist gewollt, solange bekannte Befunde offen sind** (A ist behoben; D offen; B mit der Zeit-Korrektur der Karte „RKSV-Kern") — das ist der Zweck. Zum Beruhigen für einen manuellen Lauf `bekannte_regeln` setzen.
 * Das BMF-Prüftool ist laut BMF „primär auf korrekte Implementierung ausgerichtet" und nicht verbindlich; ein Fehler dort ist ein Anlass zum Nachsehen,
   ein Bestehen ersetzt weder die Belegprüfung in FinanzOnline noch die BMF-Belegcheck-App.
 * Auswertung der Prüftool-Ausgabe (`scripts/rksv/lib/bmf-ergebnis.mjs`): Urteil sind nur die Wurzeln von `N_app/N_cashbox/N_dep.json` und `DEP-global.json`

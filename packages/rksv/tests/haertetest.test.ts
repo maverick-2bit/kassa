@@ -15,7 +15,7 @@ import {
   signiereBeleg,
   erstelleStartbeleg,
 } from '../src/beleg.js'
-import { pruefeKette, verkettungswertStartbeleg, verkettungswertFolgebeleg } from '../src/crypto/chain.js'
+import { pruefeKette, verkettungswertStartbeleg, verkettungswertAusJwsCompact } from '../src/crypto/chain.js'
 import {
   generiereAesSchluessel,
   berechneIV,
@@ -95,8 +95,9 @@ describe('Verkettung unter Last', () => {
     // Manuell jeden Verkettungswert gegen den berechneten Wert prüfen
     expect(belege[0]?.sigVorbeleg).toBe(verkettungswertStartbeleg(KASSE))
 
+    // Folgebeleg: Hash der JWS-Compact-Form des Vorgängers (RKSV Anlage 1 Z 4), nicht des QR-Codes
     for (let i = 1; i < belege.length; i++) {
-      const erwartet = verkettungswertFolgebeleg(belege[i - 1]!.maschinenlesbareCode)
+      const erwartet = verkettungswertAusJwsCompact(belege[i - 1]!.jwsCompact)
       expect(belege[i]?.sigVorbeleg).toBe(erwartet)
     }
   })
@@ -119,10 +120,20 @@ describe('Verkettung unter Last', () => {
 
     expect(pruefeKette(KASSE, belege)).toBe(true)
 
-    // Beleg 5 (Index 4) manipulieren — der Folgebeleg referenziert den Original-Code
-    const manipuliert = [...belege]
-    manipuliert[4] = { ...belege[4]!, maschinenlesbareCode: belege[4]!.maschinenlesbareCode + 'X' }
-    expect(pruefeKette(KASSE, manipuliert)).toBe(false)
+    // Beleg 5 (Index 4) manipulieren — der Folgebeleg referenziert den Original-Code. Verändert wird der Inhalt (Nutzlast
+    // bzw. Signatur): die Verkettung hängt an der JWS-Form, ein hinter dem Padding angehängtes Zeichen ändert sie nicht.
+    const original = belege[4]!.maschinenlesbareCode
+    const nutzlastVeraendert = original.replace('_1,00_', '_9,99_')
+    expect(nutzlastVeraendert).not.toBe(original)
+    const idx = original.lastIndexOf('_')
+    const signaturVeraendert = `${original.slice(0, idx + 1)}${original.slice(idx + 1).replace(/^./, c => (c === 'A' ? 'B' : 'A'))}`
+    expect(signaturVeraendert).not.toBe(original)
+
+    for (const code of [nutzlastVeraendert, signaturVeraendert]) {
+      const manipuliert = [...belege]
+      manipuliert[4] = { ...belege[4]!, maschinenlesbareCode: code }
+      expect(pruefeKette(KASSE, manipuliert)).toBe(false)
+    }
   })
 
   it('Wiederhergestellte Kasse setzt Kette korrekt fort', async () => {
