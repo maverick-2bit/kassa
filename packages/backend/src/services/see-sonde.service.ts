@@ -22,7 +22,7 @@
  */
 
 import { and, eq, isNotNull } from 'drizzle-orm'
-import { ATrustHsmEinheit } from '@kassa/rksv'
+import { ATrustHsmEinheit, ATrustHsmError, klassifiziereSeeFehler } from '@kassa/rksv'
 import type { Db } from '../db/client.js'
 import { kassen } from '../db/schema.js'
 import { decryptPrivateKey } from '../crypto/master-key.js'
@@ -31,7 +31,6 @@ import {
   BelegError,
   FON_MELDE_SCHWELLE_MIN,
   SEE_ABGELEHNT,
-  SEE_NICHT_VERFUEGBAR,
   meldeSeeWiederherstellung,
   type BelegServiceDeps,
 } from './beleg.service.js'
@@ -126,11 +125,15 @@ export async function pruefeSeeWiederherstellung(
       pausiertBis.delete(k.id)
       ergebnis('wiederhergestellt')
     } catch (err) {
-      if (err instanceof BelegError && err.code === SEE_ABGELEHNT) {
+      // Die Wiederherstellung wirft ATrustHsmError, wenn die Einheit nicht (mehr) antwortet oder ablehnt;
+      // ein BelegError mit SEE_ABGELEHNT, wenn Schlüssel/Zertifikat nicht zusammenpassen.
+      const abgelehnt = (err instanceof BelegError && err.code === SEE_ABGELEHNT)
+        || (err instanceof ATrustHsmError && klassifiziereSeeFehler(err) === 'konfiguration')
+      if (abgelehnt) {
         pausiertBis.set(k.id, jetzt.getTime() + SONDE_PAUSE_NACH_ABLEHNUNG_MS)
         log?.error({ err, kasseId: k.id }, `SEE-Sonde ${k.kassenId}: Signatureinheit lehnt die Anfrage ab — nächster Versuch in 15 Min`)
         ergebnis('abgelehnt')
-      } else if (err instanceof BelegError && err.code === SEE_NICHT_VERFUEGBAR) {
+      } else if (err instanceof ATrustHsmError) {
         // Die Einheit antwortet auf /ZDA, aber das Signieren scheitert noch (Teilausfall): beim nächsten Durchlauf erneut
         ergebnis('nicht-erreichbar')
       } else if (err instanceof BelegError && err.httpStatus === 409) {

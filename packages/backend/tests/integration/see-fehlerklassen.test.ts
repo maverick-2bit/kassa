@@ -283,19 +283,29 @@ describe('SEE: Fehlerklassen, Gegenprobe, Uhr, Sonde (Integration, echtes Postgr
       expect((await barzahlen()).statusCode).toBe(201)        // Ausfall
     })
 
-    it('Einheit weiterhin nicht verfügbar: 409 mit klarer Meldung (nicht „Interner Serverfehler"), Ausfall bleibt', async () => {
+    it('Einheit weiterhin nicht verfügbar: 502 mit dem Grund (nicht „Interner Serverfehler"), Ausfall bleibt', async () => {
       const res = await srv.fastify.inject({ method: 'POST', url: '/api/belege/see-wiederherstellung', headers: auth(), payload: { kasseId } })
-      expect(res.statusCode).toBe(409)
-      expect(res.json().fehler).toContain('weiterhin nicht verfügbar')
+      expect(res.statusCode).toBe(502)
+      expect(res.json().fehler).toMatch(/^A-Trust \/Sign\/JWS → HTTP 503/)
       expect((await kasse()).seeAusgefallenSeit).not.toBeNull()
     })
 
-    it('Einheit lehnt ab: 409 mit Hinweis auf die Zugangsdaten, Ausfall bleibt', async () => {
+    it('Einheit lehnt ab: 502 mit dem Grund, Ausfall bleibt', async () => {
       modus = 'http401'
       const res = await srv.fastify.inject({ method: 'POST', url: '/api/belege/see-wiederherstellung', headers: auth(), payload: { kasseId } })
-      expect(res.statusCode).toBe(409)
-      expect(res.json().fehler).toContain('abgelehnt')
+      expect(res.statusCode).toBe(502)
+      expect(res.json().fehler).toMatch(/HTTP 401/)
       expect((await kasse()).seeAusgefallenSeit).not.toBeNull()
+    })
+
+    it('Einheit liefert eine Signatur, die nicht zum Zertifikat passt: 409, Ausfall bleibt, kein Beleg gespeichert', async () => {
+      modus = 'fremd'
+      const anzahl = await belegAnzahl()
+      const res = await srv.fastify.inject({ method: 'POST', url: '/api/belege/see-wiederherstellung', headers: auth(), payload: { kasseId } })
+      expect(res.statusCode).toBe(409)
+      expect(res.json().fehler).toContain('keine gültige Signatur')
+      expect((await kasse()).seeAusgefallenSeit).not.toBeNull()
+      expect(await belegAnzahl()).toBe(anzahl)
     })
 
     it('Einheit wieder da: Sammelbeleg signiert, Ausfall beendet', async () => {

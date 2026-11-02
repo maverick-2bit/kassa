@@ -78,8 +78,6 @@ export class BelegError extends Error {
 
 /** BelegError.code: Die Signatureinheit/das Schlüsselmaterial weist uns ab — Warten hilft nicht. */
 export const SEE_ABGELEHNT = 'see-abgelehnt'
-/** BelegError.code: Die Signatureinheit ist (weiterhin) nicht verfügbar — später erneut versuchen. */
-export const SEE_NICHT_VERFUEGBAR = 'see-nicht-verfuegbar'
 
 interface ZahlungAufteilung {
   barCent:      number
@@ -140,12 +138,13 @@ export const MANDANT_UEBERTRAGEN = 'uebertragen'
  */
 function seeFehlerAlsBelegError(err: unknown, klasse: 'ausfall' | 'konfiguration', wiederherstellung: boolean): BelegError {
   if (klasse === 'ausfall') {
-    // Nur beim Wiederherstellen erreichbar: die Einheit antwortet weiterhin nicht
+    // Nur beim Wiederherstellen erreichbar (beim Verkauf wird daraus ein Ausfall): Die Einheit liefert eine
+    // Signatur, die nicht zum gespeicherten Zertifikat passt — Warten hilft nicht, Einheit und Zertifikat gehören nicht zusammen.
     return new BelegError(
       409,
-      'Die Signaturerstellungseinheit ist weiterhin nicht verfügbar (Verbindung fehlgeschlagen oder ' +
-      'unbrauchbare Antwort). Die Kasse bleibt im Ausfallmodus — bitte später erneut versuchen.',
-      SEE_NICHT_VERFUEGBAR,
+      'Die Signaturerstellungseinheit liefert keine gültige Signatur (die Prüfung gegen das gespeicherte Zertifikat ' +
+      'schlägt fehl): Einheit und Zertifikat der Kasse passen nicht zusammen. Die Kasse bleibt im Ausfallmodus.',
+      SEE_ABGELEHNT,
     )
   }
   const ende = wiederherstellung ? 'Die Kasse bleibt im Ausfallmodus.' : 'Es wurde kein Beleg erstellt.'
@@ -323,6 +322,9 @@ async function signiereImTxKern(
         const klasse = klassifiziereSeeFehler(signErr)
         // Der Wortlaut der Gegenstelle geht nicht an die Bedienung — aber er soll später nachlesbar sein
         const grund = signErr instanceof Error ? signErr.message.slice(0, 300) : String(signErr)
+        // Wiederherstellen, A-Trust antwortet nicht/lehnt ab: Vorbestand — die Route antwortet mit 502 und dem
+        // Wortlaut (Kassier braucht den Grund), der Ausfall bleibt bestehen.
+        if (input.wiederherstellung && signErr instanceof ATrustHsmError) throw signErr
         if (klasse === 'konfiguration') {
           nachlauf.push(() => logAudit(deps.db, {
             mandantId: kasse.mandantId, aktion: 'see.signatur_abgelehnt',
