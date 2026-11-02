@@ -8,6 +8,7 @@ import {
   bereinigeSicherungen,
   DbSicherungError,
 } from '../services/db-backup.service.js'
+import { requireBetreiber } from '../auth/betreiber.js'
 
 export interface DbBackupRouteOptions {
   db:          Db
@@ -19,17 +20,11 @@ export interface DbBackupRouteOptions {
 const IdParamSchema = z.object({ id: z.string().guid() })
 
 export const dbBackupRoute: FastifyPluginAsync<DbBackupRouteOptions> = async (fastify, opts) => {
-  const guard = { onRequest: [fastify.authenticate] }
-
-  function nurAdmin(request: Parameters<typeof fastify.authenticate>[0], reply: Parameters<typeof fastify.authenticate>[1], done: () => void) {
-    if (request.user.rolle !== 'admin') {
-      reply.status(403).send({ fehler: 'Nur Admins können DB-Backups verwalten' })
-      return
-    }
-    done()
-  }
-
-  const adminGuard = { onRequest: [fastify.authenticate, nurAdmin] }
+  // NUR der Betreiber: pg_dump sichert die GANZE Datenbank (alle Mandanten samt Benutzern, Belegen,
+  // verschlüsselten Signaturschlüsseln), und Liste/Download kennen keinen Mandanten. Ein Mandanten-Admin
+  // konnte damit die Daten aller anderen Betriebe auf dem Rechner herunterladen. Der Export des
+  // EIGENEN Mandanten (mandant-uebergabe) und die DEP-Sicherung je Kasse bleiben Mandanten-Admins.
+  const adminGuard = { onRequest: [fastify.authenticate, requireBetreiber(opts.db)] }
 
   fastify.get('/db-sicherungen', adminGuard, async (_request, reply) => {
     const liste = await listeDbSicherungen(opts.db)

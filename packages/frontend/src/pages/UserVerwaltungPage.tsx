@@ -126,6 +126,15 @@ export function UserVerwaltungPage() {
                     }`}>
                       {ROLLE_LABELS[u.rolle]}
                     </span>
+                    {u.istBetreiber && (
+                      <span
+                        title="Betreiber dieser Kassa: Update, Datenbank-Sicherung und weitere Mandanten. Nur ein Betreiber ändert dieses Konto."
+                        data-testid="betreiber-markierung"
+                        className="ml-1.5 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800"
+                      >
+                        Betreiber
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     {u.rolle === 'admin' ? (

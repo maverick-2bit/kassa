@@ -49,6 +49,16 @@ const jobs = new Map<string, JobState>()
 
 export interface ZvtServiceDeps { db: Db }
 
+/** Die "IP" "stub" schaltet die Zahlungs-Attrappe ein (simulierte Transaktion, nie ein echtes Terminal). */
+export function istZvtStub(zvtIp: string | null | undefined): boolean {
+  return (zvtIp ?? '').trim().toLowerCase() === 'stub'
+}
+
+/** Attrappe und Demo-Zahlungen gibt es nur an Kassen im RKSV-Testmodus (kassen.umgebung = 'test'). */
+export const ZVT_STUB_NUR_TEST =
+  'Die Zahlungs-Attrappe („stub") gibt es nur an Kassen im Testmodus. ' +
+  'Hier muss die IP-Adresse des Kartenterminals eingetragen sein.'
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -66,6 +76,9 @@ export async function starteZahlung(
   if (!kasse)            throw new ZvtError(404, 'Kasse nicht gefunden')
   if (!kasse.zvtAktiv)   throw new ZvtError(409, 'ZVT-Kartenterminal ist deaktiviert')
   if (!kasse.zvtIp)      throw new ZvtError(409, 'Terminal-IP nicht konfiguriert')
+  // Die Attrappe "stub" meldet jede Zahlung als erfolgreich — an einer Kasse im Produktivbetrieb wäre
+  // das Bargeld-Schwund auf Knopfdruck (Karte "bezahlt", nichts eingezogen).
+  if (istZvtStub(kasse.zvtIp) && kasse.umgebung !== 'test') throw new ZvtError(409, ZVT_STUB_NUR_TEST)
 
   const id = randomUUID()
   const state: JobState = {
@@ -83,7 +96,7 @@ export async function starteZahlung(
   jobs.set(id, state)
 
   // Stub-Modus: zvtIp === 'stub' → simulierte Transaktion ohne echtes Terminal
-  if (kasse.zvtIp.toLowerCase() === 'stub') {
+  if (istZvtStub(kasse.zvtIp)) {
     fuehreStubAus(state)
   } else {
     fuehreTcpAus(state, kasse.zvtIp, kasse.zvtPort, input.betragCent, kasse.zvtPasswort)

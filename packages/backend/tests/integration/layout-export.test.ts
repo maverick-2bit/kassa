@@ -14,7 +14,7 @@ import type { FinanzOnlineClient } from '@kassa/rksv'
 import {
   artikel, artikelModifikatorGruppen, kategorien, modifikatoren, modifikatorGruppen,
 } from '../../src/db/schema.js'
-import { buildTestServer, type TestServer } from '../helpers/testServer.js'
+import { buildTestServer, type TestServer, TEST_SETUP_TOKEN } from '../helpers/testServer.js'
 import { erstelleIntegrationsDb, type IntegrationsDb } from './helpers/integrationsDb.js'
 
 function mockFoClient(): FinanzOnlineClient {
@@ -64,7 +64,7 @@ describe('Layout-Export (Integration, echtes PostgreSQL)', () => {
     idb = await erstelleIntegrationsDb()
     srv = await buildTestServer(idb.db, { finanzOnlineClient: mockFoClient() })
     for (const [nr, m] of [[1, 'A'], [2, 'B'], [3, 'C']] as const) {
-      const s = await srv.fastify.inject({ method: 'POST', url: '/api/setup', payload: setupInput(nr) })
+      const s = await srv.fastify.inject({ method: 'POST', url: '/api/setup', headers: { 'x-setup-token': TEST_SETUP_TOKEN }, payload: setupInput(nr) })
       if (s.statusCode !== 201) throw new Error(`Setup ${nr} (${s.statusCode}): ${s.body}`)
       const login = (await srv.fastify.inject({
         method: 'POST', url: '/api/auth/login',

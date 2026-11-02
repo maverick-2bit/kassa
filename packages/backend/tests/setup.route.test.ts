@@ -9,7 +9,9 @@ import type { FinanzOnlineClient } from '@kassa/rksv'
 import type { Db } from '../src/db/client.js'
 
 // ---------------------------------------------------------------------------
-// Mock-DB — drei sequentielle .limit()-Calls: Mandant-Check, Email-Check, Sonstiges
+// Mock-DB — sequentielle .limit()-Calls: (0) Gibt es schon einen Benutzer? (Berechtigung der Route),
+// (1) Mandant-Check, (2) Email-Check, danach Sonstiges.
+// Berechtigung, Betreiber-Prüfung und die Sperre selbst: tests/integration/setup-gesperrt.test.ts
 // ---------------------------------------------------------------------------
 
 interface MockState {
@@ -24,8 +26,9 @@ function mockDb(state: MockState = {}): Db {
     where: () => selectChain,
     limit: () => {
       const c = selectCallCount++
-      if (c === 0) return Promise.resolve(state.existingMandant ? [{ id: 'm' }] : [])
-      if (c === 1) return Promise.resolve(state.existingEmail   ? [{ id: 'u' }] : [])
+      if (c === 0) return Promise.resolve([])   // leere Installation: die Route lässt die Einrichtung zu
+      if (c === 1) return Promise.resolve(state.existingMandant ? [{ id: 'm' }] : [])
+      if (c === 2) return Promise.resolve(state.existingEmail   ? [{ id: 'u' }] : [])
       return Promise.resolve([])
     },
   }

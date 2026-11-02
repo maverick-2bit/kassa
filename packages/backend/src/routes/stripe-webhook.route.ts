@@ -25,7 +25,7 @@ import {
   globaleStripeKonfig,
   type StripeKonfig,
 } from '../services/stripe.service.js'
-import { finalisiereGastBestellung, type GastServiceDeps } from '../services/gast-bestellung.service.js'
+import { verarbeiteGastWebhook, type GastServiceDeps, type GastWebhookSession } from '../services/gast-bestellung.service.js'
 import { verarbeiteShopWebhook, type ShopStripe } from '../services/ticketshop.service.js'
 
 export interface StripeWebhookDeps {
@@ -63,7 +63,7 @@ async function verarbeiteWebhook(
   }
 
   // Ticketshop: Bestellung trägt metadata.ticketBestellungId
-  const session = event.data.object as { id?: string; payment_status?: string | null; metadata?: Record<string, string> | null }
+  const session = event.data.object as GastWebhookSession
   if (SHOP_EREIGNISSE.has(event.type) && session.metadata?.ticketBestellungId) {
     try {
       await verarbeiteShopWebhook(
@@ -78,17 +78,22 @@ async function verarbeiteWebhook(
     return reply.send({ received: true })
   }
 
-  if (event.type === 'checkout.session.completed') {
-    const bestellungId = (event.data.object as { metadata?: { bestellungId?: string } }).metadata?.bestellungId
-    if (bestellungId) {
-      const gastDeps: GastServiceDeps = { db: deps.db, belegDeps: deps.belegDeps, config: deps.config }
-      try {
-        await finalisiereGastBestellung(bestellungId, gastDeps)
-      } catch (err) {
-        // 500 → Stripe wiederholt den Webhook; die Finalisierung ist über den Status-Claim idempotent.
-        request.log.error({ err }, 'Gast-Finalisierung nach Stripe-Zahlung fehlgeschlagen')
-        return reply.status(500).send({ fehler: 'Finalisierung fehlgeschlagen' })
+  if (event.type === 'checkout.session.completed' && session.metadata?.bestellungId) {
+    const gastDeps: GastServiceDeps = { db: deps.db, belegDeps: deps.belegDeps, config: deps.config }
+    try {
+      const ergebnis = await verarbeiteGastWebhook(gastDeps, mandantIdAusUrl, session)
+      if (ergebnis.ergebnis === 'ignoriert') {
+        // Nicht zur Bestellung passend (fremder Mandant, andere Session, nicht bezahlt, falscher
+        // Betrag): bezahlt wird nichts. 200, denn ein Retry von Stripe änderte daran nichts.
+        request.log.warn(
+          { bestellungId: session.metadata.bestellungId, grund: ergebnis.grund, mandantId: mandantIdAusUrl },
+          'Stripe-Ereignis passt nicht zur Gast-Bestellung — ignoriert',
+        )
       }
+    } catch (err) {
+      // 500 → Stripe wiederholt den Webhook; die Finalisierung ist über den Status-Claim idempotent.
+      request.log.error({ err }, 'Gast-Finalisierung nach Stripe-Zahlung fehlgeschlagen')
+      return reply.status(500).send({ fehler: 'Finalisierung fehlgeschlagen' })
     }
   }
   return reply.send({ received: true })

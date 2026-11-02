@@ -12,7 +12,7 @@ import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import { count } from 'drizzle-orm'
 import type { FinanzOnlineClient } from '@kassa/rksv'
 import { arbeitszeiten } from '../../src/db/schema.js'
-import { buildTestServer, type TestServer } from '../helpers/testServer.js'
+import { buildTestServer, type TestServer, TEST_SETUP_TOKEN } from '../helpers/testServer.js'
 import { erstelleIntegrationsDb, type IntegrationsDb } from './helpers/integrationsDb.js'
 
 function mockFoClient(): FinanzOnlineClient {
@@ -63,7 +63,7 @@ describe('Mandanten-Isolation (Integration, echtes PostgreSQL)', () => {
 
     for (const [nr, ziel] of [[1, 'A'], [2, 'B']] as const) {
       const setupRes = await srv.fastify.inject({
-        method: 'POST', url: '/api/setup', payload: setupInput(nr),
+        method: 'POST', url: '/api/setup', headers: { 'x-setup-token': TEST_SETUP_TOKEN }, payload: setupInput(nr),
       })
       if (setupRes.statusCode !== 201) {
         throw new Error(`Setup ${ziel} fehlgeschlagen (${setupRes.statusCode}): ${setupRes.body}`)

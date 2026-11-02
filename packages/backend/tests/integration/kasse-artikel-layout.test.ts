@@ -19,7 +19,7 @@ import { dirname, join } from 'node:path'
 import { and, eq, sql, type SQL } from 'drizzle-orm'
 import type { FinanzOnlineClient } from '@kassa/rksv'
 import { artikel, kasseArtikelLayout, kassen, kategorien } from '../../src/db/schema.js'
-import { buildTestServer, type TestServer } from '../helpers/testServer.js'
+import { buildTestServer, type TestServer, TEST_SETUP_TOKEN } from '../helpers/testServer.js'
 import { erstelleIntegrationsDb, type IntegrationsDb } from './helpers/integrationsDb.js'
 
 function mockFoClient(): FinanzOnlineClient {
@@ -81,7 +81,7 @@ describe('Artikel-Anordnung je Kasse (Integration, echtes PostgreSQL)', () => {
 
   async function setup(nr: number, email: string) {
     const res = await srv.fastify.inject({
-      method: 'POST', url: '/api/setup',
+      method: 'POST', url: '/api/setup', headers: { 'x-setup-token': TEST_SETUP_TOKEN },
       payload: {
         firmenname: `Anordnung ${nr} GmbH`, uid: `ATU9999942${nr}`, kassenId: `KAL-00${nr}`,
         finanzOnline: { teilnehmerId: `TID-KAL${nr}`, benutzerkennung: `BID-KAL${nr}`, pin: `PIN-KAL${nr}` },

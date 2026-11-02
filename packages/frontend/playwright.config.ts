@@ -10,6 +10,15 @@ const backendDir = resolve(here, '../backend')
 // Runner) aufgerufen wird — dann muss die DB bereits existieren.
 const E2E_DB_URL = process.env.E2E_DATABASE_URL ?? 'postgresql://kassa:kassa@localhost:5432/kassa'
 
+/**
+ * Einrichtungs-Schlüssel der E2E-Instanz. POST /api/setup ist auf einer eingerichteten Installation gesperrt —
+ * außer für den angemeldeten Betreiber oder mit diesem Schlüssel im Header `x-setup-token` (Backend: SETUP_TOKEN).
+ * Specs legen ZUSÄTZLICHE Mandanten per API an (Mandanten-Umschalter, Layout-Export …), dafür trägt jeder
+ * E2E-Aufruf den Schlüssel mit (use.extraHTTPHeaders unten). Wer das Gesperrt-Verhalten prüfen will, nimmt einen
+ * eigenen Kontext OHNE den Header (system-betreiber.spec.ts).
+ */
+const E2E_SETUP_TOKEN = 'e2e-setup-token-0123456789abcdef'
+
 export default defineConfig({
   testDir: './e2e',
   testMatch: '**/*.spec.ts',
@@ -27,6 +36,7 @@ export default defineConfig({
     // page.goto und request.*. 127.0.0.1 beseitigt diese Flakiness-Klasse.
     baseURL: 'http://127.0.0.1:5173',
     trace: 'retain-on-failure',
+    extraHTTPHeaders: { 'x-setup-token': E2E_SETUP_TOKEN },
   },
   webServer: [
     {
@@ -48,6 +58,7 @@ export default defineConfig({
         LOG_LEVEL:         'warn',
         MASTER_PASSPHRASE: 'e2e-master-passphrase-0123456789',
         JWT_SECRET:        'e2e-jwt-secret-key-mindestens-32-zeichen-lang',
+        SETUP_TOKEN:       E2E_SETUP_TOKEN,
       },
     },
     {

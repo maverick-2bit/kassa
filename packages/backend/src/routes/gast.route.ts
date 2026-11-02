@@ -28,6 +28,7 @@ import {
   type GastServiceDeps,
 } from '../services/gast-bestellung.service.js'
 import { uuidQuery } from './uuid-param.js'
+import { TischNummerSchema } from './tisch-nummer.js'
 
 export interface GastRouteOptions { db: Db; belegDeps: BelegServiceDeps; config: Config }
 
@@ -38,7 +39,7 @@ const BestellPosition = z.object({
 
 const BestellungBody = z.object({
   kasseId:     z.string().guid(),
-  tischNummer: z.string().min(1).max(40),
+  tischNummer: TischNummerSchema,
   positionen:  z.array(BestellPosition).min(1).max(50).refine(
     arr => new Set(arr.map(p => p.artikelId)).size === arr.length,
     { message: 'Doppelte artikelId' },
