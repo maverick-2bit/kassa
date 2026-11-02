@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it, expect, beforeAll } from 'vitest'
 import type { DEP7Export } from '../src/types.js'
+import { verkettungswertFolgebeleg } from '../src/crypto/chain.js'
 import { REPO_WURZEL, baueContainer, baueEigenenExport, ladeBmfSzenario, type CryptoContainer } from './helpers/pruef-export.js'
 
 const SKRIPT = join(REPO_WURZEL, 'scripts', 'rksv', 'dep7_pruefer.py')
@@ -239,6 +240,21 @@ describe.skipIf(!PYTHON)('Python-Zweitprüfer', () => {
       const l = pruefe(offen.dep7, offen.container)
       expect(regeln(l)).toEqual([])
       expect(l.exit).toBe(0)
+    })
+
+    // Export einer Bestandskasse nach dem Update (Befund A): Belege 2…20 sind noch nach der alten Lesart verkettet (QR-Code gehasht) und
+    // lassen sich nicht ändern; der erste Beleg danach hasht die JWS-Form seines alt verketteten Vorgängers und stimmt sofort.
+    it('Altkette (Belege 2…20 nach der alten Lesart, danach nach der Spezifikation): beanstandet werden genau die 19 Altbelege, der Übergang besteht', async () => {
+      const alt = await baueEigenenExport(40, 'PRUEF-ALT', 'AT100', 20)
+      const soll = (i: number): string => verkettungswertFolgebeleg(alt.belege[i - 1]!.maschinenlesbareCode)   // Wert nach der Spezifikation für Beleg i+1
+      expect(alt.belege[1]!.sigVorbeleg).not.toBe(soll(1))      // Beleg 2: alte Lesart
+      expect(alt.belege[19]!.sigVorbeleg).not.toBe(soll(19))    // Beleg 20: letzter Altbeleg
+      expect(alt.belege[20]!.sigVorbeleg).toBe(soll(20))        // Beleg 21: stimmt sofort, obwohl der Vorgänger alt verkettet ist
+      const l = pruefe(alt.dep7, alt.container)
+      expect(regeln(l)).toEqual(['verkettung'])
+      expect(l.bericht.verstoesseJeRegel['verkettung']).toBe(19)
+      expect(l.bericht.verstoesse.map(v => v.beleg)).toEqual(Array.from({ length: 19 }, (_, k) => k + 2))
+      expect(l.bericht.signaturenGeprueft + l.bericht.ausfallbelege).toBe(40)        // Signaturen und Zähler der Altbelege sind in Ordnung
     })
 
     it('fehlt der Sammelbeleg (signierter Nullbeleg) nach einem Ausfall, schlägt der Prüfer an', async () => {
