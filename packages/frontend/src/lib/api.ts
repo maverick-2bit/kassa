@@ -262,6 +262,8 @@ export interface SystemStatus {
   updateVerfuegbar:  boolean
   updaterVerfuegbar: boolean
   update:            SystemUpdateStatus
+  /** Ist der angemeldete Benutzer der Betreiber der Installation? (Update, DB-Sicherung, weitere Mandanten) */
+  istBetreiber:      boolean
 }
 
 /** Fernwartungs-Anbindung dieser Kasse (TeamViewer Host auf dem Kassen-PC) — vom Installer geschrieben */
@@ -278,7 +280,7 @@ export interface FernwartungStatus {
 export const systemApi = {
   /** frisch=true umgeht Server- und CDN-Cache — für den manuellen Prüf-Knopf. */
   status:    (frisch = false) => request<SystemStatus>('GET', `/api/system/status${frisch ? '?frisch=1' : ''}`),
-  /** Löst das Update aus (Admin). Body-los — der Updater-Dienst holt das Signal ab. */
+  /** Löst das Update aus (nur Betreiber). Body-los — der Updater-Dienst holt das Signal ab. */
   ausloesen: () => request<{ angefordert: boolean }>('POST', '/api/system/update'),
   /** LAN-IPv4s des Servers; im Docker-Betrieb ehrlich leer (imContainer=true). */
   netzwerk:  () => request<{ ips: string[]; imContainer?: boolean }>('GET', '/api/system/netzwerk'),
@@ -517,11 +519,16 @@ export async function downloadPruefungDep7(token: string): Promise<void> {
 // ---------------------------------------------------------------------------
 
 export async function postSetup(input: SetupInput): Promise<SetupResponse> {
+  // Auf einer eingerichteten Installation legt nur der angemeldete Betreiber weitere Mandanten an:
+  // sein Token geht mit. Auf einer leeren Installation ignoriert der Server es (auch ein altes Token
+  // einer anderen Installation stört dort nicht).
+  const token = getToken()
   const res = await fetch('/api/setup', {
     method:  'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body:    JSON.stringify(input),
   })
+  // 403 (nicht berechtigt) und 429 (Bremse) bringen ebenfalls { fehler } — dieselbe Anzeige wie bei 400
   return (await res.json()) as SetupResponse
 }
 
@@ -1647,16 +1654,21 @@ export interface DruckerPingStatus {
   geprueftAm: string
 }
 
-export interface MonitoringStatus {
+/** Was jeder Admin sieht: die Drucker seines Betriebs. */
+export interface MonitoringBasis {
   timestamp:   string
-  uptimeSek:   number
   version:     string
-  nodeVersion: string
-  platform:    string
   druckerKeepAlive: {
     intervallSekunden: number
     drucker:           DruckerPingStatus[]
   }
+}
+
+/** Zusätzlich für den Betreiber: Werte des ganzen Rechners. */
+export interface MonitoringStatus extends MonitoringBasis {
+  uptimeSek:   number
+  nodeVersion: string
+  platform:    string
   db: {
     ok:       boolean
     latenzMs: number | null
@@ -1688,7 +1700,11 @@ export interface MonitoringStatus {
 }
 
 export const monitoringApi = {
-  get: (): Promise<MonitoringStatus> =>
+  /** Für jeden Admin: nur der Teil des eigenen Betriebs (Drucker). */
+  get: (): Promise<MonitoringBasis> =>
+    request<MonitoringBasis>('GET', '/api/admin/monitoring'),
+  /** NUR für den Betreiber aufrufen: sonst fehlen die Werte des Rechners in der Antwort. */
+  system: (): Promise<MonitoringStatus> =>
     request<MonitoringStatus>('GET', '/api/admin/monitoring'),
   setKeepAlive: (intervallSekunden: number): Promise<{ intervallSekunden: number }> =>
     request('PATCH', '/api/admin/monitoring/keep-alive', { intervallSekunden }),

@@ -70,6 +70,53 @@ function Neues-Secret([int]$Bytes) {
   return ($b | ForEach-Object { $_.ToString('x2') }) -join ''
 }
 
+# Installationsordner nur für SYSTEM, Administratoren und den installierenden Benutzer zugänglich machen.
+#
+# Ein Ordner direkt unter C:\ erbt "Authentifizierte Benutzer: Ändern". Im Installationsordner liegen die
+# .env (JWT_SECRET, MASTER_PASSPHRASE, Datenbank-Passwort) und ops\updater\updater.sh — das Skript läuft im
+# Update-Dienst als Root mit Zugriff auf den Docker-Socket. Mit dieser Vererbung konnte jedes lokale
+# Windows-Konto (Kollegen-Login, Gastkonto) die Geheimnisse lesen oder das Skript ändern und damit Root im
+# Docker-Unterbau werden.
+#
+# Docker Desktop läuft unter dem installierenden Benutzer (Autostart-Eintrag in dessen HKCU) und liest den Ordner
+# in SEINEM Namen — ohne ausdrücklichen Eintrag für dieses Konto verlöre Docker den Zugriff: Die Gruppe
+# "Administratoren" zählt in einem nicht erhöhten Prozess nicht (UAC), "docker compose" in einer normalen
+# PowerShell käme nicht mehr an die Compose-Datei. Darum: SYSTEM + Administratoren (voll) + dieses Konto (ändern).
+# Berechtigungen als SID statt als Name ("Administratoren" heißt je nach Windows-Sprache anders).
+#
+# Läuft bei jedem Aufruf (Installation UND Update) und VOR dem Kopieren: der Code und die .env erben die
+# Rechte dann von Anfang an. Bestehende Dateien früherer Installationen werden auf die neue Vererbung gesetzt.
+function Finde-InteraktivenBenutzerSid {
+  # Wird der Installer als SYSTEM gestartet (Fernwartungsskript), ist der Benutzer an der Konsole der richtige
+  try {
+    $name = (Get-CimInstance Win32_ComputerSystem).UserName
+    if ($name) { return (New-Object Security.Principal.NTAccount($name)).Translate([Security.Principal.SecurityIdentifier]).Value }
+  } catch { }
+  return $null
+}
+
+function Schuetze-Installationsordner([string]$Ordner) {
+  try {
+    $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    if ($sid -eq 'S-1-5-18') { $sid = Finde-InteraktivenBenutzerSid }
+    if (-not $sid) {
+      Hinweis 'Kein angemeldeter Benutzer gefunden — die Rechte des Installationsordners bleiben unverändert (Docker Desktop läuft unter einem Benutzer und braucht Zugriff).'
+      return
+    }
+    & icacls.exe $Ordner /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' ('*' + $sid + ':(OI)(CI)M') | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw ('icacls meldet Code ' + $LASTEXITCODE) }
+    # Bestehende Inhalte (Update einer älteren Installation) auf die Vererbung des Ordners zurücksetzen.
+    # Ein leerer Ordner (Erstinstallation) meldet hier "keine Dateien" — kein Fehler.
+    & icacls.exe (Join-Path $Ordner '*') /reset /T /C /Q 2>&1 | Out-Null
+    $global:LASTEXITCODE = 0
+    Ok 'Installationsordner geschützt: nur SYSTEM, Administratoren und dieses Benutzerkonto haben Zugriff'
+  } catch {
+    $global:LASTEXITCODE = 0
+    Hinweis ('Die Zugriffsrechte des Installationsordners konnten nicht beschränkt werden: ' + $_.Exception.Message)
+    Hinweis 'Die Kassa läuft trotzdem. Nachholen: Kassa-Setup erneut ausführen.'
+  }
+}
+
 # Fernwartungs-Bibliothek (ops\fernwartung.ps1) finden: neben diesem Skript (Checkout),
 # im bereits gespiegelten Code, sonst direkt von GitHub (der Installer läuft über
 # Kassa-Setup.cmd allein aus %TEMP%). Gibt den Pfad zurück oder $null — NIE fatal.
@@ -247,6 +294,8 @@ Ok "Heruntergeladen nach $tempDir"
 # ── 3. In das Zielverzeichnis spiegeln (.env und Git-Reste bleiben verschont) ─
 Schritt "Installiere nach $Ziel"
 New-Item -ItemType Directory -Path $Ziel -Force | Out-Null
+# Rechte VOR dem Kopieren setzen: Code und .env erben sie dann von Anfang an (siehe Schuetze-Installationsordner)
+Schuetze-Installationsordner $Ziel
 # robocopy /MIR spiegelt den neuen Stand; .env wird ausgenommen (bleibt erhalten).
 robocopy $quelle $Ziel /MIR /XF .env /NFL /NDL /NJH /NJS /NP | Out-Null
 if ($LASTEXITCODE -ge 8) { Fehler "Kopieren fehlgeschlagen (robocopy-Code $LASTEXITCODE)"; exit 1 }

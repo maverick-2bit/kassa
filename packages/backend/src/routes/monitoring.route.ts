@@ -5,6 +5,7 @@ import os from 'node:os'
 import v8 from 'node:v8'
 import type { Db } from '../db/client.js'
 import { mandanten } from '../db/schema.js'
+import { istAktiverBetreiber } from '../auth/betreiber.js'
 import { holeBackupStatus, holeSpeicherStatus, type StatfsFn } from '../services/monitoring.service.js'
 import { fuehreKeepAliveDurch, holeDruckerKeepAliveStatus } from '../services/drucker-keepalive.service.js'
 
@@ -74,6 +75,28 @@ export const monitoringRoute: FastifyPluginAsync<MonitoringRouteOptions> = async
       return reply.status(403).send({ fehler: 'Kein Zugriff' })
     }
 
+    // Drucker-Keep-Alive: letzter Ping-Status + konfiguriertes Intervall — gehört dem Mandanten
+    const [mandant] = await opts.db
+      .select({ intervall: mandanten.druckerKeepAliveSekunden })
+      .from(mandanten)
+      .where(eq(mandanten.id, request.user.mandantId))
+      .limit(1)
+    const druckerKeepAlive = {
+      intervallSekunden: mandant?.intervall ?? 0,
+      drucker:           holeDruckerKeepAliveStatus(request.user.mandantId),
+    }
+
+    // Alles Weitere betrifft den ganzen Rechner (Laufzeit, Datenbank, Speicher, Prozessor, Platte,
+    // Alter der Sicherungen) und geht nur den Betreiber etwas an. Ein Mandanten-Admin bekommt den
+    // Teil, der seinem Betrieb gehört (die Drucker).
+    if (!(await istAktiverBetreiber(opts.db, request.user.sub, request.user.mandantId))) {
+      return reply.send({
+        timestamp: new Date().toISOString(),
+        version,
+        druckerKeepAlive,
+      })
+    }
+
     const uptimeSek = Math.floor((Date.now() - START_TIME) / 1000)
 
     // DB-Status + Latenz messen
@@ -104,21 +127,11 @@ export const monitoringRoute: FastifyPluginAsync<MonitoringRouteOptions> = async
     // Plattenplatz — Datenbank, Dumps und DEP-Archive teilen sich die Platte
     const speicher = await holeSpeicherStatus(opts.dbBackupDir, ...(opts.statfsFn ? [opts.statfsFn] : []))
 
-    // Drucker-Keep-Alive: letzter Ping-Status + konfiguriertes Intervall
-    const [mandant] = await opts.db
-      .select({ intervall: mandanten.druckerKeepAliveSekunden })
-      .from(mandanten)
-      .where(eq(mandanten.id, request.user.mandantId))
-      .limit(1)
-
     return reply.send({
       timestamp:  new Date().toISOString(),
       uptimeSek,
       version,
-      druckerKeepAlive: {
-        intervallSekunden: mandant?.intervall ?? 0,
-        drucker:           holeDruckerKeepAliveStatus(request.user.mandantId),
-      },
+      druckerKeepAlive,
       nodeVersion: process.version,
       platform:   `${process.platform}/${process.arch}`,
       db: {

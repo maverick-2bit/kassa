@@ -14,6 +14,12 @@ import type { ShopStripe } from '../../src/services/ticketshop.service.js'
 
 export const TEST_MASTER     = 'test-passphrase-long-enough'
 export const TEST_JWT_SECRET = 'test-jwt-secret-key-very-long-and-secret-12345'
+/**
+ * Einrichtungs-Schlüssel des Test-Servers: Tests, die einen ZWEITEN Mandanten per POST /api/setup anlegen
+ * (die Installation hat dann schon Benutzer), schicken ihn als Header — `{ 'x-setup-token': TEST_SETUP_TOKEN }`.
+ * Der erste Mandant einer leeren Datenbank braucht nichts.
+ */
+export const TEST_SETUP_TOKEN = 'test-setup-token-0123456789abcdef'
 
 export const TEST_MANDANT_ID = '10000000-0000-0000-0000-000000000001'
 export const TEST_USER_ID    = '20000000-0000-0000-0000-000000000001'
@@ -40,6 +46,8 @@ export interface BuildTestServerOptions {
   ticketshopStripe?: ShopStripe
   /** Globales Rate-Limit (Anfragen/Minute je Client) — Standard im Test: praktisch aus */
   rateLimitMax?: number
+  /** Limit der Einrichtungs-Route (Anfragen/Minute je Client) — Standard im Test: praktisch aus */
+  setupRateLimitMax?: number
   /** Log-Zeilen abfangen (dazu config.LOG_LEVEL setzen — Standard im Test: 'fatal') */
   logStream?: { write: (zeile: string) => void }
 }
@@ -56,6 +64,7 @@ export async function buildTestServer(db: Db, opts: BuildTestServerOptions = {})
       CORS_ORIGIN:       '*',
       NODE_ENV:          'test',
       MONITORING_TOKEN:  'test-monitoring-token',
+      SETUP_TOKEN:       TEST_SETUP_TOKEN,
       DB_BACKUP_MAX_AGE_STUNDEN:  26,
       DEP_BACKUP_MAX_AGE_STUNDEN: 26,
       ...opts.config,
@@ -71,6 +80,7 @@ export async function buildTestServer(db: Db, opts: BuildTestServerOptions = {})
     statfsFn: async () => ({ bsize: 1, blocks: 500 * 1024 ** 3, bavail: 300 * 1024 ** 3 }),
     ...(opts.ticketshopStripe ? { ticketshopStripe: opts.ticketshopStripe } : {}),
     ...(opts.rateLimitMax !== undefined && { rateLimitMax: opts.rateLimitMax }),
+    ...(opts.setupRateLimitMax !== undefined && { setupRateLimitMax: opts.setupRateLimitMax }),
     ...(opts.logStream && { logStream: opts.logStream }),
     setupDeps: {
       db,

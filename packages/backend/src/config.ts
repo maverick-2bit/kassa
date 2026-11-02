@@ -29,6 +29,17 @@ const ConfigSchema = z.object({
    * (Healthchecks.io, Uptime Kuma): 200 = gesund, 503 = degradiert.
    */
   MONITORING_TOKEN:  z.string().optional(),
+
+  /**
+   * Einrichtungs-Schlüssel (optional): Wer ihn im Header `x-setup-token` mitschickt, darf
+   * POST /api/setup auch auf einer SCHON EINGERICHTETEN Installation aufrufen und einen weiteren
+   * Mandanten anlegen — ohne als Betreiber angemeldet zu sein. Gedacht als Notweg und für Skripte
+   * und Tests; im Alltag legt der angemeldete Betreiber Mandanten an. Leer oder nicht gesetzt =
+   * dieser Weg ist zu. Mindestens 24 Zeichen (der Schlüssel schützt die ganze Installation).
+   */
+  SETUP_TOKEN: z.string().optional()
+    .transform(v => (v === undefined || v.trim() === '' ? undefined : v.trim()))
+    .refine(v => v === undefined || v.length >= 24, 'SETUP_TOKEN muss mindestens 24 Zeichen lang sein'),
   /** Schwelle (Stunden), ab der die letzte DB-Sicherung als veraltet gilt. */
   DB_BACKUP_MAX_AGE_STUNDEN:  z.coerce.number().int().min(1).default(26),
   /** Schwelle (Stunden), ab der die letzte DEP-Sicherung als veraltet gilt. */

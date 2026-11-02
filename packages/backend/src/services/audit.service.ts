@@ -38,6 +38,8 @@ export type AuditAktion =
   | 'see.automatisch_wiederhergestellt'
   /** Systemuhr ging nach: der Beleg bekam die Zeit des Vorbelegs */
   | 'beleg.zeit_angeglichen'
+  | 'setup.mandant_angelegt'
+  | 'setup.verweigert'
 
 export interface AuditEintrag {
   mandantId?: string | null

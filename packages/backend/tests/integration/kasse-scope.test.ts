@@ -15,7 +15,7 @@ import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import net from 'node:net'
 import { and, eq } from 'drizzle-orm'
 import type { FinanzOnlineClient } from '@kassa/rksv'
-import { buildTestServer, type TestServer } from '../helpers/testServer.js'
+import { buildTestServer, type TestServer, TEST_SETUP_TOKEN } from '../helpers/testServer.js'
 import { erstelleIntegrationsDb, type IntegrationsDb } from './helpers/integrationsDb.js'
 import {
   artikel, drucker, druckLog, kassen, tischplanBereiche, tischplanElemente,
@@ -81,7 +81,7 @@ describe('kasseId gegen den Mandanten prüfen (Integration, echtes PostgreSQL)',
 
     for (const nr of [1, 2] as const) {
       const setupRes = await srv.fastify.inject({
-        method: 'POST', url: '/api/setup', payload: setupInput(nr),
+        method: 'POST', url: '/api/setup', headers: { 'x-setup-token': TEST_SETUP_TOKEN }, payload: setupInput(nr),
       })
       if (setupRes.statusCode !== 201) {
         throw new Error(`Setup ${nr} fehlgeschlagen (${setupRes.statusCode}): ${setupRes.body}`)

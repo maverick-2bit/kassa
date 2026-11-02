@@ -30,6 +30,7 @@ import {
   isEmailAktiv,
   sendeReservierungsBestaetigung,
 } from '../services/email.service.js'
+import { oeffentlicheBasisUrl } from '../services/basis-url.js'
 
 export interface BuchungRouteOptions { db: Db; config: Config }
 
@@ -103,9 +104,12 @@ export const buchungRoute: FastifyPluginAsync<BuchungRouteOptions> = async (fast
 
       // Bestätigungs-E-Mail an Gast senden
       if (body.data.email && isEmailAktiv(opts.config)) {
-        const baseUrl = (request.headers['x-forwarded-proto'] ?? 'https') +
-          '://' + (request.headers['x-forwarded-host'] ?? request.hostname)
-        const stornierUrl = `${baseUrl}/buchung?kasseId=${p.data.kasseId}&stornieren=${res.onlineToken}`
+        // Link-Adresse aus der Konfiguration, NIE aus Host/X-Forwarded-Host (öffentliche Route: sonst
+        // verschickt der SMTP-Zugang des Betriebs Mails mit einem Stornierknopf auf eine fremde Seite)
+        const basis = oeffentlicheBasisUrl(opts.config)
+        const stornierUrl = basis
+          ? `${basis}/buchung?kasseId=${p.data.kasseId}&stornieren=${res.onlineToken}`
+          : undefined
 
         sendeReservierungsBestaetigung(body.data.email, {
           firmenname:     info.firmenname,
@@ -116,7 +120,7 @@ export const buchungRoute: FastifyPluginAsync<BuchungRouteOptions> = async (fast
           personenAnzahl: body.data.personenAnzahl,
           tischLabel:     null,
           notiz:          body.data.notiz ?? null,
-          stornierUrl,
+          ...(stornierUrl ? { stornierUrl } : {}),
         }, opts.config).catch((err) => {
           fastify.log.warn({ err }, 'Reservierungs-E-Mail konnte nicht gesendet werden')
         })

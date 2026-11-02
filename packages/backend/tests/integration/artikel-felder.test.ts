@@ -14,7 +14,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import type { FinanzOnlineClient } from '@kassa/rksv'
 import { ArtikelUpdateSchema, type ArtikelUpdate } from '@kassa/shared'
-import { buildTestServer, type TestServer } from '../helpers/testServer.js'
+import { buildTestServer, type TestServer, TEST_SETUP_TOKEN } from '../helpers/testServer.js'
 import { erstelleIntegrationsDb, type IntegrationsDb } from './helpers/integrationsDb.js'
 
 const PASSWORT = 'artikelfelder-passwort-123'
@@ -144,7 +144,7 @@ describe('Artikel anlegen und bearbeiten: alle Formularfelder werden gespeichert
     srv = await buildTestServer(idb.db, { finanzOnlineClient: mockFoClient() })
 
     for (const nr of [1, 2] as const) {
-      const setupRes = await srv.fastify.inject({ method: 'POST', url: '/api/setup', payload: setupInput(nr) })
+      const setupRes = await srv.fastify.inject({ method: 'POST', url: '/api/setup', headers: { 'x-setup-token': TEST_SETUP_TOKEN }, payload: setupInput(nr) })
       if (setupRes.statusCode !== 201) throw new Error(`Setup ${nr} (${setupRes.statusCode}): ${setupRes.body}`)
       const loginRes = await srv.fastify.inject({
         method: 'POST', url: '/api/auth/login', payload: { email: `admin${nr}@artikelfelder.at`, passwort: PASSWORT },

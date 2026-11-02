@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { QRCodeSVG } from 'qrcode.react'
 import { beginnFuer, type Artikel, type Kategorie, type SeeTyp } from '@kassa/shared'
@@ -8,6 +8,7 @@ import { FernwartungKarte } from '../components/FernwartungKarte'
 import { EinrichtungSeite } from '../components/einrichtung/EinrichtungSeite'
 import { formatAusfallDauer } from '../components/SeeStatusBanner'
 import { getKasseIdentity } from '../lib/kasse'
+import { useIstBetreiber } from '../lib/betreiber'
 import { useServerHost, merkeServerHost } from '../lib/serverHost'
 import { getAuth, hasModul, tagesRegel } from '../lib/auth'
 import { heuteKalendertag } from '../lib/geschaeftstag'
@@ -109,6 +110,7 @@ export function EinstellungenPage() {
           <DruckerStatusSektion />
           <DbBackupSektion />
           <MandantUebergabeSektion />
+          <MandantAnlegenSektion />
           <SystemInfoSektion />
         </>
       )}
@@ -1649,10 +1651,15 @@ function GastQrCodeSektion() {
 // DB-Backup
 // ---------------------------------------------------------------------------
 
+/**
+ * Die Sicherung ist ein Dump der GANZEN Datenbank (alle Mandanten) — nur für den Betreiber sichtbar und
+ * serverseitig auch nur für ihn erlaubt.
+ */
 function DbBackupSektion() {
-  const auth = getAuth()!
-  if (auth.user.rolle !== 'admin') return null
+  return useIstBetreiber() ? <DbBackupInhalt /> : null
+}
 
+function DbBackupInhalt() {
   const qc = useQueryClient()
   const [fehler, setFehler] = useState<string | null>(null)
   const [erfolg, setErfolg] = useState(false)
@@ -1829,6 +1836,7 @@ function MandantUebergabeSektion() {
   })
 
   const expBereit = expPw.length >= 10 && expPw === expPw2
+  const istBetreiber = useIstBetreiber()
 
   return (
     <section className="rounded-xl border border-line bg-panel p-6 space-y-5">
@@ -1871,6 +1879,12 @@ function MandantUebergabeSektion() {
           {expOk && <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-4 py-2" data-testid="uebergabe-export-ok">✓ Heruntergeladen: {expOk}{sperren ? ' — diese Kassa ist jetzt für Belege gesperrt.' : ''}</p>}
         </div>
 
+        {!istBetreiber ? (
+          <div className="space-y-2" data-testid="uebergabe-import-nur-betreiber">
+            <h3 className="text-sm font-semibold text-ink">Einspielen</h3>
+            <p className="text-sm text-ink-muted">Einen Mandanten einspielen darf nur der Betreiber dieser Kassa.</p>
+          </div>
+        ) : (
         <div className="space-y-3">
           <h3 className="text-sm font-semibold text-ink">Einspielen</h3>
           <Field label="Übergabedatei (.kuep)">
@@ -1894,14 +1908,37 @@ function MandantUebergabeSektion() {
             </p>
           )}
         </div>
+        )}
       </div>
     </section>
   )
 }
 
+/**
+ * Weiteren Mandanten anlegen — nur der Betreiber (serverseitig geprüft: POST /api/setup verlangt seine
+ * Anmeldung). Das Formular ist die Einrichtungsseite; hier steht nur der Weg dorthin.
+ */
+function MandantAnlegenSektion() {
+  const navigate = useNavigate()
+  if (!useIstBetreiber()) return null
+  return (
+    <section className="rounded-xl border border-line bg-panel p-6 space-y-3" data-testid="mandant-anlegen">
+      <div>
+        <h2 className="text-lg font-semibold text-ink">Weiteren Mandanten anlegen</h2>
+        <p className="mt-0.5 text-sm text-ink-muted">
+          Ein weiterer Betrieb auf dieser Kassa: eigener Mandant mit eigener Kasse, eigenem Administrator und
+          eigenem RKSV-Startbeleg. Das darf nur der Betreiber — die Einrichtungsseite ist für alle anderen gesperrt.
+        </p>
+      </div>
+      <Button variant="secondary" onClick={() => navigate('/setup')} data-testid="mandant-anlegen-oeffnen">
+        Einrichtungsseite öffnen →
+      </Button>
+    </section>
+  )
+}
+
 function AktualisierungSektion() {
-  const auth    = getAuth()!
-  const isAdmin = auth.user.rolle === 'admin'
+  const istBetreiber = useIstBetreiber()
   const qc      = useQueryClient()
   const [angefordert, setAngefordert] = useState(false)
   const [schnell, setSchnell]         = useState(false)
@@ -2007,7 +2044,7 @@ function AktualisierungSektion() {
       ) : s?.updateVerfuegbar ? (
         <div className="rounded-lg border border-brand-200 bg-brand-50 p-4">
           <p className="text-sm font-medium text-brand-800">Update verfügbar: v{s.neueste}</p>
-          {isAdmin ? (
+          {istBetreiber ? (
             bestaetigen ? (
               <div className="mt-3 space-y-2">
                 <p className="text-xs text-brand-700">
@@ -2027,7 +2064,7 @@ function AktualisierungSektion() {
               </div>
             )
           ) : (
-            <p className="mt-1 text-xs text-brand-600">Ein Update kann nur ein Administrator starten.</p>
+            <p className="mt-1 text-xs text-brand-600">Ein Update kann nur der Betreiber dieser Kassa starten.</p>
           )}
         </div>
       ) : (
@@ -2036,7 +2073,7 @@ function AktualisierungSektion() {
           {/* Notfall: Update auch OHNE angezeigte neuere Version anstoßen — der
               Updater holt immer den aktuellen GitHub-Stand; nur die Anzeige
               kann (Cache/CDN) nachhinken. Für dringende Umstellungen im Event. */}
-          {s && isAdmin && s.updaterVerfuegbar && (
+          {s && istBetreiber && s.updaterVerfuegbar && (
             erzwingen ? (
               <div className="space-y-2 border-t border-line pt-3">
                 <p className="text-xs text-ink-muted">
@@ -2077,8 +2114,7 @@ function AktualisierungSektion() {
 }
 
 function SystemInfoSektion() {
-  const auth = getAuth()!
-  const isAdmin = auth.user.rolle === 'admin'
+  const istBetreiber = useIstBetreiber()
 
   const health = useQuery({
     queryKey: ['health'],
@@ -2089,10 +2125,10 @@ function SystemInfoSektion() {
 
   const monitoring = useQuery({
     queryKey: ['monitoring'],
-    queryFn:  monitoringApi.get,
+    queryFn:  monitoringApi.system,
     refetchInterval: 10_000,
     retry: false,
-    enabled: isAdmin,
+    enabled: istBetreiber,
   })
 
   const dbOk     = health.data?.checks.db === 'ok'
@@ -2183,8 +2219,8 @@ function SystemInfoSektion() {
         )}
       </dl>
 
-      {/* Speicher-Widget (nur Admin, nur wenn Daten vorhanden) */}
-      {isAdmin && m && (
+      {/* Speicher-Widget (nur Betreiber, nur wenn Daten vorhanden) */}
+      {istBetreiber && m && (
         <div className="space-y-3 border-t border-line pt-4">
           <p className="text-xs font-semibold text-ink-muted uppercase tracking-wide">Prozess-Speicher</p>
 
@@ -2300,8 +2336,8 @@ function SystemInfoSektion() {
         </div>
       )}
 
-      {/* Für Nicht-Admins: nur Letzter-Check-Zeit */}
-      {!isAdmin && health.data && (
+      {/* Für alle außer dem Betreiber: nur Letzter-Check-Zeit */}
+      {!istBetreiber && health.data && (
         <p className="text-xs text-ink-subtle">
           Letzter Check: {new Date(health.data.timestamp).toLocaleTimeString('de-AT')}
         </p>

@@ -35,7 +35,7 @@ import type { Config } from '../../src/config.js'
 import { auditLogs, kassen, mandantTagesbeginn } from '../../src/db/schema.js'
 import { datumsBereich, geschaeftstagAusdruck } from '../../src/db/datum.js'
 import { fuehreFaelligeAutoAbschluesseDurch } from '../../src/services/auto-abschluss.service.js'
-import { buildTestServer, type TestServer } from '../helpers/testServer.js'
+import { buildTestServer, type TestServer, TEST_SETUP_TOKEN } from '../helpers/testServer.js'
 import { erstelleIntegrationsDb, type IntegrationsDb } from './helpers/integrationsDb.js'
 
 function mockFoClient(): FinanzOnlineClient {
@@ -68,7 +68,7 @@ describe('Geschäftstag (Integration, echtes PostgreSQL)', () => {
   async function richteMandantEin(nr: number): Promise<Mandant> {
     const email = `admin${nr}@geschaeftstag.at`
     const setup = await srv.fastify.inject({
-      method: 'POST', url: '/api/setup',
+      method: 'POST', url: '/api/setup', headers: { 'x-setup-token': TEST_SETUP_TOKEN },
       payload: {
         firmenname: `Geschäftstag ${nr} GmbH`,
         uid:        `ATU9999993${nr}`,

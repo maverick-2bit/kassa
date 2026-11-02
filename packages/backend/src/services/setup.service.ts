@@ -7,7 +7,7 @@
  *   3. SEE-Private-Key wird vor dem Speichern mit Master-Key verschlüsselt
  */
 
-import { eq, and } from 'drizzle-orm'
+import { eq, and, sql } from 'drizzle-orm'
 import {
   kasseAutomatischEinrichten,
   type KasseEinrichtenOptionen,
@@ -27,10 +27,28 @@ export interface SetupServiceDeps {
   rksvOptionen?: Pick<KasseEinrichtenOptionen, 'finanzOnlineClient'>
 }
 
+/**
+ * Womit der Aufrufer einrichten darf (entscheidet die Route, setzt der Service durch):
+ *  - 'offen'      : niemand hat sich ausgewiesen — erlaubt NUR, solange es noch keinen Benutzer gibt
+ *  - 'betreiber'  : als Betreiber angemeldet — weiterer Mandant
+ *  - 'schluessel' : Einrichtungs-Schlüssel (SETUP_TOKEN) — weiterer Mandant
+ */
+export type SetupErlaubnis = 'offen' | 'betreiber' | 'schluessel'
+
+/** Die Installation hat inzwischen Benutzer, der Aufrufer war aber nur für die leere Installation berechtigt. */
+export class SetupGesperrtError extends Error {
+  constructor() { super('Diese Kassa ist bereits eingerichtet') }
+}
+
+/** Advisory-Lock-Schlüssel: Einrichtungen laufen nacheinander (siehe Transaktion in fuehreSetupDurch). */
+const SETUP_SPERRE = 'kassa:setup'
+
 export async function fuehreSetupDurch(
   input: SetupInput,
   deps:  SetupServiceDeps,
   onSchritt?: (s: EinrichtungsSchrittDto) => void,
+  /** Standard ist die schwächste Erlaubnis: ein Aufrufer, der nichts angibt, richtet nur eine leere Installation ein */
+  erlaubnis: SetupErlaubnis = 'offen',
 ): Promise<SetupResponse> {
 
   // Prüfen ob UID bereits aktiv registriert ist
@@ -116,6 +134,16 @@ export async function fuehreSetupDurch(
   const passwordHash = await hashPassword(input.admin.passwort)
 
   const result = await deps.db.transaction(async (tx) => {
+    // 0. Eine Einrichtung nach der anderen — und "gibt es schon Benutzer?" erst HIER prüfen, in
+    //    derselben Transaktion wie das Anlegen. Die Prüfung der Route kam vor der langen
+    //    RKSV-Einrichtung: zwei gleichzeitige Erst-Einrichtungen hätten beide bestanden, und die
+    //    zweite hätte einen weiteren Mandanten samt Admin an der Sperre vorbei angelegt.
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${SETUP_SPERRE}))`)
+    const [vorhandener] = await tx.select({ id: users.id }).from(users).limit(1)
+    if (erlaubnis === 'offen' && vorhandener) throw new SetupGesperrtError()
+    // Der erste Benutzer der Installation ist ihr Betreiber; weitere Mandanten bekommen normale Admins
+    const ersteEinrichtung = vorhandener === undefined
+
     // 1. Mandant
     const [mandant] = await tx.insert(mandanten).values({
       firmenname:          input.firmenname,
@@ -159,6 +187,7 @@ export async function fuehreSetupDurch(
       rolle:          'admin',
       berechtigungen: [],
       aktiv:          true,
+      istBetreiber:   ersteEinrichtung,
     })
 
     // 4. Startbeleg

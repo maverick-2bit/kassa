@@ -19,7 +19,7 @@ import net from 'node:net'
 import { eq } from 'drizzle-orm'
 import type { FinanzOnlineClient } from '@kassa/rksv'
 import type { BonProblem, KasseEvent } from '@kassa/shared'
-import { buildTestServer, type TestServer } from '../helpers/testServer.js'
+import { buildTestServer, type TestServer, TEST_SETUP_TOKEN } from '../helpers/testServer.js'
 import { erstelleIntegrationsDb, type IntegrationsDb } from './helpers/integrationsDb.js'
 import { bonProbleme } from '../../src/db/schema.js'
 import { onKasseEvent } from '../../src/sse/event-bus.js'
@@ -109,7 +109,7 @@ describe('Bon-Probleme: Direktverkauf-Beleg, Gast- und SB-Bestellung (Integratio
 
     const setup = async (suffix: string, uid: string, email: string, passwort: string) => {
       const r = await srv.fastify.inject({
-        method: 'POST', url: '/api/setup',
+        method: 'POST', url: '/api/setup', headers: { 'x-setup-token': TEST_SETUP_TOKEN },
         payload: {
           firmenname: `BonProbleme ${suffix} GmbH`, uid, kassenId: `BP-${suffix}`,
           finanzOnline: { teilnehmerId: 'T', benutzerkennung: 'B', pin: 'P' }, umgebung: 'test',

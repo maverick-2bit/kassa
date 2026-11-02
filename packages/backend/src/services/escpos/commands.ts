@@ -181,12 +181,20 @@ const CP858_MAP: Record<string, number> = {
 /**
  * Kodiert einen UTF-8-String nach CP858.
  * Nicht-darstellbare Zeichen werden durch '?' ersetzt.
+ *
+ * Steuerzeichen (0x00–0x1F außer dem Zeilenvorschub, und 0x7F) werden WEGGELASSEN: Text ist Nutzdaten und
+ * darf dem Drucker keine Befehle unterschieben. ESC (0x1B) und GS (0x1D) leiten Befehle ein — die Schublade
+ * öffnen (ESC p), den Bon abschneiden (GS V), Barcodes drucken, Speicher und Einstellungen des Druckers
+ * beschreiben. Texte kommen auch von Gästen (Tischnummer der Gast-Bestellung, Anmerkungen); vorher genügte
+ * eine präparierte Tischnummer, um an jedem Bondrucker der Kasse Befehle auszulösen.
  */
 export function encodeText(s: string): Buffer {
   const bytes: number[] = []
   for (const ch of s) {
     const cp = ch.codePointAt(0)!
-    if (cp < 0x80) {
+    if (cp < 0x20 || cp === 0x7F) {
+      if (cp === LF) bytes.push(LF)
+    } else if (cp < 0x80) {
       bytes.push(cp)
     } else if (CP858_MAP[ch] !== undefined) {
       bytes.push(CP858_MAP[ch])

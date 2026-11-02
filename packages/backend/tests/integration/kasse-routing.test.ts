@@ -13,7 +13,7 @@ import type { AddressInfo } from 'node:net'
 import { randomUUID } from 'node:crypto'
 import { eq } from 'drizzle-orm'
 import type { FinanzOnlineClient } from '@kassa/rksv'
-import { buildTestServer, type TestServer } from '../helpers/testServer.js'
+import { buildTestServer, type TestServer, TEST_SETUP_TOKEN } from '../helpers/testServer.js'
 import { erstelleIntegrationsDb, type IntegrationsDb } from './helpers/integrationsDb.js'
 import { kasseRouting, kassen } from '../../src/db/schema.js'
 
@@ -80,7 +80,7 @@ describe('Kassen-Ausnahmen beim Bon-Routing (Integration, echtes PostgreSQL + TC
     b = await druckerAttrappe()
 
     const setupRes = await srv.fastify.inject({
-      method: 'POST', url: '/api/setup',
+      method: 'POST', url: '/api/setup', headers: { 'x-setup-token': TEST_SETUP_TOKEN },
       payload: {
         firmenname: 'KasseRouting GmbH', uid: 'ATU99999971', kassenId: 'KR-001',
         finanzOnline: { teilnehmerId: 'T', benutzerkennung: 'B', pin: 'P' }, umgebung: 'test',
@@ -369,7 +369,7 @@ describe('Kassen-Ausnahmen beim Bon-Routing (Integration, echtes PostgreSQL + TC
   describe('Mandanten-Isolation', () => {
     it('ein zweiter Mandant sieht keine Kassen, Ausnahmen oder Ziele des ersten und kann sie nicht ändern', async () => {
       const setup2 = await srv.fastify.inject({
-        method: 'POST', url: '/api/setup',
+        method: 'POST', url: '/api/setup', headers: { 'x-setup-token': TEST_SETUP_TOKEN },
         payload: {
           firmenname: 'Fremd GmbH', uid: 'ATU99999972', kassenId: 'FR-001',
           finanzOnline: { teilnehmerId: 'T', benutzerkennung: 'B', pin: 'P' }, umgebung: 'test',

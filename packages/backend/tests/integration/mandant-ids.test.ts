@@ -23,7 +23,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import { eq, sql } from 'drizzle-orm'
 import type { FinanzOnlineClient } from '@kassa/rksv'
-import { buildTestServer, type TestServer } from '../helpers/testServer.js'
+import { buildTestServer, type TestServer, TEST_SETUP_TOKEN } from '../helpers/testServer.js'
 import { erstelleIntegrationsDb, type IntegrationsDb } from './helpers/integrationsDb.js'
 import {
   bonierdrucker, kasseBonierdruckerSichtbarkeit, kassekategorieSichtbarkeit, kassen, kategorien,
@@ -129,7 +129,7 @@ describe('IDs aus dem Request gegen den Mandanten prüfen (Integration, echtes P
 
     for (const nr of [1, 2] as const) {
       const setupRes = await srv.fastify.inject({
-        method: 'POST', url: '/api/setup', payload: setupInput(nr),
+        method: 'POST', url: '/api/setup', headers: { 'x-setup-token': TEST_SETUP_TOKEN }, payload: setupInput(nr),
       })
       if (setupRes.statusCode !== 201) {
         throw new Error(`Setup ${nr} fehlgeschlagen (${setupRes.statusCode}): ${setupRes.body}`)

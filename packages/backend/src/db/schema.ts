@@ -664,6 +664,17 @@ export const users = pgTable('users', {
   /** Fein-granulare Berechtigungen als JSON-Array (z. B. ["tische","kasse"]) */
   berechtigungen: jsonb('berechtigungen').notNull(),
   aktiv:          boolean('aktiv').notNull().default(true),
+  /**
+   * Betreiber der Installation (wer den Kassen-PC betreibt, nicht ein Mandant unter vielen):
+   * darf als Einziger die Datenbank sichern/herunterladen (alle Mandanten!), die Kassa
+   * aktualisieren, die Systemwerte sehen und weitere Mandanten anlegen.
+   *
+   * NUR gesetzt durch die Migration (Admins des ältesten Mandanten), die Ersteinrichtung
+   * (erster Benutzer überhaupt) und per SQL — keine API schreibt sie, und der Mandanten-
+   * Import verwirft sie (services/mandant-transfer.service.ts), sonst könnte sich jeder
+   * Admin mit einer präparierten Übergabedatei selbst zum Betreiber machen.
+   */
+  istBetreiber:   boolean('ist_betreiber').notNull().default(false),
   createdAt:      timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt:      timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({

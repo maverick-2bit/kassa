@@ -11,7 +11,7 @@ import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import { eq } from 'drizzle-orm'
 import type { FinanzOnlineClient } from '@kassa/rksv'
 import { artikel, kassen, kasseFavoriten, kategorien } from '../../src/db/schema.js'
-import { buildTestServer, type TestServer } from '../helpers/testServer.js'
+import { buildTestServer, type TestServer, TEST_SETUP_TOKEN } from '../helpers/testServer.js'
 import { erstelleIntegrationsDb, type IntegrationsDb } from './helpers/integrationsDb.js'
 import { flacherKassaZustand, ladeAselloLayout } from '../helpers/layout-kassa.js'
 
@@ -60,7 +60,7 @@ describe('Layout-Import (Integration, echtes PostgreSQL)', () => {
     idb = await erstelleIntegrationsDb()
     srv = await buildTestServer(idb.db, { finanzOnlineClient: mockFoClient() })
     for (const nr of [1, 2]) {
-      const s = await srv.fastify.inject({ method: 'POST', url: '/api/setup', payload: setupInput(nr) })
+      const s = await srv.fastify.inject({ method: 'POST', url: '/api/setup', headers: { 'x-setup-token': TEST_SETUP_TOKEN }, payload: setupInput(nr) })
       if (s.statusCode !== 201) throw new Error(`Setup ${nr} (${s.statusCode}): ${s.body}`)
       const login = (await srv.fastify.inject({
         method: 'POST', url: '/api/auth/login',
@@ -240,7 +240,7 @@ describe('Kategorie-Routen: Untergruppen + Hex-Farben (Integration)', () => {
     idb = await erstelleIntegrationsDb()
     srv = await buildTestServer(idb.db, { finanzOnlineClient: mockFoClient() })
     for (const nr of [3, 4]) {
-      const s = await srv.fastify.inject({ method: 'POST', url: '/api/setup', payload: { ...setupInput(nr), kassenId: `LK-00${nr}`, uid: `ATU9999994${nr}`, firmenname: `LK ${nr}` } })
+      const s = await srv.fastify.inject({ method: 'POST', url: '/api/setup', headers: { 'x-setup-token': TEST_SETUP_TOKEN }, payload: { ...setupInput(nr), kassenId: `LK-00${nr}`, uid: `ATU9999994${nr}`, firmenname: `LK ${nr}` } })
       if (s.statusCode !== 201) throw new Error(`Setup ${nr} (${s.statusCode}): ${s.body}`)
       const login = (await srv.fastify.inject({
         method: 'POST', url: '/api/auth/login',

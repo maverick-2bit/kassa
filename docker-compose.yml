@@ -46,6 +46,8 @@ services:
       DB_BACKUP_RETENTION: ${DB_BACKUP_RETENTION:-30}
       DEP_BACKUP_DIR:    /data/dep-backups
       MONITORING_TOKEN:  ${MONITORING_TOKEN:-}
+      # Einrichtungs-Schlüssel (leer = aus): weiterer Mandant ohne Betreiber-Anmeldung, siehe .env.example
+      SETUP_TOKEN:       ${SETUP_TOKEN:-}
       # Kontroll-Verzeichnis für den In-App-Updater (geteiltes Volume mit 'updater')
       UPDATE_CONTROL_DIR: /control
       # Fernwartungs-Status (fernwartung-status.json, vom Installer geschrieben): dasselbe

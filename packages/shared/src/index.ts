@@ -664,6 +664,8 @@ export {
   SeeConfigSchema,
   SeeConfigUpdateSchema,
   SeeTestErgebnisSchema,
+  ATRUST_ERLAUBTE_HOSTS,
+  istErlaubteAtrustBasisUrl,
 } from './schemas/see.js'
 export type {
   SeeTyp,

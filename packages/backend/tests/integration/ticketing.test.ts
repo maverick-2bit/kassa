@@ -15,7 +15,7 @@ import jsQR from 'jsqr'
 import { PNG } from 'pngjs'
 import type { FinanzOnlineClient } from '@kassa/rksv'
 import { alterAm, wienerTag } from '@kassa/shared'
-import { buildTestServer, type TestServer } from '../helpers/testServer.js'
+import { buildTestServer, type TestServer, TEST_SETUP_TOKEN } from '../helpers/testServer.js'
 import { erstelleIntegrationsDb, type IntegrationsDb } from './helpers/integrationsDb.js'
 import { auditLogs, tickets } from '../../src/db/schema.js'
 
@@ -75,7 +75,7 @@ describe('Ticketing (Integration, echtes PostgreSQL)', () => {
       config: { SMTP_HOST: 'smtp.test', SMTP_USER: 'u', SMTP_PASS: 'p', SMTP_FROM: 'tickets@test.at' },
     })
     for (const nr of [1, 2]) {
-      const setup = await srv.fastify.inject({ method: 'POST', url: '/api/setup', payload: setupInput(nr) })
+      const setup = await srv.fastify.inject({ method: 'POST', url: '/api/setup', headers: { 'x-setup-token': TEST_SETUP_TOKEN }, payload: setupInput(nr) })
       if (setup.statusCode !== 201) throw new Error(`Setup ${nr}: ${setup.body}`)
       const login = (await srv.fastify.inject({
         method: 'POST', url: '/api/auth/login',
