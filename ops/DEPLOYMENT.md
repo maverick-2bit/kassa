@@ -405,6 +405,13 @@ Container, die Daten (Postgres-Volume) bleiben erhalten.
 
 - **Backend „unhealthy":** `docker compose logs backend` — meist DB-URL/Secret
   falsch oder `MASTER_PASSPHRASE` nachträglich geändert.
+- **„Jetzt aktualisieren" / Datenbank-Backups / „Weiteren Mandanten anlegen" fehlen, oder
+  „Das darf nur der Betreiber dieser Kassa":** das angemeldete Konto ist nicht als Betreiber
+  markiert (Abschnitt 4b). Auf dem Kassen-PC prüfen und setzen:
+  `docker compose exec postgres psql -U kassa -d kassa -c "SELECT email, ist_betreiber FROM users WHERE rolle = 'admin'"`
+  bzw. `UPDATE users SET ist_betreiber = true WHERE email = '…'`.
+- **Die Einrichtungsseite (`/setup`) sagt „bereits eingerichtet":** gewollt — auf einer eingerichteten
+  Installation legt nur der angemeldete Betreiber weitere Mandanten an (Abschnitt 4b).
 - **App lädt, aber keine Daten:** prüfen, dass die App den Backend-Proxy erreicht
   (`docker compose logs <app>`), und `CORS_ORIGIN` zur aufgerufenen URL passt.
 - **DB-Backup/Restore:** die Sicherungen liegen im Volume `db_backups`; Restore

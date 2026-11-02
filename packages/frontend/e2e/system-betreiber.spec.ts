@@ -154,8 +154,12 @@ test.describe.serial('Betreiber der Installation', () => {
     await expect(page.getByText('Noch keine Kasse?')).toHaveCount(0)
 
     // API: ein Kontext OHNE den Einrichtungs-Schlüssel der Testläufe. Weder anonym noch mit dem Token eines
-    // normalen Admins wird irgendetwas angelegt.
-    const ohneSchluessel = await playwrightRequest.newContext({ baseURL: 'http://127.0.0.1:5173' })
+    // normalen Admins wird irgendetwas angelegt. (Auch playwright.request.newContext() erbt die
+    // extraHTTPHeaders der Konfiguration — ein leerer Wert überschreibt den Schlüssel; ohne das legte dieser
+    // "anonyme" Aufruf mit dem Schlüssel des Testlaufs tatsächlich einen Mandanten an: 201.)
+    const ohneSchluessel = await playwrightRequest.newContext({
+      baseURL: 'http://127.0.0.1:5173', extraHTTPHeaders: { 'x-setup-token': '' },
+    })
     try {
       const anonym = await ohneSchluessel.post('/api/setup', { data: einrichtung() })
       expect(anonym.status()).toBe(403)
