@@ -55,6 +55,6 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: rksv-mutation-${{ github.run_id }}
-          retention-days: 60
+          retention-days: 30
           if-no-files-found: warn
           path: packages/rksv/reports/mutation

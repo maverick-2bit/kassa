@@ -125,17 +125,24 @@ jobs:
             echo "⚠️ Kontrolllauf des BMF-Prüftools mit den BMF-Beispieldaten ist FEHLGESCHLAGEN — die Ergebnisse des Prüftools zu unseren Daten sind unbrauchbar (Details im Artefakt)." >> "$GITHUB_STEP_SUMMARY"
           fi
 
+      # Artefakte zählen gegen das Speicherkontingent des (privaten) Repositorys: Berichte, Zusammenfassungen (auch bmf-zusammenfassung.json
+      # mit den ersten 200 beanstandeten Prüfungen), Konsolenausgabe und Export-Dateien kommen mit — nicht die Einzelergebnisse des Prüftools
+      # je Beleg (4 Dateien je Beleg + DEP-full.json, bei langen Läufen zig Megabyte). Wer sie braucht, lässt das Skript lokal laufen
+      # (node scripts/rksv/bmf-pruefer.mjs --dep … --crypto … --out …).
       - name: Berichte als Artefakt
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
         with:
           name: rksv-burnin-${{ github.run_id }}
-          retention-days: 30
+          retention-days: 14
           if-no-files-found: warn
           path: |
             packages/backend/test-results/burnin-*
             ${{ runner.temp }}/bmf-kontrolle
             ${{ runner.temp }}/bmf-kassa
+            !**/DEP-full.json
+            !**/*_full.json
+            !**/[0-9][0-9][0-9][0-9]_*.json
 
       # Ein misslungener Kontrolllauf macht die Nacht rot, auch wenn der Burn-in selbst sauber war (und auch dann, wenn der
       # Burn-in rot ist: ohne `!cancelled()` würde dieser Schritt nach einem früheren Fehler übersprungen).
