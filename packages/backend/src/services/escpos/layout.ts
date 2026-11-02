@@ -30,18 +30,12 @@
  */
 
 import { Buffer } from 'node:buffer'
-import { MWST_LABELS, LIEFERBESTELLUNG_PROVIDER_LABELS, wienerZeit } from '@kassa/shared'
+import { MWST_LABELS, MWST_PROZENT_SATZ, LIEFERBESTELLUNG_PROVIDER_LABELS, wienerZeit } from '@kassa/shared'
 import type { BelegResponse, KassenbuchResponse, LieferbestellungResponse, MwStSatz, Tagesabschluss } from '@kassa/shared'
 import * as ep from './commands.js'
 
-/** Steuersätze in Prozent gemäß österr. UStG */
-const MWST_SAETZE: Record<MwStSatz, number> = {
-  normal:      20,
-  ermaessigt1: 10,
-  ermaessigt2: 13,
-  null:         0,
-  besonders:   19,
-}
+/** Steuersätze in Prozent gemäß österr. UStG (eine Tabelle für alle: @kassa/shared) */
+const MWST_SAETZE: Record<MwStSatz, number> = MWST_PROZENT_SATZ
 
 export interface DruckerKontext {
   /** Breite des Druckers in Zeichen (32 für 58mm, 42 oder 48 für 80mm) */
@@ -569,10 +563,15 @@ function truncate(s: string, maxLen: number): string {
   return s.length <= maxLen ? s : s.slice(0, Math.max(0, maxLen - 1)) + '…'
 }
 
+/**
+ * `TT.MM.JJJJ hh:mm` in Wiener Ortszeit — NICHT in der Zeitzone des Prozesses:
+ * ein Container ohne `TZ` läuft in UTC, und auf dem Bon stünde die Uhrzeit 1 bis
+ * 2 Stunden daneben (um Mitternacht auch der falsche Tag).
+ */
 function formatDatum(iso: string): string {
-  const d = new Date(iso)
-  const pad = (n: number) => n.toString().padStart(2, '0')
-  return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+  const w = wienerZeit(new Date(iso))
+  const [j, m, t] = w.datum.split('-')
+  return `${t}.${m}.${j} ${w.hm}`
 }
 
 function formatDatumNur(datum: string): string {
@@ -1095,6 +1094,7 @@ function ustAufteilung(beleg: BelegResponse): UStEintrag[] {
     ['normal',      beleg.betraege.normal],
     ['ermaessigt1', beleg.betraege.ermaessigt1],
     ['ermaessigt2', beleg.betraege.ermaessigt2],
+    ['ermaessigt3', beleg.betraege.ermaessigt3 ?? 0],
     ['null',        beleg.betraege.null],
     ['besonders',   beleg.betraege.besonders],
   ]

@@ -44,8 +44,13 @@ RUN pnpm --filter @kassa/backend deploy --prod /standalone
 FROM node:22-alpine AS runtime
 WORKDIR /app
 
-# postgresql-client für pg_dump (DB-Backups)
-RUN apk add --no-cache postgresql-client
+# Wiener Ortszeit, auch wenn das Image ohne Compose gestartet wird (sonst UTC).
+# QR-Code und Bons rechnen ohnehin fest in Europe/Vienna; die Zone des Prozesses
+# gilt für alles Übrige (lokale Zeitangaben in Mails, Tageswechsel von Nummernkreisen).
+ENV TZ=Europe/Vienna
+
+# postgresql-client für pg_dump (DB-Backups), tzdata für die Zeitzone oben
+RUN apk add --no-cache postgresql-client tzdata
 
 # Nur das Nötigste:  node_modules aus dem Deploy-Schritt …
 COPY --from=builder /standalone/node_modules ./node_modules

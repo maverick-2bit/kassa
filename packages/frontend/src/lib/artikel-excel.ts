@@ -36,6 +36,7 @@ const MWST_LABEL_ZU_CODE: Record<string, MwStSatz> = {
   [MWST_LABELS.normal]:      'normal',
   [MWST_LABELS.ermaessigt1]: 'ermaessigt1',
   [MWST_LABELS.ermaessigt2]: 'ermaessigt2',
+  [MWST_LABELS.ermaessigt3]: 'ermaessigt3',
   [MWST_LABELS.null]:        'null',
   [MWST_LABELS.besonders]:   'besonders',
   // Kurzformen
@@ -45,12 +46,17 @@ const MWST_LABEL_ZU_CODE: Record<string, MwStSatz> = {
   '10 %':      'ermaessigt1',
   '13%':       'ermaessigt2',
   '13 %':      'ermaessigt2',
+  '4,9%':      'ermaessigt3',
+  '4,9 %':     'ermaessigt3',
+  '4.9%':      'ermaessigt3',
+  '4.9 %':     'ermaessigt3',
   '0%':        'null',
   '0 %':       'null',
   // Interne Codes direkt
   normal:      'normal',
   ermaessigt1: 'ermaessigt1',
   ermaessigt2: 'ermaessigt2',
+  ermaessigt3: 'ermaessigt3',
   null:        'null',
   besonders:   'besonders',
 }

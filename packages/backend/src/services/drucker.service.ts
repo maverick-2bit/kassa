@@ -430,11 +430,12 @@ export function belegRowZuDto(row: typeof belege.$inferSelect): BelegResponse {
     normal:      row.betragNormalCent,
     ermaessigt1: row.betragErmaessigt1Cent,
     ermaessigt2: row.betragErmaessigt2Cent,
+    ermaessigt3: row.betragErmaessigt3Cent,
     null:        row.betragNullCent,
     besonders:   row.betragBesondersCent,
   }
   const gesamtbetragCent =
-    betraege.normal + betraege.ermaessigt1 + betraege.ermaessigt2 + betraege.null + betraege.besonders
+    betraege.normal + betraege.ermaessigt1 + betraege.ermaessigt2 + betraege.ermaessigt3 + betraege.null + betraege.besonders
 
   return {
     id:                          row.id,

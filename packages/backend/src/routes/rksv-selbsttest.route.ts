@@ -21,6 +21,7 @@ const Query = z.object({ kasseId: z.string().guid() })
 const STATUS_LABEL: Record<string, string> = {
   ausfall:       'SEE-Ausfall (erwartet unsigniert)',
   der_altformat: 'Altformat DER (kryptographisch korrekt)',
+  zeit_altformat: 'Uhrzeit im QR-Code in UTC statt Ortszeit (kryptographisch korrekt)',
   ungueltig:     'UNGÜLTIG',
 }
 

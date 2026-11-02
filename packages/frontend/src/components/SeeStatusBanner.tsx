@@ -56,7 +56,8 @@ export function SeeStatusBanner() {
         <span className="text-red-100">
           Belege werden derzeit <strong>nicht signiert</strong>
           {dauer && <> · seit {dauer}</>}
-          {status.fonMeldungNoetig && <> · <strong>FinanzOnline-Meldung nötig (&gt;48 h)</strong></>}
+          {status.fonMeldungNoetig && <> · <strong>FinanzOnline-Meldung nötig (&gt;48 h)</strong>}
+          {status.automatischePruefung && <> · die Kassa prüft die Verbindung selbst und stellt die Signatur wieder her</>}
         </span>
         {fehler && <span className="text-red-100 italic">— {fehler}</span>}
         <button

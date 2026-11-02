@@ -192,6 +192,7 @@ export function belegToInsert(mandantId: string, kasseId: string, b: SignedBeleg
     betragNormalCent:            b.betraege.normal,
     betragErmaessigt1Cent:       b.betraege.ermaessigt1,
     betragErmaessigt2Cent:       b.betraege.ermaessigt2,
+    betragErmaessigt3Cent:       b.betraege.ermaessigt3,
     betragNullCent:              b.betraege.null,
     betragBesondersCent:         b.betraege.besonders,
     umsatzzaehlerVerschluesselt: b.umsatzzaehlerVerschluesselt,

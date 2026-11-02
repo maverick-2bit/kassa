@@ -165,6 +165,7 @@ export function erstelleDEP131Export(
         NormalCent:      b.betraege.normal,
         Ermaessigt1Cent: b.betraege.ermaessigt1,
         Ermaessigt2Cent: b.betraege.ermaessigt2,
+        Ermaessigt3Cent: b.betraege.ermaessigt3,
         NullCent:        b.betraege.null,
         BesondersCent:   b.betraege.besonders,
       },

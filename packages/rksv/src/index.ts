@@ -51,6 +51,8 @@ export {
   ATRUST_PRODUKTION_BASIS_URL,
 } from './see/signatur-einheit.js'
 export type { SignaturEinheit, ZertifikatInfo, ATrustHsmConfig } from './see/signatur-einheit.js'
+export { klassifiziereSeeFehler } from './see/fehlerklasse.js'
+export type { SeeFehlerKlasse } from './see/fehlerklasse.js'
 export type { SEEGenerierungsOptionen } from './see.js'
 
 // Beleg
@@ -63,14 +65,27 @@ export {
   erstelleNullbeleg,
   verifiziereBelegSignatur,
   verifiziereBelegSignaturAltDer,
+  pruefeBelegSignatur,
   verifiziereQrCode,
   jwsSigningInput,
   qrCodeZuJwsCompact,
   JWS_HEADER_B64URL,
   SEE_AUSFALL_SIGNATUR,
   istAusfallBeleg,
+  SignaturUngueltigError,
 } from './beleg.js'
-export type { SignierungsKontext, VerifizierbarerBeleg } from './beleg.js'
+export type { SignierungsKontext, VerifizierbarerBeleg, BelegSignaturPruefung } from './beleg.js'
+
+// Wiener Ortszeit (QR-Code, Bons) — unabhängig von der Zeitzone des Prozesses
+export {
+  wienerUhr,
+  formatBelegDatumUhrzeit,
+  formatWienerDatum,
+  formatWienerDatumUhrzeit,
+  formatWienerUhrzeit,
+  formatWienerUhrzeitSekunden,
+} from './zeit.js'
+export type { WienerUhr } from './zeit.js'
 
 // DEP7 + DEP131
 export { erstelleDEP7Export, mergeDEP7Exports, validiereDEP7, dep7ZuJson, dep7AusJson, erstelleDEP131Export, dep131ZuJson } from './dep.js'

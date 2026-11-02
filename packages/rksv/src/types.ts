@@ -8,13 +8,21 @@
 // Steuersätze
 // ---------------------------------------------------------------------------
 
-export type MwStSatz = 'normal' | 'ermaessigt1' | 'ermaessigt2' | 'null' | 'besonders'
+export type MwStSatz = 'normal' | 'ermaessigt1' | 'ermaessigt2' | 'ermaessigt3' | 'null' | 'besonders'
 
-/** Prozentwerte der österreichischen MwSt-Sätze */
+/**
+ * Prozentwerte der österreichischen MwSt-Sätze.
+ *
+ * `ermaessigt3` = 4,9 % für ausgewählte Nahrungsmittel (Lieferungen, UStG Anlage 3), seit
+ * 1.7.2026. Die RKSV kennt dafür kein eigenes Feld: Anlage 1 Z 4 führt 4,9 % im Feld
+ * „Betrag-Satz-Besonders (19 %, 4,9 %)". Die Kassa rechnet und berichtet getrennt von
+ * `besonders` und fasst beide erst im maschinenlesbaren Code und im DEP zusammen.
+ */
 export const MWST_PROZENT: Record<MwStSatz, number> = {
   normal:      20,
   ermaessigt1: 10,
   ermaessigt2: 13,
+  ermaessigt3: 4.9,
   null:         0,
   besonders:   19,
 } as const
@@ -70,9 +78,15 @@ export interface BetraegeSummen {
   ermaessigt1: number
   /** 13 % */
   ermaessigt2: number
+  /**
+   * 4,9 % (ausgewählte Nahrungsmittel, ab 1.7.2026). Wird im QR-Code und im DEP mit
+   * `besonders` zu EINEM Feld summiert (Betrag-Satz-Besonders); hier bleibt es getrennt,
+   * damit Belege, Berichte und der Tagesabschluss beide Sätze unterscheiden.
+   */
+  ermaessigt3: number
   /** 0 % */
   null:        number
-  /** Sondersteuersatz */
+  /** Sondersteuersatz (19 %) */
   besonders:   number
 }
 
@@ -197,6 +211,8 @@ export interface DEP131Beleg {
     NormalCent:      number
     Ermaessigt1Cent: number
     Ermaessigt2Cent: number
+    /** 4,9 % — im QR-Code/DEP7 mit BesondersCent in einem Feld, hier getrennt */
+    Ermaessigt3Cent: number
     NullCent:        number
     BesondersCent:   number
   }

@@ -20,7 +20,7 @@ export interface PrueferBeleg {
   belegTyp:                    string
   belegNummer:                 number
   datumUhrzeit:                string   // ISO
-  betraege:                    { normal: number; ermaessigt1: number; ermaessigt2: number; null: number; besonders: number }
+  betraege:                    { normal: number; ermaessigt1: number; ermaessigt2: number; ermaessigt3: number; null: number; besonders: number }
   zahlung:                     { barCent: number; karteCent: number; sonstigeCent: number }
   maschinenlesbareCode:        string
   signaturwert:                string
@@ -67,7 +67,7 @@ export function betragText(cent: number): string {
 }
 
 export function summeBetraege(b: PrueferBeleg['betraege']): number {
-  return b.normal + b.ermaessigt1 + b.ermaessigt2 + b.null + b.besonders
+  return b.normal + b.ermaessigt1 + b.ermaessigt2 + b.ermaessigt3 + b.null + b.besonders
 }
 
 function entschluesseleZaehler(base64: string, schluessel: Buffer, kassenId: string, belegNummer: number): bigint {
@@ -78,6 +78,22 @@ function entschluesseleZaehler(base64: string, schluessel: Buffer, kassenId: str
 }
 
 const b64url = (b: Buffer | string): string => Buffer.from(b).toString('base64url')
+
+/**
+ * Beleg-Datum-Uhrzeit des Codes für einen Zeitpunkt: `JJJJ-MM-TT'T'hh:mm:ss` in österreichischer
+ * Ortszeit (Anlage 1 Z 4: „es wird immer von österreichischer Lokalzeit ausgegangen"), Sekunden
+ * abgeschnitten. Bewusst eigene Rechnung über Intl mit fester Zone — nie über die Zone des Prozesses
+ * und nicht über den Code der Kassa.
+ */
+const WIEN_UHR = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Europe/Vienna', hourCycle: 'h23',
+  year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
+})
+export function wienerCodeZeit(iso: string): string {
+  const t: Record<string, string> = {}
+  for (const p of WIEN_UHR.formatToParts(new Date(iso))) if (p.type !== 'literal') t[p.type] = p.value
+  return `${t['year']}-${t['month']}-${t['day']}T${t['hour']}:${t['minute']}:${t['second']}`
+}
 
 export function pruefeBelegfolge(belege: readonly PrueferBeleg[], ctx: PrueferKontext): PrueferErgebnis {
   const verstoesse: Verstoss[] = []
@@ -118,10 +134,11 @@ export function pruefeBelegfolge(belege: readonly PrueferBeleg[], ctx: PrueferKo
       if (kid !== ctx.kassenId)                  fehler(nr, 'code-kassenid', `${kid} ≠ ${ctx.kassenId}`)
       if (bnr !== String(nr))                    fehler(nr, 'code-belegnummer', `${bnr} ≠ ${nr}`)
       if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(bdt!)) fehler(nr, 'code-datumformat', String(bdt))
-      else if (Math.abs(new Date(bdt!).getTime() - Date.parse(b.datumUhrzeit)) > 1500) {
-        fehler(nr, 'code-datum', `${bdt} passt nicht zu ${b.datumUhrzeit}`)
+      else if (bdt !== wienerCodeZeit(b.datumUhrzeit)) {
+        fehler(nr, 'code-datum', `${bdt} ist nicht die Wiener Ortszeit von ${b.datumUhrzeit} (${wienerCodeZeit(b.datumUhrzeit)})`)
       }
-      const soll = [b.betraege.normal, b.betraege.ermaessigt1, b.betraege.ermaessigt2, b.betraege.null, b.betraege.besonders].map(betragText)
+      // Anlage 1 Z 4: EIN Feld „Betrag-Satz-Besonders (19 %, 4,9 %)" — der Satz 4,9 % hat im Code kein eigenes Feld
+      const soll = [b.betraege.normal, b.betraege.ermaessigt1, b.betraege.ermaessigt2, b.betraege.null, b.betraege.besonders + b.betraege.ermaessigt3].map(betragText)
       const ist  = [n, e1, e2, e0, bes]
       if (soll.join('|') !== ist.join('|'))      fehler(nr, 'code-betraege', `Code ${ist.join('|')} ≠ Beleg ${soll.join('|')}`)
       if (zaehlerB64 !== b.umsatzzaehlerVerschluesselt) fehler(nr, 'code-umsatzzaehler', 'Feld im Code ≠ Beleg')

@@ -41,6 +41,7 @@ export function BonAnzeige({ beleg, codeAufgeklappt = false, belegModus, onAkzep
       ['normal',      beleg.betraege.normal],
       ['ermaessigt1', beleg.betraege.ermaessigt1],
       ['ermaessigt2', beleg.betraege.ermaessigt2],
+      ['ermaessigt3', beleg.betraege.ermaessigt3 ?? 0],
       ['null',        beleg.betraege.null],
       ['besonders',   beleg.betraege.besonders],
     ] as const

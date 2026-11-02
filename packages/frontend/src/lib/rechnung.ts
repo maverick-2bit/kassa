@@ -7,6 +7,7 @@
 import type { AngebotResponse, BelegResponse, GutscheinResponse, LiferscheinResponse, RechnungMandantInfo, SammelrechnungResponse } from '@kassa/shared'
 import {
   MWST_SAETZE,
+  formatMwstProzent,
   berechneSteueraufteilung,
   berechneSteueraufteilungVonPositionen,
   centZuEuro,
@@ -50,7 +51,7 @@ export function generiereAngebotHtml(angebot: AngebotResponse, mandant: MandantI
       <td class="pos-bezeichnung">${esc(p.bezeichnung)}</td>
       <td class="pos-menge">${p.menge}</td>
       <td class="pos-einzelpreis">€ ${centZuEuro(p.einzelpreisBreutto)}</td>
-      <td class="pos-mwst">${MWST_SAETZE[p.mwstSatz] ?? 0} %</td>
+      <td class="pos-mwst">${formatMwstProzent(MWST_SAETZE[p.mwstSatz] ?? 0)} %</td>
       <td class="pos-gesamt">€ ${centZuEuro(p.einzelpreisBreutto * p.menge)}</td>
     </tr>`).join('')
 
@@ -375,7 +376,7 @@ export function generiereSammelrechnungHtml(sr: SammelrechnungResponse, mandant:
         <td class="pos-bezeichnung">${esc(p.bezeichnung)}</td>
         <td class="pos-menge">${p.menge % 1 === 0 ? p.menge.toFixed(0) : p.menge}</td>
         <td class="pos-einzelpreis">€ ${centZuEuro(p.einzelpreisBreutto)}</td>
-        <td class="pos-mwst">${MWST_SAETZE[p.mwstSatz] ?? 0} %</td>
+        <td class="pos-mwst">${formatMwstProzent(MWST_SAETZE[p.mwstSatz] ?? 0)} %</td>
         <td class="pos-gesamt">€ ${centZuEuro(Math.round(p.einzelpreisBreutto * p.menge))}</td>
       </tr>`).join('')
 

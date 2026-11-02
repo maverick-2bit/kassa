@@ -16,6 +16,7 @@
 import { eq, sql } from 'drizzle-orm'
 import {
   MWST_LABELS,
+  MWST_PROZENT_SATZ,
   beginnFuer,
   geschaeftstagVon,
   istStandardRegel,
@@ -44,13 +45,8 @@ import { datumsBereich, geschaeftstagAusdruck } from '../db/datum.js'
 import { kassen } from '../db/schema.js'
 import { ladeTagesRegel } from './geschaeftstag.service.js'
 
-const MWST_SAETZE: Record<MwStSatz, number> = {
-  normal:      20,
-  ermaessigt1: 10,
-  ermaessigt2: 13,
-  null:         0,
-  besonders:   19,
-}
+/** Steuersätze in Prozent (eine Tabelle für alle: @kassa/shared) */
+const MWST_SAETZE: Record<MwStSatz, number> = MWST_PROZENT_SATZ
 
 /**
  * EIN wiederverwendeter Formatter — nicht `toLocaleDateString` je Zeile.
@@ -166,6 +162,7 @@ export async function holeUmsatzbericht(
     normal:       string
     ermaessigt1:  string
     ermaessigt2:  string
+    ermaessigt3:  string
     null_cent:    string
     besonders:    string
   }
@@ -184,6 +181,7 @@ export async function holeUmsatzbericht(
       COALESCE(SUM(b.betrag_normal_cent), 0)                                AS normal,
       COALESCE(SUM(b.betrag_ermaessigt1_cent), 0)                           AS ermaessigt1,
       COALESCE(SUM(b.betrag_ermaessigt2_cent), 0)                           AS ermaessigt2,
+      COALESCE(SUM(b.betrag_ermaessigt3_cent), 0)                           AS ermaessigt3,
       COALESCE(SUM(b.betrag_null_cent), 0)                                  AS null_cent,
       COALESCE(SUM(b.betrag_besonders_cent), 0)                             AS besonders
     FROM belege b
@@ -212,6 +210,7 @@ export async function holeUmsatzbericht(
     normal:      rows.reduce((s, r) => s + zahl(r.normal),      0),
     ermaessigt1: rows.reduce((s, r) => s + zahl(r.ermaessigt1), 0),
     ermaessigt2: rows.reduce((s, r) => s + zahl(r.ermaessigt2), 0),
+    ermaessigt3: rows.reduce((s, r) => s + zahl(r.ermaessigt3), 0),
     null:        rows.reduce((s, r) => s + zahl(r.null_cent),   0),
     besonders:   rows.reduce((s, r) => s + zahl(r.besonders),   0),
   }
@@ -443,6 +442,7 @@ export async function erstelleBuchungsjournalCsv(
     betrag_normal_cent:     number
     betrag_ermaessigt1_cent: number
     betrag_ermaessigt2_cent: number
+    betrag_ermaessigt3_cent: number
     betrag_null_cent:       number
     betrag_besonders_cent:  number
   }
@@ -459,6 +459,7 @@ export async function erstelleBuchungsjournalCsv(
       b.betrag_normal_cent,
       b.betrag_ermaessigt1_cent,
       b.betrag_ermaessigt2_cent,
+      b.betrag_ermaessigt3_cent,
       b.betrag_null_cent,
       b.betrag_besonders_cent
     FROM belege b
@@ -475,6 +476,9 @@ export async function erstelleBuchungsjournalCsv(
     'Datum', 'Belegnummer', 'Belegtyp', 'KassenID',
     'Brutto', 'USt20%_Basis', 'USt20%', 'USt10%_Basis', 'USt10%',
     'USt13%_Basis', 'USt13%', 'Steuerfrei', 'Bar', 'Karte', 'Sonstige',
+    // Ab 1.7.2026 / Satz 4,9 %: bewusst HINTEN angehängt — bestehende Importprofile lesen die Spalten davor
+    // unverändert. 4,9 % und 19 % stehen getrennt (im QR-Code teilen sie sich ein Feld, in der Buchhaltung nicht).
+    'USt4,9%_Basis', 'USt4,9%', 'USt19%_Basis', 'USt19%',
   ].join(sep)
 
   const zeilen = rows.map(r => {
@@ -494,6 +498,10 @@ export async function erstelleBuchungsjournalCsv(
     const n13basis  = r.betrag_ermaessigt2_cent / 100
     const n13ust    = Math.round(r.betrag_ermaessigt2_cent - r.betrag_ermaessigt2_cent / 1.13) / 100
     const stfrei    = r.betrag_null_cent / 100
+    const n49basis  = r.betrag_ermaessigt3_cent / 100
+    const n49ust    = Math.round(r.betrag_ermaessigt3_cent - r.betrag_ermaessigt3_cent / 1.049) / 100
+    const n19basis  = r.betrag_besonders_cent / 100
+    const n19ust    = Math.round(r.betrag_besonders_cent - r.betrag_besonders_cent / 1.19) / 100
 
     const fmt = (n: number) => n.toFixed(2).replace('.', ',')
 
@@ -510,6 +518,8 @@ export async function erstelleBuchungsjournalCsv(
       fmt(r.summe_bar_cent / 100),
       fmt(r.summe_karte_cent / 100),
       fmt(r.summe_sonstige_cent / 100),
+      fmt(n49basis), fmt(n49ust),
+      fmt(n19basis), fmt(n19ust),
     ].join(sep)
   })
 

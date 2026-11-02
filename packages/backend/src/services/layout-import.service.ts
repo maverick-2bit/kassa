@@ -65,17 +65,21 @@ export function namensPassung(kassaGruppe: string, knoten: string): 0 | 1 | 2 {
   return g.endsWith(' ' + k) ? 1 : 0
 }
 
-const MWST_SAETZE: Record<number, string> = { 20: 'normal', 10: 'ermaessigt1', 13: 'ermaessigt2', 0: 'null', 19: 'besonders' }
+/** Steuersatz in PROMILLE → Satz: 4,9 % ist 49 (ganze Prozent reichen seit dem Satz 4,9 % nicht mehr). */
+const MWST_SAETZE: Record<number, string> = { 200: 'normal', 100: 'ermaessigt1', 130: 'ermaessigt2', 49: 'ermaessigt3', 0: 'null', 190: 'besonders' }
 
-/** 0.2 → 'normal', 0.1 → 'ermaessigt1', 0.13 → 'ermaessigt2', 0 → 'null', 0.19 → 'besonders'; sonst undefined. */
+/**
+ * 0.2 → 'normal', 0.1 → 'ermaessigt1', 0.13 → 'ermaessigt2', 0.049 → 'ermaessigt3', 0 → 'null',
+ * 0.19 → 'besonders'; sonst undefined.
+ */
 export function mwstZuSatz(mwst: number): string | undefined {
-  return MWST_SAETZE[Math.round(mwst * 100)]
+  return MWST_SAETZE[Math.round(mwst * 1000)]
 }
 
-/** Umkehrung von mwstZuSatz (für den Layout-Export): 'normal' → 0.2 …; unbekannter Satz → undefined. */
+/** Umkehrung von mwstZuSatz (für den Layout-Export): 'normal' → 0.2 …, 'ermaessigt3' → 0.049; unbekannter Satz → undefined. */
 export function satzZuMwst(satz: string): number | undefined {
-  const prozent = Object.entries(MWST_SAETZE).find(([, s]) => s === satz)?.[0]
-  return prozent === undefined ? undefined : Number(prozent) / 100
+  const promille = Object.entries(MWST_SAETZE).find(([, s]) => s === satz)?.[0]
+  return promille === undefined ? undefined : Number(promille) / 1000
 }
 
 // ---------------------------------------------------------------------------
@@ -429,7 +433,7 @@ export function planeLayout(ist: KassaZustand, layout: LayoutImport, opts: Layou
           probleme.nichtGefunden.push({
             name: z.artikel.name, pfad: k.pfad,
             grund: !opts.fehlendeAnlegen ? 'nicht in der Kassa — Anlegen abgewählt'
-              : `Steuersatz ${Math.round(z.artikel.mwst * 100)} % unbekannt — nicht angelegt`,
+              : `Steuersatz ${String(Math.round(z.artikel.mwst * 1000) / 10).replace('.', ',')} % unbekannt — nicht angelegt`,
           })
         } else {
           neu++

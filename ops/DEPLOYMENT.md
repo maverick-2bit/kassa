@@ -348,6 +348,24 @@ Container, die Daten (Postgres-Volume) bleiben erhalten.
 
 - **Backend „unhealthy":** `docker compose logs backend` — meist DB-URL/Secret
   falsch oder `MASTER_PASSPHRASE` nachträglich geändert.
+- **Uhrzeit auf Bons/QR-Code 1–2 Stunden daneben:** Der Backend-Container läuft in
+  `Europe/Vienna` (`TZ` in `docker-compose.yml` und im Image). Belege und Bons rechnen
+  die Uhrzeit ohnehin fest in Wiener Ortszeit, unabhängig vom Container. Prüfen mit
+  `docker compose exec backend date` — bei `UTC` fehlt `TZ` (alte Compose-Datei): neu
+  starten mit `docker compose up -d --build backend`. **Belege, die VOR der Umstellung
+  signiert wurden, tragen im QR-Code die Zeit in UTC** (signiert, nicht mehr änderbar).
+  Einstellungen → RKSV → Signatur-Selbsttest meldet sie als „QR-Zeit in UTC" — sie bleiben
+  gültig, das CSV-Protokoll dokumentiert sie.
+- **Signatureinheit (A-Trust) fällt aus:** Ist sie nicht erreichbar (Netz, Timeout, HTTP 5xx),
+  geht die Kassa in den Ausfallmodus (roter Banner, Belege mit Marker statt Signatur) und
+  prüft die Verbindung selbst jede Minute; kommt die Einheit wieder, stellt die Kassa die
+  Signatur mit einem signierten Sammelbeleg von allein wieder her (Ausfälle unter 48 h). Weist
+  A-Trust die Anfrage ab (HTTP 4xx, meist Benutzer/Passwort/Adresse), erstellt die Kassa KEINEN
+  Beleg und nennt den Grund — das lässt sich nur in den Einstellungen beheben. Ab 48 Stunden
+  Ausfall ist der Ausfall FinanzOnline zu melden (Banner, „Wieder in Betrieb nehmen").
+- **„Die Systemuhr der Kassa geht nach":** Die Uhr des Kassen-PCs liegt mehr als eine Minute VOR
+  dem letzten Beleg. Belege dürfen nicht rückdatiert werden; Uhr/Zeitsynchronisation des PCs
+  prüfen. Kleine Rücksprünge (bis 1 Minute) gleicht die Kassa selbst an.
 - **App lädt, aber keine Daten:** prüfen, dass die App den Backend-Proxy erreicht
   (`docker compose logs <app>`), und `CORS_ORIGIN` zur aufgerufenen URL passt.
 - **DB-Backup/Restore:** die Sicherungen liegen im Volume `db_backups`; Restore

@@ -63,7 +63,7 @@ function randPositionen(rnd: () => number, vorzeichen: 'beliebig' | 'positiv' | 
 }
 
 const posBrutto = (p: BelegPosition) => Math.round(p.menge * p.einzelpreisBreutto)
-const summeBuckets = (b: BetraegeSummen) => b.normal + b.ermaessigt1 + b.ermaessigt2 + b.null + b.besonders
+const summeBuckets = (b: BetraegeSummen) => b.normal + b.ermaessigt1 + b.ermaessigt2 + b.ermaessigt3 + b.null + b.besonders
 
 // ---------------------------------------------------------------------------
 // berechneBetraege
@@ -115,7 +115,7 @@ describe('berechneBetraege (property-based)', () => {
 
   it('leere Positionsliste -> alle Buckets 0', () => {
     const b = berechneBetraege([])
-    expect(b).toEqual({ normal: 0, ermaessigt1: 0, ermaessigt2: 0, null: 0, besonders: 0 })
+    expect(b).toEqual({ normal: 0, ermaessigt1: 0, ermaessigt2: 0, ermaessigt3: 0, null: 0, besonders: 0 })
     expect(gesamtBetragCent(b)).toBe(0n)
   })
 

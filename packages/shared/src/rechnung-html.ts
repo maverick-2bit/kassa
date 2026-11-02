@@ -5,6 +5,7 @@
  */
 
 import type { AngebotPosition } from './schemas/angebot.js'
+import { MWST_PROZENT_SATZ } from './schemas/artikel.js'
 import type { BelegResponse } from './schemas/beleg.js'
 
 export interface RechnungMandantInfo {
@@ -16,12 +17,16 @@ export interface RechnungMandantInfo {
 // MwSt- und Format-Hilfsfunktionen
 // ---------------------------------------------------------------------------
 
-export const MWST_SAETZE: Record<string, number> = {
-  normal:      20,
-  ermaessigt1: 10,
-  ermaessigt2: 13,
-  null:        0,
-  besonders:   5,
+/**
+ * Prozentwerte je Satz — dieselbe Tabelle wie überall (`MWST_PROZENT_SATZ`). Früher stand hier
+ * eine eigene Kopie mit `besonders: 5` (dem befristeten Satz 2020–2022): Rechnungen und Angebote
+ * rechneten den Sondersteuersatz mit 5 % statt mit 19 %.
+ */
+export const MWST_SAETZE: Record<string, number> = MWST_PROZENT_SATZ
+
+/** Prozentzahl für Rechnungen/Bons mit Dezimalkomma: 20 → „20", 4.9 → „4,9". */
+export function formatMwstProzent(prozent: number): string {
+  return String(prozent).replace('.', ',')
 }
 
 function mwstFaktor(satz: string): number {
@@ -67,7 +72,8 @@ export function berechneSteueraufteilungVonPositionen(positionen: AngebotPositio
     normal:      '20 % (Normal)',
     ermaessigt1: '10 % (Ermäßigt)',
     ermaessigt2: '13 % (Ermäßigt 2)',
-    besonders:   '5 % (Besonders)',
+    ermaessigt3: '4,9 % (Ermäßigt 3)',
+    besonders:   '19 % (Sondersteuersatz)',
     null:        '0 % (Steuerfrei)',
   }
   const gruppen = new Map<string, number>()
@@ -96,7 +102,8 @@ export function berechneSteueraufteilung(beleg: BelegResponse): SteuerZeile[] {
     ['normal',      '20 % (Normal)',       beleg.betraege.normal],
     ['ermaessigt1', '10 % (Ermäßigt)',     beleg.betraege.ermaessigt1],
     ['ermaessigt2', '13 % (Ermäßigt 2)',   beleg.betraege.ermaessigt2],
-    ['besonders',   '5 % (Besonders)',      beleg.betraege.besonders],
+    ['ermaessigt3', '4,9 % (Ermäßigt 3)',  beleg.betraege.ermaessigt3 ?? 0],
+    ['besonders',   '19 % (Sondersteuersatz)', beleg.betraege.besonders],
     ['null',        '0 % (Steuerfrei)',     beleg.betraege.null],
   ] as const
 
@@ -323,7 +330,7 @@ export function generiereRechnungHtml(beleg: BelegResponse, mandant: RechnungMan
       }</td>
       <td class="pos-menge">${p.menge}</td>
       <td class="pos-einzelpreis">€ ${centZuEuro(p.einzelpreisBreutto)}</td>
-      <td class="pos-mwst">${MWST_SAETZE[p.mwstSatz] ?? 0} %</td>
+      <td class="pos-mwst">${formatMwstProzent(MWST_SAETZE[p.mwstSatz] ?? 0)} %</td>
       <td class="pos-gesamt">€ ${centZuEuro(p.einzelpreisBreutto * p.menge)}</td>
     </tr>`).join('')
 

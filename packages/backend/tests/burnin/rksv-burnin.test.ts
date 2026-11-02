@@ -46,8 +46,8 @@ const ADMIN_PASSWORT = 'burnin-passwort-123'
 const KASSEN_ID      = 'BURNIN-001'
 const AUSFALL_MARKER = Buffer.from('Sicherheitseinrichtung ausgefallen', 'utf8').toString('base64')
 
-type Satz = 'normal' | 'ermaessigt1' | 'ermaessigt2' | 'null' | 'besonders'
-const SAETZE: Satz[] = ['normal', 'ermaessigt1', 'ermaessigt2', 'null', 'besonders']
+type Satz = 'normal' | 'ermaessigt1' | 'ermaessigt2' | 'ermaessigt3' | 'null' | 'besonders'
+const SAETZE: Satz[] = ['normal', 'ermaessigt1', 'ermaessigt2', 'ermaessigt3', 'null', 'besonders']
 
 function mockFoClient(): FinanzOnlineClient {
   return {
@@ -103,6 +103,10 @@ const ARTIKEL_DEFS: { name: string; preis: number; satz: Satz }[] = [
   { name: 'Krummer Preis C',   preis:  1999, satz: 'ermaessigt2' },
   { name: 'Teurer Posten',     preis: 123456, satz: 'normal' },
   { name: 'Sondersatz-Artikel', preis:  777, satz: 'besonders' },
+  // 4,9 % (ab 1.7.2026): im QR-Code zusammen mit dem Sondersatz in EINEM Feld — der unabhängige Prüfer rechnet das nach
+  { name: 'Semmel (4,9 %)',    preis:    60, satz: 'ermaessigt3' },
+  { name: 'Brotlaib (4,9 %)',  preis:   389, satz: 'ermaessigt3' },
+  { name: 'Krummer Preis D',   preis:   333, satz: 'ermaessigt3' },
   { name: 'Steuerfrei',        preis:   450, satz: 'null' },
   { name: 'Pfand Rückgabe',    preis:   -50, satz: 'normal' },
 ]
@@ -163,8 +167,8 @@ describe('RKSV-Burn-in (Integration, echtes PostgreSQL)', () => {
   // ---- Verkauf zusammenstellen -------------------------------------------------
 
   function baueVerkauf(): { payload: object; erwartet: Record<Satz, number>; hatTie: Record<Satz, boolean>; gesamt: number } {
-    const erwartet = { normal: 0, ermaessigt1: 0, ermaessigt2: 0, null: 0, besonders: 0 } as Record<Satz, number>
-    const hatTie   = { normal: false, ermaessigt1: false, ermaessigt2: false, null: false, besonders: false } as Record<Satz, boolean>
+    const erwartet = { normal: 0, ermaessigt1: 0, ermaessigt2: 0, ermaessigt3: 0, null: 0, besonders: 0 } as Record<Satz, number>
+    const hatTie   = { normal: false, ermaessigt1: false, ermaessigt2: false, ermaessigt3: false, null: false, besonders: false } as Record<Satz, boolean>
     const positionen: { artikelId: string; menge: number }[] = []
     const n = ganz(1, 6)
     for (let i = 0; i < n; i++) {
@@ -351,7 +355,7 @@ describe('RKSV-Burn-in (Integration, echtes PostgreSQL)', () => {
       belegNummer:                 b.Belegnummer,
       datumUhrzeit:                b.DatumUhrzeit,
       betraege: { normal: b.Betraege.NormalCent, ermaessigt1: b.Betraege.Ermaessigt1Cent, ermaessigt2: b.Betraege.Ermaessigt2Cent,
-                  null: b.Betraege.NullCent, besonders: b.Betraege.BesondersCent },
+                  ermaessigt3: b.Betraege.Ermaessigt3Cent, null: b.Betraege.NullCent, besonders: b.Betraege.BesondersCent },
       zahlung:  { barCent: b.Zahlung.BarCent, karteCent: b.Zahlung.KarteCent, sonstigeCent: b.Zahlung.SonstigeCent },
       maschinenlesbareCode:        b.MaschinenlesbareCode,
       signaturwert:                b.Signaturwert,
@@ -385,7 +389,7 @@ describe('RKSV-Burn-in (Integration, echtes PostgreSQL)', () => {
     const st = await get(`/api/rksv/signatur-selbsttest?kasseId=${kasseId}`)
     if (st.statusCode === 200) {
       const s = st.json()
-      pruefe(s.ungueltig === 0 && s.derAltformat === 0, 'selbsttest-signaturen', () => `ungültig ${s.ungueltig}, Altformat ${s.derAltformat}`)
+      pruefe(s.ungueltig === 0 && s.derAltformat === 0 && s.zeitAltformat === 0, 'selbsttest-signaturen', () => `ungültig ${s.ungueltig}, Altformat DER ${s.derAltformat}, QR-Zeit in UTC ${s.zeitAltformat}`)
       pruefe(s.ketteOk === true && s.nummernLueckenlos === true, 'selbsttest-kette', () => `Kette ${s.ketteOk}, lückenlos ${s.nummernLueckenlos}`)
       pruefe(s.geprueft === belege.length, 'selbsttest-anzahl', () => `${s.geprueft} ≠ ${belege.length}`)
       pruefe(s.ausfall === erg.ausfallBelege, 'selbsttest-ausfall', () => `Kassa ${s.ausfall} ≠ Prüfer ${erg.ausfallBelege}`)

@@ -22,6 +22,9 @@ import {
   dep7ZuJson,
   dep131ZuJson,
   FinanzOnlineClient,
+  klassifiziereSeeFehler,
+  formatBelegDatumUhrzeit,
+  ATrustHsmError,
   type FinanzOnlineCredentials,
   type BelegPosition,
   type BelegTyp,
@@ -47,6 +50,7 @@ import { artikel, belege, kassen, kategorien, mandanten, modifikatoren, seriennu
 import { erstelleKunde, ladeKundeSnapshot } from './kunde.service.js'
 import { pruefeRabattFreigabe, type FreigabeKontext } from './freigabe.service.js'
 import { logAudit } from './audit.service.js'
+import { bestimmeBelegZeit } from './beleg-zeit.js'
 import { dekrementiereBestandteile, ladeRezepte } from './bestandteil.service.js'
 import { baueBonRouting, ladeKasseRoutingAusnahmen, ladeKategorieRoutingZeilen, wirksamesRoutingVonArtikel } from './kategorie-routing.service.js'
 import { decryptPrivateKey, encryptPrivateKey } from '../crypto/master-key.js'
@@ -62,10 +66,20 @@ export interface BelegServiceDeps {
 }
 
 export class BelegError extends Error {
-  constructor(public readonly httpStatus: number, message: string) {
+  constructor(
+    public readonly httpStatus: number,
+    message: string,
+    /** Maschinenlesbarer Grund, den die Oberfläche und die Hintergrundsonde auswerten können */
+    public readonly code?: string,
+  ) {
     super(message)
   }
 }
+
+/** BelegError.code: Die Signatureinheit/das Schlüsselmaterial weist uns ab — Warten hilft nicht. */
+export const SEE_ABGELEHNT = 'see-abgelehnt'
+/** BelegError.code: Die Signatureinheit ist (weiterhin) nicht verfügbar — später erneut versuchen. */
+export const SEE_NICHT_VERFUEGBAR = 'see-nicht-verfuegbar'
 
 interface ZahlungAufteilung {
   barCent:      number
@@ -117,9 +131,63 @@ interface SigniereInput {
 /** mandanten.status nach der Übergabe an eine andere Kassa: keine neuen Belege mehr */
 export const MANDANT_UEBERTRAGEN = 'uebertragen'
 
+/**
+ * Ein Fehler beim Signieren als Antwort an die Kassa. Fachfehler (HTTP 409) mit einer
+ * Meldung für die Bedienung — nicht der Wortlaut der Gegenstelle (Antworttext von
+ * A-Trust, Schlüssel-Fehlermeldungen), der steht im Audit-Log bzw. im Server-Log.
+ * Bewusst KEIN 401: Die Oberfläche meldet bei 401 ab, A-Trusts 401 betrifft aber nur
+ * ihre Zugangsdaten.
+ */
+function seeFehlerAlsBelegError(err: unknown, klasse: 'ausfall' | 'konfiguration', wiederherstellung: boolean): BelegError {
+  if (klasse === 'ausfall') {
+    // Nur beim Wiederherstellen erreichbar: die Einheit antwortet weiterhin nicht
+    return new BelegError(
+      409,
+      'Die Signaturerstellungseinheit ist weiterhin nicht verfügbar (Verbindung fehlgeschlagen oder ' +
+      'unbrauchbare Antwort). Die Kasse bleibt im Ausfallmodus — bitte später erneut versuchen.',
+      SEE_NICHT_VERFUEGBAR,
+    )
+  }
+  const ende = wiederherstellung ? 'Die Kasse bleibt im Ausfallmodus.' : 'Es wurde kein Beleg erstellt.'
+  if (err instanceof ATrustHsmError && err.status !== undefined) {
+    return new BelegError(
+      409,
+      `Die Signatureinheit (A-Trust) hat die Anfrage abgelehnt (HTTP ${err.status}): Benutzer, Passwort und Adresse ` +
+      `prüfen (Einstellungen → Kassen & Drucker → Signatureinheit). ${ende}`,
+      SEE_ABGELEHNT,
+    )
+  }
+  return new BelegError(
+    409,
+    `Die Signaturerstellung ist nicht möglich — Schlüssel oder Zertifikat der Kasse sind unbrauchbar. ${ende} ` +
+    'Bitte den Support verständigen.',
+    SEE_ABGELEHNT,
+  )
+}
+
+/**
+ * Signiert und speichert einen Beleg in EINER Transaktion (`signiereImTxKern`). Audit-Einträge
+ * zu Besonderheiten (SEE-Ausfall erkannt, Signatur abgelehnt, Uhr angeglichen) schreibt erst
+ * dieser Mantel, NACH der Transaktion: Innerhalb der Transaktion hielte eine zweite Verbindung
+ * aus dem Pool die Kasse gesperrt, während andere Aufrufer ihre Verbindungen schon im Warten auf
+ * die Kassensperre belegen — bei vollem Pool ein Deadlock, ausgerechnet im Ausfall.
+ */
 async function signiereImTx(
   input: SigniereInput,
   deps:  BelegServiceDeps,
+): Promise<{ signed: SignedBeleg; persisted: typeof belege.$inferSelect }> {
+  const nachlauf: Array<() => Promise<void>> = []
+  try {
+    return await signiereImTxKern(input, deps, nachlauf)
+  } finally {
+    for (const schreibe of nachlauf) await schreibe()
+  }
+}
+
+async function signiereImTxKern(
+  input:   SigniereInput,
+  deps:    BelegServiceDeps,
+  nachlauf: Array<() => Promise<void>>,
 ): Promise<{ signed: SignedBeleg; persisted: typeof belege.$inferSelect }> {
   return deps.db.transaction(async (tx) => {
     // Kasse FOR UPDATE laden + validieren
@@ -180,8 +248,9 @@ async function signiereImTx(
       zdaId:         kasse.seeZdaId,
     }
 
-    // Externe Signatureinheit (A-Trust HSM) — scheitert sie (Timeout/HTTP),
-    // greift unten automatisch der bestehende SEE-Ausfallmodus.
+    // Externe Signatureinheit (A-Trust HSM) — ist sie nicht erreichbar (Netz, Timeout,
+    // HTTP 5xx), greift unten automatisch der SEE-Ausfallmodus; weist sie uns ab
+    // (HTTP 4xx) oder ist die Konfiguration kaputt, bricht der Beleg mit einem Fehler ab.
     const einheit = kasse.seeTyp === 'atrust_hsm' && kasse.atrustBasisUrl && kasse.atrustBenutzer && kasse.atrustPasswortEnc
       ? new ATrustHsmEinheit({
           basisUrl: kasse.atrustBasisUrl,
@@ -199,11 +268,28 @@ async function signiereImTx(
       ...(einheit && { einheit }),
     }
 
+    // Zeitstempel: nie vor dem Vorbeleg (die Systemuhr kann springen)
+    const vorbeleg = kasse.letzteBelegNummer > 0
+      ? (await tx.select({ belegDatum: belege.belegDatum }).from(belege)
+          .where(and(eq(belege.kasseId, kasse.id), eq(belege.belegNummer, kasse.letzteBelegNummer)))
+          .limit(1))[0]
+      : undefined
+    const belegZeit = bestimmeBelegZeit(new Date(), vorbeleg?.belegDatum)
+    if (!belegZeit.ok) {
+      const minuten = Math.max(1, Math.round(belegZeit.rueckstandMs / 60_000))
+      throw new BelegError(
+        409,
+        `Die Systemuhr der Kassa geht nach: Sie liegt ${minuten} Minute${minuten === 1 ? '' : 'n'} VOR dem letzten Beleg ` +
+        `(${formatBelegDatumUhrzeit(belegZeit.letzterBelegDatum).replace('T', ' ')}). Belege dürfen nicht rückdatiert ` +
+        `werden — es wurde kein Beleg erstellt. Bitte die Uhr des Kassen-PCs prüfen (Zeitsynchronisation).`,
+      )
+    }
+
     // Signieren
     const raw: RawBeleg = {
       kassenId:     kasse.kassenId,
       belegNummer:  kasse.letzteBelegNummer + 1,
-      datumUhrzeit: new Date(),
+      datumUhrzeit: belegZeit.zeit,
       belegTyp:     input.belegTyp,
       positionen,
     }
@@ -211,22 +297,45 @@ async function signiereImTx(
     //  - Ausfall aktiv (Flag gesetzt): Beleg trägt den Ausfallmarker statt Signatur.
     //  - Wiederherstellung: erzwingt echte Signierung; scheitert sie, propagiert
     //    der Fehler und rollt die Transaktion zurück (Ausfall bleibt bestehen).
-    //  - Normalfall: scheitert die ECDSA-Signierung, wird automatisch in den
-    //    Ausfallmodus gewechselt (Beleg mit Marker), Zähler vorher zurückgesetzt.
+    //  - Normalfall: ist die Einheit nicht erreichbar oder liefert sie Unbrauchbares
+    //    (siehe klassifiziereSeeFehler), wird automatisch in den Ausfallmodus gewechselt
+    //    (Beleg mit Marker, Zähler zurückgesetzt). Weist sie uns ab (HTTP 4xx) oder ist
+    //    die Konfiguration kaputt, bricht der Beleg ab — nichts wird gespeichert.
     const ausfallAktiv = kasse.seeAusgefallenSeit != null && !input.wiederherstellung
     let signed: SignedBeleg
     let ausfallNeuErkannt = false
+    let ausfallGrund = ''
 
     if (ausfallAktiv) {
       signed = await signiereBeleg(raw, kontext, { ausfallModus: true })
     } else {
+      if (kasse.seeTyp === 'atrust_hsm' && !einheit) {
+        throw new BelegError(
+          409,
+          'Die Signatureinheit (A-Trust) ist nicht vollständig eingerichtet: Adresse, Benutzer oder Passwort fehlen. ' +
+          'Es wurde kein Beleg erstellt. (Einstellungen → Kassen & Drucker → Signatureinheit)',
+          SEE_ABGELEHNT,
+        )
+      }
       try {
         signed = await signiereBeleg(raw, kontext)
       } catch (signErr) {
-        if (input.wiederherstellung) throw signErr
+        const klasse = klassifiziereSeeFehler(signErr)
+        // Der Wortlaut der Gegenstelle geht nicht an die Bedienung — aber er soll später nachlesbar sein
+        const grund = signErr instanceof Error ? signErr.message.slice(0, 300) : String(signErr)
+        if (klasse === 'konfiguration') {
+          nachlauf.push(() => logAudit(deps.db, {
+            mandantId: kasse.mandantId, aktion: 'see.signatur_abgelehnt',
+            details: { kasseId: kasse.id, belegNummer: raw.belegNummer, wiederherstellung: !!input.wiederherstellung, grund },
+          }))
+        }
+        if (input.wiederherstellung || klasse === 'konfiguration') {
+          throw seeFehlerAlsBelegError(signErr, klasse, !!input.wiederherstellung)
+        }
         umsatzzaehler.setze(kasse.umsatzzaehlerCent)
         signed = await signiereBeleg(raw, kontext, { ausfallModus: true })
         ausfallNeuErkannt = true
+        ausfallGrund = grund
       }
     }
 
@@ -257,6 +366,7 @@ async function signiereImTx(
       betragNormalCent:            signed.betraege.normal,
       betragErmaessigt1Cent:       signed.betraege.ermaessigt1,
       betragErmaessigt2Cent:       signed.betraege.ermaessigt2,
+      betragErmaessigt3Cent:       signed.betraege.ermaessigt3,
       betragNullCent:              signed.betraege.null,
       betragBesondersCent:         signed.betraege.besonders,
       summeBarCent:                zahlung.barCent,
@@ -293,6 +403,20 @@ async function signiereImTx(
     await tx.update(kassen).set(kasseUpdate).where(eq(kassen.id, kasse.id))
 
     if (input.nachPersist) await input.nachPersist(tx, persisted.id)
+
+    // Besonderheiten für das Audit-Log — erst nach der Transaktion geschrieben (siehe signiereImTx)
+    if (ausfallNeuErkannt) {
+      nachlauf.push(() => logAudit(deps.db, {
+        mandantId: kasse.mandantId, aktion: 'see.ausfall_erkannt',
+        details: { kasseId: kasse.id, belegNummer: signed.belegNummer, grund: ausfallGrund },
+      }))
+    }
+    if (belegZeit.angeglichenUmMs > 0) {
+      nachlauf.push(() => logAudit(deps.db, {
+        mandantId: kasse.mandantId, aktion: 'beleg.zeit_angeglichen',
+        details: { kasseId: kasse.id, belegNummer: signed.belegNummer, rueckstandMs: belegZeit.angeglichenUmMs },
+      }))
+    }
 
     return { signed, persisted }
   })
@@ -690,7 +814,7 @@ export async function erstelleJahresbeleg(input: JahresbelegInput, deps: BelegSe
 // ---------------------------------------------------------------------------
 
 /** RKSV: Ein Ausfall ab dieser Dauer ist FinanzOnline zu melden (48 Stunden). */
-const FON_MELDE_SCHWELLE_MIN = 48 * 60
+export const FON_MELDE_SCHWELLE_MIN = 48 * 60
 
 /** Ergebnis einer optionalen FinanzOnline-Meldung (nur wenn Zugangsdaten übergeben). */
 export interface FonMeldungErgebnis {
@@ -707,6 +831,11 @@ export interface SeeStatus {
   dauerMinuten:     number | null
   /** true, wenn die Ausfalldauer die FinanzOnline-Meldeschwelle (48h) erreicht */
   fonMeldungNoetig: boolean
+  /**
+   * true, wenn die Kassa die Einheit selbst im Minutentakt prüft und die Signatur von allein
+   * wiederherstellt (A-Trust-Anbindung, Ausfall unter 48 h — siehe see-sonde.service.ts)
+   */
+  automatischePruefung: boolean
   /** Ergebnis der FinanzOnline-Meldung, falls bei diesem Aufruf eine gesendet wurde. */
   fonMeldung?:      FonMeldungErgebnis
 }
@@ -736,24 +865,25 @@ async function sendeFonSeeMeldung(
   }
 }
 
-function baueSeeStatus(seit: Date | null, bezug: Date = new Date()): SeeStatus {
-  if (!seit) return { ausgefallen: false, seit: null, dauerMinuten: null, fonMeldungNoetig: false }
+function baueSeeStatus(seit: Date | null, seeTyp: string, bezug: Date = new Date()): SeeStatus {
+  if (!seit) return { ausgefallen: false, seit: null, dauerMinuten: null, fonMeldungNoetig: false, automatischePruefung: false }
   const dauerMinuten = Math.max(0, Math.floor((bezug.getTime() - seit.getTime()) / 60_000))
   return {
     ausgefallen:      true,
     seit:             seit.toISOString(),
     dauerMinuten,
     fonMeldungNoetig: dauerMinuten >= FON_MELDE_SCHWELLE_MIN,
+    automatischePruefung: seeTyp === 'atrust_hsm' && dauerMinuten < FON_MELDE_SCHWELLE_MIN,
   }
 }
 
 /** Aktuellen SEE-Status einer Kasse abfragen. */
 export async function holeSeeStatus(kasseId: string, deps: BelegServiceDeps): Promise<SeeStatus> {
   const rows = await deps.db
-    .select({ seit: kassen.seeAusgefallenSeit })
+    .select({ seit: kassen.seeAusgefallenSeit, seeTyp: kassen.seeTyp })
     .from(kassen).where(eq(kassen.id, kasseId)).limit(1)
   if (!rows[0]) throw new BelegError(404, 'Kasse nicht gefunden')
-  return baueSeeStatus(rows[0].seit)
+  return baueSeeStatus(rows[0].seit, rows[0].seeTyp)
 }
 
 /**
@@ -777,7 +907,7 @@ export async function meldeSeeAusfall(
     return k
   })
 
-  const status = baueSeeStatus(kasse.seeAusgefallenSeit)
+  const status = baueSeeStatus(kasse.seeAusgefallenSeit, kasse.seeTyp)
   const fon = await sendeFonSeeMeldung(deps, kasse, 'ausfall', credentials)
   return { ...status, ...(fon && { fonMeldung: fon }) }
 }
@@ -804,6 +934,7 @@ export async function meldeSeeWiederherstellung(
   const vorher = await deps.db
     .select({
       seit:            kassen.seeAusgefallenSeit,
+      seeTyp:          kassen.seeTyp,
       kassenId:        kassen.kassenId,
       seeZertifikatSn: kassen.seeZertifikatSn,
       umgebung:        kassen.umgebung,
@@ -812,7 +943,7 @@ export async function meldeSeeWiederherstellung(
   if (!vorher[0]) throw new BelegError(404, 'Kasse nicht gefunden')
   if (vorher[0].seit == null) throw new BelegError(409, 'Kein SEE-Ausfall aktiv')
 
-  const behobenerAusfall = baueSeeStatus(vorher[0].seit)
+  const behobenerAusfall = baueSeeStatus(vorher[0].seit, vorher[0].seeTyp)
 
   const { signed, persisted } = await signiereImTx({
     kasseId,
@@ -1088,6 +1219,7 @@ export async function erstelleDep131Json(
       normal:      r.betragNormalCent,
       ermaessigt1: r.betragErmaessigt1Cent,
       ermaessigt2: r.betragErmaessigt2Cent,
+      ermaessigt3: r.betragErmaessigt3Cent,
       null:        r.betragNullCent,
       besonders:   r.betragBesondersCent,
     },
@@ -1120,9 +1252,11 @@ async function ladeDepDaten(
     conditions.push(gte(belege.belegDatum, new Date(filter.vonDatum + 'T00:00:00.000Z')))
   }
   if (filter.bisDatum) {
-    // Bis einschließlich des angegebenen Tages (00:00 des Folgetags)
+    // Bis einschließlich des angegebenen Tages (00:00 des Folgetags). UTC-Getter:
+    // `setDate` rechnet in der Zeitzone des Prozesses — mit TZ=Europe/Vienna wäre
+    // der Folgetag an den beiden Umstelltagen um eine Stunde verschoben.
     const bis = new Date(filter.bisDatum + 'T00:00:00.000Z')
-    bis.setDate(bis.getDate() + 1)
+    bis.setUTCDate(bis.getUTCDate() + 1)
     conditions.push(lt(belege.belegDatum, bis))
   }
 
@@ -1147,11 +1281,12 @@ function toDto(
     normal:      row.betragNormalCent,
     ermaessigt1: row.betragErmaessigt1Cent,
     ermaessigt2: row.betragErmaessigt2Cent,
+    ermaessigt3: row.betragErmaessigt3Cent,
     null:        row.betragNullCent,
     besonders:   row.betragBesondersCent,
   }
   const gesamtbetragCent =
-    betraege.normal + betraege.ermaessigt1 + betraege.ermaessigt2 + betraege.null + betraege.besonders
+    betraege.normal + betraege.ermaessigt1 + betraege.ermaessigt2 + betraege.ermaessigt3 + betraege.null + betraege.besonders
 
   return {
     id:                          row.id,
