@@ -65,6 +65,7 @@ export async function buildTestServer(db: Db, opts: BuildTestServerOptions = {})
       NODE_ENV:          'test',
       MONITORING_TOKEN:  'test-monitoring-token',
       SETUP_TOKEN:       TEST_SETUP_TOKEN,
+      LOGIN_RATE_LIMIT_MAX: 10,
       DB_BACKUP_MAX_AGE_STUNDEN:  26,
       DEP_BACKUP_MAX_AGE_STUNDEN: 26,
       ...opts.config,
