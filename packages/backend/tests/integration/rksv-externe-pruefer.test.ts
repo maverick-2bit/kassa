@@ -7,10 +7,13 @@
  *
  * Der Export besteht wie beim BMF aus dep-export.json und cryptographicMaterialContainer.json.
  *
- * BEFUND A (kritisch, Produktivcode): Die Verkettung der Folgebelege nimmt die QR-Form des Vorbelegs; RKSV Anlage 1
+ * BEFUND A (behoben): Die Verkettung der Folgebelege nahm vor der Korrektur die QR-Form des Vorbelegs; RKSV Anlage 1
  * Z 4 und die BMF-Referenzdaten verlangen die JWS-Compact-Form (siehe packages/rksv/tests/bmf-referenz.test.ts).
- * Die strengen Tests dazu sind `it.fails` — sie werden rot („Expect test to fail"), sobald der Fehler behoben ist;
- * dann das `.fails` entfernen und `--ignoriere verkettung` streichen.
+ * Der Test dazu läuft jetzt streng (Verkettung wird mitgeprüft).
+ *
+ * BEFUND D (offen): Software-SEE = ZDA AT0 = „geschlossenes Gesamtsystem"; das Seriennummernformat bleibt ausgenommen
+ * (`--ignoriere zksn-format`), die strengen Tests dazu sind `it.fails` — sie werden rot („Expect test to fail"),
+ * sobald der Fehler behoben ist; dann das `.fails` entfernen und `zksn-format` aus der Ausnahme streichen.
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
@@ -118,8 +121,8 @@ describe('DEP7-Export der Kassa durch externe Prüfer (Integration, echtes Postg
   })
 
   describe.skipIf(!PYTHON)('Python-Zweitprüfer', () => {
-    it('Signaturen (ES256), Umsatzzähler (AES), Format, Seriennummer, Belegnummern, Zeit: sauber — Verkettung (A) und AT0-Seriennummernformat (D) ausgenommen', () => {
-      const lauf = fuehreZweitpruefungAus(dateien, ['--ignoriere', 'verkettung,zksn-format'])
+    it('Signaturen (ES256), Verkettung, Umsatzzähler (AES), Format, Seriennummer, Belegnummern, Zeit: sauber — AT0-Seriennummernformat (D) ausgenommen', () => {
+      const lauf = fuehreZweitpruefungAus(dateien, ['--ignoriere', 'zksn-format'])
       expect(lauf.bericht?.verstoesse, lauf.ausgabe).toEqual([])
       expect(lauf.bericht?.geprueft).toBe(anzahlBelege)
       expect(lauf.bericht!.ausfallbelege).toBeGreaterThanOrEqual(2)
@@ -127,7 +130,7 @@ describe('DEP7-Export der Kassa durch externe Prüfer (Integration, echtes Postg
       expect(lauf.exit).toBe(0)
     })
 
-    it.fails('BEFUND A  die Verkettung entspricht der Spezifikation (JWS-Compact des Vorbelegs)', () => {
+    it('BEFUND A (behoben)  die Verkettung entspricht der Spezifikation (JWS-Compact des Vorbelegs)', () => {
       const lauf = fuehreZweitpruefungAus(dateien)
       expect(lauf.bericht?.verstoesseJeRegel['verkettung'] ?? 0).toBe(0)
     })
@@ -139,7 +142,9 @@ describe('DEP7-Export der Kassa durch externe Prüfer (Integration, echtes Postg
   })
 
   describe.skipIf(!process.env.BMF_PRUEFTOOL_DIR)('BMF-Prüftool (Java)', () => {
-    it.fails('BEFUND A  das BMF-Prüftool bestätigt den Export (heute scheitert die Verkettung)', () => {
+    // Die Kassa ist hier AT0 (Software-SEE): das Tool beanstandet jeden Beleg am Seriennummernformat des geschlossenen Systems
+    // (Befund D). Die Verkettung (Befund A, behoben) erreicht es dort nie; als offenes System prüft sie bmf-prueftool.test.ts.
+    it.fails('BEFUND D  das BMF-Prüftool bestätigt den Export (AT0: scheitert am Seriennummernformat des geschlossenen Systems)', () => {
       const bmf = fuehreBmfPrueftoolAus(dateien)
       expect(bmf.ausgefuehrt).toBe(true)
       expect(bmf.fehlgeschlagen.map(f => `${f.name}: ${f.meldung}`)).toEqual([])

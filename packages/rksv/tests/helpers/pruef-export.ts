@@ -6,12 +6,14 @@
  * (das Backend importiert keine Testhilfen aus rksv — absichtlich dupliziert, damit beide Pakete getrennt bleiben).
  */
 
-import { X509Certificate } from 'node:crypto'
+import { X509Certificate, createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { generateSEE } from '../../src/see.js'
-import { Umsatzzaehler, signiereBeleg, type SignierungsKontext } from '../../src/beleg.js'
+import { generateSEE, signiereRoh } from '../../src/see.js'
+import {
+  SEE_AUSFALL_SIGNATUR, Umsatzzaehler, jwsSigningInput, qrCodeZuJwsCompact, signiereBeleg, type SignierungsKontext,
+} from '../../src/beleg.js'
 import { erstelleDEP7Export } from '../../src/dep.js'
 import type { BelegTyp, DEP7Export, RawBeleg, SEEConfig, SignedBeleg } from '../../src/types.js'
 
@@ -59,10 +61,31 @@ export interface EigenerExport {
 }
 
 /**
+ * Macht aus einem frisch signierten Beleg den, den die Kassa vor der Korrektur erzeugt hätte: Sig-Voriger-Beleg = Hash des
+ * QR-Codes des Vorbelegs (statt seiner JWS-Form). Alles andere bleibt, die Signatur wird neu berechnet — so liegen
+ * Belege einer Bestandskasse vor, deren Kette noch nach der alten Lesart gebildet wurde (Altkette, Befund A).
+ */
+async function alsAltkette(beleg: SignedBeleg, vorbelegQr: string, see: SEEConfig): Promise<SignedBeleg> {
+  const sigVorbeleg = createHash('sha256').update(vorbelegQr, 'utf8').digest().subarray(0, 8).toString('base64')
+  const ohneSig     = beleg.maschinenlesbareCode.slice(0, beleg.maschinenlesbareCode.lastIndexOf('_'))
+  const neuOhneSig  = `${ohneSig.slice(0, ohneSig.lastIndexOf('_') + 1)}${sigVorbeleg}`      // letztes Feld vor der Signatur
+  const signaturwert = beleg.ausgefallen
+    ? SEE_AUSFALL_SIGNATUR
+    : signiereRoh(jwsSigningInput(neuOhneSig), see).toString('base64')
+  const maschinenlesbareCode = `${neuOhneSig}_${signaturwert}`
+  return { ...beleg, sigVorbeleg, signaturwert, maschinenlesbareCode, jwsCompact: qrCodeZuJwsCompact(maschinenlesbareCode) }
+}
+
+/**
  * Signiert `anzahl` Belege mit der echten Signierlogik der Kassa: Startbeleg, Barumsätze mit allen Steuersätzen
  * (auch krumme Cent), Stornos (negative Beträge), Nullbelege, Belege im SEE-Ausfall.
+ *
+ * `altketteBis`: Belege 2 bis zu dieser Nummer tragen die Verkettung nach der alten Lesart (QR-Code gehasht, wie vor der Korrektur),
+ * alle späteren die richtige — der Export einer Bestandskasse nach dem Update.
  */
-export async function baueEigenenExport(anzahl: number, kassenId = 'PRUEF-KASSE-1', zdaId = 'AT0'): Promise<EigenerExport> {
+export async function baueEigenenExport(
+  anzahl: number, kassenId = 'PRUEF-KASSE-1', zdaId = 'AT0', altketteBis?: number,
+): Promise<EigenerExport> {
   const see = await generateSEE({ kassenId, uid: 'ATU12345678', firmenname: 'Prüfstrecke GmbH' })
   // Die Software-SEE trägt AT0 („geschlossenes Gesamtsystem"). Mit einer anderen Kennung (z. B. AT100 wie im offenen BMF-Beispiel)
   // wird derselbe Export als offenes System gelesen — so prüft das BMF-Prüftool auch Verkettung, Zähler und Signaturen,
@@ -91,11 +114,12 @@ export async function baueEigenenExport(anzahl: number, kassenId = 'PRUEF-KASSE-
   for (let i = 2; belege.length < anzahl; i++) {
     const m = muster[(i - 2) % muster.length]!
     tag += 60_000
-    const beleg = await signiereBeleg(
+    let beleg = await signiereBeleg(
       { kassenId, belegNummer: i, datumUhrzeit: new Date(tag), belegTyp: m.typ, positionen: m.positionen },
       kontext,
       m.ausfall ? { ausfallModus: true } : {},
     )
+    if (altketteBis !== undefined && i <= altketteBis) beleg = await alsAltkette(beleg, kontext.letzterBelegCode!, see)
     kontext.letzterBelegCode = beleg.maschinenlesbareCode
     belege.push(beleg)
   }

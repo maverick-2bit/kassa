@@ -884,7 +884,7 @@ function SignaturSelbsttestSektion() {
         <Button onClick={() => test.mutate()} loading={test.isPending}>
           Selbsttest starten
         </Button>
-        {e && e.details.length > 0 && (
+        {e && (e.details.length > 0 || e.ketteAltformat > 0 || !e.ketteOk) && (
           <Button
             variant="secondary"
             onClick={() => rksvSelbsttestApi.downloadCsv(identity.kasseId, `signatur-selbsttest_${e.kassenId}.csv`)}
@@ -903,18 +903,20 @@ function SignaturSelbsttestSektion() {
           <div className={`rounded-md border p-3 text-sm mb-4 ${
             e.ungueltig > 0 || !e.ketteOk || !e.nummernLueckenlos
               ? 'border-red-200 bg-red-50 text-red-700'
-              : e.derAltformat > 0 || e.zeitAltformat > 0
-                ? 'border-sky-200 bg-sky-50 text-sky-700'
-                : 'border-green-200 bg-green-50 text-green-700'
+              : e.ketteGemischt
+                ? 'border-amber-200 bg-amber-50 text-amber-700'
+                : e.derAltformat > 0 || e.zeitAltformat > 0 || e.ketteAltformat > 0
+                  ? 'border-sky-200 bg-sky-50 text-sky-700'
+                  : 'border-green-200 bg-green-50 text-green-700'
           }`}>
             {e.ungueltig > 0 ? (
               <><strong>{e.ungueltig} Beleg{e.ungueltig === 1 ? '' : 'e'} mit ungültiger Signatur.</strong> Bitte
               die Liste unten prüfen — mögliche Ursache: nachträgliche Veränderung oder Datendefekt.</>
             ) : !e.ketteOk || !e.nummernLueckenlos ? (
               <><strong>Kettenprüfung auffällig.</strong> Signaturen der einzelnen Belege sind in Ordnung,
-              aber {!e.ketteOk && 'die Verkettung ist unterbrochen'}{!e.ketteOk && !e.nummernLueckenlos && ' und '}
+              aber {!e.ketteOk && `die Verkettung ist unterbrochen${e.ketteBruchBeleg === null ? '' : ` (bei Beleg ${e.ketteBruchBeleg})`}`}{!e.ketteOk && !e.nummernLueckenlos && ' und '}
               {!e.nummernLueckenlos && 'die Belegnummern haben Lücken'}.</>
-            ) : e.derAltformat > 0 || e.zeitAltformat > 0 ? (
+            ) : e.derAltformat > 0 || e.zeitAltformat > 0 || e.ketteAltformat > 0 ? (
               <>
                 {e.derAltformat > 0 && (
                   <><strong>{e.derAltformat} Alt-Beleg{e.derAltformat === 1 ? '' : 'e'} im DER-Format</strong> (vor
@@ -926,6 +928,14 @@ function SignaturSelbsttestSektion() {
                   QR-Code</strong> (vor der Umstellung auf feste Wiener Ortszeit erstellt): kryptographisch korrekt
                   signiert und unverändert — nur die Uhrzeit im QR-Code ist 1 bis 2 Stunden früher als die
                   tatsächliche. Gedruckte Belege lassen sich nicht ändern. </>
+                )}
+                {e.ketteAltformat > 0 && (
+                  <><strong>Verkettung im Altformat: Belege {e.ketteAltformatVon}–{e.ketteAltformatBis}</strong> ({e.ketteAltformat} Beleg{e.ketteAltformat === 1 ? '' : 'e'},
+                  vor der Korrektur der Verkettung erstellt) tragen als Verkettungswert den Hash des QR-Codes statt der JWS-Form (RKSV Anlage 1 Z 4):
+                  signiert und unverändert, die Kette ist geschlossen — Prüfprogramme der Finanz (BMF-Prüftool) melden dort aber
+                  Verkettungsfehler. {e.ketteGemischt
+                    ? <strong>Achtung: auch nach dem Umstieg auf die neue Verkettung kamen noch Belege im Altformat vor — ist eine ältere Programmversion im Einsatz? </strong>
+                    : 'Neue Belege werden richtig verkettet. '}</>
                 )}
                 Mit dem CSV-Protokoll dokumentierbar.
               </>
@@ -945,7 +955,9 @@ function SignaturSelbsttestSektion() {
 
           <div className="flex flex-wrap gap-4 text-sm mb-4">
             <span className={e.ketteOk ? 'text-green-700' : 'text-red-700'}>
-              {e.ketteOk ? '✓ Signaturkette geschlossen' : '✗ Signaturkette unterbrochen'}
+              {e.ketteOk
+                ? `✓ Signaturkette geschlossen${e.ketteAltformat > 0 ? ` (Belege ${e.ketteAltformatVon}–${e.ketteAltformatBis} im Altformat)` : ''}`
+                : `✗ Signaturkette unterbrochen${e.ketteBruchBeleg === null ? '' : ` bei Beleg ${e.ketteBruchBeleg}`}`}
             </span>
             <span className={e.nummernLueckenlos ? 'text-green-700' : 'text-red-700'}>
               {e.nummernLueckenlos ? '✓ Belegnummern lückenlos' : '✗ Belegnummern mit Lücken'}

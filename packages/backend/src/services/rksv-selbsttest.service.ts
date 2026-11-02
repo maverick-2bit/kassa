@@ -17,12 +17,18 @@
  * aufgebaute Code muss ihm gleichen, und seine Signatur muss zum Zertifikat passen.
  * (Die Uhrzeit allein aus `belegDatum` plus der aktuellen Zeitzone aufzubauen
  * würde nach der Umstellung auf feste Wiener Ortszeit jeden Altbeleg verwerfen.)
+ *
+ * Die Verkettung steht neben den Beleg-Status, weil sie eine Eigenschaft der Folge ist:
+ * Belege aus Programmversionen vor der Korrektur tragen ab dem 2. Beleg den Hash des QR-Codes ihres Vorgängers
+ * statt der JWS-Form (Altformat, `analysiereKette`). Das gilt als geschlossene Kette und wird
+ * ausgewiesen (`ketteAltformat*`); ein Wert, der zu keiner der beiden Formen passt, bleibt
+ * ein Kettenbruch (`ketteOk: false`, `ketteBruchBeleg`).
  */
 
 import {
+  analysiereKette,
   istAusfallBeleg,
   pruefeBelegSignatur,
-  pruefeKette,
   type VerifizierbarerBeleg,
 } from '@kassa/rksv'
 import type { SelbsttestBelegDetail, SelbsttestStatus, SignaturSelbsttestErgebnis } from '@kassa/shared'
@@ -106,10 +112,11 @@ export async function fuehreSignaturSelbsttestAus(
     if (rows[i]!.belegNummer !== rows[i - 1]!.belegNummer + 1) { nummernLueckenlos = false; break }
   }
 
-  const ketteOk = pruefeKette(
+  const kette = analysiereKette(
     kasse.kassenId,
     rows.map(r => ({ maschinenlesbareCode: r.maschinenlesbareCode, sigVorbeleg: r.sigVorbeleg })),
   )
+  const belegNummerAn = (index: number | null): number | null => (index === null ? null : rows[index]?.belegNummer ?? null)
 
   const ergebnis: SignaturSelbsttestErgebnis = {
     kasseId:           kasse.id,
@@ -120,7 +127,12 @@ export async function fuehreSignaturSelbsttestAus(
     derAltformat,
     zeitAltformat,
     ungueltig,
-    ketteOk,
+    ketteOk:           kette.ok,
+    ketteAltformat:    kette.altformat,
+    ketteAltformatVon: belegNummerAn(kette.ersterAltformatIndex),
+    ketteAltformatBis: belegNummerAn(kette.letzterAltformatIndex),
+    ketteGemischt:     kette.gemischt,
+    ketteBruchBeleg:   belegNummerAn(kette.ersterBruchIndex),
     nummernLueckenlos,
     dauerMs:           Date.now() - start,
     details:           alleDetails.slice(0, DETAILS_CAP),

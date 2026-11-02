@@ -5,17 +5,16 @@
  * Lesart wie der Produktivcode). Hier laufen die Funktionen der Kassa über Daten, die ein unabhängiger
  * Generator des BMF (mit A-SIT Plus) erzeugt hat — Fixtures in tests/fixtures/bmf-mustercode, Herkunft dort.
  *
- * BEFUND A (kritisch): Die Verkettung der Folgebelege ist falsch. RKSV Anlage 1 Z 4 und alle 1284 Folgebelege der
+ * BEFUND A (behoben): Die Verkettung der Folgebelege war falsch. RKSV Anlage 1 Z 4 und alle 1284 Folgebelege der
  * 16 BMF-Szenarien hashen die JWS-Compact-Form des Vorbelegs (header.payload.signatur, base64url); die Kassa
- * hasht die QR-Form (Signatur in Standard-Base64). Die Tests dazu sind als `it.fails` festgehalten — sie laufen
- * grün, solange der Fehler besteht, und werden rot („Expect test to fail"), sobald er behoben ist: dann das
- * `.fails` entfernen.
+ * hat vor der Korrektur die QR-Form gehasht (Signatur in Standard-Base64). Die Tests dazu waren als `it.fails`
+ * festgehalten; seit der Korrektur laufen sie als gewöhnliche Tests und halten die Lesart fest.
  */
 
 import { createDecipheriv, createHash, X509Certificate } from 'node:crypto'
 import { describe, it, expect } from 'vitest'
 import { berechneIV } from '../src/crypto/aes-icm.js'
-import { pruefeKette, verkettungswertFolgebeleg, verkettungswertStartbeleg } from '../src/crypto/chain.js'
+import { pruefeKette, verkettungswertAusJwsCompact, verkettungswertFolgebeleg, verkettungswertStartbeleg } from '../src/crypto/chain.js'
 import { erstelleStartbeleg, qrCodeZuJwsCompact, signiereBeleg, verifiziereQrCode } from '../src/beleg.js'
 import { derZuP1363, generateSEE, p1363ZuDer, zertifikatSN } from '../src/see.js'
 import { ladeBmfSzenario, zerlegeQr, type BmfSzenario } from './helpers/pruef-export.js'
@@ -57,23 +56,37 @@ for (const name of ['closed-system-1', 'open-system-1'] as const) {
       expect(verkettungswertStartbeleg(kid)).toBe(felder[0]!.vorbeleg)
     })
 
-    it('verkettungswertFolgebeleg(JWS des Vorbelegs) liefert den Wert des BMF für alle 80 Folgebelege', () => {
+    it('verkettungswertAusJwsCompact(JWS des Vorbelegs) liefert den Wert des BMF für alle 80 Folgebelege', () => {
       for (let i = 1; i < s.jws.length; i++) {
-        expect(verkettungswertFolgebeleg(s.jws[i - 1]!), `Beleg ${i + 1}`).toBe(felder[i]!.vorbeleg)
+        expect(verkettungswertAusJwsCompact(s.jws[i - 1]!), `Beleg ${i + 1}`).toBe(felder[i]!.vorbeleg)
       }
     })
 
-    it('… aber NICHT, wenn man ihr die QR-Form gibt (so ruft die Kassa sie heute auf): 0 von 80 Treffern', () => {
+    it('… aber NICHT, wenn man den QR-Code hasht (so hat die Kassa vor der Korrektur verkettet): 0 von 80 Treffern', () => {
       let treffer = 0
       for (let i = 1; i < s.qr.length; i++) {
-        if (verkettungswertFolgebeleg(s.qr[i - 1]!) === felder[i]!.vorbeleg) treffer++
+        if (sha8(s.qr[i - 1]!) === felder[i]!.vorbeleg) treffer++
       }
       expect(treffer).toBe(0)
     })
 
-    it.fails('BEFUND A  pruefeKette akzeptiert die BMF-Kette (sie erwartet die QR-Form im Vorbeleg-Hash)', () => {
+    it('verkettungswertFolgebeleg (so ruft die Kassa es auf: gespeichert wird der QR-Code) liefert den Wert des BMF für alle 80 Folgebelege', () => {
+      for (let i = 1; i < s.qr.length; i++) {
+        expect(verkettungswertFolgebeleg(s.qr[i - 1]!), `Beleg ${i + 1}`).toBe(felder[i]!.vorbeleg)
+      }
+    })
+
+    it('BEFUND A (behoben)  pruefeKette akzeptiert die BMF-Kette', () => {
       const kette = s.qr.map((code, i) => ({ maschinenlesbareCode: code, sigVorbeleg: felder[i]!.vorbeleg }))
       expect(pruefeKette(kid, kette)).toBe(true)
+    })
+
+    it('Gegenprobe: eine Kette nach der alten Lesart (Hash des QR-Codes) lehnt pruefeKette ab', () => {
+      const kette = s.qr.map((code, i) => ({
+        maschinenlesbareCode: code,
+        sigVorbeleg: i === 0 ? felder[0]!.vorbeleg : sha8(s.qr[i - 1]!),
+      }))
+      expect(pruefeKette(kid, kette)).toBe(false)
     })
 
     it('Umsatzzähler: berechneIV + AES-256-CTR entschlüsseln alle 764 Zähler zur laufenden Summe (Training zählt nicht, Storno schon)', () => {
@@ -142,7 +155,7 @@ describe('BMF-Referenzdaten: Signaturen mit unserer Prüfung (offenes System, Ze
   })
 })
 
-describe('Produktivpfad: wie verkettet die Kassa tatsächlich? (BEFUND A)', () => {
+describe('Produktivpfad: wie verkettet die Kassa tatsächlich? (BEFUND A, behoben)', () => {
   async function dreiBelege() {
     const see = await generateSEE({ kassenId: 'KETTE-1', uid: 'ATU12345678', firmenname: 'Kette GmbH' })
     const { beleg: start, kontext } = await erstelleStartbeleg('KETTE-1', see)
@@ -158,16 +171,16 @@ describe('Produktivpfad: wie verkettet die Kassa tatsächlich? (BEFUND A)', () =
     expect(start.sigVorbeleg).toBe(sha8('KETTE-1'))
   })
 
-  it.fails('BEFUND A  Folgebeleg verkettet über die JWS-Compact-Form des Vorbelegs (RKSV Anlage 1 Z 4)', async () => {
+  it('BEFUND A (behoben)  Folgebeleg verkettet über die JWS-Compact-Form des Vorbelegs (RKSV Anlage 1 Z 4)', async () => {
     const { start, zwei, drei } = await dreiBelege()
     expect(zwei.sigVorbeleg).toBe(sha8(start.jwsCompact))
     expect(drei.sigVorbeleg).toBe(sha8(zwei.jwsCompact))
   })
 
-  it('Ist-Zustand: die Kassa hasht die QR-Form (payload_signatur in Standard-Base64)', async () => {
-    const { start, zwei } = await dreiBelege()
-    expect(zwei.sigVorbeleg).toBe(sha8(start.maschinenlesbareCode))
-    expect(zwei.sigVorbeleg).not.toBe(sha8(start.jwsCompact))
+  it('die QR-Form (payload_signatur in Standard-Base64) geht nicht mehr in die Verkettung ein', async () => {
+    const { start, zwei, drei } = await dreiBelege()
+    expect(zwei.sigVorbeleg).not.toBe(sha8(start.maschinenlesbareCode))
+    expect(drei.sigVorbeleg).not.toBe(sha8(zwei.maschinenlesbareCode))
   })
 
   it('Seriennummer im Beleg = Seriennummer des Zertifikats (hexadezimal)', async () => {

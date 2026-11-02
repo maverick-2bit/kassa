@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it, expect, beforeAll } from 'vitest'
 import type { DEP7Export } from '../src/types.js'
+import { verkettungswertFolgebeleg } from '../src/crypto/chain.js'
 import { REPO_WURZEL, baueContainer, baueEigenenExport, ladeBmfSzenario, type CryptoContainer } from './helpers/pruef-export.js'
 
 const SKRIPT = join(REPO_WURZEL, 'scripts', 'rksv', 'dep7_pruefer.py')
@@ -50,8 +51,8 @@ function pruefe(dep7: DEP7Export, container: CryptoContainer, extra: string[] = 
 
 const regeln = (l: Lauf): string[] => Object.keys(l.bericht.verstoesseJeRegel).sort()
 
-/** Bekannte, im Produktivcode noch offene Befunde: A = Verkettung (JWS statt QR), D = AT0-Seriennummernformat */
-const BEKANNT = 'verkettung,zksn-format'
+/** Bekannter, im Produktivcode noch offener Befund: D = AT0-Seriennummernformat (Befund A, die Verkettung, ist behoben) */
+const BEKANNT = 'zksn-format'
 
 describe.skipIf(!PYTHON)('Python-Zweitprüfer', () => {
   it('Selbsttest: AES-256 (FIPS-197) und ECDSA P-256 (von OpenSSL erzeugte Vektoren) sind grün', () => {
@@ -194,7 +195,7 @@ describe.skipIf(!PYTHON)('Python-Zweitprüfer', () => {
     let eigen: Awaited<ReturnType<typeof baueEigenenExport>>
     beforeAll(async () => { eigen = await baueEigenenExport(40) })
 
-    it('Signaturen (ES256, P1363), Umsatzzähler (AES), Format, Seriennummer, Belegnummern, Zeit: alles sauber — Verkettung (A) und AT0-Seriennummernformat (D) ausgenommen', () => {
+    it('Signaturen (ES256, P1363), Verkettung, Umsatzzähler (AES), Format, Seriennummer, Belegnummern, Zeit: alles sauber — AT0-Seriennummernformat (D) ausgenommen', () => {
       const l = pruefe(eigen.dep7, eigen.container, ['--ignoriere', BEKANNT])
       expect(l.bericht.verstoesse).toEqual([])
       expect(l.bericht.geprueft).toBe(40)
@@ -213,9 +214,9 @@ describe.skipIf(!PYTHON)('Python-Zweitprüfer', () => {
       expect(l.bericht.verstoesse).toEqual([])
     })
 
-    // BEFUND A (siehe bmf-referenz.test.ts): Der Prüfer rechnet die Verkettung nach der Spezifikation — die Kassa
-    // hasht die QR-Form. Läuft grün, solange der Fehler besteht; nach der Reparatur das `.fails` entfernen.
-    it.fails('BEFUND A  Verkettung der Kassa entspricht der Spezifikation (JWS-Compact des Vorbelegs)', () => {
+    // BEFUND A (siehe bmf-referenz.test.ts, behoben): Der Prüfer rechnet die Verkettung nach der Spezifikation (JWS-Compact
+    // des Vorbelegs); die Kassa hat vor der Korrektur die QR-Form gehasht.
+    it('BEFUND A (behoben)  Verkettung der Kassa entspricht der Spezifikation (JWS-Compact des Vorbelegs)', () => {
       const l = pruefe(eigen.dep7, eigen.container)
       expect(l.bericht.verstoesseJeRegel['verkettung'] ?? 0).toBe(0)
     })
@@ -227,18 +228,33 @@ describe.skipIf(!PYTHON)('Python-Zweitprüfer', () => {
       expect(l.bericht.verstoesseJeRegel['zksn-format'] ?? 0).toBe(0)
     })
 
-    it('Ist-Zustand zu A und D: genau die Folgebelege verletzen die Verkettung, alle Belege das AT0-Format', () => {
+    it('Ist-Zustand zu D: alle Belege verletzen das AT0-Format, sonst nichts (die Verkettung ist sauber)', () => {
       const l = pruefe(eigen.dep7, eigen.container)
-      expect(regeln(l)).toEqual(['verkettung', 'zksn-format'])
-      expect(l.bericht.verstoesseJeRegel['verkettung']).toBe(39)
+      expect(regeln(l)).toEqual(['zksn-format'])
       expect(l.bericht.verstoesseJeRegel['zksn-format']).toBe(40)
       expect(l.exit).toBe(1)
     })
 
-    it('derselbe Export als offenes System (ZDA AT100): nur noch die Verkettung (A) — das AT0-Format betrifft nur geschlossene Systeme', async () => {
+    it('derselbe Export als offenes System (ZDA AT100): keine Verstöße — das AT0-Format betrifft nur geschlossene Systeme', async () => {
       const offen = await baueEigenenExport(40, 'PRUEF-OFFEN', 'AT100')
       const l = pruefe(offen.dep7, offen.container)
+      expect(regeln(l)).toEqual([])
+      expect(l.exit).toBe(0)
+    })
+
+    // Export einer Bestandskasse nach dem Update (Befund A): Belege 2…20 sind noch nach der alten Lesart verkettet (QR-Code gehasht) und
+    // lassen sich nicht ändern; der erste Beleg danach hasht die JWS-Form seines alt verketteten Vorgängers und stimmt sofort.
+    it('Altkette (Belege 2…20 nach der alten Lesart, danach nach der Spezifikation): beanstandet werden genau die 19 Altbelege, der Übergang besteht', async () => {
+      const alt = await baueEigenenExport(40, 'PRUEF-ALT', 'AT100', 20)
+      const soll = (i: number): string => verkettungswertFolgebeleg(alt.belege[i - 1]!.maschinenlesbareCode)   // Wert nach der Spezifikation für Beleg i+1
+      expect(alt.belege[1]!.sigVorbeleg).not.toBe(soll(1))      // Beleg 2: alte Lesart
+      expect(alt.belege[19]!.sigVorbeleg).not.toBe(soll(19))    // Beleg 20: letzter Altbeleg
+      expect(alt.belege[20]!.sigVorbeleg).toBe(soll(20))        // Beleg 21: stimmt sofort, obwohl der Vorgänger alt verkettet ist
+      const l = pruefe(alt.dep7, alt.container)
       expect(regeln(l)).toEqual(['verkettung'])
+      expect(l.bericht.verstoesseJeRegel['verkettung']).toBe(19)
+      expect(l.bericht.verstoesse.map(v => v.beleg)).toEqual(Array.from({ length: 19 }, (_, k) => k + 2))
+      expect(l.bericht.signaturenGeprueft + l.bericht.ausfallbelege).toBe(40)        // Signaturen und Zähler der Altbelege sind in Ordnung
     })
 
     it('fehlt der Sammelbeleg (signierter Nullbeleg) nach einem Ausfall, schlägt der Prüfer an', async () => {

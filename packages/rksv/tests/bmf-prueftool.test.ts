@@ -6,7 +6,8 @@
  *  2. Was sagt es zu Belegen, die die Signierlogik der Kassa erzeugt?
  *     - AT0 (Software-SEE, „geschlossenes Gesamtsystem"): scheitert schon am Format der Seriennummer (Befund D) und kommt
  *       deshalb nie zu Verkettung, Zähler und Signatur.
- *     - Derselbe Export als offenes System (ZDA AT100): hier greifen alle Prüfungen. Befund A (Verkettung) erscheint.
+ *     - Derselbe Export als offenes System (ZDA AT100): hier greifen alle Prüfungen, auch die Verkettung (Befund A, behoben:
+ *       vor der Korrektur meldete das Tool `DEP_CHAINING_VALUE` bei jedem Folgebeleg).
  *
  * Die Einzelheiten der Prüfungen (verificationId je Fehler) landen im Ausgabeordner (RKSV_PRUEF_AUSGABE, sonst Temp).
  */
@@ -76,17 +77,34 @@ describe.skipIf(!AKTIV)('BMF-Prüftool über Exporte der Kassa', () => {
     }, 180_000)
 
     // Als offenes System (ZDA AT100, Zertifikat im Container) greifen alle Prüfungen des Tools: Einzelbeleg (Code, Signatur,
-    // Umsatzzähler) und Abfolge (Start, Sammelbeleg nach Ausfall) bestehen — beanstandet wird NUR die Verkettung (Befund A).
-    // Das Tool nennt als Eingabe der Verkettung die JWS-Compact-Form des Vorbelegs (CHAINING_INPUT) — wie die Spezifikation.
-    it('offenes System: beanstandet wird nur die Verkettung der Folgebelege (Befund A)', () => {
+    // Umsatzzähler), Abfolge (Start, Sammelbeleg nach Ausfall) und Verkettung. Das Tool nimmt als Eingabe der Verkettung die
+    // JWS-Compact-Form des Vorbelegs (CHAINING_INPUT) — wie die Spezifikation und seit der Korrektur auch die Kassa (Befund A).
+    // Vor der Korrektur beanstandete es hier `DEP_CHAINING_VALUE` bei 59 von 59 Folgebelegen (und `DEP_RECEIPT_LIST` als Sammelurteil);
+    // mit der Korrektur bestand der CI-Probelauf vom 2026-11-02 ohne Beanstandung. Scheitert der Test, steht die Beanstandung im Ausgabeordner.
+    it('BEFUND A (behoben)  offenes System (ZDA AT100): das Tool beanstandet nichts — auch nicht die Verkettung', () => {
       const z = bmf('kassa-offen', offen.dep7, offen.container, 'certificate')
-      expect(arten(z)).toEqual(['DEP_CHAINING_VALUE', 'DEP_RECEIPT_LIST'])
-    }, 180_000)
-
-    it.fails('BEFUND A  offenes System (ZDA AT100): das Tool bestätigt den Export der Kassa', () => {
-      const z = bmf('kassa-offen-streng', offen.dep7, offen.container, 'certificate')
+      expect(arten(z)).toEqual([])
       expect(z.fehlgeschlagen.map(f => `${f.name}: ${f.meldung}`)).toEqual([])
       expect(z.ok).toBe(true)
+    }, 180_000)
+
+    // Export einer Bestandskasse nach dem Update: Belege 2…30 sind noch nach der alten Lesart verkettet (QR-Code gehasht) und lassen sich nicht
+    // ändern. CI-Probelauf 2026-11-02: genau diese 29 Belege meldet das Tool als DEP_CHAINING_VALUE (dazu das Sammelurteil DEP_RECEIPT_LIST);
+    // der Übergang (Beleg 31, hasht die JWS-Form seines alt verketteten Vorgängers) und alles danach besteht.
+    it('Altkette (Belege 2…30 alt, 31…60 nach der Spezifikation): das Tool beanstandet genau die 29 Altbelege', async () => {
+      const alt = await baueEigenenExport(60, 'PRUEF-ALT', 'AT100', 30)
+      const z = bmf('kassa-altkette', alt.dep7, alt.container, 'certificate')
+      expect(arten(z)).toEqual(['DEP_CHAINING_VALUE', 'DEP_RECEIPT_LIST'])
+      expect(z.fehlgeschlagen.filter(f => f.name === 'DEP_CHAINING_VALUE')).toHaveLength(29)
+    }, 180_000)
+
+    // Eigenheit des Tools (CI-Probelauf 2026-11-02): ein DEP muss mit dem Startbeleg beginnen (DEP_STATE). Auch eine einwandfrei verkettete Kasse
+    // besteht als Auszug ohne ihre ersten Belege nicht — die Verkettung selbst wird dabei nicht beanstandet.
+    it('DEP-Auszug ohne Startbeleg: das Tool beanstandet den Beginn des DEP, nicht die Verkettung', async () => {
+      const neu = await baueEigenenExport(60, 'PRUEF-AUSZUG', 'AT100')
+      const ohneErste = { ...neu.dep7, 'Belege-Gruppe': neu.dep7['Belege-Gruppe'].map(g => ({ ...g, 'Belege-kompakt': g['Belege-kompakt'].slice(10) })) }
+      const z = bmf('kassa-auszug', ohneErste, neu.container, 'certificate')
+      expect(arten(z)).toEqual(['DEP_RECEIPT_LIST', 'DEP_STATE', 'STATE_CASHBOX', 'VERIFICATION_FROM_APP'])
     }, 180_000)
   })
 })

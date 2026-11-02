@@ -14,7 +14,8 @@
  *   BURNIN_SEED     Startwert des Zufallsgenerators (Standard: aus der Uhrzeit; wird ausgegeben → Lauf wiederholbar)
  *   BURNIN_PARALLEL Größe der Parallel-Wellen (Standard 20)
  *   BURNIN_ZWEITPRUEFER  0 = Python-Zweitprüfer auslassen (Standard: läuft, wenn Python 3 gefunden wird)
- *   BURNIN_BEKANNTE_REGELN  Komma-Liste von Regelnamen (z. B. pruefer-verkettung,zweitpruefer-verkettung), die als
+ *   BURNIN_BEKANNTE_REGELN  Komma-Liste von Regelnamen (Befund D, AT0-Format: zweitpruefer-zksn-format,bmf-FORMAT_CLOSED_SYSTEM_SERIAL,
+ *                           bmf-DEP_STATE,bmf-VERIFICATION_FROM_APP,bmf-DEP_RECEIPT_LIST), die als
  *                           Hinweis statt als Fehler zählen — für bekannte, noch nicht behobene Befunde
  *   BMF_PRUEFTOOL_DIR  entpacktes BMF-Prüftool (Java): dann läuft es am Ende über den Export (Nacht-Workflow)
  *
@@ -454,6 +455,8 @@ describe('RKSV-Burn-in (Integration, echtes PostgreSQL)', () => {
       const s = st.json()
       pruefe(s.ungueltig === 0 && s.derAltformat === 0 && s.zeitAltformat === 0, 'selbsttest-signaturen', () => `ungültig ${s.ungueltig}, Altformat DER ${s.derAltformat}, QR-Zeit in UTC ${s.zeitAltformat}`)
       pruefe(s.ketteOk === true && s.nummernLueckenlos === true, 'selbsttest-kette', () => `Kette ${s.ketteOk}, lückenlos ${s.nummernLueckenlos}`)
+      // Eine frisch signierte Kette ist durchgehend nach Spezifikation verkettet: kein Altformat (Befund A), kein Bruch
+      pruefe(s.ketteAltformat === 0 && s.ketteGemischt === false && s.ketteBruchBeleg === null, 'selbsttest-kette-altformat', () => `Altformat ${s.ketteAltformat}, gemischt ${s.ketteGemischt}, Bruch bei ${s.ketteBruchBeleg}`)
       pruefe(s.geprueft === belege.length, 'selbsttest-anzahl', () => `${s.geprueft} ≠ ${belege.length}`)
       pruefe(s.ausfall === erg.ausfallBelege, 'selbsttest-ausfall', () => `Kassa ${s.ausfall} ≠ Prüfer ${erg.ausfallBelege}`)
     } else melde('fehler', 'selbsttest-abruf', `HTTP ${st.statusCode}`)
