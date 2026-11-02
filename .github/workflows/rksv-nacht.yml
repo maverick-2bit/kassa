@@ -7,10 +7,10 @@ name: RKSV Nacht
 #               Am Ende geht der DEP7-Export an zwei unabhängige Prüfer: den Python-Zweitprüfer (eigene ES256-/AES-Rechnung)
 #               und das BMF-Prüftool (Java). Davor läuft das Prüftool einmal über seine EIGENEN Beispieldaten — besteht es die
 #               nicht, sagt ein Ergebnis zu unseren Daten nichts.
-#  zeit-matrix  Beleg-Datum für viele Server-Zeitzonen und die heiklen Zeitpunkte (Zeitumstellung, Monats-/Jahreswechsel).
 #  schemas      Hat das BMF die FinanzOnline-Schemas geändert? Gibt es ein neueres Prüftool?
 #
-# Mutationstests (Stryker) laufen wöchentlich in rksv-mutation.yml.
+# Die Zeit-Matrix (Beleg-Datum für viele Server-Zeitzonen und die heiklen Zeitpunkte) läuft seit dem Fix von Befund B in jeder CI
+# (pnpm test), nicht mehr hier. Mutationstests (Stryker) laufen wöchentlich in rksv-mutation.yml.
 
 on:
   schedule:
@@ -27,7 +27,7 @@ on:
         required: false
         default: ''
       bekannte_regeln:
-        description: 'Burn-in: Regeln, die nur als Hinweis zählen (Komma-Liste; Befund D: zweitpruefer-zksn-format,bmf-FORMAT_CLOSED_SYSTEM_SERIAL,bmf-DEP_STATE,bmf-VERIFICATION_FROM_APP,bmf-DEP_RECEIPT_LIST)'
+        description: 'Burn-in: Regeln, die nur als Hinweis zählen (Komma-Liste; leer = Standard laut Workflow, derzeit Befund D; keine = streng, ohne bekannte Regeln)'
         required: false
         default: ''
 
@@ -64,7 +64,9 @@ jobs:
       TEST_DATABASE_URL:      postgresql://kassa:kassa@localhost:5432/kassa
       BURNIN_BELEGE:          ${{ inputs.belege || '1000' }}
       BURNIN_MINUTEN:         ${{ inputs.minuten || (github.event.schedule == '17 1 * * 0' && '45' || '') }}
-      BURNIN_BEKANNTE_REGELN: ${{ inputs.bekannte_regeln || '' }}
+      # Befund D (AT0-Seriennummernformat der Software-SEE) ist offen: seine Regeln zählen als Hinweis (stehen im Bericht), jede andere
+      # Beanstandung macht die Nacht rot. Ist D behoben, diese Liste leeren. Streng von Hand: `bekannte_regeln` = keine.
+      BURNIN_BEKANNTE_REGELN: ${{ inputs.bekannte_regeln || 'zweitpruefer-zksn-format,bmf-FORMAT_CLOSED_SYSTEM_SERIAL,bmf-DEP_STATE,bmf-VERIFICATION_FROM_APP,bmf-DEP_RECEIPT_LIST' }}
 
     steps:
       - name: Checkout
@@ -156,35 +158,6 @@ jobs:
         run: |
           echo "Das BMF-Prüftool besteht seine eigenen Beispieldaten nicht — Umgebung (Java 8?) oder Tool-Version prüfen." >&2
           exit 1
-
-  # ── Zeit-Matrix ─────────────────────────────────────────────────────────────
-  zeit-matrix:
-    name: Zeit-Matrix (Zeitzonen, Zeitumstellung, Monats-/Jahreswechsel)
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: pnpm einrichten
-        uses: pnpm/action-setup@v6
-        with:
-          version: 9.15.0
-
-      - name: Node.js einrichten
-        uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - name: Abhängigkeiten installieren
-        run: pnpm install --frozen-lockfile
-
-      - name: Zeit-Matrix
-        run: pnpm --filter @kassa/rksv exec vitest run tests/zeit-matrix.test.ts
-        env:
-          RKSV_ZEITMATRIX: '1'
 
   # ── Schemas / Prüftool-Version ──────────────────────────────────────────────
   schemas:

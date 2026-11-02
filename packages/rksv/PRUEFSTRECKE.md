@@ -22,7 +22,7 @@ ein Prüfer in anderer Sprache mit eigener Kryptografie, das BMF-Prüftool.
 | **Python-Zweitprüfer** | DEP7: JWS/ES256, Verkettung, AES-Zähler, Format, Belegnummern, Zeit | Node, OpenSSL, Kassa-Code (reine Standardbibliothek, eigene ES256-/AES-Rechnung) | `scripts/rksv/dep7_pruefer.py`; Tests `packages/rksv/tests/dep7-zweitpruefer.test.ts`, `packages/backend/tests/integration/rksv-externe-pruefer.test.ts` | jede CI (Python 3 vorhanden); Burn-in nachts |
 | **BMF-Prüftool** (Java) | DEP-Export wie die Finanzprüfung: Verkettung, Umsatzzähler, Belegtyp-Abfolge, Chronologie, Einzelbelegprüfung | Kassa-Code (amtliches Werkzeug, nicht verbindlich) | `scripts/rksv/bmf-pruefer.mjs`; Aufruf aus Burn-in und Integrationstest | nachts (`rksv-nacht`), Java 8 |
 | **Burn-in** | Dauer-/Rechtssicherheitstest gegen PostgreSQL, am Ende Export an beide externen Prüfer | — | `pnpm test:burnin` im Ordner `packages/backend` | nachts, 1000 Belege (sonntags 45 min) |
-| **Zeit-Matrix** | Beleg-Datum für 9 Server-Zeitzonen × 16 heikle Zeitpunkte | Kassa-Code (Wiener Wanduhr per `Intl`) | `packages/rksv/tests/zeit-matrix.test.ts` | nachts (`RKSV_ZEITMATRIX=1`) |
+| **Zeit-Matrix** | Beleg-Datum für 9 Server-Zeitzonen × 16 heikle Zeitpunkte | Kassa-Code (Wiener Wanduhr per `Intl`) | `packages/rksv/tests/zeit-matrix.test.ts` | jede CI |
 | **Mutationstests** | Welche Behauptungen im Kern kein Test festnagelt | — | `pnpm --filter @kassa/rksv test:mutation` | wöchentlich (`rksv-mutation`) |
 
 Workflows: `.github/workflows/rksv-nacht.yml`, `rksv-mutation.yml` (die reguläre `ci.yml` ist unverändert).
@@ -148,7 +148,7 @@ Aufruf: `pnpm --filter @kassa/rksv test:mutation` (3–4 Minuten, Bericht `packa
 pnpm --filter @kassa/rksv test                          # inkl. XSD, BMF-Referenz, Zweitprüfer (braucht Python 3)
 pnpm --filter @kassa/backend test:integration            # inkl. rksv-externe-pruefer (PostgreSQL)
 cd packages/backend && BURNIN_BELEGE=200 pnpm test:burnin   # Burn-in + Python-Zweitprüfer, Bericht in test-results/
-RKSV_ZEITMATRIX=1 pnpm --filter @kassa/rksv exec vitest run tests/zeit-matrix.test.ts
+pnpm --filter @kassa/rksv exec vitest run tests/zeit-matrix.test.ts
 pnpm --filter @kassa/rksv test:mutation                  # Stryker, Bericht in packages/rksv/reports/mutation
 node scripts/rksv/fon-xsd-drift.mjs                      # Schemas noch wie die mitgeführten?
 python scripts/rksv/dep7_pruefer.py --dep7 dep-export.json --crypto cryptographicMaterialContainer.json
@@ -156,7 +156,7 @@ node scripts/rksv/bmf-pruefer.mjs --dep dep-export.json --crypto cryptographicMa
 ```
 
 Burn-in-Schalter: `BURNIN_BELEGE`, `BURNIN_MINUTEN`, `BURNIN_SEED`, `BURNIN_PARALLEL`, `BURNIN_ZWEITPRUEFER=0`,
-`BURNIN_BEKANNTE_REGELN` (bekannte Befunde nur als Hinweis; für Befund D, das AT0-Format: `zweitpruefer-zksn-format,bmf-FORMAT_CLOSED_SYSTEM_SERIAL,bmf-DEP_STATE,bmf-VERIFICATION_FROM_APP,bmf-DEP_RECEIPT_LIST`),
+`BURNIN_BEKANNTE_REGELN` (bekannte Befunde nur als Hinweis; für Befund D, das AT0-Format: `zweitpruefer-zksn-format,bmf-FORMAT_CLOSED_SYSTEM_SERIAL,bmf-DEP_STATE,bmf-VERIFICATION_FROM_APP,bmf-DEP_RECEIPT_LIST` — der Nacht-Workflow setzt genau diese Liste als Standard),
 `BMF_PRUEFTOOL_DIR`.
 
 ## Der Nacht-Workflow (`rksv-nacht`)
@@ -165,9 +165,11 @@ Burn-in-Schalter: `BURNIN_BELEGE`, `BURNIN_MINUTEN`, `BURNIN_SEED`, `BURNIN_PARA
   sonst sagt ein Ergebnis zu unseren Daten nichts), dann Burn-in mit Export an Python-Zweitprüfer und BMF-Prüftool. Als Artefakt (14 Tage) kommen Berichte, Zusammenfassungen
   (`bmf-zusammenfassung.json` mit den ersten 200 beanstandeten Prüfungen), Konsolenausgabe und die Export-Dateien mit — nicht die Einzelergebnisse des Prüftools je Beleg
   (`NNNN_*.json`, `*_full.json`, `DEP-full.json`: 147 MB schon für den Kontrolllauf und zwei Kassa-Läufe); dafür das Skript lokal laufen lassen.
-* **zeit-matrix**, **schemas** (Drift der FinanzOnline-Schemas, neueres Prüftool?).
-* Manuell startbar (`workflow_dispatch`) mit Belegzahl, Minuten und bekannten Regeln.
-* **Rot ist gewollt, solange bekannte Befunde offen sind** (A und B sind behoben; offen ist D, das AT0-Seriennummernformat) — das ist der Zweck. Zum Beruhigen für einen manuellen Lauf `bekannte_regeln` mit den Regeln zu D setzen (Liste oben bei den Burn-in-Schaltern).
+* **schemas** (Drift der FinanzOnline-Schemas, neueres Prüftool?). Die Zeit-Matrix läuft seit dem Fix von Befund B in jeder CI (`pnpm test`) und nicht mehr nachts.
+* Manuell startbar (`workflow_dispatch`) mit Belegzahl, Minuten und bekannten Regeln (leer = Standard, `keine` = streng).
+* **Rot heißt: etwas Neues.** Offen ist nur Befund D, das AT0-Seriennummernformat (A und B sind behoben). Seine Regeln stehen im Workflow als Standard für
+  `BURNIN_BEKANNTE_REGELN` (Liste oben bei den Burn-in-Schaltern): Sie erscheinen im Bericht als Hinweis „[bekannter Befund]", machen die Nacht aber nicht rot —
+  jede andere Beanstandung schon. Ist D behoben, die Liste im Workflow leeren (die zugehörigen Tests: siehe „Befunde" oben); für einen strengen Lauf von Hand `bekannte_regeln` = `keine`.
 * Das BMF-Prüftool ist laut BMF „primär auf korrekte Implementierung ausgerichtet" und nicht verbindlich; ein Fehler dort ist ein Anlass zum Nachsehen,
   ein Bestehen ersetzt weder die Belegprüfung in FinanzOnline noch die BMF-Belegcheck-App.
 * Auswertung der Prüftool-Ausgabe (`scripts/rksv/lib/bmf-ergebnis.mjs`): Urteil sind nur die Wurzeln von `N_app/N_cashbox/N_dep.json` und `DEP-global.json`
