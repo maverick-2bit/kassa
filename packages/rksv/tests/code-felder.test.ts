@@ -11,11 +11,12 @@
 import { createDecipheriv, createHash } from 'node:crypto'
 import { describe, it, expect, beforeAll } from 'vitest'
 import { berechneIV } from '../src/crypto/aes-icm.js'
+import { verkettungswertStartbeleg } from '../src/crypto/chain.js'
 import {
-  Umsatzzaehler, erstelleNullbeleg, signiereBeleg, verifiziereBelegSignatur, verifiziereBelegSignaturAltDer,
+  Umsatzzaehler, erstelleNullbeleg, erstelleStartbeleg, signiereBeleg, verifiziereBelegSignatur, verifiziereBelegSignaturAltDer,
   type SignierungsKontext,
 } from '../src/beleg.js'
-import { generateSEE, p1363ZuDer, zertifikatSN } from '../src/see.js'
+import { generateSEE, p1363ZuDer, verifiziere, verifiziereDerCodiert, zertifikatSN } from '../src/see.js'
 import type { BelegPosition, BelegTyp, MwStSatz, SEEConfig, SignedBeleg } from '../src/types.js'
 import { zerlegeQr } from './helpers/pruef-export.js'
 
@@ -136,6 +137,34 @@ describe('Nullbeleg und Umsatzzähler-Hilfen', () => {
     expect(z.aktuell).toBe(5n)
     expect(z.addiere(-8n)).toBe(-3n)
     expect(z.toJSON()).toBe('-3')
+  })
+})
+
+describe('Startbeleg und externe Signatureinheit', () => {
+  it('Startbeleg: Nummer 1, keine Positionen, Beträge 0,00, Zähler 0, Kette aus der Kassen-ID, Kontext zeigt auf den Beleg', async () => {
+    const { beleg, kontext } = await erstelleStartbeleg(KASSE, see)
+    expect(beleg.belegNummer).toBe(1)
+    expect(beleg.belegTyp).toBe('Startbeleg')
+    expect(beleg.positionen).toEqual([])
+    expect(zerlegeQr(beleg.maschinenlesbareCode).betraege).toEqual(['0,00', '0,00', '0,00', '0,00', '0,00'])
+    expect(zaehlerVon(beleg)).toBe(0n)
+    expect(beleg.sigVorbeleg).toBe(verkettungswertStartbeleg(KASSE))
+    expect(kontext.letzterBelegCode).toBe(beleg.maschinenlesbareCode)
+  })
+
+  it('eine externe Einheit (A-Trust-HSM) signiert die Belegzeile statt des lokalen Schlüssels', async () => {
+    const aufrufe: string[] = []
+    const einheit = { signiereBelegzeile: async (zeile: string): Promise<Buffer> => { aufrufe.push(zeile); return Buffer.alloc(64, 7) } }
+    const { beleg, kontext } = await erstelleStartbeleg(KASSE, see, einheit)
+    expect(aufrufe).toHaveLength(1)
+    expect(beleg.maschinenlesbareCode.startsWith(`${aufrufe[0]}_`)).toBe(true)         // signiert wurde genau die Zeile ohne Signatur
+    expect(Buffer.from(beleg.signaturwert, 'base64')).toEqual(Buffer.alloc(64, 7))
+    expect(kontext.einheit).toBe(einheit)
+  })
+
+  it('verifiziere/verifiziereDerCodiert: ein unbrauchbares Zertifikat ergibt false statt eines Absturzes', () => {
+    expect(verifiziere('daten', Buffer.alloc(64, 1), Buffer.from('kein zertifikat'))).toBe(false)
+    expect(verifiziereDerCodiert('daten', Buffer.alloc(70, 1), Buffer.from('kein zertifikat'))).toBe(false)
   })
 })
 

@@ -94,6 +94,29 @@ zeigt der erste Nachtlauf (der Container wird in beiden Formen — Zertifikat un
 * Der Python-Zweitprüfer besteht alle 16 BMF-Szenarien (offen mit Ausnahme der Generator-Eigenheit bei der Seriennummer) und erkennt 12 gezielte Verfälschungen (Betrag, Signatur, gelöschter/vertauschter Beleg, Zähler, Kassen-ID, Datum, Header, Schlüssel …).
 * Für die echten Kassa-Daten (API → PostgreSQL → DEP7) findet er **nur** die Verkettung (Befund A): Signaturen, Zähler, Format, Belegnummern, Zeit sind sauber.
 
+## Mutationstests (Stryker) — was die Tests nicht festnagelten
+
+Stryker verändert `beleg.ts`, `see.ts`, `dep.ts` und `crypto/*` (427 Mutanten) und prüft, ob die **schnelle Suite** (ohne Python-/XSD-Tests) rot wird.
+
+| | beleg.ts | aes-icm.ts | chain.ts | dep.ts | see.ts | gesamt |
+|---|---:|---:|---:|---:|---:|---:|
+| erster Lauf (2026-11-02) | 81,1 % | 91,7 % | 83,8 % | 48,8 % | 60,2 % | **66,0 %** |
+| nach `code-felder`, `see-zertifikat`, `dep-funktionen` (Stand vor den Startbeleg-/Einheit-Tests in `code-felder`) | 94,3 % | 91,7 % | 83,8 % | 98,8 % | 82,8 % | **89,2 %** |
+
+Gefundene Lücken (jetzt mit Tests mit festen Erwartungswerten geschlossen): das **Format der Beträge im Code** (Dezimalkomma, Vorzeichen bei Stornos — kein Test sah
+den Code-Inhalt an), **Selbstsignatur und Gültigkeitsdauer** des Software-Zertifikats, ASN.1-Längen und Seriennummer-Kodierung, `mergeDEP7Exports`/`validiereDEP7`/`dep7AusJson`/DEP131-Export
+(nur in Integrationstests ausgeführt), `erstelleNullbeleg`, die Alt-Prüfung für DER-Signaturen, `erstelleStartbeleg` mit externer Einheit.
+
+Die verbleibenden Überlebenden sind **äquivalent oder unerreichbar**: Kodierungsnamen (`'utf8'` → `""`, gleiches Ergebnis), Schutzabfragen für `noUncheckedIndexedAccess`,
+nicht minimale DER-Längen/Vorzeichen-Bytes, die OpenSSL toleriert, Langform-Längen, die ECDSA-Signaturen nie erreichen, Fehlerzweige der OID-Kodierung.
+
+**Was Mutationstests nicht können:** `aes-icm.ts` (92 %) und `chain.ts` (84 %) sind nach Mutation fest — die Überlebenden sind äquivalent/unerreichbar —, und trotzdem ist die Verkettung
+gegenüber der Spezifikation falsch (Befund A). Die Tests nageln die *Implementierung* fest, nicht die *Spezifikation*. Einen Lesefehler der Spezifikation findet nur ein externer Maßstab
+(BMF-Daten, BMF-Prüftool, Zweitprüfer) — genau dafür ist diese Strecke da.
+
+Aufruf: `pnpm --filter @kassa/rksv test:mutation` (3–4 Minuten, Bericht `packages/rksv/reports/mutation/mutation.html`); Überlebende als Liste:
+`node scripts/rksv/mutation-bericht.mjs packages/rksv/reports/mutation/mutation.json`. Wöchentlich in `rksv-mutation.yml` (nur Auswertung, wird nicht rot).
+
 ## Lokal ausführen
 
 ```bash
