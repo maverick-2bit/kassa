@@ -1,0 +1,60 @@
+name: RKSV Mutationstests
+
+# Stryker verändert den RKSV-Kern (beleg.ts, see.ts, dep.ts, crypto/*) und prüft, ob die Tests es merken. Überlebende
+# Mutanten sind Behauptungen im Code, die kein Test festnagelt — der Bericht listet sie. Das ist eine Auswertung, kein Tor:
+# der Lauf wird nicht rot, wenn Mutanten überleben. Lokal: pnpm --filter @kassa/rksv test:mutation
+
+on:
+  schedule:
+    - cron: '23 2 * * 0'   # sonntags 02:23 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rksv-mutation
+  cancel-in-progress: false
+
+jobs:
+  mutation:
+    name: Mutationstests (rksv)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: pnpm einrichten
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9.15.0
+
+      - name: Node.js einrichten
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Abhängigkeiten installieren
+        run: pnpm install --frozen-lockfile
+
+      - name: Mutationstests
+        run: pnpm --filter @kassa/rksv test:mutation
+
+      - name: Überlebende Mutanten in die Zusammenfassung
+        if: ${{ always() }}
+        run: |
+          if [ -f packages/rksv/reports/mutation/mutation.json ]; then
+            node scripts/rksv/mutation-bericht.mjs packages/rksv/reports/mutation/mutation.json --markdown packages/rksv/reports/mutation/ueberlebende.md > /dev/null
+          fi
+
+      - name: Berichte als Artefakt
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: rksv-mutation-${{ github.run_id }}
+          retention-days: 60
+          if-no-files-found: warn
+          path: packages/rksv/reports/mutation
