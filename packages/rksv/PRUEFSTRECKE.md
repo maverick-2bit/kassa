@@ -40,12 +40,15 @@ Mangel besteht; sobald er behoben ist, meldet vitest „Expect test to fail" —
 * Spezifikation (RKSV Anlage 1 Z 4/Z 6): gehasht wird das Ergebnis der Signaturerstellung = **JWS-Compact-Form** des Vorbelegs
   (`header.payload.signatur`, base64url). Startbeleg: Kassen-ID.
 * BMF-Referenzdaten (Release V1.0.0 des Mustercodes, 16 Szenarien): **1284 von 1284** Folgebelege passen zur JWS-Form, **0** zur QR-Form.
+* **Das BMF-Prüftool selbst bestätigt es** (CI-Probelauf 2026-11-02, Export der Kassa als offenes System, 60 Belege): `DEP_CHAINING_VALUE` — „Die Verkettung
+  zwischen dem vorigen Beleg und dem aktuellen Beleg ist ungültig" — bei **59 von 59** Folgebelegen; als Eingabe der Verkettung nennt das Tool die JWS-Compact-Form des
+  Vorbelegs (`CHAINING_INPUT = eyJhbGciOiJFUzI1NiJ9.…`). Die Einzelbelegprüfung (Code, Signatur, Zähler) besteht bei allen 60 Belegen (`N_cashbox` 60× PASS).
 * Folge: Ab dem 2. Beleg ist die Kette in jedem DEP-Export ungültig (BMF-Prüftool „Gültige Verkettung", Finanzprüfung). Die
   BMF-Belegcheck-App sieht es nicht (Einzelbeleg, kein Vorgänger).
 * Warum unentdeckt: Selbstreferenz (siehe oben). Die einzige externe Referenz (`cg8hNU5ihto=`, Startbeleg) betrifft nur den ersten Beleg.
 * Fix (klein): in `signiereBeleg` `qrCodeZuJwsCompact(letzterBelegCode)` hashen. **Offen/Entscheidung des Users:** Umgang mit
   bereits signierten Altbelegen (deren Kette ab Beleg 2 historisch „falsch" ist; neuer Startbeleg/DEP-Abschnitt?). RKSV-Änderungen nur mit Zustimmung.
-* Tests: `bmf-referenz.test.ts` (3× `it.fails`), `dep7-zweitpruefer.test.ts`, `rksv-externe-pruefer.test.ts`; Burn-in und BMF-Prüftool melden es nachts.
+* Tests: `bmf-referenz.test.ts` (3× `it.fails`), `dep7-zweitpruefer.test.ts`, `rksv-externe-pruefer.test.ts`, `bmf-prueftool.test.ts` (nachts); Burn-in und BMF-Prüftool melden es nachts.
 
 ### B — Beleg-Zeit in der Zeitzone des Prozesses (Karte „RKSV-Kern")
 
@@ -82,8 +85,13 @@ Zusatzfund: Das Schema kennt `belegpruefung` (amtliche Belegprüfung inkl. `veri
 ### D — Software-SEE (AT0): Seriennummer im Beleg
 
 Laut RIS § 20 Abs. 3 steht bei geschlossenen Gesamtsystemen (AT0) statt der Zertifikats-Seriennummer der „Ordnungsbegriff des Unternehmers"
-(BMF-Beispiel: `U:ATU12345678-K1`). Die Kassa trägt die Hex-Seriennummer ihres selbstsignierten Zertifikats ein. Ob das BMF-Prüftool das beanstandet,
-zeigt der erste Nachtlauf (der Container wird in beiden Formen — Zertifikat und öffentlicher Schlüssel — angeboten).
+(BMF-Beispiel: `U:ATU12345678-K1`). Die Kassa trägt die Hex-Seriennummer ihres selbstsignierten Zertifikats ein.
+
+**Das BMF-Prüftool beanstandet jeden Beleg** (CI-Probelauf 2026-11-02, Burn-in-Export mit 214 Belegen, Zertifikat- und Public-Key-Container): `FORMAT_CLOSED_SYSTEM_SERIAL` bei
+214 von 214 Belegen — auch beim Startbeleg —, daraus folgt im DEP `DEP_STATE` („Am Beginn des exportierten RKSV-DEP befindet sich kein gültiger Startbeleg"). Das Tool kommt bei
+AT0 nie zu Verkettung, Zähler und Signatur. Folgen: Belege der Software-SEE bestehen die amtliche Belegprüfung nicht; echter Betrieb braucht ein offenes System (A-Trust). Und
+der Wechsel von AT0 auf A-Trust innerhalb einer Kette mischt geschlossenes und offenes System in einem DEP (Prüfung „keine Vermischung von Systemtypen").
+Als offenes System gelesen (ZDA `AT100`, Zertifikat im Container) besteht dagegen die Einzelbelegprüfung aller Belege; dort bleibt nur Befund A.
 
 ### Bestätigt (positive Gegenproben)
 
@@ -92,7 +100,8 @@ zeigt der erste Nachtlauf (der Container wird in beiden Formen — Zertifikat un
 * QR ↔ JWS-Compact (`qrCodeZuJwsCompact`) liefert exakt die JWS-Form des BMF für alle 81 Belege.
 * Startbeleg-Verkettung (Hash der Kassen-ID) stimmt mit dem BMF überein.
 * Der Python-Zweitprüfer besteht alle 16 BMF-Szenarien (offen mit Ausnahme der Generator-Eigenheit bei der Seriennummer) und erkennt 12 gezielte Verfälschungen (Betrag, Signatur, gelöschter/vertauschter Beleg, Zähler, Kassen-ID, Datum, Header, Schlüssel …).
-* Für die echten Kassa-Daten (API → PostgreSQL → DEP7) findet er **nur** die Verkettung (Befund A): Signaturen, Zähler, Format, Belegnummern, Zeit sind sauber.
+* Für die echten Kassa-Daten (API → PostgreSQL → DEP7) findet er **nur** die Verkettung (A) und das AT0-Seriennummernformat (D): Signaturen, Zähler, Format, Belegnummern, Zeit, Sammelbeleg nach Ausfall sind sauber.
+* Das BMF-Prüftool besteht seine 16 eigenen Beispiele (Kontrolllauf) und bestätigt für den Kassa-Export im offenen System: Einzelbeleg (Code, Signatur, Zähler) 60/60, Abfolge (Start, Sammelbeleg) — nur die Verkettung nicht (A).
 
 ## Mutationstests (Stryker) — was die Tests nicht festnagelten
 
@@ -142,9 +151,12 @@ Burn-in-Schalter: `BURNIN_BELEGE`, `BURNIN_MINUTEN`, `BURNIN_SEED`, `BURNIN_PARA
 * **Erste Läufe sind rot**, bis A und B im Produktivcode behoben sind — das ist der Zweck. Zum Beruhigen für einen manuellen Lauf `bekannte_regeln` setzen.
 * Das BMF-Prüftool ist laut BMF „primär auf korrekte Implementierung ausgerichtet" und nicht verbindlich; ein Fehler dort ist ein Anlass zum Nachsehen,
   ein Bestehen ersetzt weder die Belegprüfung in FinanzOnline noch die BMF-Belegcheck-App.
-* Die Auswertung der Prüftool-Ausgabe (`scripts/rksv/lib/bmf-ergebnis.mjs`) beruht auf den Feldnamen, die aus den Klassen des Tools gelesen wurden
-  (`verificationState` PASS/FAIL …); der erste echte Lauf kann Anpassungen verlangen — ein Lauf ohne erkannte Prüfergebnisse gilt deshalb als **nicht** bestanden.
-  Das Tool selbst wurde bei der Entwicklung nicht ausgeführt (die Berechtigungsprüfung hat das Starten des heruntergeladenen JAR verhindert; getestet ist alles drumherum gegen eine Attrappe).
+* Auswertung der Prüftool-Ausgabe (`scripts/rksv/lib/bmf-ergebnis.mjs`): Urteil sind nur die Wurzeln von `N_app/N_cashbox/N_dep.json` und `DEP-global.json`
+  (`verificationState` PASS/FAIL). Die `*_full.json`/`DEP-full.json` enthalten ALLE Prüfungen inklusive der verworfenen Typ-Hypothesen (`TYPE_OF_RECEIPT_*` als FAIL unter einer
+  PASS-Wurzel) und zählen nicht. Ein Lauf ohne erkanntes PASS gilt als **nicht** bestanden. (Die erste Fassung wertete alle Dateien aus und hielt deshalb auch die BMF-Beispiele
+  für durchgefallen — der Probelauf hat das gezeigt; seitdem prüft der Kontrolllauf 16 von 16 BMF-Szenarien als bestanden.)
+* **Wie das Tool bisher gelaufen ist:** Lokal wurde das heruntergeladene JAR bei der Entwicklung NICHT gestartet (die Berechtigungsprüfung hat es verhindert; nicht umgangen). Es lief
+  ausschließlich in GitHub Actions (Probelauf auf dem Wegwerf-Branch `trial/rksv-nacht`, Java 8) — dort mit den hier beschriebenen Ergebnissen.
 
 ## Mit Zugang (noch nicht gebaut — braucht Zugänge des Users)
 

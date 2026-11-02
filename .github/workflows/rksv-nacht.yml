@@ -137,9 +137,10 @@ jobs:
             ${{ runner.temp }}/bmf-kontrolle
             ${{ runner.temp }}/bmf-kassa
 
-      # Ein misslungener Kontrolllauf macht die Nacht rot, auch wenn der Burn-in selbst sauber war.
+      # Ein misslungener Kontrolllauf macht die Nacht rot, auch wenn der Burn-in selbst sauber war (und auch dann, wenn der
+      # Burn-in rot ist: ohne `!cancelled()` würde dieser Schritt nach einem früheren Fehler übersprungen).
       - name: Kontrolllauf auswerten
-        if: ${{ steps.kontrolle.outcome != 'success' }}
+        if: ${{ !cancelled() && steps.kontrolle.outcome == 'failure' }}
         run: |
           echo "Das BMF-Prüftool besteht seine eigenen Beispieldaten nicht — Umgebung (Java 8?) oder Tool-Version prüfen." >&2
           exit 1

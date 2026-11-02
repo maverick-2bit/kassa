@@ -1,15 +1,26 @@
 // Auswertung der Ausgabe des BMF-Prüftools (regkassen-verification 1.1.x).
 //
-// Das Tool schreibt Prüfergebnisse als JSON (Dateien N_cashbox.json, N_cashbox_full.json, N_dep.json, DEP-global.json,
-// DEP-full.json …). Ein Ergebnis ist ein Objekt mit `verificationState` (PASS | FAIL | INFORMATION | NOT_EXECUTED), `verificationId`,
-// ggf. `verificationResultDetailedMessage`, und verschachtelt `verificationResultList` — dieselben Namen wie in
-// verification.xsd des FinanzOnline-Webservice. Die Namen sind aus den Klassen des Tools gelesen (statisch, ohne Ausführung);
-// das genaue Layout steht erst nach dem ersten Lauf fest — darum wird jedes JSON rekursiv durchsucht, und ein Lauf ohne
-// ein einziges erkanntes Ergebnis gilt NICHT als bestanden.
+// Das Tool schreibt je Beleg N (vierstellig, ab 0) mehrere JSON-Dateien und am Ende zwei Sammeldateien:
+//   N_app.json        Urteil in der Form der BMF-Belegcheck-App (nur Wurzel)
+//   N_cashbox.json    Einzelbelegprüfung wie in FinanzOnline — NUR die fehlerhaften Prüfungen
+//   N_dep.json        Prüfungen des RKSV-DEP-Exports für diesen Beleg (Kette, Umsatzzähler, Abfolge, Chronologie)
+//   DEP-global.json   Zusammenfassung der globalen DEP-Prüfungen (JSON-Format, Anzahl, alle Belege)
+//   N_cashbox_full.json, DEP-full.json   ALLE Prüfungen inkl. verworfener Hypothesen — nicht für das Urteil geeignet:
+//        Der Typ eines Belegs (Start, Null, Standard, Training, Storno) wird durch Ausprobieren ermittelt; die Hypothesen,
+//        die nicht zutreffen (TYPE_OF_RECEIPT_*), stehen dort als FAIL unter einem Wurzelelement, das PASS ist.
+// Ein Ergebnis ist ein Objekt mit `verificationState` (PASS | FAIL | INFORMATION | NOT_EXECUTED), `verificationId`,
+// ggf. `verificationResultDetailedMessage`, verschachtelt in `verificationResultList` (Namen wie in verification.xsd).
+//
+// Urteil: nur die Wurzeln der Dateien N_app/N_cashbox/N_dep und DEP-global.json. Ein Lauf ohne ein einziges erkanntes PASS
+// gilt nicht als bestanden.
+
+const URTEIL_DATEIEN = [/(^|[\\/])\d{4}_(app|cashbox|dep)\.json$/, /(^|[\\/])DEP-global\.json$/]
+
+export const istUrteilsdatei = name => URTEIL_DATEIEN.some(m => m.test(name))
 
 const KONSOLE_PROBLEME = [
   /validation process failed/i,
-  /RKSV-DEP-EXPORT-validation # \d+:\s*FAIL/i,
+  /validation # \d+:\s*FAIL/i,                 // „Machine readable code validation # 0: FAIL", „RKSV-DEP-EXPORT-validation # 0: FAIL"
   /Fatal internal error/i,
   /Error while parsing the input files/i,
   /One of the provided files does not exist/i,
@@ -25,64 +36,60 @@ function text(wert) {
   return typeof wert === 'string' ? wert : JSON.stringify(wert)
 }
 
-/** Durchsucht einen JSON-Wert; liefert true, wenn darunter (oder hier) ein FAIL steht. */
-export function sammle(wert, datei, ergebnis) {
-  if (Array.isArray(wert)) {
-    let fail = false
-    for (const x of wert) fail = sammle(x, datei, ergebnis) || fail
-    return fail
-  }
+/** Sammelt die untersten fehlgeschlagenen Prüfungen unter `wert` (Vorfahren-FAIL fassen sie nur zusammen). Liefert true bei FAIL. */
+export function sammleFehler(wert, datei, fehlgeschlagen) {
+  if (Array.isArray(wert)) return wert.map(x => sammleFehler(x, datei, fehlgeschlagen)).some(Boolean)
   if (wert === null || typeof wert !== 'object') return false
-
   let kindFail = false
   for (const kind of Object.values(wert)) {
-    if (kind && typeof kind === 'object') kindFail = sammle(kind, datei, ergebnis) || kindFail
+    if (kind && typeof kind === 'object') kindFail = sammleFehler(kind, datei, fehlgeschlagen) || kindFail
   }
   const zustand = typeof wert.verificationState === 'string' ? wert.verificationState.toUpperCase() : null
-  if (zustand) {
-    ergebnis.zaehler[zustand] = (ergebnis.zaehler[zustand] ?? 0) + 1
-    if (zustand === 'FAIL' && !kindFail) {
-      // Nur die untersten fehlgeschlagenen Prüfungen aufführen — die darüberliegenden FAIL fassen sie nur zusammen.
-      ergebnis.fehlgeschlagen.push({
-        datei,
-        name: text(wert.verificationId ?? wert.verificationName ?? '?'),
-        meldung: text(wert.verificationResultDetailedMessage ?? wert.verificationTextualDescription ?? wert.verificationName ?? '').slice(0, 400),
-      })
-    }
-    return zustand === 'FAIL' || kindFail
+  if (zustand === 'FAIL' && !kindFail) {
+    fehlgeschlagen.push({
+      datei,
+      name: text(wert.verificationId ?? wert.verificationName ?? '?'),
+      meldung: text(wert.verificationResultDetailedMessage ?? wert.verificationTextualDescription ?? wert.verificationName ?? '').slice(0, 400),
+    })
   }
-  return kindFail
+  return zustand === 'FAIL' || kindFail
 }
 
 /**
- * @param {{ name: string, inhalt: string }[]} dateien  Inhalte aller *.json im Ausgabeordner
+ * @param {{ name: string, inhalt: string }[]} dateien  Inhalte der JSON-Dateien im Ausgabeordner (alle; ausgewertet werden die Urteilsdateien)
  * @param {string} konsole  Standardausgabe + Fehlerausgabe des Tools
  * @param {number|null} exitCode
  */
 export function analysiere(dateien, konsole, exitCode) {
-  const ergebnis = { zaehler: {}, fehlgeschlagen: [] }
+  const zaehler = {}
+  const fehlgeschlagen = []
   let gelesen = 0
   for (const d of dateien) {
+    if (!istUrteilsdatei(d.name)) continue
     let json
     try { json = JSON.parse(d.inhalt) } catch { continue }
     gelesen++
-    sammle(json, d.name, ergebnis)
+    for (const wurzel of Array.isArray(json) ? json : [json]) {
+      const zustand = typeof wurzel?.verificationState === 'string' ? wurzel.verificationState.toUpperCase() : '(ohne)'
+      zaehler[zustand] = (zaehler[zustand] ?? 0) + 1
+      if (zustand === 'FAIL') {
+        const vorher = fehlgeschlagen.length
+        sammleFehler(wurzel, d.name, fehlgeschlagen)
+        if (fehlgeschlagen.length === vorher) {   // Wurzel ist FAIL, aber ohne Einzelheiten (z. B. N_app.json)
+          fehlgeschlagen.push({ datei: d.name, name: text(wurzel.verificationId ?? '?'), meldung: text(wurzel.verificationResultDetailedMessage ?? '').slice(0, 400) })
+        }
+      }
+    }
   }
   const konsolenProbleme = []
   for (const zeile of konsole.split(/\r?\n/)) {
     if (KONSOLE_PROBLEME.some(m => m.test(zeile))) konsolenProbleme.push(zeile.trim().slice(0, 300))
   }
-  const bestanden = ergebnis.zaehler.PASS ?? 0
+  const bestanden = zaehler.PASS ?? 0
   const hinweise = []
-  if (gelesen === 0) hinweise.push('Das Tool hat keine auswertbare JSON-Ausgabe geschrieben')
-  else if (bestanden === 0 && ergebnis.fehlgeschlagen.length === 0) hinweise.push('Kein einziges Prüfergebnis (verificationState) erkannt — Ausgabeformat prüfen')
+  if (gelesen === 0) hinweise.push('Das Tool hat keine auswertbare Urteilsdatei geschrieben (N_app/N_cashbox/N_dep/DEP-global)')
+  else if (bestanden === 0 && !zaehler.FAIL) hinweise.push('Kein einziges bestandenes Prüfergebnis erkannt — Ausgabeformat prüfen')
   if (exitCode !== 0) hinweise.push(`Exit-Code ${exitCode}`)
-  const ok = exitCode === 0 && ergebnis.fehlgeschlagen.length === 0 && konsolenProbleme.length === 0 && bestanden > 0
-  return {
-    ok,
-    zaehler: ergebnis.zaehler,
-    fehlgeschlagen: ergebnis.fehlgeschlagen,
-    konsolenProbleme,
-    hinweis: hinweise.join('; '),
-  }
+  const ok = exitCode === 0 && !zaehler.FAIL && konsolenProbleme.length === 0 && bestanden > 0
+  return { ok, zaehler, fehlgeschlagen, konsolenProbleme, hinweis: hinweise.join('; ') }
 }

@@ -83,6 +83,8 @@ export async function baueEigenenExport(anzahl: number, kassenId = 'PRUEF-KASSE-
     { typ: 'Nullbeleg',        positionen: [] },
     { typ: 'Barzahlungsbeleg', ausfall: true, positionen: [{ bezeichnung: 'Schnitzel', menge: 1, einzelpreisBreutto: 1690, mwstSatz: 'ermaessigt1' }] },
     { typ: 'Barzahlungsbeleg', ausfall: true, positionen: [{ bezeichnung: 'Krummer Preis', menge: 3.333, einzelpreisBreutto: 999, mwstSatz: 'besonders' }] },
+    // Nach dem Ausfall folgt der Sammelbeleg = signierter Nullbeleg (RKSV; das BMF-Prüftool verlangt ihn als ersten oder zweiten Beleg danach)
+    { typ: 'Nullbeleg',        positionen: [] },
     { typ: 'Barzahlungsbeleg', positionen: [{ bezeichnung: 'Teurer Posten', menge: 1, einzelpreisBreutto: 123456, mwstSatz: 'normal' }] },
   ]
   let tag = start.datumUhrzeit.getTime()           // jede Minute ein Beleg, beginnend beim Startbeleg

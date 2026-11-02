@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 // @ts-ignore — reines JavaScript ohne Typen (mit allowJs wäre ts-expect-error ein Fehler)
-import { analysiere } from '../../../scripts/rksv/lib/bmf-ergebnis.mjs'
+import { analysiere, istUrteilsdatei } from '../../../scripts/rksv/lib/bmf-ergebnis.mjs'
 // @ts-ignore — reines JavaScript ohne Typen (mit allowJs wäre ts-expect-error ein Fehler)
 import { entpacke, zipEintraege } from '../../../scripts/rksv/lib/zip.mjs'
 import { REPO_WURZEL, ladeBmfSzenario, TESTS_ORDNER } from './helpers/pruef-export.js'
@@ -28,48 +28,73 @@ afterAll(() => { for (const o of temp) rmSync(o, { recursive: true, force: true 
 
 describe('Auswertung der Ausgabe des Prüftools', () => {
   const datei = (name: string, inhalt: unknown) => ({ name, inhalt: JSON.stringify(inhalt) })
-  const pass = { verificationResultList: [{ verificationId: 'A', verificationState: 'PASS' }, { verificationId: 'B', verificationState: 'PASS' }] }
+  const pass = (id = 'WURZEL') => ({ verificationId: id, verificationState: 'PASS' })
+  /** Wie die echte `_full`-Datei: PASS-Wurzel, darunter verworfene Typ-Hypothesen als FAIL (CI-Probelauf 2026-11-02) */
+  const mitHypothesen = { verificationId: 'VERIFICATION_FROM_CASHBOX', verificationState: 'PASS', verificationResultList: [
+    { verificationId: 'TYPE_OF_RECEIPT_STANDARD', verificationState: 'FAIL' }, { verificationId: 'TYPE_OF_RECEIPT_TRA', verificationState: 'FAIL' }] }
+  const bestanden = [datei('0000_app.json', pass('VERIFICATION_FROM_APP')), datei('0000_cashbox.json', pass()), datei('0000_dep.json', pass()), datei('DEP-global.json', pass())]
 
-  it('nur PASS, Exit 0, saubere Konsole → bestanden', () => {
-    const a = analysiere([datei('DEP-full.json', pass)], 'RKSV-DEP-EXPORT-validation # 0:  PASS', 0)
-    expect(a).toMatchObject({ ok: true, zaehler: { PASS: 2 }, fehlgeschlagen: [], konsolenProbleme: [] })
+  it('welche Dateien zählen: N_app/N_cashbox/N_dep und DEP-global — nicht die „full"-Dateien', () => {
+    for (const ja of ['0000_app.json', '0123_cashbox.json', '0007_dep.json', 'DEP-global.json', '/tmp/aus/0001_dep.json', 'C:\\aus\\DEP-global.json']) expect(istUrteilsdatei(ja), ja).toBe(true)
+    for (const nein of ['0000_cashbox_full.json', 'DEP-full.json', 'bmf-zusammenfassung.json', 'dep-export.json', 'cryptographicMaterialContainer.json']) expect(istUrteilsdatei(nein), nein).toBe(false)
+  })
+
+  it('nur PASS-Wurzeln, Exit 0, saubere Konsole → bestanden', () => {
+    const a = analysiere(bestanden, 'RKSV-DEP-EXPORT-validation # 0:  PASS', 0)
+    expect(a).toMatchObject({ ok: true, zaehler: { PASS: 4 }, fehlgeschlagen: [], konsolenProbleme: [] })
+  })
+
+  it('verworfene Typ-Hypothesen (FAIL unter PASS-Wurzel) in den „full"-Dateien zählen NICHT', () => {
+    const a = analysiere([...bestanden, datei('0000_cashbox_full.json', mitHypothesen), datei('DEP-full.json', mitHypothesen)], '', 0)
+    expect(a.ok).toBe(true)
+    expect(a.fehlgeschlagen).toEqual([])
   })
 
   it('FAIL: nur die unterste fehlgeschlagene Prüfung wird genannt, mit Meldung', () => {
     const baum = { verificationId: 'DEP', verificationState: 'FAIL', verificationResultList: [
-      { verificationId: 'OK', verificationState: 'PASS' },
+      pass('OK'),
       { verificationId: 'DEP_CHAINING_VALUE', verificationState: 'FAIL', verificationResultDetailedMessage: 'Kette gebrochen' },
     ] }
-    const a = analysiere([datei('0001_dep.json', baum)], '', 0)
+    const a = analysiere([...bestanden, datei('0001_dep.json', baum)], '', 0)
     expect(a.ok).toBe(false)
     expect(a.fehlgeschlagen).toEqual([{ datei: '0001_dep.json', name: 'DEP_CHAINING_VALUE', meldung: 'Kette gebrochen' }])
-    expect(a.zaehler).toEqual({ FAIL: 2, PASS: 1 })
+    expect(a.zaehler).toEqual({ PASS: 4, FAIL: 1 })
+  })
+
+  it('Wurzel FAIL ohne Einzelheiten (so schreibt das Tool N_app.json) wird mit seiner Meldung geführt', () => {
+    const a = analysiere([datei('0000_app.json', { verificationId: 'VERIFICATION_FROM_APP', verificationState: 'FAIL', verificationResultDetailedMessage: 'Der vorliegende Beleg weist Fehler auf.' })], '', 0)
+    expect(a.ok).toBe(false)
+    expect(a.fehlgeschlagen).toEqual([{ datei: '0000_app.json', name: 'VERIFICATION_FROM_APP', meldung: 'Der vorliegende Beleg weist Fehler auf.' }])
   })
 
   it('NOT_EXECUTED und INFORMATION allein machen nichts rot, ersetzen aber kein PASS', () => {
-    const a = analysiere([datei('x.json', { verificationResultList: [{ verificationState: 'INFORMATION' }, { verificationState: 'NOT_EXECUTED' }] })], '', 0)
+    const a = analysiere([datei('0000_dep.json', { verificationState: 'INFORMATION' }), datei('0000_app.json', { verificationState: 'NOT_EXECUTED' })], '', 0)
     expect(a.ok).toBe(false)
-    expect(a.hinweis).toContain('Kein einziges Prüfergebnis')
+    expect(a.hinweis).toContain('Kein einziges bestandenes Prüfergebnis')
   })
 
-  it('Konsole mit Fehlermeldung des Tools → nicht bestanden, auch wenn alle Dateien PASS zeigen', () => {
-    const a = analysiere([datei('DEP-full.json', pass)], 'Fatal internal error. Detailed error-stacktrace:', 0)
+  it.each([
+    'Fatal internal error. Detailed error-stacktrace:',
+    'Machine readable code validation # 0: FAIL',
+    'RKSV-DEP-EXPORT validation process failed for last receipt, stopping RKSV-DEP-EXPORT-validation.',
+  ])('Konsole mit „%s" → nicht bestanden, auch wenn alle Dateien PASS zeigen', zeile => {
+    const a = analysiere(bestanden, `Beginn\n${zeile}\nEnde`, 0)
     expect(a.ok).toBe(false)
     expect(a.konsolenProbleme).toHaveLength(1)
   })
 
   it('Exit-Code ≠ 0 → nicht bestanden', () => {
-    expect(analysiere([datei('DEP-full.json', pass)], '', 1).ok).toBe(false)
+    expect(analysiere(bestanden, '', 1).ok).toBe(false)
   })
 
-  it('keine auswertbare Ausgabe → nicht bestanden (leer ist nicht „bestanden")', () => {
-    const a = analysiere([{ name: 'kaputt.json', inhalt: '{nicht json' }], '', 0)
+  it('keine auswertbare Urteilsdatei → nicht bestanden (leer ist nicht „bestanden")', () => {
+    const a = analysiere([{ name: '0000_dep.json', inhalt: '{nicht json' }, datei('DEP-full.json', pass())], '', 0)
     expect(a.ok).toBe(false)
-    expect(a.hinweis).toContain('keine auswertbare JSON-Ausgabe')
+    expect(a.hinweis).toContain('keine auswertbare Urteilsdatei')
   })
 
-  it('findet Ergebnisse auch tief verschachtelt und in Listen', () => {
-    const a = analysiere([datei('x.json', [{ a: { b: [{ verificationState: 'PASS' }, { verificationState: 'FAIL', verificationId: 'TIEF' }] } }])], '', 0)
+  it('findet Fehler auch tief verschachtelt und in Listen', () => {
+    const a = analysiere([datei('0002_cashbox.json', { verificationState: 'FAIL', a: { b: [{ verificationState: 'PASS' }, { verificationState: 'FAIL', verificationId: 'TIEF' }] } })], '', 0)
     expect(a.fehlgeschlagen.map((f: { name: string }) => f.name)).toEqual(['TIEF'])
   })
 })
@@ -94,7 +119,7 @@ describe('Lauf des Skripts gegen die Attrappe', () => {
     const { r, zusammenfassung } = lauf('pass')
     expect(r.status, r.stdout + r.stderr).toBe(0)
     expect(zusammenfassung).toMatchObject({ ok: true, fehlgeschlagen: [] })
-    expect(zusammenfassung.zaehler.PASS).toBeGreaterThan(0)
+    expect(zusammenfassung.zaehler.PASS).toBe(10)             // 3 Belege × (app, cashbox, dep) + DEP-global
   })
 
   it('fail → Exit 1, die fehlgeschlagene Prüfung steht in der Zusammenfassung', () => {

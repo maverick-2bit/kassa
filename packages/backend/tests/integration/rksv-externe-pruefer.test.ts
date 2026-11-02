@@ -118,8 +118,8 @@ describe('DEP7-Export der Kassa durch externe Prüfer (Integration, echtes Postg
   })
 
   describe.skipIf(!PYTHON)('Python-Zweitprüfer', () => {
-    it('Signaturen (ES256), Umsatzzähler (AES), Format, Seriennummer, Belegnummern, Zeit: sauber — Verkettung ausgenommen', () => {
-      const lauf = fuehreZweitpruefungAus(dateien, ['--ignoriere', 'verkettung'])
+    it('Signaturen (ES256), Umsatzzähler (AES), Format, Seriennummer, Belegnummern, Zeit: sauber — Verkettung (A) und AT0-Seriennummernformat (D) ausgenommen', () => {
+      const lauf = fuehreZweitpruefungAus(dateien, ['--ignoriere', 'verkettung,zksn-format'])
       expect(lauf.bericht?.verstoesse, lauf.ausgabe).toEqual([])
       expect(lauf.bericht?.geprueft).toBe(anzahlBelege)
       expect(lauf.bericht!.ausfallbelege).toBeGreaterThanOrEqual(2)
@@ -130,6 +130,11 @@ describe('DEP7-Export der Kassa durch externe Prüfer (Integration, echtes Postg
     it.fails('BEFUND A  die Verkettung entspricht der Spezifikation (JWS-Compact des Vorbelegs)', () => {
       const lauf = fuehreZweitpruefungAus(dateien)
       expect(lauf.bericht?.verstoesseJeRegel['verkettung'] ?? 0).toBe(0)
+    })
+
+    it.fails('BEFUND D  AT0-Belege tragen den Ordnungsbegriff mit Schlüssel-ID statt der Zertifikats-Seriennummer (BMF-Prüftool: FORMAT_CLOSED_SYSTEM_SERIAL)', () => {
+      const lauf = fuehreZweitpruefungAus(dateien)
+      expect(lauf.bericht?.verstoesseJeRegel['zksn-format'] ?? 0).toBe(0)
     })
   })
 

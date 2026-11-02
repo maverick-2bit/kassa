@@ -50,6 +50,9 @@ function pruefe(dep7: DEP7Export, container: CryptoContainer, extra: string[] = 
 
 const regeln = (l: Lauf): string[] => Object.keys(l.bericht.verstoesseJeRegel).sort()
 
+/** Bekannte, im Produktivcode noch offene Befunde: A = Verkettung (JWS statt QR), D = AT0-Seriennummernformat */
+const BEKANNT = 'verkettung,zksn-format'
+
 describe.skipIf(!PYTHON)('Python-Zweitprüfer', () => {
   it('Selbsttest: AES-256 (FIPS-197) und ECDSA P-256 (von OpenSSL erzeugte Vektoren) sind grün', () => {
     const r = spawnSync(PYTHON![0]!, [...PYTHON!.slice(1), '-I', SKRIPT, '--selbsttest'], { encoding: 'utf8' })
@@ -191,8 +194,8 @@ describe.skipIf(!PYTHON)('Python-Zweitprüfer', () => {
     let eigen: Awaited<ReturnType<typeof baueEigenenExport>>
     beforeAll(async () => { eigen = await baueEigenenExport(40) })
 
-    it('Signaturen (ES256, P1363), Umsatzzähler (AES), Format, Seriennummer, Belegnummern, Zeit: alles sauber — Verkettung ausgenommen', () => {
-      const l = pruefe(eigen.dep7, eigen.container, ['--ignoriere', 'verkettung'])
+    it('Signaturen (ES256, P1363), Umsatzzähler (AES), Format, Seriennummer, Belegnummern, Zeit: alles sauber — Verkettung (A) und AT0-Seriennummernformat (D) ausgenommen', () => {
+      const l = pruefe(eigen.dep7, eigen.container, ['--ignoriere', BEKANNT])
       expect(l.bericht.verstoesse).toEqual([])
       expect(l.bericht.geprueft).toBe(40)
       expect(l.bericht.ausfallbelege).toBeGreaterThan(0)
@@ -201,12 +204,12 @@ describe.skipIf(!PYTHON)('Python-Zweitprüfer', () => {
     })
 
     it('auch mit nur dem öffentlichen Schlüssel statt des Zertifikats im Container', () => {
-      const l = pruefe(eigen.dep7, baueContainer(eigen.see, 'PUBLIC_KEY'), ['--ignoriere', 'verkettung'])
+      const l = pruefe(eigen.dep7, baueContainer(eigen.see, 'PUBLIC_KEY'), ['--ignoriere', BEKANNT])
       expect(l.bericht.verstoesse).toEqual([])
     })
 
     it('ohne Container-Eintrag genügt das Zertifikat in der DEP7-Gruppe', () => {
-      const l = pruefe(eigen.dep7, { base64AESKey: eigen.container.base64AESKey, certificateOrPublicKeyMap: {} }, ['--ignoriere', 'verkettung'])
+      const l = pruefe(eigen.dep7, { base64AESKey: eigen.container.base64AESKey, certificateOrPublicKeyMap: {} }, ['--ignoriere', BEKANNT])
       expect(l.bericht.verstoesse).toEqual([])
     })
 
@@ -217,11 +220,34 @@ describe.skipIf(!PYTHON)('Python-Zweitprüfer', () => {
       expect(l.bericht.verstoesseJeRegel['verkettung'] ?? 0).toBe(0)
     })
 
-    it('Ist-Zustand zu Befund A: genau die Folgebelege (alle außer dem Startbeleg) verletzen die Verkettung', () => {
+    // BEFUND D: Software-SEE = ZDA AT0 = „geschlossenes Gesamtsystem"; dort gehört der Ordnungsbegriff mit Schlüssel-ID in das
+    // Feld Seriennummer. Das BMF-Prüftool beanstandet jeden Beleg der Kassa (FORMAT_CLOSED_SYSTEM_SERIAL, CI-Probelauf 2026-11-02).
+    it.fails('BEFUND D  AT0-Belege tragen den Ordnungsbegriff mit Schlüssel-ID statt der Zertifikats-Seriennummer', () => {
       const l = pruefe(eigen.dep7, eigen.container)
-      expect(regeln(l)).toEqual(['verkettung'])
+      expect(l.bericht.verstoesseJeRegel['zksn-format'] ?? 0).toBe(0)
+    })
+
+    it('Ist-Zustand zu A und D: genau die Folgebelege verletzen die Verkettung, alle Belege das AT0-Format', () => {
+      const l = pruefe(eigen.dep7, eigen.container)
+      expect(regeln(l)).toEqual(['verkettung', 'zksn-format'])
       expect(l.bericht.verstoesseJeRegel['verkettung']).toBe(39)
+      expect(l.bericht.verstoesseJeRegel['zksn-format']).toBe(40)
       expect(l.exit).toBe(1)
+    })
+
+    it('derselbe Export als offenes System (ZDA AT100): nur noch die Verkettung (A) — das AT0-Format betrifft nur geschlossene Systeme', async () => {
+      const offen = await baueEigenenExport(40, 'PRUEF-OFFEN', 'AT100')
+      const l = pruefe(offen.dep7, offen.container)
+      expect(regeln(l)).toEqual(['verkettung'])
+    })
+
+    it('fehlt der Sammelbeleg (signierter Nullbeleg) nach einem Ausfall, schlägt der Prüfer an', async () => {
+      const offen = await baueEigenenExport(40, 'PRUEF-OFFEN', 'AT100')
+      const i = offen.belege.findIndex((b, k) => k > 0 && offen.belege[k - 1]!.ausgefallen === true && b.belegTyp === 'Nullbeleg')
+      expect(i, 'Muster enthält Ausfall + Sammelbeleg').toBeGreaterThan(0)
+      const ohne: DEP7Export = { 'Belege-Gruppe': offen.dep7['Belege-Gruppe'].map(g => ({ ...g, 'Belege-kompakt': g['Belege-kompakt'].filter((_, k) => k !== i) })) }
+      const l = pruefe(ohne, offen.container, ['--ignoriere', 'verkettung,belegnummer'])
+      expect(regeln(l)).toEqual(['sammelbeleg'])
     })
   })
 })

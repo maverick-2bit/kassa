@@ -64,17 +64,27 @@ describe.skipIf(!AKTIV)('BMF-Prüftool über Exporte der Kassa', () => {
       offen = await baueEigenenExport(60, 'PRUEF-OFFEN', 'AT100')
     })
 
-    // BEFUND D: Das Format der Seriennummer für AT0 (Ordnungsbegriff statt Zertifikats-Seriennummer) wird beanstandet.
+    const arten = (z: Zusammenfassung): string[] => [...new Set(z.fehlgeschlagen.map(f => f.name))].sort()
+
+    // BEFUND D (CI-Probelauf 2026-11-02): Für AT0 verlangt das Tool statt der Zertifikats-Seriennummer den Ordnungsbegriff mit
+    // Schlüssel-ID (FORMAT_CLOSED_SYSTEM_SERIAL) — jeder Beleg scheitert daran und kommt nie zu Verkettung, Zähler, Signatur;
+    // im DEP folgt DEP_STATE „kein gültiger Startbeleg".
     it('AT0: das Tool beanstandet das Format der Seriennummer des geschlossenen Systems (Befund D)', () => {
       const z = bmf('kassa-at0', at0.dep7, at0.container)
       expect(z.ok).toBe(false)
-      expect(z.fehlgeschlagen.map(f => f.name)).toContain('FORMAT_CLOSED_SYSTEM_SERIAL')
+      expect(arten(z)).toEqual(expect.arrayContaining(['FORMAT_CLOSED_SYSTEM_SERIAL', 'DEP_STATE']))
     }, 180_000)
 
-    // BEFUND A: Im offenen System erreicht das Tool Verkettung, Zähler und Signatur; heute scheitert (mindestens) die Verkettung.
+    // Als offenes System (ZDA AT100, Zertifikat im Container) greifen alle Prüfungen des Tools: Einzelbeleg (Code, Signatur,
+    // Umsatzzähler) und Abfolge (Start, Sammelbeleg nach Ausfall) bestehen — beanstandet wird NUR die Verkettung (Befund A).
+    // Das Tool nennt als Eingabe der Verkettung die JWS-Compact-Form des Vorbelegs (CHAINING_INPUT) — wie die Spezifikation.
+    it('offenes System: beanstandet wird nur die Verkettung der Folgebelege (Befund A)', () => {
+      const z = bmf('kassa-offen', offen.dep7, offen.container, 'certificate')
+      expect(arten(z)).toEqual(['DEP_CHAINING_VALUE', 'DEP_RECEIPT_LIST'])
+    }, 180_000)
+
     it.fails('BEFUND A  offenes System (ZDA AT100): das Tool bestätigt den Export der Kassa', () => {
-      const z = bmf('kassa-offen', offen.dep7, offen.container)
-      console.log(`BMF-Prüftool, offenes System: ok=${z.ok}, Fehlerarten: ${[...new Set(z.fehlgeschlagen.map(f => f.name))].join(', ')}`)
+      const z = bmf('kassa-offen-streng', offen.dep7, offen.container, 'certificate')
       expect(z.fehlgeschlagen.map(f => `${f.name}: ${f.meldung}`)).toEqual([])
       expect(z.ok).toBe(true)
     }, 180_000)

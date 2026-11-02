@@ -25,6 +25,9 @@ Geprüft wird je Beleg (Regelnamen = Schlüssel im Bericht)
                       „Sicherheitseinrichtung ausgefallen" wird gezählt, nicht geprüft
   schluessel-fehlt    zur Seriennummer im Beleg gibt es weder Zertifikat in der Gruppe noch Eintrag im Container
   zertifikat-sn       Seriennummer im Beleg = Seriennummer des Zertifikats (nur wenn die Angabe hexadezimal ist)
+  sammelbeleg         nach einem Ausfall der Signatureinheit folgt als erster oder zweiter Beleg ein signierter Nullbeleg
+  zksn-format         ZDA AT0 (geschlossenes Gesamtsystem): statt der Zertifikats-Seriennummer muss der Ordnungsbegriff mit
+                      Schlüssel-ID stehen (z. B. U:ATU12345678-K1), sonst beanstandet das BMF-Prüftool jeden Beleg
   umsatzzaehler       AES-256-ICM entschlüsselt = laufende Summe aller Beträge (Cent; Trainingsbelege ausgenommen)
 
 Aufruf
@@ -310,6 +313,8 @@ def zertifikat_lesen(der):
 BETRAG = re.compile(r"^-?\d+,\d{2}$")
 DATUM = re.compile(r"^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})$")
 SUITE = re.compile(r"^R1-[A-Z]{2}\d{1,3}$")
+# Art des Ordnungsbegriffs (U = UID, G = GLN, F = FASTNR) : Nummer - Schlüssel-ID (Muster aus den BMF-Beispieldaten und den Feldern von registrierung_ggs)
+GESCHLOSSEN_SN = re.compile(r"^[UGF]:[A-Za-z0-9]{1,14}-[A-Za-z0-9]{1,10}$")
 
 
 def betrag_cent(text):
@@ -332,6 +337,8 @@ class Pruefer(object):
         self.ausfallbelege = 0
         self.marker = {"TRA": 0, "STO": 0}
         self._schluessel_cache = {}
+        # Für die Abfolge nach einem Ausfall: je Beleg (ausgefallen?, alle Beträge 0,00?)
+        self._ablauf = []
 
     def melde(self, nr, regel, detail):
         if regel in self.ignoriere:
@@ -389,7 +396,26 @@ class Pruefer(object):
                     continue
                 kassen_id, vorherige_nr, vorheriges_datum, summe = ergebnis
                 vorheriger_jws = jws
+        self._pruefe_abfolge()
         return self
+
+    def _pruefe_abfolge(self):
+        """Nach einem Ausfall der Signatureinheit muss ein Sammelbeleg (signierter Nullbeleg) folgen — als erster oder zweiter
+        Beleg nach dem letzten Beleg mit „Sicherheitseinrichtung ausgefallen" (BMF-Prüftool: DEP_STATE). Nur beurteilt, wenn der
+        Export danach noch zwei Belege enthält; ein am Ausfall abgeschnittener Export ist kein Fehler."""
+        a = self._ablauf
+        i = 0
+        while i < len(a):
+            if not a[i][1]:
+                i += 1
+                continue
+            j = i
+            while j + 1 < len(a) and a[j + 1][1]:
+                j += 1
+            nach = a[j + 1:j + 3]
+            if len(nach) == 2 and not any((not b[1]) and b[2] for b in nach):
+                self.melde(nach[0][0], "sammelbeleg", "nach dem Ausfall ab Beleg %d folgt kein signierter Nullbeleg (Sammelbeleg) als erster oder zweiter Beleg" % a[i][0])
+            i = j + 1
 
     def _beleg(self, lfd, jws, gruppen_zert, vorheriger_jws, vorherige_nr, vorheriges_datum, kassen_id, summe):
         teile = jws.split(".")
@@ -416,6 +442,10 @@ class Pruefer(object):
         _, suite, kid, bnr_text, bdt, b_normal, b_e1, b_e2, b_null, b_bes, zaehler_b64, zksn, vorbeleg = felder
         if not SUITE.match(suite):
             self.melde(lfd, "code-format", "Algorithmuskennzeichen %r" % suite)
+        elif suite == "R1-AT0" and not GESCHLOSSEN_SN.match(zksn):
+            # Geschlossenes Gesamtsystem (RIS § 20 Abs. 3): statt der Zertifikats-Seriennummer der Ordnungsbegriff des Unternehmens
+            # mit Schlüssel-ID, z. B. „U:ATU12345678-K1" — das BMF-Prüftool beanstandet sonst jeden Beleg (FORMAT_CLOSED_SYSTEM_SERIAL).
+            self.melde(lfd, "zksn-format", "AT0 (geschlossenes System): Seriennummer %r ist kein Ordnungsbegriff mit Schlüssel-ID (<U|G|F>:<Nummer>-<Schlüssel>)" % zksn)
         # Belegnummer: beliebiger Text, der auf eine laufende Zahl endet (nur Ziffern in unserer Kassa; das BMF-Beispiel
         # nutzt „<Kasse>-Receipt-ID-<n>"). Fortlaufend heißt: gleicher Vorspann, Zahl + 1.
         nr_teile = re.match(r"^(.*?)(\d+)$", bnr_text)
@@ -463,6 +493,7 @@ class Pruefer(object):
             ausfall = signatur.decode("utf-8") == AUSFALL_TEXT
         except UnicodeDecodeError:
             ausfall = False
+        self._ablauf.append((lfd, ausfall, all(betrag_cent(b) == 0 for b in betraege)))
         zert_serie = None
         if ausfall:
             self.ausfallbelege += 1
