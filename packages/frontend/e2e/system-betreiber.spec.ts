@@ -42,7 +42,19 @@ async function loginAbwarten(request: APIRequestContext, email: string, passwort
 const gemerkt: Record<string, Login> = {}
 async function login(request: APIRequestContext, email: string, passwort: string): Promise<Login> {
   if (gemerkt[email]) return gemerkt[email]!
-  const res = await loginAbwarten(request, email, passwort)
+  let res = await loginAbwarten(request, email, passwort)
+  if (!res.ok() && email === ADMIN_EMAIL) {
+    // Solo-Lauf gegen frische DB: Instanz per API einrichten (FO_STUB=true); ihr erster Admin ist der Betreiber
+    const setup = await request.post('/api/setup', {
+      data: {
+        firmenname: 'E2E Betreiber GmbH', uid: 'ATU87654335', kassenId: 'E2E-BT-001',
+        finanzOnline: { teilnehmerId: 'TID-E2E', benutzerkennung: 'BID-E2E', pin: 'PIN-E2E' },
+        umgebung: 'test', admin: { name: 'E2E Admin', email: ADMIN_EMAIL, passwort: ADMIN_PASSWORT },
+      },
+    })
+    if (!setup.ok()) throw new Error(`Setup fehlgeschlagen (${setup.status()}): ${await setup.text()}`)
+    res = await loginAbwarten(request, email, passwort)
+  }
   if (!res.ok()) throw new Error(`Login ${email} fehlgeschlagen (${res.status()}): ${await res.text()}`)
   gemerkt[email] = (await res.json()) as Login
   return gemerkt[email]!

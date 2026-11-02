@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useRef, type ReactNode } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import type { SetupInput } from '@kassa/shared'
 import { postSetup, setupApi, systemApi } from '../lib/api'
@@ -21,6 +21,7 @@ import { SetupSuccess } from '../components/SetupSuccess'
  */
 export function SetupPage() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
 
   const status       = useQuery({ queryKey: ['setup-status'], queryFn: setupApi.status, retry: false })
   const eingerichtet = status.data?.eingerichtet === true
@@ -36,12 +37,19 @@ export function SetupPage() {
   })
   const istBetreiber = betreiberQuery.data?.istBetreiber === true
 
+  // Welcher Fall beim Absenden galt. Danach ändert sich der Einrichtungsstand (aus der frischen Installation wird
+  // eine eingerichtete) — die Erfolgsansicht und die Geräte-Identität dürfen nicht vom laufenden Stand abhängen.
+  const weitererMandant = useRef(false)
+
   const mutation = useMutation({
     mutationFn: postSetup,
     onSuccess: (data) => {
+      if (!data.erfolgreich) return
+      // Die Anmeldeseite (und alle, die den Stand abfragen) sollen "eingerichtet" sofort sehen
+      void queryClient.invalidateQueries({ queryKey: ['setup-status'] })
       // Die Kassa-Identität dieses Geräts gehört zur ERSTEN Einrichtung. Legt der Betreiber einen weiteren
       // Mandanten an, bleibt das Gerät bei seinem — sonst meldete es sich plötzlich am neuen an.
-      if (!eingerichtet && data.erfolgreich && data.mandantId && data.kasseId) {
+      if (!weitererMandant.current && data.mandantId && data.kasseId) {
         setKasseIdentity({ mandantId: data.mandantId, kasseId: data.kasseId })
       }
     },
@@ -53,6 +61,7 @@ export function SetupPage() {
     : (mutation.data && !mutation.data.erfolgreich ? mutation.data.fehler : undefined)
 
   const handleSubmit = (input: SetupInput): void => {
+    weitererMandant.current = eingerichtet
     mutation.mutate(input)
   }
 
@@ -62,7 +71,7 @@ export function SetupPage() {
       <div className="space-y-6">
         <SetupSuccess data={mutation.data} />
         <div className="flex flex-wrap justify-center gap-3 pt-2">
-          {eingerichtet ? (
+          {weitererMandant.current ? (
             <>
               <button
                 onClick={() => navigate('/login?konto=neu')}
