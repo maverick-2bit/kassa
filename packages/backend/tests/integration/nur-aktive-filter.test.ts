@@ -12,7 +12,7 @@
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import type { FinanzOnlineClient } from '@kassa/rksv'
-import { buildTestServer, type TestServer } from '../helpers/testServer.js'
+import { buildTestServer, type TestServer, TEST_SETUP_TOKEN } from '../helpers/testServer.js'
 import { erstelleIntegrationsDb, type IntegrationsDb } from './helpers/integrationsDb.js'
 
 function mockFoClient(): FinanzOnlineClient {
@@ -84,7 +84,7 @@ describe('nurAktive-Filter (Integration, echtes PostgreSQL)', () => {
     idb = await erstelleIntegrationsDb()
     srv = await buildTestServer(idb.db, { finanzOnlineClient: mockFoClient() })
     for (const nr of [1, 2]) {
-      const setupRes = await srv.fastify.inject({ method: 'POST', url: '/api/setup', payload: setupInput(nr) })
+      const setupRes = await srv.fastify.inject({ method: 'POST', url: '/api/setup', headers: { 'x-setup-token': TEST_SETUP_TOKEN }, payload: setupInput(nr) })
       if (setupRes.statusCode !== 201) throw new Error(`Setup ${nr} (${setupRes.statusCode}): ${setupRes.body}`)
       const login = (await srv.fastify.inject({
         method: 'POST', url: '/api/auth/login', payload: { email: email(nr), passwort: PASSWORT },

@@ -37,7 +37,7 @@ export const userRoute: FastifyPluginAsync<UserRouteOptions> = async (fastify, o
     const parsed = UserUpdateInputSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     try {
-      const user = await updateUser(id, parsed.data, request.user.mandantId, { db: opts.db })
+      const user = await updateUser(id, parsed.data, request.user.mandantId, { db: opts.db }, request.user.sub)
       return reply.send(user)
     } catch (err) {
       if (err instanceof UserError) return reply.status(err.httpStatus).send({ fehler: err.message })

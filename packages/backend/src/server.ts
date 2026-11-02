@@ -89,6 +89,12 @@ export interface ServerDeps {
   ticketshopStripe?: ShopStripe
   /** Nur für Tests: globales Rate-Limit (Anfragen/Minute je Client) statt des Standards. */
   rateLimitMax?:   number
+  /**
+   * Nur für Tests: Limit der Einrichtungs-Route (Anfragen/Minute je Client). Im Betrieb gilt immer das
+   * enge Limit (5); in Tests (NODE_ENV=test) praktisch keines, damit Suiten, die mehrere Mandanten anlegen,
+   * nicht ins Limit laufen — der Limit-Test setzt hier bewusst einen kleinen Wert.
+   */
+  setupRateLimitMax?: number
   /** Nur für Tests: Log-Zeilen abfangen statt nach stdout zu schreiben. */
   logStream?:      { write: (zeile: string) => void }
 }
@@ -193,9 +199,13 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   await fastify.register(async (api) => {
     // Offene Routen (kein Login nötig)
     await api.register(healthRoute,  { db:   deps.db })
-    await api.register(systemRoute)
+    await api.register(systemRoute,  { db:   deps.db })
     await api.register(authRoute,    { db:   deps.db })
-    await api.register(setupRoute,   { deps: deps.setupDeps })
+    await api.register(setupRoute,   {
+      deps:         deps.setupDeps,
+      setupToken:   deps.config.SETUP_TOKEN,
+      rateLimitMax: deps.setupRateLimitMax ?? (deps.config.NODE_ENV === 'test' ? 10_000 : 5),
+    })
 
     // Geschützte Routen — alle Handler verlangen JWT via onRequest-Hook in den Routes
     await api.register(artikelRoute, { db:   deps.db })
@@ -227,7 +237,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     await api.register(gutscheinRoute,          { db: deps.db })
     await api.register(lieferbestellungRoute,   { db: deps.db })
     await api.register(mandantRoute,            { db: deps.db, config: deps.config })
-    await api.register(kasseRoute,              { db: deps.db, setupDeps: deps.setupDeps, belegDeps: deps.belegDeps })
+    await api.register(kasseRoute,              { db: deps.db, setupDeps: deps.setupDeps, belegDeps: deps.belegDeps, config: deps.config })
     await api.register(auditRoute,              { db: deps.db })
     await api.register(kassenbuchRoute,         { db: deps.db })
     await api.register(depSicherungRoute,       { db: deps.db, backupDir: deps.backupDir })

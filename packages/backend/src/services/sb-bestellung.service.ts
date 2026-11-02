@@ -183,11 +183,22 @@ export async function holeTerminalSortiment(db: Db, kasseId: string): Promise<Te
 // Bestellung anlegen (Terminal, öffentlich)
 // ---------------------------------------------------------------------------
 
+/**
+ * Ohne Kartenterminal bezahlt am SB-Terminal niemand wirklich: Die Demo-Zahlung ("Bezahlt" tippen,
+ * POST …/bestaetigen) ist öffentlich und lässt jede Bestellung als bezahlt gelten — Essen und Beleg
+ * ohne Geld. Darum nur an Kassen im Testmodus (kassen.umgebung = 'test', das setzt /setup beim
+ * Einrichten und lässt sich nachträglich nicht ändern); an Kassen im Produktivbetrieb braucht das
+ * Terminal ein eingerichtetes Kartenterminal.
+ */
+export const SB_DEMO_NUR_TEST =
+  'An diesem Terminal ist kein Kartenterminal eingerichtet. Die Demo-Zahlung gibt es nur an Kassen im Testmodus.'
+
 export async function erstelleSbBestellung(
   input: TerminalBestellungInput,
   deps:  SbServiceDeps,
 ): Promise<TerminalBestellungStatus> {
   const kasse = await ladeTerminalKasse(deps.db, input.kasseId)
+  if (!kasse.zvtAktiv && kasse.umgebung !== 'test') throw new SbBestellungError(409, SB_DEMO_NUR_TEST)
 
   // Artikel serverseitig laden — Preise NIE vom Client übernehmen
   const artikelIds = input.positionen.map(p => p.artikelId)
@@ -322,6 +333,8 @@ export async function bestaetigeDemoZahlung(
 
   const [kasse] = await deps.db.select().from(kassen).where(eq(kassen.id, row.kasseId)).limit(1)
   if (kasse?.zvtAktiv) throw new SbBestellungError(409, 'Kasse nutzt ZVT — Bestätigung nur im Demo-Modus möglich')
+  // Das öffentliche "Bestätigen" gilt als bezahlt — nur im Testmodus (siehe SB_DEMO_NUR_TEST)
+  if (kasse?.umgebung !== 'test') throw new SbBestellungError(403, SB_DEMO_NUR_TEST)
   if (row.status !== 'zahlung') return statusDto(row, true)
 
   const finalisiert = await finalisiereSbBestellung(row.id, deps)

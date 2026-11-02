@@ -19,7 +19,7 @@ import Stripe from 'stripe'
 import { and, eq, inArray } from 'drizzle-orm'
 import type { FinanzOnlineClient } from '@kassa/rksv'
 import { wienerTag } from '@kassa/shared'
-import { buildTestServer, TEST_MASTER, type TestServer } from '../helpers/testServer.js'
+import { buildTestServer, TEST_MASTER, type TestServer, TEST_SETUP_TOKEN } from '../helpers/testServer.js'
 import { erstelleIntegrationsDb, type IntegrationsDb } from './helpers/integrationsDb.js'
 import { belege, ticketBestellungen, tickets } from '../../src/db/schema.js'
 import { raeumeReservierungenAuf, type ShopStripe, type TicketShopDeps } from '../../src/services/ticketshop.service.js'
@@ -124,7 +124,7 @@ describe('Ticketshop (Integration, echtes PostgreSQL)', () => {
     const smtp = { SMTP_HOST: 'smtp.test', SMTP_USER: 'u', SMTP_PASS: 'p', SMTP_FROM: 'tickets@test.at' }
     srv = await buildTestServer(idb.db, { finanzOnlineClient: mockFoClient(), config: smtp, ticketshopStripe: stripeFake })
     for (const nr of [1, 2] as const) {
-      const setup = await srv.fastify.inject({ method: 'POST', url: '/api/setup', payload: setupInput(nr) })
+      const setup = await srv.fastify.inject({ method: 'POST', url: '/api/setup', headers: { 'x-setup-token': TEST_SETUP_TOKEN }, payload: setupInput(nr) })
       if (setup.statusCode !== 201) throw new Error(`Setup ${nr}: ${setup.body}`)
       const login = (await srv.fastify.inject({
         method: 'POST', url: '/api/auth/login', payload: { email: `admin${nr}@shoptest.at`, passwort: 'shoptest-passwort-123' },

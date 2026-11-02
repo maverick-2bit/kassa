@@ -194,6 +194,66 @@ export async function holeGastBestellungStatus(id: string, deps: GastServiceDeps
 }
 
 // ---------------------------------------------------------------------------
+// Stripe-Ereignis einer Gast-Bestellung (Webhook): erst prüfen, dann finalisieren
+// ---------------------------------------------------------------------------
+
+/** Der Teil einer Stripe-Checkout-Session, den der Webhook auswertet. */
+export interface GastWebhookSession {
+  id?:             string
+  payment_status?: string | null
+  /** Gesamtsumme der Session in Cent (Positionen + Trinkgeld) */
+  amount_total?:   number | null
+  metadata?:       Record<string, string> | null
+}
+
+export type GastWebhookErgebnis =
+  | { ergebnis: 'finalisiert' }
+  | { ergebnis: 'ignoriert'; grund: 'ohne-bestellung' | 'unbekannt' | 'mandant' | 'session' | 'zahlung' | 'betrag' }
+
+/**
+ * Stripe meldet `checkout.session.completed` für eine Gast-Bestellung. Das Ereignis ist zwar
+ * signiert — aber nur mit dem Secret DES MANDANTEN IN DER URL (bzw. dem globalen Konto). Wer ein
+ * eigenes Stripe-Konto hat, kann also beliebige Ereignisse unterschreiben, auch mit der Bestell-ID
+ * eines ANDEREN Mandanten. Darum muss die Bestellung zum Ereignis passen, ehe sie bezahlt gilt
+ * (Vorbild: verarbeiteShopWebhook des Ticketshops):
+ *   - Mandant: gehört die Bestellung dem Mandanten der URL? Im globalen Fallback nur Mandanten
+ *     OHNE eigenes Stripe-Konto — sonst könnte das globale Konto deren Bestellungen bezahlen.
+ *   - Session: ist es die Checkout-Session, die zu DIESER Bestellung angelegt wurde? Sie fehlt
+ *     gespeichert → nie bezahlt.
+ *   - Zahlung: hat Stripe das Geld tatsächlich eingezogen (`paid`)?
+ *   - Betrag: stimmt die Summe mit Positionen + Trinkgeld überein?
+ * Passt etwas nicht, wird das Ereignis ignoriert (Stripe bekommt 200 — ein Retry würde nichts
+ * ändern), und die Bestellung bleibt „zahlung".
+ */
+export async function verarbeiteGastWebhook(
+  deps:            GastServiceDeps,
+  mandantIdAusUrl: string | null,
+  session:         GastWebhookSession,
+): Promise<GastWebhookErgebnis> {
+  const id = session.metadata?.bestellungId
+  if (!id) return { ergebnis: 'ignoriert', grund: 'ohne-bestellung' }
+
+  const [row] = await deps.db.select().from(gastBestellungen).where(eq(gastBestellungen.id, id)).limit(1)
+  if (!row) return { ergebnis: 'ignoriert', grund: 'unbekannt' }
+
+  if (mandantIdAusUrl
+    ? row.mandantId !== mandantIdAusUrl
+    : (await ladeStripeKonfig(deps.db, row.mandantId, deps.config))?.eigene) {
+    return { ergebnis: 'ignoriert', grund: 'mandant' }
+  }
+  if (!row.stripeSessionId || session.id !== row.stripeSessionId) {
+    return { ergebnis: 'ignoriert', grund: 'session' }
+  }
+  if (session.payment_status !== 'paid') return { ergebnis: 'ignoriert', grund: 'zahlung' }
+  if (session.amount_total !== row.summeCent + (row.trinkgeldCent ?? 0)) {
+    return { ergebnis: 'ignoriert', grund: 'betrag' }
+  }
+
+  await finalisiereGastBestellung(id, deps)
+  return { ergebnis: 'finalisiert' }
+}
+
+// ---------------------------------------------------------------------------
 // Finalisierung nach erfolgreicher Zahlung (idempotent) — Webhook oder Demo
 // ---------------------------------------------------------------------------
 

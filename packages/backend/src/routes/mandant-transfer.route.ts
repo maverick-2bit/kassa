@@ -3,7 +3,7 @@
  * Datei (.kuep) herunterladen bzw. eine solche Datei als ZUSÄTZLICHEN Mandanten einspielen.
  *
  *  POST /mandant-uebergabe/export  (admin) { passwort }          → Datei (application/octet-stream)
- *  POST /mandant-uebergabe/import  (admin) { passwort, datei }   → Bericht; datei = Base64 der .kuep
+ *  POST /mandant-uebergabe/import  (Betreiber) { passwort, datei } → Bericht; datei = Base64 der .kuep
  *
  * Exportiert wird immer der Mandant des angemeldeten Admins (JWT), nie einer aus dem Body.
  * Der Import legt nur einen NEUEN Mandanten an und rührt vorhandene Daten nicht an.
@@ -22,6 +22,7 @@ import { MANDANT_UEBERTRAGEN } from '../services/beleg.service.js'
 import {
   entschluesselePaket, verschluesselePaket, MIN_PASSWORT_LAENGE, UebergabeDateiError,
 } from '../crypto/uebergabe-datei.js'
+import { requireBetreiber } from '../auth/betreiber.js'
 
 export interface MandantTransferRouteOptions {
   db:               Db
@@ -46,6 +47,10 @@ export const mandantTransferRoute: FastifyPluginAsync<MandantTransferRouteOption
     done()
   }
   const adminGuard = { onRequest: [fastify.authenticate, nurAdmin] }
+  // Der Import legt einen ZUSÄTZLICHEN Mandanten an — wie die Ersteinrichtung weiterer Mandanten ist das
+  // Sache des Betreibers, nicht jedes Mandanten-Admins (Export, Status und Sperre betreffen den eigenen
+  // Mandanten und bleiben beim Admin).
+  const betreiberGuard = { onRequest: [fastify.authenticate, requireBetreiber(opts.db)] }
 
   /** Eigene kurze Verbindung (der Pool der App wird nicht belegt) */
   async function mitVerbindung<T>(fn: (sql: postgres.Sql) => Promise<T>): Promise<T> {
@@ -83,7 +88,7 @@ export const mandantTransferRoute: FastifyPluginAsync<MandantTransferRouteOption
     return { gesperrt: false }
   })
 
-  fastify.post('/mandant-uebergabe/import', { ...adminGuard, bodyLimit: 200 * 1024 * 1024 }, async (request, reply) => {
+  fastify.post('/mandant-uebergabe/import', { ...betreiberGuard, bodyLimit: 200 * 1024 * 1024 }, async (request, reply) => {
     const parsed = ImportSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: 'Passwort und Datei sind nötig.' })
 

@@ -30,6 +30,8 @@ export type AuditAktion =
   | 'rabatt.freigegeben'
   | 'tickets.ausgestellt'
   | 'ticket.storniert'
+  | 'setup.mandant_angelegt'
+  | 'setup.verweigert'
 
 export interface AuditEintrag {
   mandantId?: string | null

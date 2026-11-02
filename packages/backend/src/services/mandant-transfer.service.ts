@@ -29,6 +29,24 @@ export const MANDANT_EXPORT_VERSION = 1
 /** Gehören nicht in die Übertragung: Sicherungs-Verzeichnisse (Dateien reisen nicht mit) und Druck-Protokoll. */
 const AUSGENOMMEN = new Set(['db_sicherungen', 'dep_sicherungen', 'druck_log'])
 
+/**
+ * Spalten, die der INSTALLATION gehören und nie mit einem Mandanten reisen — weder hinaus noch herein.
+ * `users.ist_betreiber` macht ein Konto zum Betreiber der ganzen Kassa (Datenbank-Dump, Update,
+ * alle Mandanten). Der Import darf sie nicht aus der Datei übernehmen: Jeder Admin darf eine
+ * Übergabedatei einspielen und kann sie selbst bauen — er hätte sich damit einen Betreiber-Zugang
+ * angelegt. Beim Export fehlt sie, damit eine Datei den Stand nicht einmal vortäuscht.
+ */
+const NIE_UEBERTRAGEN: Readonly<Record<string, readonly string[]>> = {
+  users: ['ist_betreiber'],
+}
+
+/** Immer eine Kopie: der Import ändert die Zeile danach weiter, die Exportzeilen bleiben die unveränderte Quelle. */
+function ohneInstallationsSpalten(tabelle: string, z: Zeile): Zeile {
+  const neu: Zeile = { ...z }
+  for (const spalte of NIE_UEBERTRAGEN[tabelle] ?? []) delete neu[spalte]
+  return neu
+}
+
 const KLAR = 'klar:'
 
 export interface MandantExport {
@@ -158,7 +176,7 @@ export async function exportiereMandant(sql: Sql, mandantId: string, passphrase:
   // Der Export ist ein Schnappschuss „in Betrieb“ — auch wenn die Quelle schon gesperrt ist, startet das Ziel aktiv
   for (const z of tabellen['mandanten']!) z['status'] = 'aktiv'
   for (const [t, zeilen] of Object.entries(tabellen)) {
-    tabellen[t] = zeilen.map(z => entschluesseleZeile(t, z, passphrase))
+    tabellen[t] = zeilen.map(z => entschluesseleZeile(t, ohneInstallationsSpalten(t, z), passphrase))
   }
   const uebersprungen = [...kat.spalten.keys()].filter(t => !(t in tabellen)).sort()
 
@@ -268,7 +286,9 @@ export async function importiereMandant(sql: Sql, daten: MandantExport, passphra
     const verschluesselt: Record<string, Zeile[]> = {}
     for (const t of reihenfolge) {
       verschluesselt[t] = daten.tabellen[t]!.map(z => {
-        const neu: Zeile = { ...z }
+        // Installations-Spalten (ist_betreiber …) nie aus der Datei übernehmen: der INSERT unten
+        // schreibt nur Spalten, die in den Zeilen stehen — die übrigen bekommen ihren Default
+        const neu: Zeile = ohneInstallationsSpalten(t, z)
         for (const [k, v] of Object.entries(z)) {
           if (k.endsWith('_enc') && typeof v === 'string' && v.startsWith(KLAR)) {
             neu[k] = encryptPrivateKey(Buffer.from(v.slice(KLAR.length), 'base64'), passphrase)

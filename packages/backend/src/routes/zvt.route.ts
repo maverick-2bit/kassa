@@ -18,7 +18,9 @@ import { pruefeKasseGehoertZuMandant } from '../auth/scope.js'
 import {
   abbrechen,
   getJob,
+  istZvtStub,
   starteZahlung,
+  ZVT_STUB_NUR_TEST,
   ZvtError,
   type ZvtServiceDeps,
 } from '../services/zvt/zvt.service.js'
@@ -59,6 +61,13 @@ export const zvtRoute: FastifyPluginAsync<ZvtRouteOptions> = async (fastify, opt
     }
     const body = ZvtConfigUpdateSchema.safeParse(request.body)
     if (!body.success) return reply.status(400).send({ fehler: body.error.issues })
+
+    // Die Zahlungs-Attrappe lässt sich nur an Kassen im Testmodus einstellen (starteZahlung lehnt sie sonst ohnehin ab)
+    if (istZvtStub(body.data.zvtIp)) {
+      const [kasse] = await opts.deps.db
+        .select({ umgebung: kassen.umgebung }).from(kassen).where(eq(kassen.id, p.data.id)).limit(1)
+      if (kasse?.umgebung !== 'test') return reply.status(400).send({ fehler: ZVT_STUB_NUR_TEST })
+    }
 
     const update: Partial<typeof kassen.$inferInsert> = { updatedAt: new Date() }
     if (body.data.zvtIp       !== undefined) update.zvtIp       = body.data.zvtIp

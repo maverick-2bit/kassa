@@ -42,13 +42,24 @@ const setupInput = {
   admin: { name: 'WH Admin', email: ADMIN_EMAIL, passwort: ADMIN_PASSWORT },
 }
 
+/** Die Checkout-Session, die zu jeder offenen Test-Bestellung gehört (wie sie beim Anlegen am Stripe-Konto entsteht). */
+const SESSION_ID = 'cs_test_1'
+
+/** Was Stripe in `checkout.session.completed` über die Session meldet — Standard: bezahlt, passende Summe, richtige Session. */
+interface SessionAngaben { id?: string; payment_status?: string; amount_total?: number }
+
 /** Signiertes checkout.session.completed für eine Bestell-ID (byte-genau, damit die HMAC-Prüfung passt). */
-function signierterWebhook(bestellungId: string, secret: string): { payload: string; signature: string } {
+function signierterWebhook(
+  bestellungId: string, secret: string, session: SessionAngaben = {},
+): { payload: string; signature: string } {
   const payload = JSON.stringify({
     id:     'evt_test_webhook',
     object: 'event',
     type:   'checkout.session.completed',
-    data:   { object: { id: 'cs_test_1', object: 'checkout.session', metadata: { bestellungId } } },
+    data:   { object: {
+      id: SESSION_ID, object: 'checkout.session', payment_status: 'paid', amount_total: 420,
+      ...session, metadata: { bestellungId },
+    } },
   })
   const signature = new Stripe(SECRET_KEY).webhooks.generateTestHeaderString({ payload, secret })
   return { payload, signature }
@@ -112,6 +123,7 @@ describe('Stripe-Webhook-Produktionspfad (Integration, echtes PostgreSQL)', () =
       positionen: [{ artikelId: colaId, bezeichnung: 'Cola', menge: 1, preisBruttoCent: 420 }],
       summeCent:  420,
       status:     'zahlung',
+      stripeSessionId: SESSION_ID,
     }).returning()
     return row!.id
   }

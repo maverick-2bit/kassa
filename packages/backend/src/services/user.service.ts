@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto'
 import { and, eq, inArray, isNotNull, ne } from 'drizzle-orm'
 import type { Berechtigung, User as PublicUser, UserCreateInput, UserUpdateInput } from '@kassa/shared'
 import type { Db } from '../db/client.js'
+import { istAktiverBetreiber } from '../auth/betreiber.js'
 import { kassen, mandanten, userKassen, users } from '../db/schema.js'
 import { hashPassword, userZuDto } from './auth.service.js'
 import { alsPinLaenge } from './pin-laenge.js'
@@ -85,6 +86,37 @@ async function pruefePinEindeutig(
   }
 }
 
+/**
+ * Betreiber-Konten schützen. Wer ein Konto ändern darf (Passwort, PIN, E-Mail), kann sich
+ * danach als dieses Konto anmelden — ohne diese Prüfung machte sich jeder andere Admin des
+ * Betreiber-Mandanten per Passwort-Reset selbst zum Betreiber. Darum: das Konto eines
+ * Betreibers ändert nur ein Betreiber, und der letzte aktive Betreiber bleibt aktiv (sonst
+ * könnte niemand mehr aktualisieren oder sichern).
+ *
+ * Fragt die Datenbank nur, wenn das Zielkonto Betreiber ist — der Normalfall kostet nichts.
+ */
+async function pruefeBetreiberKonto(
+  db:          Db,
+  ziel:        typeof users.$inferSelect,
+  anfragerId:  string | undefined,
+  mandantId:   string,
+  deaktiviert: boolean,
+): Promise<void> {
+  if (ziel.istBetreiber !== true) return
+  if (!anfragerId || !(await istAktiverBetreiber(db, anfragerId, mandantId))) {
+    throw new UserError(403, 'Das Konto eines Betreibers kann nur ein Betreiber ändern')
+  }
+  if (!deaktiviert) return
+  const [anderer] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(and(
+      eq(users.istBetreiber, true), eq(users.aktiv, true), eq(users.rolle, 'admin'), ne(users.id, ziel.id),
+    ))
+    .limit(1)
+  if (!anderer) throw new UserError(409, 'Der letzte Betreiber kann nicht deaktiviert werden')
+}
+
 export async function listUsers(mandantId: string, deps: UserServiceDeps): Promise<PublicUser[]> {
   const rows = await deps.db
     .select()
@@ -157,6 +189,8 @@ export async function updateUser(
   input: UserUpdateInput,
   mandantId: string,
   deps: UserServiceDeps,
+  /** Wer ändert (Token-Subjekt) — nötig, um Betreiber-Konten zu schützen */
+  anfragerId?: string,
 ): Promise<PublicUser> {
   const [existing] = await deps.db
     .select()
@@ -164,6 +198,8 @@ export async function updateUser(
     .where(and(eq(users.id, id), eq(users.mandantId, mandantId)))
     .limit(1)
   if (!existing) throw new UserError(404, 'Benutzer nicht gefunden')
+
+  await pruefeBetreiberKonto(deps.db, existing, anfragerId, mandantId, input.aktiv === false)
 
   // Vor jeder Änderung prüfen: mit fremder Kasse bleibt der Benutzer ganz unverändert
   const kassenIds = input.kassenIds === undefined
@@ -221,6 +257,8 @@ export async function deactivateUser(
     .where(and(eq(users.id, id), eq(users.mandantId, mandantId)))
     .limit(1)
   if (!existing) throw new UserError(404, 'Benutzer nicht gefunden')
+
+  await pruefeBetreiberKonto(deps.db, existing, requestingUserId, mandantId, true)
 
   const [row] = await deps.db
     .update(users)

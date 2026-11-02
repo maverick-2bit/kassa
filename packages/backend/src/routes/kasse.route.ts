@@ -5,9 +5,10 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { and, asc, desc, eq, sql } from 'drizzle-orm'
 import type { Db } from '../db/client.js'
+import type { Config } from '../config.js'
 import { belege, kassen } from '../db/schema.js'
 import { z } from 'zod'
-import { FinanzOnlineCredentialsSchema, KasseBezeichnungUpdateSchema, SeeConfigUpdateSchema, WeitereKasseInputSchema, type KasseListeItem, type WeitereKasseResponse } from '@kassa/shared'
+import { FinanzOnlineCredentialsSchema, KasseBezeichnungUpdateSchema, SeeConfigUpdateSchema, WeitereKasseInputSchema, istErlaubteAtrustBasisUrl, type KasseListeItem, type WeitereKasseResponse } from '@kassa/shared'
 import { ATrustHsmEinheit, ATrustHsmError } from '@kassa/rksv'
 import { X509Certificate } from 'node:crypto'
 import { decryptPrivateKey, encryptPrivateKey } from '../crypto/master-key.js'
@@ -16,7 +17,7 @@ import type { SetupServiceDeps } from '../services/setup.service.js'
 import { BelegError, nimmKasseAusserBetrieb, type BelegServiceDeps } from '../services/beleg.service.js'
 import { uuidParam } from './uuid-param.js'
 
-export interface KasseRouteOptions { db: Db; setupDeps: SetupServiceDeps; belegDeps: BelegServiceDeps }
+export interface KasseRouteOptions { db: Db; setupDeps: SetupServiceDeps; belegDeps: BelegServiceDeps; config: Pick<Config, 'NODE_ENV'> }
 
 const MS_PRO_TAG = 1000 * 60 * 60 * 24
 
@@ -298,13 +299,36 @@ export const kasseRoute: FastifyPluginAsync<KasseRouteOptions> = async (fastify,
     return kasse
   }
 
-  /** A-Trust-Zugang aus Update-Body + gespeicherten Werten aufloesen. */
+  /** Dieselbe Adresse (Schreibweise egal: Groß/Klein, Schrägstrich am Ende)? */
+  const gleicheAdresse = (a: string, b: string | null): boolean => {
+    const norm = (s: string) => { try { return new URL(s).href.replace(/[/]+$/, '') } catch { return s.trim() } }
+    return b !== null && norm(a) === norm(b)
+  }
+
+  /**
+   * A-Trust-Zugang aus Update-Body + gespeicherten Werten aufloesen.
+   *
+   * Benutzer UND Passwort gehen an die Basis-URL — darum
+   *  - nur A-Trust-Server als Ziel (in Entwicklung/Tests zusaetzlich der eigene Rechner fuer Mock-Server);
+   *    geprueft wird die WIRKSAME Adresse, auch eine bereits gespeicherte
+   *  - wer die Adresse aendert, gibt das Passwort NEU ein: das gespeicherte Passwort wird nie an eine
+   *    neue Adresse geschickt (sonst reichte "nur die URL aendern", um es abzugreifen)
+   */
   const atrustZugang = (
     kasse: typeof kassen.$inferSelect,
     body: { atrustBasisUrl?: string | undefined; atrustBenutzer?: string | undefined; atrustPasswort?: string | undefined },
   ): { basisUrl: string; benutzer: string; passwort: string } | { fehler: string } => {
     const basisUrl = body.atrustBasisUrl ?? kasse.atrustBasisUrl ?? ''
     const benutzer = body.atrustBenutzer ?? kasse.atrustBenutzer ?? ''
+
+    if (basisUrl && !istErlaubteAtrustBasisUrl(basisUrl, { lokalErlaubt: opts.config.NODE_ENV !== 'production' })) {
+      return { fehler: 'Die Basis-URL muss ein A-Trust-Server sein (https://hs.a-trust.at oder https://hs-abnahme.a-trust.at).' }
+    }
+    const adresseGeaendert = body.atrustBasisUrl !== undefined && !gleicheAdresse(body.atrustBasisUrl, kasse.atrustBasisUrl)
+    if (adresseGeaendert && body.atrustPasswort === undefined) {
+      return { fehler: 'Die Basis-URL wurde geaendert — bitte das A-Trust-Passwort erneut eingeben (das gespeicherte wird nicht an eine neue Adresse geschickt).' }
+    }
+
     const passwort = body.atrustPasswort ?? (kasse.atrustPasswortEnc
       ? decryptPrivateKey(kasse.atrustPasswortEnc, opts.belegDeps.masterPassphrase).toString('utf8')
       : '')

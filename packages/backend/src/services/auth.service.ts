@@ -103,6 +103,7 @@ export async function userZuDto(
     hatPin:         row.pinHash !== null,
     pinLaenge:      alsPinLaenge(row.pinLaenge),
     aktiv:          row.aktiv,
+    istBetreiber:   row.istBetreiber === true,
     createdAt:      row.createdAt.toISOString(),
   }
 }

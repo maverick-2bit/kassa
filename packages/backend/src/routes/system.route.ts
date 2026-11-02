@@ -4,9 +4,11 @@
  *  GET  /system/status  (auth) — installierte Version, neueste bekannte Version
  *                          (GitHub), ob ein Update verfügbar ist, ob der Updater-
  *                          Dienst läuft, sowie der aktuelle Update-Status.
- *  POST /system/update  (admin) — löst das Update aus: legt die „request"-Datei im
+ *  POST /system/update  (Betreiber) — löst das Update aus: legt die „request"-Datei im
  *                          geteilten Kontroll-Volume an, die der Updater-Dienst
- *                          abholt. 409 wenn kein Updater-Dienst läuft.
+ *                          abholt. 409 wenn kein Updater-Dienst läuft. Das Update
+ *                          betrifft die ganze Installation (alle Mandanten) und läuft
+ *                          als Root mit Docker-Zugriff — nur der Betreiber darf es.
  *  GET  /system/fernwartung (admin) — Fernwartungs-Anbindung dieser Kasse (TeamViewer ID,
  *                          Gerätename, Gruppe). Liest NUR die Statusdatei, die der
  *                          Installer ins Kontroll-Volume legt (services/fernwartung-status.ts).
@@ -19,6 +21,8 @@ import type { FastifyPluginAsync } from 'fastify'
 import { createRequire } from 'module'
 import { readFile, writeFile } from 'fs/promises'
 import { join } from 'path'
+import type { Db } from '../db/client.js'
+import { istAktiverBetreiber, requireBetreiber } from '../auth/betreiber.js'
 import { leseFernwartungStatus } from '../services/fernwartung-status.js'
 
 const require = createRequire(import.meta.url)
@@ -80,18 +84,25 @@ async function leseUpdateStatus(): Promise<unknown> {
   }
 }
 
-export const systemRoute: FastifyPluginAsync = async (fastify) => {
-  const guard     = { onRequest: [fastify.authenticate] }
-  const adminOnly = { onRequest: [fastify.requireRolle('admin')] }
+export interface SystemRouteOptions { db: Db }
+
+export const systemRoute: FastifyPluginAsync<SystemRouteOptions> = async (fastify, opts) => {
+  const guard      = { onRequest: [fastify.authenticate] }
+  const adminOnly  = { onRequest: [fastify.requireRolle('admin')] }
+  const betreiber  = { onRequest: [fastify.authenticate, requireBetreiber(opts.db)] }
 
   fastify.get('/system/status', guard, async (request) => {
     // ?frisch=1 (Knopf „Nach Updates suchen"): Caches umgehen — im Eventbetrieb
     // darf eine dringende Umstellung nicht an der 10-Minuten-Anzeige hängen.
     const frisch = (request.query as { frisch?: string }).frisch === '1'
-    const [neueste, updaterVerfuegbar, update] = await Promise.all([
+    const [neueste, updaterVerfuegbar, update, istBetreiber] = await Promise.all([
       holeNeuesteVersion(frisch),
       updaterLaeuft(),
       leseUpdateStatus(),
+      // Frisch aus der Datenbank (nicht aus dem Token): die Oberfläche zeigt Update, Datenbank-
+      // Sicherung und Systemwerte nur dem Betreiber — auch direkt nach der Umstellung, wenn eine
+      // alte Anmeldung noch nichts davon weiß
+      request.user.typ ? false : istAktiverBetreiber(opts.db, request.user.sub, request.user.mandantId),
     ])
     return {
       installiert:       INSTALLIERT,
@@ -99,6 +110,7 @@ export const systemRoute: FastifyPluginAsync = async (fastify) => {
       updateVerfuegbar:  !!neueste && istNeuer(neueste, INSTALLIERT),
       updaterVerfuegbar,
       update,
+      istBetreiber,
     }
   })
 
@@ -139,7 +151,7 @@ export const systemRoute: FastifyPluginAsync = async (fastify) => {
     return leseFernwartungStatus(verzeichnis, (grund) => request.log.warn(`Fernwartung: ${grund}`))
   })
 
-  fastify.post('/system/update', adminOnly, async (_request, reply) => {
+  fastify.post('/system/update', betreiber, async (_request, reply) => {
     if (!(await updaterLaeuft())) {
       return reply.status(409).send({
         fehler:

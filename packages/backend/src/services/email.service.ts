@@ -180,7 +180,7 @@ export async function sendeReservierungsBestaetigung(
 
   const storniereBlock = daten.stornierUrl
     ? `<div style="margin:20px 0;text-align:center">
-        <a href="${daten.stornierUrl}" style="background:#ef4444;color:#fff;padding:10px 24px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:600">
+        <a href="${esc(daten.stornierUrl)}" style="background:#ef4444;color:#fff;padding:10px 24px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:600">
           Reservierung stornieren
         </a>
        </div>`
@@ -193,27 +193,27 @@ export async function sendeReservierungsBestaetigung(
   <div style="max-width:520px;margin:32px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08)">
     <div style="background:#1d4ed8;padding:24px 28px">
       <h1 style="margin:0;color:#fff;font-size:20px">Reservierungsbestätigung</h1>
-      <p style="margin:4px 0 0;color:#bfdbfe;font-size:13px">${daten.firmenname}</p>
+      <p style="margin:4px 0 0;color:#bfdbfe;font-size:13px">${esc(daten.firmenname)}</p>
     </div>
     <div style="padding:24px 28px">
       <p style="margin:0 0 20px;font-size:16px;color:#111827">
-        Hallo <strong>${daten.name}</strong>,<br>
+        Hallo <strong>${esc(daten.name)}</strong>,<br>
         Ihre Reservierung wurde bestätigt!
       </p>
       <table style="width:100%;border-collapse:collapse">
         <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;width:40%">Datum</td>
-            <td style="padding:8px 0;font-weight:600;font-size:13px">${datumFormatiert}</td></tr>
+            <td style="padding:8px 0;font-weight:600;font-size:13px">${esc(datumFormatiert)}</td></tr>
         <tr><td style="padding:8px 0;color:#6b7280;font-size:13px">Uhrzeit</td>
-            <td style="padding:8px 0;font-weight:600;font-size:13px">${daten.zeitVon} Uhr (${dauerText})</td></tr>
+            <td style="padding:8px 0;font-weight:600;font-size:13px">${esc(daten.zeitVon)} Uhr (${esc(dauerText)})</td></tr>
         <tr><td style="padding:8px 0;color:#6b7280;font-size:13px">Personen</td>
-            <td style="padding:8px 0;font-weight:600;font-size:13px">${daten.personenAnzahl} Personen</td></tr>
+            <td style="padding:8px 0;font-weight:600;font-size:13px">${Number(daten.personenAnzahl)} Personen</td></tr>
         ${daten.tischLabel ? `<tr><td style="padding:8px 0;color:#6b7280;font-size:13px">Tisch</td>
-            <td style="padding:8px 0;font-weight:600;font-size:13px">${daten.tischLabel}</td></tr>` : ''}
+            <td style="padding:8px 0;font-weight:600;font-size:13px">${esc(daten.tischLabel)}</td></tr>` : ''}
         ${daten.notiz ? `<tr><td style="padding:8px 0;color:#6b7280;font-size:13px">Anmerkung</td>
-            <td style="padding:8px 0;font-size:13px;color:#374151">${daten.notiz}</td></tr>` : ''}
+            <td style="padding:8px 0;font-size:13px;color:#374151">${esc(daten.notiz)}</td></tr>` : ''}
       </table>
       ${storniereBlock}
-      <p style="margin:20px 0 0;font-size:12px;color:#9ca3af">Bei Fragen wenden Sie sich bitte direkt an ${daten.firmenname}.</p>
+      <p style="margin:20px 0 0;font-size:12px;color:#9ca3af">Bei Fragen wenden Sie sich bitte direkt an ${esc(daten.firmenname)}.</p>
     </div>
   </div>
 </body>

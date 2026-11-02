@@ -18,6 +18,16 @@ import { KontenWahl } from '../components/KontenWahl'
 type Tab = 'passwort' | 'pin'
 
 /**
+ * Hat diese Installation schon Benutzer? Dann führt kein Link mehr zur Einrichtungsseite: sie ist dort
+ * für alle außer dem angemeldeten Betreiber gesperrt (Einstellungen → System → Weiteren Mandanten anlegen).
+ * Unbekannt (Backend nicht erreichbar) zählt wie "nicht eingerichtet" — die Abfrage darf nie blockieren.
+ */
+function useEingerichtet(): boolean {
+  const status = useQuery({ queryKey: ['setup-status'], queryFn: setupApi.status, staleTime: 60_000, retry: false })
+  return status.data?.eingerichtet === true
+}
+
+/**
  * Wohin nach der Anmeldung? Bei einem anderen Mandanten als vorher mit frischem Laden der Seite: im Speicher
  * der laufenden Seite (abgefragte Daten, gemerkte Auswahlen) steckt sonst noch der andere Betrieb.
  */
@@ -136,6 +146,7 @@ function PinLoginForm({ bisherMandantId, onWeiter, onMandantGewaehlt }: {
   onWeiter:          Weiter
   onMandantGewaehlt: () => void
 }) {
+  const eingerichtet          = useEingerichtet()
   const [pin, setPin]         = useState('')
   const [fehler, setFehler]   = useState<string | null>(null)
   const inputRef              = useRef<HTMLInputElement>(null)
@@ -204,10 +215,18 @@ function PinLoginForm({ bisherMandantId, onWeiter, onMandantGewaehlt }: {
   if (!identity) {
     return (
       <div className="rounded-xl bg-panel shadow-sm border border-line p-6 text-center">
-        <p className="text-sm text-ink-muted">Keine Kasse eingerichtet.</p>
-        <button type="button" onClick={() => window.location.href = '/setup'} className="mt-2 text-sm text-brand-600 hover:underline">
-          Kasse einrichten →
-        </button>
+        {eingerichtet ? (
+          <p className="text-sm text-ink-muted">
+            Dieses Gerät kennt noch keine Kasse. Einmal mit E-Mail und Passwort anmelden — danach geht es mit dem PIN.
+          </p>
+        ) : (
+          <>
+            <p className="text-sm text-ink-muted">Keine Kasse eingerichtet.</p>
+            <button type="button" onClick={() => window.location.href = '/setup'} className="mt-2 text-sm text-brand-600 hover:underline">
+              Kasse einrichten →
+            </button>
+          </>
+        )}
       </div>
     )
   }
@@ -289,6 +308,7 @@ function PinLoginForm({ bisherMandantId, onWeiter, onMandantGewaehlt }: {
 // ---------------------------------------------------------------------------
 
 function PasswortLoginForm({ bisherMandantId, onWeiter }: { bisherMandantId: string | null; onWeiter: Weiter }) {
+  const eingerichtet = useEingerichtet()
   const [serverFehler, setServerFehler] = useState<string | null>(null)
 
   const {
@@ -338,12 +358,14 @@ function PasswortLoginForm({ bisherMandantId, onWeiter }: { bisherMandantId: str
       <div className="pt-2 border-t border-line">
         <Button type="submit" loading={mutation.isPending} className="w-full">Einloggen</Button>
       </div>
-      <p className="text-center text-xs text-ink-muted pt-1">
-        Noch keine Kasse?{' '}
-        <button type="button" onClick={() => window.location.href = '/setup'} className="text-brand-600 hover:underline">
-          Kasse einrichten
-        </button>
-      </p>
+      {!eingerichtet && (
+        <p className="text-center text-xs text-ink-muted pt-1">
+          Noch keine Kasse?{' '}
+          <button type="button" onClick={() => window.location.href = '/setup'} className="text-brand-600 hover:underline">
+            Kasse einrichten
+          </button>
+        </p>
+      )}
     </form>
   )
 }

@@ -99,6 +99,12 @@ export const UserSchema = z.object({
   /** Ziffernzahl des gesetzten PINs — weicht sie vom Betrieb ab, gilt der PIN nicht mehr. */
   pinLaenge:      PinLaengeSchema,
   aktiv:          z.boolean(),
+  /**
+   * Betreiber der Installation (siehe backend users.istBetreiber): sieht und darf die
+   * systemweiten Dinge (Datenbank-Sicherung, Update, Systemwerte, weitere Mandanten).
+   * Reine Anzeige — jede Route prüft den Stand serverseitig in der Datenbank.
+   */
+  istBetreiber:   z.boolean().default(false),
   createdAt:      z.string(),
 })
 export type User = z.infer<typeof UserSchema>
