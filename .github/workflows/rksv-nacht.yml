@@ -129,6 +129,8 @@ jobs:
       # mit den ersten 200 beanstandeten Prüfungen), Konsolenausgabe und Export-Dateien kommen mit — nicht die Einzelergebnisse des Prüftools
       # je Beleg (4 Dateien je Beleg + DEP-full.json, bei langen Läufen zig Megabyte). Wer sie braucht, lässt das Skript lokal laufen
       # (node scripts/rksv/bmf-pruefer.mjs --dep … --crypto … --out …).
+      # Ausschlüsse (`!`) gelten für relative Muster nur unterhalb des Arbeitsverzeichnisses — $RUNNER_TEMP liegt daneben und
+      # braucht eigene, absolute Muster (ohne sie kamen im Probelauf 117 MB Einzelergebnisse mit).
       - name: Berichte als Artefakt
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
@@ -143,6 +145,9 @@ jobs:
             !**/DEP-full.json
             !**/*_full.json
             !**/[0-9][0-9][0-9][0-9]_*.json
+            !${{ runner.temp }}/**/DEP-full.json
+            !${{ runner.temp }}/**/*_full.json
+            !${{ runner.temp }}/**/[0-9][0-9][0-9][0-9]_*.json
 
       # Ein misslungener Kontrolllauf macht die Nacht rot, auch wenn der Burn-in selbst sauber war (und auch dann, wenn der
       # Burn-in rot ist: ohne `!cancelled()` würde dieser Schritt nach einem früheren Fehler übersprungen).
