@@ -107,6 +107,14 @@ jobs:
         working-directory: packages/backend
         run: pnpm test:burnin
 
+      # Die Burn-in-Daten sind AT0 (Software-SEE, „geschlossenes System"): das Tool scheitert dort schon am Format der Seriennummer
+      # (Befund D) und erreicht Verkettung, Zähler und Signatur nie. Derselbe Export als offenes System (ZDA AT100) zeigt den Rest.
+      - name: BMF-Prüftool über Exporte der Kassa (AT0 und offenes System)
+        if: ${{ !cancelled() }}
+        run: pnpm --filter @kassa/rksv exec vitest run tests/bmf-prueftool.test.ts
+        env:
+          RKSV_PRUEF_AUSGABE: ${{ runner.temp }}/bmf-kassa
+
       - name: Berichte in die Zusammenfassung
         if: ${{ always() }}
         run: |
@@ -127,6 +135,7 @@ jobs:
           path: |
             packages/backend/test-results/burnin-*
             ${{ runner.temp }}/bmf-kontrolle
+            ${{ runner.temp }}/bmf-kassa
 
       # Ein misslungener Kontrolllauf macht die Nacht rot, auch wenn der Burn-in selbst sauber war.
       - name: Kontrolllauf auswerten

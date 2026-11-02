@@ -1,0 +1,82 @@
+/**
+ * Das BMF-Prüftool (Java) über Exporte der Kassa — nur wenn BMF_PRUEFTOOL_DIR gesetzt ist (Nacht-Workflow `rksv-nacht`, Java 8).
+ *
+ * Zwei Fragen:
+ *  1. Kontrolle: Besteht das Tool seine eigenen Beispieldaten? (sonst ist jedes weitere Ergebnis wertlos)
+ *  2. Was sagt es zu Belegen, die die Signierlogik der Kassa erzeugt?
+ *     - AT0 (Software-SEE, „geschlossenes Gesamtsystem"): scheitert schon am Format der Seriennummer (Befund D) und kommt
+ *       deshalb nie zu Verkettung, Zähler und Signatur.
+ *     - Derselbe Export als offenes System (ZDA AT100): hier greifen alle Prüfungen. Befund A (Verkettung) erscheint.
+ *
+ * Die Einzelheiten der Prüfungen (verificationId je Fehler) landen im Ausgabeordner (RKSV_PRUEF_AUSGABE, sonst Temp).
+ */
+
+import { spawnSync } from 'node:child_process'
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { describe, it, expect, beforeAll } from 'vitest'
+import { REPO_WURZEL, baueEigenenExport, ladeBmfSzenario, type CryptoContainer } from './helpers/pruef-export.js'
+import type { DEP7Export } from '../src/types.js'
+
+const SKRIPT = join(REPO_WURZEL, 'scripts', 'rksv', 'bmf-pruefer.mjs')
+const AKTIV = !!process.env.BMF_PRUEFTOOL_DIR
+const AUSGABE = process.env.RKSV_PRUEF_AUSGABE ?? mkdtempSync(join(tmpdir(), 'kassa-bmf-prueftool-'))
+
+interface Zusammenfassung {
+  ok: boolean
+  zaehler: Record<string, number>
+  fehlgeschlagen: { datei: string; name: string; meldung: string }[]
+  laeufe: { szenario: string; ok: boolean; fehlgeschlagen: number }[]
+}
+
+function bmf(name: string, dep7: DEP7Export, container: CryptoContainer, varianten = 'certificate,public-key'): Zusammenfassung {
+  const ordner = join(AUSGABE, name)
+  mkdirSync(ordner, { recursive: true })
+  writeFileSync(join(ordner, 'dep-export.json'), JSON.stringify(dep7, null, 2))
+  writeFileSync(join(ordner, 'cryptographicMaterialContainer.json'), JSON.stringify(container, null, 2))
+  const r = spawnSync(process.execPath, [SKRIPT, '--dep', join(ordner, 'dep-export.json'), '--crypto', join(ordner, 'cryptographicMaterialContainer.json'),
+    '--out', join(ordner, 'bmf'), '--varianten', varianten], { encoding: 'utf8', maxBuffer: 128 * 1024 * 1024, timeout: 10 * 60_000 })
+  writeFileSync(join(ordner, 'runner-ausgabe.txt'), `${r.stdout}\n${r.stderr}`)
+  return JSON.parse(readFileSync(join(ordner, 'bmf', 'bmf-zusammenfassung.json'), 'utf8')) as Zusammenfassung
+}
+
+describe.skipIf(!AKTIV)('BMF-Prüftool über Exporte der Kassa', () => {
+  it('Kontrolle: BMF-Beispiel „geschlossenes System" besteht', () => {
+    const s = ladeBmfSzenario('closed-system-1')
+    const z = bmf('kontrolle-geschlossen', s.dep7, s.container, 'certificate')
+    expect(z.fehlgeschlagen.map(f => `${f.name}: ${f.meldung}`)).toEqual([])
+    expect(z.ok).toBe(true)
+  }, 180_000)
+
+  it('Kontrolle: BMF-Beispiel „offenes System" besteht', () => {
+    const s = ladeBmfSzenario('open-system-1')
+    const z = bmf('kontrolle-offen', s.dep7, s.container, 'certificate')
+    expect(z.fehlgeschlagen.map(f => `${f.name}: ${f.meldung}`)).toEqual([])
+    expect(z.ok).toBe(true)
+  }, 180_000)
+
+  describe('Export der Kassa', () => {
+    let at0: Awaited<ReturnType<typeof baueEigenenExport>>
+    let offen: Awaited<ReturnType<typeof baueEigenenExport>>
+    beforeAll(async () => {
+      at0   = await baueEigenenExport(60, 'PRUEF-AT0', 'AT0')
+      offen = await baueEigenenExport(60, 'PRUEF-OFFEN', 'AT100')
+    })
+
+    // BEFUND D: Das Format der Seriennummer für AT0 (Ordnungsbegriff statt Zertifikats-Seriennummer) wird beanstandet.
+    it('AT0: das Tool beanstandet das Format der Seriennummer des geschlossenen Systems (Befund D)', () => {
+      const z = bmf('kassa-at0', at0.dep7, at0.container)
+      expect(z.ok).toBe(false)
+      expect(z.fehlgeschlagen.map(f => f.name)).toContain('FORMAT_CLOSED_SYSTEM_SERIAL')
+    }, 180_000)
+
+    // BEFUND A: Im offenen System erreicht das Tool Verkettung, Zähler und Signatur; heute scheitert (mindestens) die Verkettung.
+    it.fails('BEFUND A  offenes System (ZDA AT100): das Tool bestätigt den Export der Kassa', () => {
+      const z = bmf('kassa-offen', offen.dep7, offen.container)
+      console.log(`BMF-Prüftool, offenes System: ok=${z.ok}, Fehlerarten: ${[...new Set(z.fehlgeschlagen.map(f => f.name))].join(', ')}`)
+      expect(z.fehlgeschlagen.map(f => `${f.name}: ${f.meldung}`)).toEqual([])
+      expect(z.ok).toBe(true)
+    }, 180_000)
+  })
+})

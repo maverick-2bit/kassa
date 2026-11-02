@@ -62,8 +62,12 @@ export interface EigenerExport {
  * Signiert `anzahl` Belege mit der echten Signierlogik der Kassa: Startbeleg, Barumsätze mit allen Steuersätzen
  * (auch krumme Cent), Stornos (negative Beträge), Nullbelege, Belege im SEE-Ausfall.
  */
-export async function baueEigenenExport(anzahl: number, kassenId = 'PRUEF-KASSE-1'): Promise<EigenerExport> {
+export async function baueEigenenExport(anzahl: number, kassenId = 'PRUEF-KASSE-1', zdaId = 'AT0'): Promise<EigenerExport> {
   const see = await generateSEE({ kassenId, uid: 'ATU12345678', firmenname: 'Prüfstrecke GmbH' })
+  // Die Software-SEE trägt AT0 („geschlossenes Gesamtsystem"). Mit einer anderen Kennung (z. B. AT100 wie im offenen BMF-Beispiel)
+  // wird derselbe Export als offenes System gelesen — so prüft das BMF-Prüftool auch Verkettung, Zähler und Signaturen,
+  // statt schon am Format der Seriennummer für AT0 zu scheitern.
+  see.zdaId = zdaId
   // Fester Ausgangspunkt mitten im Sommer (keine Zeitumstellung in den folgenden Minuten, egal in welcher Zeitzone der
   // Test läuft) — erstelleStartbeleg() würde „jetzt" nehmen und könnte in der Umstellungsstunde eine rückläufige Uhrzeit erzeugen.
   const kontext: SignierungsKontext = { see, umsatzzaehler: new Umsatzzaehler(0n) }
