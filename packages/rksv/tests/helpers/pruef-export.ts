@@ -11,7 +11,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { generateSEE } from '../../src/see.js'
-import { erstelleStartbeleg, signiereBeleg } from '../../src/beleg.js'
+import { Umsatzzaehler, signiereBeleg, type SignierungsKontext } from '../../src/beleg.js'
 import { erstelleDEP7Export } from '../../src/dep.js'
 import type { BelegTyp, DEP7Export, RawBeleg, SEEConfig, SignedBeleg } from '../../src/types.js'
 
@@ -64,7 +64,11 @@ export interface EigenerExport {
  */
 export async function baueEigenenExport(anzahl: number, kassenId = 'PRUEF-KASSE-1'): Promise<EigenerExport> {
   const see = await generateSEE({ kassenId, uid: 'ATU12345678', firmenname: 'Prüfstrecke GmbH' })
-  const { beleg: start, kontext } = await erstelleStartbeleg(kassenId, see)
+  // Fester Ausgangspunkt mitten im Sommer (keine Zeitumstellung in den folgenden Minuten, egal in welcher Zeitzone der
+  // Test läuft) — erstelleStartbeleg() würde „jetzt" nehmen und könnte in der Umstellungsstunde eine rückläufige Uhrzeit erzeugen.
+  const kontext: SignierungsKontext = { see, umsatzzaehler: new Umsatzzaehler(0n) }
+  const start = await signiereBeleg(
+    { kassenId, belegNummer: 1, datumUhrzeit: new Date(Date.UTC(2026, 5, 15, 8, 0, 0)), belegTyp: 'Startbeleg', positionen: [] }, kontext)
   kontext.letzterBelegCode = start.maschinenlesbareCode
   const belege: SignedBeleg[] = [start]
 
