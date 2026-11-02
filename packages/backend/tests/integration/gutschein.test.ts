@@ -38,18 +38,18 @@ describe('Gutscheine (Integration, echtes PostgreSQL)', () => {
 
   const auth = () => ({ authorization: `Bearer ${token}` })
 
-  async function erstelle(betragCent: number, code?: string): Promise<GutscheinResponse> {
+  async function erstelle(betragCent: number, code?: string, gueltigBis?: string): Promise<GutscheinResponse> {
     const r = await srv.fastify.inject({
       method: 'POST', url: '/api/gutscheine', headers: auth(),
-      payload: { betragCent, ...(code && { code }) },
+      payload: { betragCent, ...(code && { code }), ...(gueltigBis && { gueltigBis }) },
     })
     if (r.statusCode !== 201) throw new Error(`Gutschein (${r.statusCode}): ${r.body}`)
     return r.json() as GutscheinResponse
   }
 
-  const einloesen = (id: string, einloesungCent: number, erstelleRestgutschein = false) =>
+  const einloesen = (id: string, einloesungCent: number, erstelleRestgutschein = false, headers = auth()) =>
     srv.fastify.inject({
-      method: 'POST', url: `/api/gutscheine/${id}/einloesen`, headers: auth(),
+      method: 'POST', url: `/api/gutscheine/${id}/einloesen`, headers,
       payload: { einloesungCent, erstelleRestgutschein },
     })
 
@@ -150,6 +150,69 @@ describe('Gutscheine (Integration, echtes PostgreSQL)', () => {
 
     const res = await einloesen(gs.id, 500)
     expect(res.statusCode).toBe(400)
+  })
+
+  /**
+   * `gueltigBis` ist ein Kalendertag (YYYY-MM-DD) und zählt nach dem Wiener Datum.
+   * Von 00:00 bis 02:00 Uhr Wiener Sommerzeit (Winterzeit: bis 01:00) steht das
+   * UTC-Datum noch auf dem Vortag — ein Vergleich damit ließ in diesem Fenster
+   * Gutscheine durch, die seit Mitternacht abgelaufen sind.
+   *
+   * Die Uhr wird nur um die Einlösung selbst gestellt (Anmelden und Ausstellen laufen
+   * mit der echten Uhr) und es wird nur `Date` gefälscht: Wer auch die Timer fälscht,
+   * lässt DB-Treiber und Fastify hängen.
+   */
+  describe('Ablaufdatum zählt nach dem Wiener Kalendertag, nicht nach dem UTC-Datum', () => {
+    async function einloesenUm(wienerZeit: string, id: string, einloesungCent: number) {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(new Date(wienerZeit))
+      try {
+        // iat/exp des Tokens hängen an der Uhr (Test-Token: 1 h): Die Anmeldung vom
+        // Testbeginn wäre für ein Prüfdatum in der Zukunft schon abgelaufen (401). Darum
+        // unter der gestellten Uhr neu ausstellen — der Test hängt so nicht am heutigen Datum.
+        const { sub, mandantId } = srv.fastify.jwt.decode<{ sub: string; mandantId: string }>(token)!
+        return await einloesen(id, einloesungCent, false, srv.authHeader({ sub, mandantId }))
+      } finally {
+        vi.useRealTimers()
+      }
+    }
+
+    it.each([
+      { zeit: '2026-10-07T00:00:00+02:00', gueltigBis: '2026-10-06', fall: 'Sommerzeit, erste Sekunde des Folgetags' },
+      { zeit: '2026-10-07T00:30:00+02:00', gueltigBis: '2026-10-06', fall: 'Sommerzeit, mitten im Fenster' },
+      { zeit: '2026-10-07T01:59:59+02:00', gueltigBis: '2026-10-06', fall: 'Sommerzeit, letzte Sekunde im Fenster' },
+      { zeit: '2026-10-07T02:00:00+02:00', gueltigBis: '2026-10-06', fall: 'Sommerzeit, Fenster geschlossen (Kontrolle)' },
+      { zeit: '2026-11-15T00:00:00+01:00', gueltigBis: '2026-11-14', fall: 'Winterzeit, erste Sekunde des Folgetags' },
+      { zeit: '2026-11-15T00:59:59+01:00', gueltigBis: '2026-11-14', fall: 'Winterzeit, letzte Sekunde im Fenster' },
+    ])('lehnt einen am Vortag abgelaufenen Gutschein ab — $fall ($zeit)', async ({ zeit, gueltigBis }) => {
+      const gs = await erstelle(2000, undefined, gueltigBis)
+
+      const res = await einloesenUm(zeit, gs.id, 500)
+      expect(res.statusCode).toBe(400)
+      expect(res.json().fehler).toContain('abgelaufen')
+
+      // nichts verbucht: voller Restwert, Status unverändert
+      const danach = await srv.fastify.inject({
+        method: 'GET', url: `/api/gutscheine/${gs.id}`, headers: auth(),
+      })
+      const unveraendert = danach.json() as GutscheinResponse
+      expect(unveraendert.restCent).toBe(2000)
+      expect(unveraendert.status).toBe('aktiv')
+    })
+
+    it.each([
+      { zeit: '2026-10-06T23:59:59+02:00', gueltigBis: '2026-10-06', fall: 'Sommerzeit, letzte Sekunde des Gültigkeitstags' },
+      { zeit: '2026-10-07T00:30:00+02:00', gueltigBis: '2026-10-07', fall: 'Sommerzeit, im Fenster, Gültigkeitstag ist heute' },
+      { zeit: '2026-11-15T00:30:00+01:00', gueltigBis: '2026-11-15', fall: 'Winterzeit, im Fenster, Gültigkeitstag ist heute' },
+    ])('löst am Gültigkeitstag selbst noch ein — $fall ($zeit)', async ({ zeit, gueltigBis }) => {
+      const gs = await erstelle(2000, undefined, gueltigBis)
+
+      const res = await einloesenUm(zeit, gs.id, 500)
+      expect(res.statusCode).toBe(200)
+      const nach = (res.json() as GutscheinEinloesungResult).gutschein
+      expect(nach.restCent).toBe(1500)
+      expect(nach.status).toBe('teileingeloest')
+    })
   })
 
   it('protokolliert Einlösungs-Buchungen', async () => {
