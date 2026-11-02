@@ -1,0 +1,17 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "_kommentar": "Mutationstests für den RKSV-Kern: Stryker verändert den Code (aus + zu −, > zu >=, Konstanten, Zeichenketten …) und prüft, ob mindestens ein Test rot wird. Überlebende Mutanten = Behauptungen, die die Tests nicht festnageln. Aufruf: pnpm --filter @kassa/rksv test:mutation (Bericht: reports/mutation/mutation.html).",
+  "testRunner": "vitest",
+  "plugins": ["@stryker-mutator/vitest-runner"],
+  "vitest": { "configFile": "vitest.mutation.config.ts" },
+  "mutate": ["src/beleg.ts", "src/see.ts", "src/dep.ts", "src/crypto/*.ts"],
+  "coverageAnalysis": "perTest",
+  "reporters": ["clear-text", "progress", "json", "html"],
+  "jsonReporter": { "fileName": "reports/mutation/mutation.json" },
+  "htmlReporter": { "fileName": "reports/mutation/mutation.html" },
+  "thresholds": { "high": 90, "low": 75, "break": null },
+  "timeoutMS": 20000,
+  "tempDirName": ".stryker-tmp",
+  "cleanTempDir": true,
+  "concurrency": 2
+}

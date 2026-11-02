@@ -1,0 +1,208 @@
+name: RKSV Nacht
+
+# Externe Gegenproben der RKSV-Umsetzung — bewusst getrennt von ci.yml, damit die reguläre CI nicht langsamer wird.
+# Was hier läuft und was ein rotes Ergebnis bedeutet: packages/rksv/PRUEFSTRECKE.md
+#
+#  burnin       Burn-in der Kassa (zufällige Verkäufe, Stornos, Ausfälle, Neustarts, parallele Zugriffe) gegen PostgreSQL.
+#               Am Ende geht der DEP7-Export an zwei unabhängige Prüfer: den Python-Zweitprüfer (eigene ES256-/AES-Rechnung)
+#               und das BMF-Prüftool (Java). Davor läuft das Prüftool einmal über seine EIGENEN Beispieldaten — besteht es die
+#               nicht, sagt ein Ergebnis zu unseren Daten nichts.
+#  zeit-matrix  Beleg-Datum für viele Server-Zeitzonen und die heiklen Zeitpunkte (Zeitumstellung, Monats-/Jahreswechsel).
+#  schemas      Hat das BMF die FinanzOnline-Schemas geändert? Gibt es ein neueres Prüftool?
+#
+# Mutationstests (Stryker) laufen wöchentlich in rksv-mutation.yml.
+
+on:
+  schedule:
+    - cron: '17 1 * * 1-6'   # Mo–Sa, 01:17 UTC: Burn-in mit 1000 Belegen
+    - cron: '17 1 * * 0'     # So,    01:17 UTC: lange Variante (45 Minuten Laufzeit)
+  workflow_dispatch:
+    inputs:
+      belege:
+        description: 'Burn-in: Anzahl Belege'
+        required: false
+        default: '1000'
+      minuten:
+        description: 'Burn-in: Mindestlaufzeit in Minuten (überschreibt die Belegzahl)'
+        required: false
+        default: ''
+      bekannte_regeln:
+        description: 'Burn-in: Regeln, die nur als Hinweis zählen (Komma-Liste, z. B. pruefer-verkettung,zweitpruefer-verkettung)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rksv-nacht
+  cancel-in-progress: false
+
+jobs:
+  # ── Burn-in + externe Prüfer ────────────────────────────────────────────────
+  burnin:
+    name: Burn-in + Python-Zweitprüfer + BMF-Prüftool
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER:     kassa
+          POSTGRES_PASSWORD: kassa
+          POSTGRES_DB:       kassa
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U kassa"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      TEST_DATABASE_URL:      postgresql://kassa:kassa@localhost:5432/kassa
+      BURNIN_BELEGE:          ${{ inputs.belege || '1000' }}
+      BURNIN_MINUTEN:         ${{ inputs.minuten || (github.event.schedule == '17 1 * * 0' && '45' || '') }}
+      BURNIN_BEKANNTE_REGELN: ${{ inputs.bekannte_regeln || '' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: pnpm einrichten
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9.15.0
+
+      - name: Node.js einrichten
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # Java 8: Das Prüftool stammt von 2018 (Jackson 2.7 mit JAXB-Modul) und braucht javax.xml.bind, das ab Java 11 fehlt.
+      - name: Java 8 einrichten (für das BMF-Prüftool)
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '8'
+
+      - name: Abhängigkeiten installieren
+        run: pnpm install --frozen-lockfile
+
+      - name: BMF-Prüftool laden (festgelegte Version, SHA-256 geprüft)
+        run: node scripts/rksv/bmf-pruefer.mjs --nur-vorbereiten
+
+      # Kontrolllauf: Das Prüftool muss seine eigenen Beispieldaten (16 Szenarien, offenes und geschlossenes System) bestehen.
+      - name: Kontrolllauf mit den BMF-Beispieldaten
+        id: kontrolle
+        continue-on-error: true
+        run: node scripts/rksv/bmf-pruefer.mjs --beispiele --out "$RUNNER_TEMP/bmf-kontrolle"
+
+      - name: Backend samt Abhängigkeiten bauen
+        run: pnpm --filter @kassa/backend... build
+
+      - name: Burn-in (Belege oder Minuten laut Aufruf) mit Python-Zweitprüfer und BMF-Prüftool
+        working-directory: packages/backend
+        run: pnpm test:burnin
+
+      # Die Burn-in-Daten sind AT0 (Software-SEE, „geschlossenes System"): das Tool scheitert dort schon am Format der Seriennummer
+      # (Befund D) und erreicht Verkettung, Zähler und Signatur nie. Derselbe Export als offenes System (ZDA AT100) zeigt den Rest.
+      - name: BMF-Prüftool über Exporte der Kassa (AT0 und offenes System)
+        if: ${{ !cancelled() }}
+        run: pnpm --filter @kassa/rksv exec vitest run tests/bmf-prueftool.test.ts
+        env:
+          RKSV_PRUEF_AUSGABE: ${{ runner.temp }}/bmf-kassa
+
+      - name: Berichte in die Zusammenfassung
+        if: ${{ always() }}
+        run: |
+          for f in packages/backend/test-results/burnin-*.md; do
+            [ -f "$f" ] && cat "$f" >> "$GITHUB_STEP_SUMMARY"
+          done
+          if [ "${{ steps.kontrolle.outcome }}" != "success" ]; then
+            echo "⚠️ Kontrolllauf des BMF-Prüftools mit den BMF-Beispieldaten ist FEHLGESCHLAGEN — die Ergebnisse des Prüftools zu unseren Daten sind unbrauchbar (Details im Artefakt)." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # Artefakte zählen gegen das Speicherkontingent des (privaten) Repositorys: Berichte, Zusammenfassungen (auch bmf-zusammenfassung.json
+      # mit den ersten 200 beanstandeten Prüfungen), Konsolenausgabe und Export-Dateien kommen mit — nicht die Einzelergebnisse des Prüftools
+      # je Beleg (4 Dateien je Beleg + DEP-full.json, bei langen Läufen zig Megabyte). Wer sie braucht, lässt das Skript lokal laufen
+      # (node scripts/rksv/bmf-pruefer.mjs --dep … --crypto … --out …).
+      # Ausschlüsse (`!`) gelten für relative Muster nur unterhalb des Arbeitsverzeichnisses — $RUNNER_TEMP liegt daneben und
+      # braucht eigene, absolute Muster (ohne sie kamen im Probelauf 117 MB Einzelergebnisse mit).
+      - name: Berichte als Artefakt
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: rksv-burnin-${{ github.run_id }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            packages/backend/test-results/burnin-*
+            ${{ runner.temp }}/bmf-kontrolle
+            ${{ runner.temp }}/bmf-kassa
+            !**/DEP-full.json
+            !**/*_full.json
+            !**/[0-9][0-9][0-9][0-9]_*.json
+            !${{ runner.temp }}/**/DEP-full.json
+            !${{ runner.temp }}/**/*_full.json
+            !${{ runner.temp }}/**/[0-9][0-9][0-9][0-9]_*.json
+
+      # Ein misslungener Kontrolllauf macht die Nacht rot, auch wenn der Burn-in selbst sauber war (und auch dann, wenn der
+      # Burn-in rot ist: ohne `!cancelled()` würde dieser Schritt nach einem früheren Fehler übersprungen).
+      - name: Kontrolllauf auswerten
+        if: ${{ !cancelled() && steps.kontrolle.outcome == 'failure' }}
+        run: |
+          echo "Das BMF-Prüftool besteht seine eigenen Beispieldaten nicht — Umgebung (Java 8?) oder Tool-Version prüfen." >&2
+          exit 1
+
+  # ── Zeit-Matrix ─────────────────────────────────────────────────────────────
+  zeit-matrix:
+    name: Zeit-Matrix (Zeitzonen, Zeitumstellung, Monats-/Jahreswechsel)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: pnpm einrichten
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9.15.0
+
+      - name: Node.js einrichten
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Abhängigkeiten installieren
+        run: pnpm install --frozen-lockfile
+
+      - name: Zeit-Matrix
+        run: pnpm --filter @kassa/rksv exec vitest run tests/zeit-matrix.test.ts
+        env:
+          RKSV_ZEITMATRIX: '1'
+
+  # ── Schemas / Prüftool-Version ──────────────────────────────────────────────
+  schemas:
+    name: FinanzOnline-Schemas unverändert?
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Node.js einrichten
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      # Exit 1 = das BMF hat Schemas geändert (rot), Exit 3 = BMF nicht erreichbar (kein Befund, kein Rot).
+      - name: Schemas gegen finanzonline.bmf.gv.at vergleichen
+        run: node scripts/rksv/fon-xsd-drift.mjs || test $? -eq 3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

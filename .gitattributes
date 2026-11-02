@@ -10,3 +10,7 @@ docker-compose*.yml text eol=lf
 *.cmd -text
 # ESC/POS-Golden-Master: Byte-genau — niemals EOL-konvertieren
 packages/backend/tests/fixtures/escpos-golden/* -text
+# Amtliche FinanzOnline-Schemas: Byte-genau (Prüfsummen in SHA256SUMS), niemals EOL-konvertieren
+packages/rksv/tests/fixtures/fon-xsd/* -text
+# BMF-Referenzdaten: Byte-genau (Prüfsummen in SHA256SUMS)
+packages/rksv/tests/fixtures/bmf-mustercode/** -text

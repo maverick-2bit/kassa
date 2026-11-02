@@ -6,7 +6,10 @@
  * rechnet die Vorgaben der BMF-Detailspezifikation (RKSV) mit node:crypto frisch nach:
  *
  *  - maschinenlesbarer Code: _R1-<ZDA>_<KID>_<BNR>_<BDT>_<N>_<E1>_<E2>_<0>_<B>_<Umsatzzähler>_<ZSN>_<Vorbeleg>_<Signatur>
- *  - Verkettung: erste 8 Byte SHA-256 (Start: Kassen-ID, sonst kompletter Vorbeleg-Code), Base64
+ *  - Verkettung: erste 8 Byte SHA-256 (Start: Kassen-ID, sonst die JWS-Compact-Form des Vorbelegs), Base64.
+ *    RKSV Anlage 1 Z 4/Z 6 und die BMF-Referenzdaten hashen die JWS-Form (header.payload.signatur, base64url) —
+ *    NICHT den QR-Code. (Bis 2026-11 stand hier, wie im Produktivcode, irrtümlich der QR-Code: Der Prüfer teilte den
+ *    Denkfehler der Kassa und konnte ihn deshalb nicht finden, siehe packages/rksv/tests/bmf-referenz.test.ts.)
  *  - Signatur: ES256-JWS (r‖s, 64 Byte) über base64url({"alg":"ES256"}) + "." + base64url(Code ohne Signatur)
  *  - Umsatzzähler: AES-256-CTR, IV = erste 16 Byte SHA-256(Kassen-ID ‖ Belegnummer), Klartext Int64 big-endian
  *  - Belegnummern lückenlos, Zeitstempel nicht rückläufig
@@ -79,6 +82,12 @@ function entschluesseleZaehler(base64: string, schluessel: Buffer, kassenId: str
 
 const b64url = (b: Buffer | string): string => Buffer.from(b).toString('base64url')
 
+/** QR-Form (`…_<Signatur in Base64-Standard>`) → JWS-Compact-Form `header.payload.signatur` (alles base64url). */
+export function jwsCompact(qrCode: string): string {
+  const i = qrCode.lastIndexOf('_')
+  return `${b64url(JSON.stringify({ alg: 'ES256' }))}.${b64url(qrCode.slice(0, i))}.${Buffer.from(qrCode.slice(i + 1), 'base64').toString('base64url')}`
+}
+
 export function pruefeBelegfolge(belege: readonly PrueferBeleg[], ctx: PrueferKontext): PrueferErgebnis {
   const verstoesse: Verstoss[] = []
   const fehler = (belegNummer: number | null, regel: string, detail: string) => {
@@ -133,7 +142,7 @@ export function pruefeBelegfolge(belege: readonly PrueferBeleg[], ctx: PrueferKo
     }
 
     // --- Verkettung ---
-    const sollVor = vorher ? verkettung(vorher.maschinenlesbareCode) : verkettung(ctx.kassenId)
+    const sollVor = vorher ? verkettung(jwsCompact(vorher.maschinenlesbareCode)) : verkettung(ctx.kassenId)
     if (b.sigVorbeleg !== sollVor) fehler(nr, 'verkettung', `sigVorbeleg ${b.sigVorbeleg} ≠ ${sollVor}`)
 
     // --- Signatur (ES256-JWS) ---
