@@ -65,7 +65,7 @@ export const rksvSelbsttestRoute: FastifyPluginAsync<RksvSelbsttestRouteOptions>
         : `Signaturkette;UNTERBROCHEN${ergebnis.ketteBruchBeleg === null ? '' : ` bei Beleg ${ergebnis.ketteBruchBeleg}`}`)
       if (ergebnis.ketteAltformat > 0) {
         zeilen.push(
-          `Verkettung im Altformat (Hash des QR-Codes statt der JWS-Form, Programmversionen bis 0.8.77);` +
+          `Verkettung im Altformat (Hash des QR-Codes statt der JWS-Form, Programmversionen vor der Korrektur);` +
           `Belege ${ergebnis.ketteAltformatVon}–${ergebnis.ketteAltformatBis} (${ergebnis.ketteAltformat} Belege), signiert und unverändert`,
         )
         if (ergebnis.ketteGemischt) {

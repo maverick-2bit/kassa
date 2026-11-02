@@ -1,7 +1,7 @@
 /**
  * Integrationstest: Signatur-Selbsttest und BESTEHENDE KETTEN (Befund A der RKSV-Prüfstrecke).
  *
- * Bis v0.8.77 hat die Kassa den Sig-Voriger-Beleg über den QR-Code des Vorbelegs gebildet statt über seine JWS-Compact-Form
+ * Vor der Korrektur hat die Kassa den Sig-Voriger-Beleg über den QR-Code des Vorbelegs gebildet statt über seine JWS-Compact-Form
  * (RKSV Anlage 1 Z 4). Eine Kasse, die vor dem Update Belege signiert hat, trägt diese „Altform" ab dem 2. Beleg; sie ist
  * Teil des signierten Codes und lässt sich nicht ändern. Der Selbsttest erkennt sie aus den Daten und weist sie aus, statt
  * die Kette als unterbrochen zu melden — einen echten Bruch meldet er weiter.

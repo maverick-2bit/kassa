@@ -7,7 +7,7 @@
  *
  * BEFUND A (behoben): Die Verkettung der Folgebelege war falsch. RKSV Anlage 1 Z 4 und alle 1284 Folgebelege der
  * 16 BMF-Szenarien hashen die JWS-Compact-Form des Vorbelegs (header.payload.signatur, base64url); die Kassa
- * hat bis v0.8.77 die QR-Form gehasht (Signatur in Standard-Base64). Die Tests dazu waren als `it.fails`
+ * hat vor der Korrektur die QR-Form gehasht (Signatur in Standard-Base64). Die Tests dazu waren als `it.fails`
  * festgehalten; seit der Korrektur laufen sie als gewöhnliche Tests und halten die Lesart fest.
  */
 
@@ -62,7 +62,7 @@ for (const name of ['closed-system-1', 'open-system-1'] as const) {
       }
     })
 
-    it('… aber NICHT, wenn man den QR-Code hasht (so hat die Kassa bis v0.8.77 verkettet): 0 von 80 Treffern', () => {
+    it('… aber NICHT, wenn man den QR-Code hasht (so hat die Kassa vor der Korrektur verkettet): 0 von 80 Treffern', () => {
       let treffer = 0
       for (let i = 1; i < s.qr.length; i++) {
         if (sha8(s.qr[i - 1]!) === felder[i]!.vorbeleg) treffer++

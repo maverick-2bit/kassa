@@ -3,7 +3,7 @@ import { test, expect, type APIRequestContext, type Page } from '@playwright/tes
 /**
  * Signatur-Selbsttest (Einstellungen → RKSV) und bestehende Ketten (Befund A der RKSV-Prüfstrecke).
  *
- * Belege aus Programmversionen bis 0.8.77 tragen ab dem 2. Beleg die Verkettung der „Altform" (Hash des QR-Codes statt der
+ * Belege aus Programmversionen vor der Korrektur tragen ab dem 2. Beleg die Verkettung der „Altform" (Hash des QR-Codes statt der
  * JWS-Form). Das Backend erkennt sie aus den Daten (Integrationstest rksv-selbsttest-altkette); hier geht es nur darum, was die
  * Seite daraus macht: die Altstrecke steht blau und mit Belegbereich da statt als rotes „Kette unterbrochen", eine ältere
  * Programmversion nach dem Umstieg fällt gelb auf, ein echter Bruch bleibt rot und nennt den Beleg.

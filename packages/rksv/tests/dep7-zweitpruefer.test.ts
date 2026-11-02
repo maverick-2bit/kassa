@@ -215,7 +215,7 @@ describe.skipIf(!PYTHON)('Python-Zweitprüfer', () => {
     })
 
     // BEFUND A (siehe bmf-referenz.test.ts, behoben): Der Prüfer rechnet die Verkettung nach der Spezifikation (JWS-Compact
-    // des Vorbelegs); die Kassa hat bis v0.8.77 die QR-Form gehasht.
+    // des Vorbelegs); die Kassa hat vor der Korrektur die QR-Form gehasht.
     it('BEFUND A (behoben)  Verkettung der Kassa entspricht der Spezifikation (JWS-Compact des Vorbelegs)', () => {
       const l = pruefe(eigen.dep7, eigen.container)
       expect(l.bericht.verstoesseJeRegel['verkettung'] ?? 0).toBe(0)

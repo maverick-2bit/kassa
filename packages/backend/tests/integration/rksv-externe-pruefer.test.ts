@@ -7,7 +7,7 @@
  *
  * Der Export besteht wie beim BMF aus dep-export.json und cryptographicMaterialContainer.json.
  *
- * BEFUND A (behoben): Die Verkettung der Folgebelege nahm bis v0.8.77 die QR-Form des Vorbelegs; RKSV Anlage 1
+ * BEFUND A (behoben): Die Verkettung der Folgebelege nahm vor der Korrektur die QR-Form des Vorbelegs; RKSV Anlage 1
  * Z 4 und die BMF-Referenzdaten verlangen die JWS-Compact-Form (siehe packages/rksv/tests/bmf-referenz.test.ts).
  * Der Test dazu läuft jetzt streng (Verkettung wird mitgeprüft).
  *

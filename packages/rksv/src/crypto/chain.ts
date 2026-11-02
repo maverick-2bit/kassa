@@ -8,7 +8,7 @@
  *                                  (`header.payload.signatur`, alles base64url)
  *
  * NICHT der QR-Code des Vorbelegs: dort steht die Signatur in Standard-Base64 und die Nutzlast im Klartext.
- * Die Kassa hat bis v0.8.77 den QR-Code gehasht (Befund A der RKSV-Prüfstrecke); die BMF-Beispieldaten
+ * Die Kassa hat vor dieser Korrektur den QR-Code gehasht (Befund A der RKSV-Prüfstrecke); die BMF-Beispieldaten
  * (1284 von 1284 Folgebelegen) und das BMF-Prüftool (`CHAINING_INPUT`) verlangen die JWS-Form.
  * Gespeichert wird weiterhin der QR-Code (`kassen.letzter_beleg_code`, `belege.maschinenlesbare_code`);
  * `verkettungswertFolgebeleg` nimmt ihn entgegen und rechnet erst beim Hashen in die JWS-Form um.
@@ -46,7 +46,7 @@ export function verkettungswertFolgebeleg(vorbelegCode: string): string {
 }
 
 /**
- * Verkettungswert der Altform: Hash des QR-Codes des Vorbelegs, so wie die Kassa bis v0.8.77 verkettet hat (Befund A).
+ * Verkettungswert der Altform: Hash des QR-Codes des Vorbelegs, so wie die Kassa vor dieser Korrektur verkettet hat (Befund A).
  * Nur zum ERKENNEN bestehender Ketten (`analysiereKette`) — neue Belege werden nie so verkettet.
  */
 function verkettungswertAltform(vorbelegCode: string): string {

@@ -78,7 +78,7 @@ describe('verkettungswertFolgebeleg (Eingabe: gespeicherter QR-Code des Vorbeleg
     expect(verkettungswertFolgebeleg(QR_CODE)).toBe(verkettungswertAusJwsCompact(jws))
   })
 
-  it('ist NICHT der Hash des QR-Codes (so hat die Kassa bis v0.8.77 verkettet — Befund A)', () => {
+  it('ist NICHT der Hash des QR-Codes (so hat die Kassa vor der Korrektur verkettet — Befund A)', () => {
     expect(verkettungswertFolgebeleg(QR_CODE)).not.toBe(sha8(QR_CODE))
   })
 
@@ -106,7 +106,7 @@ type KetteBeleg = { maschinenlesbareCode: string; sigVorbeleg: string }
 
 /**
  * Baut eine synthetische Belegfolge (Codes in QR-Form, wie sie gespeichert werden). `form(i)` bestimmt, wie Beleg i (ab 1) mit seinem
- * Vorgänger verkettet ist: 'spez' = JWS-Form nach Spezifikation, 'alt' = Hash des QR-Codes (Programmversionen bis 0.8.77).
+ * Vorgänger verkettet ist: 'spez' = JWS-Form nach Spezifikation, 'alt' = Hash des QR-Codes (Programmversionen vor der Korrektur).
  */
 function baueKette(anzahl: number, form: (i: number) => Form = () => 'spez', signatur = (i: number) => Buffer.from(`signatur-${i}`, 'utf8').toString('base64')): KetteBeleg[] {
   const belege: KetteBeleg[] = []
@@ -164,7 +164,7 @@ describe('pruefeKette', () => {
   })
 
   it('die alte Lesart (Hash des QR-Codes statt der JWS-Form) ist keine gültige Verkettung mehr', () => {
-    const alt = baueKette(3, () => 'alt')                              // wie bis v0.8.77: QR-Code gehasht
+    const alt = baueKette(3, () => 'alt')                              // wie vor der Korrektur: QR-Code gehasht
     expect(alt[0]!.sigVorbeleg).toBe(verkettungswertStartbeleg(KASSE)) // der Startbeleg war immer richtig
     expect(pruefeKette(KASSE, alt.slice(0, 1))).toBe(true)
     expect(pruefeKette(KASSE, alt)).toBe(false)
@@ -172,7 +172,7 @@ describe('pruefeKette', () => {
 })
 
 // ---------------------------------------------------------------------------------------------------------------------
-// analysiereKette — bestehende Ketten erkennen (Altform bis v0.8.77), echte Brüche weiter melden
+// analysiereKette — bestehende Ketten erkennen (Altform vor der Korrektur), echte Brüche weiter melden
 // ---------------------------------------------------------------------------------------------------------------------
 describe('analysiereKette', () => {
   const sauber = { ok: true, altformat: 0, ersterAltformatIndex: null, letzterAltformatIndex: null, gemischt: false, ersterBruchIndex: null }

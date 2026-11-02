@@ -413,7 +413,7 @@ Container, die Daten (Postgres-Volume) bleiben erhalten.
   signiert wurden, tragen im QR-Code die Zeit in UTC** (signiert, nicht mehr änderbar).
   Einstellungen → RKSV → Signatur-Selbsttest meldet sie als „QR-Zeit in UTC" — sie bleiben
   gültig, das CSV-Protokoll dokumentiert sie.
-- **Signatur-Selbsttest meldet „Verkettung im Altformat: Belege 2–m":** Belege bis Version 0.8.77
+- **Signatur-Selbsttest meldet „Verkettung im Altformat: Belege 2–m":** Belege aus Programmversionen vor der Korrektur
   tragen ab dem 2. Beleg als Verkettungswert den Hash des QR-Codes ihres Vorgängers statt seiner
   JWS-Form (RKSV Anlage 1 Z 4, Befund A der RKSV-Prüfstrecke). Der Wert steckt im signierten Code
   und lässt sich nicht mehr ändern; schon der erste Beleg nach dem Update ist richtig verkettet.

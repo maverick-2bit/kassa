@@ -931,7 +931,7 @@ function SignaturSelbsttestSektion() {
                 )}
                 {e.ketteAltformat > 0 && (
                   <><strong>Verkettung im Altformat: Belege {e.ketteAltformatVon}–{e.ketteAltformatBis}</strong> ({e.ketteAltformat} Beleg{e.ketteAltformat === 1 ? '' : 'e'},
-                  bis Version 0.8.77 erstellt) tragen als Verkettungswert den Hash des QR-Codes statt der JWS-Form (RKSV Anlage 1 Z 4):
+                  vor der Korrektur der Verkettung erstellt) tragen als Verkettungswert den Hash des QR-Codes statt der JWS-Form (RKSV Anlage 1 Z 4):
                   signiert und unverändert, die Kette ist geschlossen — Prüfprogramme der Finanz (BMF-Prüftool) melden dort aber
                   Verkettungsfehler. {e.ketteGemischt
                     ? <strong>Achtung: auch nach dem Umstieg auf die neue Verkettung kamen noch Belege im Altformat vor — ist eine ältere Programmversion im Einsatz? </strong>

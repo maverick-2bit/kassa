@@ -61,7 +61,7 @@ export interface EigenerExport {
 }
 
 /**
- * Macht aus einem frisch signierten Beleg den, den die Kassa bis v0.8.77 erzeugt hätte: Sig-Voriger-Beleg = Hash des
+ * Macht aus einem frisch signierten Beleg den, den die Kassa vor der Korrektur erzeugt hätte: Sig-Voriger-Beleg = Hash des
  * QR-Codes des Vorbelegs (statt seiner JWS-Form). Alles andere bleibt, die Signatur wird neu berechnet — so liegen
  * Belege einer Bestandskasse vor, deren Kette noch nach der alten Lesart gebildet wurde (Altkette, Befund A).
  */
@@ -80,7 +80,7 @@ async function alsAltkette(beleg: SignedBeleg, vorbelegQr: string, see: SEEConfi
  * Signiert `anzahl` Belege mit der echten Signierlogik der Kassa: Startbeleg, Barumsätze mit allen Steuersätzen
  * (auch krumme Cent), Stornos (negative Beträge), Nullbelege, Belege im SEE-Ausfall.
  *
- * `altketteBis`: Belege 2 bis zu dieser Nummer tragen die Verkettung nach der alten Lesart (QR-Code gehasht, wie bis v0.8.77),
+ * `altketteBis`: Belege 2 bis zu dieser Nummer tragen die Verkettung nach der alten Lesart (QR-Code gehasht, wie vor der Korrektur),
  * alle späteren die richtige — der Export einer Bestandskasse nach dem Update.
  */
 export async function baueEigenenExport(
