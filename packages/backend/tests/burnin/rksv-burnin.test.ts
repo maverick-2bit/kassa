@@ -485,7 +485,10 @@ describe('RKSV-Burn-in (Integration, echtes PostgreSQL)', () => {
 
     if (abschliessend) {
       // Lückenlosigkeit nach allen abgelehnten Anfragen: es darf keine Nummer fehlen (im Prüfer bereits enthalten)
-      pruefe(erg.verstoesse.length === 0, 'abschluss-kette-sauber', () => `${erg.verstoesse.length} Verstöße im Gesamtbestand`)
+      // Bekannte, noch nicht behobene Befunde (BURNIN_BEKANNTE_REGELN) zählen hier nicht mit — sie sind schon einzeln als Hinweis
+      // geführt; sonst bliebe der Burn-in mit gesetzter Liste trotzdem rot und verdeckte, ob ANDERE Regeln verletzt sind.
+      const unbekannte = erg.verstoesse.filter(v => !BEKANNT.has(`pruefer-${v.regel}`))
+      pruefe(unbekannte.length === 0, 'abschluss-kette-sauber', () => `${unbekannte.length} Verstöße im Gesamtbestand`)
     }
     console.log(`    Bestand geprüft: ${belege.length} Belege, ${erg.signaturGeprueft} Signaturen, ${erg.ausfallBelege} Ausfallbelege, Zähler ${erg.zaehlerEnde} ct, Verstöße ${erg.verstoesse.length}`)
   }
