@@ -23,7 +23,6 @@ import type {
   KasseArtikelLayout,
 } from '@kassa/shared'
 import { getToken, clearAuth } from './auth'
-import { clearKasseIdentity } from './kasse'
 
 let onUnauthorized: (() => void) | null = null
 export function setOnUnauthorized(fn: () => void) { onUnauthorized = fn }
@@ -63,9 +62,11 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   // Beim PIN-Login bedeutet 401 nur „PIN falsch" — früher löschte schon EIN
   // Tippfehler hier die Kassen-Zuordnung, und das Handy musste den Geräte-QR
   // neu scannen.
+  // Auch ein abgelaufenes Token (JWT_EXPIRES_IN, Standard 8 h) löscht nur die ANMELDUNG: Die Zuordnung zur
+  // Kassa (mandantId/kasseId) bleibt, das Handy fragt wieder nach der PIN. Mit gelöschter Zuordnung verlangte
+  // jedes Handy nach einer Nacht den Geräte-QR neu — und wer ihn nicht zur Hand hatte, kam nicht mehr hinein.
   if (res.status === 401 && !ANMELDE_PFADE.includes(path)) {
     clearAuth()
-    clearKasseIdentity()
     onUnauthorized?.()
     throw new Error('Sitzung abgelaufen')
   }

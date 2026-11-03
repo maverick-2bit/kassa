@@ -37,7 +37,10 @@ export const HILFE_THEMEN: HilfeThema[] = [
       'Gibt es mehrere Kassen, wähle unter „Kasse auswählen" die richtige.',
       'Dann die PIN über die Zifferntasten eingeben.',
     ],
-    tipps: ['PIN vergessen? Die Chefin oder der Chef legt unter „Personal → Benutzer" in der Kassa eine neue an.'],
+    tipps: [
+      'PIN vergessen? Die Chefin oder der Chef legt unter „Personal → Benutzer" in der Kassa eine neue an.',
+      'Die App merkt sich die Kasse: Läuft die Anmeldung ab, fragt sie nur wieder nach der PIN. Für einen anderen Betrieb scannst du dessen QR-Code — die bisherige Zuordnung wird ersetzt.',
+    ],
   },
   {
     id: 'tische',

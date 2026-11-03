@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { PIN_LAENGE_CODE } from '@kassa/shared'
 import { ApiError, authApi, kasseApi } from '../lib/api'
 import { gemerktePinLaenge, getGeraetToken, merkePinLaenge, setAuth } from '../lib/auth'
-import { getKasseIdentity, setKasseIdentity } from '../lib/kasse'
+import { clearKasseIdentity, getKasseIdentity, setKasseIdentity } from '../lib/kasse'
 import { restzeitText, usePinSperre } from '../lib/pin-sperre'
 
 export function LoginPage() {
@@ -45,6 +45,17 @@ export function LoginPage() {
     setPinLaenge(pinInfo.data.pinLaenge)
     merkePinLaenge(pinInfo.data.pinLaenge)
   }, [pinInfo.data])
+
+  // Die Kassa kennt die Kasse dieses Handys nicht mehr (Datenbank neu aufgesetzt, Kasse gelöscht): die Zuordnung
+  // ist wertlos — jede PIN meldete „PIN ungültig", ohne dass das Handy je wieder herauskäme. Verwerfen; die Maske
+  // verlangt dann den Einrichtungs-QR (oder lässt die Kasse wählen, wenn der Link den Betrieb trägt).
+  const [zuordnungVeraltet, setZuordnungVeraltet] = useState(false)
+  useEffect(() => {
+    if (pinInfo.error instanceof ApiError && pinInfo.error.status === 404 && getKasseIdentity()) {
+      clearKasseIdentity()
+      setZuordnungVeraltet(true)
+    }
+  }, [pinInfo.error])
 
   const mutation = useMutation({
     mutationFn: authApi.pinLogin,
@@ -109,6 +120,9 @@ export function LoginPage() {
           <h1 className="text-2xl font-black text-ink">Kellner-App</h1>
           <div className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 text-left space-y-2">
             <p className="font-bold">Dieses Gerät ist noch nicht eingerichtet.</p>
+            {zuordnungVeraltet && (
+              <p>Die bisherige Zuordnung dieses Handys passt nicht mehr zur Kassa (Daten neu aufgesetzt?) und wurde zurückgesetzt.</p>
+            )}
             <p>
               Bitte den <strong>QR-Code der Kellner-App</strong> scannen — zu finden an der
               Kassa unter <strong>Einstellungen → Geräte</strong>. Er enthält die Zuordnung
