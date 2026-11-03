@@ -10,6 +10,7 @@ import { formatAusfallDauer } from '../components/SeeStatusBanner'
 import { getKasseIdentity } from '../lib/kasse'
 import { useIstBetreiber } from '../lib/betreiber'
 import { useServerHost, merkeServerHost } from '../lib/serverHost'
+import { geraeteBasis, type GeraeteApp } from '../lib/geraeteAdressen'
 import { getAuth, hasModul, tagesRegel } from '../lib/auth'
 import { heuteKalendertag } from '../lib/geschaeftstag'
 import { Field } from '../components/ui/Field'
@@ -1310,10 +1311,8 @@ function GastQrCodeSektion() {
   const auth       = getAuth()!
   const kassen     = auth.kassen
 
-  // Standard-Basis-URL: selber Host, Port 8082 (Produktion) oder 5177 (Dev)
-  const defaultBase = window.location.hostname === 'localhost'
-    ? `${window.location.protocol}//${window.location.hostname}:5177`
-    : `${window.location.protocol}//${window.location.hostname}:8082`
+  // Standard-Basis-URL: selber Host, Port 8082 (Docker) oder 5177 (Dev-Server)
+  const defaultBase = geraeteBasis('gast', window.location.protocol, window.location.hostname)
 
   const [basisUrl, setBasisUrl]       = useState(defaultBase)
   const [kasseId, setKasseId]         = useState(kassen[0]?.id ?? '')
@@ -2610,7 +2609,6 @@ function TerminalArtikelZeile({
  * dieselbe Adresse, unterschieden wird per Login.
  */
 function GeraeteSektion() {
-  const istDev   = window.location.hostname === 'localhost'
   const identity = getKasseIdentity()!
 
   // localhost taugt nicht für QR-Codes (das Handy würde sich selbst aufrufen).
@@ -2634,23 +2632,24 @@ function GeraeteSektion() {
     retry:     false,
   })
 
-  // Label | Dev-Port (Vite) | Prod-Port (Docker) | URL-Parameter | Hinweis
+  // Label | App (Ports: lib/geraeteAdressen — Docker bzw. Dev-Server je nach Bundle,
+  // nie nach dem Host) | URL-Parameter | Hinweis
   //
   // Die Parameter sind Teil der Einrichtung: die Kellner-App braucht die
   // mandantId für die Kassen-Auswahl beim ersten PIN-Login (ohne sie nimmt das
   // Nummernfeld kommentarlos nichts an — Test-PC-Befund), Kundendisplay/
   // SB-Terminal/Abholmonitor brauchen die Kassen-Bindung.
-  const APPS: { label: string; dev: number; prod: number; params?: string | undefined; hinweis: string; modul?: 'sbTerminal' }[] = [
-    { label: 'Kellner-App',   dev: 5178, prod: 8083, params: `?mandantId=${identity.mandantId}`, hinweis: 'Handy des Kellners — PIN-Login' },
-    { label: 'KDS Küche/Schank', dev: 5175, prod: 8080, params: kdsTokenQ.data ? `?token=${kdsTokenQ.data.token}` : undefined, hinweis: 'Küchen-/Schank-Bildschirm (Station in der App wählen)' },
-    { label: 'Kundendisplay', dev: 5176, prod: 8081, params: `?kasseId=${identity.kasseId}&mandantId=${identity.mandantId}`, hinweis: 'Display Richtung Gast (diese Kasse)' },
-    { label: 'Gast-Bestellung', dev: 5177, prod: 8082, hinweis: 'QR am Tisch (siehe Tischnummern-Druck)' },
-    { label: 'SB-Terminal',   dev: 5179, prod: 8084, params: `?kasseId=${identity.kasseId}`, hinweis: 'Selbstbedienungs-Kiosk (diese Kasse)', modul: 'sbTerminal' },
-    { label: 'Abholmonitor',  dev: 5180, prod: 8085, params: `?kasseId=${identity.kasseId}`, hinweis: 'Wandbildschirm Abholung (diese Kasse)', modul: 'sbTerminal' },
+  const APPS: { label: string; app: GeraeteApp; params?: string | undefined; hinweis: string; modul?: 'sbTerminal' }[] = [
+    { label: 'Kellner-App',   app: 'kellner', params: `?mandantId=${identity.mandantId}`, hinweis: 'Handy des Kellners — PIN-Login' },
+    { label: 'KDS Küche/Schank', app: 'kds', params: kdsTokenQ.data ? `?token=${kdsTokenQ.data.token}` : undefined, hinweis: 'Küchen-/Schank-Bildschirm (Station in der App wählen)' },
+    { label: 'Kundendisplay', app: 'kundendisplay', params: `?kasseId=${identity.kasseId}&mandantId=${identity.mandantId}`, hinweis: 'Display Richtung Gast (diese Kasse)' },
+    { label: 'Gast-Bestellung', app: 'gast', hinweis: 'QR am Tisch (siehe Tischnummern-Druck)' },
+    { label: 'SB-Terminal',   app: 'terminal', params: `?kasseId=${identity.kasseId}`, hinweis: 'Selbstbedienungs-Kiosk (diese Kasse)', modul: 'sbTerminal' },
+    { label: 'Abholmonitor',  app: 'abholmonitor', params: `?kasseId=${identity.kasseId}`, hinweis: 'Wandbildschirm Abholung (diese Kasse)', modul: 'sbTerminal' },
   ]
   const sichtbar = APPS.filter(a => !a.modul || hasModul(a.modul))
   const urlFuer  = (a: (typeof APPS)[number]) =>
-    `${window.location.protocol}//${host}:${istDev ? a.dev : a.prod}/${a.params ?? ''}`
+    `${geraeteBasis(a.app, window.location.protocol, host)}/${a.params ?? ''}`
 
   const [kopiert, setKopiert] = useState<string | null>(null)
   const kopieren = (url: string) => {
@@ -2776,15 +2775,11 @@ function TerminalUrlsSektion() {
   const auth   = getAuth()!
   const kassen = auth.kassen
 
-  const istDev = window.location.hostname === 'localhost'
-  const basis  = (port: number, prodPort: number) =>
-    `${window.location.protocol}//${window.location.hostname}:${istDev ? port : prodPort}`
+  const basis = (app: GeraeteApp) =>
+    geraeteBasis(app, window.location.protocol, window.location.hostname)
 
-  // Prod-Ports laut docker-compose: Terminal 8084, Abholmonitor 8085 — die
-  // früheren Defaults (8083/8084) stammten von VOR der Kellner-App, die 8083
-  // inzwischen belegt.
-  const [terminalBasis, setTerminalBasis] = useState(() => basis(5179, 8084))
-  const [monitorBasis,  setMonitorBasis]  = useState(() => basis(5180, 8085))
+  const [terminalBasis, setTerminalBasis] = useState(() => basis('terminal'))
+  const [monitorBasis,  setMonitorBasis]  = useState(() => basis('abholmonitor'))
   const [kopiert, setKopiert] = useState<string | null>(null)
 
   const kopieren = (url: string, key: string) => {
