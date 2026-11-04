@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm'
 import {
   ersteVertragsperiode,
   letzterVertragsmonat,
@@ -21,12 +21,19 @@ import {
 import type { Db } from '../db/client.js'
 import {
   kassen,
+  kunden,
   lieferscheine,
+  mandanten,
+  sammelrechnungen,
   wartungsvertraege,
   wartungsvertragPositionen,
 } from '../db/schema.js'
 import { ladeKundeSnapshot } from './kunde.service.js'
-import { erstelleSammelrechnung, LiferscheinError } from './lieferschein.service.js'
+import { erstelleSammelrechnung, holeSammelrechnung, LiferscheinError } from './lieferschein.service.js'
+import { erstelleOffenerPosten } from './offenerPosten.service.js'
+import { isEmailAktiv, sendeBelegzweigEmail } from './email.service.js'
+import { ladeZahlungsangaben } from './zahlungsangaben.js'
+import type { Config } from '../config.js'
 import { wienJetzt } from './auto-abschluss.service.js'
 
 export class WartungError extends Error {
@@ -394,20 +401,186 @@ export async function ermittleFaelligeRechnungen(
   return ergebnis
 }
 
-/** Fasst die fälligen Wartungslieferscheine eines Vertrags zur Sammelrechnung zusammen. */
+/** Empfänger des automatischen Rechnungsversands — nur bei Kunden mit aktiviertem Mailversand und Adresse. */
+async function mailEmpfaengerVon(db: Db, mandantId: string, kundeId: string): Promise<string | undefined> {
+  const [k] = await db
+    .select({ email: kunden.email, perMail: kunden.rechnungPerMail })
+    .from(kunden).where(and(eq(kunden.id, kundeId), eq(kunden.mandantId, mandantId))).limit(1)
+  return k?.perMail && k.email ? k.email : undefined
+}
+
+/**
+ * Verschickt die Sammelrechnung an den hinterlegten Empfänger. Ein Fehler bricht nichts ab: er wird an der
+ * Rechnung vermerkt und vom Cron erneut versucht.
+ */
+export async function versendeSammelrechnung(
+  db:        Db,
+  config:    Config,
+  mandantId: string,
+  srId:      string,
+  log?:      Logger,
+): Promise<boolean> {
+  const sr = await holeSammelrechnung(db, srId, mandantId)
+  if (!sr.emailEmpfaenger) return false
+  if (sr.emailVersandtAm)  return true
+
+  const [m] = await db.select({ firmenname: mandanten.firmenname }).from(mandanten)
+    .where(eq(mandanten.id, mandantId)).limit(1)
+  try {
+    await sendeBelegzweigEmail(sr.emailEmpfaenger, {
+      art:        'rechnung',
+      firmenname: m?.firmenname ?? '',
+      nummer:     sr.nummer,
+      datum:      sr.datum,
+      ...(sr.kunde?.bezeichnung ? { kundeName: sr.kunde.bezeichnung } : {}),
+      positionen: sr.lieferscheine.flatMap(ls => ls.positionen).map(p => ({
+        bezeichnung: p.bezeichnung, menge: p.menge, einzelpreisBreutto: p.einzelpreisBreutto,
+      })),
+      gesamtbetragCent: sr.gesamtbetragCent,
+      zahlung: await ladeZahlungsangaben(db, mandantId, sr.datum),
+    }, config)
+    await db.update(sammelrechnungen)
+      .set({ emailVersandtAm: new Date(), emailFehler: null })
+      .where(eq(sammelrechnungen.id, srId))
+    return true
+  } catch (err) {
+    const text = (err instanceof Error ? err.message : String(err)).slice(0, 500)
+    await db.update(sammelrechnungen).set({ emailFehler: text }).where(eq(sammelrechnungen.id, srId))
+    log?.error({ err, sammelrechnung: srId }, 'Rechnungsversand fehlgeschlagen')
+    return false
+  }
+}
+
+/**
+ * Fasst die fälligen Wartungslieferscheine eines Vertrags zur Sammelrechnung zusammen, legt den
+ * offenen Posten an und verschickt die Rechnung, wenn der Kunde Rechnungen per Mail bekommt.
+ */
 export async function rechneWartungsvertragAb(
   db:        Db,
   mandantId: string,
   vertragId: string,
   jetzt:     Date,
+  config?:   Config,
+  log?:      Logger,
 ): Promise<SammelrechnungResponse> {
-  await holeWartungsvertrag(db, vertragId, mandantId) // 404, falls fremd/unbekannt
+  const vertrag = await holeWartungsvertrag(db, vertragId, mandantId) // 404, falls fremd/unbekannt
   const [faellig] = await ermittleFaelligeRechnungen(db, mandantId, jetzt, vertragId)
   if (!faellig) throw new WartungError(409, 'Für diesen Vertrag ist aktuell nichts zu verrechnen')
+
+  const empfaenger = config && isEmailAktiv(config)
+    ? await mailEmpfaengerVon(db, mandantId, vertrag.kundeId)
+    : undefined
+
+  let sr: SammelrechnungResponse
   try {
-    return await erstelleSammelrechnung(db, mandantId, { lieferscheinIds: faellig.lieferscheinIds })
+    sr = await erstelleSammelrechnung(db, mandantId, { lieferscheinIds: faellig.lieferscheinIds }, {
+      wartungsvertragId: vertragId,
+      ...(empfaenger ? { emailEmpfaenger: empfaenger } : {}),
+    })
   } catch (err) {
     if (err instanceof LiferscheinError) throw new WartungError(err.httpStatus, err.message)
     throw err
   }
+
+  // Forderung in den Offenen Posten, damit unbezahlte Wartungsrechnungen nachverfolgbar sind
+  try {
+    await erstelleOffenerPosten(db, mandantId, {
+      kundeId:    vertrag.kundeId,
+      betragCent: sr.gesamtbetragCent,
+      notiz:      `Sammelrechnung SR-${String(sr.nummer).padStart(4, '0')} – Wartungsvertrag W-${String(vertrag.nummer).padStart(4, '0')}`,
+    })
+  } catch (err) {
+    log?.error({ err, sammelrechnung: sr.id }, 'Offener Posten zur Wartungsrechnung konnte nicht angelegt werden')
+  }
+
+  if (empfaenger && config) {
+    await versendeSammelrechnung(db, config, mandantId, sr.id, log)
+    return holeSammelrechnung(db, sr.id, mandantId)
+  }
+  return sr
+}
+
+/**
+ * Automatik für Kunden mit Rechnungsversand per Mail: fällige Wartungsrechnungen erstellen und
+ * verschicken, nicht zugestellte erneut versuchen. Ohne eingerichteten Mailversand passiert nichts —
+ * es entstehen keine Rechnungen, die nicht rausgehen können.
+ */
+export async function fuehreAutoRechnungenDurch(
+  db:     Db,
+  config: Config,
+  jetzt:  Date,
+  log?:   Logger,
+): Promise<{ erstellt: number; erneutVersendet: number }> {
+  if (!isEmailAktiv(config)) return { erstellt: 0, erneutVersendet: 0 }
+
+  const kandidaten = await db
+    .select({ id: wartungsvertraege.id, mandantId: wartungsvertraege.mandantId })
+    .from(wartungsvertraege)
+    .innerJoin(kunden, eq(wartungsvertraege.kundeId, kunden.id))
+    .where(and(eq(kunden.rechnungPerMail, true), isNotNull(kunden.email)))
+
+  let erstellt = 0
+  for (const k of kandidaten) {
+    try {
+      const [faellig] = await ermittleFaelligeRechnungen(db, k.mandantId, jetzt, k.id)
+      if (!faellig) continue
+      await rechneWartungsvertragAb(db, k.mandantId, k.id, jetzt, config, log)
+      erstellt++
+    } catch (err) {
+      log?.error({ err, vertrag: k.id }, 'Automatische Wartungsrechnung fehlgeschlagen')
+    }
+  }
+
+  // Nicht zugestellte erneut versuchen: nach einem Fehler, oder wenn ein Versand hängen blieb
+  const vorEinerStunde = new Date(jetzt.getTime() - 3_600_000)
+  const offen = await db
+    .select({ id: sammelrechnungen.id, mandantId: sammelrechnungen.mandantId })
+    .from(sammelrechnungen)
+    .where(and(
+      isNotNull(sammelrechnungen.emailEmpfaenger),
+      isNull(sammelrechnungen.emailVersandtAm),
+      isNotNull(sammelrechnungen.wartungsvertragId),
+      or(isNotNull(sammelrechnungen.emailFehler), lt(sammelrechnungen.createdAt, vorEinerStunde)),
+    ))
+  let erneutVersendet = 0
+  for (const sr of offen) {
+    if (await versendeSammelrechnung(db, config, sr.mandantId, sr.id, log)) erneutVersendet++
+  }
+
+  if (erstellt > 0 || erneutVersendet > 0) {
+    log?.info(`Wartungsrechnungen: ${erstellt} erstellt, ${erneutVersendet} erneut versendet`)
+  }
+  return { erstellt, erneutVersendet }
+}
+
+// ---------------------------------------------------------------------------
+// Buchhaltung: Sammelliste der per Mail verschickten Rechnungen zum A4-Druck
+// ---------------------------------------------------------------------------
+
+export async function listeBuchhaltungsRechnungen(db: Db, mandantId: string): Promise<SammelrechnungResponse[]> {
+  const ids = await db
+    .select({ id: sammelrechnungen.id })
+    .from(sammelrechnungen)
+    .where(and(
+      eq(sammelrechnungen.mandantId, mandantId),
+      isNotNull(sammelrechnungen.emailVersandtAm),
+      isNull(sammelrechnungen.buchhaltungGedrucktAm),
+    ))
+    .orderBy(asc(sammelrechnungen.nummer))
+  return Promise.all(ids.map(r => holeSammelrechnung(db, r.id, mandantId)))
+}
+
+export async function markiereBuchhaltungGedruckt(db: Db, mandantId: string, ids: string[]): Promise<number> {
+  if (ids.length === 0) return 0
+  const rows = await db
+    .update(sammelrechnungen)
+    .set({ buchhaltungGedrucktAm: new Date() })
+    .where(and(
+      eq(sammelrechnungen.mandantId, mandantId),
+      inArray(sammelrechnungen.id, ids),
+      isNotNull(sammelrechnungen.emailVersandtAm),
+      isNull(sammelrechnungen.buchhaltungGedrucktAm),
+    ))
+    .returning({ id: sammelrechnungen.id })
+  return rows.length
 }

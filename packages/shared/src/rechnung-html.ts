@@ -11,6 +11,12 @@ import type { BelegResponse } from './schemas/beleg.js'
 export interface RechnungMandantInfo {
   firmenname: string
   uid:        string
+  /** Anschrift/Kontakt unter dem Firmennamen (Kopftext der Beleg-Einstellungen) */
+  kopftext?:  string | null | undefined
+  /** Zahlungsangaben (nur Sammelrechnung): ohne Zahlungsziel entfällt der Zahlungsblock */
+  iban?:             string | null | undefined
+  bic?:              string | null | undefined
+  zahlungszielTage?: number | undefined
 }
 
 // ---------------------------------------------------------------------------

@@ -78,6 +78,14 @@ export const SammelrechnungResponseSchema = z.object({
   kunde:            KundeSnapshotSchema.optional(),
   lieferscheine:    z.array(LiferscheinResponseSchema),
   gesamtbetragCent: z.number().int(),
+  /** Aus einem Wartungsvertrag entstanden */
+  wartungsvertragId: z.string().guid().optional(),
+  /** Automatischer Mailversand: Ziel, Zustellung, letzter Fehler */
+  emailEmpfaenger:  z.string().optional(),
+  emailVersandtAm:  z.string().optional(),
+  emailFehler:      z.string().optional(),
+  /** Ausdruck für die Buchhaltung erledigt */
+  buchhaltungGedrucktAm: z.string().optional(),
   createdAt:        z.string(),
 })
 export type SammelrechnungResponse = z.infer<typeof SammelrechnungResponseSchema>

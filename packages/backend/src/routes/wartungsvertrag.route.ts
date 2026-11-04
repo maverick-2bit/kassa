@@ -5,20 +5,24 @@ import {
   WartungsvertragStatusSchema,
   WartungsvertragUpdateSchema,
 } from '@kassa/shared'
+import { z } from 'zod'
 import type { Db } from '../db/client.js'
+import type { Config } from '../config.js'
 import {
   aktualisiereWartungsvertrag,
   erstelleWartungsvertrag,
   ermittleFaelligeRechnungen,
   fuehreWartungslaufDurch,
   holeWartungsvertrag,
+  listeBuchhaltungsRechnungen,
   listeWartungsvertraege,
+  markiereBuchhaltungGedruckt,
   rechneWartungsvertragAb,
   WartungError,
 } from '../services/wartungsvertrag.service.js'
 import { uuidParam, uuidQuery } from './uuid-param.js'
 
-export interface WartungsvertragRouteOptions { db: Db }
+export interface WartungsvertragRouteOptions { db: Db; config: Config }
 
 export const wartungsvertragRoute: FastifyPluginAsync<WartungsvertragRouteOptions> = async (fastify, opts) => {
   const auth = { onRequest: [fastify.authenticate] }
@@ -80,7 +84,18 @@ export const wartungsvertragRoute: FastifyPluginAsync<WartungsvertragRouteOption
   fastify.post('/wartungsvertraege/:id/abrechnen', auth, async (request, reply) => {
     const id = uuidParam(request.params)
     try {
-      return reply.status(201).send(await rechneWartungsvertragAb(opts.db, request.user.mandantId, id, new Date()))
+      return reply.status(201).send(await rechneWartungsvertragAb(opts.db, request.user.mandantId, id, new Date(), opts.config, request.log))
     } catch (err) { return fehler(err, reply) }
+  })
+
+  /** Buchhaltung: per Mail verschickte Rechnungen, die noch nicht auf A4 ausgedruckt wurden */
+  fastify.get('/sammelrechnungen/buchhaltung', auth, async (request, reply) => {
+    return reply.send(await listeBuchhaltungsRechnungen(opts.db, request.user.mandantId))
+  })
+
+  fastify.post('/sammelrechnungen/buchhaltung/gedruckt', auth, async (request, reply) => {
+    const parsed = z.object({ ids: z.array(z.string().guid()).min(1).max(500) }).safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
+    return reply.send({ markiert: await markiereBuchhaltungGedruckt(opts.db, request.user.mandantId, parsed.data.ids) })
   })
 }

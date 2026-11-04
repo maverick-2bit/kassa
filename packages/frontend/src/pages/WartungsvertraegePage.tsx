@@ -25,7 +25,8 @@ import { Input } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
 import { Select } from '../components/ui/Select'
 import { AusgabeDialog } from '../components/AusgabeDialog'
-import { druckeSammelrechnung } from '../lib/rechnung'
+import { druckeSammelrechnung, druckeSammelrechnungen } from '../lib/rechnung'
+import { ladeRechnungMandant } from '../lib/rechnung-mandant'
 
 const INTERVALLE = Object.keys(WARTUNGS_INTERVALL_LABELS) as WartungsIntervall[]
 const MONATE = ['Jänner', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember']
@@ -366,7 +367,69 @@ function LaufDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
 // Seite
 // ---------------------------------------------------------------------------
 
-type Reiter = 'vertraege' | 'verrechnung'
+type Reiter = 'vertraege' | 'verrechnung' | 'buchhaltung'
+
+/** Per Mail verschickte Rechnungen, die die Buchhaltung noch als A4-Ausdruck bekommen soll */
+function BuchhaltungListe() {
+  const qc   = useQueryClient()
+  const auth = getAuth()
+  const liste = useQuery({ queryKey: ['wartungsvertraege', 'buchhaltung'], queryFn: () => sammelrechnungApi.buchhaltung() })
+  const rechnungen = liste.data ?? []
+
+  const drucken = useMutation({
+    mutationFn: async () => {
+      if (!auth) throw new Error('Nicht angemeldet')
+      druckeSammelrechnungen(rechnungen, await ladeRechnungMandant(auth.mandant))
+      return sammelrechnungApi.buchhaltungGedruckt(rechnungen.map(r => r.id))
+    },
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['wartungsvertraege', 'buchhaltung'] }) },
+  })
+
+  return (
+    <div className="overflow-hidden rounded-lg border border-line bg-panel shadow-sm">
+      {liste.isLoading ? (
+        <p className="py-12 text-center text-sm text-ink-subtle">Wird geladen…</p>
+      ) : rechnungen.length === 0 ? (
+        <div className="py-16 text-center text-ink-subtle">
+          <p className="mb-3 text-4xl">🗂️</p>
+          <p className="text-sm font-medium">Nichts auszudrucken</p>
+          <p className="mt-1 text-xs">Rechnungen, die per Mail verschickt wurden, sammeln sich hier für die Buchhaltung.</p>
+        </div>
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line bg-panel-2 px-4 py-3">
+            <p className="text-sm text-ink-muted">
+              {rechnungen.length} Rechnung{rechnungen.length === 1 ? '' : 'en'} noch nicht für die Buchhaltung gedruckt
+            </p>
+            <Button size="sm" loading={drucken.isPending} onClick={() => drucken.mutate()}>
+              Alle auf A4 drucken
+            </Button>
+          </div>
+          <table className="w-full text-sm">
+            <thead className="border-b border-line">
+              <tr>
+                {['Rechnung', 'Kunde', 'Verschickt an', 'Betrag'].map(h => (
+                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-ink-muted">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {rechnungen.map(r => (
+                <tr key={r.id}>
+                  <td className="px-4 py-3 font-mono font-medium text-ink">SR-{String(r.nummer).padStart(4, '0')}</td>
+                  <td className="px-4 py-3 text-ink">{r.kunde?.bezeichnung ?? '—'}</td>
+                  <td className="px-4 py-3 text-ink-muted">{r.emailEmpfaenger}</td>
+                  <td className="px-4 py-3 font-mono font-semibold text-ink">{formatPreis(r.gesamtbetragCent)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+      {drucken.isError && <p className="px-4 py-3 text-sm text-red-600" role="alert">{fehlerText(drucken.error)}</p>}
+    </div>
+  )
+}
 
 export function WartungsvertraegePage() {
   const qc       = useQueryClient()
@@ -377,6 +440,7 @@ export function WartungsvertraegePage() {
   const [laufOffen, setLaufOffen] = useState(false)
   const [nurAktive, setNurAktive] = useState(true)
   const [rechnung, setRechnung]   = useState<SammelrechnungResponse | null>(null)
+  const [mailHinweis, setMailHinweis] = useState<string | null>(null)
 
   const vertraege = useQuery({ queryKey: ['wartungsvertraege', 'liste'], queryFn: () => wartungsvertragApi.list() })
   const faellig   = useQuery({ queryKey: ['wartungsvertraege', 'faellig'], queryFn: () => wartungsvertragApi.faelligeRechnungen() })
@@ -385,7 +449,15 @@ export function WartungsvertraegePage() {
     mutationFn: (id: string) => wartungsvertragApi.abrechnen(id),
     onSuccess: (sr) => {
       void qc.invalidateQueries({ queryKey: ['wartungsvertraege'] })
-      setRechnung(sr)
+      if (sr.emailEmpfaenger) {
+        // Kunde mit Rechnungsversand per Mail: die Kassa verschickt selbst, kein Ausgabe-Dialog nötig
+        setMailHinweis(sr.emailVersandtAm
+          ? `Rechnung SR-${String(sr.nummer).padStart(4, '0')} wurde an ${sr.emailEmpfaenger} gesendet.`
+          : `Rechnung SR-${String(sr.nummer).padStart(4, '0')} ist erstellt, der Mailversand an ${sr.emailEmpfaenger} hat nicht geklappt — die Kassa versucht es automatisch erneut.`)
+      } else {
+        setMailHinweis(null)
+        setRechnung(sr)
+      }
     },
   })
 
@@ -406,7 +478,7 @@ export function WartungsvertraegePage() {
       </div>
 
       <div className="mb-4 flex flex-wrap gap-2">
-        {([['vertraege', 'Verträge'], ['verrechnung', `Zur Verrechnung${faelligListe.length ? ` (${faelligListe.length})` : ''}`]] as Array<[Reiter, string]>).map(([key, label]) => (
+        {([['vertraege', 'Verträge'], ['verrechnung', `Zur Verrechnung${faelligListe.length ? ` (${faelligListe.length})` : ''}`], ['buchhaltung', 'Für die Buchhaltung']] as Array<[Reiter, string]>).map(([key, label]) => (
           <button
             key={key} type="button" onClick={() => setReiter(key)}
             className={`px-3 py-1.5 rounded-full text-sm font-medium border transition ${
@@ -424,6 +496,11 @@ export function WartungsvertraegePage() {
         )}
       </div>
 
+      {mailHinweis && reiter === 'verrechnung' && (
+        <p className="mb-3 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800" role="status">{mailHinweis}</p>
+      )}
+
+      {reiter === 'buchhaltung' ? <BuchhaltungListe /> : (
       <div className="overflow-hidden rounded-lg border border-line bg-panel shadow-sm">
         {reiter === 'vertraege' ? (
           vertraege.isLoading ? (
@@ -493,6 +570,7 @@ export function WartungsvertraegePage() {
           </table>
         )}
       </div>
+      )}
       {abrechnen.isError && <p className="mt-3 text-sm text-red-600" role="alert">{fehlerText(abrechnen.error)}</p>}
 
       <Modal
@@ -521,7 +599,7 @@ export function WartungsvertraegePage() {
             case 'drucker': await sammelrechnungApi.drucken(rechnung.id, identity.kasseId, ziel.druckerId); break
             case 'mail':    await sammelrechnungApi.email(rechnung.id, ziel.empfaenger); break
             case 'a4':
-              if (auth) druckeSammelrechnung(rechnung, { firmenname: auth.mandant.firmenname, uid: auth.mandant.uid })
+              if (auth) druckeSammelrechnung(rechnung, await ladeRechnungMandant(auth.mandant))
               break
             case 'keine': break
           }

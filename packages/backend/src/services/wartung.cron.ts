@@ -1,5 +1,6 @@
 import type { Db } from '../db/client.js'
-import { fuehreWartungslaufDurch } from './wartungsvertrag.service.js'
+import type { Config } from '../config.js'
+import { fuehreAutoRechnungenDurch, fuehreWartungslaufDurch } from './wartungsvertrag.service.js'
 
 type Logger = {
   info:  (msg: string) => void
@@ -9,11 +10,12 @@ type Logger = {
 let aktiverCron: ReturnType<typeof setInterval> | null = null
 
 /**
- * Halbstündlicher Check: erzeugt zum Monatswechsel die Wartungslieferscheine. Der Lauf ist
- * wiederholbar (pro Vertrag und Monat höchstens ein Lieferschein) — der Sofort-Check beim
- * Start holt eine ausgefallene Nacht nach.
+ * Halbstündlicher Check: erzeugt zum Monatswechsel die Wartungslieferscheine und verschickt für Kunden mit
+ * Rechnungsversand per Mail die fälligen Rechnungen. Beides ist wiederholbar (pro Vertrag und Monat höchstens
+ * ein Lieferschein, jeder Lieferschein nur einmal verrechenbar) — der Sofort-Check beim Start holt eine
+ * ausgefallene Nacht nach.
  */
-export function starteWartungCron(db: Db, log: Logger): () => void {
+export function starteWartungCron(db: Db, config: Config, log: Logger): () => void {
   if (aktiverCron) {
     clearInterval(aktiverCron)
     aktiverCron = null
@@ -21,7 +23,9 @@ export function starteWartungCron(db: Db, log: Logger): () => void {
 
   async function pruefe(): Promise<void> {
     try {
-      await fuehreWartungslaufDurch(db, { jetzt: new Date(), log })
+      const jetzt = new Date()
+      await fuehreWartungslaufDurch(db, { jetzt, log })
+      await fuehreAutoRechnungenDurch(db, config, jetzt, log)
     } catch (err) {
       log.error({ err }, 'Wartungs-Cron fehlgeschlagen')
     }

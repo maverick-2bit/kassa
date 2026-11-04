@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   addMonate,
+  formatiereIban,
+  istGueltigeIban,
+  normalisiereIban,
   ersteVertragsperiode,
   letzteVertragsperiode,
   letzterVertragsmonat,
@@ -117,6 +120,23 @@ describe('Wartungsvertrag: Rechnungsblöcke', () => {
     expect(rechnungsBlockEnde('jahr', '2026-09', '2026-09')).toBe('2027-08')
     expect(rechnungFaellig('jahr', '2027-08', '2026-09')).toBe(true)
     expect(rechnungFaellig('jahr', '2027-07', '2026-09')).toBe(false)
+  })
+})
+
+describe('IBAN', () => {
+  it('prüft Format und Prüfziffer, ignoriert Leerzeichen und Kleinschreibung', () => {
+    expect(istGueltigeIban('AT61 1904 3002 3457 3201')).toBe(true)
+    expect(istGueltigeIban('at611904300234573201')).toBe(true)
+    expect(istGueltigeIban('DE89 3704 0044 0532 0130 00')).toBe(true)
+    expect(istGueltigeIban('AT00 1904 3002 3457 3201')).toBe(false)
+    expect(istGueltigeIban('AT61 1904 3002 3457 3202')).toBe(false)
+    expect(istGueltigeIban('1234')).toBe(false)
+    expect(istGueltigeIban('')).toBe(false)
+  })
+
+  it('normalisiert und formatiert in Vierergruppen', () => {
+    expect(normalisiereIban(' at61 1904 3002 3457 3201 ')).toBe('AT611904300234573201')
+    expect(formatiereIban('AT611904300234573201')).toBe('AT61 1904 3002 3457 3201')
   })
 })
 

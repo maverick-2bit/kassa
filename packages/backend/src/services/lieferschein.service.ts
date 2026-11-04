@@ -230,10 +230,18 @@ export async function aktualisiereLiferschein(
 // Sammelrechnung
 // ---------------------------------------------------------------------------
 
+export interface SammelrechnungZusatz {
+  /** Aus diesem Wartungsvertrag entstanden */
+  wartungsvertragId?: string
+  /** Automatischer Mailversand an diese Adresse vorgesehen */
+  emailEmpfaenger?: string
+}
+
 export async function erstelleSammelrechnung(
   db:        Db,
   mandantId: string,
   input:     SammelrechnungInput,
+  zusatz:    SammelrechnungZusatz = {},
 ): Promise<SammelrechnungResponse> {
   if (input.lieferscheinIds.length === 0)
     throw new LiferscheinError(400, 'Mindestens ein Lieferschein erforderlich')
@@ -265,38 +273,43 @@ export async function erstelleSammelrechnung(
   const kundeId      = ersterRow.kundeId      ?? undefined
   const kundeSnapshot = ersterRow.kundeSnapshot ?? undefined
 
-  // Nächste Sammelrechnungsnummer
-  const numRows = await db
-    .select({ n: sql<number>`COALESCE(MAX(${sammelrechnungen.nummer}), 0) + 1` })
-    .from(sammelrechnungen)
-    .where(eq(sammelrechnungen.mandantId, mandantId))
-  const nummer = numRows[0]?.n ?? 1
-
-  // Sammelrechnung speichern
-  const [srRow] = await db
-    .insert(sammelrechnungen)
-    .values({
-      mandantId,
-      nummer,
-      lieferscheinIds:  input.lieferscheinIds,
-      gesamtbetragCent,
-      ...(kundeId       ? { kundeId }        : {}),
-      ...(kundeSnapshot ? { kundeSnapshot }  : {}),
-    })
-    .returning()
-
-  if (!srRow) throw new LiferscheinError(500, 'Sammelrechnung konnte nicht erstellt werden')
-
-  // Lieferscheine als 'abgeschlossen' markieren
-  await db
-    .update(lieferscheine)
-    .set({ status: 'abgeschlossen', updatedAt: new Date() })
-    .where(
-      and(
+  // Atomar: Lieferscheine „einlösen" (offen → abgeschlossen) und Rechnung anlegen. Greift ein
+  // zweiter Aufruf (Doppelklick, paralleler Lauf) zugleich zu, bekommt nur einer die Lieferscheine.
+  const srRow = await db.transaction(async (tx) => {
+    const eingeloest = await tx
+      .update(lieferscheine)
+      .set({ status: 'abgeschlossen', updatedAt: new Date() })
+      .where(and(
         eq(lieferscheine.mandantId, mandantId),
         inArray(lieferscheine.id, input.lieferscheinIds),
-      ),
-    )
+        eq(lieferscheine.status, 'offen'),
+      ))
+      .returning({ id: lieferscheine.id })
+    if (eingeloest.length !== rows.length)
+      throw new LiferscheinError(409, 'Die Lieferscheine wurden inzwischen schon verrechnet')
+
+    const numRows = await tx
+      .select({ n: sql<number>`COALESCE(MAX(${sammelrechnungen.nummer}), 0) + 1` })
+      .from(sammelrechnungen)
+      .where(eq(sammelrechnungen.mandantId, mandantId))
+    const nummer = numRows[0]?.n ?? 1
+
+    const [neu] = await tx
+      .insert(sammelrechnungen)
+      .values({
+        mandantId,
+        nummer,
+        lieferscheinIds:  input.lieferscheinIds,
+        gesamtbetragCent,
+        ...(kundeId       ? { kundeId }        : {}),
+        ...(kundeSnapshot ? { kundeSnapshot }  : {}),
+        ...(zusatz.wartungsvertragId ? { wartungsvertragId: zusatz.wartungsvertragId } : {}),
+        ...(zusatz.emailEmpfaenger   ? { emailEmpfaenger:   zusatz.emailEmpfaenger }   : {}),
+      })
+      .returning()
+    if (!neu) throw new LiferscheinError(500, 'Sammelrechnung konnte nicht erstellt werden')
+    return neu
+  })
 
   // Sortierte DTOs zurückgeben
   const sortedRows = [...rows].sort((a, b) => a.nummer - b.nummer)
@@ -306,12 +319,13 @@ export async function erstelleSammelrechnung(
     nummer:           srRow.nummer,
     datum:            srRow.datum.toISOString(),
     ...(kundeSnapshot ? { kunde: kundeSnapshot as KundeSnapshot } : {}),
-    lieferscheine:    sortedRows.map(toDto),
+    lieferscheine:    sortedRows.map(l => toDto({ ...l, status: 'abgeschlossen' })),
     gesamtbetragCent,
+    ...(srRow.wartungsvertragId && { wartungsvertragId: srRow.wartungsvertragId }),
+    ...(srRow.emailEmpfaenger   && { emailEmpfaenger:   srRow.emailEmpfaenger }),
     createdAt:        srRow.createdAt.toISOString(),
   }
 }
-
 // ---------------------------------------------------------------------------
 // Sammelrechnungen lesen (Archiv + Ausgabe)
 // ---------------------------------------------------------------------------
@@ -333,6 +347,11 @@ async function srZuDto(
     ...(row.kundeSnapshot ? { kunde: row.kundeSnapshot as KundeSnapshot } : {}),
     lieferscheine:    [...lsRows].sort((a, b) => a.nummer - b.nummer).map(toDto),
     gesamtbetragCent: row.gesamtbetragCent,
+    ...(row.wartungsvertragId && { wartungsvertragId: row.wartungsvertragId }),
+    ...(row.emailEmpfaenger   && { emailEmpfaenger:   row.emailEmpfaenger }),
+    ...(row.emailVersandtAm   && { emailVersandtAm:   row.emailVersandtAm.toISOString() }),
+    ...(row.emailFehler       && { emailFehler:       row.emailFehler }),
+    ...(row.buchhaltungGedrucktAm && { buchhaltungGedrucktAm: row.buchhaltungGedrucktAm.toISOString() }),
     createdAt:        row.createdAt.toISOString(),
   }
 }

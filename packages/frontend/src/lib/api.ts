@@ -1272,6 +1272,11 @@ export const sammelrechnungApi = {
       { kasseId, ...(druckerId ? { druckerId } : {}) }),
   email: (id: string, empfaenger: string): Promise<{ erfolgreich: boolean }> =>
     request<{ erfolgreich: boolean }>('POST', `/api/sammelrechnungen/${id}/email`, { empfaenger }),
+  /** Per Mail verschickte Rechnungen, die noch nicht für die Buchhaltung ausgedruckt wurden */
+  buchhaltung: (): Promise<SammelrechnungResponse[]> =>
+    request<SammelrechnungResponse[]>('GET', '/api/sammelrechnungen/buchhaltung'),
+  buchhaltungGedruckt: (ids: string[]): Promise<{ markiert: number }> =>
+    request<{ markiert: number }>('POST', '/api/sammelrechnungen/buchhaltung/gedruckt', { ids }),
 }
 
 export const wartungsvertragApi = {

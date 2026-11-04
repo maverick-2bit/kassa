@@ -15,6 +15,7 @@ import {
   formatDatumDe,
   generiereBaseCss,
   generiereRechnungHtml,
+  formatiereIban,
 } from '@kassa/shared'
 
 type MandantInfo = RechnungMandantInfo
@@ -385,7 +386,11 @@ export function generiereSammelrechnungHtml(sr: SammelrechnungResponse, mandant:
         <div class="ls-kopf">
           <span class="ls-kopf-nr">${lsNr}</span>
           <span class="ls-kopf-datum">Lieferdatum: ${formatDatumDe(ls.datum)}</span>
-          <span class="ls-kopf-angebot">Zu Angebot A-${String(ls.angebotNummer).padStart(4, '0')}</span>
+          <span class="ls-kopf-angebot">${ls.angebotNummer !== undefined
+            ? `Zu Angebot A-${String(ls.angebotNummer).padStart(4, '0')}`
+            : ls.wartungsvertragNummer !== undefined
+              ? `Wartungsvertrag W-${String(ls.wartungsvertragNummer).padStart(4, '0')}${ls.periode ? ` · ${ls.periode.slice(5, 7)}/${ls.periode.slice(0, 4)}` : ''}`
+              : ''}</span>
         </div>
         <table class="positionen-tabelle">
           <thead>
@@ -420,6 +425,18 @@ export function generiereSammelrechnungHtml(sr: SammelrechnungResponse, mandant:
       <td class="rechts">€ ${centZuEuro(z.ustCent)}</td>
       <td class="rechts">€ ${centZuEuro(z.bruttoCent)}</td>
     </tr>`).join('')
+
+  // Zahlungsangaben: Fälligkeit, Bankverbindung, Verwendungszweck
+  const zahlungHtml = mandant.zahlungszielTage === undefined ? '' : (() => {
+    const faellig = new Date(Date.parse(sr.datum) + mandant.zahlungszielTage * 86_400_000).toISOString()
+    return `
+  <div class="zahlungsblock" style="margin-top:8mm;padding:4mm 5mm;border:1px solid #c7d7f5;border-radius:2mm;font-size:10pt;line-height:1.6">
+    <strong>Zahlbar bis ${formatDatumDe(faellig)}</strong> (${mandant.zahlungszielTage} Tage ab Rechnungsdatum)<br>
+    ${mandant.iban ? `IBAN: ${esc(formatiereIban(mandant.iban))}<br>` : ''}
+    ${mandant.bic ? `BIC: ${esc(mandant.bic)}<br>` : ''}
+    Verwendungszweck: ${srNr}
+  </div>`
+  })()
 
   return `<!DOCTYPE html>
 <html lang="de">
@@ -464,6 +481,7 @@ ${generiereBaseCss()}
   <div class="kopf">
     <div>
       <div class="firmenname">${esc(mandant.firmenname)}</div>
+      ${mandant.kopftext ? `<div class="firmen-uid">${esc(mandant.kopftext).replace(/\n/g, '<br>')}</div>` : ''}
       <div class="firmen-uid">UID: ${esc(mandant.uid)}</div>
     </div>
     <div class="rechnungstitel">
@@ -535,6 +553,8 @@ ${generiereBaseCss()}
     </div>
   </div>
 
+  ${zahlungHtml}
+
   <!-- Fußzeile -->
   <div class="fusszeile">
     <div>${esc(mandant.firmenname)} | UID: ${esc(mandant.uid)}</div>
@@ -546,6 +566,21 @@ ${generiereBaseCss()}
 <script>window.onload = () => window.print()</script>
 </body>
 </html>`
+}
+
+/** Mehrere Sammelrechnungen in einem Druckfenster, jede auf eigener Seite (Sammelliste der Buchhaltung). */
+export function druckeSammelrechnungen(srs: SammelrechnungResponse[], mandant: MandantInfo): void {
+  if (srs.length === 0) return
+  const seiten = srs.map(sr => generiereSammelrechnungHtml(sr, mandant))
+  const erste  = seiten[0]!
+  const kopf   = erste.slice(0, erste.indexOf('<body>') + '<body>'.length)
+  const inhalt = seiten.map(h =>
+    `<div style="break-after:page">${h.slice(h.indexOf('<body>') + '<body>'.length, h.lastIndexOf('<script>window.onload'))}</div>`,
+  ).join('\n')
+  const win = window.open('', '_blank', 'width=900,height=1200')
+  if (!win) { alert('Bitte Pop-ups für diese Seite erlauben.'); return }
+  win.document.write(`${kopf}\n${inhalt}\n<script>window.onload = () => window.print()</script>\n</body>\n</html>`)
+  win.document.close()
 }
 
 export function druckeSammelrechnung(sr: SammelrechnungResponse, mandant: MandantInfo): void {

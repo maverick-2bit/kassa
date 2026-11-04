@@ -24,6 +24,7 @@ import { uuidParam, uuidQuery } from './uuid-param.js'
 import { resolveZielDrucker, sendBytes, DruckerError, type DruckerConfig } from '../services/drucker.service.js'
 import { baueLieferscheinBon, baueRechnungBon, type BelegzweigPosition } from '../services/escpos/layout.js'
 import { EmailVersandError, isEmailAktiv, sendeBelegzweigEmail } from '../services/email.service.js'
+import { ladeZahlungsangaben } from '../services/zahlungsangaben.js'
 
 export interface LiferscheinRouteOptions { db: Db; config: Config }
 
@@ -276,6 +277,7 @@ export const lieferscheinRoute: FastifyPluginAsync<LiferscheinRouteOptions> = as
           bezeichnung: p.bezeichnung, menge: p.menge, einzelpreisBreutto: p.einzelpreisBreutto,
         })),
         gesamtbetragCent: sr.gesamtbetragCent,
+        zahlung: await ladeZahlungsangaben(opts.db, request.user.mandantId, sr.datum),
       }, opts.config)
       return reply.send({ erfolgreich: true })
     } catch (err) {

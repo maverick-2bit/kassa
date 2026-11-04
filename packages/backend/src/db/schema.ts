@@ -47,6 +47,10 @@ export const mandanten = pgTable('mandanten', {
   belegZeigeSteuertabelle:  boolean('beleg_zeige_steuertabelle').notNull().default(true),
   /** QR-Code für digitalen Beleg am Ende drucken */
   belegZeigeQr:             boolean('beleg_zeige_qr').notNull().default(false),
+  /** Zahlungsangaben auf der A4-Rechnung / im Rechnungs-Mail */
+  rechnungIban:             varchar('rechnung_iban', { length: 34 }),
+  rechnungBic:              varchar('rechnung_bic',  { length: 11 }),
+  rechnungZahlungszielTage: integer('rechnung_zahlungsziel_tage').notNull().default(14),
 
   // Gebuchte / aktivierte Funktions-Module
   /** Gastro-Betrieb: Tische, Tisch-Tabs, grafischer Tischplan, Bonierdrucker */
@@ -356,6 +360,8 @@ export const kunden = pgTable('kunden', {
   aktiv:       boolean('aktiv').notNull().default(true),
   /** Kreditkunde: darf "Auf Kredit" buchen */
   kreditAktiv: boolean('kredit_aktiv').notNull().default(false),
+  /** Rechnungen gehen automatisch per E-Mail raus (braucht eine E-Mail-Adresse) */
+  rechnungPerMail: boolean('rechnung_per_mail').notNull().default(false),
   /** Freitext-Notizen zum Kunden (intern, erscheint nicht auf Belegen) */
   notizen:     text('notizen'),
   createdAt:   timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -523,10 +529,20 @@ export const sammelrechnungen = pgTable('sammelrechnungen', {
   kundeId:       uuid('kunde_id').references(() => kunden.id, { onDelete: 'set null' }),
   kundeSnapshot: jsonb('kunde_snapshot'),
 
+  /** Entstanden aus einem Wartungsvertrag */
+  wartungsvertragId: uuid('wartungsvertrag_id').references((): AnyPgColumn => wartungsvertraege.id, { onDelete: 'set null' }),
+  /** Ziel des automatischen Mailversands (gesetzt = Versand vorgesehen); email_versandt_am = zugestellt */
+  emailEmpfaenger:  varchar('email_empfaenger', { length: 200 }),
+  emailVersandtAm:  timestamp('email_versandt_am', { withTimezone: true }),
+  emailFehler:      text('email_fehler'),
+  /** Ausdruck für die Buchhaltung erledigt (Sammelliste) */
+  buchhaltungGedrucktAm: timestamp('buchhaltung_gedruckt_am', { withTimezone: true }),
+
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
   nummerIdx: uniqueIndex('sammelrechnungen_mandant_nummer_idx').on(t.mandantId, t.nummer),
   kundeIdx:  index('sammelrechnungen_kunde_idx').on(t.mandantId, t.kundeId),
+  versandIdx: index('sammelrechnungen_versand_idx').on(t.mandantId, t.emailVersandtAm, t.buchhaltungGedrucktAm),
 }))
 
 export type Sammelrechnung    = typeof sammelrechnungen.$inferSelect

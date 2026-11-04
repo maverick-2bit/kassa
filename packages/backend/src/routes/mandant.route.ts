@@ -29,6 +29,7 @@ import {
   MandantModuleUpdateSchema,
   MandantPinLaengeUpdateSchema,
   MandantStammdatenUpdateSchema,
+  normalisiereIban,
   TagesbeginnInputSchema,
   type MandantPinLaenge,
 } from '@kassa/shared'
@@ -329,6 +330,9 @@ export const mandantRoute: FastifyPluginAsync<MandantRouteOptions> = async (fast
         belegKopftext:            mandanten.belegKopftext,
         belegZeigeSteuertabelle:  mandanten.belegZeigeSteuertabelle,
         belegZeigeQr:             mandanten.belegZeigeQr,
+        rechnungIban:             mandanten.rechnungIban,
+        rechnungBic:              mandanten.rechnungBic,
+        rechnungZahlungszielTage: mandanten.rechnungZahlungszielTage,
       })
       .from(mandanten)
       .where(eq(mandanten.id, request.user.mandantId))
@@ -357,6 +361,9 @@ export const mandantRoute: FastifyPluginAsync<MandantRouteOptions> = async (fast
         ...(body.data.belegKopftext           !== undefined && { belegKopftext:           body.data.belegKopftext ?? null }),
         ...(body.data.belegZeigeSteuertabelle !== undefined && { belegZeigeSteuertabelle: body.data.belegZeigeSteuertabelle }),
         ...(body.data.belegZeigeQr            !== undefined && { belegZeigeQr:            body.data.belegZeigeQr }),
+        ...(body.data.rechnungIban            !== undefined && { rechnungIban:            body.data.rechnungIban ? normalisiereIban(body.data.rechnungIban) : null }),
+        ...(body.data.rechnungBic             !== undefined && { rechnungBic:             body.data.rechnungBic || null }),
+        ...(body.data.rechnungZahlungszielTage !== undefined && { rechnungZahlungszielTage: body.data.rechnungZahlungszielTage }),
         updatedAt: new Date(),
       })
       .where(eq(mandanten.id, request.user.mandantId))
@@ -367,6 +374,9 @@ export const mandantRoute: FastifyPluginAsync<MandantRouteOptions> = async (fast
         belegKopftext:            mandanten.belegKopftext,
         belegZeigeSteuertabelle:  mandanten.belegZeigeSteuertabelle,
         belegZeigeQr:             mandanten.belegZeigeQr,
+        rechnungIban:             mandanten.rechnungIban,
+        rechnungBic:              mandanten.rechnungBic,
+        rechnungZahlungszielTage: mandanten.rechnungZahlungszielTage,
       })
 
     if (!row) return reply.status(404).send({ fehler: 'Mandant nicht gefunden' })

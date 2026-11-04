@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { QRCodeSVG } from 'qrcode.react'
-import { beginnFuer, type Artikel, type Kategorie, type SeeTyp } from '@kassa/shared'
+import { beginnFuer, formatiereIban, istGueltigeIban, normalisiereIban, type Artikel, type Kategorie, type SeeTyp } from '@kassa/shared'
 import { druckerApi, druckerPoolApi, kdsGeraetApi, seeApi, downloadDepExport, healthApi, monitoringApi, mandantApi, stripeApi, kasseErweiterungApi, kategorieApi, artikelApi, tischplanApi, dbBackupApi, mandantUebergabeApi, belegApi, systemApi, rksvSelbsttestApi, type DbSicherungRow, type MonitoringStatus } from '../lib/api'
 import { FernwartungKarte } from '../components/FernwartungKarte'
 import { EinrichtungSeite } from '../components/einrichtung/EinrichtungSeite'
@@ -576,6 +576,9 @@ function RechnungslayoutSektion() {
   const [fusstext,  setFusstext]  = useState('')
   const [steuertab, setSteuertab] = useState(true)
   const [zeigQr,    setZeigQr]    = useState(false)
+  const [iban,      setIban]      = useState('')
+  const [bic,       setBic]       = useState('')
+  const [zahlungsziel, setZahlungsziel] = useState('14')
   const [meldung,   setMeldung]   = useState<{ typ: 'ok' | 'fehler'; text: string } | null>(null)
 
   const stammdatenQuery = useQuery({
@@ -590,8 +593,15 @@ function RechnungslayoutSektion() {
       setFusstext(d.belegFusstext ?? '')
       setSteuertab(d.belegZeigeSteuertabelle)
       setZeigQr(d.belegZeigeQr)
+      setIban(d.rechnungIban ? formatiereIban(d.rechnungIban) : '')
+      setBic(d.rechnungBic ?? '')
+      setZahlungsziel(String(d.rechnungZahlungszielTage))
     }
   }, [stammdatenQuery.data])
+
+  const ibanOk = iban.trim() === '' || istGueltigeIban(iban)
+  const zielTage = Number(zahlungsziel)
+  const zielOk = Number.isInteger(zielTage) && zielTage >= 0 && zielTage <= 365
 
   const speichern = useMutation({
     mutationFn: () => mandantApi.patchStammdaten({
@@ -599,6 +609,9 @@ function RechnungslayoutSektion() {
       belegFusstext:           fusstext.trim()  || null,
       belegZeigeSteuertabelle: steuertab,
       belegZeigeQr:            zeigQr,
+      rechnungIban:            iban.trim() ? normalisiereIban(iban) : null,
+      rechnungBic:             bic.trim() ? bic.trim().toUpperCase() : null,
+      rechnungZahlungszielTage: zielTage,
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mandant-stammdaten'] })
@@ -613,8 +626,11 @@ function RechnungslayoutSektion() {
     kopftext.trim()  !== (d.belegKopftext  ?? '') ||
     fusstext.trim()  !== (d.belegFusstext  ?? '') ||
     steuertab        !== d.belegZeigeSteuertabelle ||
-    zeigQr           !== d.belegZeigeQr
-  )
+    zeigQr           !== d.belegZeigeQr ||
+    normalisiereIban(iban) !== (d.rechnungIban ?? '') ||
+    bic.trim().toUpperCase() !== (d.rechnungBic ?? '') ||
+    zielTage !== d.rechnungZahlungszielTage
+  ) && ibanOk && zielOk
 
   return (
     <section className="rounded-lg bg-panel shadow-sm border border-line p-6 space-y-5">
@@ -682,6 +698,40 @@ function RechnungslayoutSektion() {
               />
               <p className="text-xs text-ink-subtle mt-1 text-right">{fusstext.length}/500</p>
             </Field>
+
+            <div className="rounded-md border border-line p-3 space-y-3">
+              <p className="text-sm font-medium text-ink">Zahlungsangaben auf A4-Rechnungen und Rechnungs-Mails</p>
+              <Field label="IBAN" {...(ibanOk ? {} : { error: 'Diese IBAN ist ungültig (Prüfziffer stimmt nicht)' })}>
+                <input
+                  value={iban}
+                  onChange={e => { setIban(e.target.value); setMeldung(null) }}
+                  placeholder="AT61 1904 3002 3457 3201"
+                  className={`block w-full rounded-md border px-3 py-2 text-sm font-mono shadow-sm outline-none
+                              focus:border-brand-500 focus:ring-1 focus:ring-brand-500 ${ibanOk ? 'border-line-strong' : 'border-red-400'}`}
+                />
+              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="BIC">
+                  <input
+                    value={bic}
+                    onChange={e => { setBic(e.target.value.toUpperCase()); setMeldung(null) }}
+                    placeholder="BKAUATWW"
+                    maxLength={11}
+                    className="block w-full rounded-md border border-line-strong px-3 py-2 text-sm font-mono shadow-sm outline-none
+                               focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                  />
+                </Field>
+                <Field label="Zahlungsziel (Tage)" {...(zielOk ? {} : { error: 'Eine Zahl von 0 bis 365' })}>
+                  <input
+                    type="number" min={0} max={365}
+                    value={zahlungsziel}
+                    onChange={e => { setZahlungsziel(e.target.value); setMeldung(null) }}
+                    className={`block w-full rounded-md border px-3 py-2 text-sm shadow-sm outline-none
+                                focus:border-brand-500 focus:ring-1 focus:ring-brand-500 ${zielOk ? 'border-line-strong' : 'border-red-400'}`}
+                  />
+                </Field>
+              </div>
+            </div>
 
             {/* Schalter */}
             <div className="space-y-3 pt-1">

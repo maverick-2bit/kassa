@@ -499,6 +499,13 @@ export interface BelegzweigEmailDaten {
   kundeName?: string | undefined
   positionen: Array<{ bezeichnung: string; menge: number; einzelpreisBreutto: number }>
   gesamtbetragCent?: number | undefined
+  /** Zahlungsangaben (nur Rechnung): erscheinen unter der Summe */
+  zahlung?: {
+    iban?:             string | undefined
+    bic?:              string | undefined
+    zahlungszielTage:  number
+    faelligAm:         string   // ISO
+  } | undefined
 }
 
 export async function sendeBelegzweigEmail(
@@ -523,6 +530,20 @@ export async function sendeBelegzweigEmail(
         <td style="padding:6px 12px;border-bottom:1px solid #e5e7eb;text-align:right;font-family:monospace">${fmt(p.einzelpreisBreutto)}</td>
         <td style="padding:6px 12px;border-bottom:1px solid #e5e7eb;text-align:right;font-family:monospace;font-weight:600">${fmt(p.einzelpreisBreutto * p.menge)}</td>` : ''}
       </tr>`).join('')
+
+  const faellig = daten.zahlung
+    ? new Date(daten.zahlung.faelligAm).toLocaleDateString('de-AT', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    : ''
+  const zahlungsHtml = istRechnung && daten.zahlung ? `
+    <div style="padding:14px 28px 22px;border-top:1px solid #e5e7eb;font-size:13px;color:#374151;line-height:1.6">
+      <strong>Zahlbar bis ${faellig}</strong> (${daten.zahlung.zahlungszielTage} Tage)<br>
+      ${daten.zahlung.iban ? `IBAN: <span style="font-family:monospace">${daten.zahlung.iban}</span><br>` : ''}
+      ${daten.zahlung.bic ? `BIC: <span style="font-family:monospace">${daten.zahlung.bic}</span><br>` : ''}
+      Verwendungszweck: ${kuerzel}
+    </div>` : ''
+  const zahlungsText = istRechnung && daten.zahlung
+    ? `\n\nZahlbar bis ${faellig}${daten.zahlung.iban ? `\nIBAN: ${daten.zahlung.iban}` : ''}${daten.zahlung.bic ? `\nBIC: ${daten.zahlung.bic}` : ''}\nVerwendungszweck: ${kuerzel}`
+    : ''
 
   const html = `<!DOCTYPE html>
 <html lang="de"><head><meta charset="utf-8"><title>${titel} ${kuerzel}</title></head>
@@ -552,6 +573,7 @@ export async function sendeBelegzweigEmail(
     <div style="padding:16px 28px">
       <p style="margin:0;font-size:12px;color:#6b7280">${daten.positionen.length} Position${daten.positionen.length === 1 ? '' : 'en'} — die Abrechnung erfolgt über die Rechnung.</p>
     </div>`}
+    ${zahlungsHtml}
   </div>
 </body></html>`
 
@@ -560,7 +582,7 @@ export async function sendeBelegzweigEmail(
     to:      empfaenger,
     subject: `${titel} ${kuerzel} — ${daten.firmenname}`,
     html,
-    text: `${titel} ${kuerzel} (${datum})\n${daten.firmenname}\n\n${daten.positionen.map(p => `${p.menge}x ${p.bezeichnung}${istRechnung ? ` — ${fmt(p.einzelpreisBreutto * p.menge)}` : ''}`).join('\n')}${istRechnung && daten.gesamtbetragCent !== undefined ? `\n\nSumme: ${fmt(daten.gesamtbetragCent)}` : ''}`,
+    text: `${titel} ${kuerzel} (${datum})\n${daten.firmenname}\n\n${daten.positionen.map(p => `${p.menge}x ${p.bezeichnung}${istRechnung ? ` — ${fmt(p.einzelpreisBreutto * p.menge)}` : ''}`).join('\n')}${istRechnung && daten.gesamtbetragCent !== undefined ? `\n\nSumme: ${fmt(daten.gesamtbetragCent)}` : ''}${zahlungsText}`,
   })
 }
 

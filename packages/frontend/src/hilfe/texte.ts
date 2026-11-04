@@ -171,8 +171,12 @@ export const HILFE_THEMEN: HilfeThema[] = [
       'Positionen hinzufügen: Artikel wählen oder frei eintippen. Standard ist „Wie Vertrag"; bei einzelnen Artikeln kannst du ein abweichendes Intervall einstellen — z. B. das RKSV-Zertifikat läuft ein Jahr und wird nur 1× jährlich im gewählten Monat verrechnet.',
       'Zum Monatswechsel erzeugt die Kassa automatisch je Vertrag einen Wartungslieferschein mit den Positionen, die in diesem Monat fällig sind. „Monatslauf" zeigt vorab, was erzeugt würde, und startet ihn auch von Hand.',
       'Reiter „Zur Verrechnung": Hier stehen die Verträge, deren Rechnungsblock abgeschlossen ist. „Sammelrechnung erstellen" fasst die offenen Wartungslieferscheine zu einer Rechnung zusammen.',
+      'Kunden mit „Rechnungen per E-Mail senden" (im Kunden unter Bearbeiten): Die Kassa erstellt die Rechnung automatisch, sobald sie fällig ist, schickt sie an die Mailadresse des Kunden und führt sie als offenen Posten. Ein Mailfehler wird automatisch erneut versucht.',
+      'Reiter „Für die Buchhaltung": Alle per Mail verschickten Rechnungen sammeln sich hier. „Alle auf A4 drucken" druckt sie gesammelt (jede auf eigener Seite) und hakt sie als erledigt ab.',
     ],
     tipps: [
+      'Damit IBAN, BIC und Zahlungsziel auf Rechnung und Mail stehen, trägst du sie unter Einstellungen → Rechnungslayout ein. Die Anschrift kommt aus dem Kopftext.',
+      'Die automatische Rechnung braucht den eingerichteten Mailversand (SMTP). Ohne ihn entstehen keine automatischen Rechnungen — das Erstellen per Klick bleibt möglich.',
       'Der Startmonat wird nie verrechnet — die erste Abrechnung ist der Monat nach dem Beginn. Der Endmonat wird immer verrechnet, auch wenn er nur angefangen ist.',
       'Ein beendeter Vertrag erzeugt keine neuen Lieferscheine; offene können weiter verrechnet werden.',
       'Der Beginn lässt sich nur ändern, solange noch kein Lieferschein erzeugt wurde.',
