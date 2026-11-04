@@ -2,12 +2,12 @@
  * Beleg-Archiv — Verlauf des Zweigs Angebot → Lieferschein → Rechnung.
  *
  * Drei Reiter mit je einer Liste, Detailansicht und dem einheitlichen
- * Ausgabe-Dialog zum Nachdrucken/Versenden. Bewusst read-only: hier wird nichts
- * erzeugt oder geändert — das passiert auf der Angebote-Seite bzw. an der Kasse.
+ * Ausgabe-Dialog zum Nachdrucken/Versenden. Erzeugt wird hier nichts — das passiert auf der
+ * Angebote-Seite bzw. an der Kasse. Einzige Änderung: eine Rechnung lässt sich stornieren.
  */
 
 import { useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
   AngebotResponse, AngebotStatus, LiferscheinResponse, LiferscheinStatus, SammelrechnungResponse,
 } from '@kassa/shared'
@@ -105,8 +105,28 @@ export function BelegArchivPage() {
         {LIEFERSCHEIN_STATUS_LABELS[e.ls.status as LiferscheinStatus]}
       </span>
     }
+    if (e.sr.storniertAm) {
+      return <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">storniert</span>
+    }
     return <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700">abgerechnet</span>
   }
+
+  // Storno einer Sammelrechnung: Lieferscheine werden wieder offen und sind erneut verrechenbar
+  const qc = useQueryClient()
+  const [stornoZiel, setStornoZiel]   = useState<SammelrechnungResponse | null>(null)
+  const [stornoGrund, setStornoGrund] = useState('')
+  const stornieren = useMutation({
+    mutationFn: () => sammelrechnungApi.stornieren(stornoZiel!.id, stornoGrund.trim() || undefined),
+    onSuccess: () => {
+      setStornoZiel(null)
+      setStornoGrund('')
+      setDetail(null)
+      void qc.invalidateQueries({ queryKey: ['archiv-rechnungen'] })
+      void qc.invalidateQueries({ queryKey: ['archiv-lieferscheine'] })
+      void qc.invalidateQueries({ queryKey: ['wartungsvertraege'] })
+      void qc.invalidateQueries({ queryKey: ['lieferscheine'] })
+    },
+  })
 
   return (
     <div className="mx-auto max-w-5xl space-y-4 p-4">
@@ -239,13 +259,77 @@ export function BelegArchivPage() {
                 {detail.sr.lieferscheine.map(ls => `L-${String(ls.nummer).padStart(4, '0')}`).join(', ')}
               </p>
             )}
-            <div className="flex justify-end pt-1">
+            {detail.art === 'rechnung' && detail.sr.storniertAm && (
+              <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                Storniert am {new Date(detail.sr.storniertAm).toLocaleDateString('de-AT')}
+                {detail.sr.stornoGrund ? ` — ${detail.sr.stornoGrund}` : ''}. Die Lieferscheine sind wieder offen.
+              </p>
+            )}
+            <div className="flex justify-end gap-2 pt-1">
+              {detail.art === 'rechnung' && !detail.sr.storniertAm && (
+                <button
+                  type="button"
+                  onClick={() => { stornieren.reset(); setStornoZiel(detail.sr) }}
+                  className="rounded-lg border border-red-300 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+                >
+                  Rechnung stornieren
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => { setAusgabe(detail); setDetail(null) }}
                 className="rounded-lg border border-line-strong px-3 py-2 text-sm font-medium text-ink hover:bg-panel-2"
               >
                 🖨 Ausgabe …
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Rechnung stornieren */}
+      <Modal
+        open={stornoZiel !== null}
+        onClose={() => setStornoZiel(null)}
+        title={stornoZiel ? `SR-${String(stornoZiel.nummer).padStart(4, '0')} stornieren` : ''}
+      >
+        {stornoZiel && (
+          <div className="space-y-3">
+            <p className="text-sm text-ink">
+              Die Rechnung bleibt mit ihrer Nummer als <strong>storniert</strong> erhalten. Ihre {stornoZiel.lieferscheine.length}{' '}
+              Lieferschein{stornoZiel.lieferscheine.length === 1 ? '' : 'e'} werden wieder <strong>offen</strong> und können neu
+              verrechnet werden. Ein dazugehöriger offener Posten entfällt.
+            </p>
+            <label className="block">
+              <span className="text-xs font-medium text-ink">Grund (optional)</span>
+              <textarea
+                value={stornoGrund}
+                onChange={e => setStornoGrund(e.target.value)}
+                maxLength={500}
+                rows={2}
+                className="mt-0.5 w-full rounded-md border border-line-strong px-3 py-2 text-sm"
+              />
+            </label>
+            {stornieren.isError && (
+              <p className="text-sm text-red-600" role="alert">
+                {stornieren.error instanceof Error ? stornieren.error.message : String(stornieren.error)}
+              </p>
+            )}
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setStornoZiel(null)}
+                className="rounded-lg border border-line-strong px-3 py-2 text-sm font-medium text-ink hover:bg-panel-2"
+              >
+                Abbrechen
+              </button>
+              <button
+                type="button"
+                disabled={stornieren.isPending}
+                onClick={() => stornieren.mutate()}
+                className="rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+              >
+                {stornieren.isPending ? 'Wird storniert…' : 'Jetzt stornieren'}
               </button>
             </div>
           </div>

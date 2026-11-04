@@ -1272,6 +1272,9 @@ export const sammelrechnungApi = {
       { kasseId, ...(druckerId ? { druckerId } : {}) }),
   email: (id: string, empfaenger: string): Promise<{ erfolgreich: boolean }> =>
     request<{ erfolgreich: boolean }>('POST', `/api/sammelrechnungen/${id}/email`, { empfaenger }),
+  /** Rechnung stornieren: sie bleibt bestehen, ihre Lieferscheine sind wieder offen */
+  stornieren: (id: string, grund?: string): Promise<SammelrechnungResponse> =>
+    request<SammelrechnungResponse>('POST', `/api/sammelrechnungen/${id}/stornieren`, grund ? { grund } : {}),
   /** Per Mail verschickte Rechnungen, die noch nicht für die Buchhaltung ausgedruckt wurden */
   buchhaltung: (): Promise<SammelrechnungResponse[]> =>
     request<SammelrechnungResponse[]>('GET', '/api/sammelrechnungen/buchhaltung'),

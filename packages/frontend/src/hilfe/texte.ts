@@ -158,6 +158,7 @@ export const HILFE_THEMEN: HilfeThema[] = [
       'Ein Angebot erstellst du an der Kasse im Angebot-Modus.',
       'Hier siehst du die Angebote, kannst den Status ändern, „Gültig bis" prüfen und ein Angebot in einen Lieferschein übernehmen.',
       'Im Beleg-Archiv suchst du nach Nummer oder Kunde.',
+      'Eine Rechnung stornierst du im Beleg-Archiv (Reiter „Rechnungen" → Rechnung öffnen → „Rechnung stornieren"). Sie bleibt mit ihrer Nummer als „storniert" erhalten, ihre Lieferscheine sind wieder offen und lassen sich neu verrechnen. Ist schon eine Zahlung erfasst, geht das erst, nachdem du die Zahlung geklärt hast.',
     ],
   },
   {
@@ -175,6 +176,8 @@ export const HILFE_THEMEN: HilfeThema[] = [
       'Reiter „Für die Buchhaltung": Alle per Mail verschickten Rechnungen sammeln sich hier. „Alle auf A4 drucken" druckt sie gesammelt (jede auf eigener Seite) und hakt sie als erledigt ab.',
     ],
     tipps: [
+      'Die A4-Sammelrechnung zeigt vor den Positionen jedes Lieferscheins „LS Nummer vom Datum", danach zwei Leerzeilen. Über mehrere Seiten steht unten jeder Seite die Zwischensumme und oben auf der nächsten der Übertrag.',
+      'Nach einem Storno verrechnet die Automatik die Lieferscheine nicht von selbst neu — du erstellst die neue Rechnung bewusst per Klick unter „Zur Verrechnung".',
       'Damit IBAN, BIC und Zahlungsziel auf Rechnung und Mail stehen, trägst du sie unter Einstellungen → Rechnungslayout ein. Die Anschrift kommt aus dem Kopftext.',
       'Die automatische Rechnung braucht den eingerichteten Mailversand (SMTP). Ohne ihn entstehen keine automatischen Rechnungen — das Erstellen per Klick bleibt möglich.',
       'Der Startmonat wird nie verrechnet — die erste Abrechnung ist der Monat nach dem Beginn. Der Endmonat wird immer verrechnet, auch wenn er nur angefangen ist.',

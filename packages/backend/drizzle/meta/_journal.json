@@ -512,6 +512,13 @@
       "when": 1792281600000,
       "tag": "0074_wartung_rechnung",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1792368000000,
+      "tag": "0075_sammelrechnung_storno",
+      "breakpoints": true
     }
   ]
 }

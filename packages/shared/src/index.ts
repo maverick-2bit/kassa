@@ -732,6 +732,7 @@ export {
   SerialZuweisungSchema,
   SammelrechnungInputSchema,
   SammelrechnungResponseSchema,
+  SammelrechnungStornoSchema,
 } from './schemas/lieferschein.js'
 export type {
   LiferscheinStatus,
@@ -741,6 +742,7 @@ export type {
   SerialZuweisung,
   SammelrechnungInput,
   SammelrechnungResponse,
+  SammelrechnungStorno,
 } from './schemas/lieferschein.js'
 
 // Wartungsverträge

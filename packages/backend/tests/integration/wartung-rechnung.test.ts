@@ -232,6 +232,70 @@ describe('Wartungsrechnungen: Mailversand + Buchhaltung (Integration)', () => {
     expect(res.json().emailEmpfaenger).toBeUndefined()
   })
 
+  it('Storno: Rechnung bleibt als storniert bestehen, Lieferscheine sind wieder offen, die Automatik rechnet nicht von selbst neu ab', async () => {
+    const kunde   = await neuerKunde({ firma: 'Wirtshaus Storno', email: 'wirt@storno.at', rechnungPerMail: true })
+    const vertrag = await neuerVertrag(kunde.id)
+    await fuehreWartungslaufDurch(idb.db, { jetzt: am('2026-10-02'), mandantId })
+    await fuehreAutoRechnungenDurch(idb.db, CONFIG, am('2026-10-02'))
+    const [sr] = await idb.db.select().from(sammelrechnungen).where(eq(sammelrechnungen.wartungsvertragId, vertrag.id))
+    expect(sr?.emailVersandtAm).not.toBeNull()
+    gesendet.length = 0
+
+    const res = await srv.fastify.inject({
+      method: 'POST', url: `/api/sammelrechnungen/${sr!.id}/stornieren`, headers: auth(), payload: { grund: 'Falscher Betrag' },
+    })
+    expect(res.statusCode, res.body).toBe(200)
+    expect(res.json()).toMatchObject({ stornoGrund: 'Falscher Betrag' })
+    expect(res.json().storniertAm).toBeTruthy()
+
+    // Lieferschein wieder offen; der offene Posten ist weg; nicht in der Buchhaltungsliste
+    const ls = await idb.db.select().from(lieferscheine).where(eq(lieferscheine.wartungsvertragId, vertrag.id))
+    expect(ls.every(l => l.status === 'offen' && l.manuellVerrechnen)).toBe(true)
+    const op = (await srv.fastify.inject({ method: 'GET', url: '/api/offene-posten', headers: auth() })).json() as Array<{ notiz?: string }>
+    expect(op.some(o => o.notiz?.includes(`SR-${String(sr!.nummer).padStart(4, '0')}`))).toBe(false)
+    const buch = (await srv.fastify.inject({ method: 'GET', url: '/api/sammelrechnungen/buchhaltung', headers: auth() })).json() as Array<{ id: string }>
+    expect(buch.some(r => r.id === sr!.id)).toBe(false)
+
+    // Doppeltes Storno + Ausgabe einer stornierten Rechnung werden abgewiesen
+    const nochmal = await srv.fastify.inject({ method: 'POST', url: `/api/sammelrechnungen/${sr!.id}/stornieren`, headers: auth(), payload: {} })
+    expect(nochmal.statusCode).toBe(409)
+    const mail = await srv.fastify.inject({ method: 'POST', url: `/api/sammelrechnungen/${sr!.id}/email`, headers: auth(), payload: { empfaenger: 'x@y.at' } })
+    expect(mail.statusCode).toBe(409)
+
+    // Die Automatik verrechnet die Lieferscheine NICHT von selbst neu und verschickt nichts
+    const auto = await fuehreAutoRechnungenDurch(idb.db, CONFIG, am('2026-10-02'))
+    expect(auto.erstellt).toBe(0)
+    expect(gesendet).toHaveLength(0)
+
+    // Von Hand sind sie wieder verrechenbar → neue Rechnung mit neuer Nummer
+    const neu = await srv.fastify.inject({ method: 'POST', url: `/api/wartungsvertraege/${vertrag.id}/abrechnen`, headers: auth() })
+    expect(neu.statusCode, neu.body).toBe(201)
+    expect(neu.json().nummer).toBeGreaterThan(sr!.nummer)
+    expect(neu.json().storniertAm).toBeUndefined()
+  })
+
+  it('Storno ist mit erfasster Zahlung nicht möglich', async () => {
+    const kunde   = await neuerKunde({ firma: 'Wirtshaus Gezahlt', email: 'wirt@gezahlt.at', rechnungPerMail: true })
+    const vertrag = await neuerVertrag(kunde.id)
+    await fuehreWartungslaufDurch(idb.db, { jetzt: am('2026-10-02'), mandantId })
+    await fuehreAutoRechnungenDurch(idb.db, CONFIG, am('2026-10-02'))
+    const [sr] = await idb.db.select().from(sammelrechnungen).where(eq(sammelrechnungen.wartungsvertragId, vertrag.id))
+
+    const ops = (await srv.fastify.inject({ method: 'GET', url: '/api/offene-posten', headers: auth() })).json() as Array<{ id: string; notiz?: string }>
+    const op  = ops.find(o => o.notiz?.includes(`SR-${String(sr!.nummer).padStart(4, '0')}`))
+    expect(op).toBeTruthy()
+    const zahlung = await srv.fastify.inject({
+      method: 'POST', url: `/api/offene-posten/${op!.id}/zahlung`, headers: auth(), payload: { zahlungCent: 1000 },
+    })
+    expect(zahlung.statusCode, zahlung.body).toBe(200)
+
+    const storno = await srv.fastify.inject({ method: 'POST', url: `/api/sammelrechnungen/${sr!.id}/stornieren`, headers: auth(), payload: {} })
+    expect(storno.statusCode).toBe(409)
+    expect(storno.json().fehler).toContain('Zahlung')
+    const [danach] = await idb.db.select().from(sammelrechnungen).where(eq(sammelrechnungen.id, sr!.id))
+    expect(danach?.storniertAm).toBeNull()
+  })
+
   it('Lieferscheine lassen sich nur einmal verrechnen (paralleler Zugriff)', async () => {
     const kunde = await neuerKunde({ firma: 'Wirtshaus Parallel', email: 'wirt@parallel.at' })
     const v = await neuerVertrag(kunde.id)

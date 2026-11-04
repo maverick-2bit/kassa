@@ -19,7 +19,7 @@ export class OffenerPostenError extends Error {
 // DTO-Mapping
 // ---------------------------------------------------------------------------
 
-type OpRow = typeof offenePosten.$inferSelect & {
+type OpRow = Omit<typeof offenePosten.$inferSelect, 'sammelrechnungId'> & {
   belegNummer: number | null
 }
 

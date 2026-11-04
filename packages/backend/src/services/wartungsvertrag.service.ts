@@ -24,6 +24,7 @@ import {
   kunden,
   lieferscheine,
   mandanten,
+  offenePosten,
   sammelrechnungen,
   wartungsvertraege,
   wartungsvertragPositionen,
@@ -362,6 +363,7 @@ export async function ermittleFaelligeRechnungen(
   mandantId: string,
   jetzt:     Date,
   nurVertragId?: string,
+  opts: { ohneGesperrte?: boolean } = {},
 ): Promise<WartungRechnungFaellig[]> {
   const aktuellePeriode = wienJetzt(jetzt).datum.slice(0, 7)
 
@@ -375,11 +377,13 @@ export async function ermittleFaelligeRechnungen(
       eq(lieferscheine.wartungsvertragId, row.id),
       eq(lieferscheine.status, 'offen'),
     )).orderBy(asc(lieferscheine.periode))
-    if (offene.length === 0) continue
+    // Nach einem Storno nur noch von Hand verrechenbar — die Automatik lässt diese Lieferscheine liegen
+    const verrechenbar = opts.ohneGesperrte ? offene.filter(l => !l.manuellVerrechnen) : offene
+    if (verrechenbar.length === 0) continue
 
     const erste   = ersteVertragsperiode(row.beginn)
     const endeMon = letzterVertragsmonat(row.beginn, row.ende, laufzeitVon(row))
-    const faellig = offene.filter(l => {
+    const faellig = verrechenbar.filter(l => {
       const blockEnde = rechnungsBlockEnde(row.rechnungsIntervall as WartungsIntervall, l.periode!, erste)
       return blockEnde <= aktuellePeriode || (endeMon !== undefined && endeMon <= aktuellePeriode)
     })
@@ -421,7 +425,7 @@ export async function versendeSammelrechnung(
   log?:      Logger,
 ): Promise<boolean> {
   const sr = await holeSammelrechnung(db, srId, mandantId)
-  if (!sr.emailEmpfaenger) return false
+  if (!sr.emailEmpfaenger || sr.storniertAm) return false
   if (sr.emailVersandtAm)  return true
 
   const [m] = await db.select({ firmenname: mandanten.firmenname }).from(mandanten)
@@ -462,9 +466,10 @@ export async function rechneWartungsvertragAb(
   jetzt:     Date,
   config?:   Config,
   log?:      Logger,
+  opts:      { ohneGesperrte?: boolean } = {},
 ): Promise<SammelrechnungResponse> {
   const vertrag = await holeWartungsvertrag(db, vertragId, mandantId) // 404, falls fremd/unbekannt
-  const [faellig] = await ermittleFaelligeRechnungen(db, mandantId, jetzt, vertragId)
+  const [faellig] = await ermittleFaelligeRechnungen(db, mandantId, jetzt, vertragId, opts)
   if (!faellig) throw new WartungError(409, 'Für diesen Vertrag ist aktuell nichts zu verrechnen')
 
   const empfaenger = config && isEmailAktiv(config)
@@ -484,11 +489,13 @@ export async function rechneWartungsvertragAb(
 
   // Forderung in den Offenen Posten, damit unbezahlte Wartungsrechnungen nachverfolgbar sind
   try {
-    await erstelleOffenerPosten(db, mandantId, {
+    const op = await erstelleOffenerPosten(db, mandantId, {
       kundeId:    vertrag.kundeId,
       betragCent: sr.gesamtbetragCent,
       notiz:      `Sammelrechnung SR-${String(sr.nummer).padStart(4, '0')} – Wartungsvertrag W-${String(vertrag.nummer).padStart(4, '0')}`,
     })
+    // Verknüpfung, damit der Posten mit einem Storno der Rechnung entfällt
+    await db.update(offenePosten).set({ sammelrechnungId: sr.id }).where(eq(offenePosten.id, op.id))
   } catch (err) {
     log?.error({ err, sammelrechnung: sr.id }, 'Offener Posten zur Wartungsrechnung konnte nicht angelegt werden')
   }
@@ -522,9 +529,9 @@ export async function fuehreAutoRechnungenDurch(
   let erstellt = 0
   for (const k of kandidaten) {
     try {
-      const [faellig] = await ermittleFaelligeRechnungen(db, k.mandantId, jetzt, k.id)
+      const [faellig] = await ermittleFaelligeRechnungen(db, k.mandantId, jetzt, k.id, { ohneGesperrte: true })
       if (!faellig) continue
-      await rechneWartungsvertragAb(db, k.mandantId, k.id, jetzt, config, log)
+      await rechneWartungsvertragAb(db, k.mandantId, k.id, jetzt, config, log, { ohneGesperrte: true })
       erstellt++
     } catch (err) {
       log?.error({ err, vertrag: k.id }, 'Automatische Wartungsrechnung fehlgeschlagen')
@@ -540,6 +547,7 @@ export async function fuehreAutoRechnungenDurch(
       isNotNull(sammelrechnungen.emailEmpfaenger),
       isNull(sammelrechnungen.emailVersandtAm),
       isNotNull(sammelrechnungen.wartungsvertragId),
+      isNull(sammelrechnungen.storniertAm),
       or(isNotNull(sammelrechnungen.emailFehler), lt(sammelrechnungen.createdAt, vorEinerStunde)),
     ))
   let erneutVersendet = 0
@@ -565,6 +573,7 @@ export async function listeBuchhaltungsRechnungen(db: Db, mandantId: string): Pr
       eq(sammelrechnungen.mandantId, mandantId),
       isNotNull(sammelrechnungen.emailVersandtAm),
       isNull(sammelrechnungen.buchhaltungGedrucktAm),
+      isNull(sammelrechnungen.storniertAm),
     ))
     .orderBy(asc(sammelrechnungen.nummer))
   return Promise.all(ids.map(r => holeSammelrechnung(db, r.id, mandantId)))

@@ -422,6 +422,8 @@ export const lieferscheine = pgTable('lieferscheine', {
   wartungsvertragId: uuid('wartungsvertrag_id').references((): AnyPgColumn => wartungsvertraege.id),
   /** Abrechnungsmonat eines Wartungslieferscheins (YYYY-MM) */
   periode: varchar('periode', { length: 7 }),
+  /** Nach einem Storno der Rechnung: nicht automatisch neu verrechnen, nur auf Anweisung */
+  manuellVerrechnen: boolean('manuell_verrechnen').notNull().default(false),
 
   /** Laufende Lieferscheinnummer pro Mandant */
   nummer: integer('nummer').notNull(),
@@ -537,6 +539,9 @@ export const sammelrechnungen = pgTable('sammelrechnungen', {
   emailFehler:      text('email_fehler'),
   /** Ausdruck für die Buchhaltung erledigt (Sammelliste) */
   buchhaltungGedrucktAm: timestamp('buchhaltung_gedruckt_am', { withTimezone: true }),
+  /** Storniert: die Rechnung bleibt (Nummer lückenlos), ihre Lieferscheine sind wieder offen */
+  storniertAm: timestamp('storniert_am', { withTimezone: true }),
+  stornoGrund: text('storno_grund'),
 
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
@@ -639,6 +644,8 @@ export const offenePosten = pgTable('offene_posten', {
 
   /** Optionaler Verweis auf den auslösenden Beleg */
   belegId: uuid('beleg_id').references(() => belege.id, { onDelete: 'set null' }),
+  /** Entstanden aus dieser Sammelrechnung (entfällt mit ihrem Storno) */
+  sammelrechnungId: uuid('sammelrechnung_id').references((): AnyPgColumn => sammelrechnungen.id, { onDelete: 'set null' }),
 
   /** Ursprungsbetrag in Cent */
   betragCent:  integer('betrag_cent').notNull(),

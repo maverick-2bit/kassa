@@ -13,6 +13,7 @@ import type { Db } from '../db/client.js'
 import {
   angebote,
   lieferscheine,
+  offenePosten,
   sammelrechnungen,
   seriennummern,
   wartungsvertraege,
@@ -66,6 +67,7 @@ const lsSpalten = {
   wartungsvertragId:     lieferscheine.wartungsvertragId,
   wartungsvertragNummer: wartungsvertraege.nummer,
   periode:               lieferscheine.periode,
+  manuellVerrechnen:     lieferscheine.manuellVerrechnen,
   nummer:                lieferscheine.nummer,
   datum:                 lieferscheine.datum,
   status:                lieferscheine.status,
@@ -352,8 +354,48 @@ async function srZuDto(
     ...(row.emailVersandtAm   && { emailVersandtAm:   row.emailVersandtAm.toISOString() }),
     ...(row.emailFehler       && { emailFehler:       row.emailFehler }),
     ...(row.buchhaltungGedrucktAm && { buchhaltungGedrucktAm: row.buchhaltungGedrucktAm.toISOString() }),
+    ...(row.storniertAm && { storniertAm: row.storniertAm.toISOString() }),
+    ...(row.stornoGrund && { stornoGrund: row.stornoGrund }),
     createdAt:        row.createdAt.toISOString(),
   }
+}
+
+/**
+ * Storniert eine Sammelrechnung: Die Rechnung bleibt mit ihrer Nummer erhalten (als storniert gekennzeichnet),
+ * ihre Lieferscheine werden wieder offen und sind erneut verrechenbar, der zugehörige offene Posten entfällt.
+ * Mit erfasster Zahlung ist kein Storno möglich — die Zahlung muss zuerst geklärt werden.
+ */
+export async function storniereSammelrechnung(
+  db:        Db,
+  mandantId: string,
+  id:        string,
+  grund?:    string,
+): Promise<SammelrechnungResponse> {
+  await db.transaction(async (tx) => {
+    const [sr] = await tx.select().from(sammelrechnungen)
+      .where(and(eq(sammelrechnungen.id, id), eq(sammelrechnungen.mandantId, mandantId)))
+      .for('update').limit(1)
+    if (!sr) throw new LiferscheinError(404, 'Sammelrechnung nicht gefunden')
+    if (sr.storniertAm) throw new LiferscheinError(409, 'Diese Rechnung ist bereits storniert')
+
+    const [op] = await tx.select().from(offenePosten).where(eq(offenePosten.sammelrechnungId, id)).limit(1)
+    if (op && op.bezahltCent > 0) {
+      throw new LiferscheinError(409, 'Zu dieser Rechnung wurde schon eine Zahlung erfasst — bitte zuerst die Zahlung klären')
+    }
+    if (op) await tx.delete(offenePosten).where(eq(offenePosten.id, op.id))
+
+    await tx.update(sammelrechnungen)
+      .set({ storniertAm: new Date(), stornoGrund: grund || null })
+      .where(eq(sammelrechnungen.id, id))
+
+    const ids = (sr.lieferscheinIds as string[]) ?? []
+    if (ids.length > 0) {
+      await tx.update(lieferscheine)
+        .set({ status: 'offen', manuellVerrechnen: true, updatedAt: new Date() })
+        .where(and(eq(lieferscheine.mandantId, mandantId), inArray(lieferscheine.id, ids)))
+    }
+  })
+  return holeSammelrechnung(db, id, mandantId)
 }
 
 export async function listeSammelrechnungen(

@@ -86,6 +86,14 @@ export const SammelrechnungResponseSchema = z.object({
   emailFehler:      z.string().optional(),
   /** Ausdruck für die Buchhaltung erledigt */
   buchhaltungGedrucktAm: z.string().optional(),
+  /** Storniert: die Rechnung bleibt bestehen, ihre Lieferscheine sind wieder offen */
+  storniertAm:      z.string().optional(),
+  stornoGrund:      z.string().optional(),
   createdAt:        z.string(),
 })
 export type SammelrechnungResponse = z.infer<typeof SammelrechnungResponseSchema>
+
+export const SammelrechnungStornoSchema = z.object({
+  grund: z.string().trim().max(500).optional(),
+})
+export type SammelrechnungStorno = z.infer<typeof SammelrechnungStornoSchema>
