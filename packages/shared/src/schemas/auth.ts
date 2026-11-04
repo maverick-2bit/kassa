@@ -118,8 +118,20 @@ export const LoginInputSchema = z.object({
   passwort: z.string().min(1, 'Passwort erforderlich'),
   /** Bisheriges Geräte-Merkmal — dann bleibt das Gerät dasselbe (derselbe Fehlversuchs-Topf). */
   geraetToken: GeraetTokenSchema.optional(),
+  /**
+   * Betrieb, bei dem man sich anmeldet. Nötig, wenn dieselbe E-Mail in mehreren Betrieben vorkommt UND das Passwort
+   * in mehreren passt — sonst antwortet der Server mit der Auswahl (siehe LoginAuswahlSchema).
+   */
+  mandantId: z.string().guid().optional(),
 })
 export type LoginInput = z.infer<typeof LoginInputSchema>
+
+/** Antwort (HTTP 409), wenn E-Mail + Passwort zu mehreren Betrieben passen: der Benutzer wählt einen. */
+export const LoginAuswahlSchema = z.object({
+  fehler:         z.string(),
+  mandantAuswahl: z.array(z.object({ id: z.string().guid(), firmenname: z.string() })).min(2),
+})
+export type LoginAuswahl = z.infer<typeof LoginAuswahlSchema>
 
 export const PinLoginInputSchema = z.object({
   kasseId: z.string().guid(),

@@ -526,6 +526,13 @@
       "when": 1792454400000,
       "tag": "0076_sammelrechnung_freigabe",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1792540800000,
+      "tag": "0077_email_je_mandant",
+      "breakpoints": true
     }
   ]
 }

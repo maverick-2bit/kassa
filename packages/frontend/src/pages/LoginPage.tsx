@@ -332,17 +332,37 @@ function PasswortLoginForm({ bisherMandantId, onWeiter }: { bisherMandantId: str
       const pfad = kasseId ? await leseStartseitePfad(kasseId) : '/tische'
       onWeiter(pfad, data.mandant.id !== bisherMandantId)
     },
-    onError: (err) => setServerFehler(err instanceof Error ? err.message : 'Login fehlgeschlagen'),
+    onError: (err) => {
+      // Dieselbe E-Mail + dasselbe Passwort in mehreren Betrieben → Betrieb wählen lassen
+      if (err instanceof ApiError && err.mandantAuswahl && err.mandantAuswahl.length > 1) {
+        setAuswahl(err.mandantAuswahl)
+        setServerFehler(null)
+        return
+      }
+      setAuswahl(null)
+      setServerFehler(err instanceof Error ? err.message : 'Login fehlgeschlagen')
+    },
   })
+
+  const [auswahl, setAuswahl] = useState<Array<{ id: string; firmenname: string }> | null>(null)
+  const letzteEingabe = useRef<LoginInput | null>(null)
+
+  const anmelden = (data: LoginInput, mandantId?: string) => {
+    setServerFehler(null)
+    letzteEingabe.current = data
+    // Auch der E-Mail-Login verlängert das Geräte-Merkmal (gleiches Gerät, gleicher Topf)
+    const geraetToken = getGeraetToken()
+    // Der Server erkennt den Betrieb am Passwort; nur bei mehreren Treffern wird er hier ausdrücklich gewählt
+    mutation.mutate({
+      ...data,
+      ...(geraetToken ? { geraetToken } : {}),
+      ...(mandantId ? { mandantId } : {}),
+    })
+  }
 
   return (
     <form
-      onSubmit={handleSubmit((data) => {
-        setServerFehler(null)
-        // Auch der E-Mail-Login verlängert das Geräte-Merkmal (gleiches Gerät, gleicher Topf)
-        const geraetToken = getGeraetToken()
-        mutation.mutate({ ...data, ...(geraetToken ? { geraetToken } : {}) })
-      })}
+      onSubmit={handleSubmit((data) => anmelden(data))}
       className="rounded-xl bg-panel shadow-sm border border-line p-6 space-y-4"
       noValidate
     >
@@ -354,6 +374,22 @@ function PasswortLoginForm({ bisherMandantId, onWeiter }: { bisherMandantId: str
       </Field>
       {serverFehler && (
         <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{serverFehler}</div>
+      )}
+      {auswahl && (
+        <div className="rounded-md border border-line bg-panel-2 p-3 space-y-2" data-testid="login-betrieb-auswahl">
+          <p className="text-sm font-medium text-ink">Mit dieser E-Mail gibt es Konten in mehreren Betrieben — wo möchtest du dich anmelden?</p>
+          {auswahl.map(b => (
+            <button
+              key={b.id}
+              type="button"
+              disabled={mutation.isPending}
+              onClick={() => letzteEingabe.current && anmelden(letzteEingabe.current, b.id)}
+              className="block w-full rounded-lg border border-line-strong bg-panel px-3 py-2 text-left text-sm font-medium text-ink hover:border-brand-400 hover:bg-brand-50"
+            >
+              {b.firmenname}
+            </button>
+          ))}
+        </div>
       )}
       <div className="pt-2 border-t border-line">
         <Button type="submit" loading={mutation.isPending} className="w-full">Einloggen</Button>

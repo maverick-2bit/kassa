@@ -182,16 +182,11 @@ describe('POST /api/setup', () => {
     await srv.close()
   })
 
-  it('lehnt bereits vergebene E-Mail ab', async () => {
+  it('eine bereits vergebene E-Mail ist kein Hindernis: dieselbe Adresse darf in mehreren Betrieben vorkommen', async () => {
     const srv = await buildSrv({ db: mockDb({ existingEmail: true }) })
-    const res = await srv.fastify.inject({
-      method:  'POST',
-      url:     '/api/setup',
-      payload: validInput,
-    })
-    expect(res.statusCode).toBe(400)
+    const res = await srv.fastify.inject({ method: 'POST', url: '/api/setup', payload: validInput })
     const body = res.json() as SetupResponse
-    expect(body.fehler).toContain('E-Mail')
+    expect(body.fehler ?? '').not.toContain('E-Mail')
     await srv.close()
   })
 

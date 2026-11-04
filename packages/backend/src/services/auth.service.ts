@@ -28,10 +28,18 @@ import { ladeTagesRegel } from './geschaeftstag.service.js'
 const BCRYPT_COST = 10
 
 export class AuthError extends Error {
-  constructor(public readonly httpStatus: number, message: string) {
+  constructor(
+    public readonly httpStatus: number,
+    message: string,
+    /** Zusatzfelder für die Antwort (z. B. die Betriebs-Auswahl bei mehreren Treffern) */
+    public readonly zusatz?: Record<string, unknown>,
+  ) {
     super(message)
   }
 }
+
+/** So viele Konten mit derselben E-Mail prüft die Anmeldung höchstens (jedes kostet einen bcrypt-Vergleich) */
+const MAX_KONTEN_JE_EMAIL = 20
 
 export async function hashPassword(passwort: string): Promise<string> {
   return bcrypt.hash(passwort, BCRYPT_COST)
@@ -187,21 +195,43 @@ export async function login(
   input: LoginInput,
   deps:  LoginDeps,
 ): Promise<LoginResponse> {
-  const [user] = await deps.db
+  // Dieselbe E-Mail kann in mehreren Betrieben vorkommen: alle Konten holen (ggf. auf den gewählten Betrieb begrenzt)
+  const kandidaten = await deps.db
     .select()
     .from(users)
-    .where(eq(users.email, input.email.toLowerCase()))
-    .limit(1)
+    .where(and(
+      eq(users.email, input.email.toLowerCase()),
+      input.mandantId ? eq(users.mandantId, input.mandantId) : undefined,
+    ))
+    .limit(MAX_KONTEN_JE_EMAIL)
 
-  if (!user) {
+  if (kandidaten.length === 0) {
     await bcrypt.compare(input.passwort, '$2a$10$invalidhashtopreventtimingleaks0000000000000000000000')
     throw new AuthError(401, 'E-Mail oder Passwort falsch')
   }
-  if (!user.aktiv) throw new AuthError(403, 'Benutzer ist deaktiviert')
 
-  const ok = await verifyPassword(input.passwort, user.passwordHash)
-  if (!ok) throw new AuthError(401, 'E-Mail oder Passwort falsch')
+  // Das Passwort entscheidet, welche Konten gemeint sind. Ein Konto, dessen Passwort nicht passt, verrät nichts.
+  const treffer: Array<typeof users.$inferSelect> = []
+  for (const kandidat of kandidaten) {
+    if (await verifyPassword(input.passwort, kandidat.passwordHash)) treffer.push(kandidat)
+  }
+  if (treffer.length === 0) throw new AuthError(401, 'E-Mail oder Passwort falsch')
 
+  const aktive = treffer.filter(u => u.aktiv)
+  if (aktive.length === 0) throw new AuthError(403, 'Benutzer ist deaktiviert')
+
+  if (aktive.length > 1) {
+    // Passwort passt in mehreren Betrieben → der Benutzer wählt (Passwort wird danach mit dem Betrieb erneut geschickt)
+    const betriebe = await deps.db
+      .select({ id: mandanten.id, firmenname: mandanten.firmenname })
+      .from(mandanten)
+      .where(inArray(mandanten.id, aktive.map(u => u.mandantId)))
+    throw new AuthError(409, 'Mit dieser E-Mail und diesem Passwort gibt es Konten in mehreren Betrieben — bitte Betrieb wählen', {
+      mandantAuswahl: betriebe.sort((a, b) => a.firmenname.localeCompare(b.firmenname, 'de')),
+    })
+  }
+
+  const user = aktive[0]!
   const vertrauen = deps.geraetVertrauen.pruefen(input.geraetToken, user.mandantId)
   return buildLoginResponse(user, deps, vertrauen?.geraetId)
 }
