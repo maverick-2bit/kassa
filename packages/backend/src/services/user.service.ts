@@ -118,19 +118,18 @@ async function pruefeBetreiberKonto(
 }
 
 /**
- * E-Mail ist über ALLE Mandanten eindeutig (Login per E-Mail, Unique-Index
- * users_email_idx) — vorab prüfen, sonst meldet erst der Index die Kollision,
- * und der Admin sieht nur einen Serverfehler. Erwartet die E-Mail kleingeschrieben.
+ * E-Mail ist je Betrieb eindeutig (Unique-Index users_mandant_email_idx) — dieselbe Adresse darf in mehreren Mandanten
+ * vorkommen, die Anmeldung unterscheidet sie am Passwort bzw. per Betriebs-Auswahl. Vorab prüfen, sonst meldet erst
+ * der Index die Kollision und der Admin sieht nur einen Serverfehler. Erwartet die E-Mail kleingeschrieben.
  */
-async function pruefeEmailFrei(db: Db, email: string, ausnehmenUserId?: string): Promise<void> {
+async function pruefeEmailFrei(db: Db, mandantId: string, email: string, ausnehmenUserId?: string): Promise<void> {
   const where = ausnehmenUserId
-    ? and(eq(users.email, email), ne(users.id, ausnehmenUserId))
-    : eq(users.email, email)
+    ? and(eq(users.mandantId, mandantId), eq(users.email, email), ne(users.id, ausnehmenUserId))
+    : and(eq(users.mandantId, mandantId), eq(users.email, email))
 
   const [vergeben] = await db.select({ id: users.id }).from(users).where(where).limit(1)
   if (vergeben) throw new UserError(409, 'E-Mail bereits vergeben')
 }
-
 export async function listUsers(mandantId: string, deps: UserServiceDeps): Promise<PublicUser[]> {
   const rows = await deps.db
     .select()
@@ -153,7 +152,7 @@ export async function createUser(
   const email = (input.email ?? `${randomBytes(9).toString('hex')}@pin.kellner.lokal`).toLowerCase()
   const passwort = input.passwort ?? randomBytes(24).toString('hex')
 
-  await pruefeEmailFrei(deps.db, email)
+  await pruefeEmailFrei(deps.db, mandantId, email)
 
   if (input.pin) {
     await pruefePinLaengeDesBetriebs(deps.db, input.pin, mandantId)
@@ -226,7 +225,7 @@ export async function updateUser(
   }
 
   // E-Mail: die eigene (auch unverändert mitgeschickte) zählt nicht als vergeben
-  if (updates.email !== undefined) await pruefeEmailFrei(deps.db, updates.email, id)
+  if (updates.email !== undefined) await pruefeEmailFrei(deps.db, mandantId, updates.email, id)
 
   // PIN: null = PIN entfernen, string = neuen PIN setzen
   if (input.pin !== undefined) {

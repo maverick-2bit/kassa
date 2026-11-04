@@ -71,24 +71,8 @@ export async function fuehreSetupDurch(
     }
   }
 
-  // E-Mail-Konflikt prüfen
-  const emailExisting = await deps.db
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.email, input.admin.email.toLowerCase()))
-    .limit(1)
-  if (emailExisting.length > 0) {
-    return {
-      erfolgreich: false,
-      schritte: [{
-        schritt:     'eingabe-validierung',
-        status:      'fehler',
-        meldung:     `E-Mail ${input.admin.email} ist bereits vergeben`,
-        zeitstempel: new Date().toISOString(),
-      }],
-      fehler: `E-Mail ${input.admin.email} ist bereits vergeben`,
-    }
-  }
+  // E-Mail: eine Adresse darf in mehreren Betrieben vorkommen (eindeutig ist sie nur je Mandant) — der neue Mandant
+  // ist leer, also gibt es hier keinen Konflikt. Die Anmeldung unterscheidet die Betriebe am Passwort bzw. per Auswahl.
 
   // RKSV-Einrichtung durchführen
   const rksvInput = {

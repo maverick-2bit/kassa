@@ -51,6 +51,7 @@ export type {
 // Auth
 export {
   LoginInputSchema,
+  LoginAuswahlSchema,
   PinLoginInputSchema,
   LoginResponseSchema,
   UserSchema,
@@ -71,6 +72,7 @@ export {
 } from './schemas/auth.js'
 export type {
   LoginInput,
+  LoginAuswahl,
   PinLoginInput,
   LoginResponse,
   User,

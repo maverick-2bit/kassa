@@ -707,7 +707,9 @@ export const users = pgTable('users', {
   createdAt:      timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt:      timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
-  emailIdx: uniqueIndex('users_email_idx').on(t.email),
+  // E-Mail ist je Betrieb eindeutig — dieselbe Adresse darf in mehreren Mandanten vorkommen
+  emailIdx:  uniqueIndex('users_mandant_email_idx').on(t.mandantId, t.email),
+  emailSucheIdx: index('users_email_suche_idx').on(t.email),
 }))
 
 export type User    = typeof users.$inferSelect

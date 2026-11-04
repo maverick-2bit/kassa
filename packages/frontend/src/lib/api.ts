@@ -201,6 +201,8 @@ export class ApiError extends Error {
     public wartenSekunden?: number,
     /** 'pin_laenge': gültige PIN-Länge des Betriebs */
     public pinLaenge?: number,
+    /** Anmeldung: E-Mail + Passwort passen zu mehreren Betrieben — der Benutzer wählt einen */
+    public mandantAuswahl?: Array<{ id: string; firmenname: string }>,
   ) {
     super(message)
   }
@@ -233,13 +235,16 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     const message = typeof fehler === 'string'
       ? fehler
       : Array.isArray(fehler) ? JSON.stringify(fehler) : `HTTP ${res.status}`
-    const { code, wartenSekunden, pinLaenge } = (data ?? {}) as { code?: unknown; wartenSekunden?: unknown; pinLaenge?: unknown }
+    const { code, wartenSekunden, pinLaenge, mandantAuswahl } = (data ?? {}) as {
+      code?: unknown; wartenSekunden?: unknown; pinLaenge?: unknown; mandantAuswahl?: unknown
+    }
     throw new ApiError(
       res.status,
       message,
       typeof code === 'string' ? code : undefined,
       typeof wartenSekunden === 'number' ? wartenSekunden : undefined,
       typeof pinLaenge === 'number' ? pinLaenge : undefined,
+      Array.isArray(mandantAuswahl) ? mandantAuswahl as Array<{ id: string; firmenname: string }> : undefined,
     )
   }
   return data as T

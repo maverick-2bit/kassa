@@ -113,6 +113,10 @@ export const authRoute: FastifyPluginAsync<AuthRouteOptions> = async (fastify, o
       return reply.send(result)
     } catch (err) {
       if (err instanceof AuthError) {
+        // Die Betriebs-Auswahl ist kein Fehlversuch: das Passwort stimmte
+        if (err.zusatz?.['mandantAuswahl']) {
+          return reply.status(err.httpStatus).send({ fehler: err.message, ...err.zusatz })
+        }
         fehlschlagRegistrieren(email)
         await logAudit(opts.db, {
           aktion:    'login.fehlschlag',
@@ -120,7 +124,7 @@ export const authRoute: FastifyPluginAsync<AuthRouteOptions> = async (fastify, o
           ipAdresse: ip,
           userAgent: ua,
         }, fastify.log)
-        return reply.status(err.httpStatus).send({ fehler: err.message })
+        return reply.status(err.httpStatus).send({ fehler: err.message, ...(err.zusatz ?? {}) })
       }
       fastify.log.error({ err }, 'Login fehlgeschlagen')
       return reply.status(500).send({ fehler: 'Login fehlgeschlagen' })

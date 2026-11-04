@@ -12,7 +12,7 @@
  *
  * Kernpunkte:
  *  - E-Mail vergeben → 409 { fehler: 'E-Mail bereits vergeben' }: kleingeschrieben
- *    verglichen, über alle Mandanten (Login per E-Mail), die eigene zählt nicht
+ *    verglichen, je Mandant (dieselbe Adresse darf in mehreren Betrieben vorkommen), die eigene zählt nicht
  *  - fremder oder unbekannter Bestandteil → 400 mit Meldung, und die Transaktion
  *    rollt zurück: kein halb angelegter Artikel, das alte Rezept bleibt
  */
@@ -108,10 +108,12 @@ describe('Eingabefehler als Fachfehler statt 500 (Integration, echtes PostgreSQL
       expect(await benutzer(kellnerId)).toMatchObject({ name: 'Kellner Zwei', email: 'zwei@fachfehler.at' })
     })
 
-    it('E-Mail aus einem anderen Mandanten: 409, Login-E-Mails sind mandantenübergreifend eindeutig', async () => {
+    it('E-Mail aus einem anderen Mandanten: erlaubt — die E-Mail ist nur je Betrieb eindeutig', async () => {
       const res = await aendere(kellnerId, { email: 'admin2@fachfehler.at' })
-      expect(res.statusCode).toBe(409)
-      expect(res.json()).toEqual({ fehler: 'E-Mail bereits vergeben' })
+      expect(res.statusCode).toBe(200)
+      expect(res.json()).toMatchObject({ email: 'admin2@fachfehler.at' })
+      // zurück auf die ursprüngliche Adresse, damit die Tests danach unverändert laufen
+      expect((await aendere(kellnerId, { email: 'zwei@fachfehler.at' })).statusCode).toBe(200)
     })
 
     it('die eigene E-Mail, anders geschrieben, mitschicken: 200', async () => {
