@@ -750,6 +750,18 @@ export type {
   SammelrechnungFreigabeErgebnis,
 } from './schemas/lieferschein.js'
 
+// Serviceportal: Meldung der Box
+export {
+  PortalBackupSchema,
+  PortalDruckerSchema,
+  PortalKasseSchema,
+  PortalBetriebSchema,
+  PortalFehlerSchema,
+  PortalMeldungSchema,
+  PortalStatusSchema,
+} from './schemas/portal.js'
+export type { PortalFehler, PortalMeldung, PortalStatus } from './schemas/portal.js'
+
 // Wartungsverträge
 export {
   WartungsIntervallSchema,

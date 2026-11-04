@@ -199,7 +199,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   await fastify.register(async (api) => {
     // Offene Routen (kein Login nötig)
     await api.register(healthRoute,  { db:   deps.db })
-    await api.register(systemRoute,  { db:   deps.db })
+    await api.register(systemRoute,  { db:   deps.db, config: deps.config })
     await api.register(authRoute,    { db:   deps.db, loginRateLimitMax: deps.config.LOGIN_RATE_LIMIT_MAX })
     await api.register(setupRoute,   {
       deps:         deps.setupDeps,

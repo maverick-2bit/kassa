@@ -20,6 +20,7 @@
  */
 
 import type { FastifyReply, FastifyRequest } from 'fastify'
+import { meldeFehler } from './services/fehler-sammler.js'
 
 const INTERN = { fehler: 'Interner Serverfehler' } as const
 
@@ -68,6 +69,11 @@ export function fehlerHandler(error: unknown, request: FastifyRequest, reply: Fa
   }
 
   request.log.error({ err: error, url: request.url, method: request.method }, 'Unbehandelter Serverfehler')
+  // Für den Portal-Melder vormerken (bereinigt: ohne Werte, Kennungen und SQL)
+  meldeFehler(error, {
+    route:     request.routeOptions?.url ?? request.url,
+    mandantId: (request as { user?: { mandantId?: string } }).user?.mandantId,
+  })
   if (reply.sent) return undefined
   if (streamLaeuft) {
     // Fehler nach raw.writeHead (z. B. Snapshot-Abfrage einer SSE-Route): Stream

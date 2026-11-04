@@ -35,6 +35,7 @@ import type {
   OffenerPostenZahlung,
   SammelrechnungResponse,
   SammelrechnungFreigabeErgebnis,
+  PortalStatus,
   Kunde,
   KundeBelegVorschau,
   KundeInput,
@@ -292,6 +293,8 @@ export const systemApi = {
   netzwerk:  () => request<{ ips: string[]; imContainer?: boolean }>('GET', '/api/system/netzwerk'),
   /** Fernwartungs-Status (nur Admin): TeamViewer-ID, Gerätename, Gruppe — rein lesend. */
   fernwartung: () => request<FernwartungStatus>('GET', '/api/system/fernwartung'),
+  /** Verbindung zum Serviceportal (nur Betreiber): aktiv?, letzter Kontakt, letzter Fehler — nie das Token. */
+  portal: () => request<PortalStatus>('GET', '/api/system/portal'),
 }
 
 export const mandantUebergabeApi = {

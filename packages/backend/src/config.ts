@@ -31,6 +31,23 @@ const ConfigSchema = z.object({
   MONITORING_TOKEN:  z.string().optional(),
 
   /**
+   * Serviceportal (optional): Adresse des Portals und das Token DIESER Box. Beides gesetzt = die Box meldet ihren
+   * technischen Zustand (Erreichbarkeit, Version, Sicherungen, Geräte, Fehler — nie Umsätze oder Belege) alle
+   * PORTAL_INTERVALL_SEKUNDEN an das Portal. Leer = aus. Die Box ruft von sich aus nach außen; ein offener Port ist
+   * nicht nötig. Das Token (mindestens 24 Zeichen) vergibt das Portal je Box.
+   */
+  PORTAL_URL: z.string().optional()
+    .transform(v => (v === undefined || v.trim() === '' ? undefined : v.trim().replace(/\/+$/, '')))
+    .refine(v => v === undefined || /^https?:\/\/[^\s/]+/.test(v), 'PORTAL_URL muss mit http:// oder https:// beginnen'),
+  PORTAL_TOKEN: z.string().optional()
+    .transform(v => (v === undefined || v.trim() === '' ? undefined : v.trim()))
+    .refine(v => v === undefined || v.length >= 24, 'PORTAL_TOKEN muss mindestens 24 Zeichen lang sein'),
+  PORTAL_INTERVALL_SEKUNDEN: z.preprocess(
+    v => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.coerce.number().int().min(30).max(3600).default(60),
+  ),
+
+  /**
    * Einrichtungs-Schlüssel (optional): Wer ihn im Header `x-setup-token` mitschickt, darf
    * POST /api/setup auch auf einer SCHON EINGERICHTETEN Installation aufrufen und einen weiteren
    * Mandanten anlegen — ohne als Betreiber angemeldet zu sein. Gedacht als Notweg und für Skripte

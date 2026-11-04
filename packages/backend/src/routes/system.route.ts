@@ -22,6 +22,8 @@ import { createRequire } from 'module'
 import { readFile, writeFile } from 'fs/promises'
 import { join } from 'path'
 import type { Db } from '../db/client.js'
+import type { Config } from '../config.js'
+import { holePortalStatus } from '../services/portal-melder.service.js'
 import { istAktiverBetreiber, requireBetreiber } from '../auth/betreiber.js'
 import { leseFernwartungStatus } from '../services/fernwartung-status.js'
 
@@ -84,12 +86,15 @@ async function leseUpdateStatus(): Promise<unknown> {
   }
 }
 
-export interface SystemRouteOptions { db: Db }
+export interface SystemRouteOptions { db: Db; config: Config }
 
 export const systemRoute: FastifyPluginAsync<SystemRouteOptions> = async (fastify, opts) => {
   const guard      = { onRequest: [fastify.authenticate] }
   const adminOnly  = { onRequest: [fastify.requireRolle('admin')] }
   const betreiber  = { onRequest: [fastify.authenticate, requireBetreiber(opts.db)] }
+
+  /** Verbindung zum Serviceportal: aktiv? letzter Kontakt, letzter Fehler — nie das Token */
+  fastify.get('/system/portal', betreiber, async () => holePortalStatus(opts.config))
 
   fastify.get('/system/status', guard, async (request) => {
     // ?frisch=1 (Knopf „Nach Updates suchen"): Caches umgehen — im Eventbetrieb

@@ -563,6 +563,7 @@ export const HILFE_THEMEN: HilfeThema[] = [
         schritte: [
           'Zeigt die installierte Version. Gibt es eine neuere, erscheint „Neu laden" bzw. „Jetzt aktualisieren".',
           'Aktualisieren, die Datenbank-Sicherungen (sie enthalten die Daten aller Mandanten), die Systemwerte und „Weiteren Mandanten anlegen" sieht und darf nur der Betreiber der Kassa — der erste Admin der Installation. In der Benutzerverwaltung trägt er ein „Betreiber"-Schild. Alle anderen Admins sehen dort nur ihren eigenen Betrieb (Drucker, Mandant übertragen).',
+          'Serviceportal (nur Betreiber): Zeigt, ob diese Kassa ihren technischen Zustand (Erreichbarkeit, Version, Sicherungen, Geräte, Serverfehler — nie Umsätze oder Belege) an das Serviceportal meldet, und wann der letzte Kontakt war. Eingeschaltet wird es in der .env der Box mit PORTAL_URL und PORTAL_TOKEN.',
           'Dieselbe E-Mail-Adresse darf in mehreren Betrieben vorkommen (z. B. wenn du mehrere Betriebe führst). Bei der Anmeldung erkennt die Kassa den Betrieb am Passwort. Hast du in mehreren Betrieben dasselbe Passwort, fragt sie nach, wo du dich anmelden möchtest. Innerhalb eines Betriebs bleibt die E-Mail eindeutig.',
         ],
       },
