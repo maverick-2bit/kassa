@@ -497,8 +497,15 @@ export interface BelegzweigEmailDaten {
   nummer:     number
   datum:      string   // ISO
   kundeName?: string | undefined
-  positionen: Array<{ bezeichnung: string; menge: number; einzelpreisBreutto: number }>
+  positionen: Array<{ bezeichnung: string; menge: number; einzelpreisBreutto: number; seriennummern?: string[] | undefined }>
   gesamtbetragCent?: number | undefined
+  /** Zahlungsangaben (nur Rechnung): erscheinen unter der Summe */
+  zahlung?: {
+    iban?:             string | undefined
+    bic?:              string | undefined
+    zahlungszielTage:  number
+    faelligAm:         string   // ISO
+  } | undefined
 }
 
 export async function sendeBelegzweigEmail(
@@ -518,11 +525,25 @@ export async function sendeBelegzweigEmail(
 
   const zeilen = daten.positionen.map(p => `
       <tr>
-        <td style="padding:6px 12px;border-bottom:1px solid #e5e7eb">${p.menge}× ${p.bezeichnung}</td>
+        <td style="padding:6px 12px;border-bottom:1px solid #e5e7eb">${p.menge}× ${p.bezeichnung}${p.seriennummern && p.seriennummern.length > 0 ? `<div style="font-size:11px;color:#6b7280;font-family:monospace;margin-top:2px">SN: ${p.seriennummern.join(', ')}</div>` : ''}</td>
         ${istRechnung ? `
         <td style="padding:6px 12px;border-bottom:1px solid #e5e7eb;text-align:right;font-family:monospace">${fmt(p.einzelpreisBreutto)}</td>
         <td style="padding:6px 12px;border-bottom:1px solid #e5e7eb;text-align:right;font-family:monospace;font-weight:600">${fmt(p.einzelpreisBreutto * p.menge)}</td>` : ''}
       </tr>`).join('')
+
+  const faellig = daten.zahlung
+    ? new Date(daten.zahlung.faelligAm).toLocaleDateString('de-AT', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    : ''
+  const zahlungsHtml = istRechnung && daten.zahlung ? `
+    <div style="padding:14px 28px 22px;border-top:1px solid #e5e7eb;font-size:13px;color:#374151;line-height:1.6">
+      <strong>Zahlbar bis ${faellig}</strong> (${daten.zahlung.zahlungszielTage} Tage)<br>
+      ${daten.zahlung.iban ? `IBAN: <span style="font-family:monospace">${daten.zahlung.iban}</span><br>` : ''}
+      ${daten.zahlung.bic ? `BIC: <span style="font-family:monospace">${daten.zahlung.bic}</span><br>` : ''}
+      Verwendungszweck: ${kuerzel}
+    </div>` : ''
+  const zahlungsText = istRechnung && daten.zahlung
+    ? `\n\nZahlbar bis ${faellig}${daten.zahlung.iban ? `\nIBAN: ${daten.zahlung.iban}` : ''}${daten.zahlung.bic ? `\nBIC: ${daten.zahlung.bic}` : ''}\nVerwendungszweck: ${kuerzel}`
+    : ''
 
   const html = `<!DOCTYPE html>
 <html lang="de"><head><meta charset="utf-8"><title>${titel} ${kuerzel}</title></head>
@@ -552,6 +573,7 @@ export async function sendeBelegzweigEmail(
     <div style="padding:16px 28px">
       <p style="margin:0;font-size:12px;color:#6b7280">${daten.positionen.length} Position${daten.positionen.length === 1 ? '' : 'en'} — die Abrechnung erfolgt über die Rechnung.</p>
     </div>`}
+    ${zahlungsHtml}
   </div>
 </body></html>`
 
@@ -560,7 +582,84 @@ export async function sendeBelegzweigEmail(
     to:      empfaenger,
     subject: `${titel} ${kuerzel} — ${daten.firmenname}`,
     html,
-    text: `${titel} ${kuerzel} (${datum})\n${daten.firmenname}\n\n${daten.positionen.map(p => `${p.menge}x ${p.bezeichnung}${istRechnung ? ` — ${fmt(p.einzelpreisBreutto * p.menge)}` : ''}`).join('\n')}${istRechnung && daten.gesamtbetragCent !== undefined ? `\n\nSumme: ${fmt(daten.gesamtbetragCent)}` : ''}`,
+    text: `${titel} ${kuerzel} (${datum})\n${daten.firmenname}\n\n${daten.positionen.map(p => `${p.menge}x ${p.bezeichnung}${p.seriennummern && p.seriennummern.length > 0 ? ` (SN: ${p.seriennummern.join(', ')})` : ''}${istRechnung ? ` — ${fmt(p.einzelpreisBreutto * p.menge)}` : ''}`).join('\n')}${istRechnung && daten.gesamtbetragCent !== undefined ? `\n\nSumme: ${fmt(daten.gesamtbetragCent)}` : ''}${zahlungsText}`,
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Stornorechnung per E-Mail (zu einer bereits verschickten Sammelrechnung)
+// ---------------------------------------------------------------------------
+
+export interface StornoRechnungEmailDaten {
+  firmenname:     string
+  stornoNummer:   number
+  rechnungNummer: number
+  rechnungDatum:  string   // ISO
+  datum:          string   // ISO (Storno)
+  kundeName?:     string | undefined
+  positionen:     Array<{ bezeichnung: string; menge: number; einzelpreisBreutto: number }>
+  gesamtbetragCent: number
+}
+
+/**
+ * Teilt dem Kunden mit, dass die Rechnung storniert wurde, und enthält die Stornorechnung (alle Positionen mit
+ * negativem Betrag). Die korrigierte Rechnung folgt in einem eigenen Mail.
+ */
+export async function sendeStornoRechnungEmail(
+  empfaenger: string,
+  daten:      StornoRechnungEmailDaten,
+  config:     Config,
+): Promise<void> {
+  const transporter = erstelleTransporter(config)
+  const from        = config.SMTP_FROM ?? config.SMTP_USER!
+  const stNr        = `ST-${String(daten.stornoNummer).padStart(4, '0')}`
+  const srNr        = `SR-${String(daten.rechnungNummer).padStart(4, '0')}`
+  const fmtDatum    = (iso: string) => new Date(iso).toLocaleDateString('de-AT', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  const fmt         = (c: number) => (c / 100).toFixed(2).replace('.', ',') + ' €'
+  const minus       = (c: number) => fmt(-c)
+
+  const zeilen = daten.positionen.map(p => `
+      <tr>
+        <td style="padding:6px 12px;border-bottom:1px solid #e5e7eb">${p.menge}× ${p.bezeichnung}</td>
+        <td style="padding:6px 12px;border-bottom:1px solid #e5e7eb;text-align:right;font-family:monospace">${minus(p.einzelpreisBreutto)}</td>
+        <td style="padding:6px 12px;border-bottom:1px solid #e5e7eb;text-align:right;font-family:monospace;font-weight:600">${minus(p.einzelpreisBreutto * p.menge)}</td>
+      </tr>`).join('')
+
+  const html = `<!DOCTYPE html>
+<html lang="de"><head><meta charset="utf-8"><title>Stornorechnung ${stNr}</title></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,sans-serif">
+  <div style="max-width:560px;margin:32px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08)">
+    <div style="background:#b91c1c;padding:24px 28px">
+      <h1 style="margin:0;color:#fff;font-size:20px">Stornorechnung ${stNr}</h1>
+      <p style="margin:4px 0 0;color:#fecaca;font-size:13px">${fmtDatum(daten.datum)}</p>
+    </div>
+    <div style="padding:20px 28px 8px;font-size:14px;color:#374151;line-height:1.5">
+      <p style="margin:0 0 10px">Guten Tag${daten.kundeName ? ` ${daten.kundeName}` : ''},</p>
+      <p style="margin:0 0 10px">unsere Rechnung <strong>${srNr}</strong> vom ${fmtDatum(daten.rechnungDatum)} wurde <strong>storniert</strong>.
+      Bitte überweisen Sie dazu nichts. Die korrigierte Rechnung erhalten Sie in einem eigenen E-Mail.</p>
+      <p style="margin:0;font-size:12px;color:#6b7280">${daten.firmenname}</p>
+    </div>
+    <table style="width:100%;border-collapse:collapse;margin-top:8px">
+      <thead><tr style="background:#f9fafb">
+        <th style="padding:8px 12px;text-align:left;font-size:12px;color:#6b7280;font-weight:600;text-transform:uppercase">Position (Storno zu ${srNr})</th>
+        <th style="padding:8px 12px;text-align:right;font-size:12px;color:#6b7280;font-weight:600;text-transform:uppercase">Preis</th>
+        <th style="padding:8px 12px;text-align:right;font-size:12px;color:#6b7280;font-weight:600;text-transform:uppercase">Gesamt</th>
+      </tr></thead>
+      <tbody>${zeilen}</tbody>
+    </table>
+    <div style="padding:16px 28px;border-top:2px solid #111827;display:flex;justify-content:space-between">
+      <span style="font-size:16px;font-weight:700;color:#111827">Storno gesamt</span>
+      <span style="font-size:16px;font-weight:700;color:#b91c1c;font-family:monospace">${minus(daten.gesamtbetragCent)}</span>
+    </div>
+  </div>
+</body></html>`
+
+  await transporter.sendMail({
+    from,
+    to:      empfaenger,
+    subject: `Stornorechnung ${stNr} zu Rechnung ${srNr} — ${daten.firmenname}`,
+    html,
+    text: `Stornorechnung ${stNr} (${fmtDatum(daten.datum)})\n${daten.firmenname}\n\nUnsere Rechnung ${srNr} vom ${fmtDatum(daten.rechnungDatum)} wurde storniert. Bitte überweisen Sie dazu nichts. Die korrigierte Rechnung erhalten Sie in einem eigenen E-Mail.\n\n${daten.positionen.map(p => `${p.menge}x ${p.bezeichnung} — ${minus(p.einzelpreisBreutto * p.menge)}`).join('\n')}\n\nStorno gesamt: ${minus(daten.gesamtbetragCent)}`,
   })
 }
 

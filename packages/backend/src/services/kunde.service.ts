@@ -33,6 +33,7 @@ function toDto(row: KundeRow) {
     uid:         row.uid      ?? undefined,
     aktiv:       row.aktiv,
     kreditAktiv: row.kreditAktiv,
+    rechnungPerMail: row.rechnungPerMail,
     notizen:     row.notizen ?? null,
     createdAt:   row.createdAt.toISOString(),
     updatedAt:   row.updatedAt.toISOString(),
@@ -128,6 +129,7 @@ export async function erstelleKunde(db: Db, mandantId: string, input: KundeInput
     land:        input.land ?? 'AT',
     uid:         input.uid      || null,
     kreditAktiv: input.kreditAktiv ?? false,
+    rechnungPerMail: input.rechnungPerMail ?? false,
     notizen:     input.notizen   || null,
   }).returning()
 
@@ -145,6 +147,11 @@ export async function aktualisiereKunde(
   if (!existing.aktiv && input.aktiv !== true) {
     throw new KundeError(409, 'Inaktiver Kunde — erst reaktivieren')
   }
+  const neueMail = input.email !== undefined ? input.email : existing.email
+  const perMail  = input.rechnungPerMail ?? existing.rechnungPerMail
+  if (perMail && !neueMail) {
+    throw new KundeError(400, 'Für den Rechnungsversand per E-Mail ist eine E-Mail-Adresse nötig')
+  }
 
   const [row] = await db
     .update(kunden)
@@ -161,6 +168,7 @@ export async function aktualisiereKunde(
       ...(input.uid        !== undefined && { uid:        input.uid      || null }),
       ...(input.aktiv      !== undefined && { aktiv:      input.aktiv }),
       ...(input.kreditAktiv !== undefined && { kreditAktiv: input.kreditAktiv }),
+      ...(input.rechnungPerMail !== undefined && { rechnungPerMail: input.rechnungPerMail }),
       ...(input.notizen     !== undefined && { notizen:    input.notizen || null }),
       updatedAt: new Date(),
     })

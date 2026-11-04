@@ -115,14 +115,32 @@ test('Wartungsvertrag: anlegen, Monatslauf, Sammelrechnung durch die UI', async 
 
   await expect(page.locator('tr', { hasText: kundenName })).toContainText(/\d Lieferscheine?/)
 
-  await test.step('Zur Verrechnung: Sammelrechnung erstellen', async () => {
+  await test.step('Zur Verrechnung: Rechnung erstellen — sie wartet auf die Freigabe', async () => {
     await page.getByRole('button', { name: /Zur Verrechnung/ }).click()
     const faellig = page.locator('tr', { hasText: kundenName })
     await expect(faellig).toBeVisible({ timeout: 10_000 })
-    await faellig.getByRole('button', { name: 'Sammelrechnung erstellen' }).click()
-    await expect(page.getByText(/Rechnung SR-\d{4} ausgeben/)).toBeVisible({ timeout: 10_000 })
-    await page.getByRole('button', { name: 'Ohne Druck fortfahren' }).click()
-    // Der Vertrag ist verrechnet und steht nicht mehr in der Liste
+    await faellig.getByRole('button', { name: 'Rechnung erstellen' }).click()
+    // Die Seite wechselt in den Reiter „Rechnungen": erstellt, aber noch nicht freigegeben
+    await expect(page.getByText(/Rechnung SR-\d{4} ist erstellt und wartet auf deine Freigabe/)).toBeVisible({ timeout: 10_000 })
+    const rechnung = page.locator('tr', { hasText: kundenName })
+    await expect(rechnung).toContainText('Wartet auf Freigabe')
+    await expect(rechnung).toContainText('2 Ausdrucke')   // Kunde ohne Mailversand: Kunde + Buchhaltung
+    await expect(rechnung).toContainText(/L-\d{4}/)       // verrechneter Lieferschein ist zu sehen
+  })
+
+  await test.step('Freigabe: Bestätigung, danach gilt die Rechnung als freigegeben', async () => {
+    await page.locator('tr', { hasText: kundenName }).getByRole('checkbox').check()
+    await page.getByRole('button', { name: /^Freigeben/ }).click()
+    const dialog = page.getByRole('dialog')
+    await expect(dialog).toContainText('2 Ausdrucke')
+    await dialog.getByRole('button', { name: 'Jetzt freigeben' }).click()
+    await expect(page.getByText(/1 Rechnung freigegeben/)).toBeVisible({ timeout: 10_000 })
+    await expect(page.locator('tr', { hasText: kundenName })).not.toContainText('Wartet auf Freigabe')
+    await expect(page.locator('tr', { hasText: kundenName })).toContainText('Freigegeben')
+  })
+
+  await test.step('Der Vertrag ist verrechnet und steht nicht mehr unter „Zur Verrechnung"', async () => {
+    await page.getByRole('button', { name: /Zur Verrechnung/ }).click()
     await expect(page.locator('tr', { hasText: kundenName })).toHaveCount(0)
   })
 })

@@ -117,6 +117,29 @@ export type MandantPinLaengeUpdate = z.infer<typeof MandantPinLaengeUpdateSchema
 // Mandant-Stammdaten (Firmeninfo + Belegtext)
 // ---------------------------------------------------------------------------
 
+/** IBAN ohne Leerzeichen, Großbuchstaben */
+export function normalisiereIban(iban: string): string {
+  return iban.replace(/\s+/g, '').toUpperCase()
+}
+
+/** Formatprüfung + Prüfziffer (Modulo 97) */
+export function istGueltigeIban(iban: string): boolean {
+  const i = normalisiereIban(iban)
+  if (!/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(i)) return false
+  const umgestellt = i.slice(4) + i.slice(0, 4)
+  let rest = 0
+  for (const ch of umgestellt) {
+    const wert = ch >= 'A' ? String(ch.charCodeAt(0) - 55) : ch
+    for (const ziffer of wert) rest = (rest * 10 + Number(ziffer)) % 97
+  }
+  return rest === 1
+}
+
+/** IBAN in Vierergruppen für die Anzeige */
+export function formatiereIban(iban: string): string {
+  return normalisiereIban(iban).replace(/(.{4})/g, '$1 ').trim()
+}
+
 export const MandantStammdatenSchema = z.object({
   firmenname:               z.string(),
   uid:                      z.string(),
@@ -124,6 +147,9 @@ export const MandantStammdatenSchema = z.object({
   belegKopftext:            z.string().nullable(),
   belegZeigeSteuertabelle:  z.boolean(),
   belegZeigeQr:             z.boolean(),
+  rechnungIban:             z.string().nullable(),
+  rechnungBic:              z.string().nullable(),
+  rechnungZahlungszielTage: z.number().int(),
 })
 export type MandantStammdaten = z.infer<typeof MandantStammdatenSchema>
 
@@ -133,6 +159,11 @@ export const MandantStammdatenUpdateSchema = z.object({
   belegKopftext:           z.string().trim().max(300).nullable().optional(),
   belegZeigeSteuertabelle: z.boolean().optional(),
   belegZeigeQr:            z.boolean().optional(),
+  rechnungIban:            z.string().trim().max(50).nullable().optional()
+    .refine(v => !v || istGueltigeIban(v), { message: 'Ungültige IBAN' }),
+  rechnungBic:             z.string().trim().toUpperCase().regex(/^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$/, 'Ungültiger BIC')
+    .nullable().optional(),
+  rechnungZahlungszielTage: z.number().int().min(0).max(365).optional(),
 })
 export type MandantStammdatenUpdate = z.infer<typeof MandantStammdatenUpdateSchema>
 

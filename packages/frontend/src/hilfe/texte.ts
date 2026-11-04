@@ -158,6 +158,7 @@ export const HILFE_THEMEN: HilfeThema[] = [
       'Ein Angebot erstellst du an der Kasse im Angebot-Modus.',
       'Hier siehst du die Angebote, kannst den Status ändern, „Gültig bis" prüfen und ein Angebot in einen Lieferschein übernehmen.',
       'Im Beleg-Archiv suchst du nach Nummer oder Kunde.',
+      'Eine Rechnung stornierst du im Beleg-Archiv (Reiter „Rechnungen" → Rechnung öffnen → „Rechnung stornieren"). Sie bleibt mit ihrer Nummer als „storniert" erhalten, ihre Lieferscheine sind wieder offen und lassen sich neu verrechnen. Ist schon eine Zahlung erfasst, geht das erst, nachdem du die Zahlung geklärt hast.',
     ],
   },
   {
@@ -171,8 +172,15 @@ export const HILFE_THEMEN: HilfeThema[] = [
       'Positionen hinzufügen: Artikel wählen oder frei eintippen. Standard ist „Wie Vertrag"; bei einzelnen Artikeln kannst du ein abweichendes Intervall einstellen — z. B. das RKSV-Zertifikat läuft ein Jahr und wird nur 1× jährlich im gewählten Monat verrechnet.',
       'Zum Monatswechsel erzeugt die Kassa automatisch je Vertrag einen Wartungslieferschein mit den Positionen, die in diesem Monat fällig sind. „Monatslauf" zeigt vorab, was erzeugt würde, und startet ihn auch von Hand.',
       'Reiter „Zur Verrechnung": Hier stehen die Verträge, deren Rechnungsblock abgeschlossen ist. „Sammelrechnung erstellen" fasst die offenen Wartungslieferscheine zu einer Rechnung zusammen.',
+      'Reiter „Rechnungen": Hier siehst du alle Wartungsrechnungen mit den verrechneten Lieferscheinen und ihrem Stand (wartet auf Freigabe, Mail gesendet, Ausdruck offen, storniert). Neue Rechnungen gehen NIE von selbst raus — erst nach deiner Freigabe: Rechnungen auswählen → „Freigeben".',
+      'Bei der Freigabe: Kunden mit „Rechnungen per E-Mail senden" (im Kunden unter Bearbeiten) bekommen das Mail sofort und du druckst 1 Exemplar für die Buchhaltung. Alle anderen werden gedruckt — 2 Exemplare: Kundenexemplar und Kopie für die Buchhaltung. Die Rechnungen für Mail-Kunden erstellt die Kassa automatisch, sobald sie fällig sind; sie warten dann hier auf deine Freigabe.',
+      'Fehler in einer verschickten Rechnung: „Stornieren". Der Kunde bekommt dann automatisch ein Mail mit der Stornorechnung (eigene Nummer ST-…); die Lieferscheine sind wieder offen. Die korrigierte Rechnung erstellst du neu und gibst sie frei — sie geht in einem eigenen Mail raus.',
     ],
     tipps: [
+      'Die A4-Sammelrechnung zeigt vor den Positionen jedes Lieferscheins „LS Nummer vom Datum", danach zwei Leerzeilen. Über mehrere Seiten steht unten jeder Seite die Zwischensumme und oben auf der nächsten der Übertrag.',
+      'Nach einem Storno verrechnet die Automatik die Lieferscheine nicht von selbst neu — du erstellst die neue Rechnung bewusst per Klick unter „Zur Verrechnung".',
+      'Damit IBAN, BIC und Zahlungsziel auf Rechnung und Mail stehen, trägst du sie unter Einstellungen → Rechnungslayout ein. Die Anschrift kommt aus dem Kopftext.',
+      'Die automatische Rechnung braucht den eingerichteten Mailversand (SMTP). Ohne ihn entstehen keine automatischen Rechnungen — das Erstellen per Klick bleibt möglich.',
       'Der Startmonat wird nie verrechnet — die erste Abrechnung ist der Monat nach dem Beginn. Der Endmonat wird immer verrechnet, auch wenn er nur angefangen ist.',
       'Ein beendeter Vertrag erzeugt keine neuen Lieferscheine; offene können weiter verrechnet werden.',
       'Der Beginn lässt sich nur ändern, solange noch kein Lieferschein erzeugt wurde.',

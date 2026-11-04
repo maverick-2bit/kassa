@@ -169,6 +169,7 @@ function NeuerKundeFormular({ onSubmit, onAbbrechen }: NeuerKundeFormularProps) 
       ...(uid.trim()      && { uid:      uid.trim()      }),
       land:        'AT',
       kreditAktiv: false,
+      rechnungPerMail: false,
     }
     const bezeichnungTeile: string[] = []
     if (firma.trim()) bezeichnungTeile.push(firma.trim())

@@ -11,6 +11,7 @@ import { Modal } from '../components/ui/Modal'
 import { SerialAuswahlModal, type SerialPos } from '../components/SerialAuswahlModal'
 import { AusgabeDialog } from '../components/AusgabeDialog'
 import { druckeAngebot, druckeLiferschein, druckeSammelrechnung } from '../lib/rechnung'
+import { ladeRechnungMandant } from '../lib/rechnung-mandant'
 import { sammelrechnungApi } from '../lib/api'
 
 // ---------------------------------------------------------------------------
@@ -319,7 +320,7 @@ function AngebotDetailModal({ angebot, onClose, onUpdate, updating }: AngebotDet
             case 'mail':    await api.email(id, ziel.empfaenger); break
             case 'a4':
               if (auth) {
-                const m = { firmenname: auth.mandant.firmenname, uid: auth.mandant.uid }
+                const m = await ladeRechnungMandant(auth.mandant)
                 if (istLs) druckeLiferschein(ausgabe.ls, m)
                 else       druckeSammelrechnung(ausgabe.sr, m)
               }

@@ -34,6 +34,7 @@ import type {
   OffenerPostenStatus,
   OffenerPostenZahlung,
   SammelrechnungResponse,
+  SammelrechnungFreigabeErgebnis,
   Kunde,
   KundeBelegVorschau,
   KundeInput,
@@ -1272,6 +1273,17 @@ export const sammelrechnungApi = {
       { kasseId, ...(druckerId ? { druckerId } : {}) }),
   email: (id: string, empfaenger: string): Promise<{ erfolgreich: boolean }> =>
     request<{ erfolgreich: boolean }>('POST', `/api/sammelrechnungen/${id}/email`, { empfaenger }),
+  /** Wartungsrechnungen freigeben: erst jetzt geht das Mail raus; der Ausdruck folgt am Bildschirm */
+  freigeben: (ids: string[]): Promise<SammelrechnungFreigabeErgebnis> =>
+    request<SammelrechnungFreigabeErgebnis>('POST', '/api/sammelrechnungen/freigeben', { ids }),
+  /** Rechnung stornieren: sie bleibt bestehen, ihre Lieferscheine sind wieder offen */
+  stornieren: (id: string, grund?: string): Promise<SammelrechnungResponse> =>
+    request<SammelrechnungResponse>('POST', `/api/sammelrechnungen/${id}/stornieren`, grund ? { grund } : {}),
+  /** Per Mail verschickte Rechnungen, die noch nicht für die Buchhaltung ausgedruckt wurden */
+  buchhaltung: (): Promise<SammelrechnungResponse[]> =>
+    request<SammelrechnungResponse[]>('GET', '/api/sammelrechnungen/buchhaltung'),
+  buchhaltungGedruckt: (ids: string[]): Promise<{ markiert: number }> =>
+    request<{ markiert: number }>('POST', '/api/sammelrechnungen/buchhaltung/gedruckt', { ids }),
 }
 
 export const wartungsvertragApi = {
@@ -1294,6 +1306,9 @@ export const wartungsvertragApi = {
     request<WartungRechnungFaellig[]>('GET', '/api/wartungsvertraege/faellige-rechnungen'),
   abrechnen: (id: string): Promise<SammelrechnungResponse> =>
     request<SammelrechnungResponse>('POST', `/api/wartungsvertraege/${id}/abrechnen`),
+  /** Alle Wartungsrechnungen mit verrechneten Lieferscheinen und Stand von Freigabe/Versand/Ausdruck */
+  rechnungen: (): Promise<SammelrechnungResponse[]> =>
+    request<SammelrechnungResponse[]>('GET', '/api/wartungsvertraege/rechnungen'),
 }
 
 export const gutscheinApi = {

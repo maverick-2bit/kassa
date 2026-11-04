@@ -47,6 +47,10 @@ export const mandanten = pgTable('mandanten', {
   belegZeigeSteuertabelle:  boolean('beleg_zeige_steuertabelle').notNull().default(true),
   /** QR-Code für digitalen Beleg am Ende drucken */
   belegZeigeQr:             boolean('beleg_zeige_qr').notNull().default(false),
+  /** Zahlungsangaben auf der A4-Rechnung / im Rechnungs-Mail */
+  rechnungIban:             varchar('rechnung_iban', { length: 34 }),
+  rechnungBic:              varchar('rechnung_bic',  { length: 11 }),
+  rechnungZahlungszielTage: integer('rechnung_zahlungsziel_tage').notNull().default(14),
 
   // Gebuchte / aktivierte Funktions-Module
   /** Gastro-Betrieb: Tische, Tisch-Tabs, grafischer Tischplan, Bonierdrucker */
@@ -356,6 +360,8 @@ export const kunden = pgTable('kunden', {
   aktiv:       boolean('aktiv').notNull().default(true),
   /** Kreditkunde: darf "Auf Kredit" buchen */
   kreditAktiv: boolean('kredit_aktiv').notNull().default(false),
+  /** Rechnungen gehen automatisch per E-Mail raus (braucht eine E-Mail-Adresse) */
+  rechnungPerMail: boolean('rechnung_per_mail').notNull().default(false),
   /** Freitext-Notizen zum Kunden (intern, erscheint nicht auf Belegen) */
   notizen:     text('notizen'),
   createdAt:   timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -416,6 +422,8 @@ export const lieferscheine = pgTable('lieferscheine', {
   wartungsvertragId: uuid('wartungsvertrag_id').references((): AnyPgColumn => wartungsvertraege.id),
   /** Abrechnungsmonat eines Wartungslieferscheins (YYYY-MM) */
   periode: varchar('periode', { length: 7 }),
+  /** Nach einem Storno der Rechnung: nicht automatisch neu verrechnen, nur auf Anweisung */
+  manuellVerrechnen: boolean('manuell_verrechnen').notNull().default(false),
 
   /** Laufende Lieferscheinnummer pro Mandant */
   nummer: integer('nummer').notNull(),
@@ -523,10 +531,29 @@ export const sammelrechnungen = pgTable('sammelrechnungen', {
   kundeId:       uuid('kunde_id').references(() => kunden.id, { onDelete: 'set null' }),
   kundeSnapshot: jsonb('kunde_snapshot'),
 
+  /** Entstanden aus einem Wartungsvertrag */
+  wartungsvertragId: uuid('wartungsvertrag_id').references((): AnyPgColumn => wartungsvertraege.id, { onDelete: 'set null' }),
+  /** Ziel des automatischen Mailversands (gesetzt = Versand vorgesehen); email_versandt_am = zugestellt */
+  emailEmpfaenger:  varchar('email_empfaenger', { length: 200 }),
+  emailVersandtAm:  timestamp('email_versandt_am', { withTimezone: true }),
+  emailFehler:      text('email_fehler'),
+  /** Ausdruck für die Buchhaltung erledigt (Sammelliste) */
+  buchhaltungGedrucktAm: timestamp('buchhaltung_gedruckt_am', { withTimezone: true }),
+  /** Freigabe durch den Betreiber: erst danach werden Wartungsrechnungen versendet/gedruckt (null = wartet) */
+  freigegebenAm: timestamp('freigegeben_am', { withTimezone: true }),
+  /** Storniert: die Rechnung bleibt (Nummer lückenlos), ihre Lieferscheine sind wieder offen */
+  storniertAm: timestamp('storniert_am', { withTimezone: true }),
+  stornoGrund: text('storno_grund'),
+  /** Nummer der Stornorechnung (eigene Reihe je Betrieb) + Mailversand an den Kunden */
+  stornoNummer:           integer('storno_nummer'),
+  stornoEmailVersandtAm:  timestamp('storno_email_versandt_am', { withTimezone: true }),
+  stornoEmailFehler:      text('storno_email_fehler'),
+
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
   nummerIdx: uniqueIndex('sammelrechnungen_mandant_nummer_idx').on(t.mandantId, t.nummer),
   kundeIdx:  index('sammelrechnungen_kunde_idx').on(t.mandantId, t.kundeId),
+  versandIdx: index('sammelrechnungen_versand_idx').on(t.mandantId, t.emailVersandtAm, t.buchhaltungGedrucktAm),
 }))
 
 export type Sammelrechnung    = typeof sammelrechnungen.$inferSelect
@@ -623,6 +650,8 @@ export const offenePosten = pgTable('offene_posten', {
 
   /** Optionaler Verweis auf den auslösenden Beleg */
   belegId: uuid('beleg_id').references(() => belege.id, { onDelete: 'set null' }),
+  /** Entstanden aus dieser Sammelrechnung (entfällt mit ihrem Storno) */
+  sammelrechnungId: uuid('sammelrechnung_id').references((): AnyPgColumn => sammelrechnungen.id, { onDelete: 'set null' }),
 
   /** Ursprungsbetrag in Cent */
   betragCent:  integer('betrag_cent').notNull(),

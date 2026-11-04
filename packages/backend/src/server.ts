@@ -232,7 +232,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     await api.register(kundeRoute,          { db:   deps.db })
     await api.register(angebotRoute,        { db:   deps.db })
     await api.register(lieferscheinRoute,    { db: deps.db, config: deps.config })
-    await api.register(wartungsvertragRoute, { db: deps.db })
+    await api.register(wartungsvertragRoute, { db: deps.db, config: deps.config })
     await api.register(offenerPostenRoute,   { db:   deps.db })
     await api.register(gutscheinRoute,          { db: deps.db })
     await api.register(lieferbestellungRoute,   { db: deps.db })

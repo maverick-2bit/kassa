@@ -2,8 +2,8 @@
  * Beleg-Archiv — Verlauf des Zweigs Angebot → Lieferschein → Rechnung.
  *
  * Drei Reiter mit je einer Liste, Detailansicht und dem einheitlichen
- * Ausgabe-Dialog zum Nachdrucken/Versenden. Bewusst read-only: hier wird nichts
- * erzeugt oder geändert — das passiert auf der Angebote-Seite bzw. an der Kasse.
+ * Ausgabe-Dialog zum Nachdrucken/Versenden. Erzeugt wird hier nichts — das passiert auf der
+ * Angebote-Seite bzw. an der Kasse. Einzige Änderung: eine Rechnung lässt sich stornieren.
  */
 
 import { useMemo, useState } from 'react'
@@ -18,7 +18,9 @@ import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
 import { Modal } from '../components/ui/Modal'
 import { AusgabeDialog } from '../components/AusgabeDialog'
-import { druckeAngebot, druckeLiferschein, druckeSammelrechnung } from '../lib/rechnung'
+import { druckeAngebot, druckeLiferschein, druckeSammelrechnung, druckeSammelrechnungAuftraege } from '../lib/rechnung'
+import { SammelrechnungStornoDialog } from '../components/SammelrechnungStornoDialog'
+import { ladeRechnungMandant } from '../lib/rechnung-mandant'
 
 type Reiter = 'angebote' | 'lieferscheine' | 'rechnungen'
 
@@ -104,8 +106,14 @@ export function BelegArchivPage() {
         {LIEFERSCHEIN_STATUS_LABELS[e.ls.status as LiferscheinStatus]}
       </span>
     }
+    if (e.sr.storniertAm) {
+      return <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">storniert</span>
+    }
     return <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700">abgerechnet</span>
   }
+
+  // Storno einer Sammelrechnung (Dialog mit Hinweis auf Stornorechnung/Mail)
+  const [stornoZiel, setStornoZiel] = useState<SammelrechnungResponse | null>(null)
 
   return (
     <div className="mx-auto max-w-5xl space-y-4 p-4">
@@ -238,7 +246,31 @@ export function BelegArchivPage() {
                 {detail.sr.lieferscheine.map(ls => `L-${String(ls.nummer).padStart(4, '0')}`).join(', ')}
               </p>
             )}
-            <div className="flex justify-end pt-1">
+            {detail.art === 'rechnung' && detail.sr.storniertAm && (
+              <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                Storniert am {new Date(detail.sr.storniertAm).toLocaleDateString('de-AT')}
+                {detail.sr.stornoGrund ? ` — ${detail.sr.stornoGrund}` : ''}. Die Lieferscheine sind wieder offen.
+              </p>
+            )}
+            <div className="flex justify-end gap-2 pt-1">
+              {detail.art === 'rechnung' && !detail.sr.storniertAm && (
+                <button
+                  type="button"
+                  onClick={() => setStornoZiel(detail.sr)}
+                  className="rounded-lg border border-red-300 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+                >
+                  Rechnung stornieren
+                </button>
+              )}
+              {detail.art === 'rechnung' && detail.sr.storniertAm && auth && (
+                <button
+                  type="button"
+                  onClick={async () => druckeSammelrechnungAuftraege([{ sr: detail.sr, storno: true, exemplar: 'Stornorechnung' }], await ladeRechnungMandant(auth.mandant))}
+                  className="rounded-lg border border-red-300 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+                >
+                  Stornorechnung drucken
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => { setAusgabe(detail); setDetail(null) }}
@@ -250,6 +282,8 @@ export function BelegArchivPage() {
           </div>
         )}
       </Modal>
+
+      <SammelrechnungStornoDialog rechnung={stornoZiel} onClose={() => setStornoZiel(null)} onFertig={() => setDetail(null)} />
 
       {/* Einheitlicher Ausgabe-Dialog (nachdrucken / versenden) */}
       <AusgabeDialog
@@ -281,7 +315,7 @@ export function BelegArchivPage() {
             case 'mail': await api.email(id, ziel.empfaenger); break
             case 'a4':
               if (auth) {
-                const m = { firmenname: auth.mandant.firmenname, uid: auth.mandant.uid }
+                const m = await ladeRechnungMandant(auth.mandant)
                 if (istLs) druckeLiferschein(ausgabe.ls, m)
                 else       druckeSammelrechnung(ausgabe.sr, m)
               }

@@ -484,7 +484,7 @@ export async function finalisiereShopBestellung(deps: TicketShopDeps, id: string
         ...(r ? {
           neuerKunde: {
             firma: r.firma, strasse: r.strasse, plz: r.plz, ort: r.ort, land: r.land,
-            ...(r.uid ? { uid: r.uid } : {}), email: claimed.email, kreditAktiv: false,
+            ...(r.uid ? { uid: r.uid } : {}), email: claimed.email, kreditAktiv: false, rechnungPerMail: false,
           },
         } : {}),
       }, deps.belegDeps)

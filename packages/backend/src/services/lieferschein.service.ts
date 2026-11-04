@@ -12,7 +12,9 @@ import type {
 import type { Db } from '../db/client.js'
 import {
   angebote,
+  artikel,
   lieferscheine,
+  offenePosten,
   sammelrechnungen,
   seriennummern,
   wartungsvertraege,
@@ -66,6 +68,7 @@ const lsSpalten = {
   wartungsvertragId:     lieferscheine.wartungsvertragId,
   wartungsvertragNummer: wartungsvertraege.nummer,
   periode:               lieferscheine.periode,
+  manuellVerrechnen:     lieferscheine.manuellVerrechnen,
   nummer:                lieferscheine.nummer,
   datum:                 lieferscheine.datum,
   status:                lieferscheine.status,
@@ -166,6 +169,22 @@ export async function erstelleLiferschein(
       pos.seriennummern = z.seriennummern
     }
 
+    // Führt der Artikel Seriennummern, MUSS der Lieferschein sie tragen (Aufdruck auf Lieferschein und Rechnung)
+    const artikelIds = [...new Set(positionen.map(p => p.artikelId).filter((id): id is string => !!id))]
+    if (artikelIds.length > 0) {
+      const serialArtikel = await tx
+        .select({ id: artikel.id })
+        .from(artikel)
+        .where(and(eq(artikel.mandantId, mandantId), inArray(artikel.id, artikelIds), eq(artikel.seriennummernAktiv, true)))
+      const serialIds = new Set(serialArtikel.map(a => a.id))
+      for (const pos of positionen) {
+        if (pos.artikelId && serialIds.has(pos.artikelId) && !(pos.seriennummern && pos.seriennummern.length > 0)) {
+          throw new LiferscheinError(400,
+            `Für „${pos.bezeichnung}" müssen Seriennummern gewählt werden — bitte den Lieferschein auf der Seite „Angebote" erstellen`)
+        }
+      }
+    }
+
     // Nächste Lieferscheinnummer
     const numRows = await tx
       .select({ n: sql<number>`COALESCE(MAX(${lieferscheine.nummer}), 0) + 1` })
@@ -230,10 +249,18 @@ export async function aktualisiereLiferschein(
 // Sammelrechnung
 // ---------------------------------------------------------------------------
 
+export interface SammelrechnungZusatz {
+  /** Aus diesem Wartungsvertrag entstanden */
+  wartungsvertragId?: string
+  /** Automatischer Mailversand an diese Adresse vorgesehen */
+  emailEmpfaenger?: string
+}
+
 export async function erstelleSammelrechnung(
   db:        Db,
   mandantId: string,
   input:     SammelrechnungInput,
+  zusatz:    SammelrechnungZusatz = {},
 ): Promise<SammelrechnungResponse> {
   if (input.lieferscheinIds.length === 0)
     throw new LiferscheinError(400, 'Mindestens ein Lieferschein erforderlich')
@@ -265,38 +292,43 @@ export async function erstelleSammelrechnung(
   const kundeId      = ersterRow.kundeId      ?? undefined
   const kundeSnapshot = ersterRow.kundeSnapshot ?? undefined
 
-  // Nächste Sammelrechnungsnummer
-  const numRows = await db
-    .select({ n: sql<number>`COALESCE(MAX(${sammelrechnungen.nummer}), 0) + 1` })
-    .from(sammelrechnungen)
-    .where(eq(sammelrechnungen.mandantId, mandantId))
-  const nummer = numRows[0]?.n ?? 1
-
-  // Sammelrechnung speichern
-  const [srRow] = await db
-    .insert(sammelrechnungen)
-    .values({
-      mandantId,
-      nummer,
-      lieferscheinIds:  input.lieferscheinIds,
-      gesamtbetragCent,
-      ...(kundeId       ? { kundeId }        : {}),
-      ...(kundeSnapshot ? { kundeSnapshot }  : {}),
-    })
-    .returning()
-
-  if (!srRow) throw new LiferscheinError(500, 'Sammelrechnung konnte nicht erstellt werden')
-
-  // Lieferscheine als 'abgeschlossen' markieren
-  await db
-    .update(lieferscheine)
-    .set({ status: 'abgeschlossen', updatedAt: new Date() })
-    .where(
-      and(
+  // Atomar: Lieferscheine „einlösen" (offen → abgeschlossen) und Rechnung anlegen. Greift ein
+  // zweiter Aufruf (Doppelklick, paralleler Lauf) zugleich zu, bekommt nur einer die Lieferscheine.
+  const srRow = await db.transaction(async (tx) => {
+    const eingeloest = await tx
+      .update(lieferscheine)
+      .set({ status: 'abgeschlossen', updatedAt: new Date() })
+      .where(and(
         eq(lieferscheine.mandantId, mandantId),
         inArray(lieferscheine.id, input.lieferscheinIds),
-      ),
-    )
+        eq(lieferscheine.status, 'offen'),
+      ))
+      .returning({ id: lieferscheine.id })
+    if (eingeloest.length !== rows.length)
+      throw new LiferscheinError(409, 'Die Lieferscheine wurden inzwischen schon verrechnet')
+
+    const numRows = await tx
+      .select({ n: sql<number>`COALESCE(MAX(${sammelrechnungen.nummer}), 0) + 1` })
+      .from(sammelrechnungen)
+      .where(eq(sammelrechnungen.mandantId, mandantId))
+    const nummer = numRows[0]?.n ?? 1
+
+    const [neu] = await tx
+      .insert(sammelrechnungen)
+      .values({
+        mandantId,
+        nummer,
+        lieferscheinIds:  input.lieferscheinIds,
+        gesamtbetragCent,
+        ...(kundeId       ? { kundeId }        : {}),
+        ...(kundeSnapshot ? { kundeSnapshot }  : {}),
+        ...(zusatz.wartungsvertragId ? { wartungsvertragId: zusatz.wartungsvertragId } : {}),
+        ...(zusatz.emailEmpfaenger   ? { emailEmpfaenger:   zusatz.emailEmpfaenger }   : {}),
+      })
+      .returning()
+    if (!neu) throw new LiferscheinError(500, 'Sammelrechnung konnte nicht erstellt werden')
+    return neu
+  })
 
   // Sortierte DTOs zurückgeben
   const sortedRows = [...rows].sort((a, b) => a.nummer - b.nummer)
@@ -306,12 +338,13 @@ export async function erstelleSammelrechnung(
     nummer:           srRow.nummer,
     datum:            srRow.datum.toISOString(),
     ...(kundeSnapshot ? { kunde: kundeSnapshot as KundeSnapshot } : {}),
-    lieferscheine:    sortedRows.map(toDto),
+    lieferscheine:    sortedRows.map(l => toDto({ ...l, status: 'abgeschlossen' })),
     gesamtbetragCent,
+    ...(srRow.wartungsvertragId && { wartungsvertragId: srRow.wartungsvertragId }),
+    ...(srRow.emailEmpfaenger   && { emailEmpfaenger:   srRow.emailEmpfaenger }),
     createdAt:        srRow.createdAt.toISOString(),
   }
 }
-
 // ---------------------------------------------------------------------------
 // Sammelrechnungen lesen (Archiv + Ausgabe)
 // ---------------------------------------------------------------------------
@@ -333,8 +366,61 @@ async function srZuDto(
     ...(row.kundeSnapshot ? { kunde: row.kundeSnapshot as KundeSnapshot } : {}),
     lieferscheine:    [...lsRows].sort((a, b) => a.nummer - b.nummer).map(toDto),
     gesamtbetragCent: row.gesamtbetragCent,
+    ...(row.wartungsvertragId && { wartungsvertragId: row.wartungsvertragId }),
+    ...(row.emailEmpfaenger   && { emailEmpfaenger:   row.emailEmpfaenger }),
+    ...(row.emailVersandtAm   && { emailVersandtAm:   row.emailVersandtAm.toISOString() }),
+    ...(row.emailFehler       && { emailFehler:       row.emailFehler }),
+    ...(row.buchhaltungGedrucktAm && { buchhaltungGedrucktAm: row.buchhaltungGedrucktAm.toISOString() }),
+    ...(row.freigegebenAm && { freigegebenAm: row.freigegebenAm.toISOString() }),
+    ...(row.storniertAm && { storniertAm: row.storniertAm.toISOString() }),
+    ...(row.stornoGrund && { stornoGrund: row.stornoGrund }),
+    ...(row.stornoNummer != null && { stornoNummer: row.stornoNummer }),
+    ...(row.stornoEmailVersandtAm && { stornoEmailVersandtAm: row.stornoEmailVersandtAm.toISOString() }),
+    ...(row.stornoEmailFehler && { stornoEmailFehler: row.stornoEmailFehler }),
     createdAt:        row.createdAt.toISOString(),
   }
+}
+
+/**
+ * Storniert eine Sammelrechnung: Die Rechnung bleibt mit ihrer Nummer erhalten (als storniert gekennzeichnet),
+ * ihre Lieferscheine werden wieder offen und sind erneut verrechenbar, der zugehörige offene Posten entfällt.
+ * Mit erfasster Zahlung ist kein Storno möglich — die Zahlung muss zuerst geklärt werden.
+ */
+export async function storniereSammelrechnung(
+  db:        Db,
+  mandantId: string,
+  id:        string,
+  grund?:    string,
+): Promise<SammelrechnungResponse> {
+  await db.transaction(async (tx) => {
+    const [sr] = await tx.select().from(sammelrechnungen)
+      .where(and(eq(sammelrechnungen.id, id), eq(sammelrechnungen.mandantId, mandantId)))
+      .for('update').limit(1)
+    if (!sr) throw new LiferscheinError(404, 'Sammelrechnung nicht gefunden')
+    if (sr.storniertAm) throw new LiferscheinError(409, 'Diese Rechnung ist bereits storniert')
+
+    const [op] = await tx.select().from(offenePosten).where(eq(offenePosten.sammelrechnungId, id)).limit(1)
+    if (op && op.bezahltCent > 0) {
+      throw new LiferscheinError(409, 'Zu dieser Rechnung wurde schon eine Zahlung erfasst — bitte zuerst die Zahlung klären')
+    }
+    if (op) await tx.delete(offenePosten).where(eq(offenePosten.id, op.id))
+
+    // Die Stornorechnung bekommt ihre eigene, lückenlose Nummer
+    const [n] = await tx
+      .select({ n: sql<number>`COALESCE(MAX(${sammelrechnungen.stornoNummer}), 0) + 1` })
+      .from(sammelrechnungen).where(eq(sammelrechnungen.mandantId, mandantId))
+    await tx.update(sammelrechnungen)
+      .set({ storniertAm: new Date(), stornoGrund: grund || null, stornoNummer: n?.n ?? 1 })
+      .where(eq(sammelrechnungen.id, id))
+
+    const ids = (sr.lieferscheinIds as string[]) ?? []
+    if (ids.length > 0) {
+      await tx.update(lieferscheine)
+        .set({ status: 'offen', manuellVerrechnen: true, updatedAt: new Date() })
+        .where(and(eq(lieferscheine.mandantId, mandantId), inArray(lieferscheine.id, ids)))
+    }
+  })
+  return holeSammelrechnung(db, id, mandantId)
 }
 
 export async function listeSammelrechnungen(

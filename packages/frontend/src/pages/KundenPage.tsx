@@ -9,6 +9,7 @@ import { Input } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
 import { formatPreis, formatDatum } from '../lib/format'
 import { druckeLiferschein, druckeSammelrechnung } from '../lib/rechnung'
+import { ladeRechnungMandant } from '../lib/rechnung-mandant'
 
 // ---------------------------------------------------------------------------
 // Hauptseite
@@ -509,7 +510,7 @@ function LiferscheineTab({ kunde }: { kunde: Kunde }) {
       qc.invalidateQueries({ queryKey: ['lieferscheine', kunde.id] })
       setAusgewaehlt(new Set())
       setSrFehler(null)
-      if (auth) druckeSammelrechnung(sr, { firmenname: auth.mandant.firmenname, uid: auth.mandant.uid })
+      if (auth) void ladeRechnungMandant(auth.mandant).then(m => druckeSammelrechnung(sr, m))
     },
     onError: (err) => setSrFehler(err instanceof Error ? err.message : String(err)),
   })
@@ -892,12 +893,17 @@ function KundeFormular({ initial, onSubmit, onAbbrechen, loading, fehler }: Kund
   const [land,        setLand]        = useState(initial?.land        ?? 'AT')
   const [uid,         setUid]         = useState(initial?.uid         ?? '')
   const [kreditAktiv, setKreditAktiv] = useState(initial?.kreditAktiv ?? false)
+  const [rechnungPerMail, setRechnungPerMail] = useState(initial?.rechnungPerMail ?? false)
   const [notizen,     setNotizen]     = useState(initial?.notizen     ?? '')
   const [lokal,       setLokal]       = useState<string | null>(null)
 
   const submit = () => {
     if (!firma.trim() && !nachname.trim()) {
       setLokal('Firma oder Nachname ist erforderlich')
+      return
+    }
+    if (rechnungPerMail && !email.trim()) {
+      setLokal('Für den Rechnungsversand per E-Mail ist eine E-Mail-Adresse nötig')
       return
     }
     setLokal(null)
@@ -913,6 +919,7 @@ function KundeFormular({ initial, onSubmit, onAbbrechen, loading, fehler }: Kund
       land: land.trim() || 'AT',
       ...(uid.trim()      && { uid:      uid.trim()      }),
       kreditAktiv,
+      rechnungPerMail,
       notizen: notizen.trim() || null,
     })
   }
@@ -979,6 +986,24 @@ function KundeFormular({ initial, onSubmit, onAbbrechen, loading, fehler }: Kund
           </span>
           <p className="text-xs text-ink-muted mt-0.5">
             Erlaubt das Buchen auf Kredit (Offene Posten) an der Kasse — nur für Benutzer mit Berechtigung „Kreditverkauf".
+          </p>
+        </label>
+      </div>
+
+      {/* Rechnungsversand */}
+      <div className={`flex items-start gap-3 rounded-lg border p-3 ${rechnungPerMail ? 'border-brand-200 bg-brand-50' : 'border-line bg-panel-2'}`}>
+        <input
+          type="checkbox"
+          id="rechnungPerMail"
+          checked={rechnungPerMail}
+          onChange={e => setRechnungPerMail(e.target.checked)}
+          className="mt-0.5 rounded"
+        />
+        <label htmlFor="rechnungPerMail" className="cursor-pointer select-none">
+          <span className="text-sm font-semibold text-ink">Rechnungen per E-Mail senden</span>
+          <p className="text-xs text-ink-muted mt-0.5">
+            Wartungsrechnungen gehen automatisch an die E-Mail-Adresse dieses Kunden. Eine Kopie landet in der Sammelliste
+            für die Buchhaltung (Seite „Wartungsverträge").
           </p>
         </label>
       </div>

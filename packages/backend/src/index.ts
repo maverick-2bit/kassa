@@ -62,7 +62,7 @@ async function main(): Promise<void> {
   const stopDbCron   = starteDbBackupCron(db, config.DATABASE_URL, config.DB_BACKUP_DIR, config.DB_BACKUP_RETENTION, server.log)
   const stopAutoCron = starteAutoAbschlussCron(db, config, server.log)
   const stopSeeSonde = starteSeeSondeCron(db, belegDeps, server.log)
-  const stopWartungCron = starteWartungCron(db, server.log)
+  const stopWartungCron = starteWartungCron(db, config, server.log)
   const stopKeepAlive = starteDruckerKeepAliveCron(db, server.log)
   const stopTicketshop = starteTicketshopCron(db, {
     db,

@@ -161,4 +161,73 @@ describe('Seriennummern beim Verkauf (Integration, echtes PostgreSQL)', () => {
     // Handy-Pool unberührt
     expect((await pool(handyId)).find(s => s.seriennummer === 'SN-H1')!.status).toBe('verfuegbar')
   })
+
+  describe('Angebot → Lieferschein → Sammelrechnung', () => {
+    let angebotId: string
+
+    beforeAll(async () => {
+      // Wareneingang: weitere Seriennummern in den Pool
+      const neu = await srv.fastify.inject({
+        method: 'POST', url: '/api/seriennummern', headers: auth(),
+        payload: { artikelId: laptopId, seriennummern: ['SN-L1', 'SN-L2', 'SN-L3'] },
+      })
+      expect(neu.statusCode).toBe(201)
+
+      const angebot = await srv.fastify.inject({
+        method: 'POST', url: '/api/angebote', headers: auth(),
+        payload: {
+          kasseId,
+          positionen: [
+            { bezeichnung: 'Laptop', menge: 2, einzelpreisBreutto: 50000, mwstSatz: 'normal', artikelId: laptopId },
+            { bezeichnung: 'Aufbau vor Ort', menge: 1, einzelpreisBreutto: 8000, mwstSatz: 'normal' },
+          ],
+        },
+      })
+      expect(angebot.statusCode, angebot.body).toBe(201)
+      angebotId = angebot.json().id
+    })
+
+    const lieferschein = (serialZuweisungen?: unknown) => srv.fastify.inject({
+      method: 'POST', url: '/api/lieferscheine', headers: auth(),
+      payload: { angebotId, ...(serialZuweisungen ? { serialZuweisungen } : {}) },
+    })
+
+    it('Ein serialisierter Artikel braucht Seriennummern auf dem Lieferschein (400), nichts wird verbraucht', async () => {
+      const res = await lieferschein()
+      expect(res.statusCode).toBe(400)
+      expect(res.json().fehler).toContain('Seriennummern')
+      expect((await pool(laptopId)).filter(s => s.seriennummer.startsWith('SN-L')).every(s => s.status === 'verfuegbar')).toBe(true)
+    })
+
+    it('Falsche Anzahl und fremde Seriennummern werden abgewiesen', async () => {
+      const zuWenig = await lieferschein([{ positionIndex: 0, seriennummern: ['SN-L1'] }])
+      expect(zuWenig.statusCode).toBe(400)
+      const fremd = await lieferschein([{ positionIndex: 0, seriennummern: ['SN-L1', 'SN-H1'] }])
+      expect(fremd.statusCode).toBe(409)
+    })
+
+    it('Gewählte Seriennummern stehen auf dem Lieferschein, sind im Pool verkauft und wandern auf die Rechnung', async () => {
+      const res = await lieferschein([{ positionIndex: 0, seriennummern: ['SN-L1', 'SN-L3'] }])
+      expect(res.statusCode, res.body).toBe(201)
+      const ls = res.json() as { id: string; positionen: Array<{ bezeichnung: string; seriennummern?: string[] }> }
+      expect(ls.positionen[0]!.seriennummern).toEqual(['SN-L1', 'SN-L3'])
+      expect(ls.positionen[1]!.seriennummern).toBeUndefined()   // Dienstleistung: keine Seriennummer
+
+      const p = await pool(laptopId)
+      expect(p.find(s => s.seriennummer === 'SN-L1')!.status).toBe('verkauft')
+      expect(p.find(s => s.seriennummer === 'SN-L3')!.status).toBe('verkauft')
+      expect(p.find(s => s.seriennummer === 'SN-L2')!.status).toBe('verfuegbar')   // bleibt zur Auswahl
+
+      // Dieselbe Seriennummer lässt sich nicht noch einmal ausliefern
+      const nochmal = await lieferschein([{ positionIndex: 0, seriennummern: ['SN-L1', 'SN-L2'] }])
+      expect(nochmal.statusCode).toBe(409)
+
+      const sr = await srv.fastify.inject({
+        method: 'POST', url: '/api/sammelrechnungen', headers: auth(), payload: { lieferscheinIds: [ls.id] },
+      })
+      expect(sr.statusCode, sr.body).toBe(201)
+      const rechnungPos = (sr.json().lieferscheine as Array<{ positionen: Array<{ seriennummern?: string[] }> }>)[0]!.positionen
+      expect(rechnungPos[0]!.seriennummern).toEqual(['SN-L1', 'SN-L3'])
+    })
+  })
 })
