@@ -12,6 +12,7 @@ import { starteDbBackupCron }      from './services/db-backup.cron.js'
 import { starteAutoAbschlussCron } from './services/auto-abschluss.cron.js'
 import { starteSeeSondeCron } from './services/see-sonde.cron.js'
 import { starteWartungCron } from './services/wartung.cron.js'
+import { starteMelderCron } from './services/portal-melder.cron.js'
 import { starteDruckerKeepAliveCron } from './services/drucker-keepalive.cron.js'
 import { starteTicketshopCron } from './services/ticketshop.cron.js'
 import { starteTicketDatenschutzCron } from './services/ticket-datenschutz.cron.js'
@@ -63,6 +64,7 @@ async function main(): Promise<void> {
   const stopAutoCron = starteAutoAbschlussCron(db, config, server.log)
   const stopSeeSonde = starteSeeSondeCron(db, belegDeps, server.log)
   const stopWartungCron = starteWartungCron(db, config, server.log)
+  const stopMelder = starteMelderCron(db, config, server.log)
   const stopKeepAlive = starteDruckerKeepAliveCron(db, server.log)
   const stopTicketshop = starteTicketshopCron(db, {
     db,
@@ -101,6 +103,7 @@ async function main(): Promise<void> {
       stopAutoCron()
       stopSeeSonde()
       stopWartungCron()
+      stopMelder()
       stopKeepAlive()
       stopTicketshop()
       stopTicketDatenschutz()
