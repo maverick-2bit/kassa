@@ -24,8 +24,8 @@ import { Field } from '../components/ui/Field'
 import { Input } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
 import { Select } from '../components/ui/Select'
-import { AusgabeDialog } from '../components/AusgabeDialog'
-import { druckeSammelrechnung, druckeSammelrechnungen } from '../lib/rechnung'
+import { druckeSammelrechnungAuftraege, exemplareFuer } from '../lib/rechnung'
+import { SammelrechnungStornoDialog } from '../components/SammelrechnungStornoDialog'
 import { ladeRechnungMandant } from '../lib/rechnung-mandant'
 
 const INTERVALLE = Object.keys(WARTUNGS_INTERVALL_LABELS) as WartungsIntervall[]
@@ -367,97 +367,279 @@ function LaufDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
 // Seite
 // ---------------------------------------------------------------------------
 
-type Reiter = 'vertraege' | 'verrechnung' | 'buchhaltung'
+type Reiter = 'vertraege' | 'verrechnung' | 'rechnungen'
 
-/** Per Mail verschickte Rechnungen, die die Buchhaltung noch als A4-Ausdruck bekommen soll */
-function BuchhaltungListe() {
+const rechnungNr = (n: number) => `SR-${String(n).padStart(4, '0')}`
+
+type Ton = 'warn' | 'ok' | 'fehler' | 'neutral'
+
+/** Stand einer Wartungsrechnung in Worten: Freigabe → Versand/Mail → Ausdruck → Storno */
+function rechnungStatus(r: SammelrechnungResponse): { text: string; ton: Ton } {
+  if (r.storniertAm) {
+    const mail = r.stornoEmailVersandtAm ? ' · Stornorechnung per Mail gesendet'
+      : r.stornoEmailFehler ? ' · Storno-Mail fehlgeschlagen (wird wiederholt)' : ''
+    return { text: `Storniert${mail}`, ton: 'fehler' }
+  }
+  if (!r.freigegebenAm) return { text: 'Wartet auf Freigabe', ton: 'warn' }
+  const ausdruck = r.buchhaltungGedrucktAm ? '' : ' · Ausdruck offen'
+  if (r.emailEmpfaenger) {
+    if (r.emailVersandtAm) return { text: `Mail gesendet${ausdruck}`, ton: r.buchhaltungGedrucktAm ? 'ok' : 'warn' }
+    return { text: `Mail noch nicht zugestellt${r.emailFehler ? ' (wird wiederholt)' : ''}${ausdruck}`, ton: 'fehler' }
+  }
+  return { text: `Freigegeben${ausdruck}`, ton: r.buchhaltungGedrucktAm ? 'ok' : 'warn' }
+}
+
+const TON_KLASSE: Record<Ton, string> = {
+  warn:    'bg-amber-100 text-amber-800',
+  ok:      'bg-emerald-100 text-emerald-700',
+  fehler:  'bg-red-100 text-red-700',
+  neutral: 'bg-panel-2 text-ink-muted',
+}
+
+/**
+ * Wartungsrechnungen mit ihren verrechneten Lieferscheinen. Neue Rechnungen warten hier auf die Freigabe: erst danach
+ * geht das Mail raus (Kunden mit Mailversand) bzw. wird gedruckt — Mail-Kunden einmal für die Buchhaltung, alle
+ * anderen zweimal (Kundenexemplar + Kopie Buchhaltung).
+ */
+function RechnungenListe({ hinweis }: { hinweis: string | null }) {
   const qc   = useQueryClient()
   const auth = getAuth()
-  const liste = useQuery({ queryKey: ['wartungsvertraege', 'buchhaltung'], queryFn: () => sammelrechnungApi.buchhaltung() })
-  const rechnungen = liste.data ?? []
+  const liste = useQuery({ queryKey: ['wartungsvertraege', 'rechnungen'], queryFn: () => wartungsvertragApi.rechnungen() })
+  const [filter, setFilter]       = useState<'alle' | 'freigabe' | 'ausdruck'>('alle')
+  const [auswahl, setAuswahl]     = useState<Set<string>>(new Set())
+  const [bestaetigen, setBestaetigen] = useState(false)
+  const [stornoZiel, setStornoZiel]   = useState<SammelrechnungResponse | null>(null)
+  const [ergebnis, setErgebnis]   = useState<string[] | null>(null)
 
-  const drucken = useMutation({
-    mutationFn: async () => {
-      if (!auth) throw new Error('Nicht angemeldet')
-      druckeSammelrechnungen(rechnungen, await ladeRechnungMandant(auth.mandant))
-      return sammelrechnungApi.buchhaltungGedruckt(rechnungen.map(r => r.id))
-    },
-    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['wartungsvertraege', 'buchhaltung'] }) },
+  const alle = liste.data ?? []
+  const wartend = alle.filter(r => !r.freigegebenAm && !r.storniertAm)
+  const ausdruckOffen = alle.filter(r => r.freigegebenAm && !r.buchhaltungGedrucktAm && !r.storniertAm)
+  const sichtbar = filter === 'freigabe' ? wartend : filter === 'ausdruck' ? ausdruckOffen : alle
+  const gewaehlt = wartend.filter(r => auswahl.has(r.id))
+
+  const umschalten = (id: string) => setAuswahl(alt => {
+    const neu = new Set(alt)
+    if (neu.has(id)) neu.delete(id); else neu.add(id)
+    return neu
   })
 
+  const freigeben = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const erg = await sammelrechnungApi.freigeben(ids)
+      // Ausdruck direkt nach der Freigabe: Mail-Kunden 1×, alle anderen 2× (Kunde + Buchhaltung)
+      if (auth && erg.freigegeben.length > 0) {
+        druckeSammelrechnungAuftraege(erg.freigegeben.flatMap(exemplareFuer), await ladeRechnungMandant(auth.mandant))
+        await sammelrechnungApi.buchhaltungGedruckt(erg.freigegeben.map(r => r.id))
+      }
+      return erg
+    },
+    onSuccess: (erg) => {
+      const zeilen: string[] = []
+      if (erg.freigegeben.length > 0) zeilen.push(`${erg.freigegeben.length} Rechnung${erg.freigegeben.length === 1 ? '' : 'en'} freigegeben.`)
+      for (const r of erg.freigegeben) {
+        if (r.emailEmpfaenger && !r.emailVersandtAm) {
+          zeilen.push(`${rechnungNr(r.nummer)}: Das Mail an ${r.emailEmpfaenger} ist nicht rausgegangen${r.emailFehler ? ` (${r.emailFehler})` : ''} — die Kassa versucht es automatisch erneut.`)
+        }
+      }
+      for (const a of erg.abgelehnt) zeilen.push(`${a.nummer ? rechnungNr(a.nummer) : 'Rechnung'}: ${a.grund}`)
+      setErgebnis(zeilen)
+      setAuswahl(new Set())
+      setBestaetigen(false)
+      void qc.invalidateQueries({ queryKey: ['wartungsvertraege'] })
+    },
+  })
+
+  const nachdrucken = async (r: SammelrechnungResponse, markieren: boolean) => {
+    if (!auth) return
+    druckeSammelrechnungAuftraege(exemplareFuer(r), await ladeRechnungMandant(auth.mandant))
+    if (markieren) {
+      await sammelrechnungApi.buchhaltungGedruckt([r.id])
+      void qc.invalidateQueries({ queryKey: ['wartungsvertraege'] })
+    }
+  }
+
+  const mailAnzahl  = gewaehlt.filter(r => r.emailEmpfaenger).length
+  const druckAnzahl = gewaehlt.length - mailAnzahl
+
+  const chip = (key: typeof filter, label: string) => (
+    <button
+      key={key} type="button" onClick={() => setFilter(key)}
+      className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+        filter === key ? 'border-brand-600 bg-brand-600 text-white' : 'border-line-strong bg-panel text-ink-muted hover:border-brand-400'
+      }`}
+    >
+      {label}
+    </button>
+  )
+
   return (
-    <div className="overflow-hidden rounded-lg border border-line bg-panel shadow-sm">
-      {liste.isLoading ? (
-        <p className="py-12 text-center text-sm text-ink-subtle">Wird geladen…</p>
-      ) : rechnungen.length === 0 ? (
-        <div className="py-16 text-center text-ink-subtle">
-          <p className="mb-3 text-4xl">🗂️</p>
-          <p className="text-sm font-medium">Nichts auszudrucken</p>
-          <p className="mt-1 text-xs">Rechnungen, die per Mail verschickt wurden, sammeln sich hier für die Buchhaltung.</p>
+    <div className="space-y-3">
+      {hinweis && <p className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800" role="status">{hinweis}</p>}
+      {ergebnis && (
+        <div className="rounded-md border border-line bg-panel px-3 py-2 text-sm text-ink" role="status">
+          {ergebnis.map((z, i) => <p key={i}>{z}</p>)}
         </div>
-      ) : (
-        <>
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line bg-panel-2 px-4 py-3">
-            <p className="text-sm text-ink-muted">
-              {rechnungen.length} Rechnung{rechnungen.length === 1 ? '' : 'en'} noch nicht für die Buchhaltung gedruckt
-            </p>
-            <Button size="sm" loading={drucken.isPending} onClick={() => drucken.mutate()}>
-              Alle auf A4 drucken
+      )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        {chip('alle', `Alle (${alle.length})`)}
+        {chip('freigabe', `Wartet auf Freigabe (${wartend.length})`)}
+        {chip('ausdruck', `Ausdruck offen (${ausdruckOffen.length})`)}
+        <div className="ml-auto flex gap-2">
+          {ausdruckOffen.length > 0 && auth && (
+            <Button
+              size="sm" variant="secondary"
+              onClick={async () => {
+                druckeSammelrechnungAuftraege(ausdruckOffen.flatMap(exemplareFuer), await ladeRechnungMandant(auth.mandant))
+                await sammelrechnungApi.buchhaltungGedruckt(ausdruckOffen.map(r => r.id))
+                void qc.invalidateQueries({ queryKey: ['wartungsvertraege'] })
+              }}
+            >
+              Offenen Ausdruck nachholen ({ausdruckOffen.length})
             </Button>
+          )}
+          <Button size="sm" disabled={gewaehlt.length === 0} onClick={() => { setErgebnis(null); setBestaetigen(true) }}>
+            Freigeben{gewaehlt.length ? ` (${gewaehlt.length})` : ''}
+          </Button>
+        </div>
+      </div>
+
+      <div className="overflow-hidden rounded-lg border border-line bg-panel shadow-sm">
+        {liste.isLoading ? (
+          <p className="py-12 text-center text-sm text-ink-subtle">Wird geladen…</p>
+        ) : sichtbar.length === 0 ? (
+          <div className="py-16 text-center text-ink-subtle">
+            <p className="mb-3 text-4xl">🧾</p>
+            <p className="text-sm font-medium">Keine Rechnungen in dieser Ansicht</p>
+            <p className="mt-1 text-xs">Neue Wartungsrechnungen erscheinen hier und warten auf deine Freigabe.</p>
           </div>
+        ) : (
           <table className="w-full text-sm">
-            <thead className="border-b border-line">
+            <thead className="border-b border-line bg-panel-2">
               <tr>
-                {['Rechnung', 'Kunde', 'Verschickt an', 'Betrag'].map(h => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-ink-muted">{h}</th>
+                <th className="w-10 px-3 py-3">
+                  <input
+                    type="checkbox" className="rounded" aria-label="Alle wartenden auswählen"
+                    checked={wartend.length > 0 && gewaehlt.length === wartend.length}
+                    onChange={e => setAuswahl(e.target.checked ? new Set(wartend.map(r => r.id)) : new Set())}
+                  />
+                </th>
+                {['Rechnung', 'Kunde / Lieferscheine', 'Zustellung', 'Betrag', 'Stand', ''].map((h, i) => (
+                  <th key={i} className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-ink-muted">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
-              {rechnungen.map(r => (
-                <tr key={r.id}>
-                  <td className="px-4 py-3 font-mono font-medium text-ink">SR-{String(r.nummer).padStart(4, '0')}</td>
-                  <td className="px-4 py-3 text-ink">{r.kunde?.bezeichnung ?? '—'}</td>
-                  <td className="px-4 py-3 text-ink-muted">{r.emailEmpfaenger}</td>
-                  <td className="px-4 py-3 font-mono font-semibold text-ink">{formatPreis(r.gesamtbetragCent)}</td>
-                </tr>
-              ))}
+              {sichtbar.map(r => {
+                const st = rechnungStatus(r)
+                const wartet = !r.freigegebenAm && !r.storniertAm
+                return (
+                  <tr key={r.id} className={r.storniertAm ? 'text-ink-muted' : ''}>
+                    <td className="px-3 py-3 align-top">
+                      {wartet && (
+                        <input
+                          type="checkbox" className="rounded" aria-label={`${rechnungNr(r.nummer)} auswählen`}
+                          checked={auswahl.has(r.id)} onChange={() => umschalten(r.id)}
+                        />
+                      )}
+                    </td>
+                    <td className="px-3 py-3 align-top font-mono font-medium text-ink">
+                      {rechnungNr(r.nummer)}
+                      <div className="text-xs font-normal text-ink-subtle">{new Date(r.datum).toLocaleDateString('de-AT')}</div>
+                    </td>
+                    <td className="px-3 py-3 align-top">
+                      <div className="text-ink">{r.kunde?.bezeichnung ?? '—'}</div>
+                      <div className="mt-0.5 text-xs text-ink-subtle">
+                        {r.lieferscheine.map(ls =>
+                          `L-${String(ls.nummer).padStart(4, '0')}${ls.periode ? ` (${periodeText(ls.periode)})` : ''}`,
+                        ).join(', ')}
+                      </div>
+                    </td>
+                    <td className="px-3 py-3 align-top text-ink-muted">
+                      {r.emailEmpfaenger ? <>Mail an {r.emailEmpfaenger}<br />+ 1 Ausdruck (Buchhaltung)</> : '2 Ausdrucke (Kunde + Buchhaltung)'}
+                    </td>
+                    <td className={`px-3 py-3 align-top font-mono font-semibold ${r.storniertAm ? 'text-ink-muted line-through' : 'text-ink'}`}>
+                      {formatPreis(r.gesamtbetragCent)}
+                    </td>
+                    <td className="px-3 py-3 align-top">
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${TON_KLASSE[st.ton]}`}>{st.text}</span>
+                    </td>
+                    <td className="px-3 py-3 text-right align-top whitespace-nowrap">
+                      {r.storniertAm ? (
+                        auth && (
+                          <button
+                            type="button" className="text-xs text-brand-600 hover:underline"
+                            onClick={async () => druckeSammelrechnungAuftraege(
+                              [{ sr: r, storno: true, exemplar: 'Stornorechnung' }], await ladeRechnungMandant(auth.mandant))}
+                          >
+                            Stornorechnung drucken
+                          </button>
+                        )
+                      ) : (
+                        <>
+                          <button type="button" className="mr-3 text-xs text-brand-600 hover:underline" onClick={() => void nachdrucken(r, false)}>
+                            Vorschau/Druck
+                          </button>
+                          <button type="button" className="text-xs text-red-600 hover:underline" onClick={() => setStornoZiel(r)}>
+                            Stornieren
+                          </button>
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
-        </>
-      )}
-      {drucken.isError && <p className="px-4 py-3 text-sm text-red-600" role="alert">{fehlerText(drucken.error)}</p>}
+        )}
+      </div>
+
+      <Modal open={bestaetigen} onClose={() => setBestaetigen(false)} title="Rechnungen freigeben">
+        <div className="space-y-3">
+          <p className="text-sm text-ink">
+            Du gibst <strong>{gewaehlt.length}</strong> Rechnung{gewaehlt.length === 1 ? '' : 'en'} frei:
+          </p>
+          <ul className="list-disc pl-5 text-sm text-ink-muted">
+            {mailAnzahl > 0 && <li><strong>{mailAnzahl}</strong> per Mail an den Kunden — das Mail geht sofort raus — plus 1 Ausdruck für die Buchhaltung.</li>}
+            {druckAnzahl > 0 && <li><strong>{druckAnzahl}</strong> auf Papier — je 2 Ausdrucke: Kundenexemplar und Kopie für die Buchhaltung.</li>}
+          </ul>
+          <p className="text-xs text-ink-subtle">
+            Direkt danach öffnet sich das Druckfenster. Eine Rechnung, die schon raus ist, lässt sich nur noch stornieren.
+          </p>
+          {freigeben.isError && <p className="text-sm text-red-600" role="alert">{fehlerText(freigeben.error)}</p>}
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setBestaetigen(false)}>Abbrechen</Button>
+            <Button loading={freigeben.isPending} onClick={() => freigeben.mutate(gewaehlt.map(r => r.id))}>
+              Jetzt freigeben
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <SammelrechnungStornoDialog rechnung={stornoZiel} onClose={() => setStornoZiel(null)} />
     </div>
   )
 }
 
 export function WartungsvertraegePage() {
   const qc       = useQueryClient()
-  const auth     = getAuth()
-  const identity = getKasseIdentity()!
   const [reiter, setReiter]       = useState<Reiter>('vertraege')
   const [bearbeiten, setBearbeiten] = useState<WartungsvertragResponse | 'neu' | null>(null)
   const [laufOffen, setLaufOffen] = useState(false)
   const [nurAktive, setNurAktive] = useState(true)
-  const [rechnung, setRechnung]   = useState<SammelrechnungResponse | null>(null)
-  const [mailHinweis, setMailHinweis] = useState<string | null>(null)
+  const [hinweis, setHinweis]     = useState<string | null>(null)
 
   const vertraege = useQuery({ queryKey: ['wartungsvertraege', 'liste'], queryFn: () => wartungsvertragApi.list() })
   const faellig   = useQuery({ queryKey: ['wartungsvertraege', 'faellig'], queryFn: () => wartungsvertragApi.faelligeRechnungen() })
+  const rechnungen = useQuery({ queryKey: ['wartungsvertraege', 'rechnungen'], queryFn: () => wartungsvertragApi.rechnungen() })
 
   const abrechnen = useMutation({
     mutationFn: (id: string) => wartungsvertragApi.abrechnen(id),
     onSuccess: (sr) => {
       void qc.invalidateQueries({ queryKey: ['wartungsvertraege'] })
-      if (sr.emailEmpfaenger) {
-        // Kunde mit Rechnungsversand per Mail: die Kassa verschickt selbst, kein Ausgabe-Dialog nötig
-        setMailHinweis(sr.emailVersandtAm
-          ? `Rechnung SR-${String(sr.nummer).padStart(4, '0')} wurde an ${sr.emailEmpfaenger} gesendet.`
-          : `Rechnung SR-${String(sr.nummer).padStart(4, '0')} ist erstellt, der Mailversand an ${sr.emailEmpfaenger} hat nicht geklappt — die Kassa versucht es automatisch erneut.`)
-      } else {
-        setMailHinweis(null)
-        setRechnung(sr)
-      }
+      // Die Rechnung ist erstellt, geht aber erst nach deiner Freigabe raus
+      setHinweis(`Rechnung ${rechnungNr(sr.nummer)} ist erstellt und wartet auf deine Freigabe.`)
+      setReiter('rechnungen')
     },
   })
 
@@ -466,9 +648,10 @@ export function WartungsvertraegePage() {
     [vertraege.data, nurAktive],
   )
   const faelligListe = faellig.data ?? []
+  const wartendAnzahl = (rechnungen.data ?? []).filter(r => !r.freigegebenAm && !r.storniertAm).length
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-6">
+    <div className="mx-auto max-w-6xl px-4 py-6">
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-bold text-ink">Wartungsverträge</h1>
         <div className="flex gap-2">
@@ -478,9 +661,13 @@ export function WartungsvertraegePage() {
       </div>
 
       <div className="mb-4 flex flex-wrap gap-2">
-        {([['vertraege', 'Verträge'], ['verrechnung', `Zur Verrechnung${faelligListe.length ? ` (${faelligListe.length})` : ''}`], ['buchhaltung', 'Für die Buchhaltung']] as Array<[Reiter, string]>).map(([key, label]) => (
+        {([
+          ['vertraege', 'Verträge'],
+          ['verrechnung', `Zur Verrechnung${faelligListe.length ? ` (${faelligListe.length})` : ''}`],
+          ['rechnungen', `Rechnungen${wartendAnzahl ? ` (${wartendAnzahl} zur Freigabe)` : ''}`],
+        ] as Array<[Reiter, string]>).map(([key, label]) => (
           <button
-            key={key} type="button" onClick={() => setReiter(key)}
+            key={key} type="button" onClick={() => { setReiter(key); if (key !== 'rechnungen') setHinweis(null) }}
             className={`px-3 py-1.5 rounded-full text-sm font-medium border transition ${
               reiter === key ? 'bg-brand-600 border-brand-600 text-white' : 'bg-panel border-line-strong text-ink-muted hover:border-brand-400'
             }`}
@@ -496,11 +683,7 @@ export function WartungsvertraegePage() {
         )}
       </div>
 
-      {mailHinweis && reiter === 'verrechnung' && (
-        <p className="mb-3 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800" role="status">{mailHinweis}</p>
-      )}
-
-      {reiter === 'buchhaltung' ? <BuchhaltungListe /> : (
+      {reiter === 'rechnungen' ? <RechnungenListe hinweis={hinweis} /> : (
       <div className="overflow-hidden rounded-lg border border-line bg-panel shadow-sm">
         {reiter === 'vertraege' ? (
           vertraege.isLoading ? (
@@ -561,7 +744,7 @@ export function WartungsvertraegePage() {
                   <td className="px-4 py-3 text-right">
                     <Button size="sm" loading={abrechnen.isPending && abrechnen.variables === f.vertragId}
                             onClick={() => abrechnen.mutate(f.vertragId)}>
-                      Sammelrechnung erstellen
+                      Rechnung erstellen
                     </Button>
                   </td>
                 </tr>
@@ -585,26 +768,6 @@ export function WartungsvertraegePage() {
       </Modal>
 
       <LaufDialog open={laufOffen} onClose={() => setLaufOffen(false)} />
-
-      <AusgabeDialog
-        open={rechnung !== null}
-        onClose={() => setRechnung(null)}
-        titel={rechnung ? `Rechnung SR-${String(rechnung.nummer).padStart(4, '0')} ausgeben` : 'Ausgabe wählen'}
-        beschreibung="Der Bon zeigt Positionen mit Preisen, USt-Aufteilung und Gesamtbetrag."
-        {...(rechnung?.kunde?.email ? { mailVorschlag: rechnung.kunde.email } : {})}
-        onAusgabe={async (ziel) => {
-          if (!rechnung) return
-          switch (ziel.art) {
-            case 'bon':     await sammelrechnungApi.drucken(rechnung.id, identity.kasseId); break
-            case 'drucker': await sammelrechnungApi.drucken(rechnung.id, identity.kasseId, ziel.druckerId); break
-            case 'mail':    await sammelrechnungApi.email(rechnung.id, ziel.empfaenger); break
-            case 'a4':
-              if (auth) druckeSammelrechnung(rechnung, await ladeRechnungMandant(auth.mandant))
-              break
-            case 'keine': break
-          }
-        }}
-      />
     </div>
   )
 }

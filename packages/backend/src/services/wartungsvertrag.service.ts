@@ -32,7 +32,7 @@ import {
 import { ladeKundeSnapshot } from './kunde.service.js'
 import { erstelleSammelrechnung, holeSammelrechnung, LiferscheinError } from './lieferschein.service.js'
 import { erstelleOffenerPosten } from './offenerPosten.service.js'
-import { isEmailAktiv, sendeBelegzweigEmail } from './email.service.js'
+import { isEmailAktiv, sendeBelegzweigEmail, sendeStornoRechnungEmail } from './email.service.js'
 import { ladeZahlungsangaben } from './zahlungsangaben.js'
 import type { Config } from '../config.js'
 import { wienJetzt } from './auto-abschluss.service.js'
@@ -405,7 +405,7 @@ export async function ermittleFaelligeRechnungen(
   return ergebnis
 }
 
-/** Empfänger des automatischen Rechnungsversands — nur bei Kunden mit aktiviertem Mailversand und Adresse. */
+/** Empfänger des Rechnungs-Mails — nur bei Kunden mit aktiviertem Mailversand und Adresse. */
 async function mailEmpfaengerVon(db: Db, mandantId: string, kundeId: string): Promise<string | undefined> {
   const [k] = await db
     .select({ email: kunden.email, perMail: kunden.rechnungPerMail })
@@ -414,8 +414,8 @@ async function mailEmpfaengerVon(db: Db, mandantId: string, kundeId: string): Pr
 }
 
 /**
- * Verschickt die Sammelrechnung an den hinterlegten Empfänger. Ein Fehler bricht nichts ab: er wird an der
- * Rechnung vermerkt und vom Cron erneut versucht.
+ * Verschickt die freigegebene Sammelrechnung an den hinterlegten Empfänger. Ein Fehler bricht nichts ab: er wird
+ * an der Rechnung vermerkt und vom Cron erneut versucht. Ohne Freigabe geht nie etwas raus.
  */
 export async function versendeSammelrechnung(
   db:        Db,
@@ -425,7 +425,7 @@ export async function versendeSammelrechnung(
   log?:      Logger,
 ): Promise<boolean> {
   const sr = await holeSammelrechnung(db, srId, mandantId)
-  if (!sr.emailEmpfaenger || sr.storniertAm) return false
+  if (!sr.emailEmpfaenger || sr.storniertAm || !sr.freigegebenAm) return false
   if (sr.emailVersandtAm)  return true
 
   const [m] = await db.select({ firmenname: mandanten.firmenname }).from(mandanten)
@@ -438,7 +438,7 @@ export async function versendeSammelrechnung(
       datum:      sr.datum,
       ...(sr.kunde?.bezeichnung ? { kundeName: sr.kunde.bezeichnung } : {}),
       positionen: sr.lieferscheine.flatMap(ls => ls.positionen).map(p => ({
-        bezeichnung: p.bezeichnung, menge: p.menge, einzelpreisBreutto: p.einzelpreisBreutto,
+        bezeichnung: p.bezeichnung, menge: p.menge, einzelpreisBreutto: p.einzelpreisBreutto, ...(p.seriennummern ? { seriennummern: p.seriennummern } : {}),
       })),
       gesamtbetragCent: sr.gesamtbetragCent,
       zahlung: await ladeZahlungsangaben(db, mandantId, sr.datum),
@@ -456,15 +456,59 @@ export async function versendeSammelrechnung(
 }
 
 /**
- * Fasst die fälligen Wartungslieferscheine eines Vertrags zur Sammelrechnung zusammen, legt den
- * offenen Posten an und verschickt die Rechnung, wenn der Kunde Rechnungen per Mail bekommt.
+ * Storno einer bereits per Mail verschickten Rechnung: Der Kunde bekommt automatisch ein Mail mit der Stornorechnung.
+ * (Die korrigierte Rechnung geht danach — wie jede Rechnung — erst nach Freigabe in einem eigenen Mail raus.)
+ * Ein Fehler wird vermerkt und vom Cron erneut versucht.
+ */
+export async function versendeStornoMail(
+  db:        Db,
+  config:    Config,
+  mandantId: string,
+  srId:      string,
+  log?:      Logger,
+): Promise<boolean> {
+  const sr = await holeSammelrechnung(db, srId, mandantId)
+  if (!sr.storniertAm || sr.stornoNummer === undefined) return false
+  if (!sr.emailVersandtAm || !sr.emailEmpfaenger)       return false   // Rechnung ging nie per Mail raus
+  if (sr.stornoEmailVersandtAm)                         return true
+
+  try {
+    if (!isEmailAktiv(config)) throw new Error('Der Mailversand ist nicht eingerichtet (SMTP)')
+    const [m] = await db.select({ firmenname: mandanten.firmenname }).from(mandanten)
+      .where(eq(mandanten.id, mandantId)).limit(1)
+    await sendeStornoRechnungEmail(sr.emailEmpfaenger, {
+      firmenname:     m?.firmenname ?? '',
+      stornoNummer:   sr.stornoNummer,
+      rechnungNummer: sr.nummer,
+      rechnungDatum:  sr.datum,
+      datum:          sr.storniertAm,
+      ...(sr.kunde?.bezeichnung ? { kundeName: sr.kunde.bezeichnung } : {}),
+      positionen: sr.lieferscheine.flatMap(ls => ls.positionen).map(p => ({
+        bezeichnung: p.bezeichnung, menge: p.menge, einzelpreisBreutto: p.einzelpreisBreutto, ...(p.seriennummern ? { seriennummern: p.seriennummern } : {}),
+      })),
+      gesamtbetragCent: sr.gesamtbetragCent,
+    }, config)
+    await db.update(sammelrechnungen)
+      .set({ stornoEmailVersandtAm: new Date(), stornoEmailFehler: null })
+      .where(eq(sammelrechnungen.id, srId))
+    return true
+  } catch (err) {
+    const text = (err instanceof Error ? err.message : String(err)).slice(0, 500)
+    await db.update(sammelrechnungen).set({ stornoEmailFehler: text }).where(eq(sammelrechnungen.id, srId))
+    log?.error({ err, sammelrechnung: srId }, 'Storno-Mail fehlgeschlagen')
+    return false
+  }
+}
+
+/**
+ * Fasst die fälligen Wartungslieferscheine eines Vertrags zur Sammelrechnung zusammen und legt den offenen Posten
+ * an. Die Rechnung wartet danach auf die Freigabe — versendet oder gedruckt wird erst dann.
  */
 export async function rechneWartungsvertragAb(
   db:        Db,
   mandantId: string,
   vertragId: string,
   jetzt:     Date,
-  config?:   Config,
   log?:      Logger,
   opts:      { ohneGesperrte?: boolean } = {},
 ): Promise<SammelrechnungResponse> {
@@ -472,9 +516,8 @@ export async function rechneWartungsvertragAb(
   const [faellig] = await ermittleFaelligeRechnungen(db, mandantId, jetzt, vertragId, opts)
   if (!faellig) throw new WartungError(409, 'Für diesen Vertrag ist aktuell nichts zu verrechnen')
 
-  const empfaenger = config && isEmailAktiv(config)
-    ? await mailEmpfaengerVon(db, mandantId, vertrag.kundeId)
-    : undefined
+  // Zustellung per Mail steht mit der Rechnung fest; verschickt wird erst nach der Freigabe
+  const empfaenger = await mailEmpfaengerVon(db, mandantId, vertrag.kundeId)
 
   let sr: SammelrechnungResponse
   try {
@@ -499,18 +542,13 @@ export async function rechneWartungsvertragAb(
   } catch (err) {
     log?.error({ err, sammelrechnung: sr.id }, 'Offener Posten zur Wartungsrechnung konnte nicht angelegt werden')
   }
-
-  if (empfaenger && config) {
-    await versendeSammelrechnung(db, config, mandantId, sr.id, log)
-    return holeSammelrechnung(db, sr.id, mandantId)
-  }
   return sr
 }
 
 /**
- * Automatik für Kunden mit Rechnungsversand per Mail: fällige Wartungsrechnungen erstellen und
- * verschicken, nicht zugestellte erneut versuchen. Ohne eingerichteten Mailversand passiert nichts —
- * es entstehen keine Rechnungen, die nicht rausgehen können.
+ * Automatik: Für Kunden mit Rechnungsversand per Mail werden fällige Wartungsrechnungen selbst erstellt. Sie landen
+ * in der Freigabe — nichts geht ohne Zutun raus. Bereits freigegebene, aber nicht zugestellte Mails werden erneut
+ * versucht (nur mit eingerichtetem Mailversand).
  */
 export async function fuehreAutoRechnungenDurch(
   db:     Db,
@@ -518,8 +556,6 @@ export async function fuehreAutoRechnungenDurch(
   jetzt:  Date,
   log?:   Logger,
 ): Promise<{ erstellt: number; erneutVersendet: number }> {
-  if (!isEmailAktiv(config)) return { erstellt: 0, erneutVersendet: 0 }
-
   const kandidaten = await db
     .select({ id: wartungsvertraege.id, mandantId: wartungsvertraege.mandantId })
     .from(wartungsvertraege)
@@ -531,47 +567,122 @@ export async function fuehreAutoRechnungenDurch(
     try {
       const [faellig] = await ermittleFaelligeRechnungen(db, k.mandantId, jetzt, k.id, { ohneGesperrte: true })
       if (!faellig) continue
-      await rechneWartungsvertragAb(db, k.mandantId, k.id, jetzt, config, log, { ohneGesperrte: true })
+      await rechneWartungsvertragAb(db, k.mandantId, k.id, jetzt, log, { ohneGesperrte: true })
       erstellt++
     } catch (err) {
       log?.error({ err, vertrag: k.id }, 'Automatische Wartungsrechnung fehlgeschlagen')
     }
   }
 
-  // Nicht zugestellte erneut versuchen: nach einem Fehler, oder wenn ein Versand hängen blieb
-  const vorEinerStunde = new Date(jetzt.getTime() - 3_600_000)
-  const offen = await db
-    .select({ id: sammelrechnungen.id, mandantId: sammelrechnungen.mandantId })
-    .from(sammelrechnungen)
-    .where(and(
-      isNotNull(sammelrechnungen.emailEmpfaenger),
-      isNull(sammelrechnungen.emailVersandtAm),
-      isNotNull(sammelrechnungen.wartungsvertragId),
-      isNull(sammelrechnungen.storniertAm),
-      or(isNotNull(sammelrechnungen.emailFehler), lt(sammelrechnungen.createdAt, vorEinerStunde)),
-    ))
   let erneutVersendet = 0
-  for (const sr of offen) {
-    if (await versendeSammelrechnung(db, config, sr.mandantId, sr.id, log)) erneutVersendet++
+  if (isEmailAktiv(config)) {
+    // Nach einem Fehler, oder wenn ein Versand hängen blieb
+    const vorEinerStunde = new Date(jetzt.getTime() - 3_600_000)
+    const offen = await db
+      .select({ id: sammelrechnungen.id, mandantId: sammelrechnungen.mandantId })
+      .from(sammelrechnungen)
+      .where(and(
+        isNotNull(sammelrechnungen.emailEmpfaenger),
+        isNull(sammelrechnungen.emailVersandtAm),
+        isNotNull(sammelrechnungen.wartungsvertragId),
+        isNotNull(sammelrechnungen.freigegebenAm),
+        isNull(sammelrechnungen.storniertAm),
+        or(isNotNull(sammelrechnungen.emailFehler), lt(sammelrechnungen.freigegebenAm, vorEinerStunde)),
+      ))
+    for (const sr of offen) {
+      if (await versendeSammelrechnung(db, config, sr.mandantId, sr.id, log)) erneutVersendet++
+    }
+
+    // Storno-Mails, die nicht rausgegangen sind
+    const stornoOffen = await db
+      .select({ id: sammelrechnungen.id, mandantId: sammelrechnungen.mandantId })
+      .from(sammelrechnungen)
+      .where(and(
+        isNotNull(sammelrechnungen.storniertAm),
+        isNotNull(sammelrechnungen.emailVersandtAm),
+        isNull(sammelrechnungen.stornoEmailVersandtAm),
+        isNotNull(sammelrechnungen.stornoEmailFehler),
+      ))
+    for (const sr of stornoOffen) {
+      if (await versendeStornoMail(db, config, sr.mandantId, sr.id, log)) erneutVersendet++
+    }
   }
 
   if (erstellt > 0 || erneutVersendet > 0) {
-    log?.info(`Wartungsrechnungen: ${erstellt} erstellt, ${erneutVersendet} erneut versendet`)
+    log?.info(`Wartungsrechnungen: ${erstellt} zur Freigabe erstellt, ${erneutVersendet} Mails erneut versendet`)
   }
   return { erstellt, erneutVersendet }
 }
 
 // ---------------------------------------------------------------------------
-// Buchhaltung: Sammelliste der per Mail verschickten Rechnungen zum A4-Druck
+// Rechnungsübersicht, Freigabe, Ausdruck
 // ---------------------------------------------------------------------------
 
+/** Alle Wartungsrechnungen (neueste zuerst) mit ihren verrechneten Lieferscheinen. */
+export async function listeWartungsRechnungen(db: Db, mandantId: string): Promise<SammelrechnungResponse[]> {
+  const ids = await db
+    .select({ id: sammelrechnungen.id })
+    .from(sammelrechnungen)
+    .where(and(eq(sammelrechnungen.mandantId, mandantId), isNotNull(sammelrechnungen.wartungsvertragId)))
+    .orderBy(desc(sammelrechnungen.nummer))
+    .limit(300)
+  return Promise.all(ids.map(r => holeSammelrechnung(db, r.id, mandantId)))
+}
+
+export interface FreigabeErgebnis {
+  freigegeben: SammelrechnungResponse[]
+  abgelehnt:   Array<{ id: string; nummer: number; grund: string }>
+}
+
+/**
+ * Gibt Wartungsrechnungen frei: Erst jetzt geht die Mail raus (Kunden mit Mailversand). Der Ausdruck — ein
+ * Exemplar für die Buchhaltung bei Mail-Kunden, zwei (Kunde + Buchhaltung) bei allen anderen — erfolgt am Bildschirm
+ * direkt nach der Freigabe. Mail-Kunden ohne eingerichteten Mailversand lassen sich nicht freigeben.
+ */
+export async function gibRechnungenFrei(
+  db:        Db,
+  config:    Config,
+  mandantId: string,
+  ids:       string[],
+  log?:      Logger,
+): Promise<FreigabeErgebnis> {
+  const ergebnis: FreigabeErgebnis = { freigegeben: [], abgelehnt: [] }
+  for (const id of ids) {
+    const [row] = await db.select().from(sammelrechnungen)
+      .where(and(eq(sammelrechnungen.id, id), eq(sammelrechnungen.mandantId, mandantId))).limit(1)
+    if (!row) { ergebnis.abgelehnt.push({ id, nummer: 0, grund: 'Rechnung nicht gefunden' }); continue }
+    const ablehnen = (grund: string) => ergebnis.abgelehnt.push({ id, nummer: row.nummer, grund })
+
+    if (!row.wartungsvertragId)  { ablehnen('Keine Wartungsrechnung'); continue }
+    if (row.storniertAm)         { ablehnen('Die Rechnung ist storniert'); continue }
+    if (row.freigegebenAm)       { ablehnen('Schon freigegeben'); continue }
+    if (row.emailEmpfaenger && !isEmailAktiv(config)) {
+      ablehnen('Der Mailversand ist nicht eingerichtet (SMTP) — die Rechnung kann nicht per Mail verschickt werden')
+      continue
+    }
+
+    // Nur der erste Zugriff gibt frei (Doppelklick/zweites Fenster)
+    const gesetzt = await db.update(sammelrechnungen)
+      .set({ freigegebenAm: new Date() })
+      .where(and(eq(sammelrechnungen.id, id), isNull(sammelrechnungen.freigegebenAm), isNull(sammelrechnungen.storniertAm)))
+      .returning({ id: sammelrechnungen.id })
+    if (gesetzt.length === 0) { ablehnen('Schon freigegeben'); continue }
+
+    if (row.emailEmpfaenger) await versendeSammelrechnung(db, config, mandantId, id, log)
+    ergebnis.freigegeben.push(await holeSammelrechnung(db, id, mandantId))
+  }
+  return ergebnis
+}
+
+/** Freigegebene Rechnungen, deren Ausdruck (Buchhaltung bzw. Kunde + Buchhaltung) noch nicht bestätigt ist. */
 export async function listeBuchhaltungsRechnungen(db: Db, mandantId: string): Promise<SammelrechnungResponse[]> {
   const ids = await db
     .select({ id: sammelrechnungen.id })
     .from(sammelrechnungen)
     .where(and(
       eq(sammelrechnungen.mandantId, mandantId),
-      isNotNull(sammelrechnungen.emailVersandtAm),
+      isNotNull(sammelrechnungen.wartungsvertragId),
+      isNotNull(sammelrechnungen.freigegebenAm),
       isNull(sammelrechnungen.buchhaltungGedrucktAm),
       isNull(sammelrechnungen.storniertAm),
     ))
@@ -587,7 +698,7 @@ export async function markiereBuchhaltungGedruckt(db: Db, mandantId: string, ids
     .where(and(
       eq(sammelrechnungen.mandantId, mandantId),
       inArray(sammelrechnungen.id, ids),
-      isNotNull(sammelrechnungen.emailVersandtAm),
+      isNotNull(sammelrechnungen.freigegebenAm),
       isNull(sammelrechnungen.buchhaltungGedrucktAm),
     ))
     .returning({ id: sammelrechnungen.id })

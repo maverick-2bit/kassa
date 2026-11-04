@@ -86,12 +86,29 @@ export const SammelrechnungResponseSchema = z.object({
   emailFehler:      z.string().optional(),
   /** Ausdruck für die Buchhaltung erledigt */
   buchhaltungGedrucktAm: z.string().optional(),
+  /** Wartungsrechnungen: Freigabe durch den Betreiber; erst danach Versand/Druck */
+  freigegebenAm:    z.string().optional(),
   /** Storniert: die Rechnung bleibt bestehen, ihre Lieferscheine sind wieder offen */
   storniertAm:      z.string().optional(),
   stornoGrund:      z.string().optional(),
+  /** Nummer der Stornorechnung und Stand des Mails an den Kunden */
+  stornoNummer:          z.number().int().optional(),
+  stornoEmailVersandtAm: z.string().optional(),
+  stornoEmailFehler:     z.string().optional(),
   createdAt:        z.string(),
 })
 export type SammelrechnungResponse = z.infer<typeof SammelrechnungResponseSchema>
+
+export const SammelrechnungFreigabeSchema = z.object({
+  ids: z.array(z.string().guid()).min(1).max(200),
+})
+export type SammelrechnungFreigabe = z.infer<typeof SammelrechnungFreigabeSchema>
+
+export const SammelrechnungFreigabeErgebnisSchema = z.object({
+  freigegeben: z.array(SammelrechnungResponseSchema),
+  abgelehnt:   z.array(z.object({ id: z.string(), nummer: z.number().int(), grund: z.string() })),
+})
+export type SammelrechnungFreigabeErgebnis = z.infer<typeof SammelrechnungFreigabeErgebnisSchema>
 
 export const SammelrechnungStornoSchema = z.object({
   grund: z.string().trim().max(500).optional(),

@@ -733,6 +733,7 @@ export {
   SammelrechnungInputSchema,
   SammelrechnungResponseSchema,
   SammelrechnungStornoSchema,
+  SammelrechnungFreigabeSchema,
 } from './schemas/lieferschein.js'
 export type {
   LiferscheinStatus,
@@ -743,6 +744,8 @@ export type {
   SammelrechnungInput,
   SammelrechnungResponse,
   SammelrechnungStorno,
+  SammelrechnungFreigabe,
+  SammelrechnungFreigabeErgebnis,
 } from './schemas/lieferschein.js'
 
 // Wartungsverträge

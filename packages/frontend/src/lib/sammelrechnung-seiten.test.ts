@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MASSE, paginiere, positionsHoehe, type SeitenZeile } from './sammelrechnung-seiten'
+import { MASSE, SN_ZEILENHOEHE, paginiere, positionsHoehe, seriennummernText, type SeitenZeile } from './sammelrechnung-seiten'
 
 const kopf = (): SeitenZeile => ({ art: 'kopf', hoehe: MASSE.kopf })
 const pos = (cent: number): SeitenZeile => ({ art: 'pos', hoehe: MASSE.position, betragCent: cent })
@@ -80,6 +80,16 @@ describe('Sammelrechnung: Seitenumbruch', () => {
     expect(positionsHoehe('Support')).toBe(MASSE.position)
     expect(positionsHoehe('x'.repeat(37))).toBe(MASSE.position + MASSE.zusatzZeile)
     expect(positionsHoehe('x'.repeat(500))).toBe(MASSE.position + 2 * MASSE.zusatzZeile)
+  })
+
+  it('Seriennummern machen die Positionszeile höher (kleine Schrift unter der Bezeichnung)', () => {
+    expect(positionsHoehe('Kassa', [])).toBe(MASSE.position)
+    expect(positionsHoehe('Kassa', ['SN-1'])).toBeCloseTo(MASSE.position + SN_ZEILENHOEHE)
+    // 10 Seriennummern à 14 Zeichen → mehrere Zeilen
+    const viele = Array.from({ length: 10 }, (_, i) => `SN-2026-00${i}-X`)
+    expect(positionsHoehe('Kassa', viele)).toBeGreaterThan(MASSE.position + 2 * SN_ZEILENHOEHE)
+    expect(seriennummernText(['A', 'B'])).toBe('SN: A, B')
+    expect(seriennummernText(undefined)).toBe('')
   })
 
   it('leere Rechnung und Riesenzeile führen nicht in eine Endlosschleife', () => {

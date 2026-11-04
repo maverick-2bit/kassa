@@ -12,6 +12,7 @@ import type {
 import type { Db } from '../db/client.js'
 import {
   angebote,
+  artikel,
   lieferscheine,
   offenePosten,
   sammelrechnungen,
@@ -166,6 +167,22 @@ export async function erstelleLiferschein(
         throw new LiferscheinError(409, `Eine gewählte Seriennummer für „${pos.bezeichnung}" ist nicht mehr verfügbar`)
       }
       pos.seriennummern = z.seriennummern
+    }
+
+    // Führt der Artikel Seriennummern, MUSS der Lieferschein sie tragen (Aufdruck auf Lieferschein und Rechnung)
+    const artikelIds = [...new Set(positionen.map(p => p.artikelId).filter((id): id is string => !!id))]
+    if (artikelIds.length > 0) {
+      const serialArtikel = await tx
+        .select({ id: artikel.id })
+        .from(artikel)
+        .where(and(eq(artikel.mandantId, mandantId), inArray(artikel.id, artikelIds), eq(artikel.seriennummernAktiv, true)))
+      const serialIds = new Set(serialArtikel.map(a => a.id))
+      for (const pos of positionen) {
+        if (pos.artikelId && serialIds.has(pos.artikelId) && !(pos.seriennummern && pos.seriennummern.length > 0)) {
+          throw new LiferscheinError(400,
+            `Für „${pos.bezeichnung}" müssen Seriennummern gewählt werden — bitte den Lieferschein auf der Seite „Angebote" erstellen`)
+        }
+      }
     }
 
     // Nächste Lieferscheinnummer
@@ -354,8 +371,12 @@ async function srZuDto(
     ...(row.emailVersandtAm   && { emailVersandtAm:   row.emailVersandtAm.toISOString() }),
     ...(row.emailFehler       && { emailFehler:       row.emailFehler }),
     ...(row.buchhaltungGedrucktAm && { buchhaltungGedrucktAm: row.buchhaltungGedrucktAm.toISOString() }),
+    ...(row.freigegebenAm && { freigegebenAm: row.freigegebenAm.toISOString() }),
     ...(row.storniertAm && { storniertAm: row.storniertAm.toISOString() }),
     ...(row.stornoGrund && { stornoGrund: row.stornoGrund }),
+    ...(row.stornoNummer != null && { stornoNummer: row.stornoNummer }),
+    ...(row.stornoEmailVersandtAm && { stornoEmailVersandtAm: row.stornoEmailVersandtAm.toISOString() }),
+    ...(row.stornoEmailFehler && { stornoEmailFehler: row.stornoEmailFehler }),
     createdAt:        row.createdAt.toISOString(),
   }
 }
@@ -384,8 +405,12 @@ export async function storniereSammelrechnung(
     }
     if (op) await tx.delete(offenePosten).where(eq(offenePosten.id, op.id))
 
+    // Die Stornorechnung bekommt ihre eigene, lückenlose Nummer
+    const [n] = await tx
+      .select({ n: sql<number>`COALESCE(MAX(${sammelrechnungen.stornoNummer}), 0) + 1` })
+      .from(sammelrechnungen).where(eq(sammelrechnungen.mandantId, mandantId))
     await tx.update(sammelrechnungen)
-      .set({ storniertAm: new Date(), stornoGrund: grund || null })
+      .set({ storniertAm: new Date(), stornoGrund: grund || null, stornoNummer: n?.n ?? 1 })
       .where(eq(sammelrechnungen.id, id))
 
     const ids = (sr.lieferscheinIds as string[]) ?? []

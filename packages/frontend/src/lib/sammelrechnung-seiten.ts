@@ -38,10 +38,22 @@ export const MASSE = {
   maxZeilen:     3,
 } as const
 
-/** Höhe einer Positionszeile anhand der Bezeichnungslänge */
-export function positionsHoehe(bezeichnung: string): number {
+/** Seriennummern stehen in kleiner Schrift unter der Bezeichnung */
+export const SN_ZEICHEN_JE_ZEILE = 52
+export const SN_ZEILENHOEHE      = 3.8
+const SN_MAX_ZEILEN              = 30
+
+/** Text der Seriennummern-Zeile(n), z. B. „SN: A1, A2" */
+export function seriennummernText(seriennummern: string[] | undefined): string {
+  return seriennummern && seriennummern.length > 0 ? `SN: ${seriennummern.join(', ')}` : ''
+}
+
+/** Höhe einer Positionszeile anhand der Bezeichnungslänge und der Seriennummern */
+export function positionsHoehe(bezeichnung: string, seriennummern?: string[]): number {
   const zeilen = Math.min(MASSE.maxZeilen, Math.max(1, Math.ceil(bezeichnung.length / MASSE.zeichenJeZeile)))
-  return MASSE.position + (zeilen - 1) * MASSE.zusatzZeile
+  const sn = seriennummernText(seriennummern)
+  const snZeilen = sn ? Math.min(SN_MAX_ZEILEN, Math.ceil(sn.length / SN_ZEICHEN_JE_ZEILE)) : 0
+  return MASSE.position + (zeilen - 1) * MASSE.zusatzZeile + snZeilen * SN_ZEILENHOEHE
 }
 
 export interface Kapazitaet {

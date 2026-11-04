@@ -539,9 +539,15 @@ export const sammelrechnungen = pgTable('sammelrechnungen', {
   emailFehler:      text('email_fehler'),
   /** Ausdruck für die Buchhaltung erledigt (Sammelliste) */
   buchhaltungGedrucktAm: timestamp('buchhaltung_gedruckt_am', { withTimezone: true }),
+  /** Freigabe durch den Betreiber: erst danach werden Wartungsrechnungen versendet/gedruckt (null = wartet) */
+  freigegebenAm: timestamp('freigegeben_am', { withTimezone: true }),
   /** Storniert: die Rechnung bleibt (Nummer lückenlos), ihre Lieferscheine sind wieder offen */
   storniertAm: timestamp('storniert_am', { withTimezone: true }),
   stornoGrund: text('storno_grund'),
+  /** Nummer der Stornorechnung (eigene Reihe je Betrieb) + Mailversand an den Kunden */
+  stornoNummer:           integer('storno_nummer'),
+  stornoEmailVersandtAm:  timestamp('storno_email_versandt_am', { withTimezone: true }),
+  stornoEmailFehler:      text('storno_email_fehler'),
 
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({

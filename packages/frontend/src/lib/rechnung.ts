@@ -17,7 +17,7 @@ import {
   generiereRechnungHtml,
   formatiereIban,
 } from '@kassa/shared'
-import { MASSE, paginiere, positionsHoehe, type SeitenZeile } from './sammelrechnung-seiten'
+import { MASSE, SN_ZEILENHOEHE, paginiere, positionsHoehe, seriennummernText, type SeitenZeile } from './sammelrechnung-seiten'
 
 type MandantInfo = RechnungMandantInfo
 
@@ -356,9 +356,33 @@ const NUTZHOEHE_MM        = 297 - SEITENRAND_OBEN_MM - SEITENRAND_UNTEN_MM - FUS
 const TABELLENKOPF_MM     = 9
 const FOLGEKOPF_MM        = 14
 
-export function generiereSammelrechnungHtml(sr: SammelrechnungResponse, mandant: MandantInfo): string {
-  const srNr = `SR-${String(sr.nummer).padStart(4, '0')}`
-  const storniert = !!sr.storniertAm
+/** Stornorechnung zur Sammelrechnung: dieselben Positionen mit negativen Beträgen */
+function stornoAnsicht(sr: SammelrechnungResponse): SammelrechnungResponse {
+  return {
+    ...sr,
+    datum: sr.storniertAm ?? sr.datum,
+    gesamtbetragCent: -sr.gesamtbetragCent,
+    lieferscheine: sr.lieferscheine.map(ls => ({
+      ...ls,
+      positionen: ls.positionen.map(p => ({ ...p, einzelpreisBreutto: -p.einzelpreisBreutto })),
+    })),
+  }
+}
+
+export interface SammelrechnungDruckOptionen {
+  /** Aufdruck oben rechts, z. B. „Kundenexemplar" oder „Kopie Buchhaltung" */
+  exemplar?: string
+  /** Stornorechnung (negative Beträge, eigene Nummer „ST-…") statt der Rechnung */
+  storno?: boolean
+}
+
+export function generiereSammelrechnungHtml(srOriginal: SammelrechnungResponse, mandant: MandantInfo, opts: SammelrechnungDruckOptionen = {}): string {
+  const istStorno = !!opts.storno
+  const sr = istStorno ? stornoAnsicht(srOriginal) : srOriginal
+  const origNr = `SR-${String(srOriginal.nummer).padStart(4, '0')}`
+  const srNr = istStorno ? `ST-${String(srOriginal.stornoNummer ?? 0).padStart(4, '0')}` : origNr
+  const titel = istStorno ? 'Stornorechnung' : 'Sammelrechnung'
+  const storniert = !istStorno && !!sr.storniertAm
 
   // Kundeblock (vom ersten Lieferschein / Snapshot)
   const kundeHtml = sr.kunde ? (() => {
@@ -399,13 +423,16 @@ export function generiereSammelrechnungHtml(sr: SammelrechnungResponse, mandant:
       html: `<tr class="zeile-kopf" style="height:${MASSE.kopf}mm"><td colspan="5">LS ${lsNr} vom ${formatDatumDe(ls.datum)}<span class="kopf-bezug">${esc(bezug)}</span></td></tr>`,
     })
     for (const p of ls.positionen) {
-      const hoehe = positionsHoehe(p.bezeichnung)
+      const hoehe = positionsHoehe(p.bezeichnung, p.seriennummern)
+      const sn = seriennummernText(p.seriennummern)
       const brutto = Math.round(p.einzelpreisBreutto * p.menge)
       zeilen.push({
         art: 'pos', hoehe, betragCent: brutto,
         html: `
       <tr class="zeile-pos" style="height:${hoehe}mm">
-        <td class="pos-bezeichnung"><div class="zelle" style="max-height:${hoehe - 3}mm">${esc(p.bezeichnung)}</div></td>
+        <td class="pos-bezeichnung"><div class="zelle" style="max-height:${hoehe - 3}mm">${esc(p.bezeichnung)}${
+          sn ? `<div class="sn">${esc(sn)}</div>` : ''
+        }</div></td>
         <td class="pos-menge">${p.menge % 1 === 0 ? p.menge.toFixed(0) : p.menge}</td>
         <td class="pos-einzelpreis">€ ${centZuEuro(p.einzelpreisBreutto)}</td>
         <td class="pos-mwst">${formatMwstProzent(MWST_SAETZE[p.mwstSatz] ?? 0)} %</td>
@@ -425,7 +452,7 @@ export function generiereSammelrechnungHtml(sr: SammelrechnungResponse, mandant:
     </tr>`).join('')
 
   // Zahlungsangaben: Fälligkeit, Bankverbindung, Verwendungszweck
-  const zahlungHtml = mandant.zahlungszielTage === undefined || storniert ? '' : (() => {
+  const zahlungHtml = mandant.zahlungszielTage === undefined || storniert || istStorno ?'' : (() => {
     const faellig = new Date(Date.parse(sr.datum) + mandant.zahlungszielTage * 86_400_000).toISOString()
     return `
   <div class="zahlungsblock">
@@ -463,7 +490,7 @@ export function generiereSammelrechnungHtml(sr: SammelrechnungResponse, mandant:
       <div>${esc(mandant.firmenname)} | UID: ${esc(mandant.uid)}</div>
       <div style="text-align:right">
         Seite ${nr} von ${seitenZahl}<br>
-        <span style="font-size:7pt;color:#bbb">Diese Sammelrechnung wurde elektronisch erstellt.</span>
+        <span style="font-size:7pt;color:#bbb">Diese ${titel} wurde elektronisch erstellt.</span>
       </div>
     </div>`
 
@@ -478,9 +505,10 @@ export function generiereSammelrechnungHtml(sr: SammelrechnungResponse, mandant:
           <div class="firmen-uid">UID: ${esc(mandant.uid)}</div>
         </div>
         <div class="rechnungstitel">
-          <h1>Sammelrechnung</h1>
+          <h1>${titel}</h1>
           <div class="meta">
             Nr. ${srNr}<br>
+            ${istStorno ? `Storno zu ${origNr} vom ${formatDatumDe(srOriginal.datum)}<br>` : ''}
             Datum: ${formatDatumDe(sr.datum)}<br>
             ${sr.lieferscheine.length} Lieferschein${sr.lieferscheine.length !== 1 ? 'e' : ''}
           </div>
@@ -499,7 +527,7 @@ export function generiereSammelrechnungHtml(sr: SammelrechnungResponse, mandant:
       </div>
     </div>` : `
     <div class="folgekopf" style="height:${FOLGEKOPF_MM}mm">
-      <strong>${esc(mandant.firmenname)}</strong> · Sammelrechnung ${srNr}${storniert ? ' · <span class="storno-text">STORNIERT</span>' : ''}
+      <strong>${esc(mandant.firmenname)}</strong> · ${titel} ${srNr}${storniert ? ' · <span class="storno-text">STORNIERT</span>' : ''}
       <span style="float:right">Seite ${nr} von ${seitenZahl}</span>
     </div>`
 
@@ -558,6 +586,7 @@ export function generiereSammelrechnungHtml(sr: SammelrechnungResponse, mandant:
 
     return `
 <div class="seite">
+  ${opts.exemplar ? `<div class="exemplar">${esc(opts.exemplar)}</div>` : ''}
   ${kopf}
   <div class="seiteninhalt">
     <table class="positionen-tabelle sr-tabelle">${tabellenKopf}
@@ -574,7 +603,7 @@ export function generiereSammelrechnungHtml(sr: SammelrechnungResponse, mandant:
 <html lang="de">
 <head>
 <meta charset="UTF-8">
-<title>Sammelrechnung ${srNr} – ${mandant.firmenname}</title>
+<title>${titel} ${srNr} – ${mandant.firmenname}</title>
 <style>
 ${generiereBaseCss()}
   /* Sammelrechnung: feste A4-Seiten mit Übertrag/Zwischensumme */
@@ -586,6 +615,11 @@ ${generiereBaseCss()}
     page-break-after: always; break-after: page;
   }
   .seite:last-child { page-break-after: auto; break-after: auto; }
+  .seite { position: relative; }
+  .exemplar {
+    position: absolute; top: 6mm; right: 15mm; font-size: 8pt; text-transform: uppercase; letter-spacing: 1px;
+    color: #444; border: 1px solid #888; padding: 0.5mm 2.5mm; border-radius: 1mm;
+  }
   .kopfbereich { overflow: hidden; flex: none; }
   .folgekopf {
     flex: none; overflow: hidden; font-size: 9pt; color: #555;
@@ -596,6 +630,7 @@ ${generiereBaseCss()}
   .sr-tabelle thead tr { height: ${TABELLENKOPF_MM}mm; }
   .sr-tabelle td { padding: 1.5mm 3mm; line-height: 4.5mm; overflow: hidden; }
   .sr-tabelle .zelle { overflow: hidden; }
+  .sr-tabelle .sn { font-size: 8pt; line-height: ${SN_ZEILENHOEHE}mm; color: #555; word-break: break-word; }
   .zeile-kopf td {
     background: #f0f4ff; border: 1px solid #c7d7f5; font-weight: bold; font-size: 10pt; color: #1e3a8a;
     vertical-align: middle;
@@ -634,10 +669,28 @@ ${generiereBaseCss()}
 </html>`
 }
 
-/** Mehrere Sammelrechnungen in einem Druckfenster, jede auf eigener Seite (Sammelliste der Buchhaltung). */
-export function druckeSammelrechnungen(srs: SammelrechnungResponse[], mandant: MandantInfo): void {
-  if (srs.length === 0) return
-  const seiten = srs.map(sr => generiereSammelrechnungHtml(sr, mandant))
+/** Ein Druckauftrag: eine Rechnung (oder Stornorechnung) in einem bestimmten Exemplar */
+export interface SammelrechnungDruckauftrag extends SammelrechnungDruckOptionen {
+  sr: SammelrechnungResponse
+}
+
+/**
+ * Welche Exemplare werden für die Rechnung gedruckt? Per Mail verschickte Rechnungen brauchen nur die Kopie für die
+ * Buchhaltung; Rechnungen, die der Kunde auf Papier bekommt, zusätzlich das Kundenexemplar.
+ */
+export function exemplareFuer(sr: SammelrechnungResponse): SammelrechnungDruckauftrag[] {
+  return sr.emailEmpfaenger
+    ? [{ sr, exemplar: 'Kopie Buchhaltung' }]
+    : [{ sr, exemplar: 'Kundenexemplar' }, { sr, exemplar: 'Kopie Buchhaltung' }]
+}
+
+/** Mehrere Druckaufträge in einem Druckfenster, jeder auf eigenen Seiten. */
+export function druckeSammelrechnungAuftraege(auftraege: SammelrechnungDruckauftrag[], mandant: MandantInfo): void {
+  if (auftraege.length === 0) return
+  const seiten = auftraege.map(a => generiereSammelrechnungHtml(a.sr, mandant, {
+    ...(a.exemplar ? { exemplar: a.exemplar } : {}),
+    ...(a.storno   ? { storno:   a.storno }   : {}),
+  }))
   const erste  = seiten[0]!
   const kopf   = erste.slice(0, erste.indexOf('<body>') + '<body>'.length)
   const inhalt = seiten.map(h =>

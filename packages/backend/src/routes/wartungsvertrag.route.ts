@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify'
 import {
+  SammelrechnungFreigabeSchema,
   WartungslaufInputSchema,
   WartungsvertragInputSchema,
   WartungsvertragStatusSchema,
@@ -13,8 +14,10 @@ import {
   erstelleWartungsvertrag,
   ermittleFaelligeRechnungen,
   fuehreWartungslaufDurch,
+  gibRechnungenFrei,
   holeWartungsvertrag,
   listeBuchhaltungsRechnungen,
+  listeWartungsRechnungen,
   listeWartungsvertraege,
   markiereBuchhaltungGedruckt,
   rechneWartungsvertragAb,
@@ -84,8 +87,20 @@ export const wartungsvertragRoute: FastifyPluginAsync<WartungsvertragRouteOption
   fastify.post('/wartungsvertraege/:id/abrechnen', auth, async (request, reply) => {
     const id = uuidParam(request.params)
     try {
-      return reply.status(201).send(await rechneWartungsvertragAb(opts.db, request.user.mandantId, id, new Date(), opts.config, request.log))
+      return reply.status(201).send(await rechneWartungsvertragAb(opts.db, request.user.mandantId, id, new Date(), request.log))
     } catch (err) { return fehler(err, reply) }
+  })
+
+  /** Alle Wartungsrechnungen mit ihren verrechneten Lieferscheinen und dem Stand von Freigabe/Versand/Ausdruck */
+  fastify.get('/wartungsvertraege/rechnungen', auth, async (request, reply) => {
+    return reply.send(await listeWartungsRechnungen(opts.db, request.user.mandantId))
+  })
+
+  /** Freigabe: erst jetzt gehen Mails raus; der Ausdruck folgt am Bildschirm */
+  fastify.post('/sammelrechnungen/freigeben', auth, async (request, reply) => {
+    const parsed = SammelrechnungFreigabeSchema.safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
+    return reply.send(await gibRechnungenFrei(opts.db, opts.config, request.user.mandantId, parsed.data.ids, request.log))
   })
 
   /** Buchhaltung: per Mail verschickte Rechnungen, die noch nicht auf A4 ausgedruckt wurden */

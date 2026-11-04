@@ -1316,8 +1316,9 @@ export function KassePage() {
                           firmenname: auth.mandant.firmenname,
                           uid:        auth.mandant.uid,
                         })
-                      } catch {
-                        // Lieferschein ggf. bereits vorhanden — Fehler stumm ignorieren
+                      } catch (err) {
+                        // z. B. Seriennummern nötig → der Lieferschein entsteht dann auf der Seite „Angebote"
+                        window.alert(err instanceof Error ? err.message : 'Der Lieferschein konnte nicht erstellt werden')
                       }
                     }
                   }}

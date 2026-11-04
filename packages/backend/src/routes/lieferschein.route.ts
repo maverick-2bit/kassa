@@ -27,6 +27,7 @@ import { resolveZielDrucker, sendBytes, DruckerError, type DruckerConfig } from 
 import { baueLieferscheinBon, baueRechnungBon, type BelegzweigPosition } from '../services/escpos/layout.js'
 import { EmailVersandError, isEmailAktiv, sendeBelegzweigEmail } from '../services/email.service.js'
 import { ladeZahlungsangaben } from '../services/zahlungsangaben.js'
+import { versendeStornoMail } from '../services/wartungsvertrag.service.js'
 
 export interface LiferscheinRouteOptions { db: Db; config: Config }
 
@@ -181,7 +182,13 @@ export const lieferscheinRoute: FastifyPluginAsync<LiferscheinRouteOptions> = as
     const parsed = SammelrechnungStornoSchema.safeParse(request.body ?? {})
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     try {
-      return reply.send(await storniereSammelrechnung(opts.db, request.user.mandantId, id, parsed.data.grund))
+      const sr = await storniereSammelrechnung(opts.db, request.user.mandantId, id, parsed.data.grund)
+      // Ging die Rechnung per Mail raus, bekommt der Kunde automatisch die Stornorechnung (Fehler wird vermerkt + wiederholt)
+      if (sr.emailVersandtAm) {
+        await versendeStornoMail(opts.db, opts.config, request.user.mandantId, id, request.log)
+        return reply.send(await holeSammelrechnung(opts.db, id, request.user.mandantId))
+      }
+      return reply.send(sr)
     } catch (err) {
       if (err instanceof LiferscheinError) return reply.status(err.httpStatus).send({ fehler: err.message })
       throw err
@@ -235,7 +242,7 @@ export const lieferscheinRoute: FastifyPluginAsync<LiferscheinRouteOptions> = as
         datum:      ls.datum,
         ...(ls.kunde?.bezeichnung ? { kundeName: ls.kunde.bezeichnung } : {}),
         positionen: ls.positionen.map(p => ({
-          bezeichnung: p.bezeichnung, menge: p.menge, einzelpreisBreutto: p.einzelpreisBreutto,
+          bezeichnung: p.bezeichnung, menge: p.menge, einzelpreisBreutto: p.einzelpreisBreutto, ...(p.seriennummern ? { seriennummern: p.seriennummern } : {}),
         })),
       }, opts.config)
       return reply.send({ erfolgreich: true })
@@ -291,7 +298,7 @@ export const lieferscheinRoute: FastifyPluginAsync<LiferscheinRouteOptions> = as
         datum:      sr.datum,
         ...(sr.kunde?.bezeichnung ? { kundeName: sr.kunde.bezeichnung } : {}),
         positionen: sr.lieferscheine.flatMap(ls => ls.positionen).map(p => ({
-          bezeichnung: p.bezeichnung, menge: p.menge, einzelpreisBreutto: p.einzelpreisBreutto,
+          bezeichnung: p.bezeichnung, menge: p.menge, einzelpreisBreutto: p.einzelpreisBreutto, ...(p.seriennummern ? { seriennummern: p.seriennummern } : {}),
         })),
         gesamtbetragCent: sr.gesamtbetragCent,
         zahlung: await ladeZahlungsangaben(opts.db, request.user.mandantId, sr.datum),
