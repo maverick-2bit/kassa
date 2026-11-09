@@ -17,6 +17,31 @@ export type {
   LieferantUpdate,
 } from './schemas/lieferant.js'
 
+// Einkaufsbestellungen (Bestellung beim Lieferanten)
+export {
+  EINKAUF_BESTELLSTATUS,
+  EINKAUF_BESTELLSTATUS_LABELS,
+  EINKAUF_BESTELLSTATUS_UEBERGAENGE,
+  EinkaufBestellstatusSchema,
+  EinkaufBestellpositionSchema,
+  EinkaufBestellungSchema,
+  EinkaufBestellpositionInputSchema,
+  EinkaufBestellungInputSchema,
+  EinkaufBestellungUpdateSchema,
+  EinkaufBestellungEmailSchema,
+  summeBestellung,
+} from './schemas/einkaufsbestellung.js'
+export type {
+  EinkaufBestellstatus,
+  EinkaufBestellposition,
+  EinkaufBestellung,
+  EinkaufBestellungKurz,
+  EinkaufBestellpositionInput,
+  EinkaufBestellungInput,
+  EinkaufBestellungUpdate,
+  EinkaufBestellungEmail,
+} from './schemas/einkaufsbestellung.js'
+
 // Mandanten-Module + Stammdaten
 export {
   MandantModulSchema,

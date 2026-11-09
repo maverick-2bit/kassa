@@ -382,6 +382,22 @@ export const HILFE_THEMEN: HilfeThema[] = [
     ],
   },
   {
+    id: 'einkaufsbestellungen',
+    titel: 'Bestellungen beim Lieferanten',
+    zweck: 'Waren beim Lieferanten bestellen: Bestellung anlegen, als PDF drucken oder per E-Mail senden und den Stand verfolgen.',
+    pfade: ['/einkaufsbestellungen'],
+    schritte: [
+      '„+ Neue Bestellung": Lieferant wählen, Artikel hinzufügen, Menge und Einkaufspreis eintragen, „Anlegen".',
+      'Aus der Bestellliste legst du mit „Bestellung anlegen" in einem Schritt eine Bestellung für alle Artikel eines Lieferanten an.',
+      'Im Entwurf kannst du alles ändern. „Per E-Mail senden" schickt das PDF an den Lieferanten und setzt den Status auf „Gesendet"; „Als gesendet markieren" ist für Bestellungen per Telefon oder Portal.',
+      '„Erledigt" setzt du, wenn die Ware da ist. Eine falsche Bestellung kannst du stornieren (Entwurf auch löschen).',
+    ],
+    tipps: [
+      'Die E-Mail-Adresse des Lieferanten steht im Lieferanten-Stamm; für eine einzelne Bestellung kannst du eine andere Adresse eingeben.',
+      'Einkaufspreis und Artikelnummer beim Lieferanten kommen aus dem Artikel — so sind sie beim Bestellen schon ausgefüllt.',
+    ],
+  },
+  {
     id: 'datenuebernahme',
     titel: 'Datenübernahme',
     zweck: 'Lieferanten, Kunden und Artikel mit Preisen aus der bisherigen Warenwirtschaft (SelectLine) per Excel übernehmen.',

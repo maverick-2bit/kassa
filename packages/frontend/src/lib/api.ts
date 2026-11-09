@@ -208,6 +208,14 @@ export class ApiError extends Error {
   }
 }
 
+import type {
+  EinkaufBestellstatus,
+  EinkaufBestellung,
+  EinkaufBestellungInput,
+  EinkaufBestellungKurz,
+  EinkaufBestellungUpdate,
+} from '@kassa/shared'
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const token = getToken()
   // Content-Type NUR bei tatsächlichem Body setzen. Sonst wirft Fastify bei
@@ -670,6 +678,38 @@ export const kategorieApi = {
 // ---------------------------------------------------------------------------
 // Lieferanten
 // ---------------------------------------------------------------------------
+
+export const einkaufBestellungApi = {
+  liste: (filter: { status?: EinkaufBestellstatus; lieferantId?: string } = {}) => {
+    const p = new URLSearchParams()
+    if (filter.status)      p.set('status', filter.status)
+    if (filter.lieferantId) p.set('lieferantId', filter.lieferantId)
+    const q = p.toString()
+    return request<EinkaufBestellungKurz[]>('GET', `/api/einkauf/bestellungen${q ? `?${q}` : ''}`)
+  },
+  hole:   (id: string) => request<EinkaufBestellung>('GET', `/api/einkauf/bestellungen/${id}`),
+  erstelle: (input: EinkaufBestellungInput) => request<EinkaufBestellung>('POST', '/api/einkauf/bestellungen', input),
+  aktualisiere: (id: string, input: EinkaufBestellungUpdate) =>
+    request<EinkaufBestellung>('PUT', `/api/einkauf/bestellungen/${id}`, input),
+  loesche: (id: string) => request<void>('DELETE', `/api/einkauf/bestellungen/${id}`),
+  status:  (id: string, status: EinkaufBestellstatus, gesendetAn?: string) =>
+    request<EinkaufBestellung>('POST', `/api/einkauf/bestellungen/${id}/status`, { status, ...(gesendetAn && { gesendetAn }) }),
+  email:   (id: string, empfaenger?: string) =>
+    request<EinkaufBestellung>('POST', `/api/einkauf/bestellungen/${id}/email`, empfaenger ? { empfaenger } : {}),
+  pdf: async (id: string, dateiname: string): Promise<void> => {
+    const token = getToken()
+    const res = await fetch(`/api/einkauf/bestellungen/${id}/pdf`, {
+      headers: { Authorization: token ? `Bearer ${token}` : '' },
+    })
+    if (res.status === 401) { handleUnauthorized(); return }
+    if (!res.ok) throw new ApiError(res.status, `HTTP ${res.status}`)
+    const url = URL.createObjectURL(await res.blob())
+    const a   = document.createElement('a')
+    a.href = url; a.download = dateiname
+    document.body.appendChild(a); a.click(); document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  },
+}
 
 export const lieferantApi = {
   list:       () =>
