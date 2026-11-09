@@ -382,6 +382,23 @@ export const HILFE_THEMEN: HilfeThema[] = [
     ],
   },
   {
+    id: 'preislisten',
+    titel: 'Preislisten (Sonderpreise für Kunden)',
+    zweck: 'Bestimmten Kunden eigene Preise geben, z. B. einem Großkunden mit Rahmenvertrag.',
+    pfade: ['/preislisten'],
+    schritte: [
+      '„+ Neue Preisliste": einen Namen vergeben (z. B. den Kunden).',
+      'In der Liste Artikel hinzufügen und den Sonderpreis (brutto) eintragen, dann „Speichern".',
+      'Im Kunden (Seite „Kunden") die Preisliste auswählen — erst dann gilt sie für diesen Kunden.',
+      'An der Kasse den Kunden wählen: Artikel mit Sonderpreis werden sofort zum Listenpreis verrechnet, alle anderen zum normalen Preis.',
+    ],
+    tipps: [
+      'Ein Sonderpreis ersetzt den normalen Preis; Aktionen (Happy Hour) kommen darauf nicht zusätzlich.',
+      'Einen Rabatt, den du an der Kasse von Hand auf eine Position gibst, behält seine Wirkung auch beim Kundenwechsel.',
+      'Eine Preisliste kannst du deaktivieren, ohne sie zu löschen — dann gelten wieder die normalen Preise.',
+    ],
+  },
+  {
     id: 'einkaufsbestellungen',
     titel: 'Bestellungen beim Lieferanten',
     zweck: 'Waren beim Lieferanten bestellen: Bestellung anlegen, als PDF drucken oder per E-Mail senden und den Stand verfolgen.',

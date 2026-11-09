@@ -207,6 +207,8 @@ describe('Sauberer Neustart: Katalog löschen (Integration, echtes PostgreSQL)',
       'kasse_routing.kategorie_id -> kategorien (CASCADE)',
       'kassen.start_kategorie_id -> kategorien (SET NULL)',
       'kategorien.parent_id -> kategorien (SET NULL)',
+      // Sonderpreis einer Preisliste verschwindet mit dem Artikel (Preisliste und Kunden bleiben)
+      'preislisten_preise.artikel_id -> artikel (CASCADE)',
       'modifikatoren.gruppe_id -> modifikator_gruppen (CASCADE)',
       'seriennummern.artikel_id -> artikel (NO ACTION)',
     ]

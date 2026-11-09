@@ -17,6 +17,26 @@ export type {
   LieferantUpdate,
 } from './schemas/lieferant.js'
 
+// Preislisten (Sonderpreise je Kunde)
+export {
+  PreislisteSchema,
+  PreislistePreisSchema,
+  PreislisteDetailSchema,
+  PreislisteInputSchema,
+  PreislisteUpdateSchema,
+  PreislistePreiseSetzenSchema,
+  PreislisteFuerKundeSchema,
+} from './schemas/preisliste.js'
+export type {
+  Preisliste,
+  PreislistePreis,
+  PreislisteDetail,
+  PreislisteInput,
+  PreislisteUpdate,
+  PreislistePreiseSetzen,
+  PreislisteFuerKunde,
+} from './schemas/preisliste.js'
+
 // Einkaufsbestellungen (Bestellung beim Lieferanten)
 export {
   EINKAUF_BESTELLSTATUS,

@@ -2,11 +2,12 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { Kunde, KundeBelegVorschau, KundeInput, KundeUpdate, LiferscheinResponse, LiferscheinStatus, OffenerPostenResponse, OffenerPostenStatus } from '@kassa/shared'
 import { LIEFERSCHEIN_STATUS_LABELS, OFFENER_POSTEN_STATUS_LABELS } from '@kassa/shared'
-import { kundeApi, lieferscheinApi, offenerPostenApi, sammelrechnungApi } from '../lib/api'
+import { kundeApi, lieferscheinApi, offenerPostenApi, preislisteApi, sammelrechnungApi } from '../lib/api'
 import { getAuth } from '../lib/auth'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
+import { Select } from '../components/ui/Select'
 import { formatPreis, formatDatum } from '../lib/format'
 import { druckeLiferschein, druckeSammelrechnung } from '../lib/rechnung'
 import { ladeRechnungMandant } from '../lib/rechnung-mandant'
@@ -895,7 +896,10 @@ function KundeFormular({ initial, onSubmit, onAbbrechen, loading, fehler }: Kund
   const [kreditAktiv, setKreditAktiv] = useState(initial?.kreditAktiv ?? false)
   const [rechnungPerMail, setRechnungPerMail] = useState(initial?.rechnungPerMail ?? false)
   const [notizen,     setNotizen]     = useState(initial?.notizen     ?? '')
+  const [preislisteId, setPreislisteId] = useState(initial?.preislisteId ?? '')
   const [lokal,       setLokal]       = useState<string | null>(null)
+  // Preislisten zur Auswahl (Lesen darf auch die Kundenverwaltung); fehlt die Berechtigung, bleibt das Feld weg
+  const { data: preislisten = [] } = useQuery({ queryKey: ['preislisten'], queryFn: preislisteApi.liste, retry: false })
 
   const submit = () => {
     if (!firma.trim() && !nachname.trim()) {
@@ -921,6 +925,7 @@ function KundeFormular({ initial, onSubmit, onAbbrechen, loading, fehler }: Kund
       kreditAktiv,
       rechnungPerMail,
       notizen: notizen.trim() || null,
+      preislisteId: preislisteId || null,
     })
   }
 
@@ -1007,6 +1012,20 @@ function KundeFormular({ initial, onSubmit, onAbbrechen, loading, fehler }: Kund
           </p>
         </label>
       </div>
+
+      {/* Preisliste (Sonderpreise) */}
+      {(preislisten.length > 0 || preislisteId) && (
+        <label className="block">
+          <span className="text-xs font-medium text-ink">Preisliste (Sonderpreise)</span>
+          <Select data-testid="kunde-preisliste" value={preislisteId} onChange={e => setPreislisteId(e.target.value)} className="mt-0.5">
+            <option value="">— normale Preise —</option>
+            {preislisten.filter(p => p.aktiv || p.id === preislisteId).map(p => (
+              <option key={p.id} value={p.id}>{p.name}{p.aktiv ? '' : ' (deaktiviert)'} · {p.anzahlPreise} Preise</option>
+            ))}
+          </Select>
+          <p className="mt-0.5 text-xs text-ink-subtle">Gilt an der Kasse, sobald dieser Kunde gewählt ist.</p>
+        </label>
+      )}
 
       {/* Notizen */}
       <label className="block">

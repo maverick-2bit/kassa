@@ -209,6 +209,12 @@ export class ApiError extends Error {
 }
 
 import type {
+  Preisliste,
+  PreislisteDetail,
+  PreislisteFuerKunde,
+  PreislisteInput,
+  PreislistePreiseSetzen,
+  PreislisteUpdate,
   EinkaufBestellstatus,
   EinkaufBestellung,
   EinkaufBestellungInput,
@@ -678,6 +684,20 @@ export const kategorieApi = {
 // ---------------------------------------------------------------------------
 // Lieferanten
 // ---------------------------------------------------------------------------
+
+export const preislisteApi = {
+  liste:   () => request<Preisliste[]>('GET', '/api/preislisten'),
+  hole:    (id: string) => request<PreislisteDetail>('GET', `/api/preislisten/${id}`),
+  erstelle: (input: PreislisteInput) => request<Preisliste>('POST', '/api/preislisten', input),
+  aktualisiere: (id: string, input: PreislisteUpdate) => request<Preisliste>('PUT', `/api/preislisten/${id}`, input),
+  loesche: (id: string) => request<void>('DELETE', `/api/preislisten/${id}`),
+  preiseSetzen: (id: string, input: PreislistePreiseSetzen) =>
+    request<PreislisteDetail>('PUT', `/api/preislisten/${id}/preise`, input),
+  preisEntfernen: (id: string, artikelId: string) =>
+    request<void>('DELETE', `/api/preislisten/${id}/preise/${artikelId}`),
+  /** Preisliste samt Preisen für die Kasse (null = der Kunde hat keine) */
+  fuerKunde: (kundeId: string) => request<PreislisteFuerKunde>('GET', `/api/preislisten/fuer-kunde/${kundeId}`),
+}
 
 export const einkaufBestellungApi = {
   liste: (filter: { status?: EinkaufBestellstatus; lieferantId?: string } = {}) => {

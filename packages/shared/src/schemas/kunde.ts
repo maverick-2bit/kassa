@@ -33,6 +33,8 @@ export const KundeInputSchema = z.object({
   kreditAktiv:  z.boolean().default(false),
   rechnungPerMail: z.boolean().default(false),
   notizen:      z.string().trim().max(2000).nullable().optional(),
+  /** Preisliste mit Sonderpreisen für diesen Kunden; null/fehlt = normale Preise */
+  preislisteId: z.string().guid().nullable().optional(),
 }).refine(d => d.firma || d.nachname, {
   message: 'Firma oder Nachname ist erforderlich',
   path:    ['nachname'],
@@ -57,6 +59,7 @@ export const KundeUpdateSchema = z.object({
   kreditAktiv: z.boolean().optional(),
   rechnungPerMail: z.boolean().optional(),
   notizen:     z.string().trim().max(2000).nullable().optional(),
+  preislisteId: z.string().guid().nullable().optional(),
 })
 export type KundeUpdate = z.infer<typeof KundeUpdateSchema>
 
@@ -78,6 +81,8 @@ export const KundeSchema = z.object({
   kreditAktiv: z.boolean(),
   rechnungPerMail: z.boolean(),
   notizen:     z.string().nullable().optional(),
+  /** Zugewiesene Preisliste (Sonderpreise); null = normale Preise */
+  preislisteId: z.string().guid().nullable().optional(),
   createdAt:   z.string(),
   updatedAt:   z.string(),
 })
