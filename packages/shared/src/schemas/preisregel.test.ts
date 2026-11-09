@@ -10,7 +10,15 @@ import {
   aktiveAktion,
   aktionsPreisCent,
   happyHourPreisCent,
+  preisregelFehler,
+  endeNachAktionstagen,
+  verbleibendeAktionstage,
+  mengenRabattZeilen,
+  aktiveMengenAktion,
+  PreisregelInputSchema,
+  type MengenPosition,
   type Preisregel,
+  type PreisregelPruefung,
 } from './preisregel.js'
 
 const mkRegel = (over: Partial<Preisregel> = {}): Preisregel => ({
@@ -26,6 +34,10 @@ const mkRegel = (over: Partial<Preisregel> = {}): Preisregel => ({
   artikelPreise: [],
   kategorieIds:  [],
   artikelIds:    [],
+  mengeKauf:     null,
+  mengeZahle:    null,
+  mengeModus:    null,
+  wiederholungen: null,
   createdAt:     '',
   updatedAt:     '',
   ...over,
@@ -145,4 +157,216 @@ describe('Aktionspreise (fixer Preis je Artikel)', () => {
 
   it('happyHourPreisCent bleibt als Alias kompatibel', () =>
     expect(happyHourPreisCent(1000, [mkRegel({ rabattProzent: 20 })], 'a1', null, mo18)).toBe(800))
+})
+
+// ---------------------------------------------------------------------------
+// Wiederholung: Enddatum aus „nach X Aktionstagen"
+// ---------------------------------------------------------------------------
+
+describe('endeNachAktionstagen', () => {
+  // 2026-07-06 ist ein Montag
+  it('Montags, 4 Aktionstage → der vierte Montag ab dem Start (inklusive Starttag)', () => {
+    expect(endeNachAktionstagen('2026-07-06', [1], 1)).toBe('2026-07-06')
+    expect(endeNachAktionstagen('2026-07-06', [1], 4)).toBe('2026-07-27')
+  })
+  it('Startdatum, das selbst kein Aktionstag ist: gezählt wird ab dem nächsten passenden Tag', () => {
+    expect(endeNachAktionstagen('2026-07-07', [1], 1)).toBe('2026-07-13')   // Dienstag → nächster Montag
+  })
+  it('mehrere Wochentage zählen jeder Tag einzeln mit (Mo+Mi, 4 → Mo, Mi, Mo, Mi)', () => {
+    expect(endeNachAktionstagen('2026-07-06', [1, 3], 4)).toBe('2026-07-15')
+    expect(endeNachAktionstagen('2026-07-06', [3, 1], 3)).toBe('2026-07-13')
+  })
+  it('Sonntag ist 7; über Monats- und Jahreswechsel; Schaltjahr', () => {
+    expect(endeNachAktionstagen('2026-12-27', [7], 2)).toBe('2027-01-03')
+    expect(endeNachAktionstagen('2028-02-26', [2], 1)).toBe('2028-02-29')
+  })
+  it('Sommerzeitumstellung verschiebt nichts (reine Kalenderrechnung)', () => {
+    // 2026-03-29 = Sonntag mit Umstellung auf Sommerzeit
+    expect(endeNachAktionstagen('2026-03-22', [7], 2)).toBe('2026-03-29')
+    expect(endeNachAktionstagen('2026-03-22', [7], 3)).toBe('2026-04-05')
+  })
+  it('ungültige Eingaben → null', () => {
+    expect(endeNachAktionstagen('2026-07-06', [], 3)).toBeNull()
+    expect(endeNachAktionstagen('2026-07-06', [1], 0)).toBeNull()
+    expect(endeNachAktionstagen('06.07.2026', [1], 1)).toBeNull()
+  })
+  it('große Anzahl bei einem Wochentag (500 Montage) wird gefunden', () => {
+    const ende = endeNachAktionstagen('2026-07-06', [1], 500)!
+    expect(ende > '2035-01-01').toBe(true)
+  })
+})
+
+describe('verbleibendeAktionstage', () => {
+  const r = { wochentage: [1], gueltigVon: '2026-07-06', gueltigBis: '2026-07-27' }
+  it('zählt die Aktionstage ab heute bis zum Ende, einschließlich beider Grenzen', () => {
+    expect(verbleibendeAktionstage(r, '2026-07-01')).toBe(4)    // vor dem Start: alle vier
+    expect(verbleibendeAktionstage(r, '2026-07-06')).toBe(4)
+    expect(verbleibendeAktionstage(r, '2026-07-07')).toBe(3)
+    expect(verbleibendeAktionstage(r, '2026-07-27')).toBe(1)
+  })
+  it('nach dem Ende 0; ohne Ende oder ohne Wochentage null', () => {
+    expect(verbleibendeAktionstage(r, '2026-07-28')).toBe(0)
+    expect(verbleibendeAktionstage({ ...r, gueltigBis: null }, '2026-07-06')).toBeNull()
+    expect(verbleibendeAktionstage({ ...r, wochentage: [] }, '2026-07-06')).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Querprüfung (preisregelFehler / Eingabe-Schema)
+// ---------------------------------------------------------------------------
+
+describe('preisregelFehler', () => {
+  const basis: PreisregelPruefung = { wochentage: [1], datumTage: [], rabattProzent: 20, artikelPreise: [], mengeKauf: null, mengeZahle: null, mengeModus: null, wiederholungen: null, gueltigVon: null, gueltigBis: null }
+  it('gültige Preisaktion und gültige Mengenaktion', () => {
+    expect(preisregelFehler({ ...basis })).toBeNull()
+    expect(preisregelFehler({ ...basis, rabattProzent: 0, mengeKauf: 3, mengeZahle: 2, mengeModus: 'artikel' })).toBeNull()
+  })
+  it('Mengenaktion: „zahle" muss kleiner als „kaufe" sein; alle drei Felder zusammen', () => {
+    expect(preisregelFehler({ ...basis, rabattProzent: 0, mengeKauf: 3, mengeZahle: 3, mengeModus: 'artikel' })).toMatch(/kleiner/)
+    expect(preisregelFehler({ ...basis, rabattProzent: 0, mengeKauf: 3, mengeZahle: null, mengeModus: 'artikel' })).toMatch(/zusammen/)
+    expect(preisregelFehler({ ...basis, rabattProzent: 0, mengeKauf: 3, mengeZahle: 2, mengeModus: null })).toMatch(/zusammen/)
+  })
+  it('Mengenaktion und Prozent-Rabatt/Aktionspreise schließen sich aus; ohne beides ist die Preisaktion leer', () => {
+    expect(preisregelFehler({ ...basis, mengeKauf: 3, mengeZahle: 2, mengeModus: 'artikel' })).toMatch(/eigene Aktion/)
+    expect(preisregelFehler({ ...basis, rabattProzent: 0, artikelPreise: [{ artikelId: 'x', preisCent: 1 }], mengeKauf: 3, mengeZahle: 2, mengeModus: 'auswahl' })).toMatch(/eigene Aktion/)
+    expect(preisregelFehler({ ...basis, rabattProzent: 0 })).toMatch(/Prozent-Rabatt oder/)
+  })
+  it('Wiederholungen brauchen Wochentage und Startdatum; Ende vor Start ist ungültig; ohne Tag ungültig', () => {
+    expect(preisregelFehler({ ...basis, wiederholungen: 4, gueltigVon: '2026-07-06' })).toBeNull()
+    expect(preisregelFehler({ ...basis, wiederholungen: 4 })).toMatch(/Startdatum/)
+    expect(preisregelFehler({ ...basis, wochentage: [], datumTage: ['2026-07-06'], wiederholungen: 4, gueltigVon: '2026-07-06' })).toMatch(/Wochentagen/)
+    expect(preisregelFehler({ ...basis, gueltigVon: '2026-07-10', gueltigBis: '2026-07-01' })).toMatch(/vor/)
+    expect(preisregelFehler({ ...basis, wochentage: [], datumTage: [] })).toMatch(/Wochentag/)
+  })
+  it('Eingabe-Schema nutzt dieselbe Prüfung', () => {
+    const ok = PreisregelInputSchema.safeParse({ name: '3 für 2', wochentage: [1], zeitfenster: [{ von: '08:00', bis: '18:00' }], rabattProzent: 0, mengeKauf: 3, mengeZahle: 2, mengeModus: 'auswahl' })
+    expect(ok.success).toBe(true)
+    const schlecht = PreisregelInputSchema.safeParse({ name: 'x', wochentage: [1], zeitfenster: [{ von: '08:00', bis: '18:00' }], rabattProzent: 0, mengeKauf: 2, mengeZahle: 2, mengeModus: 'artikel' })
+    expect(schlecht.success).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Mengenaktion „X zum Preis von Y"
+// ---------------------------------------------------------------------------
+
+const A = '00000000-0000-0000-0000-00000000000a'
+const B = '00000000-0000-0000-0000-00000000000b'
+const C = '00000000-0000-0000-0000-00000000000c'
+const KAT = '00000000-0000-0000-0000-0000000000f1'
+
+const mengen = (over: Partial<Preisregel> = {}) => mkRegel({
+  id: '00000000-0000-0000-0000-0000000000m1'.replace('m', '1'), name: '3 für 2', rabattProzent: 0,
+  mengeKauf: 3, mengeZahle: 2, mengeModus: 'artikel', wochentage: [1], zeitfenster: [{ von: '08:00', bis: '20:00' }], ...over,
+})
+const pos = (artikelId: string, menge: number, preisCent: number, extra: Partial<MengenPosition> = {}): MengenPosition =>
+  ({ artikelId, kategorieId: KAT, bezeichnung: `Art ${artikelId.slice(-1)}`, mwstSatz: 'normal', menge, preisCent, ...extra })
+
+describe('mengenRabattZeilen — Zählweise „je gleichem Artikel"', () => {
+  it('3 gleiche Artikel → 1 gratis; 2 → keiner; 6 → 2; 7 → 2', () => {
+    expect(mengenRabattZeilen([mengen()], [pos(A, 3, 800)], mo13)).toEqual([
+      { regelId: expect.any(String), regelName: '3 für 2', bezeichnung: '3 für 2 (3 für 2): Art a', mwstSatz: 'normal', menge: 1, preisCent: -800 },
+    ])
+    expect(mengenRabattZeilen([mengen()], [pos(A, 2, 800)], mo13)).toEqual([])
+    expect(mengenRabattZeilen([mengen()], [pos(A, 6, 800)], mo13)[0]!.menge).toBe(2)
+    expect(mengenRabattZeilen([mengen()], [pos(A, 7, 800)], mo13)[0]!.menge).toBe(2)
+  })
+  it('verschiedene Artikel werden NICHT zusammengezählt (je 2 von A und B → nichts)', () => {
+    expect(mengenRabattZeilen([mengen()], [pos(A, 2, 800), pos(B, 2, 500)], mo13)).toEqual([])
+  })
+  it('derselbe Artikel in zwei Positionen (z. B. mit/ohne Option) zählt zusammen; die günstigste Einheit ist gratis', () => {
+    const z = mengenRabattZeilen([mengen()], [pos(A, 2, 800), pos(A, 1, 650)], mo13)
+    expect(z).toHaveLength(1)
+    expect(z[0]).toMatchObject({ menge: 1, preisCent: -650 })
+  })
+  it('X für 1 (z. B. 4 für 1) und 5 für 3', () => {
+    expect(mengenRabattZeilen([mengen({ mengeKauf: 4, mengeZahle: 1 })], [pos(A, 4, 100)], mo13)[0]).toMatchObject({ menge: 3 })
+    expect(mengenRabattZeilen([mengen({ mengeKauf: 5, mengeZahle: 3 })], [pos(A, 5, 100)], mo13)[0]).toMatchObject({ menge: 2 })
+  })
+})
+
+describe('mengenRabattZeilen — Zählweise „über die ganze Auswahl"', () => {
+  const auswahl = () => mengen({ mengeModus: 'auswahl' })
+  it('beliebige 3 Artikel der Auswahl → der günstigste ist gratis', () => {
+    const z = mengenRabattZeilen([auswahl()], [pos(A, 1, 800), pos(B, 1, 500), pos(C, 1, 650)], mo13)
+    expect(z).toHaveLength(1)
+    expect(z[0]).toMatchObject({ bezeichnung: '3 für 2 (3 für 2): Art b', menge: 1, preisCent: -500 })
+  })
+  it('6 Einheiten → zwei Gruppen; Gruppen bilden sich nach Preis absteigend (die Teuren zusammen)', () => {
+    // 900 900 900 | 300 300 300 → je Gruppe eine gratis: 900 und 300
+    const z = mengenRabattZeilen([auswahl()], [pos(A, 3, 900), pos(B, 3, 300)], mo13)
+    expect(z.map(x => [x.preisCent, x.menge]).sort()).toEqual([[-300, 1], [-900, 1]].sort())
+  })
+  it('weniger als X Einheiten → nichts; Rest nach vollen Gruppen bekommt nichts', () => {
+    expect(mengenRabattZeilen([auswahl()], [pos(A, 1, 800), pos(B, 1, 500)], mo13)).toEqual([])
+    expect(mengenRabattZeilen([auswahl()], [pos(A, 4, 100)], mo13)[0]!.menge).toBe(1)
+  })
+  it('nur Artikel im Geltungsbereich zählen (Warengruppe/Artikel)', () => {
+    const regel = auswahl()
+    const nurKat = { ...regel, kategorieIds: [KAT] }
+    const andere = '00000000-0000-0000-0000-0000000000f2'
+    expect(mengenRabattZeilen([nurKat], [pos(A, 2, 800), pos(B, 1, 500, { kategorieId: andere })], mo13)).toEqual([])
+    expect(mengenRabattZeilen([nurKat], [pos(A, 2, 800), pos(B, 1, 500)], mo13)).toHaveLength(1)
+    const nurArtikel = { ...regel, artikelIds: [A] }
+    expect(mengenRabattZeilen([nurArtikel], [pos(A, 2, 800), pos(B, 1, 500)], mo13)).toEqual([])
+  })
+})
+
+describe('mengenRabattZeilen — Zeit, Ausnahmen, Steuer, Überschneidung', () => {
+  it('nur im Aktionszeitfenster und an den Aktionstagen', () => {
+    const r = mengen()
+    expect(mengenRabattZeilen([r], [pos(A, 3, 800)], mo13)).toHaveLength(1)
+    expect(mengenRabattZeilen([r], [pos(A, 3, 800)], new Date(2026, 6, 6, 21, 0))).toEqual([])   // nach 20 Uhr
+    expect(mengenRabattZeilen([r], [pos(A, 3, 800)], sa18)).toEqual([])                         // Samstag
+    expect(mengenRabattZeilen([mengen({ aktiv: false })], [pos(A, 3, 800)], mo13)).toEqual([])
+  })
+  it('Ende nach Aktionstagen wirkt über gueltigBis', () => {
+    expect(mengenRabattZeilen([mengen({ gueltigVon: '2026-07-06', gueltigBis: '2026-07-06' })], [pos(A, 3, 800)], mo13)).toHaveLength(1)
+    expect(mengenRabattZeilen([mengen({ gueltigVon: '2026-06-01', gueltigBis: '2026-06-30' })], [pos(A, 3, 800)], mo13)).toEqual([])
+  })
+  it('ausgenommene Positionen (von Hand rabattiert), Gratis- und Negativpreise zählen nicht mit', () => {
+    expect(mengenRabattZeilen([mengen()], [pos(A, 3, 800, { ausgenommen: true })], mo13)).toEqual([])
+    expect(mengenRabattZeilen([mengen()], [pos(A, 3, 0)], mo13)).toEqual([])
+    expect(mengenRabattZeilen([mengen()], [pos(A, 3, -200)], mo13)).toEqual([])
+    // von drei Einheiten ist eine ausgenommen → nur 2 zählen → kein Gratis
+    expect(mengenRabattZeilen([mengen()], [pos(A, 2, 800), pos(A, 1, 800, { ausgenommen: true })], mo13)).toEqual([])
+  })
+  it('Steuersatz des Artikels steht auf der Rabattzeile (gemischte Sätze bleiben getrennt)', () => {
+    const regel = mengen({ mengeModus: 'auswahl' })
+    const z = mengenRabattZeilen([regel], [pos(A, 1, 800, { mwstSatz: 'ermaessigt1' }), pos(B, 1, 500, { mwstSatz: 'normal' }), pos(C, 1, 650, { mwstSatz: 'normal' })], mo13)
+    expect(z).toHaveLength(1)
+    expect(z[0]).toMatchObject({ mwstSatz: 'normal', preisCent: -500 })      // der günstigste ist Artikel B (20 %)
+  })
+  it('gleicher Artikel zu zwei Preisen ergibt zwei getrennte Zeilen, wenn beide Einheiten gratis fallen', () => {
+    const z = mengenRabattZeilen([mengen({ mengeKauf: 2, mengeZahle: 1 })], [pos(A, 2, 800), pos(A, 2, 400)], mo13)
+    expect(z.map(x => [x.menge, x.preisCent]).sort()).toEqual([[1, -400], [1, -800]].sort())
+  })
+  it('überschneidende Aktionen: eine Einheit nimmt nur an der besten teil (kein doppelter Nachlass)', () => {
+    const drei = mengen({ id: '00000000-0000-0000-0000-000000000002', name: '3 für 2' })
+    const zwei = mengen({ id: '00000000-0000-0000-0000-000000000003', name: '2 für 1', mengeKauf: 2, mengeZahle: 1 })
+    // 3 Einheiten: „2 für 1" (Nachlassanteil 50 %) gewinnt gegen „3 für 2" (33 %) und verbraucht 2; die dritte bleibt allein
+    const z = mengenRabattZeilen([drei, zwei], [pos(A, 3, 600)], mo13)
+    expect(z).toHaveLength(1)
+    expect(z[0]).toMatchObject({ regelName: '2 für 1', menge: 1 })
+  })
+  it('ohne Mengenaktionen oder bei leerem Warenkorb → leer', () => {
+    expect(mengenRabattZeilen([mkRegel()], [pos(A, 3, 800)], mo13)).toEqual([])
+    expect(mengenRabattZeilen([mengen()], [], mo13)).toEqual([])
+  })
+  it('Preisaktionen bleiben von Mengenaktionen unberührt (Prozent 0, keine Fixpreise)', () => {
+    const r = mengen()
+    expect(aktiverRabattProzent([r], A, KAT, mo13)).toBe(0)
+    expect(aktiverFixpreisCent([r], A, KAT, mo13)).toBeNull()
+    expect(aktionsPreisCent(800, [r], A, KAT, mo13)).toBe(800)
+  })
+})
+
+describe('aktiveMengenAktion (Hinweis an der Kasse)', () => {
+  it('liefert die gerade geltende Aktion für den Artikel, sonst null; bei mehreren die mit dem größten Nachlassanteil', () => {
+    expect(aktiveMengenAktion([mengen()], A, KAT, mo13)).toEqual({ kauf: 3, zahle: 2 })
+    expect(aktiveMengenAktion([mengen()], A, KAT, sa18)).toBeNull()
+    expect(aktiveMengenAktion([mkRegel()], A, KAT, mo18)).toBeNull()
+    const zwei = mengen({ id: '00000000-0000-0000-0000-000000000003', mengeKauf: 2, mengeZahle: 1 })
+    expect(aktiveMengenAktion([mengen(), zwei], A, KAT, mo13)).toEqual({ kauf: 2, zahle: 1 })
+  })
 })

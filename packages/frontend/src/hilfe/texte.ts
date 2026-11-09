@@ -325,16 +325,32 @@ export const HILFE_THEMEN: HilfeThema[] = [
   {
     id: 'preisregeln',
     titel: 'Aktionen (Happy Hour & Co.)',
-    zweck: 'Zeitlich begrenzte Preisaktionen: Prozentrabatt oder fixer Aktionspreis.',
+    zweck: 'Zeitlich begrenzte Aktionen: Prozentrabatt, fixer Aktionspreis oder „X zum Preis von Y".',
     pfade: ['/preisregeln'],
-    stichworte: ['happy hour', 'rabatt', 'aktionspreis'],
+    stichworte: ['happy hour', 'rabatt', 'aktionspreis', '3 für 2', 'mengenaktion', 'wiederholung'],
     schritte: [
       '„+ Neue Aktion": Namen vergeben.',
-      'Tage festlegen: Wochentage (wiederkehrend) und/oder konkrete Datumstage, dazu ein Zeitfenster.',
-      'Rabatt (%) eintragen oder „Fixer Aktionspreis statt Prozent" wählen und Preise je Artikel setzen.',
+      'Wann: Wochentage wählen (wiederkehrend, z. B. immer montags) und/oder konkrete Datumstage (einmalig), dazu ein oder mehrere Zeitfenster von–bis.',
+      'Beginn und Ende: „Aktion ab" setzen und festlegen, wann es endet — kein Ende, bis zu einem Datum oder nach einer Anzahl Aktionstage (jeder Tag, an dem die Aktion läuft, zählt einmal; das Enddatum rechnet die Kassa aus).',
+      'Art: „Preis" = Rabatt (%) oder fixer Aktionspreis je Artikel. „Mengenaktion" = kaufe X, zahle Y (z. B. 3 für 2).',
       'Warengruppen oder Artikel wählen, für die die Aktion gilt. Ohne Auswahl gilt sie für alle Artikel.',
     ],
-    tipps: ['Läuft eine Aktion, zeigt die Kachel in der Kasse ein Aktions-Zeichen und den neuen Preis.'],
+    abschnitte: [
+      {
+        titel: 'Mengenaktion „X zum Preis von Y"',
+        schritte: [
+          '„Gezählt wird je gleichem Artikel": 3 gleiche Pizzen im Warenkorb, eine davon ist gratis.',
+          '„Über die ganze Auswahl": aus allen Artikeln der Auswahl bilden je 3 Stück eine Gruppe, der günstigste ist gratis (z. B. beliebige 3 Eissorten).',
+          'An der Kasse erscheint eine grüne Rabattzeile mit dem Steuersatz des Artikels; sie steht so auch auf dem Beleg.',
+          'Eine Mengenaktion kann nicht zugleich einen Prozent-Rabatt oder Aktionspreise haben — dafür eine eigene Aktion anlegen.',
+        ],
+      },
+    ],
+    tipps: [
+      'Läuft eine Aktion, zeigt die Kachel in der Kasse ein Aktions-Zeichen und den neuen Preis.',
+      'Positionen, auf die du an der Kasse von Hand einen Rabatt gegeben hast, nehmen an einer Mengenaktion nicht teil.',
+      'Eine Mengenaktion gilt an der Kasse (Direktverkauf). Am Tisch-Tab wird sie derzeit nicht abgezogen.',
+    ],
   },
   {
     id: 'wareneingang',
