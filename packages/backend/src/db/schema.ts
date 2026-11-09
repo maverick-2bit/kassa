@@ -1354,6 +1354,48 @@ export type Lieferant    = typeof lieferanten.$inferSelect
 export type NewLieferant = typeof lieferanten.$inferInsert
 
 // ---------------------------------------------------------------------------
+// Einkaufsbestellungen — Bestellung BEI einem Lieferanten (nicht: Bestellungen von Kunden)
+// ---------------------------------------------------------------------------
+
+export const einkaufBestellungen = pgTable('einkauf_bestellungen', {
+  id:           uuid('id').primaryKey().defaultRandom(),
+  mandantId:    uuid('mandant_id').notNull().references(() => mandanten.id),
+  /** Laufende Nummer je Mandant und Jahr, z. B. B2026001 */
+  nummer:       varchar('nummer', { length: 20 }).notNull(),
+  lieferantId:  uuid('lieferant_id').notNull().references(() => lieferanten.id),
+  /** entwurf | gesendet | teilgeliefert | erledigt | storniert */
+  status:       varchar('status', { length: 20 }).notNull().default('entwurf'),
+  bemerkung:    text('bemerkung'),
+  liefertermin: date('liefertermin', { mode: 'string' }),
+  gesendetAm:   timestamp('gesendet_am', { withTimezone: true }),
+  gesendetAn:   varchar('gesendet_an', { length: 200 }),
+  createdAt:    timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:    timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  nummerIdx:   uniqueIndex('einkauf_bestellungen_nummer_idx').on(t.mandantId, t.nummer),
+  lieferantIdx: index('einkauf_bestellungen_lieferant_idx').on(t.lieferantId),
+  statusIdx:   index('einkauf_bestellungen_status_idx').on(t.mandantId, t.status),
+}))
+
+export const einkaufBestellpositionen = pgTable('einkauf_bestellpositionen', {
+  id:            uuid('id').primaryKey().defaultRandom(),
+  bestellungId:  uuid('bestellung_id').notNull().references(() => einkaufBestellungen.id, { onDelete: 'cascade' }),
+  position:      integer('position').notNull(),
+  artikelId:     uuid('artikel_id').references((): AnyPgColumn => artikel.id, { onDelete: 'set null' }),
+  bezeichnung:   text('bezeichnung').notNull(),
+  lieferantenArtikelnummer: varchar('lieferanten_artikelnummer', { length: 60 }),
+  menge:         integer('menge').notNull(),
+  /** Einkaufspreis netto je Stück in Cent */
+  einkaufspreisCent: integer('einkaufspreis_cent'),
+  gelieferteMenge: integer('geliefert_menge').notNull().default(0),
+}, (t) => ({
+  bestellungIdx: index('einkauf_bestellpositionen_bestellung_idx').on(t.bestellungId),
+}))
+
+export type EinkaufBestellungRow     = typeof einkaufBestellungen.$inferSelect
+export type EinkaufBestellpositionRow = typeof einkaufBestellpositionen.$inferSelect
+
+// ---------------------------------------------------------------------------
 // KDS-Bons — aktive Bonierbons für Browser-basiertes Küchen-Display
 // ---------------------------------------------------------------------------
 
