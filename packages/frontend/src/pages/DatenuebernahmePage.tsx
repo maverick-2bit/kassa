@@ -8,12 +8,13 @@
 
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { artikelApi, kategorieApi, kundeApi, lieferantApi } from '../lib/api'
+import type { MwStSatz } from '@kassa/shared'
+import { artikelApi, kategorieApi, kundeApi, lieferantApi, preislisteApi } from '../lib/api'
 import { getAuth } from '../lib/auth'
 import { Button } from '../components/ui/Button'
 import {
-  kundeMarke, lieferantMarke, parseArtikel, parseKunden, parseLieferanten,
-  type ParsedArtikel, type ParsedKunde, type ParsedLieferant, type Zeile,
+  kundeMarke, lieferantMarke, nettoZuBruttoCent, parseArtikel, parseKunden, parseLieferanten, parsePreisgruppen,
+  type ParsedArtikel, type ParsedKunde, type ParsedLieferant, type ParsedPreisgruppe, type Zeile,
 } from '../lib/selectline-import'
 
 async function leseExcel(datei: File, blattPrefix: string): Promise<Zeile[]> {
@@ -260,19 +261,105 @@ function ArtikelKarte() {
 
 // ---------------------------------------------------------------------------
 
+function PreislistenKarte() {
+  const auth = getAuth()
+  const qc = useQueryClient()
+  const [gruppen, setGruppen] = useState<ParsedPreisgruppe[] | null>(null)
+  const [gewaehlt, setGewaehlt] = useState<Record<string, boolean>>({})
+  const [namen, setNamen] = useState<Record<string, string>>({})
+  const [busy, setBusy] = useState(false)
+  const [fehler, setFehler] = useState<string | null>(null)
+  const [ergebnisse, setErgebnisse] = useState<string[]>([])
+
+  async function waehle(f: File | undefined) {
+    setErgebnisse([]); setFehler(null); setGruppen(null); setGewaehlt({}); setNamen({})
+    if (!f) return
+    try {
+      const g = parsePreisgruppen(await leseExcel(f, 'M10'))
+      setGruppen(g)
+      setNamen(Object.fromEntries(g.map(x => [x.nummer, x.name])))
+    } catch (e) { setFehler(e instanceof Error ? e.message : 'Datei nicht lesbar') }
+  }
+
+  async function uebernehmen() {
+    if (!gruppen || !auth) return
+    setBusy(true); setFehler(null); setErgebnisse([])
+    const meldungen: string[] = []
+    try {
+      // Kassa-Artikel über die SelectLine-Artikelnummer finden (steht als „Artikelnummer beim Lieferanten")
+      const bestehend = await qc.fetchQuery({ queryKey: ['artikel', auth.mandant.id, false], queryFn: () => artikelApi.list(auth.mandant.id, false), staleTime: 0 })
+      const jeNummer = new Map(bestehend.flatMap(a => a.lieferantenArtikelnummer ? [[a.lieferantenArtikelnummer, a] as const] : []))
+      const vorhandene = await preislisteApi.liste()
+
+      for (const g of gruppen.filter(x => gewaehlt[x.nummer])) {
+        const name = (namen[g.nummer] ?? g.name).trim()
+        if (!name) { meldungen.push(`Gruppe ${g.nummer}: ohne Namen übersprungen`); continue }
+        const preise: { artikelId: string; preisBruttoCent: number }[] = []
+        let fehlend = 0
+        for (const e of g.eintraege) {
+          const a = jeNummer.get(e.artikelNr)
+          if (!a) { fehlend++; continue }
+          preise.push({ artikelId: a.id, preisBruttoCent: nettoZuBruttoCent(e.nettoEuro, a.mwstSatz as MwStSatz) })
+        }
+        if (preise.length === 0) { meldungen.push(`„${name}": kein Artikel gefunden — bitte zuerst die Artikel übernehmen (Schritt 3)`); continue }
+        const liste = vorhandene.find(l => l.name.trim().toLowerCase() === name.toLowerCase()) ?? await preislisteApi.erstelle({ name })
+        for (let i = 0; i < preise.length; i += 1000) await preislisteApi.preiseSetzen(liste.id, { preise: preise.slice(i, i + 1000) })
+        meldungen.push(`„${name}": ${preise.length} Sonderpreise übernommen${fehlend > 0 ? `, ${fehlend} Artikel nicht gefunden` : ''}.`)
+      }
+      void qc.invalidateQueries({ queryKey: ['preislisten'] })
+      setErgebnisse(meldungen)
+    } catch (e) { setFehler(e instanceof Error ? e.message : 'Fehler') }
+    finally { setBusy(false) }
+  }
+
+  const anzahl = gruppen ? gruppen.filter(g => gewaehlt[g.nummer]).length : 0
+  return (
+    <Karte nr={4} titel="Sonderpreise (Preislisten)" hinweis="Dieselbe Datei „Artikel.xlsx“ wie bei den Artikeln. Jede Preisgruppe wird eine Preisliste mit Bruttopreisen. Danach weist du die Liste im Kunden zu. Erst nach Schritt 3 möglich.">
+      <input type="file" accept=".xlsx" data-testid="uebernahme-preislisten-datei" onChange={e => void waehle(e.target.files?.[0])} />
+      {gruppen && gruppen.length === 0 && <p className="text-sm text-ink-muted">In dieser Datei gibt es keine Preisgruppen mit Preisen.</p>}
+      {gruppen && gruppen.length > 0 && (
+        <div className="space-y-2">
+          {gruppen.map(g => (
+            <div key={g.nummer} className="flex items-center gap-3">
+              <input type="checkbox" aria-label={`Preisgruppe ${g.nummer} übernehmen`} data-testid={`uebernahme-pg-${g.nummer}`}
+                checked={!!gewaehlt[g.nummer]} onChange={e => setGewaehlt(o => ({ ...o, [g.nummer]: e.target.checked }))} />
+              <input type="text" value={namen[g.nummer] ?? ''} maxLength={80} aria-label={`Name der Preisliste für Gruppe ${g.nummer}`}
+                data-testid={`uebernahme-pg-name-${g.nummer}`} onChange={e => setNamen(o => ({ ...o, [g.nummer]: e.target.value }))}
+                className="rounded-lg border border-line-strong px-2 py-1 text-sm w-56" />
+              <span className="text-xs text-ink-muted">{g.eintraege.length} Preise (SelectLine-Gruppe {g.nummer})</span>
+            </div>
+          ))}
+          <Button loading={busy} disabled={anzahl === 0} onClick={() => void uebernehmen()} data-testid="uebernahme-preislisten-start">
+            {anzahl === 0 ? 'Preislisten übernehmen' : `${anzahl} Preisliste${anzahl === 1 ? '' : 'n'} übernehmen`}
+          </Button>
+        </div>
+      )}
+      {fehler && <p className="text-sm text-red-600" role="alert">{fehler}</p>}
+      {ergebnisse.length > 0 && (
+        <ul className="text-sm text-green-700 list-disc pl-5" data-testid="uebernahme-preislisten-ergebnis">
+          {ergebnisse.map((m, i) => <li key={i}>{m}</li>)}
+        </ul>
+      )}
+    </Karte>
+  )
+}
+
+// ---------------------------------------------------------------------------
+
 export function DatenuebernahmePage() {
   return (
     <div className="mx-auto max-w-3xl px-4 py-6 space-y-4">
       <div>
         <h1 className="text-2xl font-bold text-ink">Datenübernahme</h1>
         <p className="text-sm text-ink-muted mt-0.5">
-          Lieferanten, Kunden und Artikel aus der bisherigen Warenwirtschaft übernehmen. Bitte der Reihe nach vorgehen.
+          Lieferanten, Kunden, Artikel und Sonderpreise aus der bisherigen Warenwirtschaft übernehmen. Bitte der Reihe nach vorgehen.
           Eine Datei kann gefahrlos mehrmals übernommen werden — Vorhandenes wird erkannt und übersprungen.
         </p>
       </div>
       <LieferantenKarte />
       <KundenKarte />
       <ArtikelKarte />
+      <PreislistenKarte />
     </div>
   )
 }

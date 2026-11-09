@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { ArtikelInputSchema, KundeInputSchema, LieferantInputSchema } from '@kassa/shared'
 import {
-  landCode, mwstAusProzent, parseArtikel, parseKunden, parseLieferanten, text, zahl,
+  landCode, mwstAusProzent, nettoZuBruttoCent, parseArtikel, parseKunden, parseLieferanten, parsePreisgruppen, text, zahl,
 } from './selectline-import'
 
 describe('Spaltenzugriff', () => {
@@ -122,5 +122,37 @@ describe('Artikel', () => {
       const p = ArtikelInputSchema.safeParse({ ...e.input, mandantId: '11111111-1111-4111-8111-111111111111' })
       expect(p.success, e.nummer).toBe(true)
     }
+  })
+})
+
+describe('Preisgruppen → Preislisten', () => {
+  const zeilen = [
+    { Artikelnummer: 'A1', Bezeichnung: 'Toner', 'Preisgruppe 1 – Elektro Pauritsch (netto)': 40, 'Preisgruppe 2 – Tersus (netto)': 50.25, 'Preisgruppe 4 (netto)': null, 'Preisgruppe 5 (netto)': '' },
+    { Artikelnummer: 'A2', Bezeichnung: 'Kabel', 'Preisgruppe 1 – Elektro Pauritsch (netto)': null, 'Preisgruppe 2 – Tersus (netto)': '1,5', 'Preisgruppe 4 (netto)': null, 'Preisgruppe 5 (netto)': '' },
+    { Artikelnummer: 'A3', Bezeichnung: 'Alt', Inaktiv: 'ja', 'Preisgruppe 2 – Tersus (netto)': 9 },
+    { Artikelnummer: '',   Bezeichnung: 'Ohne Nummer', 'Preisgruppe 2 – Tersus (netto)': 9 },
+  ]
+  const g = parsePreisgruppen(zeilen as never)
+
+  it('findet die Gruppen mit Namen aus der Überschrift; leere Gruppen fehlen', () => {
+    expect(g.map(x => [x.nummer, x.name])).toEqual([['1', 'Elektro Pauritsch'], ['2', 'Tersus']])
+  })
+  it('liest Preise (Zahl oder Text mit Komma); inaktive Artikel und Zeilen ohne Nummer zählen nicht', () => {
+    expect(g[1]!.eintraege).toEqual([{ artikelNr: 'A1', nettoEuro: 50.25 }, { artikelNr: 'A2', nettoEuro: 1.5 }])
+    expect(g[0]!.eintraege).toEqual([{ artikelNr: 'A1', nettoEuro: 40 }])
+  })
+  it('Gruppe ohne Namen in der Überschrift heißt „Preisgruppe N"', () => {
+    const r = parsePreisgruppen([{ Artikelnummer: 'A1', 'Preisgruppe 4 (netto)': 7 }] as never)
+    expect(r).toEqual([{ nummer: '4', name: 'Preisgruppe 4', eintraege: [{ artikelNr: 'A1', nettoEuro: 7 }] }])
+  })
+  it('keine Preisgruppen-Spalten → leer', () => {
+    expect(parsePreisgruppen([{ Artikelnummer: 'A1', Bezeichnung: 'X' }] as never)).toEqual([])
+  })
+  it('netto → brutto je Steuersatz, kaufmännisch gerundet', () => {
+    expect(nettoZuBruttoCent(50.25, 'normal')).toBe(6030)
+    expect(nettoZuBruttoCent(10, 'ermaessigt1')).toBe(1100)
+    expect(nettoZuBruttoCent(33.33, 'normal')).toBe(4000)
+    expect(nettoZuBruttoCent(0, 'normal')).toBe(0)
+    expect(nettoZuBruttoCent(10, 'null')).toBe(1000)
   })
 })

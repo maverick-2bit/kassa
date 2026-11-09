@@ -339,6 +339,31 @@ export const belege = pgTable('belege', {
 // Kunden (CRM) — Kundenstammdaten pro Mandant
 // ---------------------------------------------------------------------------
 
+export const preislisten = pgTable('preislisten', {
+  id:        uuid('id').primaryKey().defaultRandom(),
+  mandantId: uuid('mandant_id').notNull().references(() => mandanten.id),
+  name:      varchar('name', { length: 80 }).notNull(),
+  aktiv:     boolean('aktiv').notNull().default(true),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  nameIdx: uniqueIndex('preislisten_mandant_name_idx').on(t.mandantId, t.name),
+}))
+
+export const preislistenPreise = pgTable('preislisten_preise', {
+  id:           uuid('id').primaryKey().defaultRandom(),
+  preislisteId: uuid('preisliste_id').notNull().references(() => preislisten.id, { onDelete: 'cascade' }),
+  artikelId:    uuid('artikel_id').notNull().references((): AnyPgColumn => artikel.id, { onDelete: 'cascade' }),
+  /** Sonderpreis brutto in Cent */
+  preisBruttoCent: integer('preis_brutto_cent').notNull(),
+}, (t) => ({
+  eindeutigIdx: uniqueIndex('preislisten_preise_eindeutig_idx').on(t.preislisteId, t.artikelId),
+  artikelIdx:   index('preislisten_preise_artikel_idx').on(t.artikelId),
+}))
+
+export type PreislisteRow      = typeof preislisten.$inferSelect
+export type PreislistenPreisRow = typeof preislistenPreise.$inferSelect
+
 export const kunden = pgTable('kunden', {
   id:        uuid('id').primaryKey().defaultRandom(),
   mandantId: uuid('mandant_id').notNull().references(() => mandanten.id),
@@ -364,6 +389,8 @@ export const kunden = pgTable('kunden', {
   rechnungPerMail: boolean('rechnung_per_mail').notNull().default(false),
   /** Freitext-Notizen zum Kunden (intern, erscheint nicht auf Belegen) */
   notizen:     text('notizen'),
+  /** Preisliste mit Sonderpreisen für diesen Kunden (manuell zugewiesen) */
+  preislisteId: uuid('preisliste_id').references(() => preislisten.id, { onDelete: 'set null' }),
   createdAt:   timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt:   timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({

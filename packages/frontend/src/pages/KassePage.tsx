@@ -21,7 +21,8 @@ import type {
 } from '@kassa/shared'
 import { GUTSCHEIN_STATUS_LABELS, MWST_LABELS, STATION_LABELS, aktionsPreisCent, aktiverRabattProzent, aktiveAktion, bonierUmleitungen, fragtNachOptionen, warengruppenWahl } from '@kassa/shared'
 import type { AktiveAktion } from '@kassa/shared'
-import { angebotApi, artikelApi, belegApi, bonierApi, druckerApi, emailApi, gutscheinApi, kategorieApi, lieferscheinApi, modifikatorApi, offenerPostenApi, posConfigApi, preisregelApi, tischTabApi, zvtApi, displayApi, ApiError } from '../lib/api'
+import { angebotApi, artikelApi, belegApi, bonierApi, druckerApi, emailApi, gutscheinApi, kategorieApi, lieferscheinApi, modifikatorApi, offenerPostenApi, posConfigApi, preislisteApi, preisregelApi, tischTabApi, zvtApi, displayApi, ApiError } from '../lib/api'
+import { korbNeuBepreisen, listenPreise, listenPreisFuer } from '../lib/preisliste'
 import { FreigabePinModal } from '../components/FreigabePinModal'
 import { getKasseIdentity } from '../lib/kasse'
 import { setKassenLeistenAusgeblendet, useKassenLeistenAusgeblendet } from '../lib/kassenLeisten'
@@ -180,6 +181,14 @@ export function KassePage() {
     queryFn:  () => kategorieApi.list(true),
   })
 
+  // Sonderpreise des gewählten Kunden (Preisliste). Ein neu erfasster Kunde hat noch keine.
+  const preislisteQuery = useQuery({
+    queryKey: ['preisliste-kunde', kunde?.id],
+    queryFn:  () => preislisteApi.fuerKunde(kunde!.id),
+    enabled:  !!kunde && !neuerKunde,
+  })
+  const kundenPreise = useMemo(() => listenPreise(preislisteQuery.data), [preislisteQuery.data])
+
   const preisregelnQuery = useQuery({
     queryKey: ['preisregeln'],
     queryFn:  preisregelApi.list,
@@ -311,13 +320,31 @@ export function KassePage() {
   // Warenkorb-Aktionen
   // ---------------------------------------------------------------------------
 
+  /** Basispreis eines Artikels: Sonderpreis des Kunden, sonst normaler Preis mit laufender Aktion */
+  const artikelBasis = (a: { id: string; kategorieId?: string | null; preisBruttoCent: number }) => {
+    const listenCent = listenPreisFuer(kundenPreise, a)
+    if (listenCent !== null) return { basisCent: listenCent, happyHourProzent: 0 }
+    const regeln = preisregelnQuery.data ?? []
+    const jetzt  = new Date()
+    const kat    = a.kategorieId ?? null
+    return {
+      basisCent:        aktionsPreisCent(a.preisBruttoCent, regeln, a.id, kat, jetzt),
+      happyHourProzent: a.preisBruttoCent < 0 ? 0 : aktiverRabattProzent(regeln, a.id, kat, jetzt),
+    }
+  }
+
+  // Kunde gewählt/gewechselt/entfernt → Positionen im Warenkorb neu bepreisen (Rabatte von Hand bleiben)
+  useEffect(() => {
+    // (die Position trägt den vollständigen Artikel, daher auch die Warengruppe für Aktionen)
+    setKorb(prev => korbNeuBepreisen(prev, kundenPreise, (art) => artikelBasis(art as Artikel)))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kundenPreise])
+
   const addArtikel = (a: Artikel, modifikatoren: ModifikatorAuswahl[], menge = 1) => {
     setFehler(null)
     // Aktionen: den Artikel-Basispreis ggf. senken (Fixpreis oder Prozent),
     // Modifikatoren kommen zum vollen Preis dazu
-    const regeln    = preisregelnQuery.data ?? []
-    const hhProzent = a.preisBruttoCent < 0 ? 0 : aktiverRabattProzent(regeln, a.id, a.kategorieId, new Date())
-    const basisCent = aktionsPreisCent(a.preisBruttoCent, regeln, a.id, a.kategorieId, new Date())
+    const { basisCent, happyHourProzent: hhProzent } = artikelBasis(a)
     const preisCent = positionsPreisCent(basisCent, modifikatoren)
     setKorb((prev) => {
       if (modifikatoren.length === 0) {
@@ -842,6 +869,11 @@ export function KassePage() {
                 if (!k?.kreditAktiv) setKreditModus(false)
               }}
             />
+            {preislisteQuery.data && kundenPreise && (
+              <p className="text-xs text-brand-700" data-testid="kasse-preisliste-hinweis">
+                Preisliste „{preislisteQuery.data.name}" · {preislisteQuery.data.preise.length} Sonderpreise
+              </p>
+            )}
           </div>
 
           {/* Warenkorb-Positionen — ab lg nimmt die Liste, was die Spalte übrig lässt */}

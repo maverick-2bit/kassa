@@ -10,6 +10,7 @@
  *   Artikel:   Artikelnummer beim Lieferanten = SelectLine-Artikelnummer
  */
 
+import { MWST_PROZENT_SATZ } from '@kassa/shared'
 import type { ArtikelInput, KundeInput, LieferantInput, MwStSatz } from '@kassa/shared'
 
 export type Zeile = Record<string, unknown>
@@ -226,4 +227,54 @@ export function parseArtikel(zeilen: Zeile[]): { eintraege: ParsedArtikel[]; ueb
     })
   }
   return { eintraege, uebersprungen, ohnePreis }
+}
+
+// ---------------------------------------------------------------------------
+// Preisgruppen (Sonderpreise) → Preislisten
+// ---------------------------------------------------------------------------
+
+export interface ParsedPreisgruppe {
+  /** SelectLine-Preisgruppe (z. B. „2") */
+  nummer:    string
+  /** Name aus der Spaltenüberschrift (z. B. „Tersus"), sonst „Preisgruppe 2" */
+  name:      string
+  eintraege: { artikelNr: string; nettoEuro: number }[]
+}
+
+const PREISGRUPPE_SPALTE = /^preisgruppe\s*(\d+)\s*(?:[\u2013\u2014-]\s*(.+?))?\s*\(netto\)\s*$/i
+
+/**
+ * Spalten „Preisgruppe 2 – Tersus (netto)" der Artikel-Datei → je Gruppe die Artikel mit Sonderpreis.
+ * Gruppen ohne einen einzigen Preis werden ausgelassen. Preise sind NETTO (SelectLine); die Umrechnung auf
+ * brutto braucht den Steuersatz des Kassa-Artikels (siehe `nettoZuBruttoCent`).
+ */
+export function parsePreisgruppen(zeilen: Zeile[]): ParsedPreisgruppe[] {
+  const spalten = new Map<string, { nummer: string; name: string }>()
+  for (const z of zeilen) {
+    for (const k of Object.keys(z)) {
+      if (spalten.has(k)) continue
+      const m = PREISGRUPPE_SPALTE.exec(k.trim())
+      if (m) spalten.set(k, { nummer: m[1]!, name: (m[2] ?? '').trim() || `Preisgruppe ${m[1]}` })
+    }
+  }
+  const gruppen: ParsedPreisgruppe[] = []
+  for (const [spalte, info] of spalten) {
+    const eintraege: ParsedPreisgruppe['eintraege'] = []
+    for (const z of zeilen) {
+      const artikelNr = text(z, 'Artikelnummer')
+      if (!artikelNr || text(z, 'Inaktiv').toLowerCase() === 'ja') continue
+      const roh = z[spalte]
+      const netto = typeof roh === 'number' ? roh : Number(String(roh ?? '').replace(',', '.'))
+      if (roh === null || roh === undefined || String(roh).trim() === '' || !Number.isFinite(netto) || netto < 0) continue
+      eintraege.push({ artikelNr, nettoEuro: netto })
+    }
+    if (eintraege.length > 0) gruppen.push({ ...info, eintraege })
+  }
+  return gruppen.sort((a, b) => Number(a.nummer) - Number(b.nummer))
+}
+
+/** Nettopreis in Euro → Bruttopreis in Cent (kaufmännisch gerundet) für den Steuersatz des Kassa-Artikels. */
+export function nettoZuBruttoCent(nettoEuro: number, mwstSatz: MwStSatz): number {
+  const prozent = MWST_PROZENT_SATZ[mwstSatz] ?? 20
+  return Math.round(nettoEuro * 100 * (1 + prozent / 100))
 }
