@@ -36,13 +36,15 @@ const STATUS_FARBE: Record<LagerStatus, string> = {
 // ---------------------------------------------------------------------------
 
 function exportiereCsv(zeilen: BestellZeile[], lieferantenMap: Map<string, string>) {
-  const header = ['Lieferant', 'Artikel', 'Aktuell', 'Mindestbestand', 'Zu bestellen', 'Preis/Stück']
+  const header = ['Lieferant', 'Art.-Nr. Lieferant', 'Artikel', 'Aktuell', 'Mindestbestand', 'Zu bestellen', 'EK netto/Stück', 'VK brutto/Stück']
   const rows = zeilen.map(z => [
     z.lieferantId ? (lieferantenMap.get(z.lieferantId) ?? 'Unbekannt') : 'Ohne Lieferant',
+    z.lieferantenArtikelnummer ?? '',
     z.bezeichnung,
     String(z.lagerstandMenge ?? 0),
     String(z.mindestbestand ?? '–'),
     String(z.bestellmenge),
+    z.einkaufspreisCent != null ? formatPreis(z.einkaufspreisCent) : '',
     formatPreis(z.preisBruttoCent),
   ])
   const csv = '﻿' + [header, ...rows].map(r => r.join(';')).join('\r\n')
@@ -68,6 +70,8 @@ interface BestellZeile {
   lagerstandMenge: number | null
   mindestbestand:  number | null
   preisBruttoCent: number
+  einkaufspreisCent: number | null
+  lieferantenArtikelnummer: string | null
   status:          LagerStatus
   bestellmenge:    number
 }
@@ -118,6 +122,8 @@ export function BestelllistePage() {
           lagerstandMenge: a.lagerstandMenge,
           mindestbestand:  a.mindestbestand,
           preisBruttoCent: a.preisBruttoCent,
+          einkaufspreisCent: a.einkaufspreisCent ?? null,
+          lieferantenArtikelnummer: a.lieferantenArtikelnummer ?? null,
           status:          lagerStatus(a),
           bestellmenge:    mengen[a.id] ?? vorschlag,
         }

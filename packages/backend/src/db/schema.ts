@@ -847,6 +847,14 @@ export const artikel = pgTable('artikel', {
   istBestandteil:      boolean('ist_bestandteil').notNull().default(false),
   /** Lieferant für Bestellliste und Einkauf */
   lieferantId:         uuid('lieferant_id').references((): AnyPgColumn => lieferanten.id, { onDelete: 'set null' }),
+  /** EAN/GTIN-Barcode */
+  ean:                 varchar('ean', { length: 20 }),
+  /** Einkaufspreis netto in Cent (letzter bekannter Preis beim Lieferanten) */
+  einkaufspreisCent:   integer('einkaufspreis_cent'),
+  /** Artikelnummer beim Lieferanten (für Bestellungen) */
+  lieferantenArtikelnummer: varchar('lieferanten_artikelnummer', { length: 60 }),
+  hersteller:          varchar('hersteller', { length: 100 }),
+  herstellerArtikelnummer: varchar('hersteller_artikelnummer', { length: 60 }),
   /** Artikelbild als Data-URL (max. 200×200 px JPEG, client-seitig komprimiert) */
   bild:                text('bild'),
   createdAt:           timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1323,6 +1331,18 @@ export const lieferanten = pgTable('lieferanten', {
   email:       varchar('email', { length: 200 }),
   telefon:     varchar('telefon', { length: 50 }),
   notiz:       text('notiz'),
+  strasse:     varchar('strasse', { length: 200 }),
+  plz:         varchar('plz', { length: 20 }),
+  ort:         varchar('ort', { length: 100 }),
+  land:        varchar('land', { length: 2 }).notNull().default('AT'),
+  /** UID-Nummer des Lieferanten (z. B. ATU12345678) */
+  uid:         varchar('uid', { length: 30 }),
+  /** Unsere Kundennummer beim Lieferanten (für Bestellungen) */
+  kundennummer: varchar('kundennummer', { length: 60 }),
+  /** Zahlungsbedingung als Freitext, z. B. „14 Tage 2 % Skonto, 30 Tage netto" */
+  zahlungsbedingung: varchar('zahlungsbedingung', { length: 200 }),
+  /** Übliche Lieferzeit in Tagen */
+  lieferzeitTage: integer('lieferzeit_tage'),
   aktiv:       boolean('aktiv').notNull().default(true),
   createdAt:   timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt:   timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

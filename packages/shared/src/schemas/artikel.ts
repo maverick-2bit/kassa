@@ -108,6 +108,14 @@ export const ArtikelSchema = z.object({
   /** Abgeleitete Verfügbarkeit aus dem Rezept (min über Bestandteile); null = kein Rezept */
   verfuegbareMenge:     z.number().int().nonnegative().nullable().optional(),
   lieferantId:          z.string().guid().nullable(),
+  /** EAN/GTIN-Barcode */
+  ean:                  z.string().nullable().optional(),
+  /** Einkaufspreis netto in Cent; null = unbekannt */
+  einkaufspreisCent:    z.number().int().nonnegative().nullable().optional(),
+  /** Artikelnummer beim Lieferanten */
+  lieferantenArtikelnummer: z.string().nullable().optional(),
+  hersteller:           z.string().nullable().optional(),
+  herstellerArtikelnummer: z.string().nullable().optional(),
   /** SB-Terminal-Sichtbarkeit: null = erbt von der Kategorie, true/false = Override */
   terminalSichtbar:     z.boolean().nullable(),
   /** Optionen-Abfrage im Direktverkauf: null = wie die Warengruppe, true = immer fragen, false = nie fragen */
@@ -141,6 +149,11 @@ export const ArtikelInputSchema = z.object({
   istBestandteil:  z.boolean().default(false),
   bestandteile:    z.array(ArtikelBestandteilInputSchema).default([]),
   lieferantId:     z.string().guid().optional().nullable(),
+  ean:             z.string().trim().max(20).optional().nullable(),
+  einkaufspreisCent: z.number().int().nonnegative().optional().nullable(),
+  lieferantenArtikelnummer: z.string().trim().max(60).optional().nullable(),
+  hersteller:      z.string().trim().max(100).optional().nullable(),
+  herstellerArtikelnummer: z.string().trim().max(60).optional().nullable(),
   terminalSichtbar: z.boolean().nullable().default(null),
   optionenAbfrage:  z.boolean().nullable().optional(),
   bild:            z.string().nullable().optional(),
@@ -169,6 +182,11 @@ export const ArtikelUpdateSchema = z.object({
   istBestandteil:       z.boolean().optional(),
   bestandteile:         z.array(ArtikelBestandteilInputSchema).optional(),
   lieferantId:          z.string().guid().nullable().optional(),
+  ean:                  z.string().trim().max(20).nullable().optional(),
+  einkaufspreisCent:    z.number().int().nonnegative().nullable().optional(),
+  lieferantenArtikelnummer: z.string().trim().max(60).nullable().optional(),
+  hersteller:           z.string().trim().max(100).nullable().optional(),
+  herstellerArtikelnummer: z.string().trim().max(60).nullable().optional(),
   terminalSichtbar:     z.boolean().nullable().optional(),
   optionenAbfrage:      z.boolean().nullable().optional(),
   bild:                 z.string().nullable().optional(),
