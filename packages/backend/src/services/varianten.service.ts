@@ -187,6 +187,11 @@ export async function loeseVariantenAuf(
         bonierBeiDirektverkauf: ursprung.bonierBeiDirektverkauf,
         terminalSichtbar: ursprung.terminalSichtbar,
         lieferantId:     ursprung.lieferantId,
+        // EAN gehört zu genau einem Artikel → nicht kopieren; Einkaufsdaten gelten für die Variante weiter
+        einkaufspreisCent: ursprung.einkaufspreisCent,
+        lieferantenArtikelnummer: ursprung.lieferantenArtikelnummer,
+        hersteller:      ursprung.hersteller,
+        herstellerArtikelnummer: ursprung.herstellerArtikelnummer,
         // optionenAbfrage NICHT übernehmen: der neue Artikel hat keine preisbestimmende Option mehr
         ...(ursprung.bild != null && { bild: ursprung.bild }),
       }).returning({ id: artikel.id })

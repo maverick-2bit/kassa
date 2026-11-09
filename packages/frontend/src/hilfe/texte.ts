@@ -376,8 +376,23 @@ export const HILFE_THEMEN: HilfeThema[] = [
     zweck: 'Kontaktdaten der Lieferanten für Einkauf und Bestellliste.',
     pfade: ['/lieferanten'],
     schritte: [
-      '„+ Lieferant anlegen": Name, E-Mail, Telefon und Lieferkonditionen eintragen.',
+      '„+ Lieferant anlegen": Name, Adresse, UID, E-Mail, Telefon, deine Kundennummer beim Lieferanten, Zahlungsbedingung und Lieferzeit eintragen.',
       'Beim Artikel wählst du den Lieferanten — die Bestellliste gruppiert danach.',
+      'Einkaufspreis, EAN, Artikelnummer beim Lieferanten und Hersteller pflegst du im Artikel unter „Einkauf & Identifikation".',
+    ],
+  },
+  {
+    id: 'datenuebernahme',
+    titel: 'Datenübernahme',
+    zweck: 'Lieferanten, Kunden und Artikel mit Preisen aus der bisherigen Warenwirtschaft (SelectLine) per Excel übernehmen.',
+    pfade: ['/uebernahme'],
+    schritte: [
+      'Der Reihe nach vorgehen: 1. Lieferanten, 2. Kunden, 3. Artikel.',
+      'Excel-Datei wählen, die Vorschau prüfen und „… übernehmen" klicken.',
+      'Dieselbe Datei kann nochmal übernommen werden — Vorhandenes wird erkannt und übersprungen.',
+    ],
+    tipps: [
+      'Die alte Kundennummer steht danach in den Notizen des Kunden, die alte Artikelnummer als „Artikelnummer beim Lieferanten" am Artikel.',
     ],
   },
 

@@ -25,6 +25,14 @@ function LieferantFormular({
   const [email,   setEmail]   = useState(initial?.email   ?? '')
   const [telefon, setTelefon] = useState(initial?.telefon ?? '')
   const [notiz,   setNotiz]   = useState(initial?.notiz   ?? '')
+  const [strasse, setStrasse] = useState(initial?.strasse ?? '')
+  const [plz,     setPlz]     = useState(initial?.plz     ?? '')
+  const [ort,     setOrt]     = useState(initial?.ort     ?? '')
+  const [land,    setLand]    = useState(initial?.land    ?? 'AT')
+  const [uid,     setUid]     = useState(initial?.uid     ?? '')
+  const [kundennummer,      setKundennummer]      = useState(initial?.kundennummer      ?? '')
+  const [zahlungsbedingung, setZahlungsbedingung] = useState(initial?.zahlungsbedingung ?? '')
+  const [lieferzeit,        setLieferzeit]        = useState(initial?.lieferzeitTage != null ? String(initial.lieferzeitTage) : '')
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -35,6 +43,14 @@ function LieferantFormular({
       email:   email.trim()   || null,
       telefon: telefon.trim() || null,
       notiz:   notiz.trim()   || null,
+      strasse: strasse.trim() || null,
+      plz:     plz.trim()     || null,
+      ort:     ort.trim()     || null,
+      land:    land.trim().toUpperCase() || 'AT',
+      uid:     uid.trim().toUpperCase() || null,
+      kundennummer:      kundennummer.trim()      || null,
+      zahlungsbedingung: zahlungsbedingung.trim() || null,
+      lieferzeitTage:    lieferzeit.trim() !== '' && Number.isFinite(Number(lieferzeit)) ? Math.max(0, Math.round(Number(lieferzeit))) : null,
     })
   }
 
@@ -52,6 +68,34 @@ function LieferantFormular({
         </Field>
         <Field label="Telefon">
           <Input value={telefon} onChange={e => setTelefon(e.target.value)} placeholder="+43 1 234 5678" />
+        </Field>
+      </div>
+      <Field label="Straße">
+        <Input data-testid="lieferant-strasse" value={strasse} onChange={e => setStrasse(e.target.value)} />
+      </Field>
+      <div className="grid grid-cols-[6rem_minmax(0,1fr)_5rem] gap-3">
+        <Field label="PLZ">
+          <Input data-testid="lieferant-plz" value={plz} onChange={e => setPlz(e.target.value)} />
+        </Field>
+        <Field label="Ort">
+          <Input data-testid="lieferant-ort" value={ort} onChange={e => setOrt(e.target.value)} />
+        </Field>
+        <Field label="Land">
+          <Input value={land} maxLength={2} onChange={e => setLand(e.target.value)} placeholder="AT" />
+        </Field>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="UID-Nummer">
+          <Input data-testid="lieferant-uid" value={uid} onChange={e => setUid(e.target.value)} placeholder="ATU12345678" />
+        </Field>
+        <Field label="Unsere Kundennummer" hint="Beim Lieferanten">
+          <Input data-testid="lieferant-kundennummer" value={kundennummer} onChange={e => setKundennummer(e.target.value)} />
+        </Field>
+        <Field label="Zahlungsbedingung">
+          <Input data-testid="lieferant-zahlungsbedingung" value={zahlungsbedingung} onChange={e => setZahlungsbedingung(e.target.value)} placeholder="z. B. 14 Tage 2 % Skonto" />
+        </Field>
+        <Field label="Lieferzeit (Tage)">
+          <Input type="number" min="0" max="365" value={lieferzeit} onChange={e => setLieferzeit(e.target.value)} />
         </Field>
       </div>
       <Field label="Notiz">
@@ -130,11 +174,24 @@ export function LieferantenPage() {
               <div className="flex items-start gap-4">
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-ink">{l.name}</p>
+                  {(l.strasse || l.plz || l.ort) && (
+                    <p className="text-xs text-ink-muted mt-0.5">
+                      {[l.strasse, [l.plz, l.ort].filter(Boolean).join(' '), l.land !== 'AT' ? l.land : ''].filter(Boolean).join(', ')}
+                    </p>
+                  )}
                   <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-ink-muted">
                     {l.kontakt && <span>{l.kontakt}</span>}
                     {l.email   && <a href={`mailto:${l.email}`} className="text-brand-600 hover:underline">{l.email}</a>}
                     {l.telefon && <a href={`tel:${l.telefon}`}  className="text-brand-600 hover:underline">{l.telefon}</a>}
                   </div>
+                  {(l.uid || l.kundennummer || l.zahlungsbedingung || l.lieferzeitTage != null) && (
+                    <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-ink-subtle">
+                      {l.uid && <span>UID {l.uid}</span>}
+                      {l.kundennummer && <span>Kd.-Nr. {l.kundennummer}</span>}
+                      {l.zahlungsbedingung && <span>{l.zahlungsbedingung}</span>}
+                      {l.lieferzeitTage != null && <span>Lieferzeit {l.lieferzeitTage} Tage</span>}
+                    </div>
+                  )}
                   {l.notiz && <p className="mt-1.5 text-xs text-ink-subtle line-clamp-2">{l.notiz}</p>}
                 </div>
                 <div className="flex gap-2 shrink-0">
