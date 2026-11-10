@@ -92,6 +92,11 @@ function toDto(
     })),
     verfuegbareMenge:     berechneVerfuegbareMenge(bestandteile),
     lieferantId:          row.lieferantId,
+    ean:                  row.ean,
+    einkaufspreisCent:    row.einkaufspreisCent,
+    lieferantenArtikelnummer: row.lieferantenArtikelnummer,
+    hersteller:           row.hersteller,
+    herstellerArtikelnummer: row.herstellerArtikelnummer,
     terminalSichtbar:     row.terminalSichtbar,
     optionenAbfrage:      row.optionenAbfrage,
     ...(row.bild != null  && { bild: row.bild }),
@@ -126,6 +131,11 @@ export async function erstelleArtikel(db: Db, input: ArtikelInput): Promise<Arti
       lagerstandMenge: input.lagerstandAktiv ? (input.lagerstandMenge ?? null) : null,
       mindestbestand:  input.mindestbestand ?? null,
       lieferantId:     input.lieferantId ?? null,
+      ean:             input.ean ?? null,
+      einkaufspreisCent: input.einkaufspreisCent ?? null,
+      lieferantenArtikelnummer: input.lieferantenArtikelnummer ?? null,
+      hersteller:      input.hersteller ?? null,
+      herstellerArtikelnummer: input.herstellerArtikelnummer ?? null,
       seriennummernAktiv: input.seriennummernAktiv ?? false,
       istFavorit:      input.istFavorit ?? false,
       bonierdruckerId: input.bonierdruckerId ?? null,
@@ -199,6 +209,11 @@ export async function aktualisiereArtikel(
   if (update.bonierBeiDirektverkauf !== undefined) values.bonierBeiDirektverkauf = update.bonierBeiDirektverkauf
   if (update.istBestandteil       !== undefined) values.istBestandteil       = update.istBestandteil
   if (update.lieferantId          !== undefined) values.lieferantId          = update.lieferantId
+  if (update.ean                  !== undefined) values.ean                  = update.ean
+  if (update.einkaufspreisCent    !== undefined) values.einkaufspreisCent    = update.einkaufspreisCent
+  if (update.lieferantenArtikelnummer !== undefined) values.lieferantenArtikelnummer = update.lieferantenArtikelnummer
+  if (update.hersteller           !== undefined) values.hersteller           = update.hersteller
+  if (update.herstellerArtikelnummer !== undefined) values.herstellerArtikelnummer = update.herstellerArtikelnummer
   if (update.terminalSichtbar     !== undefined) values.terminalSichtbar     = update.terminalSichtbar
   if (update.optionenAbfrage      !== undefined) values.optionenAbfrage      = update.optionenAbfrage
   if (update.bild                 !== undefined) values.bild                 = update.bild ?? null

@@ -9,7 +9,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { Preisregel, PreisregelInput, Kategorie, Artikel } from '@kassa/shared'
-import { WOCHENTAG_LABELS } from '@kassa/shared'
+import { WOCHENTAG_LABELS, datumISO, endeNachAktionstagen, verbleibendeAktionstage } from '@kassa/shared'
 import { preisregelApi, kategorieApi, artikelApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { Button } from '../components/ui/Button'
@@ -19,6 +19,21 @@ import { formatPreis, parseEuroToCent } from '../lib/format'
 import { baumFlach, kategorieAnzeigeNamen, kategoriePfad } from '../lib/kategorie-baum'
 
 const WOCHENTAGE = [1, 2, 3, 4, 5, 6, 7]
+
+/** 2026-07-27 → 27.07.2026 */
+const dmy = (iso: string) => iso.split('-').reverse().join('.')
+
+/** Kurztext, wann/wie lange eine Aktion läuft (für die Liste) */
+function laufzeitText(r: Preisregel, heute: string): string {
+  const von = r.gueltigVon ? `ab ${dmy(r.gueltigVon)}` : ''
+  if (r.wiederholungen !== null && r.gueltigBis) {
+    const rest = verbleibendeAktionstage(r, heute)
+    const stand = rest === null ? '' : rest === 0 ? ' · beendet' : ` · noch ${rest} Aktionstag${rest === 1 ? '' : 'e'}`
+    return [von, `${r.wiederholungen} Aktionstage bis ${dmy(r.gueltigBis)}${stand}`].filter(Boolean).join(' · ')
+  }
+  if (r.gueltigBis) return [von, `bis ${dmy(r.gueltigBis)}${r.gueltigBis < heute ? ' (beendet)' : ''}`].filter(Boolean).join(' · ')
+  return von
+}
 
 export function PreisregelnPage() {
   const qc = useQueryClient()
@@ -81,6 +96,11 @@ export function PreisregelnPage() {
                         −{r.rabattProzent}%
                       </span>
                     )}
+                    {r.mengeKauf !== null && (
+                      <span className="text-xs font-bold text-violet-700 bg-violet-50 rounded px-1.5 py-0.5">
+                        {r.mengeKauf} für {r.mengeZahle} · {r.mengeModus === 'auswahl' ? 'über die Auswahl' : 'je Artikel'}
+                      </span>
+                    )}
                     {(r.artikelPreise?.length ?? 0) > 0 && (
                       <span className="text-xs font-bold text-emerald-700 bg-emerald-50 rounded px-1.5 py-0.5">
                         {r.artikelPreise.length} Aktionspreis{r.artikelPreise.length === 1 ? '' : 'e'}
@@ -96,7 +116,7 @@ export function PreisregelnPage() {
                     {' · '}
                     {r.zeitfenster.map(zf => `${zf.von}–${zf.bis}`).join(', ')} Uhr
                     {(r.gueltigVon || r.gueltigBis) && (
-                      <> · {r.gueltigVon ?? '…'} bis {r.gueltigBis ?? '…'}</>
+                      <> · {laufzeitText(r, datumISO(new Date()))}</>
                     )}
                   </p>
                   <p className="mt-0.5 text-xs text-ink-muted">
@@ -167,6 +187,15 @@ function PreisregelForm({
   const [gueltigVon,   setGueltigVon]   = useState(initial?.gueltigVon ?? '')
   const [gueltigBis,   setGueltigBis]   = useState(initial?.gueltigBis ?? '')
   const [rabatt,       setRabatt]       = useState(String(initial?.rabattProzent ?? 20))
+  // Art der Aktion: Preis (Prozent/Aktionspreis) oder Mengenaktion („X zum Preis von Y")
+  const [art,          setArt]          = useState<'preis' | 'menge'>(initial?.mengeKauf != null ? 'menge' : 'preis')
+  const [mengeKauf,    setMengeKauf]    = useState(String(initial?.mengeKauf  ?? 3))
+  const [mengeZahle,   setMengeZahle]   = useState(String(initial?.mengeZahle ?? 2))
+  const [mengeModus,   setMengeModus]   = useState<'artikel' | 'auswahl'>(initial?.mengeModus ?? 'artikel')
+  // Ende: nie | bis Datum | nach X Aktionstagen (setzt das Enddatum automatisch)
+  const [endeModus,    setEndeModus]    = useState<'nie' | 'datum' | 'anzahl'>(
+    initial?.wiederholungen != null ? 'anzahl' : initial?.gueltigBis ? 'datum' : 'nie')
+  const [wiederholungen, setWiederholungen] = useState(String(initial?.wiederholungen ?? 4))
   const [kategorieIds, setKategorieIds] = useState<string[]>(initial?.kategorieIds ?? [])
   const [artikelIds,   setArtikelIds]   = useState<string[]>(initial?.artikelIds ?? [])
   const [artikelSuche, setArtikelSuche] = useState('')
@@ -188,10 +217,18 @@ function PreisregelForm({
   const zeitfensterOk = zeitfenster.length > 0 && zeitfenster.every(zf => zf.von && zf.bis)
   const tageOk        = wochentage.length > 0 || datumTage.length > 0
   const anzahlMitPreis = Object.values(artikelPreise).filter(v => v.trim() !== '').length
-  // Entweder Prozent-Rabatt ODER mindestens ein Aktionspreis (wie im Schema)
-  const kannSpeichern = name.trim().length > 0 && tageOk && zeitfensterOk
-    && rabattZahl >= 0 && rabattZahl <= 100
-    && (rabattZahl > 0 || anzahlMitPreis > 0)
+  const kaufZahl  = parseInt(mengeKauf)  || 0
+  const zahleZahl = parseInt(mengeZahle) || 0
+  const wdhZahl   = parseInt(wiederholungen) || 0
+  // Preis-Aktion: Entweder Prozent-Rabatt ODER mindestens ein Aktionspreis (wie im Schema)
+  const preisOk   = art === 'menge' || (rabattZahl >= 0 && rabattZahl <= 100 && (rabattZahl > 0 || anzahlMitPreis > 0))
+  const mengeOk   = art !== 'menge' || (kaufZahl >= 2 && kaufZahl <= 20 && zahleZahl >= 1 && zahleZahl < kaufZahl)
+  const endeOk    = endeModus === 'nie'
+    || (endeModus === 'datum' && (!gueltigBis || !gueltigVon || gueltigBis >= gueltigVon))
+    || (endeModus === 'anzahl' && wdhZahl >= 1 && wdhZahl <= 500 && !!gueltigVon && wochentage.length > 0)
+  const endeVorschau = endeModus === 'anzahl' && gueltigVon && wochentage.length > 0 && wdhZahl >= 1
+    ? endeNachAktionstagen(gueltigVon, wochentage, wdhZahl) : null
+  const kannSpeichern = name.trim().length > 0 && tageOk && zeitfensterOk && preisOk && mengeOk && endeOk
 
   const speichern = useMutation({
     mutationFn: () => {
@@ -208,11 +245,16 @@ function PreisregelForm({
         datumTage:     [...datumTage].sort(),
         zeitfenster,
         gueltigVon:    gueltigVon || null,
-        gueltigBis:    gueltigBis || null,
-        rabattProzent: rabattZahl,
-        artikelPreise: preise,
+        // „nach X Aktionstagen": das Enddatum berechnet der Server aus Start, Wochentagen und Anzahl
+        gueltigBis:    endeModus === 'datum' ? (gueltigBis || null) : null,
+        rabattProzent: art === 'menge' ? 0 : rabattZahl,
+        artikelPreise: art === 'menge' ? [] : preise,
         kategorieIds,
         artikelIds,
+        mengeKauf:     art === 'menge' ? kaufZahl : null,
+        mengeZahle:    art === 'menge' ? zahleZahl : null,
+        mengeModus:    art === 'menge' ? mengeModus : null,
+        wiederholungen: endeModus === 'anzahl' ? wdhZahl : null,
       }
       return initial ? preisregelApi.update(initial.id, input) : preisregelApi.create(input)
     },
@@ -281,7 +323,7 @@ function PreisregelForm({
       </div>
 
       <div>
-        <label className="block text-xs font-medium text-ink-muted mb-1">Wochentage (wöchentlich wiederkehrend)</label>
+        <label className="block text-xs font-medium text-ink-muted mb-1">Wiederkehrend an Wochentagen</label>
         <div className="flex flex-wrap gap-1.5">
           {WOCHENTAGE.map(t => (
             <button
@@ -299,7 +341,7 @@ function PreisregelForm({
       </div>
 
       <div>
-        <label className="block text-xs font-medium text-ink-muted mb-1">Konkrete Datumstage (optional)</label>
+        <label className="block text-xs font-medium text-ink-muted mb-1">Einmalig an bestimmten Tagen (optional)</label>
         <div className="flex items-center gap-2">
           <Input type="date" value={neuesDatum} onChange={(e) => setNeuesDatum(e.target.value)} className="flex-1" />
           <Button type="button" variant="secondary" size="sm" disabled={!neuesDatum} onClick={addDatum}>+ Tag</Button>
@@ -341,27 +383,111 @@ function PreisregelForm({
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
-        <div>
-          <label className="block text-xs font-medium text-ink-muted mb-1">Aktion ab (optional)</label>
-          <Input type="date" value={gueltigVon} onChange={(e) => setGueltigVon(e.target.value)} />
+      {/* Beginn und Ende */}
+      <div className="rounded-lg border border-line p-3 space-y-3" data-testid="aktion-zeitraum">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-ink-muted mb-1">Aktion ab (optional)</label>
+            <Input type="date" data-testid="aktion-ab" value={gueltigVon} onChange={(e) => setGueltigVon(e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-ink-muted mb-1">Ende der Aktion</label>
+            <select
+              data-testid="aktion-ende-modus"
+              value={endeModus}
+              onChange={(e) => setEndeModus(e.target.value as 'nie' | 'datum' | 'anzahl')}
+              className="w-full rounded-md border border-line-strong bg-panel px-2 py-2 text-sm text-ink"
+            >
+              <option value="nie">Kein Ende</option>
+              <option value="datum">Bis zu einem Datum</option>
+              <option value="anzahl" disabled={wochentage.length === 0}>Nach X Aktionstagen</option>
+            </select>
+          </div>
         </div>
-        <div>
-          <label className="block text-xs font-medium text-ink-muted mb-1">Aktion bis (optional)</label>
-          <Input type="date" value={gueltigBis} onChange={(e) => setGueltigBis(e.target.value)} />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-ink-muted mb-1">Rabatt (%)</label>
-          <Input type="number" min={0} max={100} value={rabatt} onChange={(e) => setRabatt(e.target.value)} />
+        {endeModus === 'datum' && (
+          <div>
+            <label className="block text-xs font-medium text-ink-muted mb-1">Aktion bis (einschließlich)</label>
+            <Input type="date" data-testid="aktion-bis" value={gueltigBis} onChange={(e) => setGueltigBis(e.target.value)} />
+          </div>
+        )}
+        {endeModus === 'anzahl' && (
+          <div>
+            <label className="block text-xs font-medium text-ink-muted mb-1">Anzahl Aktionstage</label>
+            <Input type="number" min={1} max={500} data-testid="aktion-wiederholungen" value={wiederholungen}
+              onChange={(e) => setWiederholungen(e.target.value)} className="w-32" />
+            <p className="mt-1 text-xs text-ink-muted" data-testid="aktion-ende-vorschau">
+              {wochentage.length === 0
+                ? 'Dafür oben mindestens einen Wochentag wählen.'
+                : !gueltigVon
+                  ? 'Bitte „Aktion ab" setzen — ab diesem Tag wird gezählt.'
+                  : endeVorschau
+                    ? `Jeder Tag, an dem die Aktion läuft, zählt einmal. Letzter Aktionstag: ${dmy(endeVorschau)}`
+                    : 'Anzahl 1 bis 500.'}
+            </p>
+          </div>
+        )}
+        <p className="text-[11px] text-ink-subtle">
+          Einmalig = nur Datumstage eintragen (Wochentage abwählen). Wiederkehrend = Wochentage wählen und festlegen, wann es endet.
+        </p>
+      </div>
+
+      {/* Art der Aktion */}
+      <div>
+        <label className="block text-xs font-medium text-ink-muted mb-1">Art der Aktion</label>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" data-testid="aktion-art-preis" onClick={() => setArt('preis')}
+            className={`px-3 py-1.5 rounded-md border text-sm font-medium transition ${art === 'preis' ? 'bg-brand-600 border-brand-600 text-white' : 'border-line-strong text-ink hover:border-brand-400'}`}>
+            Preis (Prozent oder Aktionspreis)
+          </button>
+          <button type="button" data-testid="aktion-art-menge" onClick={() => setArt('menge')}
+            className={`px-3 py-1.5 rounded-md border text-sm font-medium transition ${art === 'menge' ? 'bg-brand-600 border-brand-600 text-white' : 'border-line-strong text-ink hover:border-brand-400'}`}>
+            Mengenaktion (X zum Preis von Y)
+          </button>
         </div>
       </div>
 
-      <p className="rounded-md border border-brand-200 bg-brand-50 px-3 py-2 text-xs text-brand-800">
-        <strong>Fixer Aktionspreis statt Prozent?</strong> Unten bei „Artikel &amp; Aktionspreise"
-        direkt in die Artikel-Kachel den neuen Preis eintragen — oder mehrere Artikel auswählen
-        und über die Leiste einen Preis für alle setzen. Aktionspreise schlagen den Prozentsatz;
-        Rabatt 0 % = nur Aktionspreise.
-      </p>
+      {art === 'preis' ? (
+        <>
+          <div className="w-40">
+            <label className="block text-xs font-medium text-ink-muted mb-1">Rabatt (%)</label>
+            <Input type="number" min={0} max={100} data-testid="aktion-rabatt" value={rabatt} onChange={(e) => setRabatt(e.target.value)} />
+          </div>
+          <p className="rounded-md border border-brand-200 bg-brand-50 px-3 py-2 text-xs text-brand-800">
+            <strong>Fixer Aktionspreis statt Prozent?</strong> Unten bei „Artikel &amp; Aktionspreise"
+            direkt in die Artikel-Kachel den neuen Preis eintragen — oder mehrere Artikel auswählen
+            und über die Leiste einen Preis für alle setzen. Aktionspreise schlagen den Prozentsatz;
+            Rabatt 0 % = nur Aktionspreise.
+          </p>
+        </>
+      ) : (
+        <div className="rounded-lg border border-line p-3 space-y-3" data-testid="aktion-menge-block">
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <label className="block text-xs font-medium text-ink-muted mb-1">Kaufe</label>
+              <Input type="number" min={2} max={20} data-testid="aktion-menge-kauf" value={mengeKauf} onChange={(e) => setMengeKauf(e.target.value)} className="w-24" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-ink-muted mb-1">Zahle</label>
+              <Input type="number" min={1} max={19} data-testid="aktion-menge-zahle" value={mengeZahle} onChange={(e) => setMengeZahle(e.target.value)} className="w-24" />
+            </div>
+            <div className="flex-1 min-w-[12rem]">
+              <label className="block text-xs font-medium text-ink-muted mb-1">Gezählt wird</label>
+              <select data-testid="aktion-menge-modus" value={mengeModus} onChange={(e) => setMengeModus(e.target.value as 'artikel' | 'auswahl')}
+                className="w-full rounded-md border border-line-strong bg-panel px-2 py-2 text-sm text-ink">
+                <option value="artikel">je gleichem Artikel</option>
+                <option value="auswahl">über die ganze Auswahl</option>
+              </select>
+            </div>
+          </div>
+          {!mengeOk && <p className="text-xs text-red-600">„Zahle" muss kleiner sein als „Kaufe" (z. B. 3 für 2); „Kaufe" 2 bis 20.</p>}
+          <p className="text-xs text-ink-muted">
+            {mengeModus === 'artikel'
+              ? `${kaufZahl || 'X'} gleiche Artikel im Warenkorb: ${(kaufZahl - zahleZahl) > 0 ? kaufZahl - zahleZahl : '…'} davon gehen aufs Haus.`
+              : `Aus allen Artikeln der Auswahl bilden je ${kaufZahl || 'X'} Stück eine Gruppe; der günstigste ${(kaufZahl - zahleZahl) > 1 ? `${kaufZahl - zahleZahl} ` : ''}Artikel je Gruppe ist gratis.`}
+            {' '}Die Aktion wirkt an der Kasse als Rabattzeile mit dem Steuersatz des Artikels. Von Hand rabattierte Positionen nehmen nicht teil.
+          </p>
+        </div>
+      )}
 
       <div>
         <label className="block text-xs font-medium text-ink-muted mb-1">Warengruppen</label>
@@ -390,10 +516,10 @@ function PreisregelForm({
           direkt in der Kachel; Sammel-Setzen über die Leiste darüber. */}
       <div>
         <div className="flex items-center justify-between mb-1 flex-wrap gap-1">
-          <label className="block text-xs font-medium text-ink-muted">Artikel &amp; Aktionspreise</label>
+          <label className="block text-xs font-medium text-ink-muted">{art === 'preis' ? 'Artikel & Aktionspreise' : 'Artikel für die Mengenaktion'}</label>
           <span className="text-xs text-brand-700">
             {artikelIds.length > 0 && <>{artikelIds.length} gewählt</>}
-            {anzahlMitPreis > 0 && <> · {anzahlMitPreis} mit Aktionspreis</>}
+            {art === 'preis' && anzahlMitPreis > 0 && <> · {anzahlMitPreis} mit Aktionspreis</>}
           </span>
         </div>
 
@@ -422,6 +548,7 @@ function PreisregelForm({
             className="rounded-md border border-line-strong px-2 py-1 text-xs font-medium text-ink hover:border-brand-400">
             abwählen
           </button>
+          {art === 'preis' && <>
           <span className="mx-1 h-4 w-px bg-line" />
           <Input
             value={sammelPreis}
@@ -444,6 +571,7 @@ function PreisregelForm({
               Aktionspreise löschen
             </button>
           )}
+          </>}
         </div>
 
         {gefilterteArtikel.length === 0 ? (
@@ -475,6 +603,7 @@ function PreisregelForm({
                       {formatPreis(a.preisBruttoCent)}
                     </span>
                   </button>
+                  {art === 'preis' && (
                   <input
                     value={preis}
                     onChange={(e) => setzeArtikelPreis(a.id, e.target.value)}
@@ -484,6 +613,7 @@ function PreisregelForm({
                       preis ? 'border-brand-400 bg-white text-brand-800 font-semibold' : 'border-line bg-panel-2'
                     }`}
                   />
+                  )}
                 </div>
               )
             })}

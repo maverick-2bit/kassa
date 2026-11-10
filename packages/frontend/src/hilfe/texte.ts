@@ -325,16 +325,32 @@ export const HILFE_THEMEN: HilfeThema[] = [
   {
     id: 'preisregeln',
     titel: 'Aktionen (Happy Hour & Co.)',
-    zweck: 'Zeitlich begrenzte Preisaktionen: Prozentrabatt oder fixer Aktionspreis.',
+    zweck: 'Zeitlich begrenzte Aktionen: Prozentrabatt, fixer Aktionspreis oder „X zum Preis von Y".',
     pfade: ['/preisregeln'],
-    stichworte: ['happy hour', 'rabatt', 'aktionspreis'],
+    stichworte: ['happy hour', 'rabatt', 'aktionspreis', '3 für 2', 'mengenaktion', 'wiederholung'],
     schritte: [
       '„+ Neue Aktion": Namen vergeben.',
-      'Tage festlegen: Wochentage (wiederkehrend) und/oder konkrete Datumstage, dazu ein Zeitfenster.',
-      'Rabatt (%) eintragen oder „Fixer Aktionspreis statt Prozent" wählen und Preise je Artikel setzen.',
+      'Wann: Wochentage wählen (wiederkehrend, z. B. immer montags) und/oder konkrete Datumstage (einmalig), dazu ein oder mehrere Zeitfenster von–bis.',
+      'Beginn und Ende: „Aktion ab" setzen und festlegen, wann es endet — kein Ende, bis zu einem Datum oder nach einer Anzahl Aktionstage (jeder Tag, an dem die Aktion läuft, zählt einmal; das Enddatum rechnet die Kassa aus).',
+      'Art: „Preis" = Rabatt (%) oder fixer Aktionspreis je Artikel. „Mengenaktion" = kaufe X, zahle Y (z. B. 3 für 2).',
       'Warengruppen oder Artikel wählen, für die die Aktion gilt. Ohne Auswahl gilt sie für alle Artikel.',
     ],
-    tipps: ['Läuft eine Aktion, zeigt die Kachel in der Kasse ein Aktions-Zeichen und den neuen Preis.'],
+    abschnitte: [
+      {
+        titel: 'Mengenaktion „X zum Preis von Y"',
+        schritte: [
+          '„Gezählt wird je gleichem Artikel": 3 gleiche Pizzen im Warenkorb, eine davon ist gratis.',
+          '„Über die ganze Auswahl": aus allen Artikeln der Auswahl bilden je 3 Stück eine Gruppe, der günstigste ist gratis (z. B. beliebige 3 Eissorten).',
+          'An der Kasse erscheint eine grüne Rabattzeile mit dem Steuersatz des Artikels; sie steht so auch auf dem Beleg.',
+          'Eine Mengenaktion kann nicht zugleich einen Prozent-Rabatt oder Aktionspreise haben — dafür eine eigene Aktion anlegen.',
+        ],
+      },
+    ],
+    tipps: [
+      'Läuft eine Aktion, zeigt die Kachel in der Kasse ein Aktions-Zeichen und den neuen Preis.',
+      'Positionen, auf die du an der Kasse von Hand einen Rabatt gegeben hast, nehmen an einer Mengenaktion nicht teil.',
+      'Eine Mengenaktion gilt an der Kasse (Direktverkauf). Am Tisch-Tab wird sie derzeit nicht abgezogen.',
+    ],
   },
   {
     id: 'wareneingang',
@@ -376,8 +392,56 @@ export const HILFE_THEMEN: HilfeThema[] = [
     zweck: 'Kontaktdaten der Lieferanten für Einkauf und Bestellliste.',
     pfade: ['/lieferanten'],
     schritte: [
-      '„+ Lieferant anlegen": Name, E-Mail, Telefon und Lieferkonditionen eintragen.',
+      '„+ Lieferant anlegen": Name, Adresse, UID, E-Mail, Telefon, deine Kundennummer beim Lieferanten, Zahlungsbedingung und Lieferzeit eintragen.',
       'Beim Artikel wählst du den Lieferanten — die Bestellliste gruppiert danach.',
+      'Einkaufspreis, EAN, Artikelnummer beim Lieferanten und Hersteller pflegst du im Artikel unter „Einkauf & Identifikation".',
+    ],
+  },
+  {
+    id: 'preislisten',
+    titel: 'Preislisten (Sonderpreise für Kunden)',
+    zweck: 'Bestimmten Kunden eigene Preise geben, z. B. einem Großkunden mit Rahmenvertrag.',
+    pfade: ['/preislisten'],
+    schritte: [
+      '„+ Neue Preisliste": einen Namen vergeben (z. B. den Kunden).',
+      'In der Liste Artikel hinzufügen und den Sonderpreis (brutto) eintragen, dann „Speichern".',
+      'Im Kunden (Seite „Kunden") die Preisliste auswählen — erst dann gilt sie für diesen Kunden.',
+      'An der Kasse den Kunden wählen: Artikel mit Sonderpreis werden sofort zum Listenpreis verrechnet, alle anderen zum normalen Preis.',
+    ],
+    tipps: [
+      'Ein Sonderpreis ersetzt den normalen Preis; Aktionen (Happy Hour) kommen darauf nicht zusätzlich.',
+      'Einen Rabatt, den du an der Kasse von Hand auf eine Position gibst, behält seine Wirkung auch beim Kundenwechsel.',
+      'Eine Preisliste kannst du deaktivieren, ohne sie zu löschen — dann gelten wieder die normalen Preise.',
+    ],
+  },
+  {
+    id: 'einkaufsbestellungen',
+    titel: 'Bestellungen beim Lieferanten',
+    zweck: 'Waren beim Lieferanten bestellen: Bestellung anlegen, als PDF drucken oder per E-Mail senden und den Stand verfolgen.',
+    pfade: ['/einkaufsbestellungen'],
+    schritte: [
+      '„+ Neue Bestellung": Lieferant wählen, Artikel hinzufügen, Menge und Einkaufspreis eintragen, „Anlegen".',
+      'Aus der Bestellliste legst du mit „Bestellung anlegen" in einem Schritt eine Bestellung für alle Artikel eines Lieferanten an.',
+      'Im Entwurf kannst du alles ändern. „Per E-Mail senden" schickt das PDF an den Lieferanten und setzt den Status auf „Gesendet"; „Als gesendet markieren" ist für Bestellungen per Telefon oder Portal.',
+      '„Erledigt" setzt du, wenn die Ware da ist. Eine falsche Bestellung kannst du stornieren (Entwurf auch löschen).',
+    ],
+    tipps: [
+      'Die E-Mail-Adresse des Lieferanten steht im Lieferanten-Stamm; für eine einzelne Bestellung kannst du eine andere Adresse eingeben.',
+      'Einkaufspreis und Artikelnummer beim Lieferanten kommen aus dem Artikel — so sind sie beim Bestellen schon ausgefüllt.',
+    ],
+  },
+  {
+    id: 'datenuebernahme',
+    titel: 'Datenübernahme',
+    zweck: 'Lieferanten, Kunden und Artikel mit Preisen aus der bisherigen Warenwirtschaft (SelectLine) per Excel übernehmen.',
+    pfade: ['/uebernahme'],
+    schritte: [
+      'Der Reihe nach vorgehen: 1. Lieferanten, 2. Kunden, 3. Artikel.',
+      'Excel-Datei wählen, die Vorschau prüfen und „… übernehmen" klicken.',
+      'Dieselbe Datei kann nochmal übernommen werden — Vorhandenes wird erkannt und übersprungen.',
+    ],
+    tipps: [
+      'Die alte Kundennummer steht danach in den Notizen des Kunden, die alte Artikelnummer als „Artikelnummer beim Lieferanten" am Artikel.',
     ],
   },
 

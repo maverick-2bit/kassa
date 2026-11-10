@@ -17,6 +17,51 @@ export type {
   LieferantUpdate,
 } from './schemas/lieferant.js'
 
+// Preislisten (Sonderpreise je Kunde)
+export {
+  PreislisteSchema,
+  PreislistePreisSchema,
+  PreislisteDetailSchema,
+  PreislisteInputSchema,
+  PreislisteUpdateSchema,
+  PreislistePreiseSetzenSchema,
+  PreislisteFuerKundeSchema,
+} from './schemas/preisliste.js'
+export type {
+  Preisliste,
+  PreislistePreis,
+  PreislisteDetail,
+  PreislisteInput,
+  PreislisteUpdate,
+  PreislistePreiseSetzen,
+  PreislisteFuerKunde,
+} from './schemas/preisliste.js'
+
+// Einkaufsbestellungen (Bestellung beim Lieferanten)
+export {
+  EINKAUF_BESTELLSTATUS,
+  EINKAUF_BESTELLSTATUS_LABELS,
+  EINKAUF_BESTELLSTATUS_UEBERGAENGE,
+  EinkaufBestellstatusSchema,
+  EinkaufBestellpositionSchema,
+  EinkaufBestellungSchema,
+  EinkaufBestellpositionInputSchema,
+  EinkaufBestellungInputSchema,
+  EinkaufBestellungUpdateSchema,
+  EinkaufBestellungEmailSchema,
+  summeBestellung,
+} from './schemas/einkaufsbestellung.js'
+export type {
+  EinkaufBestellstatus,
+  EinkaufBestellposition,
+  EinkaufBestellung,
+  EinkaufBestellungKurz,
+  EinkaufBestellpositionInput,
+  EinkaufBestellungInput,
+  EinkaufBestellungUpdate,
+  EinkaufBestellungEmail,
+} from './schemas/einkaufsbestellung.js'
+
 // Mandanten-Module + Stammdaten
 export {
   MandantModulSchema,
@@ -992,11 +1037,19 @@ export {
   aktionsPreisCent,
   happyHourPreisCent,
   ArtikelPreisSchema,
+  preisregelFehler,
+  endeNachAktionstagen,
+  verbleibendeAktionstage,
+  mengenRabattZeilen,
+  aktiveMengenAktion,
 } from './schemas/preisregel.js'
 export type {
   Zeitfenster,
   ArtikelPreis,
   AktiveAktion,
+  MengenPosition,
+  MengenRabattZeile,
+  PreisregelPruefung,
   PreisregelInput,
   PreisregelUpdate,
   Preisregel,

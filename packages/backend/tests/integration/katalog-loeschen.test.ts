@@ -195,6 +195,9 @@ describe('Sauberer Neustart: Katalog löschen (Integration, echtes PostgreSQL)',
       'artikel_variante_erledigt.artikel_id -> artikel (CASCADE)',
       'artikel_variante_erledigt.artikel_neu_id -> artikel (SET NULL)',
       'artikel_variante_erledigt.modifikator_id -> modifikatoren (CASCADE)',
+      // Einkaufsbestellung: die Position behält Bezeichnung/Menge/Preis, nur der Verweis auf den Artikel wird leer —
+      // ein gelöschter Katalog macht alte Bestellungen also nicht unlesbar und blockiert nichts
+      'einkauf_bestellpositionen.artikel_id -> artikel (SET NULL)',
       'inventur_positionen.artikel_id -> artikel (NO ACTION)',
       'kasse_artikel_layout.artikel_id -> artikel (CASCADE)',
       'kasse_artikel_layout.kategorie_id -> kategorien (CASCADE)',
@@ -204,6 +207,8 @@ describe('Sauberer Neustart: Katalog löschen (Integration, echtes PostgreSQL)',
       'kasse_routing.kategorie_id -> kategorien (CASCADE)',
       'kassen.start_kategorie_id -> kategorien (SET NULL)',
       'kategorien.parent_id -> kategorien (SET NULL)',
+      // Sonderpreis einer Preisliste verschwindet mit dem Artikel (Preisliste und Kunden bleiben)
+      'preislisten_preise.artikel_id -> artikel (CASCADE)',
       'modifikatoren.gruppe_id -> modifikator_gruppen (CASCADE)',
       'seriennummern.artikel_id -> artikel (NO ACTION)',
     ]

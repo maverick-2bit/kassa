@@ -1,4 +1,4 @@
--- Migration 0078: Sprachbestellung (Kellner-App, Headset) als aktivierbares Modul.
+-- Migration 0082: Sprachbestellung (Kellner-App, Headset) als aktivierbares Modul.
 --
 -- modul_sprache_aktiv schaltet das Modul je Mandant frei (AUS = heutiges Verhalten, nichts
 -- wird geladen). Weitere Tabellen (Synonyme) folgen mit dem Matching-Schritt.

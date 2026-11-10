@@ -41,6 +41,11 @@ type FormValues = {
   bonierBeiDirektverkauf: boolean
   istBestandteil:       boolean
   lieferantId:          string
+  eanStr:               string
+  einkaufspreisEuro:    string
+  lieferantenArtikelnummer: string
+  hersteller:           string
+  herstellerArtikelnummer: string
   lagerstandAktiv:      boolean
   lagerstandMengeStr:   string
   mindestbestandStr:    string
@@ -77,6 +82,7 @@ const HINWEIS_4_9 =
 export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker, lieferanten, alleArtikel, onSubmit, onCancel, loading, fehler, onNeueKategorie }: Props) {
   const [preisFehler, setPreisFehler] = useState<string | null>(null)
   const [allergenFehler, setAllergenFehler] = useState<string | null>(null)
+  const [einkaufFehler, setEinkaufFehler] = useState<string | null>(null)
   const [bild,        setBild]        = useState<string | null>(initial?.bild ?? null)
   // Rezept-Bestandteile (Stückliste) — lokaler State
   const [bestandteile, setBestandteile] = useState<RezeptZeile[]>(
@@ -145,6 +151,11 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
       bonierBeiDirektverkauf: initial?.bonierBeiDirektverkauf ?? false,
       istBestandteil:     initial?.istBestandteil   ?? false,
       lieferantId:        initial?.lieferantId      ?? '',
+      eanStr:             initial?.ean              ?? '',
+      einkaufspreisEuro:  initial?.einkaufspreisCent != null ? (initial.einkaufspreisCent / 100).toFixed(2).replace('.', ',') : '',
+      lieferantenArtikelnummer: initial?.lieferantenArtikelnummer ?? '',
+      hersteller:         initial?.hersteller       ?? '',
+      herstellerArtikelnummer: initial?.herstellerArtikelnummer ?? '',
       lagerstandAktiv:    initial?.lagerstandAktiv  ?? false,
       lagerstandMengeStr: initial?.lagerstandMenge   != null ? String(initial.lagerstandMenge)   : '',
       mindestbestandStr:  initial?.mindestbestand    != null ? String(initial.mindestbestand)    : '',
@@ -180,6 +191,11 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
       bonierBeiDirektverkauf: initial?.bonierBeiDirektverkauf ?? false,
       istBestandteil:     initial?.istBestandteil   ?? false,
       lieferantId:        initial?.lieferantId      ?? '',
+      eanStr:             initial?.ean              ?? '',
+      einkaufspreisEuro:  initial?.einkaufspreisCent != null ? (initial.einkaufspreisCent / 100).toFixed(2).replace('.', ',') : '',
+      lieferantenArtikelnummer: initial?.lieferantenArtikelnummer ?? '',
+      hersteller:         initial?.hersteller       ?? '',
+      herstellerArtikelnummer: initial?.herstellerArtikelnummer ?? '',
       lagerstandAktiv:    initial?.lagerstandAktiv  ?? false,
       lagerstandMengeStr: initial?.lagerstandMenge   != null ? String(initial.lagerstandMenge)   : '',
       mindestbestandStr:  initial?.mindestbestand    != null ? String(initial.mindestbestand)    : '',
@@ -229,6 +245,12 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
     const lsMenge = values.lagerstandAktiv && values.lagerstandMengeStr.trim() !== ''
       ? parseInt(values.lagerstandMengeStr.trim(), 10)
       : null
+    const ekCent = parseEuroToCent(values.einkaufspreisEuro)
+    if (values.einkaufspreisEuro.trim() !== '' && (ekCent === null || ekCent < 0)) {
+      setEinkaufFehler('Einkaufspreis ungültig (z. B. 12,50)')
+      return
+    }
+    setEinkaufFehler(null)
     const mindest = values.lagerstandAktiv && values.mindestbestandStr.trim() !== ''
       ? parseInt(values.mindestbestandStr.trim(), 10)
       : null
@@ -247,6 +269,11 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
       istBestandteil:  values.istBestandteil,
       bestandteile:    bestandteile.filter(b => b.menge > 0),
       lieferantId:     values.lieferantId      || null,
+      ean:             values.eanStr.trim()    || null,
+      einkaufspreisCent: ekCent,
+      lieferantenArtikelnummer: values.lieferantenArtikelnummer.trim() || null,
+      hersteller:      values.hersteller.trim() || null,
+      herstellerArtikelnummer: values.herstellerArtikelnummer.trim() || null,
       lagerstandAktiv: values.lagerstandAktiv,
       lagerstandMenge: lsMenge,
       mindestbestand:  mindest,
@@ -481,6 +508,29 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
             </Select>
           </Field>
         )}
+      </div>
+
+      {/* Einkauf */}
+      <div className="rounded-lg border border-line p-3 space-y-3" data-testid="artikel-einkauf">
+        <p className="text-sm font-semibold text-ink">Einkauf &amp; Identifikation</p>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Einkaufspreis netto (€)" hint="Letzter Preis beim Lieferanten">
+            <Input data-testid="artikel-ek-preis" inputMode="decimal" placeholder="z. B. 12,50" {...register('einkaufspreisEuro')} />
+          </Field>
+          <Field label="EAN / Barcode">
+            <Input data-testid="artikel-ean" inputMode="numeric" maxLength={20} placeholder="z. B. 9002490100070" {...register('eanStr')} />
+          </Field>
+          <Field label="Artikelnummer beim Lieferanten">
+            <Input data-testid="artikel-lieferanten-nr" maxLength={60} {...register('lieferantenArtikelnummer')} />
+          </Field>
+          <Field label="Hersteller">
+            <Input maxLength={100} {...register('hersteller')} />
+          </Field>
+          <Field label="Hersteller-Artikelnummer">
+            <Input maxLength={60} {...register('herstellerArtikelnummer')} />
+          </Field>
+        </div>
+        {einkaufFehler && <p className="text-sm text-red-600" role="alert">{einkaufFehler}</p>}
       </div>
 
       {/* Lager führen */}

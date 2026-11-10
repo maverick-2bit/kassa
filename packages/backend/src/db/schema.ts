@@ -341,6 +341,31 @@ export const belege = pgTable('belege', {
 // Kunden (CRM) — Kundenstammdaten pro Mandant
 // ---------------------------------------------------------------------------
 
+export const preislisten = pgTable('preislisten', {
+  id:        uuid('id').primaryKey().defaultRandom(),
+  mandantId: uuid('mandant_id').notNull().references(() => mandanten.id),
+  name:      varchar('name', { length: 80 }).notNull(),
+  aktiv:     boolean('aktiv').notNull().default(true),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  nameIdx: uniqueIndex('preislisten_mandant_name_idx').on(t.mandantId, t.name),
+}))
+
+export const preislistenPreise = pgTable('preislisten_preise', {
+  id:           uuid('id').primaryKey().defaultRandom(),
+  preislisteId: uuid('preisliste_id').notNull().references(() => preislisten.id, { onDelete: 'cascade' }),
+  artikelId:    uuid('artikel_id').notNull().references((): AnyPgColumn => artikel.id, { onDelete: 'cascade' }),
+  /** Sonderpreis brutto in Cent */
+  preisBruttoCent: integer('preis_brutto_cent').notNull(),
+}, (t) => ({
+  eindeutigIdx: uniqueIndex('preislisten_preise_eindeutig_idx').on(t.preislisteId, t.artikelId),
+  artikelIdx:   index('preislisten_preise_artikel_idx').on(t.artikelId),
+}))
+
+export type PreislisteRow      = typeof preislisten.$inferSelect
+export type PreislistenPreisRow = typeof preislistenPreise.$inferSelect
+
 export const kunden = pgTable('kunden', {
   id:        uuid('id').primaryKey().defaultRandom(),
   mandantId: uuid('mandant_id').notNull().references(() => mandanten.id),
@@ -366,6 +391,8 @@ export const kunden = pgTable('kunden', {
   rechnungPerMail: boolean('rechnung_per_mail').notNull().default(false),
   /** Freitext-Notizen zum Kunden (intern, erscheint nicht auf Belegen) */
   notizen:     text('notizen'),
+  /** Preisliste mit Sonderpreisen für diesen Kunden (manuell zugewiesen) */
+  preislisteId: uuid('preisliste_id').references(() => preislisten.id, { onDelete: 'set null' }),
   createdAt:   timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt:   timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
@@ -849,6 +876,14 @@ export const artikel = pgTable('artikel', {
   istBestandteil:      boolean('ist_bestandteil').notNull().default(false),
   /** Lieferant für Bestellliste und Einkauf */
   lieferantId:         uuid('lieferant_id').references((): AnyPgColumn => lieferanten.id, { onDelete: 'set null' }),
+  /** EAN/GTIN-Barcode */
+  ean:                 varchar('ean', { length: 20 }),
+  /** Einkaufspreis netto in Cent (letzter bekannter Preis beim Lieferanten) */
+  einkaufspreisCent:   integer('einkaufspreis_cent'),
+  /** Artikelnummer beim Lieferanten (für Bestellungen) */
+  lieferantenArtikelnummer: varchar('lieferanten_artikelnummer', { length: 60 }),
+  hersteller:          varchar('hersteller', { length: 100 }),
+  herstellerArtikelnummer: varchar('hersteller_artikelnummer', { length: 60 }),
   /** Artikelbild als Data-URL (max. 200×200 px JPEG, client-seitig komprimiert) */
   bild:                text('bild'),
   createdAt:           timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1325,6 +1360,18 @@ export const lieferanten = pgTable('lieferanten', {
   email:       varchar('email', { length: 200 }),
   telefon:     varchar('telefon', { length: 50 }),
   notiz:       text('notiz'),
+  strasse:     varchar('strasse', { length: 200 }),
+  plz:         varchar('plz', { length: 20 }),
+  ort:         varchar('ort', { length: 100 }),
+  land:        varchar('land', { length: 2 }).notNull().default('AT'),
+  /** UID-Nummer des Lieferanten (z. B. ATU12345678) */
+  uid:         varchar('uid', { length: 30 }),
+  /** Unsere Kundennummer beim Lieferanten (für Bestellungen) */
+  kundennummer: varchar('kundennummer', { length: 60 }),
+  /** Zahlungsbedingung als Freitext, z. B. „14 Tage 2 % Skonto, 30 Tage netto" */
+  zahlungsbedingung: varchar('zahlungsbedingung', { length: 200 }),
+  /** Übliche Lieferzeit in Tagen */
+  lieferzeitTage: integer('lieferzeit_tage'),
   aktiv:       boolean('aktiv').notNull().default(true),
   createdAt:   timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt:   timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1334,6 +1381,48 @@ export const lieferanten = pgTable('lieferanten', {
 
 export type Lieferant    = typeof lieferanten.$inferSelect
 export type NewLieferant = typeof lieferanten.$inferInsert
+
+// ---------------------------------------------------------------------------
+// Einkaufsbestellungen — Bestellung BEI einem Lieferanten (nicht: Bestellungen von Kunden)
+// ---------------------------------------------------------------------------
+
+export const einkaufBestellungen = pgTable('einkauf_bestellungen', {
+  id:           uuid('id').primaryKey().defaultRandom(),
+  mandantId:    uuid('mandant_id').notNull().references(() => mandanten.id),
+  /** Laufende Nummer je Mandant und Jahr, z. B. B2026001 */
+  nummer:       varchar('nummer', { length: 20 }).notNull(),
+  lieferantId:  uuid('lieferant_id').notNull().references(() => lieferanten.id),
+  /** entwurf | gesendet | teilgeliefert | erledigt | storniert */
+  status:       varchar('status', { length: 20 }).notNull().default('entwurf'),
+  bemerkung:    text('bemerkung'),
+  liefertermin: date('liefertermin', { mode: 'string' }),
+  gesendetAm:   timestamp('gesendet_am', { withTimezone: true }),
+  gesendetAn:   varchar('gesendet_an', { length: 200 }),
+  createdAt:    timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:    timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  nummerIdx:   uniqueIndex('einkauf_bestellungen_nummer_idx').on(t.mandantId, t.nummer),
+  lieferantIdx: index('einkauf_bestellungen_lieferant_idx').on(t.lieferantId),
+  statusIdx:   index('einkauf_bestellungen_status_idx').on(t.mandantId, t.status),
+}))
+
+export const einkaufBestellpositionen = pgTable('einkauf_bestellpositionen', {
+  id:            uuid('id').primaryKey().defaultRandom(),
+  bestellungId:  uuid('bestellung_id').notNull().references(() => einkaufBestellungen.id, { onDelete: 'cascade' }),
+  position:      integer('position').notNull(),
+  artikelId:     uuid('artikel_id').references((): AnyPgColumn => artikel.id, { onDelete: 'set null' }),
+  bezeichnung:   text('bezeichnung').notNull(),
+  lieferantenArtikelnummer: varchar('lieferanten_artikelnummer', { length: 60 }),
+  menge:         integer('menge').notNull(),
+  /** Einkaufspreis netto je Stück in Cent */
+  einkaufspreisCent: integer('einkaufspreis_cent'),
+  gelieferteMenge: integer('geliefert_menge').notNull().default(0),
+}, (t) => ({
+  bestellungIdx: index('einkauf_bestellpositionen_bestellung_idx').on(t.bestellungId),
+}))
+
+export type EinkaufBestellungRow     = typeof einkaufBestellungen.$inferSelect
+export type EinkaufBestellpositionRow = typeof einkaufBestellpositionen.$inferSelect
 
 // ---------------------------------------------------------------------------
 // KDS-Bons — aktive Bonierbons für Browser-basiertes Küchen-Display
@@ -1640,6 +1729,12 @@ export const preisregeln = pgTable('preisregeln', {
   kategorieIds:  jsonb('kategorie_ids').notNull().default([]),
   /** Betroffene Einzel-Artikel-IDs als JSON-Array (kategorie_ids UND artikel_ids leer = alle Artikel) */
   artikelIds:    jsonb('artikel_ids').notNull().default([]),
+  /** Mengenaktion „kaufe X, zahle Y" (alle drei gesetzt oder alle null); Zählweise artikel | auswahl */
+  mengeKauf:     integer('menge_kauf'),
+  mengeZahle:    integer('menge_zahle'),
+  mengeModus:    varchar('menge_modus', { length: 10 }),
+  /** Ende nach so vielen Aktionstagen (gueltig_bis wird daraus berechnet) */
+  wiederholungen: integer('wiederholungen'),
   createdAt:     timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt:     timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({

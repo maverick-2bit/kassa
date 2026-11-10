@@ -13,6 +13,7 @@ import { PreisregelInputSchema, PreisregelUpdateSchema } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import { preisregeln } from '../db/schema.js'
 import {
+  PreisregelError,
   listePreisregeln,
   erstellePreisregel,
   aktualisierePreisregel,
@@ -45,8 +46,13 @@ export const preisregelRoute: FastifyPluginAsync<PreisregelRouteOptions> = async
   fastify.post('/preisregeln', auth, async (request, reply) => {
     const parsed = PreisregelInputSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
-    const result = await erstellePreisregel(opts.db, request.user.mandantId, parsed.data)
-    return reply.status(201).send(result)
+    try {
+      const result = await erstellePreisregel(opts.db, request.user.mandantId, parsed.data)
+      return reply.status(201).send(result)
+    } catch (err) {
+      if (err instanceof PreisregelError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      throw err
+    }
   })
 
   fastify.patch('/preisregeln/:id', auth, async (request, reply) => {
@@ -57,9 +63,17 @@ export const preisregelRoute: FastifyPluginAsync<PreisregelRouteOptions> = async
     }
     const update = PreisregelUpdateSchema.safeParse(request.body)
     if (!update.success) return reply.status(400).send({ fehler: update.error.issues })
-    const result = await aktualisierePreisregel(opts.db, id.data.id, update.data)
-    if (!result) return reply.status(404).send({ fehler: 'Preisregel nicht gefunden' })
-    return reply.send(result)
+    // Das Schema füllt fehlende Felder mit Standardwerten — nur tatsächlich gesendete Felder ändern den Bestand
+    const gesendet = new Set(Object.keys((request.body ?? {}) as object))
+    const nurGesendet = Object.fromEntries(Object.entries(update.data).filter(([k]) => gesendet.has(k))) as typeof update.data
+    try {
+      const result = await aktualisierePreisregel(opts.db, id.data.id, nurGesendet)
+      if (!result) return reply.status(404).send({ fehler: 'Preisregel nicht gefunden' })
+      return reply.send(result)
+    } catch (err) {
+      if (err instanceof PreisregelError) return reply.status(err.httpStatus).send({ fehler: err.message })
+      throw err
+    }
   })
 
   fastify.delete('/preisregeln/:id', auth, async (request, reply) => {

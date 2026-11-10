@@ -488,6 +488,53 @@ export async function sendeWareneingangEmail(
 }
 
 // ---------------------------------------------------------------------------
+// Einkaufsbestellung an den Lieferanten (PDF im Anhang)
+// ---------------------------------------------------------------------------
+
+export interface BestellungEmailDaten {
+  firmenname:   string
+  nummer:       string
+  lieferant:    string
+  liefertermin: string | null   // z. B. 31.12.2026
+  bemerkung:    string | null
+}
+
+export async function sendeBestellungEmail(
+  empfaenger: string,
+  daten:      BestellungEmailDaten,
+  pdf:        Buffer,
+  config:     Config,
+): Promise<void> {
+  const transporter = erstelleTransporter(config)
+  const from        = config.SMTP_FROM ?? config.SMTP_USER!
+  const termin      = daten.liefertermin ? ` Wunschtermin: ${daten.liefertermin}.` : ''
+  const text =
+    `Guten Tag,\n\nanbei unsere Bestellung ${daten.nummer}.${termin}\n` +
+    (daten.bemerkung ? `\n${daten.bemerkung}\n` : '') +
+    `\nBitte bestätigen Sie den Eingang und den Liefertermin.\n\nFreundliche Grüße\n${daten.firmenname}`
+  const html = `<!DOCTYPE html>
+<html lang="de"><head><meta charset="utf-8"><title>Bestellung ${esc(daten.nummer)}</title></head>
+<body style="margin:0;padding:24px;background:#f3f4f6;font-family:Arial,sans-serif;color:#111827">
+  <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:12px;padding:24px 28px">
+    <p style="margin:0 0 12px">Guten Tag,</p>
+    <p style="margin:0 0 12px">anbei unsere Bestellung <strong>${esc(daten.nummer)}</strong>.${daten.liefertermin ? ` Wunschtermin: <strong>${esc(daten.liefertermin)}</strong>.` : ''}</p>
+    ${daten.bemerkung ? `<p style="margin:0 0 12px;white-space:pre-line">${esc(daten.bemerkung)}</p>` : ''}
+    <p style="margin:0 0 12px">Bitte bestätigen Sie den Eingang und den Liefertermin.</p>
+    <p style="margin:0">Freundliche Grüße<br>${esc(daten.firmenname)}</p>
+  </div>
+</body></html>`
+
+  await transporter.sendMail({
+    from,
+    to:      empfaenger,
+    subject: `Bestellung ${daten.nummer} — ${daten.firmenname}`,
+    html,
+    text,
+    attachments: [{ filename: `Bestellung-${daten.nummer}.pdf`, content: pdf, contentType: 'application/pdf' }],
+  })
+}
+
+// ---------------------------------------------------------------------------
 // Belegzweig: Lieferschein / Rechnung per E-Mail
 // ---------------------------------------------------------------------------
 
