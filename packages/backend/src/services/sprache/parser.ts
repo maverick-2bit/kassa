@@ -11,6 +11,7 @@
  * Der Parser bucht nie selbst; er liefert nur Vorschläge für den normalen Korb.
  */
 
+import type { SprachVorschlag, SprachVorschlagStatus } from '@kassa/shared'
 import { baueKatalog, type ArtikelEintrag, type SprachArtikel, type SprachKatalog } from './katalog.js'
 import { findeBestenBereich, findeModifikator, POLARITAET, type SpanTreffer } from './matching.js'
 import { tokenisiere } from './text.js'
@@ -25,32 +26,10 @@ export const SCHWELLEN = {
   abstand: 0.05,
 } as const
 
-export type VorschlagStatus = 'sicher' | 'pruefen' | 'unbekannt'
-
-export interface VorschlagModifikator {
-  id:       string
-  gruppeId: string
-  name:     string
-}
-
-export interface VorschlagAlternative {
-  id:          string
-  bezeichnung: string
-  konfidenz:   number
-}
-
-export interface Vorschlag {
-  menge:         number
-  /** Das Gesagte (normalisiert), für Anzeige und Fehlersuche */
-  text:          string
-  artikel:       { id: string; bezeichnung: string } | null
-  konfidenz:     number
-  status:        VorschlagStatus
-  alternativen:  VorschlagAlternative[]
-  modifikatoren: VorschlagModifikator[]
-  /** Gesagte Optionen, die keinem Modifikator zugeordnet werden konnten ("ohne zwiebel") */
-  hinweise:      string[]
-}
+export type VorschlagStatus = SprachVorschlagStatus
+export type Vorschlag = SprachVorschlag
+export type VorschlagModifikator = Vorschlag['modifikatoren'][number]
+export type VorschlagAlternative = Vorschlag['alternativen'][number]
 
 export interface ParseErgebnis {
   tisch:       string | null

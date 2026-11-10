@@ -11,3 +11,5 @@ export type { SprachArtikel, SprachModifikator, SprachKatalog } from './katalog.
 export { parseBestellung, parseBestellungAusArtikeln, SCHWELLEN } from './parser.js'
 export type { ParseErgebnis, Vorschlag, VorschlagStatus, VorschlagModifikator, VorschlagAlternative } from './parser.js'
 export { leseVor } from './vorlesen.js'
+export { KatalogCache, KATALOG_TTL_MS, KATALOG_MAX_MANDANTEN } from './katalog-cache.js'
+export type { KatalogCacheOptionen } from './katalog-cache.js'

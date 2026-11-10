@@ -25,8 +25,8 @@ function mockDb(selects: unknown[][] = []): { db: Db; abfragen: () => number } {
 describe('Sprach-Routen — Zugriffsschutz', () => {
   it('ohne Token → 401', async () => {
     const srv = await buildTestServer(mockDb().db)
-    for (const [method, url] of [['GET', '/api/sprache/synonyme'], ['GET', `/api/sprache/artikel/${ART_ID}/synonyme`], ['PUT', `/api/sprache/artikel/${ART_ID}/synonyme`]] as const) {
-      expect((await srv.fastify.inject({ method, url, payload: method === 'PUT' ? { synonyme: [] } : undefined })).statusCode).toBe(401)
+    for (const [method, url] of [['GET', '/api/sprache/synonyme'], ['GET', `/api/sprache/artikel/${ART_ID}/synonyme`], ['PUT', `/api/sprache/artikel/${ART_ID}/synonyme`], ['POST', '/api/sprache/bestellung']] as const) {
+      expect((await srv.fastify.inject({ method, url, payload: method === 'GET' ? undefined : { synonyme: [], text: 'ein Bier' } })).statusCode).toBe(401)
     }
     await srv.close()
   })
@@ -70,4 +70,40 @@ describe('Sprach-Routen — Zugriffsschutz', () => {
     expect(abfragen()).toBe(0)
     await srv.close()
   })
+
+  describe('POST /api/sprache/bestellung', () => {
+    const URL = '/api/sprache/bestellung'
+
+    it('Rolle ohne „tische"/„kasse" (z. B. nur Artikel verwalten) → 403, ohne die Datenbank zu fragen', async () => {
+      const { db, abfragen } = mockDb()
+      const srv = await buildTestServer(db)
+      const headers = srv.authHeader({ rolle: 'kellner', berechtigungen: ['artikel.verwalten'] })
+      expect((await srv.fastify.inject({ method: 'POST', url: URL, headers, payload: { text: 'ein Bier' } })).statusCode).toBe(403)
+      expect(abfragen()).toBe(0)
+      await srv.close()
+    })
+
+    it('ungültiger Text (fehlt, leer, zu lang) → 400, ohne die Datenbank zu fragen', async () => {
+      const { db, abfragen } = mockDb()
+      const srv = await buildTestServer(db)
+      const headers = srv.authHeader({ rolle: 'kellner', berechtigungen: ['tische'] })
+      for (const payload of [{}, { text: '' }, { text: '   ' }, { text: 'x'.repeat(1001) }, { text: 5 }]) {
+        expect((await srv.fastify.inject({ method: 'POST', url: URL, headers, payload })).statusCode).toBe(400)
+      }
+      expect(abfragen()).toBe(0)
+      await srv.close()
+    })
+
+    it('Modul aus → 403 mit klarer Meldung; Kellner mit „tische" und mit „kasse" kommen bis zur Modul-Prüfung', async () => {
+      for (const berechtigungen of [['tische'], ['kasse']] as const) {
+        const srv = await buildTestServer(mockDb([[{ aktiv: false }]]).db)
+        const headers = srv.authHeader({ rolle: 'kellner', berechtigungen: [...berechtigungen] })
+        const res = await srv.fastify.inject({ method: 'POST', url: URL, headers, payload: { text: 'ein Bier' } })
+        expect(res.statusCode).toBe(403)
+        expect(res.json().fehler).toMatch(/nicht aktiviert/)
+        await srv.close()
+      }
+    })
+  })
 })
+
