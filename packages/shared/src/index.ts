@@ -45,12 +45,21 @@ export {
   ArtikelSynonymeSetzenSchema,
   SynonymKonfliktSchema,
   ArtikelSynonymeErgebnisSchema,
+  SPRACHE_TEXT_MAX,
+  SpracheBestellungInputSchema,
+  SprachVorschlagStatusSchema,
+  SprachVorschlagSchema,
+  SpracheBestellungErgebnisSchema,
 } from './schemas/sprache.js'
 export type {
   ArtikelSynonyme,
   ArtikelSynonymeSetzen,
   SynonymKonflikt,
   ArtikelSynonymeErgebnis,
+  SpracheBestellungInput,
+  SprachVorschlagStatus,
+  SprachVorschlag,
+  SpracheBestellungErgebnis,
 } from './schemas/sprache.js'
 
 // Einkaufsbestellungen (Bestellung beim Lieferanten)
