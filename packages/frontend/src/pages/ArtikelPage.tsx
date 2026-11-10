@@ -13,8 +13,8 @@ import {
   type ModifikatorGruppeErstellen,
   type ModifikatorErstellen,
 } from '@kassa/shared'
-import { artikelApi, kategorieApi, modifikatorApi, bonierdruckerApi, lieferantApi } from '../lib/api'
-import { getAuth } from '../lib/auth'
+import { artikelApi, kategorieApi, modifikatorApi, bonierdruckerApi, lieferantApi, spracheApi } from '../lib/api'
+import { getAuth, hasBerechtigung, hasModul } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
 import { Modal } from '../components/ui/Modal'
@@ -22,6 +22,7 @@ import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { Schalter } from '../components/ui/Schalter'
 import { ArtikelFormular } from '../components/ArtikelFormular'
+import { SynonymeModal, SYNONYME_QUERY_KEY } from '../components/SynonymeModal'
 import { KategorieFormular } from '../components/KategorieFormular'
 import { ArtikelImportModal } from '../components/ArtikelImportModal'
 import { LayoutImportModal } from '../components/LayoutImportModal'
@@ -74,6 +75,20 @@ export function ArtikelPage() {
   const [modError, setModError]                   = useState<string | null>(null)
   /** Artikel, für den gerade die Gruppen-Zuweisung bearbeitet wird */
   const [zuweisungArtikelId, setZuweisungArtikelId] = useState<string | null>(null)
+  /** Sprachbestellung (Modul): Artikel, dessen Synonyme gerade bearbeitet werden */
+  const [synonymArtikelId, setSynonymArtikelId] = useState<string | null>(null)
+  const spracheAn = hasModul('sprache') && hasBerechtigung('artikel.verwalten')
+  // Nur laden, wenn das Modul an ist — Betriebe ohne Modul fragen nichts zusätzlich ab
+  const synonymeQuery = useQuery({
+    queryKey: [SYNONYME_QUERY_KEY, 'liste'],
+    queryFn:  () => spracheApi.synonyme(),
+    enabled:  spracheAn,
+    retry:    false,
+  })
+  const synonymAnzahl = useMemo(
+    () => new Map((synonymeQuery.data ?? []).map(s => [s.artikelId, s.synonyme.length] as const)),
+    [synonymeQuery.data],
+  )
   /** Import-Modal */
   const [importModalOpen, setImportModalOpen] = useState(false)
   /** Layout-Import-Modal (Gruppenbaum, Raster, Farben, Favoriten aus JSON) */
@@ -557,6 +572,17 @@ export function ArtikelPage() {
                       >
                         Optionen
                       </button>
+                      {spracheAn && (
+                        <button
+                          type="button"
+                          data-testid={`artikel-sprache-${a.id}`}
+                          onClick={() => setSynonymArtikelId(a.id)}
+                          className="text-xs text-teal-600 hover:underline mr-3"
+                          title="Namen, die Kellner sagen (Sprachbestellung)"
+                        >
+                          Sprache{synonymAnzahl.get(a.id) ? ` (${synonymAnzahl.get(a.id)})` : ''}
+                        </button>
+                      )}
                       {a.aktiv ? (
                         <button
                           type="button"
@@ -966,6 +992,15 @@ export function ArtikelPage() {
           artikelName={list.data?.find(a => a.id === zuweisungArtikelId)?.bezeichnung ?? ''}
           alleGruppen={modGruppenQuery.data ?? []}
           onClose={() => setZuweisungArtikelId(null)}
+        />
+      )}
+
+      {/* Sprachbestellung: Synonyme eines Artikels */}
+      {synonymArtikelId && (
+        <SynonymeModal
+          artikelId={synonymArtikelId}
+          artikelName={list.data?.find(a => a.id === synonymArtikelId)?.bezeichnung ?? ''}
+          onClose={() => setSynonymArtikelId(null)}
         />
       )}
 

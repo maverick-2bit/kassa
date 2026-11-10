@@ -180,6 +180,8 @@ import type {
   TagesbeginnStand,
   PinInfo,
   GastModus,
+  ArtikelSynonyme,
+  ArtikelSynonymeErgebnis,
 } from '@kassa/shared'
 import { getToken, handleUnauthorized } from './auth.js'
 
@@ -1247,6 +1249,18 @@ export const modifikatorApi = {
 }
 
 export type { Modifikator, ModifikatorGruppe }
+
+// Sprachbestellung (optionales Modul): Synonyme je Artikel — Namen, die Kellner tatsächlich sagen
+export const spracheApi = {
+  /** Alle Artikel, die mindestens ein Synonym haben */
+  synonyme: () =>
+    request<ArtikelSynonyme[]>('GET', '/api/sprache/synonyme'),
+  artikelSynonyme: (artikelId: string) =>
+    request<ArtikelSynonymeErgebnis>('GET', `/api/sprache/artikel/${artikelId}/synonyme`),
+  /** Ersetzt die Liste; die Antwort meldet Synonyme, die auch einen anderen Artikel meinen */
+  setzeArtikelSynonyme: (artikelId: string, synonyme: string[]) =>
+    request<ArtikelSynonymeErgebnis>('PUT', `/api/sprache/artikel/${artikelId}/synonyme`, { synonyme }),
+}
 
 export const lagerstandApi = {
   bulk: (input: LagerstandBulkInput) =>
