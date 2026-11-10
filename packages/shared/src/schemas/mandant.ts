@@ -46,8 +46,9 @@ export const MANDANT_MODUL_BESCHREIBUNGEN: Record<MandantModul, string> = {
     'Events anlegen, Tickets online verkaufen und per E-Mail verschicken, ' +
     'Einlass per QR-Scan mit Altersband (Jugendschutz) und Mehrfachtickets für die Crew.',
   sprache:
-    'Kellner bestellen per Sprache über ein Headset: Push-to-talk, erkannte Artikel werden ' +
-    'vor dem Senden vorgelesen und bestätigt. Ohne Modul wird nichts geladen.',
+    'Kellner bestellen per Sprache über ein Headset: Sprechtaste halten, erkannte Artikel werden ' +
+    'vorgelesen und bestätigt. Die Erkennung läuft derzeit über den Browser (Chrome/Edge); das ' +
+    'Gesprochene wird dabei an den Browser-Hersteller übertragen. Ohne Modul wird nichts geladen.',
 }
 
 export const MandantModuleSchema = z.object({

@@ -21,6 +21,7 @@ import type {
   KellnerModus,
   TischplanBereich,
   KasseArtikelLayout,
+  SpracheBestellungErgebnis,
 } from '@kassa/shared'
 import { getToken, clearAuth } from './auth'
 
@@ -187,6 +188,15 @@ export const kategorieApi = {
 export const modifikatorApi = {
   getGruppenFuerArtikel: (artikelId: string) =>
     request<ModifikatorGruppe[]>('GET', `/api/artikel/${artikelId}/modifikator-gruppen`),
+}
+
+// ---------------------------------------------------------------------------
+// Sprachbestellung (optionales Modul): Text rein → Vorschläge raus. Bucht nichts.
+// ---------------------------------------------------------------------------
+
+export const spracheApi = {
+  bestellung: (text: string) =>
+    request<SpracheBestellungErgebnis>('POST', '/api/sprache/bestellung', { text }),
 }
 
 // ---------------------------------------------------------------------------

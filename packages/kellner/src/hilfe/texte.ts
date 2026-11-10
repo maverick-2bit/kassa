@@ -109,8 +109,11 @@ export const HILFE_THEMEN: HilfeThema[] = [
       'Artikel antippen: jeder Tipp bucht +1. Das kleine − nimmt wieder eins weg.',
       'Hat ein Artikel Optionen (z. B. pur/gespritzt), öffnet sich „Optionen & Menge": Option wählen, Menge einstellen, „Buchen & weiter".',
       'Fertig? Oben rechts auf den Knopf mit der Summe tippen (Übersicht) — dort bonierst und kassierst du.',
+      'Mit Sprachbestellung (Modul): oben auf 🎙 tippen, die Sprechtaste HALTEN, die Bestellung sagen, loslassen. Die App liest vor, was sie verstanden hat — dann „ja" sagen (Taste halten) oder „In den Korb" tippen. Weitere Sätze hängen sich an.',
     ],
     tipps: [
+      'Sprachbestellung: Was die App nicht sicher versteht (gelb/rot), prüfst du vor dem Übernehmen; Optionen, die sie nicht zuordnen kann, wählst du von Hand. Gebucht wird erst nach deiner Bestätigung.',
+      'Sprachbestellung braucht Chrome oder Edge, Internet und eine gesicherte Verbindung (https://). Das Gesprochene geht an den Browser-Hersteller.',
       'Bei einer Theken-Kasse heißt der Knopf oben „Kassieren" und ihr bucht ohne Tisch.',
       'Optionen, bei denen „jede Auswahl ein eigener Artikel" ist (z. B. Spritzer süß/Sommer/weiß), werden getrennte Positionen.',
     ],

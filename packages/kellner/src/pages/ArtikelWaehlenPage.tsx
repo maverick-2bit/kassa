@@ -1,13 +1,18 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
 import { allergeneAnzeige, artikelErlaubt, baueAuswahlPositionen, ausgeblendeteArtikelIds, FAVORITEN_TAB_ID, farbeZuHex, fragtNachOptionen, nachbarReiter, warengruppenWahl, kategorieAnzeigeNamen, kompakteArtikelListe, sichtbareGruppenFlach, sichtbarkeitsMengen, startReiter, type Artikel, type Kategorie, type ModifikatorGruppe, type ModifikatorAuswahl } from '@kassa/shared'
 import { artikelApi, kategorieApi, modifikatorApi, tischTabApi, kellnerKonfigApi } from '../lib/api'
-import { getAuth, clearAuth, gaengeAktiv as istGaengeAktiv, gaengeAnzahl } from '../lib/auth'
+import { getAuth, clearAuth, gaengeAktiv as istGaengeAktiv, gaengeAnzahl, spracheAktiv as istSpracheAktiv } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
 import { formatPreis } from '../lib/format'
 import { useSwipe } from '../lib/useSwipe'
 import { HilfeKnopf } from '../components/HilfeFenster'
+import type { KorbPosition } from '../sprache/korb'
+
+// Sprachbestellung (optionales Modul): der Dialog samt Spracherkennung wird NUR geladen, wenn der Betrieb das
+// Modul hat und der Kellner die Sprechtaste antippt — alle anderen laden keinen Byte davon.
+const SprachDialog = lazy(() => import('../sprache/SprachDialog'))
 
 // ---------------------------------------------------------------------------
 // Typen
@@ -62,6 +67,7 @@ export function ArtikelWaehlenPage() {
   const [modMengen,        setModMengen]        = useState<ModMengenMap>(new Map())
   const [artikelMenge,     setArtikelMenge]     = useState(1)
   const [fehler,           setFehler]           = useState<string | null>(null)
+  const [sprachOffen,      setSprachOffen]      = useState(false)
 
   // Gänge-Steuerung (Modul): aktiver Gang für neu gebuchte Artikel (0 = Sofort)
   const gaenge      = istGaengeAktiv()
@@ -239,6 +245,24 @@ export function ArtikelWaehlenPage() {
     } else {
       addToKorb(a, 1, [])
     }
+  }
+
+  /** Sprachbestellung: bestätigte Vorschläge in den Korb — derselbe Weg wie das Antippen. */
+  function sprachUebernehmen(positionen: KorbPosition[]) {
+    for (const p of positionen) addToKorb(p.artikel, p.menge, p.modifikatoren)
+  }
+
+  /** Sprachbestellung: Optionen eines Artikels von Hand wählen (immer mit Abfrage, auch an der Theke). */
+  async function optionenManuell(a: Artikel, menge: number) {
+    setSprachOffen(false)
+    const gruppen = (await modifikatorApi.getGruppenFuerArtikel(a.id).catch(() => [])).filter(g => g.aktiv)
+    if (gruppen.length === 0) { addToKorb(a, menge, []); return }
+    setAktuellerArtikel(a)
+    setAktuelleGruppen(gruppen)
+    setModMengen(new Map())
+    setArtikelMenge(menge)
+    setFehler(null)
+    setPhase('modifikatoren')
   }
 
   function addToKorb(a: Artikel, menge: number, mods: ModifikatorAuswahl[]) {
@@ -543,6 +567,16 @@ export function ArtikelWaehlenPage() {
               ? `${konfigQuery.data?.kellnerModus === 'theke' ? 'Kassieren' : `${tabQuery.data.positionen.length} Pos.`} · ${formatPreis(tabQuery.data.summeGesamtCent)}`
               : 'Übersicht'} ›
           </button>
+          {istSpracheAktiv() && (
+            <button
+              type="button"
+              data-testid="sprache-knopf"
+              onClick={() => setSprachOffen(true)}
+              aria-label="Sprachbestellung"
+              title="Sprachbestellung"
+              className="shrink-0 h-9 w-9 rounded-full border-2 border-line text-base leading-none active:scale-95 transition"
+            >🎙</button>
+          )}
           <HilfeKnopf />
         </div>
 
@@ -682,6 +716,18 @@ export function ArtikelWaehlenPage() {
           })}
         </div>
       </div>
+
+      {sprachOffen && (
+        <Suspense fallback={null}>
+          <SprachDialog
+            artikel={alleArtikel.filter(kategorieSichtbar)}
+            tischNummer={tabQuery.data?.tischNummer ?? null}
+            onUebernehmen={sprachUebernehmen}
+            onManuell={(a, menge) => { void optionenManuell(a, menge) }}
+            onSchliessen={() => setSprachOffen(false)}
+          />
+        </Suspense>
+      )}
 
       {/* Footer */}
       {korbAnzahl > 0 && (
