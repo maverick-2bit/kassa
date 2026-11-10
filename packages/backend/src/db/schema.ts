@@ -76,6 +76,8 @@ export const mandanten = pgTable('mandanten', {
   umruestMinuten:           integer('umruest_minuten').notNull().default(0),
   /** Ticketing: Events, Online-Tickets, Einlasskontrolle */
   modulTicketsAktiv:        boolean('modul_tickets_aktiv').notNull().default(false),
+  /** Sprachbestellung: Kellner-App nimmt Bestellungen per Headset/Sprache entgegen */
+  modulSpracheAktiv:        boolean('modul_sprache_aktiv').notNull().default(false),
   /**
    * Öffentliche Adresse der Ticket-App (z. B. https://tickets.example.at).
    * Links und QR-Codes in Ticket-E-Mails bauen darauf auf. null = nicht eingerichtet.

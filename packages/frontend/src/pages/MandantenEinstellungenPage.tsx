@@ -20,6 +20,7 @@ const MODULE_LISTE: { modul: MandantModul; icon: string }[] = [
   { modul: 'zeiterfassung',  icon: '🕒' },
   { modul: 'sbTerminal',     icon: '🛒' },
   { modul: 'tickets',        icon: '🎟️' },
+  { modul: 'sprache',        icon: '🎧' },
 ]
 
 export function MandantenEinstellungenPage() {
@@ -215,6 +216,7 @@ function modulKey(modul: MandantModul): keyof MandantModule {
   if (modul === 'sbTerminal')     return 'modulSbTerminalAktiv'
   if (modul === 'gaenge')         return 'modulGaengeAktiv'
   if (modul === 'tickets')        return 'modulTicketsAktiv'
+  if (modul === 'sprache')        return 'modulSpracheAktiv'
   return 'modulZeiterfassungAktiv'
 }
 

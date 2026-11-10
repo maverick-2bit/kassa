@@ -5,7 +5,7 @@ import { PinLaengeSchema } from './auth.js'
 // Mandanten-Module
 // ---------------------------------------------------------------------------
 
-export const MandantModulSchema = z.enum(['gastro', 'angebote', 'mergeport', 'reservierungen', 'zeiterfassung', 'sbTerminal', 'gaenge', 'tickets'])
+export const MandantModulSchema = z.enum(['gastro', 'angebote', 'mergeport', 'reservierungen', 'zeiterfassung', 'sbTerminal', 'gaenge', 'tickets', 'sprache'])
 export type MandantModul = z.infer<typeof MandantModulSchema>
 
 export const MANDANT_MODUL_LABELS: Record<MandantModul, string> = {
@@ -17,6 +17,7 @@ export const MANDANT_MODUL_LABELS: Record<MandantModul, string> = {
   sbTerminal:     'SB-Terminal & Abholmonitor',
   gaenge:         'Gänge-Steuerung',
   tickets:        'Ticketing & Einlass',
+  sprache:        'Sprachbestellung (Headset)',
 }
 
 export const MANDANT_MODUL_BESCHREIBUNGEN: Record<MandantModul, string> = {
@@ -44,6 +45,9 @@ export const MANDANT_MODUL_BESCHREIBUNGEN: Record<MandantModul, string> = {
   tickets:
     'Events anlegen, Tickets online verkaufen und per E-Mail verschicken, ' +
     'Einlass per QR-Scan mit Altersband (Jugendschutz) und Mehrfachtickets für die Crew.',
+  sprache:
+    'Kellner bestellen per Sprache über ein Headset: Push-to-talk, erkannte Artikel werden ' +
+    'vor dem Senden vorgelesen und bestätigt. Ohne Modul wird nichts geladen.',
 }
 
 export const MandantModuleSchema = z.object({
@@ -55,6 +59,7 @@ export const MandantModuleSchema = z.object({
   modulSbTerminalAktiv:      z.boolean(),
   modulGaengeAktiv:          z.boolean(),
   modulTicketsAktiv:         z.boolean(),
+  modulSpracheAktiv:         z.boolean(),
   /** Anzahl wählbarer Gänge (1..9), nur relevant bei modulGaengeAktiv */
   gaengeAnzahl:              z.number().int().min(1).max(9),
   /**
