@@ -37,6 +37,22 @@ export type {
   PreislisteFuerKunde,
 } from './schemas/preisliste.js'
 
+// Sprachbestellung (optionales Modul): Synonyme je Artikel
+export {
+  SYNONYME_MAX_JE_ARTIKEL,
+  SynonymTextSchema,
+  ArtikelSynonymeSchema,
+  ArtikelSynonymeSetzenSchema,
+  SynonymKonfliktSchema,
+  ArtikelSynonymeErgebnisSchema,
+} from './schemas/sprache.js'
+export type {
+  ArtikelSynonyme,
+  ArtikelSynonymeSetzen,
+  SynonymKonflikt,
+  ArtikelSynonymeErgebnis,
+} from './schemas/sprache.js'
+
 // Einkaufsbestellungen (Bestellung beim Lieferanten)
 export {
   EINKAUF_BESTELLSTATUS,

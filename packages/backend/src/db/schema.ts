@@ -894,6 +894,28 @@ export const artikel = pgTable('artikel', {
 }))
 
 // ---------------------------------------------------------------------------
+// Sprachbestellung (optionales Modul): Synonyme je Artikel
+//
+// Umgangsnamen, die Kellner sagen („Seidl", „Krügerl"). `text` ist die Schreibweise für die Anzeige,
+// `text_norm` die normalisierte (Kleinbuchstaben, ohne Umlaute/Satzzeichen) für Eindeutigkeit und Abgleich.
+// Eigene Tabelle statt Spalte auf `artikel`: Mandanten ohne Modul zahlen dafür nichts (leere Tabelle).
+// ---------------------------------------------------------------------------
+
+export const artikelSynonyme = pgTable('artikel_synonyme', {
+  id:        uuid('id').primaryKey().defaultRandom(),
+  mandantId: uuid('mandant_id').notNull().references(() => mandanten.id),
+  artikelId: uuid('artikel_id').notNull().references((): AnyPgColumn => artikel.id, { onDelete: 'cascade' }),
+  text:      varchar('text', { length: 80 }).notNull(),
+  textNorm:  varchar('text_norm', { length: 80 }).notNull(),
+  /** Reihenfolge der Eingabe (0-basiert) — bleibt in der Anzeige erhalten */
+  position:  integer('position').notNull().default(0),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  eindeutigIdx: uniqueIndex('artikel_synonyme_artikel_text_idx').on(t.artikelId, t.textNorm),
+  mandantIdx:   index('artikel_synonyme_mandant_idx').on(t.mandantId),
+}))
+
+// ---------------------------------------------------------------------------
 // Artikel-Stückliste / Rezept — ein Verkaufsartikel besteht aus Bestandteilen
 // (Rohstoff-Artikeln) mit Menge. Beim Verkauf/Bonieren wird der Lagerstand der
 // Bestandteile abgebucht; erreicht ein Bestandteil 0, gilt der Verkaufsartikel
