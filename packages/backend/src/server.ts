@@ -72,6 +72,7 @@ import { registerTerminalRoutes } from './routes/terminal.route.js'
 import { registerStripeWebhook }  from './routes/stripe-webhook.route.js'
 import { sbBestellungRoute }     from './routes/sb-bestellung.route.js'
 import { ticketingRoute } from './routes/ticketing.route.js'
+import { spracheRoute } from './routes/sprache.route.js'
 import { ticketshopRoute } from './routes/ticketshop.route.js'
 import { ticketverkaufRoute } from './routes/ticketverkauf.route.js'
 import type { ShopStripe } from './services/ticketshop.service.js'
@@ -263,6 +264,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     await api.register(selfcheckoutRoute,       { db: deps.db })
     await api.register(sbBestellungRoute,       { db: deps.db })
     await api.register(ticketingRoute,          { db: deps.db, config: deps.config, belegDeps: deps.belegDeps })
+    await api.register(spracheRoute,            { db: deps.db })
     await api.register(ticketshopRoute,         { db: deps.db })
     await api.register(ticketverkaufRoute,      {
       db: deps.db, config: deps.config, belegDeps: deps.belegDeps,

@@ -568,6 +568,13 @@
       "when": 1792972800000,
       "tag": "0082_modul_sprache",
       "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1793059200000,
+      "tag": "0083_artikel_synonyme",
+      "breakpoints": true
     }
   ]
 }
