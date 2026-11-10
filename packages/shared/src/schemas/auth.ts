@@ -157,6 +157,7 @@ export const LoginResponseSchema = z.object({
     modulSbTerminalAktiv:     z.boolean(),
     modulGaengeAktiv:         z.boolean(),
     modulTicketsAktiv:        z.boolean(),
+    modulSpracheAktiv:        z.boolean(),
     /** Anzahl wählbarer Gänge (1..9) für den Gang-Wähler */
     gaengeAnzahl:             z.number().int(),
     /** Ziffernzahl der PINs dieses Betriebs */

@@ -76,6 +76,11 @@ export function gaengeAktiv(): boolean {
   return getAuth()?.mandant.modulGaengeAktiv ?? false
 }
 
+/** Sprachbestellung (Modul) aktiv? Ältere LocalStorage-Auths ohne Feld → aus. */
+export function spracheAktiv(): boolean {
+  return getAuth()?.mandant.modulSpracheAktiv ?? false
+}
+
 /** Anzahl wählbarer Gänge (1..9); Fallback 3 für ältere LocalStorage-Auths. */
 export function gaengeAnzahl(): number {
   return getAuth()?.mandant.gaengeAnzahl ?? 3

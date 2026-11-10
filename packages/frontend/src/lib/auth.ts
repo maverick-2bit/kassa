@@ -144,6 +144,7 @@ export function hasModul(modul: MandantModul): boolean {
   // Ältere LocalStorage-Auths (vor v0.7.106) haben das Feld nicht → false = Modul aus
   if (modul === 'gaenge')         return auth.mandant.modulGaengeAktiv ?? false
   if (modul === 'tickets')        return auth.mandant.modulTicketsAktiv ?? false
+  if (modul === 'sprache')        return auth.mandant.modulSpracheAktiv ?? false
   return false
 }
 
@@ -155,7 +156,7 @@ export function gaengeAnzahl(): number {
 
 /** Aktualisiert die Modul-Flags im LocalStorage ohne Re-Login. */
 export function updateMandantModule(
-  updates: Partial<{ modulGastroAktiv: boolean; modulAngeboteAktiv: boolean; modulMergeportAktiv: boolean; modulReservierungenAktiv: boolean; modulZeiterfassungAktiv: boolean; modulSbTerminalAktiv: boolean; modulGaengeAktiv: boolean; modulTicketsAktiv: boolean; gaengeAnzahl: number }>,
+  updates: Partial<{ modulGastroAktiv: boolean; modulAngeboteAktiv: boolean; modulMergeportAktiv: boolean; modulReservierungenAktiv: boolean; modulZeiterfassungAktiv: boolean; modulSbTerminalAktiv: boolean; modulGaengeAktiv: boolean; modulTicketsAktiv: boolean; modulSpracheAktiv: boolean; gaengeAnzahl: number }>,
 ): void {
   const auth = getAuth()
   if (!auth) return
