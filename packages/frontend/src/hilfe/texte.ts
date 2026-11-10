@@ -291,6 +291,14 @@ export const HILFE_THEMEN: HilfeThema[] = [
           '„Layout importieren (JSON)": Warengruppen samt Artikeln, Optionen und Anordnung aus einer Layout-Datei übernehmen — fehlende Optionen werden angelegt. „Layout exportieren (JSON)" macht dasselbe in die andere Richtung.',
         ],
       },
+      {
+        titel: 'Sprachbestellung (nur mit Modul)',
+        schritte: [
+          'In der Zeile des Artikels auf „Sprache" tippen: dort trägst du die Namen ein, die Kellner wirklich sagen — z. B. „Seidl" oder „Krügerl". Mehrere gehen mit Komma getrennt.',
+          'Mit „Speichern" gilt die Liste sofort. Die Zahl in Klammern zeigt, wie viele Synonyme ein Artikel hat.',
+          'Meint ein Name auch einen anderen Artikel, bekommst du eine Warnung: gespeichert wird trotzdem, die Sprachbestellung fragt bei diesem Namen aber nach, statt zu raten.',
+        ],
+      },
     ],
     tipps: ['Die Reihenfolge der Artikel an der Kasse stellst du mit den Pfeilen in der Spalte „Sort." ein.'],
   },
