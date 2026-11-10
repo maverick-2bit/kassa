@@ -554,6 +554,13 @@
       "when": 1792800000000,
       "tag": "0080_preislisten",
       "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1792886400000,
+      "tag": "0081_aktionen_menge_wiederholung",
+      "breakpoints": true
     }
   ]
 }

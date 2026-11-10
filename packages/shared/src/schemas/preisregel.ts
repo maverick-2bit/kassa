@@ -12,6 +12,12 @@ import { z } from 'zod'
 //   • rabattProzent  — prozentualer Abschlag auf den Basispreis
 //   • artikelPreise  — fixer AKTIONSPREIS je Artikel (z. B. „alle Pizzen 7,50")
 // Der fixe Preis ist die speziellere Angabe und schlägt den Prozentsatz.
+//
+// Dritte Art, NICHT kombinierbar mit den beiden anderen: Mengenaktion „X zum Preis von Y"
+// (mengeKauf/mengeZahle/mengeModus). Sie wirkt als Rabattzeile im Warenkorb (siehe mengenRabattZeilen).
+//
+// Wiederholung: wiederkehrende Aktionen (Wochentage) können nach `wiederholungen` Aktionstagen enden. Gespeichert
+// wird das berechnete Enddatum in gueltigBis (endeNachAktionstagen) — die Prüfung „gilt jetzt?" kennt nur Daten.
 // ---------------------------------------------------------------------------
 
 export const WochentagSchema = z.number().int().min(1).max(7)
@@ -54,17 +60,52 @@ const PreisregelBaseSchema = z.object({
   /** Betroffene Einzel-Artikel (leer = keine Einschränkung über Artikel).
    *  kategorieIds UND artikelIds leer = gilt für ALLE Artikel. */
   artikelIds:    z.array(z.string().guid()).max(500).default([]),
+  /** Mengenaktion „kaufe X, zahle Y" (alle drei gesetzt oder alle null). Y < X. */
+  mengeKauf:     z.number().int().min(2).max(20).nullable().default(null),
+  mengeZahle:    z.number().int().min(1).max(19).nullable().default(null),
+  /** Zählweise: je gleichem Artikel | über die ganze Auswahl (günstigster je X-er-Gruppe gratis) */
+  mengeModus:    z.enum(['artikel', 'auswahl']).nullable().default(null),
+  /** Ende nach so vielen Aktionstagen (nur mit Startdatum + Wochentagen); setzt gueltigBis */
+  wiederholungen: z.number().int().min(1).max(500).nullable().default(null),
 })
 
+/** Teil der Regel, den die Querprüfungen brauchen (Anlegen und Ändern im Backend, Eingabe-Schema) */
+export type PreisregelPruefung = Pick<z.infer<typeof PreisregelBaseSchema>,
+  'wochentage' | 'datumTage' | 'rabattProzent' | 'artikelPreise' | 'mengeKauf' | 'mengeZahle' | 'mengeModus'
+  | 'wiederholungen' | 'gueltigVon' | 'gueltigBis'>
+
+/** Fachliche Querprüfung einer vollständigen Regel; liefert die Fehlermeldung oder null. */
+export function preisregelFehler(d: PreisregelPruefung): string | null {
+  if (d.wochentage.length === 0 && d.datumTage.length === 0) {
+    return 'Mindestens ein Wochentag oder ein konkretes Datum erforderlich'
+  }
+  const mengenFelder = [d.mengeKauf, d.mengeZahle, d.mengeModus].filter(x => x !== null).length
+  if (mengenFelder !== 0 && mengenFelder !== 3) {
+    return 'Mengenaktion: „kaufe", „zahle" und die Zählweise müssen zusammen angegeben werden'
+  }
+  if (mengenFelder === 3) {
+    if (d.mengeZahle! >= d.mengeKauf!) return 'Mengenaktion: „zahle" muss kleiner sein als „kaufe" (z. B. 3 für 2)'
+    if (d.rabattProzent > 0 || d.artikelPreise.length > 0) {
+      return 'Eine Mengenaktion kann nicht zugleich einen Prozent-Rabatt oder Aktionspreise haben — bitte eine eigene Aktion anlegen'
+    }
+  } else if (d.rabattProzent <= 0 && d.artikelPreise.length === 0) {
+    return 'Entweder einen Prozent-Rabatt oder mindestens einen Aktionspreis angeben'
+  }
+  if (d.wiederholungen !== null) {
+    if (d.wochentage.length === 0) return 'Wiederholungen gibt es nur bei Aktionen mit Wochentagen'
+    if (!d.gueltigVon) return 'Für „nach X Aktionstagen" braucht die Aktion ein Startdatum („Aktion ab")'
+  }
+  if (d.gueltigVon && d.gueltigBis && d.gueltigBis < d.gueltigVon) {
+    return '„Aktion bis" liegt vor „Aktion ab"'
+  }
+  return null
+}
+
 export const PreisregelInputSchema = PreisregelBaseSchema
-  .refine(
-    d => d.wochentage.length > 0 || d.datumTage.length > 0,
-    { message: 'Mindestens ein Wochentag oder ein konkretes Datum erforderlich', path: ['wochentage'] },
-  )
-  .refine(
-    d => d.rabattProzent > 0 || d.artikelPreise.length > 0,
-    { message: 'Entweder einen Prozent-Rabatt oder mindestens einen Aktionspreis angeben', path: ['rabattProzent'] },
-  )
+  .superRefine((d, ctx) => {
+    const f = preisregelFehler(d)
+    if (f) ctx.addIssue({ code: 'custom', message: f, path: ['wochentage'] })
+  })
 export type PreisregelInput = z.infer<typeof PreisregelInputSchema>
 
 export const PreisregelUpdateSchema = PreisregelBaseSchema.partial()
@@ -83,6 +124,10 @@ export const PreisregelSchema = z.object({
   artikelPreise: z.array(ArtikelPreisSchema),
   kategorieIds:  z.array(z.string().guid()),
   artikelIds:    z.array(z.string().guid()),
+  mengeKauf:     z.number().int().nullable(),
+  mengeZahle:    z.number().int().nullable(),
+  mengeModus:    z.enum(['artikel', 'auswahl']).nullable(),
+  wiederholungen: z.number().int().nullable(),
   createdAt:     z.string(),
   updatedAt:     z.string(),
 })
@@ -235,3 +280,163 @@ export function aktionsPreisCent(
 
 /** @deprecated Alter Name aus der „Happy Hour"-Zeit — nutze aktionsPreisCent. */
 export const happyHourPreisCent = aktionsPreisCent
+
+// ---------------------------------------------------------------------------
+// Wiederholung: Enddatum aus „nach X Aktionstagen"
+// ---------------------------------------------------------------------------
+
+const TAG_MS = 24 * 60 * 60 * 1000
+
+function istoZuUtc(iso: string): number {
+  const [j, m, t] = iso.split('-').map(Number)
+  return Date.UTC(j!, m! - 1, t!)
+}
+function utcZuIso(ms: number): string {
+  const d = new Date(ms)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`
+}
+function wochentagIso(ms: number): number {
+  const w = new Date(ms).getUTCDay()
+  return w === 0 ? 7 : w
+}
+
+/**
+ * Datum des `anzahl`-ten Aktionstags ab `start` (einschließlich): jeder Tag, dessen Wochentag in `wochentage`
+ * liegt, ist ein Aktionstag. Beispiel: Montags, 4 → der vierte Montag ab dem Startdatum. Rechnet auf
+ * Kalendertagen (keine Zeitzonen-/Sommerzeit-Effekte). null bei leeren Wochentagen oder anzahl < 1.
+ */
+export function endeNachAktionstagen(start: string, wochentage: number[], anzahl: number): string | null {
+  if (wochentage.length === 0 || anzahl < 1 || !/^\d{4}-\d{2}-\d{2}$/.test(start)) return null
+  const tage = new Set(wochentage)
+  let gezaehlt = 0
+  const ab = istoZuUtc(start)
+  // Obergrenze: auch bei einem einzigen Wochentag und 500 Wiederholungen weit genug
+  for (let i = 0; i < 7 * anzahl + 7; i++) {
+    const ms = ab + i * TAG_MS
+    if (tage.has(wochentagIso(ms)) && ++gezaehlt === anzahl) return utcZuIso(ms)
+  }
+  return null
+}
+
+/** Wie viele Aktionstage bleiben ab `heute` (einschließlich) bis zum Ende? null = keine Begrenzung bekannt. */
+export function verbleibendeAktionstage(
+  regel: Pick<Preisregel, 'wochentage' | 'gueltigVon' | 'gueltigBis'>, heute: string,
+): number | null {
+  if (!regel.gueltigBis || regel.wochentage.length === 0) return null
+  const von = regel.gueltigVon && regel.gueltigVon > heute ? regel.gueltigVon : heute
+  if (von > regel.gueltigBis) return 0
+  const tage = new Set(regel.wochentage)
+  let n = 0
+  for (let ms = istoZuUtc(von); ms <= istoZuUtc(regel.gueltigBis); ms += TAG_MS) if (tage.has(wochentagIso(ms))) n++
+  return n
+}
+
+// ---------------------------------------------------------------------------
+// Mengenaktion „X zum Preis von Y" — Rabattzeilen für den Warenkorb
+// ---------------------------------------------------------------------------
+
+export interface MengenPosition {
+  artikelId:   string
+  kategorieId: string | null
+  bezeichnung: string
+  mwstSatz:    string
+  /** Anzahl Einheiten (nur ganze Zahlen zählen mit) */
+  menge:       number
+  /** Effektiver Einzelpreis in Cent (nach Aktionspreis/Preisliste) */
+  preisCent:   number
+  /** true = von Hand rabattiert o. ä.: nimmt nicht an der Mengenaktion teil */
+  ausgenommen?: boolean
+}
+
+export interface MengenRabattZeile {
+  regelId:     string
+  regelName:   string
+  /** Anzeige/Beleg: „<Aktion> (3 für 2): <Artikel>" */
+  bezeichnung: string
+  mwstSatz:    string
+  /** Anzahl gratis gerechneter Einheiten */
+  menge:       number
+  /** Negativer Einzelpreis (= der erlassene Preis je Einheit) */
+  preisCent:   number
+}
+
+/**
+ * Berechnet die Rabattzeilen aller JETZT geltenden Mengenaktionen für einen Warenkorb.
+ *
+ * Je Aktion werden die Einheiten der passenden Positionen nach Preis absteigend zu Gruppen zu je `mengeKauf`
+ * zusammengefasst; in jeder VOLLEN Gruppe sind die (kauf − zahle) günstigsten Einheiten gratis.
+ *   • Zählweise „artikel": gezählt wird je Artikel getrennt (3 gleiche Pizzen).
+ *   • Zählweise „auswahl": gezählt wird über alle Artikel im Geltungsbereich der Aktion.
+ * Eine Einheit nimmt höchstens an EINER Aktion teil (Aktionen mit dem größten Nachlassanteil zuerst, dann nach Id) —
+ * so gibt es nie einen doppelten Nachlass. Der Rabatt steht mit dem Steuersatz des jeweiligen Artikels auf der Zeile,
+ * damit die Steueraufteilung auf dem Beleg stimmt.
+ */
+export function mengenRabattZeilen(regeln: Preisregel[], positionen: MengenPosition[], jetzt: Date): MengenRabattZeile[] {
+  const mengenRegeln = regeln
+    .filter(r => r.mengeKauf !== null && r.mengeZahle !== null && r.mengeModus !== null)
+    .sort((a, b) =>
+      (b.mengeKauf! - b.mengeZahle!) / b.mengeKauf! - (a.mengeKauf! - a.mengeZahle!) / a.mengeKauf!
+      || a.id.localeCompare(b.id))
+  if (mengenRegeln.length === 0) return []
+
+  interface Einheit { pos: number; preisCent: number; verbraucht: boolean }
+  const einheiten: Einheit[] = []
+  positionen.forEach((p, pos) => {
+    if (p.ausgenommen || p.preisCent <= 0 || !Number.isInteger(p.menge) || p.menge <= 0) return
+    for (let i = 0; i < Math.min(p.menge, 1000); i++) einheiten.push({ pos, preisCent: p.preisCent, verbraucht: false })
+  })
+
+  const zeilen = new Map<string, MengenRabattZeile>()
+  for (const regel of mengenRegeln) {
+    const kauf = regel.mengeKauf!
+    const gratisJeGruppe = kauf - regel.mengeZahle!
+    const passend = einheiten.filter(e => {
+      if (e.verbraucht) return false
+      const p = positionen[e.pos]!
+      return regelGiltJetzt(regel, p.artikelId, p.kategorieId, jetzt)
+    })
+    // Gruppen bilden: je Artikel getrennt oder über alles
+    const toepfe = new Map<string, Einheit[]>()
+    for (const e of passend) {
+      const schluessel = regel.mengeModus === 'artikel' ? positionen[e.pos]!.artikelId : '*'
+      const topf = toepfe.get(schluessel) ?? []
+      topf.push(e)
+      toepfe.set(schluessel, topf)
+    }
+    for (const topf of toepfe.values()) {
+      topf.sort((a, b) => b.preisCent - a.preisCent)
+      for (let start = 0; start + kauf <= topf.length; start += kauf) {
+        const gruppe = topf.slice(start, start + kauf)
+        for (const e of gruppe) e.verbraucht = true
+        for (const gratis of gruppe.slice(kauf - gratisJeGruppe)) {
+          const p = positionen[gratis.pos]!
+          const key = `${regel.id}|${p.artikelId}|${p.mwstSatz}|${gratis.preisCent}`
+          const vorhanden = zeilen.get(key)
+          if (vorhanden) { vorhanden.menge++; continue }
+          zeilen.set(key, {
+            regelId: regel.id, regelName: regel.name,
+            bezeichnung: `${regel.name} (${kauf} für ${regel.mengeZahle}): ${p.bezeichnung}`.slice(0, 200),
+            mwstSatz: p.mwstSatz, menge: 1, preisCent: -gratis.preisCent,
+          })
+        }
+      }
+    }
+  }
+  return [...zeilen.values()]
+}
+
+/** Gerade geltende Mengenaktion für einen Artikel (für Hinweise an der Kasse); null = keine. */
+export function aktiveMengenAktion(
+  regeln: Preisregel[], artikelId: string, kategorieId: string | null, jetzt: Date = new Date(),
+): { kauf: number; zahle: number } | null {
+  let beste: { kauf: number; zahle: number } | null = null
+  for (const r of regeln) {
+    if (r.mengeKauf === null || r.mengeZahle === null) continue
+    if (!regelGiltJetzt(r, artikelId, kategorieId, jetzt)) continue
+    if (!beste || (r.mengeKauf - r.mengeZahle) / r.mengeKauf > (beste.kauf - beste.zahle) / beste.kauf) {
+      beste = { kauf: r.mengeKauf, zahle: r.mengeZahle }
+    }
+  }
+  return beste
+}

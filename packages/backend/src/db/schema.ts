@@ -1727,6 +1727,12 @@ export const preisregeln = pgTable('preisregeln', {
   kategorieIds:  jsonb('kategorie_ids').notNull().default([]),
   /** Betroffene Einzel-Artikel-IDs als JSON-Array (kategorie_ids UND artikel_ids leer = alle Artikel) */
   artikelIds:    jsonb('artikel_ids').notNull().default([]),
+  /** Mengenaktion „kaufe X, zahle Y" (alle drei gesetzt oder alle null); Zählweise artikel | auswahl */
+  mengeKauf:     integer('menge_kauf'),
+  mengeZahle:    integer('menge_zahle'),
+  mengeModus:    varchar('menge_modus', { length: 10 }),
+  /** Ende nach so vielen Aktionstagen (gueltig_bis wird daraus berechnet) */
+  wiederholungen: integer('wiederholungen'),
   createdAt:     timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt:     timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
