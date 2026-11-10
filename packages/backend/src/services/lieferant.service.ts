@@ -12,6 +12,14 @@ function toDto(row: typeof lieferanten.$inferSelect): Lieferant {
     email:     row.email,
     telefon:   row.telefon,
     notiz:     row.notiz,
+    strasse:   row.strasse,
+    plz:       row.plz,
+    ort:       row.ort,
+    land:      row.land,
+    uid:       row.uid,
+    kundennummer:      row.kundennummer,
+    zahlungsbedingung: row.zahlungsbedingung,
+    lieferzeitTage:    row.lieferzeitTage,
     aktiv:     row.aktiv,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -35,6 +43,14 @@ export async function erstelleLieferant(
     email:   input.email   ?? null,
     telefon: input.telefon ?? null,
     notiz:   input.notiz   ?? null,
+    strasse: input.strasse ?? null,
+    plz:     input.plz     ?? null,
+    ort:     input.ort     ?? null,
+    land:    input.land    ?? 'AT',
+    uid:     input.uid     ?? null,
+    kundennummer:      input.kundennummer      ?? null,
+    zahlungsbedingung: input.zahlungsbedingung ?? null,
+    lieferzeitTage:    input.lieferzeitTage    ?? null,
   }).returning()
   return toDto(row!)
 }
@@ -48,6 +64,14 @@ export async function aktualisiereLieferant(
   if (input.email   !== undefined) updates['email']   = input.email
   if (input.telefon !== undefined) updates['telefon'] = input.telefon
   if (input.notiz   !== undefined) updates['notiz']   = input.notiz
+  if (input.strasse !== undefined) updates['strasse'] = input.strasse
+  if (input.plz     !== undefined) updates['plz']     = input.plz
+  if (input.ort     !== undefined) updates['ort']     = input.ort
+  if (input.uid     !== undefined) updates['uid']     = input.uid
+  if (input.land    !== undefined) updates['land']    = input.land
+  if (input.kundennummer      !== undefined) updates['kundennummer']      = input.kundennummer
+  if (input.zahlungsbedingung !== undefined) updates['zahlungsbedingung'] = input.zahlungsbedingung
+  if (input.lieferzeitTage    !== undefined) updates['lieferzeitTage']    = input.lieferzeitTage
   if (input.aktiv   !== undefined) updates['aktiv']   = input.aktiv
 
   const [row] = await db.update(lieferanten)

@@ -533,6 +533,48 @@
       "when": 1792540800000,
       "tag": "0077_email_je_mandant",
       "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1792627200000,
+      "tag": "0078_lieferanten_stammdaten",
+      "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1792713600000,
+      "tag": "0079_einkauf_bestellungen",
+      "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1792800000000,
+      "tag": "0080_preislisten",
+      "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1792886400000,
+      "tag": "0081_aktionen_menge_wiederholung",
+      "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1792972800000,
+      "tag": "0082_modul_sprache",
+      "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1793059200000,
+      "tag": "0083_artikel_synonyme",
+      "breakpoints": true
     }
   ]
 }

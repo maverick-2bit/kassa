@@ -10,7 +10,7 @@
  * Verweise auf Artikel/Warengruppen:
  *  - Harte FKs ohne Cascade: seriennummern, inventur_positionen → werden mitgelöscht (Bestandsdaten
  *    am Artikel); artikel.kategorie_id → Artikel zuerst, dann Gruppen.
- *  - Cascade/Set-null: artikel_bestandteile, artikel_modifikator_gruppen, kasse_favoriten,
+ *  - Cascade/Set-null: artikel_bestandteile, artikel_modifikator_gruppen, artikel_synonyme (Sprachbestellung), kasse_favoriten,
  *    kasse_artikel_layout (Anordnung je Kasse + Warengruppe: jede Zeile hängt an Artikel UND Warengruppe,
  *    verschwindet also mit ihnen; für behaltene/deaktivierte bleibt sie als unsichtbarer Altbestand),
  *    kasse_routing (Kassen-Ausnahmen beim Bon-Routing: Drucker/KDS-Station je Warengruppe bzw. Artikel an einer

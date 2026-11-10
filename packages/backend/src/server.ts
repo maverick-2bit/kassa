@@ -53,6 +53,8 @@ import { mandantTransferRoute } from './routes/mandant-transfer.route.js'
 import { finanzpruefungRoute }  from './routes/finanzpruefung.route.js'
 import { rksvSelbsttestRoute }  from './routes/rksv-selbsttest.route.js'
 import { lieferantRoute }       from './routes/lieferant.route.js'
+import { einkaufBestellungRoute } from './routes/einkauf-bestellung.route.js'
+import { preislisteRoute }      from './routes/preisliste.route.js'
 import { kdsRoute }            from './routes/kds.route.js'
 import { gastRoute }           from './routes/gast.route.js'
 import { registerDisplayRoutes } from './routes/display.route.js'
@@ -70,6 +72,7 @@ import { registerTerminalRoutes } from './routes/terminal.route.js'
 import { registerStripeWebhook }  from './routes/stripe-webhook.route.js'
 import { sbBestellungRoute }     from './routes/sb-bestellung.route.js'
 import { ticketingRoute } from './routes/ticketing.route.js'
+import { spracheRoute } from './routes/sprache.route.js'
 import { ticketshopRoute } from './routes/ticketshop.route.js'
 import { ticketverkaufRoute } from './routes/ticketverkauf.route.js'
 import type { ShopStripe } from './services/ticketshop.service.js'
@@ -246,6 +249,8 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     await api.register(finanzpruefungRoute,     { db: deps.db })
     await api.register(rksvSelbsttestRoute,     { db: deps.db })
     await api.register(lieferantRoute,          { db: deps.db })
+    await api.register(einkaufBestellungRoute,  { db: deps.db, config: deps.config })
+    await api.register(preislisteRoute,         { db: deps.db })
     await api.register(kdsRoute,                { db: deps.db })
     await api.register(gastRoute,               { db: deps.db, belegDeps: deps.belegDeps, config: deps.config })
     await api.register(emailRoute,              { db: deps.db, config: deps.config })
@@ -259,6 +264,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     await api.register(selfcheckoutRoute,       { db: deps.db })
     await api.register(sbBestellungRoute,       { db: deps.db })
     await api.register(ticketingRoute,          { db: deps.db, config: deps.config, belegDeps: deps.belegDeps })
+    await api.register(spracheRoute,            { db: deps.db })
     await api.register(ticketshopRoute,         { db: deps.db })
     await api.register(ticketverkaufRoute,      {
       db: deps.db, config: deps.config, belegDeps: deps.belegDeps,

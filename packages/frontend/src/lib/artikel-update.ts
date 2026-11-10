@@ -39,6 +39,11 @@ export function artikelUpdateAusInput(input: ArtikelInput): ArtikelUpdate {
     // Ersetzt das Rezept vollständig (Server: schreibeRezept) — das Formular startet mit dem bestehenden Rezept
     bestandteile:           input.bestandteile,
     lieferantId:            input.lieferantId     ?? null,
+    ean:                    input.ean             ?? null,
+    einkaufspreisCent:      input.einkaufspreisCent ?? null,
+    lieferantenArtikelnummer: input.lieferantenArtikelnummer ?? null,
+    hersteller:             input.hersteller      ?? null,
+    herstellerArtikelnummer: input.herstellerArtikelnummer ?? null,
     lagerstandAktiv:        input.lagerstandAktiv,
     lagerstandMenge:        input.lagerstandMenge ?? null,
     mindestbestand:         input.mindestbestand  ?? null,

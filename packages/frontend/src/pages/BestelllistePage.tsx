@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { Artikel, Lieferant } from '@kassa/shared'
-import { artikelApi, lieferantApi } from '../lib/api'
+import { artikelApi, einkaufBestellungApi, lieferantApi } from '../lib/api'
 import { getAuth } from '../lib/auth'
 import { formatPreis } from '../lib/format'
 import { heuteKalendertag } from '../lib/geschaeftstag'
@@ -36,13 +37,15 @@ const STATUS_FARBE: Record<LagerStatus, string> = {
 // ---------------------------------------------------------------------------
 
 function exportiereCsv(zeilen: BestellZeile[], lieferantenMap: Map<string, string>) {
-  const header = ['Lieferant', 'Artikel', 'Aktuell', 'Mindestbestand', 'Zu bestellen', 'Preis/Stück']
+  const header = ['Lieferant', 'Art.-Nr. Lieferant', 'Artikel', 'Aktuell', 'Mindestbestand', 'Zu bestellen', 'EK netto/Stück', 'VK brutto/Stück']
   const rows = zeilen.map(z => [
     z.lieferantId ? (lieferantenMap.get(z.lieferantId) ?? 'Unbekannt') : 'Ohne Lieferant',
+    z.lieferantenArtikelnummer ?? '',
     z.bezeichnung,
     String(z.lagerstandMenge ?? 0),
     String(z.mindestbestand ?? '–'),
     String(z.bestellmenge),
+    z.einkaufspreisCent != null ? formatPreis(z.einkaufspreisCent) : '',
     formatPreis(z.preisBruttoCent),
   ])
   const csv = '﻿' + [header, ...rows].map(r => r.join(';')).join('\r\n')
@@ -68,6 +71,8 @@ interface BestellZeile {
   lagerstandMenge: number | null
   mindestbestand:  number | null
   preisBruttoCent: number
+  einkaufspreisCent: number | null
+  lieferantenArtikelnummer: string | null
   status:          LagerStatus
   bestellmenge:    number
 }
@@ -101,6 +106,22 @@ export function BestelllistePage() {
   )
 
   const [mengen, setMengen] = useState<Record<string, number>>({})
+  const navigate = useNavigate()
+  const qc = useQueryClient()
+  const [bestellFehler, setBestellFehler] = useState<string | null>(null)
+
+  // Bestellung (Entwurf) aus den Zeilen eines Lieferanten anlegen und direkt öffnen
+  const bestellungAnlegen = useMutation({
+    mutationFn: (p: { lieferantId: string; zeilen: BestellZeile[] }) => einkaufBestellungApi.erstelle({
+      lieferantId: p.lieferantId,
+      positionen: p.zeilen.filter(z => z.bestellmenge > 0).map(z => ({
+        artikelId: z.id, bezeichnung: z.bezeichnung, lieferantenArtikelnummer: z.lieferantenArtikelnummer,
+        menge: z.bestellmenge, einkaufspreisCent: z.einkaufspreisCent,
+      })),
+    }),
+    onSuccess: b => { setBestellFehler(null); void qc.invalidateQueries({ queryKey: ['einkauf-bestellungen'] }); navigate(`/einkaufsbestellungen?oeffne=${b.id}`) },
+    onError:   e => setBestellFehler(e instanceof Error ? e.message : 'Fehler'),
+  })
   const [filterLieferant, setFilterLieferant] = useState<string>('alle')
 
   const basisZeilen: BestellZeile[] = useMemo(() => {
@@ -118,6 +139,8 @@ export function BestelllistePage() {
           lagerstandMenge: a.lagerstandMenge,
           mindestbestand:  a.mindestbestand,
           preisBruttoCent: a.preisBruttoCent,
+          einkaufspreisCent: a.einkaufspreisCent ?? null,
+          lieferantenArtikelnummer: a.lieferantenArtikelnummer ?? null,
           status:          lagerStatus(a),
           bestellmenge:    mengen[a.id] ?? vorschlag,
         }
@@ -208,6 +231,8 @@ export function BestelllistePage() {
             </div>
           )}
 
+          {bestellFehler && <p className="mb-3 text-sm text-red-600" role="alert">{bestellFehler}</p>}
+
           {/* Gruppen */}
           <div className="space-y-6">
             {[...gruppen.entries()].map(([gruppeKey, zeilen]) => {
@@ -228,7 +253,20 @@ export function BestelllistePage() {
                         </div>
                       )}
                     </div>
-                    <p className="text-xs text-ink-muted">{zeilen.length} Artikel</p>
+                    <div className="flex items-center gap-3">
+                      <p className="text-xs text-ink-muted">{zeilen.length} Artikel</p>
+                      {lieferant && (
+                        <button
+                          type="button"
+                          data-testid="bestellung-anlegen"
+                          disabled={bestellungAnlegen.isPending || zeilen.every(z => z.bestellmenge <= 0)}
+                          onClick={() => bestellungAnlegen.mutate({ lieferantId: lieferant.id, zeilen })}
+                          className="px-3 py-1.5 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 disabled:opacity-50 transition"
+                        >
+                          Bestellung anlegen
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {/* Artikel-Tabelle */}

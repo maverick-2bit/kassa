@@ -156,6 +156,7 @@ async function buildLoginResponse(
       modulSbTerminalAktiv:     mandanten.modulSbTerminalAktiv,
       modulGaengeAktiv:         mandanten.modulGaengeAktiv,
       modulTicketsAktiv:        mandanten.modulTicketsAktiv,
+      modulSpracheAktiv:        mandanten.modulSpracheAktiv,
       gaengeAnzahl:             mandanten.gaengeAnzahl,
       pinLaenge:                mandanten.pinLaenge,
     })

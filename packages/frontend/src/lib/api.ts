@@ -181,6 +181,8 @@ import type {
   TagesbeginnStand,
   PinInfo,
   GastModus,
+  ArtikelSynonyme,
+  ArtikelSynonymeErgebnis,
 } from '@kassa/shared'
 import { getToken, handleUnauthorized } from './auth.js'
 
@@ -208,6 +210,20 @@ export class ApiError extends Error {
     super(message)
   }
 }
+
+import type {
+  Preisliste,
+  PreislisteDetail,
+  PreislisteFuerKunde,
+  PreislisteInput,
+  PreislistePreiseSetzen,
+  PreislisteUpdate,
+  EinkaufBestellstatus,
+  EinkaufBestellung,
+  EinkaufBestellungInput,
+  EinkaufBestellungKurz,
+  EinkaufBestellungUpdate,
+} from '@kassa/shared'
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const token = getToken()
@@ -673,6 +689,52 @@ export const kategorieApi = {
 // ---------------------------------------------------------------------------
 // Lieferanten
 // ---------------------------------------------------------------------------
+
+export const preislisteApi = {
+  liste:   () => request<Preisliste[]>('GET', '/api/preislisten'),
+  hole:    (id: string) => request<PreislisteDetail>('GET', `/api/preislisten/${id}`),
+  erstelle: (input: PreislisteInput) => request<Preisliste>('POST', '/api/preislisten', input),
+  aktualisiere: (id: string, input: PreislisteUpdate) => request<Preisliste>('PUT', `/api/preislisten/${id}`, input),
+  loesche: (id: string) => request<void>('DELETE', `/api/preislisten/${id}`),
+  preiseSetzen: (id: string, input: PreislistePreiseSetzen) =>
+    request<PreislisteDetail>('PUT', `/api/preislisten/${id}/preise`, input),
+  preisEntfernen: (id: string, artikelId: string) =>
+    request<void>('DELETE', `/api/preislisten/${id}/preise/${artikelId}`),
+  /** Preisliste samt Preisen für die Kasse (null = der Kunde hat keine) */
+  fuerKunde: (kundeId: string) => request<PreislisteFuerKunde>('GET', `/api/preislisten/fuer-kunde/${kundeId}`),
+}
+
+export const einkaufBestellungApi = {
+  liste: (filter: { status?: EinkaufBestellstatus; lieferantId?: string } = {}) => {
+    const p = new URLSearchParams()
+    if (filter.status)      p.set('status', filter.status)
+    if (filter.lieferantId) p.set('lieferantId', filter.lieferantId)
+    const q = p.toString()
+    return request<EinkaufBestellungKurz[]>('GET', `/api/einkauf/bestellungen${q ? `?${q}` : ''}`)
+  },
+  hole:   (id: string) => request<EinkaufBestellung>('GET', `/api/einkauf/bestellungen/${id}`),
+  erstelle: (input: EinkaufBestellungInput) => request<EinkaufBestellung>('POST', '/api/einkauf/bestellungen', input),
+  aktualisiere: (id: string, input: EinkaufBestellungUpdate) =>
+    request<EinkaufBestellung>('PUT', `/api/einkauf/bestellungen/${id}`, input),
+  loesche: (id: string) => request<void>('DELETE', `/api/einkauf/bestellungen/${id}`),
+  status:  (id: string, status: EinkaufBestellstatus, gesendetAn?: string) =>
+    request<EinkaufBestellung>('POST', `/api/einkauf/bestellungen/${id}/status`, { status, ...(gesendetAn && { gesendetAn }) }),
+  email:   (id: string, empfaenger?: string) =>
+    request<EinkaufBestellung>('POST', `/api/einkauf/bestellungen/${id}/email`, empfaenger ? { empfaenger } : {}),
+  pdf: async (id: string, dateiname: string): Promise<void> => {
+    const token = getToken()
+    const res = await fetch(`/api/einkauf/bestellungen/${id}/pdf`, {
+      headers: { Authorization: token ? `Bearer ${token}` : '' },
+    })
+    if (res.status === 401) { handleUnauthorized(); return }
+    if (!res.ok) throw new ApiError(res.status, `HTTP ${res.status}`)
+    const url = URL.createObjectURL(await res.blob())
+    const a   = document.createElement('a')
+    a.href = url; a.download = dateiname
+    document.body.appendChild(a); a.click(); document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  },
+}
 
 export const lieferantApi = {
   list:       () =>
@@ -1190,6 +1252,18 @@ export const modifikatorApi = {
 }
 
 export type { Modifikator, ModifikatorGruppe }
+
+// Sprachbestellung (optionales Modul): Synonyme je Artikel — Namen, die Kellner tatsächlich sagen
+export const spracheApi = {
+  /** Alle Artikel, die mindestens ein Synonym haben */
+  synonyme: () =>
+    request<ArtikelSynonyme[]>('GET', '/api/sprache/synonyme'),
+  artikelSynonyme: (artikelId: string) =>
+    request<ArtikelSynonymeErgebnis>('GET', `/api/sprache/artikel/${artikelId}/synonyme`),
+  /** Ersetzt die Liste; die Antwort meldet Synonyme, die auch einen anderen Artikel meinen */
+  setzeArtikelSynonyme: (artikelId: string, synonyme: string[]) =>
+    request<ArtikelSynonymeErgebnis>('PUT', `/api/sprache/artikel/${artikelId}/synonyme`, { synonyme }),
+}
 
 export const lagerstandApi = {
   bulk: (input: LagerstandBulkInput) =>
