@@ -190,6 +190,8 @@ describe('Sauberer Neustart: Katalog löschen (Integration, echtes PostgreSQL)',
       'artikel_bestandteile.bestandteil_artikel_id -> artikel (CASCADE)',
       'artikel_bestandteile.verkaufsartikel_id -> artikel (CASCADE)',
       'artikel_modifikator_gruppen.artikel_id -> artikel (CASCADE)',
+      // Sprachbestellung: Synonyme gehören zum Artikel und verschwinden per Cascade mit ihm
+      'artikel_synonyme.artikel_id -> artikel (CASCADE)',
       'artikel_modifikator_gruppen.gruppe_id -> modifikator_gruppen (CASCADE)',
       // Bepreiste Varianten: haengt am Artikel und an der Option, verschwindet per Cascade mit beiden
       'artikel_variante_erledigt.artikel_id -> artikel (CASCADE)',
