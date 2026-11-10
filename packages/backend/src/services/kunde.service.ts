@@ -2,7 +2,7 @@ import { and, desc, eq, ilike, or, sql } from 'drizzle-orm'
 import type { KundeBelegVorschau, KundeInput, KundeSnapshot, KundeUpdate } from '@kassa/shared'
 import { kundeBezeichnung } from '@kassa/shared'
 import type { Db } from '../db/client.js'
-import { belege, kassen, kunden } from '../db/schema.js'
+import { belege, kassen, kunden, preislisten } from '../db/schema.js'
 
 export class KundeError extends Error {
   constructor(public readonly httpStatus: number, message: string) {
@@ -35,6 +35,7 @@ function toDto(row: KundeRow) {
     kreditAktiv: row.kreditAktiv,
     rechnungPerMail: row.rechnungPerMail,
     notizen:     row.notizen ?? null,
+    preislisteId: row.preislisteId ?? null,
     createdAt:   row.createdAt.toISOString(),
     updatedAt:   row.updatedAt.toISOString(),
   }
@@ -107,7 +108,16 @@ export async function holeKunde(db: Db, id: string, mandantId: string) {
   return toDto(row)
 }
 
+/** Die Preisliste muss zum Mandanten gehören (und aktiv sein) — vor dem Schreiben prüfen. */
+async function pruefePreisliste(db: Db, mandantId: string, preislisteId: string): Promise<void> {
+  const [p] = await db.select({ aktiv: preislisten.aktiv }).from(preislisten)
+    .where(and(eq(preislisten.id, preislisteId), eq(preislisten.mandantId, mandantId))).limit(1)
+  if (!p) throw new KundeError(404, 'Preisliste nicht gefunden')
+  if (!p.aktiv) throw new KundeError(409, 'Die Preisliste ist deaktiviert')
+}
+
 export async function erstelleKunde(db: Db, mandantId: string, input: KundeInput) {
+  if (input.preislisteId) await pruefePreisliste(db, mandantId, input.preislisteId)
   // Nächste Kundennummer atomisch ermitteln
   const numRows = await db
     .select({ naechsteNummer: sql<number>`COALESCE(MAX(${kunden.nummer}), 0) + 1` })
@@ -131,6 +141,7 @@ export async function erstelleKunde(db: Db, mandantId: string, input: KundeInput
     kreditAktiv: input.kreditAktiv ?? false,
     rechnungPerMail: input.rechnungPerMail ?? false,
     notizen:     input.notizen   || null,
+    preislisteId: input.preislisteId ?? null,
   }).returning()
 
   if (!row) throw new KundeError(500, 'Kunde konnte nicht angelegt werden')
@@ -153,6 +164,8 @@ export async function aktualisiereKunde(
     throw new KundeError(400, 'Für den Rechnungsversand per E-Mail ist eine E-Mail-Adresse nötig')
   }
 
+  if (typeof input.preislisteId === 'string') await pruefePreisliste(db, mandantId, input.preislisteId)
+
   const [row] = await db
     .update(kunden)
     .set({
@@ -170,6 +183,7 @@ export async function aktualisiereKunde(
       ...(input.kreditAktiv !== undefined && { kreditAktiv: input.kreditAktiv }),
       ...(input.rechnungPerMail !== undefined && { rechnungPerMail: input.rechnungPerMail }),
       ...(input.notizen     !== undefined && { notizen:    input.notizen || null }),
+      ...(input.preislisteId !== undefined && { preislisteId: input.preislisteId }),
       updatedAt: new Date(),
     })
     .where(and(eq(kunden.id, id), eq(kunden.mandantId, mandantId)))

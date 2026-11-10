@@ -53,6 +53,8 @@ import { mandantTransferRoute } from './routes/mandant-transfer.route.js'
 import { finanzpruefungRoute }  from './routes/finanzpruefung.route.js'
 import { rksvSelbsttestRoute }  from './routes/rksv-selbsttest.route.js'
 import { lieferantRoute }       from './routes/lieferant.route.js'
+import { einkaufBestellungRoute } from './routes/einkauf-bestellung.route.js'
+import { preislisteRoute }      from './routes/preisliste.route.js'
 import { kdsRoute }            from './routes/kds.route.js'
 import { gastRoute }           from './routes/gast.route.js'
 import { registerDisplayRoutes } from './routes/display.route.js'
@@ -246,6 +248,8 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     await api.register(finanzpruefungRoute,     { db: deps.db })
     await api.register(rksvSelbsttestRoute,     { db: deps.db })
     await api.register(lieferantRoute,          { db: deps.db })
+    await api.register(einkaufBestellungRoute,  { db: deps.db, config: deps.config })
+    await api.register(preislisteRoute,         { db: deps.db })
     await api.register(kdsRoute,                { db: deps.db })
     await api.register(gastRoute,               { db: deps.db, belegDeps: deps.belegDeps, config: deps.config })
     await api.register(emailRoute,              { db: deps.db, config: deps.config })

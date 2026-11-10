@@ -19,9 +19,10 @@ import type {
   TischTabErstellenInput,
   TischTabResponse,
 } from '@kassa/shared'
-import { GUTSCHEIN_STATUS_LABELS, MWST_LABELS, STATION_LABELS, aktionsPreisCent, aktiverRabattProzent, aktiveAktion, bonierUmleitungen, fragtNachOptionen, warengruppenWahl } from '@kassa/shared'
-import type { AktiveAktion } from '@kassa/shared'
-import { angebotApi, artikelApi, belegApi, bonierApi, druckerApi, emailApi, gutscheinApi, kategorieApi, lieferscheinApi, modifikatorApi, offenerPostenApi, posConfigApi, preisregelApi, tischTabApi, zvtApi, displayApi, ApiError } from '../lib/api'
+import { GUTSCHEIN_STATUS_LABELS, MWST_LABELS, STATION_LABELS, aktionsPreisCent, aktiverRabattProzent, aktiveAktion, bonierUmleitungen, fragtNachOptionen, mengenRabattZeilen, warengruppenWahl } from '@kassa/shared'
+import type { AktiveAktion, MengenPosition } from '@kassa/shared'
+import { angebotApi, artikelApi, belegApi, bonierApi, druckerApi, emailApi, gutscheinApi, kategorieApi, lieferscheinApi, modifikatorApi, offenerPostenApi, posConfigApi, preislisteApi, preisregelApi, tischTabApi, zvtApi, displayApi, ApiError } from '../lib/api'
+import { korbNeuBepreisen, listenPreise, listenPreisFuer } from '../lib/preisliste'
 import { FreigabePinModal } from '../components/FreigabePinModal'
 import { getKasseIdentity } from '../lib/kasse'
 import { setKassenLeistenAusgeblendet, useKassenLeistenAusgeblendet } from '../lib/kassenLeisten'
@@ -77,6 +78,8 @@ interface FreieKorbPosition {
   menge:       number
   preisCent:   number
   mwstSatz:    MwStSatz
+  /** Berechnete Rabattzeile einer Mengenaktion (nicht vom Bediener angelegt, nicht editierbar) */
+  aktionsRabatt?: true
 }
 
 type KorbPosition = ArtikelKorbPosition | FreieKorbPosition
@@ -96,26 +99,6 @@ export function KassePage() {
   const [modus, setModus] = useState<'verkauf' | 'angebot'>('verkauf')
   const [korb, setKorb] = useState<KorbPosition[]>([])
 
-  // Display-Push: Warenkorb-Änderungen ans Kundendisplay senden (debounced)
-  useEffect(() => {
-    const t = setTimeout(() => {
-      if (!identity.kasseId) return
-      if (korb.length === 0) {
-        displayApi.push(identity.kasseId, { typ: 'leer' }).catch(() => {})
-      } else {
-        displayApi.push(identity.kasseId, {
-          typ:        'warenkorb',
-          positionen: korb.map(p => ({
-            bezeichnung: p.typ === 'frei' ? p.bezeichnung : p.artikel.bezeichnung,
-            menge:       p.menge,
-            preisCent:   p.preisCent,
-          })),
-          summeCent: korb.reduce((s, p) => s + p.preisCent * p.menge, 0),
-        }).catch(() => {})
-      }
-    }, 200)
-    return () => clearTimeout(t)
-  }, [korb, identity.kasseId])
   const [rabatt, setRabatt] = useState<RabattInput | null>(null)
   const [rabattOffen, setRabattOffen] = useState(false)
   const [artikelRabattIdx, setArtikelRabattIdx] = useState<number | null>(null)
@@ -179,6 +162,14 @@ export function KassePage() {
     queryKey: ['kategorien'],
     queryFn:  () => kategorieApi.list(true),
   })
+
+  // Sonderpreise des gewählten Kunden (Preisliste). Ein neu erfasster Kunde hat noch keine.
+  const preislisteQuery = useQuery({
+    queryKey: ['preisliste-kunde', kunde?.id],
+    queryFn:  () => preislisteApi.fuerKunde(kunde!.id),
+    enabled:  !!kunde && !neuerKunde,
+  })
+  const kundenPreise = useMemo(() => listenPreise(preislisteQuery.data), [preislisteQuery.data])
 
   const preisregelnQuery = useQuery({
     queryKey: ['preisregeln'],
@@ -255,13 +246,68 @@ export function KassePage() {
     return map
   }, [modGruppenQuery.data, modZuweisungenQuery.data, artikelQuery.data, kategorienQuery.data, posConfigQuery.data?.optionenAbfrage])
 
-  const summeCent  = useMemo(() => warenkorbSummeCent(korb), [korb])
+  // artikelId → gerade laufende Aktion (Badge + Aktionspreis auf der Kachel).
+  // Minuten-genau: greift beim Start/Ende eines Zeitfensters ohne Neuladen.
+  const [aktionsMinute, setAktionsMinute] = useState(() => Math.floor(Date.now() / 60_000))
+  useEffect(() => {
+    const t = setInterval(() => setAktionsMinute(Math.floor(Date.now() / 60_000)), 30_000)
+    return () => clearInterval(t)
+  }, [])
+
+  // Mengenaktionen („3 für 2"): als Rabattzeilen mit dem Steuersatz des Artikels an den Warenkorb angehängt.
+  // `korb` bleibt, was der Bediener eingegeben hat (Indizes für Bearbeiten/Seriennummern bleiben gültig);
+  // Summen, Display, Angebot und Beleg rechnen mit `korbMitAktionen`.
+  const mengenZeilen = useMemo(() => {
+    const regeln = preisregelnQuery.data ?? []
+    if (!regeln.some(r => r.mengeKauf !== null)) return []
+    const positionen: MengenPosition[] = korb.flatMap(p => p.typ !== 'artikel' ? [] : [{
+      artikelId:   p.artikel.id,
+      kategorieId: p.artikel.kategorieId,
+      bezeichnung: p.artikel.bezeichnung + (p.modifikatoren.length > 0 ? ` (${p.modifikatoren.map(m => m.name).join(', ')})` : ''),
+      mwstSatz:    p.artikel.mwstSatz,
+      menge:       p.menge,
+      preisCent:   p.preisCent,
+      // von Hand rabattierte Position: der Bediener hat den Preis bestimmt → keine Mengenaktion obendrauf
+      ausgenommen: p.preisCent !== p.originalPreisCent,
+    }])
+    return mengenRabattZeilen(regeln, positionen, new Date())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [korb, preisregelnQuery.data, aktionsMinute])
+  const korbMitAktionen: KorbPosition[] = useMemo(() => [
+    ...korb,
+    ...mengenZeilen.map((z): FreieKorbPosition => ({
+      typ: 'frei', bezeichnung: z.bezeichnung, menge: z.menge, preisCent: z.preisCent, mwstSatz: z.mwstSatz as MwStSatz, aktionsRabatt: true,
+    })),
+  ], [korb, mengenZeilen])
+
+  // Display-Push: Warenkorb-Änderungen ans Kundendisplay senden (debounced)
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (!identity.kasseId) return
+      if (korb.length === 0) {
+        displayApi.push(identity.kasseId, { typ: 'leer' }).catch(() => {})
+      } else {
+        displayApi.push(identity.kasseId, {
+          typ:        'warenkorb',
+          positionen: korbMitAktionen.map(p => ({
+            bezeichnung: p.typ === 'frei' ? p.bezeichnung : p.artikel.bezeichnung,
+            menge:       p.menge,
+            preisCent:   p.preisCent,
+          })),
+          summeCent: korbMitAktionen.reduce((s, p) => s + p.preisCent * p.menge, 0),
+        }).catch(() => {})
+      }
+    }, 200)
+    return () => clearTimeout(t)
+  }, [korb, korbMitAktionen, identity.kasseId])
+
+  const summeCent  = useMemo(() => warenkorbSummeCent(korbMitAktionen), [korbMitAktionen])
   const rabattCent = useMemo(
     () => gesamtRabattCent(
-      korb.map(p => ({ preisCent: p.preisCent, menge: p.menge, mwstSatz: p.typ === 'frei' ? p.mwstSatz : p.artikel.mwstSatz })),
+      korbMitAktionen.map(p => ({ preisCent: p.preisCent, menge: p.menge, mwstSatz: p.typ === 'frei' ? p.mwstSatz : p.artikel.mwstSatz })),
       rabatt,
     ),
-    [rabatt, korb],
+    [rabatt, korbMitAktionen],
   )
 
   // Serialisierte Positionen im Warenkorb (Index → Artikel), für die vor dem Bon Seriennummern zu wählen sind
@@ -282,13 +328,7 @@ export function KassePage() {
     return m
   }, [korb])
 
-  // artikelId → gerade laufende Aktion (Badge + Aktionspreis auf der Kachel).
-  // Minuten-genau: greift beim Start/Ende eines Zeitfensters ohne Neuladen.
-  const [aktionsMinute, setAktionsMinute] = useState(() => Math.floor(Date.now() / 60_000))
-  useEffect(() => {
-    const t = setInterval(() => setAktionsMinute(Math.floor(Date.now() / 60_000)), 30_000)
-    return () => clearInterval(t)
-  }, [])
+  // artikelId → gerade laufende Aktion (Badge + Aktionspreis auf der Kachel) — siehe aktionsMinute oben
   const aktionenProArtikel = useMemo(() => {
     const regeln = preisregelnQuery.data ?? []
     const jetzt  = new Date()
@@ -311,13 +351,31 @@ export function KassePage() {
   // Warenkorb-Aktionen
   // ---------------------------------------------------------------------------
 
+  /** Basispreis eines Artikels: Sonderpreis des Kunden, sonst normaler Preis mit laufender Aktion */
+  const artikelBasis = (a: { id: string; kategorieId?: string | null; preisBruttoCent: number }) => {
+    const listenCent = listenPreisFuer(kundenPreise, a)
+    if (listenCent !== null) return { basisCent: listenCent, happyHourProzent: 0 }
+    const regeln = preisregelnQuery.data ?? []
+    const jetzt  = new Date()
+    const kat    = a.kategorieId ?? null
+    return {
+      basisCent:        aktionsPreisCent(a.preisBruttoCent, regeln, a.id, kat, jetzt),
+      happyHourProzent: a.preisBruttoCent < 0 ? 0 : aktiverRabattProzent(regeln, a.id, kat, jetzt),
+    }
+  }
+
+  // Kunde gewählt/gewechselt/entfernt → Positionen im Warenkorb neu bepreisen (Rabatte von Hand bleiben)
+  useEffect(() => {
+    // (die Position trägt den vollständigen Artikel, daher auch die Warengruppe für Aktionen)
+    setKorb(prev => korbNeuBepreisen(prev, kundenPreise, (art) => artikelBasis(art as Artikel)))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kundenPreise])
+
   const addArtikel = (a: Artikel, modifikatoren: ModifikatorAuswahl[], menge = 1) => {
     setFehler(null)
     // Aktionen: den Artikel-Basispreis ggf. senken (Fixpreis oder Prozent),
     // Modifikatoren kommen zum vollen Preis dazu
-    const regeln    = preisregelnQuery.data ?? []
-    const hhProzent = a.preisBruttoCent < 0 ? 0 : aktiverRabattProzent(regeln, a.id, a.kategorieId, new Date())
-    const basisCent = aktionsPreisCent(a.preisBruttoCent, regeln, a.id, a.kategorieId, new Date())
+    const { basisCent, happyHourProzent: hhProzent } = artikelBasis(a)
     const preisCent = positionsPreisCent(basisCent, modifikatoren)
     setKorb((prev) => {
       if (modifikatoren.length === 0) {
@@ -474,7 +532,7 @@ export function KassePage() {
     mutationFn: async ({ kundeId, betragCent }: { kundeId: string; betragCent: number }) => {
       const input: BarzahlungsbelegInput = {
         kasseId: identity.kasseId,
-        positionen: korb.map((p) => {
+        positionen: korbMitAktionen.map((p) => {
           if (p.typ === 'frei') {
             return { bezeichnung: p.bezeichnung, preisBruttoCent: p.preisCent, mwstSatz: p.mwstSatz, menge: p.menge }
           }
@@ -525,7 +583,7 @@ export function KassePage() {
     if (korb.length === 0) { setFehler('Der Warenkorb ist leer.'); return }
     angebotMutation.mutate({
       kasseId:    identity.kasseId,
-      positionen: korb.map((p) => ({
+      positionen: korbMitAktionen.map((p) => ({
         bezeichnung:        p.typ === 'frei' ? p.bezeichnung : p.artikel.bezeichnung,
         menge:              p.menge,
         einzelpreisBreutto: p.preisCent,
@@ -573,7 +631,7 @@ export function KassePage() {
 
   const erstelleBeleg = (barCent: number, karteCent: number, trinkgeldCent = 0) => {
     const serials = serialsRef.current
-    const positionen: BarzahlungsbelegInput['positionen'] = korb.map((p, idx) => {
+    const positionen: BarzahlungsbelegInput['positionen'] = korbMitAktionen.map((p, idx) => {
       if (p.typ === 'frei') {
         return {
           bezeichnung:     p.bezeichnung,
@@ -842,6 +900,11 @@ export function KassePage() {
                 if (!k?.kreditAktiv) setKreditModus(false)
               }}
             />
+            {preislisteQuery.data && kundenPreise && (
+              <p className="text-xs text-brand-700" data-testid="kasse-preisliste-hinweis">
+                Preisliste „{preislisteQuery.data.name}" · {preislisteQuery.data.preise.length} Sonderpreise
+              </p>
+            )}
           </div>
 
           {/* Warenkorb-Positionen — ab lg nimmt die Liste, was die Spalte übrig lässt */}
@@ -863,7 +926,18 @@ export function KassePage() {
               <p className="text-sm text-ink-subtle text-center py-8">Leer</p>
             ) : (
               <ul className="space-y-2">
-                {korb.map((p, idx) => {
+                {korbMitAktionen.map((p, idx) => {
+                  if (p.typ === 'frei' && p.aktionsRabatt) {
+                    return (
+                      <li key={`aktion-${idx}`} className="flex items-center gap-2 text-sm rounded-md bg-emerald-50 px-2 py-1" data-testid="kasse-aktionszeile">
+                        <p className="flex-1 min-w-0 truncate text-emerald-800 font-medium" title={p.bezeichnung}>🏷 {p.bezeichnung}</p>
+                        <span className="text-xs text-emerald-700">× {p.menge}</span>
+                        <span className="w-20 text-right font-mono text-emerald-800">{formatPreis(p.preisCent * p.menge)}</span>
+                        <span className="w-6" />
+                        <span className="w-5" />
+                      </li>
+                    )
+                  }
                   const hatRabatt = p.typ === 'artikel' && p.preisCent !== p.originalPreisCent
                   return (
                     <li key={idx} className="flex items-center gap-2 text-sm">

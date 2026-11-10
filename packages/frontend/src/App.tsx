@@ -47,6 +47,9 @@ const FinanzpruefungPage        = lazyPage(() => import('./pages/FinanzpruefungP
 const PruefungsansichtPage      = lazyPage(() => import('./pages/PruefungsansichtPage'), 'PruefungsansichtPage')
 const OeffentlicherBelegPage    = lazyPage(() => import('./pages/OeffentlicherBelegPage'), 'OeffentlicherBelegPage')
 const LieferantenPage           = lazyPage(() => import('./pages/LieferantenPage'), 'LieferantenPage')
+const PreislistenPage           = lazyPage(() => import('./pages/PreislistenPage'), 'PreislistenPage')
+const EinkaufBestellungenPage   = lazyPage(() => import('./pages/EinkaufBestellungenPage'), 'EinkaufBestellungenPage')
+const DatenuebernahmePage       = lazyPage(() => import('./pages/DatenuebernahmePage'), 'DatenuebernahmePage')
 const BestelllistePage          = lazyPage(() => import('./pages/BestelllistePage'), 'BestelllistePage')
 const ModifikatorenPage         = lazyPage(() => import('./pages/ModifikatorenPage'), 'ModifikatorenPage')
 const PreisregelnPage           = lazyPage(() => import('./pages/PreisregelnPage'), 'PreisregelnPage')
@@ -130,6 +133,9 @@ function AppRoutes() {
           <Route path="/tickets/:eventId" element={<Require b="tickets"          m="tickets"        ><TicketEventPage /></Require>} />
           <Route path="/zeiterfassung"   element={<Require b="einstellungen"    m="zeiterfassung"  ><ZeiterfassungPage /></Require>} />
           <Route path="/lieferanten"    element={<Require b="artikel.verwalten"            ><LieferantenPage /></Require>} />
+          <Route path="/preislisten"    element={<Require b="artikel.verwalten"            ><PreislistenPage /></Require>} />
+          <Route path="/einkaufsbestellungen" element={<Require b="artikel.verwalten"      ><EinkaufBestellungenPage /></Require>} />
+          <Route path="/uebernahme"     element={<Require b="artikel.verwalten"            ><DatenuebernahmePage /></Require>} />
           <Route path="/bestellliste"   element={<Require b="artikel.verwalten"            ><BestelllistePage /></Require>} />
           <Route path="/dep-export"           element={<Require b="einstellungen"                ><DepExportPage /></Require>} />
           <Route path="/bmd-export"           element={<Require b="einstellungen"                ><ExportPage /></Require>} />
