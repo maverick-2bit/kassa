@@ -16,6 +16,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify'
 import { and, eq } from 'drizzle-orm'
 import type { Db } from '../db/client.js'
 import { users } from '../db/schema.js'
+import { alsWaechter } from './waechter.js'
 
 export const BETREIBER_FEHLER = 'Das darf nur der Betreiber dieser Kassa.'
 
@@ -37,9 +38,9 @@ export async function istAktiverBetreiber(db: Db, userId: string, mandantId: str
 
 /** onRequest-Hook NACH `fastify.authenticate` (setzt `request.user`): lässt nur den Betreiber durch. */
 export function requireBetreiber(db: Db) {
-  return async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
+  return alsWaechter(async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
     if (!(await istAktiverBetreiber(db, request.user.sub, request.user.mandantId))) {
       return reply.status(403).send({ fehler: BETREIBER_FEHLER })
     }
-  }
+  }, { art: 'betreiber' })
 }

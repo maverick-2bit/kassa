@@ -33,7 +33,8 @@ declare module 'fastify' {
     authenticate: (request: import('fastify').FastifyRequest, reply: import('fastify').FastifyReply) => Promise<void>
     requireRolle: (...rollen: Rolle[]) =>
       (request: import('fastify').FastifyRequest, reply: import('fastify').FastifyReply) => Promise<void>
-    requireBerechtigung: (berechtigung: Berechtigung) =>
+    /** Mehrere Berechtigungen = „oder"; Admin darf immer. */
+    requireBerechtigung: (...berechtigungen: Berechtigung[]) =>
       (request: import('fastify').FastifyRequest, reply: import('fastify').FastifyReply) => Promise<void>
     /** Geräte-Merkmal der PIN-Bremse ausstellen/prüfen (kein Anmelde-Token) */
     geraetVertrauen: import('./geraet-vertrauen.js').GeraetVertrauenSigner
