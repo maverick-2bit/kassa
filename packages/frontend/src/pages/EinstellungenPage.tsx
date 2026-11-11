@@ -112,6 +112,7 @@ export function EinstellungenPage() {
           <DbBackupSektion />
           <MandantUebergabeSektion />
           <MandantAnlegenSektion />
+          <PortalSektion />
           <SystemInfoSektion />
         </>
       )}
@@ -1994,6 +1995,51 @@ function MandantAnlegenSektion() {
       <Button variant="secondary" onClick={() => navigate('/setup')} data-testid="mandant-anlegen-oeffnen">
         Einrichtungsseite öffnen →
       </Button>
+    </section>
+  )
+}
+
+/**
+ * Verbindung dieser Kassa zum Serviceportal — nur der Betreiber sieht sie. Eingerichtet wird sie in der .env der Box
+ * (PORTAL_URL, PORTAL_TOKEN); hier steht nur der Stand.
+ */
+function PortalSektion() {
+  const istBetreiber = useIstBetreiber()
+  const { data, isLoading } = useQuery({
+    queryKey: ['system-portal'],
+    queryFn:  systemApi.portal,
+    enabled:  istBetreiber,
+    refetchInterval: 30_000,
+  })
+  if (!istBetreiber) return null
+
+  const zeit = (iso: string | null) => (iso ? new Date(iso).toLocaleString('de-AT') : '—')
+  return (
+    <section className="rounded-xl border border-line bg-panel p-6 space-y-3" data-testid="portal-status">
+      <div>
+        <h2 className="text-lg font-semibold text-ink">Serviceportal</h2>
+        <p className="mt-0.5 text-sm text-ink-muted">
+          Die Kassa meldet ihren technischen Zustand (Erreichbarkeit, Version, Sicherungen, Geräte, Serverfehler) an das
+          Serviceportal — keine Umsätze, Belege oder Personendaten.
+        </p>
+      </div>
+      {isLoading || !data ? (
+        <p className="text-sm text-ink-muted">Wird geladen…</p>
+      ) : !data.aktiv ? (
+        <p className="text-sm text-ink-muted">
+          Nicht eingerichtet. Zum Einschalten PORTAL_URL und PORTAL_TOKEN in der .env der Box setzen (Token vergibt das Portal).
+        </p>
+      ) : (
+        <dl className="grid grid-cols-[10rem_1fr] gap-y-1 text-sm">
+          <dt className="text-ink-muted">Portal</dt>       <dd className="text-ink">{data.host}</dd>
+          <dt className="text-ink-muted">Takt</dt>         <dd className="text-ink">alle {data.intervallSekunden} Sekunden</dd>
+          <dt className="text-ink-muted">Letzter Kontakt</dt>
+          <dd className={data.fehlerInFolge > 0 ? 'text-red-700' : 'text-ink'}>
+            {zeit(data.letzterErfolg)}{data.fehlerInFolge > 0 ? ` — seitdem ${data.fehlerInFolge} Fehlschläge` : ''}
+          </dd>
+          {data.letzterFehler && (<><dt className="text-ink-muted">Letzter Fehler</dt><dd className="text-red-700">{data.letzterFehler}</dd></>)}
+        </dl>
+      )}
     </section>
   )
 }
