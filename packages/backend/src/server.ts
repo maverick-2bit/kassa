@@ -9,6 +9,8 @@ import type { BelegServiceDeps } from './services/beleg.service.js'
 import type { StatfsFn } from './services/monitoring.service.js'
 import { fehlerHandler } from './fehler-handler.js'
 import { registerAuth } from './auth/plugin.js'
+import { zugriffFuerRoute } from './auth/route-rechte.js'
+import { waechterVon } from './auth/waechter.js'
 import { rateLimitSchluessel } from './auth/rate-limit.js'
 import { setupRoute } from './routes/setup.route.js'
 import { healthRoute } from './routes/health.route.js'
@@ -100,6 +102,18 @@ export interface ServerDeps {
   setupRateLimitMax?: number
   /** Nur für Tests: Log-Zeilen abfangen statt nach stdout zu schreiben. */
   logStream?:      { write: (zeile: string) => void }
+  /**
+   * Nur für Tests: sammelt jede registrierte Route samt ihren onRequest-Hooks (Wächter siehe auth/waechter.ts).
+   * Grundlage von tests/route-schutz.test.ts — dort muss jede Route öffentlich oder geschützt sein.
+   */
+  routenRegister?: RoutenEintrag[]
+}
+
+/** Eine beim Aufbau des Servers registrierte Route (siehe ServerDeps.routenRegister). */
+export interface RoutenEintrag {
+  method:    string | string[]
+  url:       string
+  onRequest: unknown
 }
 
 export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
@@ -125,6 +139,40 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   // buildServer galt er für keine einzige Route, und der Fastify-Standard
   // schickte interne Meldungen (SQL, Parameter) an den Client.
   fastify.setErrorHandler(fehlerHandler)
+
+  // Rechte je Route (auth/route-rechte.ts): Der Hook hängt jeder Route, die nur „angemeldet" verlangt, das Recht an, das die
+  // Tabelle für sie vorsieht. Er steht VOR allen Plugins/Routen, sonst sieht er sie nicht (onRoute gilt nur für später
+  // registrierte Routen und Plugin-Kontexte). Die Decorators (requireBerechtigung …) gibt es erst nach registerAuth —
+  // der Hook läuft pro Route, also nach deren Registrierung.
+  fastify.addHook('onRoute', (route) => {
+    const methoden = Array.isArray(route.method) ? route.method : [route.method]
+    const waechter = waechterVon(route.onRequest)
+    // Nur Routen mit blankem authenticate: eigene Wächter (Rolle, Recht, Betreiber, Gerät) und öffentliche Routen bleiben.
+    if (waechter.length === 0 || waechter.some(w => w.art !== 'angemeldet')) return
+
+    const zugriffe = methoden.map(m => zugriffFuerRoute(m, route.url))
+    const zugriff = zugriffe[0]
+    if (!zugriff || zugriffe.some(z => JSON.stringify(z) !== JSON.stringify(zugriff))) {
+      // Nicht in der Tabelle (neue Route?) oder je Methode verschieden: nichts anhängen — tests/route-schutz.test.ts schlägt an.
+      return
+    }
+    if (zugriff.art === 'jeder') return
+
+    const vorhanden = Array.isArray(route.onRequest) ? route.onRequest : (route.onRequest ? [route.onRequest] : [])
+    const guard = zugriff.art === 'admin'
+      ? fastify.requireRolle('admin')
+      : fastify.requireBerechtigung(...zugriff.berechtigungen)
+    route.onRequest = [...vorhanden, guard]
+  })
+
+  // Nur für Tests: jede Route (auch in Plugins, die danach entstehen) mit ihren onRequest-Hooks festhalten — NACH dem
+  // Rechte-Hook oben, damit die Liste den endgültigen Schutz zeigt.
+  const routenRegister = deps.routenRegister
+  if (routenRegister) {
+    fastify.addHook('onRoute', (route) => {
+      routenRegister.push({ method: route.method, url: route.url, onRequest: route.onRequest })
+    })
+  }
 
   await fastify.register(cors, {
     origin: deps.config.CORS_ORIGIN.split(',').map(s => s.trim()),

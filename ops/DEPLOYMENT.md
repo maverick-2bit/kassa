@@ -238,6 +238,42 @@ gibt es nur an Kassen im **Testmodus** (RKSV-Umgebung „test" — das setzt die
 ändert sie keine Oberfläche). Eine Kasse im Produktivmodus lehnt beides ab; ein SB-Terminal braucht dort
 ein eingerichtetes Kartenterminal.
 
+## 4c. Rechte: wer darf was (auch über die Schnittstelle)
+
+Die Rechte eines Benutzers (Benutzerverwaltung) gelten nicht nur für die Menüs, sondern **für jede Route der
+Schnittstelle** — wer ein Anmelde-Token hat, kommt mit einem selbst gebauten Aufruf nicht weiter als die
+Oberfläche. Admins dürfen immer; ein Kellner-Konto nur, was es als Recht trägt. Eines der genannten Rechte
+genügt, wo mehrere Seiten dieselbe Funktion brauchen.
+
+| Recht | schaltet in der Schnittstelle frei |
+|-------|-------------------------------------|
+| Einstellungen | Drucker, Kassen, KDS-Zuordnung, Sicherungen (DEP), Prüfer-Zugänge, Mandanten-Stammdaten/Module/Stripe, Werbefolien, Zeiterfassung/Dienstplan, Exporte (BMD, DEP), Audit-Log |
+| Artikel verwalten | Artikel, Warengruppen, Optionen, Lagerstand, Inventur, Lieferanten, Einkauf, Preislisten, Preisregeln |
+| Schnellkasse | Verkauf (Barzahlung), Gutscheine, Angebote, Lieferscheine, Wartungsverträge, Reservierungen, Lieferungen |
+| Kreditverkauf | offenen Posten anlegen („Auf Kredit buchen") |
+| Belege einsehen | Belegliste, Berichte, Tagesabschluss, Monats-/Jahresbeleg, Kassenbuch lesen |
+| Belege stornieren | Storno |
+| Kunden (CRM) | Kundenstamm, offene Posten, Kundenbelege |
+| Tickets | Ticketing |
+| nur Administratoren (Rolle) | Benutzerverwaltung, Tischplan und Layout-Pflege, KDS-Geräte, Mandanten-Übergabe, Monitoring, RKSV-Selbsttest |
+
+Die vollständige Tabelle — jede Route mit ihrem Recht — steht in `packages/backend/src/auth/route-rechte.ts`;
+`tests/route-schutz.test.ts` schlägt an, wenn eine Route ohne Entscheidung hinzukommt.
+
+**Bewusst offen für jeden angemeldeten Benutzer** bleiben die Wege der **Kellner-App** (Tische öffnen und
+abrechnen, bonieren, Karte und Kassen-Konfiguration lesen), der Küchenbildschirm sowie die Statusleisten. Die
+Kellner-App prüft selbst keine Rechte, und ein Kellner-Konto ohne „Tische"-Recht arbeitet damit heute — ein
+Recht dort zu verlangen, würde solche Konten ohne Vorwarnung aussperren. Wer das schließen will, prüft zuerst
+die Konten (Kellner ohne „Tische" **und** ohne „Schnellkasse"):
+
+```bash
+docker compose exec postgres psql -U kassa -d kassa -c "SELECT name, email, berechtigungen FROM users WHERE rolle = 'kellner' AND aktiv AND NOT ('tische' = ANY(berechtigungen) OR 'kasse' = ANY(berechtigungen));"
+```
+
+Rechte stecken im Anmelde-Token: Änderungen in der Benutzerverwaltung gelten ab der **nächsten Anmeldung** des
+Benutzers (das Token läuft nach 8 Stunden ab, `JWT_EXPIRES_IN`); ein gesperrtes Konto kommt nicht mehr hinein,
+ein bereits ausgestelltes Token aber bis zum Ablauf.
+
 ## 5. Geräte-URLs
 
 **LAN-Modus (Standard, Port pro App)** — `<box>` = IP der Box:

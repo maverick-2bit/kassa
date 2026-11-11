@@ -11,8 +11,9 @@ import type { Berechtigung, Rolle } from '@kassa/shared'
 import type { FinanzOnlineClient } from '@kassa/rksv'
 import type { Config } from '../../src/config.js'
 import type { ShopStripe } from '../../src/services/ticketshop.service.js'
+import type { RoutenEintrag } from '../../src/server.js'
 
-export const TEST_MASTER     = 'test-passphrase-long-enough'
+export const TEST_MASTER    = 'test-passphrase-long-enough'
 export const TEST_JWT_SECRET = 'test-jwt-secret-key-very-long-and-secret-12345'
 /**
  * Einrichtungs-Schlüssel des Test-Servers: Tests, die einen ZWEITEN Mandanten per POST /api/setup anlegen
@@ -50,6 +51,8 @@ export interface BuildTestServerOptions {
   setupRateLimitMax?: number
   /** Log-Zeilen abfangen (dazu config.LOG_LEVEL setzen — Standard im Test: 'fatal') */
   logStream?: { write: (zeile: string) => void }
+  /** Alle registrierten Routen samt Wächtern einsammeln (tests/route-schutz.test.ts) */
+  routenRegister?: RoutenEintrag[]
 }
 
 export async function buildTestServer(db: Db, opts: BuildTestServerOptions = {}): Promise<TestServer> {
@@ -83,6 +86,7 @@ export async function buildTestServer(db: Db, opts: BuildTestServerOptions = {})
     ...(opts.rateLimitMax !== undefined && { rateLimitMax: opts.rateLimitMax }),
     ...(opts.setupRateLimitMax !== undefined && { setupRateLimitMax: opts.setupRateLimitMax }),
     ...(opts.logStream && { logStream: opts.logStream }),
+    ...(opts.routenRegister && { routenRegister: opts.routenRegister }),
     setupDeps: {
       db,
       masterPassphrase: TEST_MASTER,
