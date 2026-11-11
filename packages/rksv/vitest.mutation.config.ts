@@ -19,6 +19,9 @@ export default defineConfig({
       'tests/fon-xsd.test.ts',
       'tests/zeit-matrix.test.ts',
       'tests/atrust-abnahme.test.ts',
+      // Stellen die Prozess-Zeitzone (process.env.TZ) um; Strykers Vitest-Läufer arbeitet mit Worker-Threads, in denen das
+      // nicht greift („Prozess-TZ … wirkt nicht") — der Probelauf von Stryker scheitert sonst schon vor dem ersten Mutanten.
+      'tests/zeit.test.ts',
     ],
   },
 })

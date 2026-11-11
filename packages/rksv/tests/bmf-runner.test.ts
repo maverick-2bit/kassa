@@ -10,10 +10,12 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 // @ts-ignore — reines JavaScript ohne Typen (mit allowJs wäre ts-expect-error ein Fehler)
-import { analysiere, istUrteilsdatei } from '../../../scripts/rksv/lib/bmf-ergebnis.mjs'
+import { analysiere, istUrteilsdatei, urteilsDateien } from '../../../scripts/rksv/lib/bmf-ergebnis.mjs'
+// @ts-ignore — reines JavaScript ohne Typen (mit allowJs wäre ts-expect-error ein Fehler)
+import { ladeBytes } from '../../../scripts/rksv/lib/download.mjs'
 // @ts-ignore — reines JavaScript ohne Typen (mit allowJs wäre ts-expect-error ein Fehler)
 import { entpacke, zipEintraege } from '../../../scripts/rksv/lib/zip.mjs'
 import { REPO_WURZEL, ladeBmfSzenario, TESTS_ORDNER } from './helpers/pruef-export.js'
@@ -203,5 +205,101 @@ describe('ZIP-Leser', () => {
 
   it('erkennt Nicht-ZIP-Dateien', () => {
     expect(() => zipEintraege(Buffer.from('das ist kein zip'))).toThrow(/Kein ZIP/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+
+describe('Ausgabe langer Läufe (Nachtlauf 2026-11-08: Abbruch bei rund 19 000 Belegen)', () => {
+  const pass = '{"verificationId":"X","verificationState":"PASS"}'
+
+  it('liefert nur die Urteilsdateien — auch ab Beleg 10000 (fünfstellig) — und liest die „full"-Dateien nicht', () => {
+    const o = neuerOrdner()
+    for (const n of ['0000', '9999', '10000']) {
+      for (const art of ['app', 'cashbox', 'dep', 'cashbox_full']) writeFileSync(join(o, `${n}_${art}.json`), pass)
+    }
+    for (const sonst of ['DEP-global.json', 'DEP-full.json', 'bmf-konsole-x.txt', 'dep-export.json']) writeFileSync(join(o, sonst), pass)
+    const namen = [...urteilsDateien(o)].map((d: { name: string }) => basename(d.name)).sort()
+    expect(namen).toEqual(['0000_app.json', '0000_cashbox.json', '0000_dep.json', '10000_app.json', '10000_cashbox.json', '10000_dep.json',
+      '9999_app.json', '9999_cashbox.json', '9999_dep.json', 'DEP-global.json'])
+    // Ohne \d{4,} wären die Belege ab 10000 nie ausgewertet worden
+    expect(istUrteilsdatei('10000_app.json')).toBe(true)
+  })
+
+  it('liest nacheinander statt alles vorab (sonst belegt jeder Beleg Speicher, bis der Lauf abbricht)', () => {
+    const o = neuerOrdner()
+    for (const n of ['0000', '0001', '0002']) writeFileSync(join(o, `${n}_app.json`), '{"alt":true}')
+    const lauf = urteilsDateien(o)
+    expect(basename(lauf.next().value.name)).toBe('0000_app.json')
+    writeFileSync(join(o, '0002_app.json'), '{"spaeter":true}')          // nach dem ersten Schritt geändert
+    const rest = [...lauf] as { name: string; inhalt: string }[]
+    expect(rest.find(d => d.name.endsWith('0002_app.json'))?.inhalt).toBe('{"spaeter":true}')
+  })
+
+  it('die Auswertung nimmt den Generator an und zählt alle Belege', () => {
+    const o = neuerOrdner()
+    for (const n of ['0000', '0001', '10000']) for (const art of ['app', 'cashbox', 'dep']) writeFileSync(join(o, `${n}_${art}.json`), pass)
+    const a = analysiere(urteilsDateien(o), '', 0)
+    expect(a.ok).toBe(true)
+    expect(a.zaehler.PASS).toBe(9)
+  })
+})
+
+// ---------------------------------------------------------------------------
+
+describe('Download mit Wiederholung (Nachtlauf 2026-11-09: HTTP 504 auf das ZIP mit den Beispielen)', () => {
+  const antwort = (status: number, text = 'inhalt'): Response => ({
+    ok: status >= 200 && status < 300, status, arrayBuffer: async () => new TextEncoder().encode(text).buffer,
+  }) as unknown as Response
+  /** Liefert die Antworten der Reihe nach; hält fest, wie oft gerufen und wie lange gewartet wurde. */
+  const aufbau = (folge: (Response | Error)[]) => {
+    const warten: number[] = []
+    const protokoll: string[] = []
+    let aufrufe = 0
+    const fetchFn = async () => { const e = folge[Math.min(aufrufe++, folge.length - 1)]!; if (e instanceof Error) throw e; return e }
+    return { fetchFn, optionen: { fetchFn, wartenMs: [10, 20, 30], schlafe: async (ms: number) => { warten.push(ms) }, log: (z: string) => protokoll.push(z) }, warten, protokoll, aufrufe: () => aufrufe }
+  }
+
+  it('gelingt beim ersten Versuch ohne Wartezeit', async () => {
+    const t = aufbau([antwort(200, 'zip')])
+    expect((await ladeBytes('https://beispiel.test/a.zip', t.optionen)).toString()).toBe('zip')
+    expect(t.aufrufe()).toBe(1)
+    expect(t.warten).toEqual([])
+  })
+
+  it('wiederholt 5xx mit den vorgesehenen Wartezeiten und gelingt danach', async () => {
+    const t = aufbau([antwort(504), antwort(502), antwort(200, 'zip')])
+    expect((await ladeBytes('https://beispiel.test/a.zip', t.optionen)).toString()).toBe('zip')
+    expect(t.aufrufe()).toBe(3)
+    expect(t.warten).toEqual([10, 20])
+    expect(t.protokoll[0]).toContain('HTTP 504')
+  })
+
+  it('wiederholt auch 408 und 429', async () => {
+    for (const status of [408, 429]) {
+      const t = aufbau([antwort(status), antwort(200)])
+      await ladeBytes('https://beispiel.test/a.zip', t.optionen)
+      expect(t.aufrufe(), `HTTP ${status}`).toBe(2)
+    }
+  })
+
+  it('gibt nach der festgelegten Zahl von Versuchen auf und nennt den letzten Grund', async () => {
+    const t = aufbau([antwort(504)])
+    await expect(ladeBytes('https://beispiel.test/a.zip', { ...t.optionen, versuche: 3 })).rejects.toThrow(/Download fehlgeschlagen: HTTP 504 \(https:\/\/beispiel\.test\/a\.zip\)/)
+    expect(t.aufrufe()).toBe(3)
+    expect(t.warten).toEqual([10, 20])
+  })
+
+  it('ein 404 ist endgültig — kein zweiter Versuch', async () => {
+    const t = aufbau([antwort(404)])
+    await expect(ladeBytes('https://beispiel.test/a.zip', t.optionen)).rejects.toThrow(/HTTP 404/)
+    expect(t.aufrufe()).toBe(1)
+  })
+
+  it('Netzwerkfehler werden wiederholt; der Grund steht im Protokoll', async () => {
+    const reset = Object.assign(new Error('fetch failed'), { cause: { code: 'ECONNRESET' } })
+    const t = aufbau([reset, antwort(200, 'zip')])
+    expect((await ladeBytes('https://beispiel.test/a.zip', t.optionen)).toString()).toBe('zip')
+    expect(t.protokoll[0]).toContain('ECONNRESET')
   })
 })

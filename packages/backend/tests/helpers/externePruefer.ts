@@ -94,6 +94,38 @@ export interface BmfZusammenfassung {
   hinweis?:    string
   fehlgeschlagen: { datei: string; name: string; meldung: string }[]
   zaehler:     Record<string, number>
+  /** Wie viele Belege das Prüftool sah (höchstens `BMF_MAX_BELEGE`) und wie viele der Export hat. */
+  belege?:     { geprueft: number; gesamt: number }
+}
+
+/** Voreinstellung: so viele Belege (vom Startbeleg an) bekommt das BMF-Prüftool höchstens; `BMF_MAX_BELEGE` überschreibt sie. */
+export const BMF_MAX_BELEGE_STANDARD = 2000
+
+/**
+ * Das Java-Prüftool braucht je Beleg Zeit und schreibt je Beleg mehrere Dateien. Ein langer Burn-in (Sonntag: 45 Minuten, rund
+ * 19 000 Belege) sprengte damit Laufzeit und Speicher (Nachtlauf 2026-11-08). Deshalb bekommt es höchstens `max` Belege, vom
+ * Startbeleg an — ein Anfangsstück der Kette ist ein gültiger Export; den GANZEN Bestand prüft der Python-Zweitprüfer.
+ * Hat der Export nicht mehr Belege, bleibt die Datei unverändert.
+ */
+export function kuerzeExportFuerBmf(dateien: PruefDateien, max: number): { dep7: string; geprueft: number; gesamt: number } {
+  type Gruppe = { 'Belege-kompakt'?: string[] } & Record<string, unknown>
+  const export7 = JSON.parse(readFileSync(dateien.dep7, 'utf8')) as { 'Belege-Gruppe'?: Gruppe[] } & Record<string, unknown>
+  const gruppen = export7['Belege-Gruppe'] ?? []
+  const gesamt = gruppen.reduce((n, g) => n + (g['Belege-kompakt']?.length ?? 0), 0)
+  if (gesamt <= max) return { dep7: dateien.dep7, geprueft: gesamt, gesamt }
+
+  let rest = max
+  const gekuerzt: Gruppe[] = []
+  for (const g of gruppen) {
+    if (rest <= 0) break
+    const belege = g['Belege-kompakt'] ?? []
+    const nimm = Math.min(rest, belege.length)
+    rest -= nimm
+    if (nimm > 0) gekuerzt.push({ ...g, 'Belege-kompakt': belege.slice(0, nimm) })
+  }
+  const datei = join(dateien.ordner, 'dep-export-bmf.json')
+  writeFileSync(datei, JSON.stringify({ ...export7, 'Belege-Gruppe': gekuerzt }))
+  return { dep7: datei, geprueft: max, gesamt }
 }
 
 /** Läuft nur, wenn `BMF_PRUEFTOOL_DIR` (entpacktes Prüftool) gesetzt ist — sonst `ausgefuehrt: false`. */
@@ -102,10 +134,12 @@ export function fuehreBmfPrueftoolAus(dateien: PruefDateien): BmfZusammenfassung
     return { ok: true, ausgefuehrt: false, hinweis: 'BMF_PRUEFTOOL_DIR nicht gesetzt (Java-Prüftool wird nur im Nacht-Workflow ausgeführt)', fehlgeschlagen: [], zaehler: {} }
   }
   const ausgabe = join(dateien.ordner, 'bmf-pruefer')
-  const r = spawnSync(process.execPath, [BMF_SKRIPT, '--dep', dateien.dep7, '--crypto', dateien.container, '--out', ausgabe],
+  const max = Number(process.env.BMF_MAX_BELEGE) > 0 ? Number(process.env.BMF_MAX_BELEGE) : BMF_MAX_BELEGE_STANDARD
+  const sicht = kuerzeExportFuerBmf(dateien, max)
+  const r = spawnSync(process.execPath, [BMF_SKRIPT, '--dep', sicht.dep7, '--crypto', dateien.container, '--out', ausgabe],
     { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 15 * 60_000 })
   try {
-    return { ausgefuehrt: true, ...(JSON.parse(readFileSync(join(ausgabe, 'bmf-zusammenfassung.json'), 'utf8')) as Omit<BmfZusammenfassung, 'ausgefuehrt'>) }
+    return { ausgefuehrt: true, belege: { geprueft: sicht.geprueft, gesamt: sicht.gesamt }, ...(JSON.parse(readFileSync(join(ausgabe, 'bmf-zusammenfassung.json'), 'utf8')) as Omit<BmfZusammenfassung, 'ausgefuehrt'>) }
   } catch {
     return { ok: false, ausgefuehrt: true, hinweis: `bmf-pruefer.mjs lieferte keine Zusammenfassung (Exit ${r.status}): ${(r.stdout + r.stderr).slice(-500)}`, fehlgeschlagen: [], zaehler: {} }
   }

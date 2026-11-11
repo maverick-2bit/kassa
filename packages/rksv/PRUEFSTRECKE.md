@@ -140,7 +140,9 @@ gegenüber der Spezifikation falsch (Befund A, behoben). Die Tests nageln die *I
 (BMF-Daten, BMF-Prüftool, Zweitprüfer) — genau dafür ist diese Strecke da.
 
 Aufruf: `pnpm --filter @kassa/rksv test:mutation` (3–4 Minuten, Bericht `packages/rksv/reports/mutation/mutation.html`); Überlebende als Liste:
-`node scripts/rksv/mutation-bericht.mjs packages/rksv/reports/mutation/mutation.json`. Wöchentlich in `rksv-mutation.yml` (nur Auswertung, wird nicht rot).
+`node scripts/rksv/mutation-bericht.mjs packages/rksv/reports/mutation/mutation.json`. Wöchentlich in `rksv-mutation.yml` (nur Auswertung: überlebende Mutanten machen den Lauf nicht rot, ein scheiternder Probelauf schon).
+`tests/zeit.test.ts` ist ausgenommen (`vitest.mutation.config.ts`): Die Tests stellen die Prozess-Zeitzone um, Strykers Läufer arbeitet mit Worker-Threads, in denen das nicht greift
+(„Prozess-TZ … wirkt nicht"). Der Lauf vom 2026-11-08 scheiterte deshalb schon im Probelauf, bevor ein Mutant lief; geprüft mit `pnpm exec stryker run --dryRunOnly` im Paket `rksv`.
 
 ## Lokal ausführen
 
@@ -157,7 +159,7 @@ node scripts/rksv/bmf-pruefer.mjs --dep dep-export.json --crypto cryptographicMa
 
 Burn-in-Schalter: `BURNIN_BELEGE`, `BURNIN_MINUTEN`, `BURNIN_SEED`, `BURNIN_PARALLEL`, `BURNIN_ZWEITPRUEFER=0`,
 `BURNIN_BEKANNTE_REGELN` (bekannte Befunde nur als Hinweis; für Befund D, das AT0-Format: `zweitpruefer-zksn-format,bmf-FORMAT_CLOSED_SYSTEM_SERIAL,bmf-DEP_STATE,bmf-VERIFICATION_FROM_APP,bmf-DEP_RECEIPT_LIST` — der Nacht-Workflow setzt genau diese Liste als Standard),
-`BMF_PRUEFTOOL_DIR`.
+`BMF_PRUEFTOOL_DIR`, `BMF_MAX_BELEGE` (so viele Belege, vom Startbeleg an, bekommt das BMF-Prüftool höchstens; Standard 2000 — den ganzen Bestand prüft der Python-Zweitprüfer).
 
 ## Der Nacht-Workflow (`rksv-nacht`)
 
@@ -176,6 +178,11 @@ Burn-in-Schalter: `BURNIN_BELEGE`, `BURNIN_MINUTEN`, `BURNIN_SEED`, `BURNIN_PARA
   (`verificationState` PASS/FAIL). Die `*_full.json`/`DEP-full.json` enthalten ALLE Prüfungen inklusive der verworfenen Typ-Hypothesen (`TYPE_OF_RECEIPT_*` als FAIL unter einer
   PASS-Wurzel) und zählen nicht. Ein Lauf ohne erkanntes PASS gilt als **nicht** bestanden. (Die erste Fassung wertete alle Dateien aus und hielt deshalb auch die BMF-Beispiele
   für durchgefallen — der Probelauf hat das gezeigt; seitdem prüft der Kontrolllauf 16 von 16 BMF-Szenarien als bestanden.)
+* **Lange Läufe und Ausfälle der ersten Woche (2026-11-08/09), behoben:** Der lange Sonntags-Burn-in (45 Minuten, rund 19 000 Belege) brach beim BMF-Prüftool ab, weil das Skript
+  alle Ergebnisdateien — auch die großen `*_full.json` — als Text im Speicher hielt (`NewRawTwoByteString`, keine Zusammenfassung). Jetzt: Die Ausgabe wird nacheinander gelesen, nur die
+  Urteilsdateien (auch fünfstellige Belegnummern ab 10000, die der Dateimuster-Filter vorher übersehen hätte), und das Prüftool sieht höchstens `BMF_MAX_BELEGE` Belege (Standard 2000;
+  ein Hinweis „[bmf-pruefer-ausschnitt]" im Bericht nennt es). Am 2026-11-09 scheiterte der Kontrolllauf an einem HTTP 504 beim Laden der BMF-Beispiele; Downloads wiederholen jetzt
+  (4 Versuche, 5/15/45 s Pause) bei Netzwerkfehlern, 5xx, 408 und 429 — ein 404 ist endgültig. Tests: `bmf-runner.test.ts` und `backend/tests/rksv-bmf-ausschnitt.test.ts`.
 * **Wie das Tool bisher gelaufen ist:** Lokal wurde das heruntergeladene JAR bei der Entwicklung NICHT gestartet (die Berechtigungsprüfung hat es verhindert; nicht umgangen). Es lief
   ausschließlich in GitHub Actions (Probelauf auf dem Wegwerf-Branch `trial/rksv-nacht`, Java 8) — dort mit den hier beschriebenen Ergebnissen.
 
