@@ -313,6 +313,23 @@ Default 7 Jahre, RKSV). Ohne diese Werte ist Backup deaktiviert.
 `http://<box>/api/monitoring/status?token=<TOKEN>` zeigen lassen
 (200 = gesund, 503 = DB weg oder Sicherung veraltet).
 
+## 6b. FinanzOnline: Hersteller-ID
+
+Für Meldungen an FinanzOnline (Registrierung nachtragen, SEE-Ausfall und -Wiederinbetriebnahme, Kasse außer Betrieb
+nehmen) meldet sich die Kassa als Webservice-Client an. Der Login braucht außer den Zugangsdaten des
+Webservice-Benutzers die **Hersteller-ID**: die UID-Nummer des **Softwareherstellers** (nicht die des Betriebs, der die
+Kassa benutzt), 10–24 Buchstaben/Ziffern ohne Leerzeichen, z. B. `ATU12345678`. Sie ist für die ganze Installation
+gleich — einmal in `.env` eintragen und das Backend neu starten (`docker compose up -d`):
+
+```
+FON_HERSTELLER_ID=ATU12345678
+```
+
+Ohne Eintrag verwendet die Kassa einen Platzhalter (der Login ist dann formal gültig, FinanzOnline lehnt ihn aber
+voraussichtlich ab; die Fehlermeldung nennt `FON_HERSTELLER_ID`, das Backend warnt beim Start). Ein ungültiger Wert
+(Unterstrich, Leerzeichen, zu kurz/lang) verhindert den Start mit einer klaren Meldung — so fällt der Tippfehler sofort auf
+und nicht erst beim Login. Der Stand der FinanzOnline-Anbindung steht in `packages/rksv/FINANZONLINE-ABGLEICH.md`.
+
 ## 7. Optional: HTTPS unter einer Domain (Caddy-Proxy)
 
 Für eine aus dem Internet erreichbare Box. In `.env`:
@@ -466,6 +483,12 @@ Container, die Daten (Postgres-Volume) bleiben erhalten.
   A-Trust die Anfrage ab (HTTP 4xx, meist Benutzer/Passwort/Adresse), erstellt die Kassa KEINEN
   Beleg und nennt den Grund — das lässt sich nur in den Einstellungen beheben. Ab 48 Stunden
   Ausfall ist der Ausfall FinanzOnline zu melden (Banner, „Wieder in Betrieb nehmen").
+- **„FON-Login fehlgeschlagen … Platzhalter-Hersteller-ID":** in `.env` ist noch keine `FON_HERSTELLER_ID` gesetzt
+  (Abschnitt 6b). Eintragen, `docker compose up -d`, erneut versuchen. Dieselbe Meldung ohne den Hinweis auf die
+  Hersteller-ID betrifft die Zugangsdaten des Webservice-Benutzers (TID, BenID, PIN).
+- **„Die Software-Signatur dieser Kasse (Kennung AT0 …) kann bei FinanzOnline nicht … registriert werden":** FinanzOnline
+  nimmt als Signaturerstellungseinheit nur Zertifikate von Vertrauensdiensteanbietern (A-Trust u. a.) an, nicht die
+  Software-Signatur. Für die Registrierung die Kasse in den Einstellungen auf A-Trust umstellen (Abschnitt „RKSV-Hinweis" oben).
 - **„Die Systemuhr der Kassa geht nach":** Die Uhr des Kassen-PCs liegt mehr als eine Minute VOR
   dem letzten Beleg. Belege dürfen nicht rückdatiert werden; Uhr/Zeitsynchronisation des PCs
   prüfen. Kleine Rücksprünge (bis 1 Minute) gleicht die Kassa selbst an.

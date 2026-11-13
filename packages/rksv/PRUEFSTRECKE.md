@@ -31,7 +31,8 @@ Workflows: `.github/workflows/rksv-nacht.yml`, `rksv-mutation.yml` (die regulär
 
 Befunde, die der Produktivcode noch nicht behoben hat, sind in den Tests als **`it.fails`** festgehalten: grün, solange der
 Mangel besteht; sobald er behoben ist, meldet vitest „Expect test to fail" — dann an der Stelle das `.fails` entfernen
-(und in den Zweitprüfer-Tests die Ausnahme `--ignoriere zksn-format` für Befund D streichen). Befund A ist so behoben worden.
+(und in den Zweitprüfer-Tests die Ausnahme `--ignoriere zksn-format` für Befund D streichen). Befund A ist so behoben worden,
+Befund C (FinanzOnline-Client, `fon-xsd.test.ts`) ebenfalls — bis auf F-11, das eine Entscheidung braucht und kein `it.fails` mehr ist.
 
 ### A — Verkettung der Folgebelege war falsch (BEHOBEN; Altketten im Selbsttest als „Altformat" ausgewiesen)
 
@@ -74,29 +75,34 @@ Mangel besteht; sobald er behoben ist, meldet vitest „Expect test to fail" —
 * Eigenheit des Formats (kein Defekt): In der Herbst-Umstellungsstunde läuft die Wanduhr zurück (02:50 Sommerzeit, 20 min später 02:10 Winterzeit).
   Ein Prüfer, der die Zeiten als Text liest, sieht „rückwärts" (`zeit-rueckwaerts` im Zweitprüfer, „chronologische Abfolge" im BMF-Prüftool).
 
-### C — FinanzOnline-Client erzeugt keinen schema-gültigen Request
+### C — FinanzOnline-Client erzeugte keinen schema-gültigen Request (BEHOBEN bis auf F-11 — Entscheidung offen)
 
-Alle Requests des Clients scheitern an den amtlichen Schemas (`fon-xsd.test.ts`, 9× `it.fails` + 4× `it.fails` bei Antworten):
+Alle Requests des Clients scheiterten an den amtlichen Schemas (`fon-xsd.test.ts`, 9× `it.fails` + 4× `it.fails` bei Antworten). **Behoben am 2026-11-13** (Branch `fix/fon-schema`, noch
+nicht released): Der Client erzeugt schema-gültige Requests und wertet die Antworten richtig aus; die `it.fails` sind entfernt, die Mocks in `finanz-online.test.ts` sind schema-gültig.
+Die Umsetzung, die Entscheidungen im Einzelnen und was erst ein Testzugang klärt: `FINANZONLINE-ABGLEICH.md`.
 
-| # | Befund |
-|---|---|
-| F-1 | `login`: Wurzelelement muss `loginRequest` heißen (Client: `login`) |
-| F-2 | `logout`: Wurzelelement muss `logoutRequest` heißen |
-| F-3 | rkdb-Datensätze (`registrierung_se`, `status_kasse` …) sind globale Elemente → Namespace `https://finanzonline.bmf.gv.at/rkdb`; der Client sendet sie ohne Namespace |
-| F-4 | Pflichtfelder `paket_nr`, `ts_erstellung` (rkdb, status_*) und `satznr` (status_*) fehlen |
-| F-5 | `status_se` heißt im Schema `status_see` |
-| F-6 | Je `rkdb` nur **eine** Datensatzart (xs:choice): `registrierung_se` und `registrierung_kasse` brauchen getrennte Aufrufe |
-| F-7 | Ausfall/Wiederinbetriebnahme/Außerbetriebnahme: falsche Namen/Felder (`ausserbetriebnahme_kasse` gibt es nicht → `ausfall_kasse` mit `ausserbetriebnahme/begruendung`; `ausfall_se` braucht `ausfall{begruendung, beginn_ausfall}`; `wiederinbetriebnahme_se` braucht `ende_ausfall`) |
-| F-8 | Antwort: `abfrage_ergebnis` hat Kinder (`ts_registrierung`, `status`, `ts_status`); der Client liest den ganzen Inhalt als Status — die Statusabfrage kann nie „REGISTRIERT" erkennen |
-| F-9 | Antwort: mehrere `result`/`rkdbMessage` sind erlaubt; nur der erste `rc` wird ausgewertet (ein abgelehnter zweiter Datensatz gilt als Erfolg) |
-| F-10 | `herstellerid`: Muster `[0-9A-Za-z]{10,24}`; der Standardwert `ATU_KASSA_RKSV_0001` (Unterstriche) ist ungültig |
-| F-11 | `vda_id`: Muster `[A-Z]{2}[1-9][0-9]?` schließt `AT0` aus — die Software-SEE kann nicht als `registrierung_se` gemeldet werden (Schema: `registrierung_ggs` mit `art_se_ggs` SW_GGS) |
+| # | Befund | Stand |
+|---|---|---|
+| F-1 | `login`: Wurzelelement muss `loginRequest` heißen (Client: `login`) | behoben |
+| F-2 | `logout`: Wurzelelement muss `logoutRequest` heißen | behoben |
+| F-3 | rkdb-Datensätze (`registrierung_se`, `status_kasse` …) sind globale Elemente → Namespace `https://finanzonline.bmf.gv.at/rkdb`; der Client sendet sie ohne Namespace | behoben |
+| F-4 | Pflichtfelder `paket_nr`, `ts_erstellung` (rkdb, status_*) und `satznr` (status_*) fehlen | behoben |
+| F-5 | `status_se` heißt im Schema `status_see` | behoben |
+| F-6 | Je `rkdb` nur **eine** Datensatzart (xs:choice): `registrierung_se` und `registrierung_kasse` brauchen getrennte Aufrufe | behoben (zwei Aufrufe, SE nur wenn FinanzOnline sie noch nicht kennt) |
+| F-7 | Ausfall/Wiederinbetriebnahme/Außerbetriebnahme: falsche Namen/Felder (`ausserbetriebnahme_kasse` gibt es nicht → `ausfall_kasse` mit `ausserbetriebnahme/begruendung`; `ausfall_se` braucht `ausfall{begruendung, beginn_ausfall}`; `wiederinbetriebnahme_se` braucht `ende_ausfall`) | behoben (Begründungscodes aus der BMF-Beschreibung) |
+| F-8 | Antwort: `abfrage_ergebnis` hat Kinder (`ts_registrierung`, `status`, `ts_status`); der Client liest den ganzen Inhalt als Status — die Statusabfrage kann nie „REGISTRIERT" erkennen | behoben |
+| F-9 | Antwort: mehrere `result`/`rkdbMessage` sind erlaubt; nur der erste `rc` wird ausgewertet (ein abgelehnter zweiter Datensatz gilt als Erfolg) | behoben (jede Meldung zählt, `rc` ist ein Text, 0 der einzige Erfolg) |
+| F-10 | `herstellerid`: Muster `[0-9A-Za-z]{10,24}`; der Standardwert `ATU_KASSA_RKSV_0001` (Unterstriche) ist ungültig | behoben: gültiger Platzhalter, einstellbar über `FON_HERSTELLER_ID` (= UID des Softwareherstellers laut BMF) |
+| F-11 | `vda_id`: Muster `[A-Z]{2}[1-9][0-9]?` schließt `AT0` aus — die Software-SEE kann nicht als `registrierung_se` gemeldet werden (Schema: `registrierung_ggs` mit `art_se_ggs` SW_GGS) | **offen**: der Client weist AT0 mit Meldung ab und sendet nichts; wie AT0 gemeldet wird, ist Entscheidung (hängt an Befund D), siehe `FINANZONLINE-ABGLEICH.md` |
 
 Endpunkte, SOAPAction und document/literal stimmen mit den WSDL-Dateien überein; Werte (Seriennummer dezimal, AES-Schlüssel 44 Zeichen Base64) passen in die Muster.
-Die Mocks in `finanz-online.test.ts` sind selbst nicht schema-gültig und haben das verdeckt; `FINANZONLINE-ABGLEICH.md` („verifiziert gegen die offiziellen Schemas") stimmt so nicht.
-`tests/fixtures/fon-beispiele.ts` enthält für jede Nachricht ein **schema-gültiges Soll-Beispiel** (Requests und Antworten) — Grundlage für die Reparatur.
+Die Mocks in `finanz-online.test.ts` waren selbst nicht schema-gültig und haben das verdeckt; `FINANZONLINE-ABGLEICH.md` („verifiziert gegen die offiziellen Schemas") stimmte so nicht und ist korrigiert.
+`tests/fixtures/fon-beispiele.ts` enthält für jede Nachricht ein **schema-gültiges Soll-Beispiel** (Requests und Antworten); `fon-xsd.test.ts` prüft zusätzlich JEDE Nachricht, die der Client in den Testläufen sendet.
+Beim Beheben aufgefallen (kein Schema-Fehler, die Prüfung sieht ihn nicht): Die Seriennummer der SEE aus Datenbank/Beleg ist hexadezimal, ging aber bei Ausfall, Wiederinbetriebnahme und Statusabfrage
+unmarkiert hinaus — FinanzOnline hätte sie als Dezimalzahl gelesen; jetzt mit `hex="true"`. Und: `beginn_ausfall` war „jetzt" statt des tatsächlichen Ausfallbeginns.
 
-Zusatzfund: Das Schema kennt `belegpruefung` (amtliche Belegprüfung inkl. `verificationResultList`) über den Webservice. Der Client nutzt sie nicht („Startbeleg nur per App" stimmt so nicht). Mit Webservice-Zugang wäre das die amtliche Gegenprobe für **jeden** Beleg.
+Zusatzfund: Das Schema kennt `belegpruefung` (amtliche Belegprüfung inkl. `verificationResultList`) über den Webservice. Der Client nutzt sie bewusst noch nicht („Startbeleg nur per App" stimmt so nicht, aber siehe die Gründe in
+`FINANZONLINE-ABGLEICH.md`: ein wiederholt fehlerhaft geprüfter Beleg wird bis zu 24 Stunden nicht mehr geprüft). Mit Webservice-Zugang wäre das die amtliche Gegenprobe für **jeden** Beleg — Folgekarte.
 
 ### D — Software-SEE (AT0): Seriennummer im Beleg
 
@@ -189,8 +195,8 @@ Burn-in-Schalter: `BURNIN_BELEGE`, `BURNIN_MINUTEN`, `BURNIN_SEED`, `BURNIN_PARA
 ## Mit Zugang (noch nicht gebaut — braucht Zugänge des Users)
 
 **FinanzOnline-Testübermittlung** (`art_uebermittlung=T`, verbucht nichts): FinanzOnline-Webservice-Benutzer (TID/BENID/PIN) und Hersteller-ID
-(`herstellerid`, 10–24 alphanumerische Zeichen laut Schema — Bedeutung mit der FinanzOnline-Dokumentation klären; das Feld ist heute nur im rksv-Paket
-mit ungültigem Platzhalter-Default setzbar, nicht aus Backend/UI). **Voraussetzung: erst den Client auf die Schemas bringen (Befund C).** Danach `scripts/fon-testlauf.ts`:
+(`herstellerid` = UID-Nummer des Softwareherstellers laut BMF-Beschreibung des Session-Webservice, 10–24 alphanumerische Zeichen; im Backend die Einstellung `FON_HERSTELLER_ID`).
+Der Client entspricht den Schemas (Befund C, `FINANZONLINE-ABGLEICH.md`) — Voraussetzung erfüllt. Danach `scripts/fon-testlauf.ts`:
 Login → `status_kasse` → `registrierung_se`/`registrierung_kasse` (T) → Status → `ausfall_se` + `wiederinbetriebnahme_se` → `belegpruefung` für Startbeleg und je einen Beleg
 jeder Art (amtliches Urteil) → `ausfall_kasse`/`ausserbetriebnahme` → Logout; jede Anfrage/Antwort (ohne PIN) als Fixture unter `tests/fixtures/fon-live/`,
 die dann die Mocks in `finanz-online.test.ts` ersetzen. Für Software-SEE (AT0) zusätzlich `registrierung_ggs` ausprobieren.

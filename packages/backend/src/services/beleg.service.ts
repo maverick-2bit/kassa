@@ -63,6 +63,23 @@ export interface BelegServiceDeps {
    * wird für reale Meldungen ein Client passend zur Kassen-Umgebung erzeugt.
    */
   finanzOnlineClient?: FinanzOnlineClient
+  /**
+   * Hersteller-ID für den FinanzOnline-Login (Einstellung FON_HERSTELLER_ID): UID des Softwareherstellers.
+   * Fehlt sie, verwendet der echte Client einen Platzhalter.
+   */
+  fonHerstellerId?: string
+}
+
+/**
+ * FinanzOnline-Client einer Kasse: der eingespritzte (Stub in Dev/E2E, Mock im Test) — sonst ein echter für die
+ * Umgebung der Kasse, mit der Hersteller-ID dieser Installation.
+ */
+export function erzeugeFinanzOnlineClient(
+  deps:     Pick<BelegServiceDeps, 'finanzOnlineClient' | 'fonHerstellerId'>,
+  umgebung: string,
+): FinanzOnlineClient {
+  return deps.finanzOnlineClient
+    ?? new FinanzOnlineClient(umgebung === 'test' ? 'test' : 'produktion', { herstellerId: deps.fonHerstellerId })
 }
 
 export class BelegError extends Error {
@@ -868,13 +885,14 @@ async function sendeFonSeeMeldung(
   kasse:       { kassenId: string; seeZertifikatSn: string; umgebung: string },
   operation:   'ausfall' | 'wiederinbetriebnahme',
   credentials?: FinanzOnlineCredentials,
+  /** Beginn des laufenden Ausfalls — wird als `beginn_ausfall` gemeldet (nicht der Zeitpunkt der Meldung) */
+  ausfallSeit?: Date | null,
 ): Promise<FonMeldungErgebnis | undefined> {
   if (!credentials) return undefined
-  const client = deps.finanzOnlineClient
-    ?? new FinanzOnlineClient(kasse.umgebung === 'test' ? 'test' : 'produktion')
+  const client = erzeugeFinanzOnlineClient(deps, kasse.umgebung)
   try {
     const res = operation === 'ausfall'
-      ? await client.seeAusfallMelden(kasse.kassenId, kasse.seeZertifikatSn, credentials)
+      ? await client.seeAusfallMelden(kasse.kassenId, kasse.seeZertifikatSn, credentials, ausfallSeit ? { beginn: ausfallSeit } : {})
       : await client.seeWiederinbetriebnahmeMelden(kasse.kassenId, kasse.seeZertifikatSn, credentials)
     return { versucht: true, erfolgreich: res.erfolgreich, ...(res.fehler && { fehler: res.fehler }) }
   } catch (err) {
@@ -925,7 +943,7 @@ export async function meldeSeeAusfall(
   })
 
   const status = baueSeeStatus(kasse.seeAusgefallenSeit, kasse.seeTyp)
-  const fon = await sendeFonSeeMeldung(deps, kasse, 'ausfall', credentials)
+  const fon = await sendeFonSeeMeldung(deps, kasse, 'ausfall', credentials, kasse.seeAusgefallenSeit)
   return { ...status, ...(fon && { fonMeldung: fon }) }
 }
 
@@ -1026,8 +1044,7 @@ export async function registriereKasseBeiFinanzOnline(
   if (k.registriert) throw new BelegError(409, 'Kasse ist bereits bei FinanzOnline registriert')
   if (!k.aesSchluesselEnc) throw new BelegError(409, 'Kasse hat noch keinen Umsatzzähler-Schlüssel — bitte zuerst einen Beleg erstellen')
 
-  const client = deps.finanzOnlineClient
-    ?? new FinanzOnlineClient(k.umgebung === 'test' ? 'test' : 'produktion')
+  const client = erzeugeFinanzOnlineClient(deps, k.umgebung)
   const zertifikatDER = Buffer.from(k.seeZertifikatDer, 'base64')
   const aesSchluessel = decryptPrivateKey(k.aesSchluesselEnc, deps.masterPassphrase)
 
@@ -1142,8 +1159,7 @@ export async function nimmKasseAusserBetrieb(
 
   // 2. Optionale FON-Abmeldung — NACH der Transaktion, nicht-fatal
   if (credentials && k.registriert) {
-    const client = deps.finanzOnlineClient
-      ?? new FinanzOnlineClient(k.umgebung === 'test' ? 'test' : 'produktion')
+    const client = erzeugeFinanzOnlineClient(deps, k.umgebung)
     try {
       const res = await client.kasseAusserBetriebNehmen(k.kassenId, credentials)
       ergebnis.fonMeldung = {
