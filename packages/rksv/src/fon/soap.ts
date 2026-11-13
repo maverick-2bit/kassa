@@ -11,6 +11,24 @@ export function xmlEscape(s: string): string {
     .replace(/'/g, '&apos;')
 }
 
+/**
+ * Gegenstück zu `xmlEscape` für Antworttexte (z. B. `msg`): die fünf Standard-Entitäten und
+ * numerische Zeichenverweise. In EINEM Durchgang — `&amp;lt;` wird zu `&lt;`, nicht zu `<`.
+ */
+export function xmlUnescape(s: string): string {
+  return s.replace(/&(#x[0-9a-fA-F]+|#[0-9]+|lt|gt|amp|quot|apos);/g, (treffer: string, name: string) => {
+    switch (name) {
+      case 'lt':   return '<'
+      case 'gt':   return '>'
+      case 'amp':  return '&'
+      case 'quot': return '"'
+      case 'apos': return "'"
+    }
+    const code = name.startsWith('#x') ? parseInt(name.slice(2), 16) : parseInt(name.slice(1), 10)
+    return code > 0 && code <= 0x10FFFF ? String.fromCodePoint(code) : treffer
+  })
+}
+
 /** Erstes Vorkommen eines (ggf. präfixierten) Elements — Textinhalt, getrimmt. */
 export function extractValue(xml: string, tag: string): string | undefined {
   const regex = new RegExp(`<(?:[^:>\\s]+:)?${tag}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/(?:[^:>\\s]+:)?${tag}>`)

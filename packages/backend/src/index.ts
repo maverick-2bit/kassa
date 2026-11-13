@@ -32,17 +32,25 @@ async function main(): Promise<void> {
   if (config.FO_STUB && config.NODE_ENV === 'production') {
     throw new Error('FO_STUB=true ist in Produktion nicht erlaubt — eine gestubte FinanzOnline-Registrierung ist keine gültige RKSV-Anmeldung.')
   }
-  const rksvOptionen = config.FO_STUB
-    ? { finanzOnlineClient: erstelleStubFinanzOnlineClient() }
-    : undefined
+  const stubClient = config.FO_STUB ? erstelleStubFinanzOnlineClient() : undefined
   if (config.FO_STUB) {
     console.warn('⚠️  FO_STUB aktiv — FinanzOnline wird gestubt (nur für Entwicklung/Test).')
+  } else if (!config.FON_HERSTELLER_ID) {
+    // Ohne eigene Hersteller-ID loggt der Client sich mit einem Platzhalter ein, den FinanzOnline voraussichtlich ablehnt.
+    console.warn('FON_HERSTELLER_ID ist nicht gesetzt — FinanzOnline-Meldungen verwenden eine Platzhalter-Hersteller-ID. ' +
+      'Die UID des Softwareherstellers in die .env eintragen (siehe ops/DEPLOYMENT.md).')
+  }
+
+  const rksvOptionen = {
+    ...(stubClient && { finanzOnlineClient: stubClient }),
+    ...(config.FON_HERSTELLER_ID && { herstellerId: config.FON_HERSTELLER_ID }),
   }
 
   const belegDeps = {
     db,
     masterPassphrase: config.MASTER_PASSPHRASE,
-    ...(rksvOptionen && { finanzOnlineClient: rksvOptionen.finanzOnlineClient }),
+    ...(stubClient && { finanzOnlineClient: stubClient }),
+    ...(config.FON_HERSTELLER_ID && { fonHerstellerId: config.FON_HERSTELLER_ID }),
   }
 
   const server = await buildServer({
@@ -51,7 +59,7 @@ async function main(): Promise<void> {
     setupDeps: {
       db,
       masterPassphrase: config.MASTER_PASSPHRASE,
-      ...(rksvOptionen && { rksvOptionen }),
+      rksvOptionen,
     },
     belegDeps,
     backupDir:         config.DEP_BACKUP_DIR,
@@ -66,11 +74,7 @@ async function main(): Promise<void> {
   const stopWartungCron = starteWartungCron(db, config, server.log)
   const stopMelder = starteMelderCron(db, config, server.log)
   const stopKeepAlive = starteDruckerKeepAliveCron(db, server.log)
-  const stopTicketshop = starteTicketshopCron(db, {
-    db,
-    masterPassphrase: config.MASTER_PASSPHRASE,
-    ...(rksvOptionen && { finanzOnlineClient: rksvOptionen.finanzOnlineClient }),
-  }, config, server.log)
+  const stopTicketshop = starteTicketshopCron(db, belegDeps, config, server.log)
   const stopTicketDatenschutz = starteTicketDatenschutzCron(db, server.log)
 
   // Letzte Auffanglinie für verirrte Fehler — protokollieren statt stillem Absturz

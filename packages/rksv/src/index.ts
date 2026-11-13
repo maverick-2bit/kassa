@@ -94,16 +94,42 @@ export type { DEP7ValidationResult } from './dep.js'
 
 // FinanzOnline
 export { FinanzOnlineClient, zertSeriennummerDezimal } from './finanz-online.js'
-export { fonLogin, fonLogout } from './fon/session.js'
+export type {
+  FinanzOnlineClientOptionen,
+  SeeAusfallOptionen,
+  SeeWiederinbetriebnahmeOptionen,
+  KasseAusserBetriebOptionen,
+} from './finanz-online.js'
+export { fonLogin, fonLogout, FON_HERSTELLER_ID_MUSTER, FON_HERSTELLER_ID_PLATZHALTER } from './fon/session.js'
 export {
   baueRkdbBody,
   datensatzRegistrierungSe,
   datensatzRegistrierungKasse,
-  rkdbRegistriere,
+  datensatzAusfallSe,
+  datensatzWiederinbetriebnahmeSe,
+  datensatzAusserbetriebnahmeKasse,
+  rkdbRegistriereSe,
+  rkdbRegistriereKasse,
   rkdbStatusKasse,
   rkdbStatusSe,
+  rkdbAusfallSe,
+  rkdbWiederinbetriebnahmeSe,
+  rkdbAusserbetriebnahmeKasse,
+  parseRkdbAntwort,
+  beschreibeRkdbFehler,
+  BEGRUENDUNG_AUSFALL_SE_STANDARD,
+  BEGRUENDUNG_AUSSERBETRIEB_STANDARD,
 } from './fon/rkdb.js'
-export { xmlEscape, extractValue, extractAll, soapEnvelope, FonSoapError } from './fon/soap.js'
+export type {
+  RkdbErgebnis,
+  RkdbMeldung,
+  RkdbStatus,
+  BegruendungAusfallSe,
+  BegruendungAusserbetrieb,
+  Seriennummer,
+} from './fon/rkdb.js'
+export { xsdDateTimeWien } from './fon/datum.js'
+export { xmlEscape, xmlUnescape, extractValue, extractAll, soapEnvelope, FonSoapError } from './fon/soap.js'
 
 // Setup-Orchestrierung (automatische Einrichtung)
 export {

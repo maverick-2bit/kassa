@@ -52,6 +52,8 @@ services:
       PORTAL_INTERVALL_SEKUNDEN: ${PORTAL_INTERVALL_SEKUNDEN:-60}
       # Einrichtungs-Schlüssel (leer = aus): weiterer Mandant ohne Betreiber-Anmeldung, siehe .env.example
       SETUP_TOKEN:       ${SETUP_TOKEN:-}
+      # Hersteller-ID für den FinanzOnline-Login = UID-Nummer des SOFTWAREHERSTELLERS (leer = Platzhalter), siehe .env.example
+      FON_HERSTELLER_ID: ${FON_HERSTELLER_ID:-}
       # Kontroll-Verzeichnis für den In-App-Updater (geteiltes Volume mit 'updater')
       UPDATE_CONTROL_DIR: /control
       # Fernwartungs-Status (fernwartung-status.json, vom Installer geschrieben): dasselbe
