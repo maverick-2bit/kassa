@@ -9,7 +9,7 @@ zeigt sich, wie FinanzOnline die Nachrichten tatsächlich beantwortet.
 
 > **Verlauf.** Bis 2026-11-02 stand hier, der Client sei „verifiziert gegen die offiziellen Schemas". Das stimmte nicht: die
 > RKSV-Prüfstrecke (v0.8.77, `PRUEFSTRECKE.md` Befund C) fand, dass **kein** Request des Clients schema-gültig war (F-1 … F-11).
-> Behoben am 2026-11-13 (Branch `fix/fon-schema`, noch nicht released); die Mocks der Unit-Tests sind jetzt selbst schema-gültig.
+> Behoben am 2026-11-13 (released als v0.8.91); die Mocks der Unit-Tests sind jetzt selbst schema-gültig.
 
 | Befund | Was war falsch | Jetzt |
 |---|---|---|
@@ -22,7 +22,7 @@ zeigt sich, wie FinanzOnline die Nachrichten tatsächlich beantwortet.
 | F-8 | `abfrage_ergebnis` als Text gelesen (es hat Kinder `ts_registrierung`, `status`, `ts_status`) | behoben |
 | F-9 | nur der erste `rc` wurde ausgewertet | behoben: jede Meldung jedes Ergebnisblocks zählt |
 | F-10 | Standard-Hersteller-ID `ATU_KASSA_RKSV_0001` (Unterstriche) verletzt das Muster | behoben (gültiger Platzhalter, einstellbar, siehe unten) |
-| F-11 | `vda_id` `AT0` (Software-Signatur) ist für `registrierung_se` nicht zulässig | **offene Entscheidung** — der Client weist AT0 ab, statt Ungültiges zu senden (siehe „Software-Signatur") |
+| F-11 | `vda_id` `AT0` (Software-Signatur) ist für `registrierung_se` nicht zulässig | **entschieden (Option B, 2026-11-13): AT0 nur Test/Demo** — der Client weist AT0 ab, statt Ungültiges zu senden (siehe „Software-Signatur") |
 
 ## Die Schnittstelle (umgesetzt)
 
@@ -82,7 +82,7 @@ Fehler. Eine unlesbare Antwort (Wartungsseite, abgeschnittenes XML) ist kein Erf
 - **Prüfung vor dem Senden:** Ein Request, der das Schema verletzen würde, geht gar nicht erst hinaus — ungültige Hersteller-ID, Seriennummer ohne Hexadezimalziffern, unzulässige
   `vda_id`, unlesbares Zertifikat werden als Fehlermeldung zurückgegeben.
 
-## Software-Signatur (AT0) — OFFENE ENTSCHEIDUNG
+## Software-Signatur (AT0) — ENTSCHIEDEN: nur Test/Demo (Option B)
 
 **Lage.** Die Kassa signiert ohne A-Trust-Konfiguration mit einem selbst erzeugten Zertifikat (Kennung `AT0`). Für `registrierung_se` lässt das Schema `vda_id`
 nur `[A-Z]{2}[1-9][0-9]?` zu, die BMF-Beschreibung nennt AT1 (A-Trust), AT2 (GlobalTrust), AT3 (PrimeSign): **AT0 ist nicht meldbar** (F-11). Das Schema kennt für Software-Signaturen
@@ -93,12 +93,12 @@ den Ordnungsbegriff im Beleg (`U:ATU12345678-K1`) und beanstandet jeden AT0-Bele
 
 **Stand im Code.** Der Client sendet für AT0 nichts und sagt klar, warum (Test „F-11"). Wer bei der Einrichtung FinanzOnline-Zugangsdaten **und** die Software-Signatur hat, bekommt
 diese Meldung — vorher scheiterte es an FinanzOnline an der ungültigen Nachricht. Der funktionierende Weg ist: provisorisch einrichten (ohne FinanzOnline-Zugang), die Kasse auf A-Trust (AT1)
-umstellen, dann die Registrierung nachtragen.
+umstellen, dann die Registrierung nachtragen. **Lücke (nicht live geprüft):** Die Einrichtung signiert den Startbeleg immer mit der Software-Signatur; nach der Umstellung auf A-Trust bleibt er AT0-signiert und passt nicht zur bei FinanzOnline gemeldeten A-Trust-Einheit (die Belegcheck-App würde ihn vermutlich beanstanden). Für den Echtbetrieb braucht es A-Trust schon bei der Einrichtung — Folgekarte „Einrichtung direkt mit A-Trust (Startbeleg)".
 
-**Optionen** (der Anwender entscheidet):
+**Optionen** (entschieden am 2026-11-13: **B** — der Anwender arbeitet ausschließlich mit A-Trust):
 - **A — AT0 als geschlossenes Gesamtsystem melden** (`registrierung_ggs` + Kasse): Client-Seite überschaubar; die Beleg-Seriennummer müsste dann der Ordnungsbegriff sein (Befund D, ändert
   signierte RKSV-Belegdaten) — und ob die Kassa-Betreiber überhaupt als „geschlossenes Gesamtsystem" auftreten dürfen, ist eine fachlich-rechtliche Frage, die sich aus den Schemas nicht beantworten lässt.
-- **B — AT0 bleibt Test-/Demo-Signatur, FinanzOnline nur mit A-Trust:** heutiger Stand dieses Branches, kein weiterer Aufwand.
+- **B — AT0 bleibt Test-/Demo-Signatur, FinanzOnline nur mit A-Trust: GEWÄHLT.** Stand seit v0.8.91, kein weiterer Aufwand; Befund D bleibt für AT0 als bekannt stehen (nur Test/Demo).
 - **C — erst mit Testzugang ausprobieren,** ob FinanzOnline `registrierung_ggs` für diesen Teilnehmer überhaupt annimmt, und danach A oder B.
 
 ## `belegpruefung` — vom Client (noch) nicht genutzt

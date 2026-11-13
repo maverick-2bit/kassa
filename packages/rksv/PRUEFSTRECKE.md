@@ -32,7 +32,7 @@ Workflows: `.github/workflows/rksv-nacht.yml`, `rksv-mutation.yml` (die regulär
 Befunde, die der Produktivcode noch nicht behoben hat, sind in den Tests als **`it.fails`** festgehalten: grün, solange der
 Mangel besteht; sobald er behoben ist, meldet vitest „Expect test to fail" — dann an der Stelle das `.fails` entfernen
 (und in den Zweitprüfer-Tests die Ausnahme `--ignoriere zksn-format` für Befund D streichen). Befund A ist so behoben worden,
-Befund C (FinanzOnline-Client, `fon-xsd.test.ts`) ebenfalls — bis auf F-11, das eine Entscheidung braucht und kein `it.fails` mehr ist.
+Befund C (FinanzOnline-Client, `fon-xsd.test.ts`) ebenfalls (v0.8.91); F-11 ist entschieden (AT0 nur Test/Demo) und kein `it.fails` mehr.
 
 ### A — Verkettung der Folgebelege war falsch (BEHOBEN; Altketten im Selbsttest als „Altformat" ausgewiesen)
 
@@ -75,10 +75,10 @@ Befund C (FinanzOnline-Client, `fon-xsd.test.ts`) ebenfalls — bis auf F-11, da
 * Eigenheit des Formats (kein Defekt): In der Herbst-Umstellungsstunde läuft die Wanduhr zurück (02:50 Sommerzeit, 20 min später 02:10 Winterzeit).
   Ein Prüfer, der die Zeiten als Text liest, sieht „rückwärts" (`zeit-rueckwaerts` im Zweitprüfer, „chronologische Abfolge" im BMF-Prüftool).
 
-### C — FinanzOnline-Client erzeugte keinen schema-gültigen Request (BEHOBEN bis auf F-11 — Entscheidung offen)
+### C — FinanzOnline-Client erzeugte keinen schema-gültigen Request (BEHOBEN in v0.8.91; F-11 entschieden: AT0 nur Test/Demo)
 
-Alle Requests des Clients scheiterten an den amtlichen Schemas (`fon-xsd.test.ts`, 9× `it.fails` + 4× `it.fails` bei Antworten). **Behoben am 2026-11-13** (Branch `fix/fon-schema`, noch
-nicht released): Der Client erzeugt schema-gültige Requests und wertet die Antworten richtig aus; die `it.fails` sind entfernt, die Mocks in `finanz-online.test.ts` sind schema-gültig.
+Alle Requests des Clients scheiterten an den amtlichen Schemas (`fon-xsd.test.ts`, 9× `it.fails` + 4× `it.fails` bei Antworten). **Behoben am 2026-11-13, released als v0.8.91:**
+Der Client erzeugt schema-gültige Requests und wertet die Antworten richtig aus; die `it.fails` sind entfernt, die Mocks in `finanz-online.test.ts` sind schema-gültig.
 Die Umsetzung, die Entscheidungen im Einzelnen und was erst ein Testzugang klärt: `FINANZONLINE-ABGLEICH.md`.
 
 | # | Befund | Stand |
@@ -93,7 +93,7 @@ Die Umsetzung, die Entscheidungen im Einzelnen und was erst ein Testzugang klär
 | F-8 | Antwort: `abfrage_ergebnis` hat Kinder (`ts_registrierung`, `status`, `ts_status`); der Client liest den ganzen Inhalt als Status — die Statusabfrage kann nie „REGISTRIERT" erkennen | behoben |
 | F-9 | Antwort: mehrere `result`/`rkdbMessage` sind erlaubt; nur der erste `rc` wird ausgewertet (ein abgelehnter zweiter Datensatz gilt als Erfolg) | behoben (jede Meldung zählt, `rc` ist ein Text, 0 der einzige Erfolg) |
 | F-10 | `herstellerid`: Muster `[0-9A-Za-z]{10,24}`; der Standardwert `ATU_KASSA_RKSV_0001` (Unterstriche) ist ungültig | behoben: gültiger Platzhalter, einstellbar über `FON_HERSTELLER_ID` (= UID des Softwareherstellers laut BMF) |
-| F-11 | `vda_id`: Muster `[A-Z]{2}[1-9][0-9]?` schließt `AT0` aus — die Software-SEE kann nicht als `registrierung_se` gemeldet werden (Schema: `registrierung_ggs` mit `art_se_ggs` SW_GGS) | **offen**: der Client weist AT0 mit Meldung ab und sendet nichts; wie AT0 gemeldet wird, ist Entscheidung (hängt an Befund D), siehe `FINANZONLINE-ABGLEICH.md` |
+| F-11 | `vda_id`: Muster `[A-Z]{2}[1-9][0-9]?` schließt `AT0` aus — die Software-SEE kann nicht als `registrierung_se` gemeldet werden (Schema: `registrierung_ggs` mit `art_se_ggs` SW_GGS) | **entschieden (Option B, 2026-11-13)**: AT0 bleibt Test/Demo, FinanzOnline nur mit A-Trust (AT1); der Client weist AT0 mit Meldung ab und sendet nichts, siehe `FINANZONLINE-ABGLEICH.md` |
 
 Endpunkte, SOAPAction und document/literal stimmen mit den WSDL-Dateien überein; Werte (Seriennummer dezimal, AES-Schlüssel 44 Zeichen Base64) passen in die Muster.
 Die Mocks in `finanz-online.test.ts` waren selbst nicht schema-gültig und haben das verdeckt; `FINANZONLINE-ABGLEICH.md` („verifiziert gegen die offiziellen Schemas") stimmte so nicht und ist korrigiert.
@@ -113,7 +113,7 @@ Laut RIS § 20 Abs. 3 steht bei geschlossenen Gesamtsystemen (AT0) statt der Zer
 214 von 214 Belegen — auch beim Startbeleg —, daraus folgt im DEP `DEP_STATE` („Am Beginn des exportierten RKSV-DEP befindet sich kein gültiger Startbeleg"). Das Tool kommt bei
 AT0 nie zu Verkettung, Zähler und Signatur. Folgen: Belege der Software-SEE bestehen die amtliche Belegprüfung nicht; echter Betrieb braucht ein offenes System (A-Trust). Und
 der Wechsel von AT0 auf A-Trust innerhalb einer Kette mischt geschlossenes und offenes System in einem DEP (Prüfung „keine Vermischung von Systemtypen").
-Als offenes System gelesen (ZDA `AT100`, Zertifikat im Container) besteht dagegen die Einzelbelegprüfung aller Belege; dort blieb nur Befund A (inzwischen behoben).
+Als offenes System gelesen (ZDA `AT100`, Zertifikat im Container) besteht dagegen die Einzelbelegprüfung aller Belege; dort blieb nur Befund A (inzwischen behoben). Mit der Entscheidung zu AT0 (Option B: nur Test/Demo, 2026-11-13) wird D für die Software-Signatur nicht behoben; die bekannten Regeln im Nacht-Workflow bleiben stehen.
 
 ### Bestätigt (positive Gegenproben)
 
