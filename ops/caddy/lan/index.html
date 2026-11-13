@@ -1,0 +1,130 @@
+<!doctype html>
+<!--
+  Einrichtungsseite „HTTPS im LAN" (Dienst lan-https, http://<IP>:9079).
+  Liefert Caddy direkt aus (ops/caddy/Caddyfile.lan) — ohne Build, ohne fremde
+  Dateien: Das Handy vertraut der Kassa-CA hier ja noch nicht.
+  Ports wie in Caddyfile.lan (Test: packages/frontend/src/lib/geraeteAdressen.test.ts).
+-->
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kassa: Gerät einrichten</title>
+<style>
+  :root { --bg:#f6f7f9; --panel:#fff; --ink:#1c2230; --muted:#5b6474; --line:#dde1e8; --brand:#1d4ed8; --ok:#15803d; --warn:#b45309; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#12151b; --panel:#1b2029; --ink:#e7eaf0; --muted:#a0a8b8; --line:#2c3340; --brand:#6d9bff; --ok:#4ade80; --warn:#fbbf24; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width:560px; margin:0 auto; padding:20px 16px 40px; }
+  h1 { font-size:1.35rem; margin:0 0 4px; }
+  h2 { font-size:1.05rem; margin:0 0 8px; }
+  p { margin:0 0 8px; }
+  .klein { color:var(--muted); font-size:.9rem; }
+  section { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px; margin-top:14px; }
+  ol { margin:0; padding-left:1.3em; }
+  li { margin:4px 0; }
+  .knopf { display:block; text-align:center; background:var(--brand); color:#fff; text-decoration:none; font-weight:600; padding:14px; border-radius:10px; margin:10px 0 4px; }
+  .status { font-weight:600; }
+  .ok { color:var(--ok); } .warn { color:var(--warn); }
+  details { border-top:1px solid var(--line); padding-top:10px; margin-top:10px; }
+  summary { cursor:pointer; font-weight:600; }
+  ul.apps { list-style:none; padding:0; margin:0; }
+  ul.apps li { display:flex; justify-content:space-between; gap:8px; border-top:1px solid var(--line); padding:8px 0; }
+  ul.apps li:first-child { border-top:0; }
+  ul.apps a { color:var(--brand); word-break:break-all; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Gerät für die Kassa einrichten</h1>
+  <p class="klein">Einmal je Handy oder Tablet. Danach öffnet das Gerät die Kassa-Apps über eine
+    gesicherte Verbindung (HTTPS). Erst dann erlaubt der Browser Mikrofon, Kamera und den Offline-Betrieb.</p>
+
+  <section>
+    <h2>Stand dieses Geräts</h2>
+    <p id="status" class="status">Wird geprüft …</p>
+    <p id="ip-hinweis" class="klein warn" hidden></p>
+  </section>
+
+  <section>
+    <h2>1. Zertifikat laden</h2>
+    <p>Das Zertifikat stammt von dieser Kassa und gilt nur für sie.</p>
+    <a class="knopf" href="/kassa-ca.crt">Zertifikat laden</a>
+    <p class="klein">Auf dem iPhone diese Seite dafür in <b>Safari</b> öffnen.</p>
+  </section>
+
+  <section>
+    <h2>2. Zertifikat installieren</h2>
+    <details id="android">
+      <summary>Android</summary>
+      <ol>
+        <li><b>Einstellungen</b> öffnen und oben nach <b>„CA-Zertifikat"</b> suchen.</li>
+        <li>Meist unter Sicherheit → Weitere Sicherheitseinstellungen → Verschlüsselung und Anmeldedaten →
+          Zertifikat installieren → <b>CA-Zertifikat</b>.</li>
+        <li>Warnung mit <b>„Trotzdem installieren"</b> bestätigen und <b>kassa-ca.crt</b> aus den Downloads wählen.</li>
+      </ol>
+      <p class="klein">Android verlangt dafür eine Bildschirmsperre (PIN, Muster). Danach steht in den
+        Einstellungen ein Hinweis, das Netzwerk könne überwacht werden. Er bezieht sich auf dieses
+        Kassa-Zertifikat und ist hier zu erwarten.</p>
+    </details>
+    <details id="ios">
+      <summary>iPhone / iPad</summary>
+      <ol>
+        <li>Nach „Zertifikat laden" erscheint <b>„Profil geladen"</b>. Auf „Schließen" tippen.</li>
+        <li><b>Einstellungen</b> → oben <b>„Profil geladen"</b> → Installieren → Code eingeben → Installieren.</li>
+        <li>Dann <b>Einstellungen → Allgemein → Info → Zertifikatsvertrauenseinstellungen</b> und
+          <b>„Kassa LAN Root"</b> einschalten.</li>
+      </ol>
+    </details>
+  </section>
+
+  <section>
+    <h2>3. Kassa-App öffnen</h2>
+    <p class="klein">Nach der Installation diese Seite neu laden: Oben steht dann „eingerichtet".
+      Danach die App über ihre https-Adresse öffnen und zum Startbildschirm hinzufügen.</p>
+    <ul class="apps" id="apps"></ul>
+  </section>
+</main>
+<script>
+(function () {
+  var host = location.hostname;
+  var APPS = [
+    ['Kellner-App', 9083], ['Kasse', 8443], ['KDS Küche/Schank', 9080], ['SB-Terminal', 9084], ['Einlass', 9087]
+  ];
+  var liste = document.getElementById('apps');
+  APPS.forEach(function (a) {
+    var url = 'https://' + host + ':' + a[1] + '/';
+    var li = document.createElement('li');
+    var name = document.createElement('span'); name.textContent = a[0];
+    var link = document.createElement('a'); link.href = url; link.textContent = url;
+    li.appendChild(name); li.appendChild(link); liste.appendChild(li);
+  });
+
+  var ua = navigator.userAgent || '';
+  var ios = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  document.getElementById(ios ? 'ios' : 'android').open = true;
+
+  var status = document.getElementById('status');
+  // Die Kurzinfo kommt über http immer an; über https nur, wenn das Gerät der Kassa-CA vertraut.
+  fetch('/kassa-lan.json', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (info) {
+    if (info.ip && info.ip !== host) {
+      var h = document.getElementById('ip-hinweis');
+      h.hidden = false;
+      h.textContent = 'Diese Seite ist über ' + host + ' geöffnet, das Zertifikat gilt aber für ' + info.ip +
+        '. Bitte http://' + info.ip + ':9079 öffnen.';
+    }
+    return fetch('https://' + host + ':9083/kassa-lan.json', { cache: 'no-store' });
+  }).then(function (r) {
+    if (!r.ok) throw new Error(String(r.status));
+    status.textContent = '✓ Dieses Gerät ist eingerichtet und vertraut der Kassa.';
+    status.className = 'status ok';
+  }).catch(function () {
+    status.textContent = 'Noch nicht eingerichtet: Schritte 1 und 2 ausführen, dann diese Seite neu laden.';
+    status.className = 'status warn';
+  });
+})();
+</script>
+</body>
+</html>

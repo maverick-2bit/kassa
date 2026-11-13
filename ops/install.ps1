@@ -305,6 +305,7 @@ Ok 'Code aktualisiert'
 
 # ── 4. .env beim ersten Lauf erzeugen (Secrets generieren) ───────────────────
 $envDatei = Join-Path $Ziel '.env'
+$erstinstallation = -not (Test-Path $envDatei)
 if (Test-Path $envDatei) {
   Schritt 'Bestehende .env gefunden — bleibt unverändert (Update-Modus)'
 } else {
@@ -336,6 +337,20 @@ $ports = [ordered]@{
   'Abholmonitor'      = (Env-Port 'ABHOLMONITOR_PORT' 8085)
   'Ticket-App'        = (Env-Port 'TICKETS_PORT' 8086)
   'Einlass-App'       = (Env-Port 'EINLASS_PORT' 8087)
+}
+
+# HTTPS im LAN (Profil „lan-https", ops/lan-https.ps1): bei der Erstinstallation einschalten,
+# bei Updates nur die fehlende IP nachtragen. Fehler hier brechen die Installation NIE ab.
+$lanHttpsAktiv = $false
+try {
+  $lanHttpsSkript = Join-Path $Ziel 'ops\lan-https.ps1'
+  if (Test-Path -LiteralPath $lanHttpsSkript) {
+    . $lanHttpsSkript
+    $lanHttpsAktiv = [bool](Initialize-LanHttps -EnvDatei $envDatei -Erstinstallation:$erstinstallation)
+  }
+} catch {
+  Hinweis ('HTTPS im LAN übersprungen: ' + $_.Exception.Message)
+  $lanHttpsAktiv = $false
 }
 
 # ── 4b. Fernwartung (optional): TeamViewer Host installieren + dem Konto zuordnen ─
@@ -399,7 +414,10 @@ try {
 
 # ── 6. Firewall für Geräte im LAN öffnen ─────────────────────────────────────
 Schritt 'Öffne Windows-Firewall für die Kassa-Ports'
-foreach ($eintrag in $ports.GetEnumerator()) {
+$firewallPorts = [ordered]@{}
+foreach ($eintrag in $ports.GetEnumerator()) { $firewallPorts[$eintrag.Key] = $eintrag.Value }
+if ($lanHttpsAktiv) { foreach ($eintrag in $LanHttpsPorts.GetEnumerator()) { $firewallPorts[$eintrag.Key] = $eintrag.Value } }
+foreach ($eintrag in $firewallPorts.GetEnumerator()) {
   $regelName = 'Kassa POS - ' + $eintrag.Key
   $vorhanden = Get-NetFirewallRule -DisplayName $regelName -ErrorAction SilentlyContinue
   if (-not $vorhanden) {
@@ -443,6 +461,7 @@ foreach ($eintrag in $ports.GetEnumerator()) {
   if ($port -ne 80) { $suffix = ':' + $port }
   Write-Host ('   {0,-18} http://{1}{2}' -f ($eintrag.Key + ':'), $lanIp, $suffix)
 }
+if ($lanHttpsAktiv) { Show-LanHttpsAdressen -EnvDatei $envDatei }
 Write-Host ''
 Write-Host ' Erste Schritte:' -ForegroundColor Cyan
 Write-Host ('   1. Am PC öffnen:  http://localhost' + $(if ($ports['Kassa (Haupt-App)'] -ne 80) { ':' + $ports['Kassa (Haupt-App)'] } else { '' }))

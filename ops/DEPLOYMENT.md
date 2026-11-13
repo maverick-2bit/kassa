@@ -298,7 +298,73 @@ als offener Tisch mit Kellner „Gast") oder *Mit Online-Zahlung* (Abschnitt 7b)
 
 Tablets/Displays am besten im **Kiosk-/Vollbildmodus** des Browsers betreiben.
 
+**HTTPS im LAN (gesicherte Adressen für Handys und Tablets)** — siehe Abschnitt 5b.
+
 **Proxy-Modus (optional, HTTPS unter einer Domain)** — siehe Abschnitt 7.
+
+## 5b. HTTPS im LAN (Handys und Tablets)
+
+Über `http://<IP>:<Port>` verweigern Handy- und Tablet-Browser das **Mikrofon**
+(Sprachbestellung), die **Kamera** (Einlass-Scanner) und den **Service Worker**
+(Offline-Puffer, App-Cache). Am Kassen-PC selbst (`http://localhost`) gilt das nicht.
+Abhilfe ohne Internet und ohne Domain: Der Dienst `lan-https` (Profil `lan-https`, Caddy)
+betreibt eine **eigene Zertifizierungsstelle (CA)** für diese Box und stellt damit
+Zertifikate für ihre LAN-IP aus. Jedes Gerät vertraut dieser CA einmal; die
+http-Adressen aus Abschnitt 5 bleiben daneben bestehen.
+
+| App | Gesicherte Adresse |
+|-----|--------------------|
+| Kasse | `https://<box>:8443` |
+| KDS | `https://<box>:9080` |
+| Kellner | `https://<box>:9083` |
+| SB-Terminal | `https://<box>:9084` |
+| Einlass | `https://<box>:9087` |
+| **Geräte-Einrichtung** (Zertifikat + Anleitung) | `http://<box>:9079` |
+
+Gast-Bestellung, Kundendisplay und Abholmonitor bleiben bei http (fremde Handys bzw.
+Bildschirme ohne Mikrofon und Kamera).
+
+**Einschalten.** Die Installer schalten es bei der **Erstinstallation** selbst ein, wenn sie
+die LAN-IP eindeutig erkennen (Netzwerkkarte mit Standard-Gateway) und keiner der Ports
+belegt ist; die Geräte-URL-Tabelle am Ende zeigt dann auch die https-Adressen. Bestehende
+Installationen (oder wenn der Installer es übersprungen hat): in der `.env`
+
+```
+COMPOSE_PROFILES=lan-https          # mit Tunnel: COMPOSE_PROFILES=tunnel,lan-https
+KASSA_LAN_IP=192.168.1.50           # feste IPv4 der Box
+```
+
+eintragen und den Installer erneut ausführen (öffnet unter Windows auch die Firewall-Ports)
+bzw. `docker compose up -d`. Die IP der Box im Router **fest zuweisen** — das Zertifikat gilt
+nur für diese Adresse.
+
+**Geräte einrichten.** In der Kasse unter **Einstellungen → Geräte** steht der Stand
+(„aktiv") mit einem QR-Code zur Einrichtungsseite. Am Handy scannen → „Zertifikat laden" →
+installieren:
+- **Android:** Einstellungen → nach „CA-Zertifikat" suchen → Zertifikat installieren →
+  CA-Zertifikat → „Trotzdem installieren" → `kassa-ca.crt` wählen. Android verlangt dafür eine
+  Bildschirmsperre und zeigt danach den Hinweis, das Netzwerk könne überwacht werden — das
+  bezieht sich auf dieses Kassa-Zertifikat.
+- **iPhone/iPad** (in Safari laden): Einstellungen → „Profil geladen" → Installieren; danach
+  Einstellungen → Allgemein → Info → Zertifikatsvertrauenseinstellungen → „Kassa LAN Root"
+  einschalten.
+
+Die Einrichtungsseite prüft selbst, ob das Gerät der CA vertraut. Danach zeigen die
+QR-Codes unter Einstellungen → Geräte die https-Adressen (für Geräte ohne Einrichtung lassen
+sie sich auf http umschalten). Die Einlass-Adresse `https://<box>:9087` unter
+Tickets → Adressen eintragen.
+
+**Gut zu wissen**
+- Stammzertifikat: rund 10 Jahre gültig; Zwischen- (7 Tage) und Serverzertifikate (12 Stunden)
+  erneuert Caddy selbst, ohne Internet.
+- Ändert sich die IP der Box, meldet der Installer das, überschreibt die `.env` aber nicht.
+  Nach dem Anpassen von `KASSA_LAN_IP` stellt Caddy ein neues Serverzertifikat aus — die
+  Geräte behalten ihr Stammzertifikat.
+- Der private Schlüssel der CA liegt im Docker-Volume `lan_https_data`. Geht es verloren
+  (`docker compose down -v`, Neuinstallation der Box), entsteht eine neue CA, und alle Geräte
+  müssen das neue Zertifikat noch einmal installieren.
+- Startet der Dienst nicht: `docker compose logs lan-https` — „KASSA_LAN_IP fehlt" heißt, die
+  Zeile in der `.env` ist leer.
 
 ## 6. Backup + Monitoring (dringend empfohlen)
 

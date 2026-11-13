@@ -81,7 +81,9 @@ try {
 
   # ── 4. Vollständige Image-Liste + fehlende Basis-Images ziehen ─────────────
   Schritt 'Ermittle und lade Basis-Images (PostgreSQL, restic)'
-  $images = docker compose config --images
+  # --profile lan-https: der Installer schaltet HTTPS im LAN bei der Erstinstallation ein —
+  # das Caddy-Image muss dann offline im Paket liegen (sonst scheitert "compose up" ohne Internet).
+  $images = docker compose --profile lan-https config --images
   if ($LASTEXITCODE -ne 0 -or -not $images) { Fehler 'Image-Liste konnte nicht ermittelt werden.'; exit 1 }
   $images = @($images | Where-Object { $_ -and $_.Trim() -ne '' } | ForEach-Object { $_.Trim() } | Sort-Object -Unique)
   foreach ($img in $images) {
