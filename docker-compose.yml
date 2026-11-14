@@ -183,7 +183,8 @@ services:
 
   # ── Einlass-App (Vite → nginx) — Ticket-Scanner fürs Personal am Eingang ────
   # Leitet nur /api/einlass/ weiter (nur mit Einlass-Geräte-Token nutzbar).
-  # Kamera-Scan am Handy braucht HTTPS → über Caddy oder den Tunnel betreiben.
+  # Kamera-Scan am Handy braucht HTTPS → im LAN über den Dienst „lan-https"
+  # (https://<IP>:9087), von außen über Caddy oder den Tunnel.
   einlass:
     build:
       context:    .
@@ -299,6 +300,48 @@ services:
       - caddy_data:/data
       - caddy_config:/config
 
+  # ── HTTPS im LAN — OPTIONAL, nur mit Profil „lan-https" ─────────────────────
+  # Gesicherte Verbindung für Handys/Tablets im Lokal OHNE Internet und Domain:
+  # Caddy betreibt eine eigene Zertifizierungsstelle (CA) für diese Box; jedes
+  # Gerät vertraut ihr einmal (Einrichtungsseite http://<IP>:9079). Nötig für
+  # Mikrofon (Sprachbestellung), Kamera (Einlass) und Offline-Puffer (Service
+  # Worker). Der Weg über http://<IP>:<Port> bleibt daneben bestehen.
+  # Aktivieren: in der .env COMPOSE_PROFILES=lan-https und KASSA_LAN_IP=<IPv4 der
+  # Box> (der Installer trägt beides bei der Erstinstallation ein). Die Ports sind
+  # fest (Tabelle in ops/caddy/Caddyfile.lan). Das Volume lan_https_data enthält den
+  # privaten Schlüssel der CA — geht es verloren (z. B. „down -v"), müssen alle
+  # Geräte das neue Zertifikat noch einmal installieren.
+  lan-https:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    profiles: ["lan-https"]
+    depends_on:
+      - frontend
+      - kds
+      - kellner
+      - terminal
+      - einlass
+    environment:
+      KASSA_LAN_IP: ${KASSA_LAN_IP:-}
+    # Ohne IP kann Caddy kein passendes Zertifikat ausstellen → klare Meldung statt
+    # eines Zertifikats für die falsche Adresse.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - '[ -n "$$KASSA_LAN_IP" ] || { echo "lan-https: KASSA_LAN_IP fehlt in der .env (IPv4 dieser Box im LAN)" >&2; exit 1; }; exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile'
+    ports:
+      - "8443:8443"   # Kasse
+      - "9079:9079"   # Einrichtungsseite + Stammzertifikat (http)
+      - "9080:9080"   # KDS
+      - "9083:9083"   # Kellner-App
+      - "9084:9084"   # SB-Terminal
+      - "9087:9087"   # Einlass
+    volumes:
+      - ./ops/caddy/Caddyfile.lan:/etc/caddy/Caddyfile:ro
+      - ./ops/caddy/lan:/srv/kassa-lan:ro
+      - lan_https_data:/data
+      - lan_https_config:/config
+
 volumes:
   postgres_data:
   db_backups:
@@ -308,3 +351,5 @@ volumes:
   update_control:
   caddy_data:
   caddy_config:
+  lan_https_data:
+  lan_https_config:

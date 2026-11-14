@@ -10,7 +10,9 @@ import { formatAusfallDauer } from '../components/SeeStatusBanner'
 import { getKasseIdentity } from '../lib/kasse'
 import { useIstBetreiber } from '../lib/betreiber'
 import { useServerHost, merkeServerHost } from '../lib/serverHost'
-import { geraeteBasis, type GeraeteApp } from '../lib/geraeteAdressen'
+import { geraeteBasis, geraeteBasisSicher, type GeraeteApp } from '../lib/geraeteAdressen'
+import { ladeLanHttpsInfo } from '../lib/lanHttps'
+import { LanHttpsKarte } from '../components/LanHttpsKarte'
 import { getAuth, hasModul, tagesRegel } from '../lib/auth'
 import { heuteKalendertag } from '../lib/geschaeftstag'
 import { Field } from '../components/ui/Field'
@@ -2712,11 +2714,25 @@ function GeraeteSektion() {
   // das Backend die LAN-IP NICHT selbst ermitteln, dann muss sie einmal von
   // Hand eingetragen werden und wird auf diesem Gerät gemerkt.
   const erkannt = useServerHost()
+
+  // HTTPS im LAN (Dienst „lan-https"): aktiv, und für welche IP gilt das Zertifikat?
+  // Kennt der Dienst die LAN-IP, taugt sie auch als Server-Adresse (letzte Rückfallquelle).
+  const lanQ = useQuery({
+    queryKey:  ['lan-https'],
+    queryFn:   () => ladeLanHttpsInfo(),
+    staleTime: 60_000,
+    retry:     false,
+  })
+  const [nurHttp, setNurHttp] = useState(false)
+
   const [host, setHost] = useState(window.location.hostname)
+  const lanIp = lanQ.data?.ip
   useEffect(() => {
-    if ((host === 'localhost' || host === '127.0.0.1') && erkannt.host) setHost(erkannt.host)
-  }, [erkannt.host, host])
-  const hostUnbekannt = (host === 'localhost' || host === '127.0.0.1') && erkannt.fertig
+    if (host !== 'localhost' && host !== '127.0.0.1') return
+    if (erkannt.host) setHost(erkannt.host)
+    else if (erkannt.fertig && lanIp) setHost(lanIp)
+  }, [erkannt.host, erkannt.fertig, lanIp, host])
+  const hostUnbekannt = (host === 'localhost' || host === '127.0.0.1') && erkannt.fertig && !lanQ.isPending && !lanIp
 
   // KDS-Bildschirme haben keinen Login → der QR trägt einen langlebigen
   // Geräte-Token (nur für /api/kds gültig). Ohne ihn zeigt das KDS eine
@@ -2744,8 +2760,13 @@ function GeraeteSektion() {
     { label: 'Abholmonitor',  app: 'abholmonitor', params: `?kasseId=${identity.kasseId}`, hinweis: 'Wandbildschirm Abholung (diese Kasse)', modul: 'sbTerminal' },
   ]
   const sichtbar = APPS.filter(a => !a.modul || hasModul(a.modul))
-  const urlFuer  = (a: (typeof APPS)[number]) =>
-    `${geraeteBasis(a.app, window.location.protocol, host)}/${a.params ?? ''}`
+  // HTTPS im LAN aktiv → gesicherte Adressen (mit der IP des Zertifikats) für die Apps,
+  // die einen gesicherten Eingang haben; abschaltbar für Geräte ohne Einrichtung.
+  const lanSicher = !nurHttp && lanQ.data ? lanQ.data : null
+  const urlFuer  = (a: (typeof APPS)[number]) => {
+    const sicher = lanSicher ? geraeteBasisSicher(a.app, lanSicher.ip) : null
+    return `${sicher ?? geraeteBasis(a.app, window.location.protocol, host)}/${a.params ?? ''}`
+  }
 
   const [kopiert, setKopiert] = useState<string | null>(null)
   const kopieren = (url: string) => {
@@ -2794,12 +2815,23 @@ function GeraeteSektion() {
           )}
         </div>
 
+        <LanHttpsKarte
+          info={lanQ.data}
+          geprueft={!lanQ.isPending}
+          host={host}
+          nurHttp={nurHttp}
+          setNurHttp={setNurHttp}
+        />
+
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {sichtbar.map(a => {
             const url = urlFuer(a)
             return (
               <div key={a.label} className="rounded-lg border border-line p-4 text-center space-y-2">
-                <p className="text-sm font-semibold text-ink">{a.label}</p>
+                <p className="text-sm font-semibold text-ink">
+                  {a.label}
+                  {url.startsWith('https://') && <span className="ml-1.5 rounded bg-brand-50 px-1.5 py-0.5 text-[10px] font-semibold text-brand-700">HTTPS</span>}
+                </p>
                 <QRCodeSVG value={url} size={132} level="M" className="mx-auto" />
                 <p className="text-xs text-ink-subtle">{a.hinweis}</p>
                 <button
