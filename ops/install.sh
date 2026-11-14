@@ -15,12 +15,17 @@
 # und alle Belege bleiben erhalten).
 #
 # Nutzung:
-#   curl -fsSL https://raw.githubusercontent.com/maverick-2bit/kassa/master/ops/install.sh | bash
+#   T=$(curl -fsSL https://api.github.com/repos/maverick-2bit/kassa/git/matching-refs/tags/v | grep -Eo '"refs/tags/v[0-9]+\.[0-9]+\.[0-9]+"' | tr -d '"' | sed 's|refs/tags/||' | sort -V | tail -n 1); curl -fsSL "https://raw.githubusercontent.com/maverick-2bit/kassa/$T/ops/install.sh" | bash
 #   # oder aus einem Checkout:  bash ops/install.sh
+#
+# Installiert wird das neueste RELEASE (Git-Tag vX.Y.Z), nie die Spitze von master. Das Skript prüft die Signatur des
+# Releases nicht — das tut der In-App-Updater bei jedem späteren Update (ops/updater/updater.sh, ops/DEPLOYMENT.md
+# Abschnitt 11); die Erstinstallation vertraut GitHub per TLS.
 #
 # Optionale Umgebungsvariablen:
 #   KASSA_DIR=~/kassa        Zielverzeichnis (Default: $HOME/kassa)
-#   KASSA_BRANCH=master      Git-Branch (Default: master)
+#   KASSA_VERSION=v0.8.91    ein bestimmtes Release statt des neuesten (Default: neuestes Release-Tag)
+#   KASSA_BRANCH=<branch>    NUR für Entwicklung/Tests: Stand dieses Branches statt eines Releases (ungeprüft!)
 #   KASSA_OHNE_DOCKER=1      Nur Code + .env vorbereiten (Testlauf, kein Docker)
 #
 # Fernwartung (optional, nur Linux, best effort — siehe ops/DEPLOYMENT.md):
@@ -36,9 +41,11 @@
 set -euo pipefail
 
 KASSA_DIR="${KASSA_DIR:-$HOME/kassa}"
-KASSA_BRANCH="${KASSA_BRANCH:-master}"
+KASSA_BRANCH="${KASSA_BRANCH:-}"
+KASSA_VERSION="${KASSA_VERSION:-}"
 REPO="maverick-2bit/kassa"
-TARURL="https://github.com/${REPO}/archive/refs/heads/${KASSA_BRANCH}.tar.gz"
+KASSA_REF=""        # Tag (vX.Y.Z) bzw. Branch, von dem installiert wird — siehe bestimme_ref
+TARURL=""
 
 # ── Ausgabe-Helfer ───────────────────────────────────────────────────────────
 if [ -t 1 ]; then
@@ -51,6 +58,43 @@ ok()       { printf '%s✓ %s%s\n' "$C_G" "$*" "$C_0"; }
 hinweis()  { printf '%s… %s%s\n' "$C_Y" "$*" "$C_0"; }
 fehler()   { printf '%s✗ %s%s\n' "$C_R" "$*" "$C_0" 1>&2; }
 abbruch()  { fehler "$*"; exit 1; }
+
+# ── Welcher Stand wird installiert? ──────────────────────────────────────────
+# Alle Release-Tags (vX.Y.Z) von GitHub, neueste zuerst (zahlenweise: v0.8.100 > v0.8.99). Erst die GitHub-API,
+# ohne Antwort (Limit/Netz) `git ls-remote`, falls git da ist.
+release_tags() {
+  curl -fsSL -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/${REPO}/git/matching-refs/tags/v" 2>/dev/null \
+    | grep -Eo '"refs/tags/v[0-9]+\.[0-9]+\.[0-9]+"' | tr -d '"' || true
+}
+neuestes_release() {
+  local liste
+  liste="$(release_tags)"
+  if [ -z "$liste" ] && command -v git >/dev/null 2>&1; then
+    liste="$(git ls-remote --tags --refs "https://github.com/${REPO}.git" 'refs/tags/v*' 2>/dev/null | awk '{ print $2 }' || true)"
+  fi
+  printf '%s\n' "$liste" | sed 's|^refs/tags/||' | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true; } \
+    | awk -F'[v.]' '{ printf "%09d%09d%09d %s\n", $2, $3, $4, $0 }' | sort | tail -n 1 | awk '{ print $2 }'
+}
+# setzt KASSA_REF und TARURL (einmal, beim ersten Bedarf); 1 = kein Release gefunden
+ermittle_ref() {
+  [ -z "$KASSA_REF" ] || return 0
+  if [ -n "$KASSA_BRANCH" ]; then
+    KASSA_REF="$KASSA_BRANCH"
+    TARURL="https://github.com/${REPO}/archive/refs/heads/${KASSA_REF}.tar.gz"
+    hinweis "ACHTUNG: Entwicklungsstand des Branches '$KASSA_BRANCH' — ungeprüft, nicht für Kunden-Kassen."
+    return 0
+  fi
+  if [ -n "$KASSA_VERSION" ]; then
+    case "$KASSA_VERSION" in v*) KASSA_REF="$KASSA_VERSION" ;; *) KASSA_REF="v$KASSA_VERSION" ;; esac
+  else
+    KASSA_REF="$(neuestes_release)"
+  fi
+  if ! printf '%s' "$KASSA_REF" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then KASSA_REF=""; return 1; fi
+  TARURL="https://github.com/${REPO}/archive/refs/tags/${KASSA_REF}.tar.gz"
+}
+bestimme_ref() {
+  ermittle_ref || abbruch "Kein Release auf GitHub gefunden (Internetverbindung prüfen; später erneut oder KASSA_VERSION=vX.Y.Z setzen)."
+}
 
 # ── Plattform erkennen ───────────────────────────────────────────────────────
 case "$(uname -s)" in
@@ -94,7 +138,8 @@ fw_bibliothek_laden() {
     [ -f "$k" ] && { . "$k"; return 0; }
   done
   dl="$(mktemp 2>/dev/null)" || return 1
-  if curl -fsSL -o "$dl" "https://raw.githubusercontent.com/${REPO}/${KASSA_BRANCH}/ops/fernwartung.sh" 2>/dev/null; then
+  ermittle_ref || { rm -f "$dl"; return 1; }
+  if curl -fsSL -o "$dl" "https://raw.githubusercontent.com/${REPO}/${KASSA_REF}/ops/fernwartung.sh" 2>/dev/null; then
     # shellcheck disable=SC1090
     . "$dl"; rm -f "$dl"; return 0
   fi
@@ -185,13 +230,16 @@ fi
 # ─────────────────────────────────────────────────────────────────────────────
 # 2. Quellcode laden (nach $KASSA_DIR spiegeln, .env bleibt erhalten)
 # ─────────────────────────────────────────────────────────────────────────────
-schritt "Lade aktuellen Quellcode (Branch: $KASSA_BRANCH)"
 linux_paket curl curl
+bestimme_ref
+schritt "Lade Quellcode (${KASSA_REF})"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 curl -fsSL "$TARURL" | tar -xz -C "$tmp" || abbruch "Download/Entpacken fehlgeschlagen — Internetverbindung prüfen."
-quelle="$tmp/kassa-${KASSA_BRANCH}"
-[ -d "$quelle" ] || abbruch "Entpacktes Verzeichnis nicht gefunden ($quelle)."
+# GitHub packt in genau einen Ordner (kassa-<Version> bzw. kassa-<Branch>); der Name ist unerheblich
+quelle="$(ls -d "$tmp"/*/ 2>/dev/null | head -n 1)"
+quelle="${quelle%/}"
+[ -n "$quelle" ] && [ -d "$quelle" ] || abbruch "Entpacktes Verzeichnis nicht gefunden (in $tmp)."
 
 mkdir -p "$KASSA_DIR"
 if command -v rsync >/dev/null 2>&1; then

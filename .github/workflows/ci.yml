@@ -264,6 +264,27 @@ jobs:
       - name: Verhaltenstest (ops/nginx/client-ip-test/test.sh)
         run: sh ops/nginx/client-ip-test/test.sh
 
+  # ── Updater: Herkunftsprüfung (signierte Release-Tags) + Rückweg ──────────────
+  # Ohne Docker, mit echten Git-/SSH-Signaturen und einer Docker-Attrappe. Die Standard-sh von Ubuntu (dash) steht für
+  # die ash im Alpine-Container des Updaters ein: Bashismen fallen hier auf. Die Mutationsprobe macht den Updater gezielt
+  # kaputt — jede Mutation MUSS die Tests röten (sonst prüft ein Test nichts).
+  updater:
+    name: Updater (Signatur + Rückweg)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: rsync bereitstellen (ein Test ruft das echte rsync auf)
+        run: command -v rsync >/dev/null || (sudo apt-get update -qq && sudo apt-get install -y -qq rsync)
+
+      - name: Verhaltenstest (ops/updater/test-updater.sh)
+        run: sh ops/updater/test-updater.sh
+
+      - name: Gegenprobe (Mutationen)
+        run: sh ops/updater/test-updater.sh mutationen
+
   # ── Docker-Images bauen & nach GHCR pushen (nur auf master, nach grünen Gates) ─
   docker:
     name: Docker Build & Push

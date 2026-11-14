@@ -623,7 +623,7 @@ function Lass-Paketblock-Laufen {
   $von = $text.IndexOf('# ── 7b. Fernwartung'); if ($von -lt 0) { throw '7b-Marke nicht gefunden' }
   $bis = $text.IndexOf('$liesMich = @"', $von); if ($bis -lt 0) { throw 'Ende nicht gefunden' }
   $block = $text.Substring($von, $bis - $von).Replace('$PSScriptRoot', '$FwTestOrdner')
-  $FwTestOrdner = $SkriptOrdner; $FernwartungKonfig = $Konfig; $codeDir = $CodeOrdner; $Ziel = $Paket; $Branch = 'master'
+  $FwTestOrdner = $SkriptOrdner; $FernwartungKonfig = $Konfig; $codeDir = $CodeOrdner; $Ziel = $Paket; $Ref = 'v0.0.0'
   function Schritt([string]$t) { Write-Host ("==> " + $t) }
   function Ok([string]$t) { Write-Host ("OK: " + $t) }
   return (Invoke-Expression $block *>&1 | Out-String)
@@ -640,7 +640,7 @@ Pruefe 'Offline-Paket: die Assignment-ID steht in keiner Ausgabe' { $konsole -no
 $paketB = Neues-Tempverzeichnis; $aufraeumen.Add($paketB)
 $leerCode = Neues-Tempverzeichnis; $aufraeumen.Add($leerCode)
 $konsole = Lass-Paketblock-Laufen -Konfig (Join-Path $cfgOrd 'fernwartung.json') -CodeOrdner $leerCode -Paket $paketB
-Pruefe 'Offline-Paket: fehlt die Bibliothek im Code, meldet es das — das Paket wird trotzdem erstellt (kein Absturz)' { ($konsole -match 'fehlt im Branch') -and ($konsole -match 'trotzdem erstellt') -and -not (Test-Path (Join-Path $paketB 'TeamViewer_Host.msi')) }
+Pruefe 'Offline-Paket: fehlt die Bibliothek im Code, meldet es das — das Paket wird trotzdem erstellt (kein Absturz)' { ($konsole -match 'fehlt im Release') -and ($konsole -match 'trotzdem erstellt') -and -not (Test-Path (Join-Path $paketB 'TeamViewer_Host.msi')) }
 Schreibe-Text (Join-Path $cfgOrd 'kaputt.json') ('{ "apiToken": "' + $TOKEN + '" "x": 1 }')
 $paketC = Neues-Tempverzeichnis; $aufraeumen.Add($paketC)
 $konsole = Lass-Paketblock-Laufen -Konfig (Join-Path $cfgOrd 'kaputt.json') -CodeOrdner $repoWurzel -Paket $paketC
@@ -734,6 +734,94 @@ $cmd = [System.IO.File]::ReadAllText((Join-Path $here 'Kassa-Setup.cmd'))
 Pruefe 'Kassa-Setup.cmd: gibt fernwartung.json neben der Datei an den Installer weiter' { $cmd -match '-FernwartungKonfig "%~dp0fernwartung\.json"' -and $cmd -match 'if exist "%~dp0fernwartung\.json"' }
 Pruefe 'Kassa-Setup.cmd: durchgehend CRLF' { ($cmd -split "`n" | Where-Object { $_ -ne '' -and -not $_.EndsWith("`r") }).Count -eq 0 }
 if ($motoren.Count -eq 0) { Pruefe 'PowerShell-Engine für den Prozess-Test vorhanden' { $false } }
+
+# =============================================================================
+Gruppe '7. Release statt master: welcher Stand wird installiert?'
+# =============================================================================
+# Die Installer (install.ps1, erstelle-offline-paket.ps1) und Kassa-Setup.cmd nehmen das neueste Release-Tag vX.Y.Z,
+# nie die Spitze von master. GitHub wird durch Funktionen ersetzt, die nur Aufrufe mitschreiben.
+
+function Hole-Quellblock([string]$Skript, [string]$Von, [string]$Bis) {
+  $quelltext = [System.IO.File]::ReadAllText((Join-Path $here $Skript), [System.Text.Encoding]::UTF8).Replace("`r`n", "`n")
+  $a = $quelltext.IndexOf($Von); if ($a -lt 0) { throw "Marke nicht gefunden: $Von in $Skript" }
+  $b = $quelltext.IndexOf($Bis, $a); if ($b -lt 0) { throw "Ende nicht gefunden: $Bis in $Skript" }
+  return $quelltext.Substring($a, $b - $a)
+}
+
+# Tags wie in der Antwort der GitHub-API matching-refs/tags/v — mit Vorabversionen und Fremdem, das übergangen werden muss
+$TagAntwort = @('refs/tags/v0.8.9', 'refs/tags/v0.8.91', 'refs/tags/v0.8.100', 'refs/tags/v0.8.99', 'refs/tags/v0.9.0-rc1', 'refs/tags/vtest') |
+  ForEach-Object { [pscustomobject]@{ ref = $_ } }
+
+function Lass-Release-Wahl {
+  param([string]$Skript, [string]$Branch = '', [string]$Version = '', [bool]$ApiFehler = $false, $Antwort = $TagAntwort)
+  $block = Hole-Quellblock $Skript '# Alle Release-Tags (vX.Y.Z) von GitHub' $(if ($Skript -eq 'install.ps1') { '# Kryptografisch sicheres Hex-Secret' } else { "Write-Host ''" })
+  $script:Ref = $null; $script:ZipUrl = $null
+  $script:HinweisText = ''
+  $script:ApiAufrufe = 0
+  function Invoke-RestMethod { param([switch]$UseBasicParsing, $Headers, $Uri) $script:ApiAufrufe++; if ($ApiFehler) { throw 'offline' }; return $Antwort }
+  function Hinweis([string]$t) { $script:HinweisText += $t }
+  Invoke-Expression $block
+  $neuestes = Finde-NeuestesRelease
+  $script:ApiAufrufe = 0   # gezählt werden nur die Abfragen von Bestimme-Ref
+  $gefunden = $null
+  if ($Skript -eq 'install.ps1') { $gefunden = Bestimme-Ref }
+  return [pscustomobject]@{ Neuestes = $neuestes; Gefunden = $gefunden; Ref = $script:Ref; ZipUrl = $script:ZipUrl; Hinweis = $script:HinweisText; ApiAufrufe = $script:ApiAufrufe }
+}
+
+foreach ($n in @('install.ps1', 'erstelle-offline-paket.ps1')) {
+  $r = Lass-Release-Wahl $n
+  Pruefe "$n`: neuestes Release wird zahlenweise bestimmt (v0.8.100, nicht v0.8.99), Vorabversion und Fremdes werden übergangen" { $r.Neuestes -eq 'v0.8.100' }
+  $r = Lass-Release-Wahl $n -ApiFehler $true
+  Pruefe "$n`: GitHub nicht erreichbar → kein Release (und kein Ausweichen auf master)" { $null -eq $r.Neuestes }
+  $r = Lass-Release-Wahl $n -Antwort @([pscustomobject]@{ ref = 'refs/tags/v0.9.0-rc1' }, [pscustomobject]@{ ref = 'refs/tags/vtest' })
+  Pruefe "$n`: nur Vorabversionen/Fremdes → kein Release" { $null -eq $r.Neuestes }
+}
+
+$r = Lass-Release-Wahl 'install.ps1'
+Pruefe 'install.ps1: Standard = neuestes Release als ZIP des TAGS (archive/refs/tags/v0.8.100.zip)' { $r.Gefunden -eq $true -and $r.Ref -eq 'v0.8.100' -and $r.ZipUrl -eq 'https://github.com/maverick-2bit/kassa/archive/refs/tags/v0.8.100.zip' }
+$r = Lass-Release-Wahl 'install.ps1' -Version '0.8.9'
+Pruefe 'install.ps1 -Version 0.8.9: genau dieses Release, ohne die Release-Liste abzufragen' { $r.Ref -eq 'v0.8.9' -and $r.ApiAufrufe -eq 0 -and $r.ZipUrl -like '*archive/refs/tags/v0.8.9.zip' }
+$r = Lass-Release-Wahl 'install.ps1' -Version 'v0.8.50'
+Pruefe 'install.ps1 -Version v0.8.50: auch mit v' { $r.Ref -eq 'v0.8.50' }
+$r = Lass-Release-Wahl 'install.ps1' -Version '0.8'
+Pruefe 'install.ps1 -Version mit ungültigem Format → abgelehnt' { $r.Gefunden -eq $false -and $null -eq $r.Ref }
+$r = Lass-Release-Wahl 'install.ps1' -Branch 'entwicklung'
+Pruefe "install.ps1 -Branch (nur Entwicklung): lädt den Branch und warnt deutlich vor dem ungeprüften Stand" { $r.Ref -eq 'entwicklung' -and $r.ZipUrl -like '*archive/refs/heads/entwicklung.zip' -and $r.Hinweis -match 'ungeprüft' }
+$r = Lass-Release-Wahl 'install.ps1' -ApiFehler $true
+Pruefe 'install.ps1: GitHub nicht erreichbar → Bestimme-Ref meldet $false (der Installer bricht ab, statt master zu nehmen)' { $r.Gefunden -eq $false -and $null -eq $r.Ref }
+
+# Kein Installer greift mehr auf die Spitze von master zu
+foreach ($n in @('install.ps1', 'erstelle-offline-paket.ps1', 'Kassa-Setup.cmd', 'Kassa-Setup.command', 'install.sh')) {
+  $quelltext = [System.IO.File]::ReadAllText((Join-Path $here $n), [System.Text.Encoding]::UTF8)
+  Pruefe "$n`: lädt nichts von der Spitze von master (kein .../master/..., kein archive/refs/heads/master)" { $quelltext -notmatch 'raw\.githubusercontent\.com/maverick-2bit/kassa/master' -and $quelltext -notmatch 'archive/refs/heads/master' }
+}
+
+# Kassa-Setup.cmd: der eingebettete PowerShell-Aufruf wird mit Attrappen für GitHub ausgeführt (eigener Prozess, wie in echt)
+$cmdQuelle = [System.IO.File]::ReadAllText((Join-Path $here 'Kassa-Setup.cmd'))
+$treffer = [regex]::Match($cmdQuelle, '(?m)^powershell -NoProfile -ExecutionPolicy Bypass -Command "(?<code>[^"\r\n]*)"\r?$')
+Pruefe 'Kassa-Setup.cmd: enthält den PowerShell-Aufruf zur Release-Suche (ohne innere Anführungszeichen, die cmd stören würden)' { $treffer.Success -and $treffer.Groups['code'].Value -match 'matching-refs/tags/v' }
+if ($treffer.Success) {
+  $tmpCmd = Neues-Tempverzeichnis; $aufraeumen.Add($tmpCmd)
+  $stubText = @'
+function Invoke-RestMethod { param([switch]$UseBasicParsing, $Headers, $Uri) $global:RestUri = $Uri; if ($env:KASSA_TEST_API -eq 'fehler') { throw 'offline' }; return @('refs/tags/v0.8.9','refs/tags/v0.8.100','refs/tags/v0.8.99','refs/tags/v0.9.0-rc1','refs/tags/vtest') | ForEach-Object { [pscustomobject]@{ ref = $_ } } }
+function Invoke-WebRequest { param([switch]$UseBasicParsing, $OutFile, $Uri) Set-Content -LiteralPath $OutFile -Value $Uri }
+'@
+  Schreibe-Text (Join-Path $tmpCmd 'lauf.ps1') ($stubText + "`n" + $treffer.Groups['code'].Value)
+  $vorherTemp = $env:TEMP; $env:TEMP = $tmpCmd
+  foreach ($m in $motoren) {
+    $env:KASSA_TEST_API = ''
+    [void](& $m[1] -NoProfile -ExecutionPolicy Bypass -File (Join-Path $tmpCmd 'lauf.ps1') 2>&1)
+    $code = $LASTEXITCODE
+    $geladen = if (Test-Path (Join-Path $tmpCmd 'kassa-install.ps1')) { (Get-Content -LiteralPath (Join-Path $tmpCmd 'kassa-install.ps1') -Raw).Trim() } else { '' }
+    Pruefe ($m[0] + ' / Kassa-Setup.cmd: holt install.ps1 aus dem Tag des neuesten Release (v0.8.100), nicht aus master') { $code -eq 0 -and $geladen -eq 'https://raw.githubusercontent.com/maverick-2bit/kassa/v0.8.100/ops/install.ps1' }
+    Remove-Item -LiteralPath (Join-Path $tmpCmd 'kassa-install.ps1') -Force -ErrorAction SilentlyContinue
+    $env:KASSA_TEST_API = 'fehler'
+    [void](& $m[1] -NoProfile -ExecutionPolicy Bypass -File (Join-Path $tmpCmd 'lauf.ps1') 2>&1)
+    $code = $LASTEXITCODE
+    Pruefe ($m[0] + ' / Kassa-Setup.cmd: GitHub nicht erreichbar → Fehlercode (kein Ausweichen auf master), nichts geladen') { $code -ne 0 -and -not (Test-Path (Join-Path $tmpCmd 'kassa-install.ps1')) }
+  }
+  $env:TEMP = $vorherTemp; $env:KASSA_TEST_API = ''
+}
 
 # ---- Aufräumen + Ergebnis -----------------------------------------------------
 foreach ($d in $aufraeumen) { Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue }
