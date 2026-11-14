@@ -2178,13 +2178,13 @@ function AktualisierungSektion() {
         <div className="rounded-lg border border-line bg-panel-2 p-4 text-sm text-ink-muted space-y-3">
           <p>{s ? 'Die Kassa ist auf dem neuesten Stand.' : 'Status wird geladen…'}</p>
           {/* Notfall: Update auch OHNE angezeigte neuere Version anstoßen — der
-              Updater holt immer den aktuellen GitHub-Stand; nur die Anzeige
-              kann (Cache/CDN) nachhinken. Für dringende Umstellungen im Event. */}
+              Updater holt immer das neueste GEPRÜFTE Release (signiert) von GitHub;
+              nur die Anzeige kann (Cache) nachhinken. Für dringende Umstellungen im Event. */}
           {s && istBetreiber && s.updaterVerfuegbar && (
             erzwingen ? (
               <div className="space-y-2 border-t border-line pt-3">
                 <p className="text-xs text-ink-muted">
-                  Holt den aktuellen Stand von GitHub und baut die Dienste neu — auch wenn oben
+                  Holt das neueste geprüfte (signierte) Release von GitHub und baut die Dienste neu — auch wenn oben
                   keine neuere Version steht. Die Kassa ist dabei <strong>rund 1 Minute offline</strong>.
                   Nur starten, wenn gerade nicht kassiert wird. Fortfahren?
                 </p>

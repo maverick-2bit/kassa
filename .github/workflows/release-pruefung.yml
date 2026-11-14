@@ -1,0 +1,37 @@
+name: Release-Tag prüfen
+
+# Läuft bei jedem neuen Release-Tag (vX.Y.Z).
+#
+# Rot (und eine Mail von GitHub) heißt: Der In-App-Updater der Kassen wird dieses Release ABLEHNEN und still übergehen —
+# die Kassen zeigen dann weiter das alte Release. Dann das Tag neu setzen bzw. das Release korrigieren
+# (ops/DEPLOYMENT.md, Abschnitt 11). Ohne diese Prüfung bliebe ein falsch oder gar nicht signiertes Release unbemerkt.
+#
+# Geprüft wird dasselbe wie lokal vor dem Push: sh ops/release/pruefe-release.sh vX.Y.Z --master
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  pruefen:
+    name: Signatur, Version, Pflichtdateien
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout (volle Historie)
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # actions/checkout ersetzt bei Tag-Läufen ein annotiertes Tag durch das Commit — das Tag-Objekt samt Signatur
+      # und alle übrigen Tags (für das Vorgänger-Release) neu holen.
+      - name: Tag-Objekt und Tags holen
+        run: |
+          git fetch --force --tags origin
+          git fetch --force origin "+refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"
+
+      - name: Release prüfen
+        run: sh ops/release/pruefe-release.sh "${GITHUB_REF_NAME}" --master

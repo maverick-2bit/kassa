@@ -26,15 +26,18 @@ import type { Config } from '../config.js'
 import { holePortalStatus } from '../services/portal-melder.service.js'
 import { istAktiverBetreiber, requireBetreiber } from '../auth/betreiber.js'
 import { leseFernwartungStatus } from '../services/fernwartung-status.js'
+import { neuesteVersionAusTags } from '../services/release-version.js'
 
 const require = createRequire(import.meta.url)
 const { version: INSTALLIERT } = require('../../package.json') as { version: string }
 
 const CONTROL_DIR = process.env.UPDATE_CONTROL_DIR ?? '/control'
-const BRANCH      = process.env.KASSA_BRANCH ?? 'master'
-const GITHUB_VERSION_URL = `https://raw.githubusercontent.com/maverick-2bit/kassa/${BRANCH}/package.json`
+// Alle Release-Tags (vX.Y.Z) des Repos in EINER Antwort. Der Updater installiert nur das neueste signierte Release-Tag,
+// nie die Spitze von master — die Anzeige folgt derselben Regel (services/release-version.ts).
+const GITHUB_TAGS_URL = 'https://api.github.com/repos/maverick-2bit/kassa/git/matching-refs/tags/v'
 
-// Neueste Version von GitHub — kurz gecacht, damit nicht jeder Statusaufruf fetcht.
+// Neueste Version von GitHub — kurz gecacht, damit nicht jeder Statusaufruf fetcht
+// (die anonyme GitHub-API erlaubt 60 Anfragen pro Stunde und IP).
 let cache: { version: string | null; geprueft: number } = { version: null, geprueft: 0 }
 const CACHE_MS = 10 * 60_000
 
@@ -42,13 +45,17 @@ async function holeNeuesteVersion(frisch = false): Promise<string | null> {
   const jetzt = Date.now()
   if (!frisch && cache.version && jetzt - cache.geprueft < CACHE_MS) return cache.version
   try {
-    // frisch: eindeutige Query als Cache-Buster gegen das GitHub-CDN — sonst
-    // kann auch eine erzwungene Prüfung noch minutenlang den alten Stand sehen.
-    const url = frisch ? `${GITHUB_VERSION_URL}?frisch=${jetzt}` : GITHUB_VERSION_URL
-    const res = await fetch(url, { signal: AbortSignal.timeout(5000) })
+    // frisch: eindeutige Query als Cache-Buster — sonst kann auch eine erzwungene Prüfung
+    // noch einen Moment den alten Stand sehen.
+    const url = frisch ? `${GITHUB_TAGS_URL}?frisch=${jetzt}` : GITHUB_TAGS_URL
+    const res = await fetch(url, {
+      headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'kassa-pos-update-check' },
+      signal: AbortSignal.timeout(5000),
+    })
     if (!res.ok) return cache.version
-    const pkg = (await res.json()) as { version?: string }
-    if (pkg.version) cache = { version: pkg.version, geprueft: jetzt }
+    const refs = (await res.json()) as Array<{ ref?: string }>
+    const version = Array.isArray(refs) ? neuesteVersionAusTags(refs.map((r) => r.ref ?? '')) : null
+    if (version) cache = { version, geprueft: jetzt }
     return cache.version
   } catch {
     return cache.version // offline → letzter bekannter Wert (oder null)

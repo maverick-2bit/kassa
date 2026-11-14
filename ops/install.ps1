@@ -13,8 +13,12 @@
 #   ops/DEPLOYMENT.md, Abschnitt „Fernwartung (TeamViewer Host)"
 #
 # Aufruf (PowerShell ALS ADMINISTRATOR, EINE Zeile — umgeht Execution-Policy-
-# und TLS-Stolpersteine frischer Windows-Installationen):
-#   Set-ExecutionPolicy Bypass -Scope Process -Force; [Net.ServicePointManager]::SecurityProtocol = 3072; iwr 'https://raw.githubusercontent.com/maverick-2bit/kassa/master/ops/install.ps1' -OutFile "$env:TEMP\kassa-install.ps1" -UseBasicParsing; & "$env:TEMP\kassa-install.ps1"
+# und TLS-Stolpersteine frischer Windows-Installationen; holt den Installer des NEUESTEN RELEASES, nicht der master-Spitze):
+#   Set-ExecutionPolicy Bypass -Scope Process -Force; [Net.ServicePointManager]::SecurityProtocol = 3072; $t = (Invoke-RestMethod 'https://api.github.com/repos/maverick-2bit/kassa/git/matching-refs/tags/v').ref | Where-Object { $_ -match '^refs/tags/v\d+\.\d+\.\d+$' } | ForEach-Object { $_ -replace '^refs/tags/','' } | Sort-Object { [version]$_.Substring(1) } | Select-Object -Last 1; iwr "https://raw.githubusercontent.com/maverick-2bit/kassa/$t/ops/install.ps1" -OutFile "$env:TEMP\kassa-install.ps1" -UseBasicParsing; & "$env:TEMP\kassa-install.ps1"
+#
+# Installiert wird das neueste RELEASE (Git-Tag vX.Y.Z), nie die Spitze von master. Der Installer prüft die Signatur
+# nicht — das tut der In-App-Updater bei jedem späteren Update (ops/updater/updater.sh, ops/DEPLOYMENT.md Abschnitt 11);
+# die Erstinstallation vertraut GitHub per TLS.
 #
 # Erneut ausführen = Update (Code neu laden + Container neu bauen; .env und
 # alle Daten/Volumes bleiben unangetastet).
@@ -25,8 +29,10 @@
 param(
   # Installationsverzeichnis
   [string]$Ziel = 'C:\kassa-pos',
-  # Git-Branch, dessen Stand installiert wird
-  [string]$Branch = 'master',
+  # Ein bestimmtes Release statt des neuesten (z. B. v0.8.91 oder 0.8.91)
+  [string]$Version = '',
+  # NUR für Entwicklung/Tests: Stand dieses Branches statt eines Releases (ungeprüft!)
+  [string]$Branch = '',
   # Nur Code + .env vorbereiten, Docker/Firewall überspringen (Testlauf)
   [switch]$OhneDocker,
 
@@ -60,6 +66,34 @@ function Schritt([string]$Text)  { Write-Host "`n==> $Text" -ForegroundColor Cya
 function Ok([string]$Text)       { Write-Host "    OK: $Text" -ForegroundColor Green }
 function Hinweis([string]$Text)  { Write-Host "    $Text" -ForegroundColor Yellow }
 function Fehler([string]$Text)   { Write-Host "FEHLER: $Text" -ForegroundColor Red }
+
+# Alle Release-Tags (vX.Y.Z) von GitHub → das neueste (zahlenweise: v0.8.100 > v0.8.99); $null, wenn keins erreichbar ist
+function Finde-NeuestesRelease {
+  try {
+    $refs = Invoke-RestMethod -UseBasicParsing -Headers @{ 'User-Agent' = 'kassa-installer' } -Uri 'https://api.github.com/repos/maverick-2bit/kassa/git/matching-refs/tags/v'
+  } catch { return $null }
+  $tags = @($refs | ForEach-Object { $_.ref } | Where-Object { $_ -match '^refs/tags/v\d+\.\d+\.\d+$' } | ForEach-Object { $_ -replace '^refs/tags/', '' })
+  if ($tags.Count -eq 0) { return $null }
+  return ($tags | Sort-Object { [version]$_.Substring(1) } | Select-Object -Last 1)
+}
+
+# Welcher Stand wird installiert? Setzt $script:Ref (Tag bzw. Branch) und $script:ZipUrl; $false = kein Release gefunden
+$script:Ref = $null
+$script:ZipUrl = $null
+function Bestimme-Ref {
+  if ($script:Ref) { return $true }
+  if ($Branch) {
+    $script:Ref = $Branch
+    $script:ZipUrl = "https://github.com/maverick-2bit/kassa/archive/refs/heads/$Branch.zip"
+    Hinweis "ACHTUNG: Entwicklungsstand des Branches '$Branch' — ungeprüft, nicht für Kunden-Kassen."
+    return $true
+  }
+  if ($Version) { $tag = $(if ($Version.StartsWith('v')) { $Version } else { 'v' + $Version }) } else { $tag = Finde-NeuestesRelease }
+  if (-not $tag -or $tag -notmatch '^v\d+\.\d+\.\d+$') { return $false }
+  $script:Ref = $tag
+  $script:ZipUrl = "https://github.com/maverick-2bit/kassa/archive/refs/tags/$tag.zip"
+  return $true
+}
 
 # Kryptografisch sicheres Hex-Secret (PS-5.1-kompatibel)
 function Neues-Secret([int]$Bytes) {
@@ -126,8 +160,9 @@ function Finde-FernwartungBibliothek {
   $kandidaten += (Join-Path $Ziel 'ops\fernwartung.ps1')
   foreach ($k in $kandidaten) { if (Test-Path -LiteralPath $k -PathType Leaf) { return $k } }
   try {
+    if (-not (Bestimme-Ref)) { return $null }
     $datei = Join-Path $env:TEMP 'kassa-fernwartung.ps1'
-    Invoke-WebRequest -Uri "https://raw.githubusercontent.com/maverick-2bit/kassa/$Branch/ops/fernwartung.ps1" -OutFile $datei -UseBasicParsing
+    Invoke-WebRequest -Uri "https://raw.githubusercontent.com/maverick-2bit/kassa/$($script:Ref)/ops/fernwartung.ps1" -OutFile $datei -UseBasicParsing
     return $datei
   } catch { return $null }
 }
@@ -280,15 +315,18 @@ if (-not $OhneDocker) {
 }
 
 # ── 2. Code von GitHub laden (ZIP — bewahrt LF-Zeilenenden für die Container) ─
-Schritt "Lade Kassa-Code (Branch '$Branch') von GitHub"
-$zipUrl  = "https://github.com/maverick-2bit/kassa/archive/refs/heads/$Branch.zip"
+if (-not (Bestimme-Ref)) { Fehler 'Kein Release auf GitHub gefunden — Internetverbindung prüfen (oder -Version vX.Y.Z angeben).'; exit 1 }
+Schritt "Lade Kassa-Code ($($script:Ref)) von GitHub"
+$zipUrl  = $script:ZipUrl
 $tempDir = Join-Path $env:TEMP ("kassa-install-" + [guid]::NewGuid().ToString('N'))
 $zipDatei = Join-Path $tempDir 'kassa.zip'
 New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
 Invoke-WebRequest -Uri $zipUrl -OutFile $zipDatei -UseBasicParsing
 Expand-Archive -Path $zipDatei -DestinationPath $tempDir -Force
-$quelle = Join-Path $tempDir "kassa-$Branch"
-if (-not (Test-Path $quelle)) { Fehler "Entpacktes Verzeichnis nicht gefunden: $quelle"; exit 1 }
+# GitHub packt in genau einen Ordner (kassa-<Version> bzw. kassa-<Branch>); der Name ist unerheblich
+$quellOrdner = Get-ChildItem -LiteralPath $tempDir -Directory | Select-Object -First 1
+if (-not $quellOrdner) { Fehler "Entpacktes Verzeichnis nicht gefunden (in $tempDir)"; exit 1 }
+$quelle = $quellOrdner.FullName
 Ok "Heruntergeladen nach $tempDir"
 
 # ── 3. In das Zielverzeichnis spiegeln (.env und Git-Reste bleiben verschont) ─

@@ -14,3 +14,6 @@ packages/backend/tests/fixtures/escpos-golden/* -text
 packages/rksv/tests/fixtures/fon-xsd/* -text
 # BMF-Referenzdaten: Byte-genau (Prüfsummen in SHA256SUMS)
 packages/rksv/tests/fixtures/bmf-mustercode/** -text
+
+# Vertrauensdatei des Updaters: Schlüsselzeilen, LF erzwingen (ssh-keygen -Y liest sie zeilenweise)
+ops/updater/allowed_signers text eol=lf
