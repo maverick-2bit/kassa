@@ -11,6 +11,16 @@
 
 const TAG_REF = /^refs\/tags\/v(\d+)\.(\d+)\.(\d+)$/
 
+/**
+ * Tag-Namen aus der Antwort des Git-Protokolls (GET …/info/refs?service=git-upload-pack, Protokoll v0):
+ * pkt-lines wie „004f<sha> refs/tags/v0.8.91\n", dazu je annotiertem Tag die aufgelöste Zeile „…refs/tags/v0.8.91^{}".
+ * Vorabversionen (v0.9.0-rc1) und Fremdes fallen heraus — der Name muss direkt von Zeilenende, NUL, Leerzeichen
+ * oder „^{}" gefolgt sein.
+ */
+export function tagRefsAusGitAntwort(text: string): string[] {
+  return Array.from(text.matchAll(/refs\/tags\/v\d+\.\d+\.\d+(?=\^\{\}|[\n\0 ]|$)/g), (treffer) => treffer[0])
+}
+
 /** @param refs Ref-Namen wie „refs/tags/v0.8.91" (z. B. aus der GitHub-Antwort matching-refs/tags/v) → „0.8.91" oder null */
 export function neuesteVersionAusTags(refs: readonly string[]): string | null {
   let beste: [number, number, number] | null = null

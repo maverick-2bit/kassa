@@ -154,6 +154,7 @@ docker compose version          # prüfen: v2.x
 ```bash
 git clone https://github.com/maverick-2bit/kassa.git
 cd kassa
+git checkout vX.Y.Z      # Kunden-Kassa: ein Release (signiertes Tag), nicht die master-Spitze — das neueste Tag: git tag -l 'v*' | sort -V | tail -n 1
 cp .env.example .env
 ```
 
@@ -964,3 +965,13 @@ pwsh -File ops/test-fernwartung.ps1           # Installer install.ps1 / Offline-
 Die CI führt `test-updater.sh` (mit Mutationsprobe) in jedem Lauf aus (Job „Updater"). **Nicht automatisch getestet** ist der Lauf gegen ein
 echtes Docker (kein Docker auf dem Entwicklungs-PC): ein echter Rückweg und ein echter Update-Lauf wurden mit Attrappen geprüft — vor dem ersten
 Kunden-Rollout einmal am Test-PC durchspielen (Release einspielen; zum Test des Rückwegs ein Release mit absichtlich kaputtem Backend-Start).
+
+### 11.8 Entscheidungen (2026-11-14) und verworfene Alternativen
+
+| Frage | Entscheidung | Verworfen, weil |
+|---|---|---|
+| Woran erkennt der Updater, dass ein Update von Ihnen stammt? | **Signiertes Release-Tag** (SSH-Signatur, Prüfschlüssel im Updater) | *Nur Release-Tags ohne Signatur:* schützt vor halbfertigem Stand, nicht vor Missbrauch — wer GitHub-Zugriff hat, kann ein Tag setzen. *Prüfsumme im GitHub-Release:* gleiche Vertrauensbasis wie GitHub selbst (kein Schutz bei Kontoübernahme); die von GitHub erzeugten Tarball-Bytes sind nicht garantiert stabil. Eine im Updater fest hinterlegte Prüfsumme geht nicht (jedes Release hat eine neue). |
+| Wo liegt der Schlüssel? | **Zwei Schlüssel ohne Passphrase** (Arbeitsschlüssel auf dem Release-PC, Reserveschlüssel offline) | Passphrase bzw. FIDO2-Stick: stärker, aber Releases brauchen dann Sie am PC; kann später nachgerüstet werden (neuen Schlüssel einführen, 11.3). |
+| Rückweg | **Code + Images automatisch**, keine DB-Sicherung vor dem Update | *Nur Code:* Neubau nötig (Netz, Minuten, Cache evtl. geleert). *DB-Dump vor jedem Update:* länger, Datenbank-Zugriff für den Updater — die nächtliche Sicherung (Abschnitt 6) bleibt. |
+| GitHub-Regeln | **Tags `v*` fest, kein Force-Push/Löschen auf master**, Pull-Request-Pflicht nicht | Pull-Request + grüne CI würde den Direkt-Push-Release brechen und schützt nicht vor dem Admin-Konto; die Signatur schließt die Lücke. |
+| Installer | **Neuestes Release-Tag statt master**, keine Signaturprüfung im Installer | Ein signierter Installer-Weg (Windows ohne git/ssh-keygen) wäre ein eigenes Vorhaben; die Erstinstallation vertraut weiter GitHub per TLS. |

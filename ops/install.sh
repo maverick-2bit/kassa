@@ -237,7 +237,7 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 curl -fsSL "$TARURL" | tar -xz -C "$tmp" || abbruch "Download/Entpacken fehlgeschlagen — Internetverbindung prüfen."
 # GitHub packt in genau einen Ordner (kassa-<Version> bzw. kassa-<Branch>); der Name ist unerheblich
-quelle="$(ls -d "$tmp"/*/ 2>/dev/null | head -n 1)"
+quelle="$(ls -d "$tmp"/*/ 2>/dev/null | head -n 1 || true)"
 quelle="${quelle%/}"
 [ -n "$quelle" ] && [ -d "$quelle" ] || abbruch "Entpacktes Verzeichnis nicht gefunden (in $tmp)."
 
