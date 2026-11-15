@@ -93,6 +93,27 @@ export class BelegError extends Error {
   }
 }
 
+/**
+ * Ein Verkauf mit diesem Idempotenz-Schlüssel ist an dieser Kasse schon gebucht (die Kassa schickt
+ * ihn ein zweites Mal: Antwort im WLAN verloren, Nachsenden aus der Offline-Warteschlange). Kein
+ * Fehler für die Kassa — die Route antwortet mit dem vorhandenen Beleg, ohne Druck und Bonierung.
+ */
+export class BelegSchonGebucht extends Error {
+  constructor(public readonly belegId: string) {
+    super('Dieser Verkauf ist bereits gebucht')
+  }
+}
+
+/** Beleg-ID des Verkaufs mit diesem Idempotenz-Schlüssel an dieser Kasse, sonst null */
+async function findeBelegZuSchluessel(db: Db | Tx, kasseId: string, schluessel: string): Promise<string | null> {
+  const [row] = await db
+    .select({ id: belege.id })
+    .from(belege)
+    .where(and(eq(belege.kasseId, kasseId), eq(belege.idempotenzSchluessel, schluessel)))
+    .limit(1)
+  return row?.id ?? null
+}
+
 /** BelegError.code: Die Signatureinheit/das Schlüsselmaterial weist uns ab — Warten hilft nicht. */
 export const SEE_ABGELEHNT = 'see-abgelehnt'
 
@@ -145,6 +166,11 @@ interface SigniereInput {
   ausserBetrieb?: boolean
   /** Läuft NACH dem Beleg-Insert in derselben Tx (z. B. Seriennummern als verkauft markieren). */
   nachPersist?: (tx: Tx, belegId: string, mandantId: string) => Promise<void>
+  /**
+   * Idempotenz-Schlüssel des Verkaufs: Ist an der Kasse schon ein Beleg mit diesem Schlüssel
+   * gebucht, wirft die Tx BelegSchonGebucht, bevor Lager, Seriennummern oder Signatur berührt werden.
+   */
+  idempotenzSchluessel?: string | undefined
 }
 
 /** mandanten.status nach der Übergabe an eine andere Kassa: keine neuen Belege mehr */
@@ -224,6 +250,13 @@ async function signiereImTxKern(
     const [mandantStatus] = await tx.select({ status: mandanten.status }).from(mandanten).where(eq(mandanten.id, kasse.mandantId))
     if (mandantStatus?.status === MANDANT_UEBERTRAGEN) {
       throw new BelegError(409, 'Dieser Mandant wurde auf eine andere Kassa übertragen — hier sind keine Belege mehr möglich. (Einstellungen → System → Mandant übertragen → Sperre aufheben)')
+    }
+    // Derselbe Verkauf ein zweites Mal? Erst HIER (unter der Kassen-Sperre) ist die Prüfung
+    // verlässlich: Eine gleichzeitige Zweitanfrage wartet auf die Sperre und sieht danach den
+    // gebuchten Beleg. Die Vorab-Prüfung in erstelleBarzahlungsbeleg spart nur Arbeit.
+    if (input.idempotenzSchluessel) {
+      const vorhanden = await findeBelegZuSchluessel(tx, kasse.id, input.idempotenzSchluessel)
+      if (vorhanden) throw new BelegSchonGebucht(vorhanden)
     }
     // Hinweis: Eine NICHT bei FinanzOnline registrierte Kasse darf provisorisch
     // Belege ausstellen (Event-Einrichtung ohne FON-Daten). Die Belege werden
@@ -404,6 +437,7 @@ async function signiereImTxKern(
       ...(input.verweisBelegId && { verweisBelegId: input.verweisBelegId }),
       ...(input.kundeId        && { kundeId:        input.kundeId }),
       ...(input.kundeSnapshot  && { kundeSnapshot:  input.kundeSnapshot }),
+      ...(input.idempotenzSchluessel && { idempotenzSchluessel: input.idempotenzSchluessel }),
     }).returning()
     if (!persisted) throw new BelegError(500, 'Beleg konnte nicht gespeichert werden')
 
@@ -471,8 +505,20 @@ export async function erstelleBarzahlungsbeleg(
      * Transaktion aber trotzdem ab.
      */
     freigabeDb?: Db
+    /**
+     * Idempotency-Key der Kassa: Ist der Verkauf schon gebucht, wirft der Aufruf BelegSchonGebucht
+     * (die Route antwortet dann mit dem vorhandenen Beleg) — ohne neuen Kunden, Lager, Signatur.
+     */
+    idempotenzSchluessel?: string
   } = {},
 ): Promise<BelegResponse> {
+  // Wiederholter Verkauf: früh abbrechen, bevor unten ein „neuer Kunde" ein zweites Mal entsteht.
+  // Verlässlich ist erst die Prüfung unter der Kassen-Sperre in signiereImTxKern.
+  if (opts.idempotenzSchluessel) {
+    const vorhanden = await findeBelegZuSchluessel(deps.db, input.kasseId, opts.idempotenzSchluessel)
+    if (vorhanden) throw new BelegSchonGebucht(vorhanden)
+  }
+
   // Kunden-Snapshot vor der Transaktion auflösen (neuer Kunde wird hier angelegt)
   let kundeId:       string | undefined
   let kundeSnapshot: KundeSnapshot | undefined
@@ -511,6 +557,7 @@ export async function erstelleBarzahlungsbeleg(
     validatePayment: true,
     kundeId,
     kundeSnapshot,
+    idempotenzSchluessel: opts.idempotenzSchluessel,
     belegDaten: async (tx, mandantId) => {
       // Artikel-Positionen (mit artikelId) vs. freie Positionen trennen
       const artikelPositionen = input.positionen.filter(p => ArtikelPositionSchema.safeParse(p).success)

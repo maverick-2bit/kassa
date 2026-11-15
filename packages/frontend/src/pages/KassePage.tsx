@@ -19,7 +19,7 @@ import type {
   TischTabErstellenInput,
   TischTabResponse,
 } from '@kassa/shared'
-import { GUTSCHEIN_STATUS_LABELS, MWST_LABELS, STATION_LABELS, aktionsPreisCent, aktiverRabattProzent, aktiveAktion, bonierUmleitungen, fragtNachOptionen, mengenRabattZeilen, warengruppenWahl } from '@kassa/shared'
+import { GUTSCHEIN_STATUS_LABELS, MWST_LABELS, STATION_LABELS, aktionsPreisCent, aktiverRabattProzent, aktiveAktion, bonierUmleitungen, fragtNachOptionen, mengenRabattZeilen, neueUuid, warengruppenWahl } from '@kassa/shared'
 import type { AktiveAktion, MengenPosition } from '@kassa/shared'
 import { angebotApi, artikelApi, belegApi, bonierApi, druckerApi, emailApi, gutscheinApi, kategorieApi, lieferscheinApi, modifikatorApi, offenerPostenApi, posConfigApi, preislisteApi, preisregelApi, tischTabApi, zvtApi, displayApi, ApiError } from '../lib/api'
 import { korbNeuBepreisen, listenPreise, listenPreisFuer } from '../lib/preisliste'
@@ -141,6 +141,11 @@ export function KassePage() {
   // Ref for gutschein — safe to read inside mutation callbacks (before reset() clears state)
   const gutscheinRef = useRef(gutschein)
   useEffect(() => { gutscheinRef.current = gutschein }, [gutschein])
+  // Idempotenz-Schlüssel des laufenden Verkaufs: bleibt über PIN-Freigabe und Wiederholungen
+  // gleich (das Backend bucht ihn höchstens einmal), erst reset() nach dem Abschluss beginnt
+  // einen neuen. Ohne ihn erzeugte eine verlorene Antwort samt Wiederholung zwei Belege.
+  const verkaufSchluesselRef = useRef<string | null>(null)
+  const verkaufSchluessel = () => (verkaufSchluesselRef.current ??= neueUuid())
   // Warenkorb geändert → bereits gewählte Seriennummern verwerfen (Indizes könnten veraltet sein)
   useEffect(() => { serialsRef.current = null }, [korb])
   // Angebot-spezifisch
@@ -448,6 +453,7 @@ export function KassePage() {
     setAngebotNotiz('')
     setKreditModus(false)
     setGutschein(null)
+    verkaufSchluesselRef.current = null
   }
 
   // ---------------------------------------------------------------------------
@@ -455,7 +461,16 @@ export function KassePage() {
   // ---------------------------------------------------------------------------
 
   const belegMutation = useMutation({
-    mutationFn: belegApi.barzahlung,
+    // Auch ohne Netz SOFORT senden: Der Service Worker puffert den Verkauf (202) oder die
+    // Anfrage scheitert sichtbar. Mit dem Standard ('online') hielt React Query die Mutation
+    // bei navigator.onLine=false still an — der Knopf drehte endlos, ein Neuladen verlor sie.
+    networkMode: 'always',
+    // Offline puffern nur ohne Gutschein: dessen Einlösung braucht die Beleg-ID sofort (unten) —
+    // ein nachgesendeter Verkauf ließe den Gutschein sonst unberührt.
+    mutationFn: (input: BarzahlungsbelegInput) => belegApi.barzahlung(input, {
+      schluessel:     verkaufSchluessel(),
+      offlinePuffern: !gutscheinRef.current,
+    }),
     onSuccess: async (beleg, variables) => {
       // Offline-Fall: SW gibt 202 + { _offline: true } zurück
       if ((beleg as unknown as { _offline?: boolean })?._offline) {
@@ -529,6 +544,8 @@ export function KassePage() {
   })
 
   const kreditMutation = useMutation({
+    // Ohne Netz sofort mit Fehler statt still angehalten (Kredit wird nie gepuffert)
+    networkMode: 'always',
     mutationFn: async ({ kundeId, betragCent }: { kundeId: string; betragCent: number }) => {
       const input: BarzahlungsbelegInput = {
         kasseId: identity.kasseId,
@@ -547,7 +564,8 @@ export function KassePage() {
         ...(rabatt && { rabatt }),
         kundeId,
       }
-      const beleg = await belegApi.barzahlung(input)
+      // Nie offline puffern: der offene Posten braucht die Beleg-ID sofort
+      const beleg = await belegApi.barzahlung(input, { schluessel: verkaufSchluessel() })
       const op    = await offenerPostenApi.create({ kundeId, belegId: beleg.id, betragCent })
       return { beleg, offenerPosten: op }
     },
@@ -773,7 +791,7 @@ export function KassePage() {
                             rounded-lg px-4 py-3 flex items-center gap-3 text-sm font-medium">
               <span className="text-lg">📥</span>
               <span>
-                Beleg offline gespeichert — wird automatisch übermittelt sobald die Verbindung wiederhergestellt ist
+                Verkauf offline gespeichert — er wird gebucht (und der Bon gedruckt), sobald die Kassa wieder erreichbar ist
               </span>
             </div>
           )}

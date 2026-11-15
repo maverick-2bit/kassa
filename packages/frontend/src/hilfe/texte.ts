@@ -28,7 +28,8 @@ export const HILFE_THEMEN: HilfeThema[] = [
         titel: 'Wenn etwas nicht klappt',
         schritte: [
           'Der Bon druckt nicht: „Einstellungen → Kassen & Drucker", beim Drucker auf „Testdruck" klicken. Meldet er einen Fehler, Netzwerkkabel und Strom des Druckers prüfen.',
-          'Steht „Kasse arbeitet im Offline-Modus": Es gibt gerade keine Verbindung zum Kassen-PC. Weiter kassieren geht nicht ohne ihn — Verbindung prüfen (WLAN/Kabel).',
+          'Steht „Kasse arbeitet im Offline-Modus": Es gibt gerade keine Verbindung zum Kassen-PC — Verbindung prüfen (WLAN/Kabel). Normale Verkäufe (bar oder Karte) werden gespeichert und gebucht, sobald die Verbindung zurück ist; erst dann kommt auch der Bon. Storno, Gutschein, Kredit und Sonderbelege gehen nur mit Verbindung.',
+          'Ein roter Balken „… offline erfasster Verkauf wurde nicht gebucht": Der Kassen-PC hat den Verkauf beim Nachbuchen abgelehnt (z. B. Artikel inzwischen gelöscht). Auf „Anzeigen" klicken: Grund lesen, dann „Erneut senden" oder den Verkauf bewusst „Verwerfen" und von Hand neu kassieren.',
           'Die Seite sieht seltsam aus oder zeigt „Neu laden": auf „Neu laden" klicken oder die Seite neu laden (Taste F5).',
           'Ein Menüpunkt fehlt: Dafür fehlt dir die Berechtigung — die Chefin oder der Chef kann sie unter „Personal → Benutzer" vergeben.',
         ],

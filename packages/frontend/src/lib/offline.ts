@@ -9,12 +9,25 @@
  *  - SW-Messages als Callbacks weiterleiten
  */
 
+import { getToken } from './auth'
+
+/** Ein Verkauf in der Offline-Warteschlange, wie ihn der Service Worker zur Anzeige meldet */
+export interface WarteschlangenEintrag {
+  id:        number
+  createdAt: number
+  summeCent: number | null
+  /** Gesetzt, wenn das Backend den Verkauf fachlich abgelehnt hat — wird nicht automatisch wiederholt */
+  fehler:    { status: number; meldung: string; am: number } | null
+}
+
 export type OfflineEvent =
   | { type: 'STATUS_CHANGE';     online: boolean }
   | { type: 'QUEUE_COUNT';       count: number }
+  | { type: 'QUEUE_LISTE';       eintraege: WarteschlangenEintrag[] }
   | { type: 'BELEG_QUEUED';      id: number }
   | { type: 'BELEG_SYNCED';      id: number; status: number }
-  | { type: 'BELEG_SYNC_FEHLER'; id: number; status: number }
+  | { type: 'BELEG_SYNC_FEHLER'; id: number; status: number; meldung?: string }
+  | { type: 'SYNC_ANMELDUNG_NOETIG' }
   | { type: 'SYNC_DONE' }
 
 type OfflineListener = (event: OfflineEvent) => void
@@ -24,6 +37,9 @@ export class OfflineManager {
   private _online:     boolean              = navigator.onLine
   private _queueCount: number               = 0
   private _swReady:    boolean              = false
+
+  /** Quelle des Login-Tokens fürs Nachsenden (Tests ersetzen sie) — der SW speichert keinen Token */
+  constructor(private readonly tokenQuelle: () => string | null = getToken) {}
 
   get online():     boolean { return this._online }
   get queueCount(): number  { return this._queueCount }
@@ -67,11 +83,17 @@ export class OfflineManager {
 
     // SW-Messages empfangen
     navigator.serviceWorker.addEventListener('message', (event) => {
+      // Der SW fragt beim Nachsenden nach dem aktuellen Login-Token (über einen MessageChannel)
+      if ((event.data as { type?: unknown } | null)?.type === 'TOKEN_ANFRAGE') {
+        event.ports[0]?.postMessage({ token: this.tokenQuelle() })
+        return
+      }
       this.handleSwMessage(event.data)
     })
 
-    // Initiale Queue-Größe abfragen
+    // Initiale Queue-Größe abfragen; liegt noch etwas vom letzten Mal, gleich nachsenden
     this.requestQueueCount()
+    if (navigator.onLine) this.triggerSync()
   }
 
   /** Observer registrieren — gibt eine Unsubscribe-Funktion zurück. */
@@ -82,17 +104,35 @@ export class OfflineManager {
 
   /** Manuellen Sync auslösen (Fallback für Browser ohne Background Sync API). */
   triggerSync(): void {
-    if (!this._swReady || !navigator.serviceWorker.controller) return
-    navigator.serviceWorker.controller.postMessage({ type: 'SYNC_NOW' })
+    this.anSw({ type: 'SYNC_NOW', token: this.tokenQuelle() })
   }
 
   /** Aktuelle Queue-Größe vom SW abfragen. */
   requestQueueCount(): void {
-    if (!this._swReady || !navigator.serviceWorker.controller) return
-    navigator.serviceWorker.controller.postMessage({ type: 'GET_QUEUE_COUNT' })
+    this.anSw({ type: 'GET_QUEUE_COUNT' })
+  }
+
+  /** Einträge der Warteschlange abfragen (Antwort als Event QUEUE_LISTE). */
+  requestQueueListe(): void {
+    this.anSw({ type: 'GET_QUEUE' })
+  }
+
+  /** Einen abgelehnten Verkauf noch einmal senden (z. B. nach neuer Anmeldung). */
+  erneutVersuchen(id: number): void {
+    this.anSw({ type: 'ERNEUT_VERSUCHEN', id, token: this.tokenQuelle() })
+  }
+
+  /** Einen abgelehnten Verkauf bewusst verwerfen — er wird dann nicht gebucht. */
+  verwerfen(id: number): void {
+    this.anSw({ type: 'VERWERFEN', id })
   }
 
   // ── Private ───────────────────────────────────────────────────────────────
+
+  private anSw(nachricht: Record<string, unknown>): void {
+    if (!this._swReady || !navigator.serviceWorker.controller) return
+    navigator.serviceWorker.controller.postMessage(nachricht)
+  }
 
   private handleOnline(): void {
     this._online = true
@@ -126,7 +166,21 @@ export class OfflineManager {
         this.emit({ type: 'QUEUE_COUNT',  count: this._queueCount })
         break
       case 'BELEG_SYNC_FEHLER':
-        this.emit({ type: 'BELEG_SYNC_FEHLER', id: msg.id as number, status: msg.status as number })
+        this.emit({
+          type: 'BELEG_SYNC_FEHLER', id: msg.id as number, status: msg.status as number,
+          ...(typeof msg.meldung === 'string' && { meldung: msg.meldung }),
+        })
+        break
+      case 'QUEUE_LISTE':
+        if (Array.isArray(msg.eintraege)) {
+          const eintraege = msg.eintraege as WarteschlangenEintrag[]
+          this._queueCount = eintraege.length
+          this.emit({ type: 'QUEUE_LISTE', eintraege })
+          this.emit({ type: 'QUEUE_COUNT', count: this._queueCount })
+        }
+        break
+      case 'SYNC_ANMELDUNG_NOETIG':
+        this.emit({ type: 'SYNC_ANMELDUNG_NOETIG' })
         break
       case 'SYNC_DONE':
         this.requestQueueCount()
