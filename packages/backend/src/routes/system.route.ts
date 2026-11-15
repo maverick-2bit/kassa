@@ -43,6 +43,13 @@ const USER_AGENT = 'kassa-pos-update-check'
 // Neueste Version von GitHub — kurz gecacht, damit nicht jeder Statusaufruf fetcht.
 let cache: { version: string | null; geprueft: number } = { version: null, geprueft: 0 }
 const CACHE_MS = 10 * 60_000
+// Ohne Internet: Auch der FEHLSCHLAG wird gemerkt. Sonst wartete jede Statusabfrage (jeder
+// Seitenaufruf, alle 5 Minuten je Gerät) erneut bis zu 2 × 5 s auf GitHub und hielte so lange
+// eine der wenigen Browser-Verbindungen zur Kassa fest. „Nach Updates suchen" (frisch) fragt trotzdem.
+const FEHLSCHLAG_CACHE_MS = 5 * 60_000
+let letzterFehlschlag = 0
+// Gleichzeitige Abfragen teilen sich eine Prüfung (mehrere Geräte rufen nach dem Start zugleich)
+let laufendePruefung: Promise<string | null> | null = null
 
 /** Eine Quelle abfragen und die neueste Release-Version daraus lesen — null bei jedem Fehler */
 async function versionVon(url: string, headers: Record<string, string>, tagRefs: (res: Response) => Promise<string[]>): Promise<string | null> {
@@ -58,6 +65,14 @@ async function versionVon(url: string, headers: Record<string, string>, tagRefs:
 async function holeNeuesteVersion(frisch = false): Promise<string | null> {
   const jetzt = Date.now()
   if (!frisch && cache.version && jetzt - cache.geprueft < CACHE_MS) return cache.version
+  if (!frisch && jetzt - letzterFehlschlag < FEHLSCHLAG_CACHE_MS) return cache.version
+  if (!frisch && laufendePruefung) return laufendePruefung
+  const pruefung = pruefeNeuesteVersion(frisch, jetzt)
+  if (!frisch) laufendePruefung = pruefung.finally(() => { laufendePruefung = null })
+  return pruefung
+}
+
+async function pruefeNeuesteVersion(frisch: boolean, jetzt: number): Promise<string | null> {
   const version =
     (await versionVon(GITHUB_REFS_URL, {}, async (res) => tagRefsAusGitAntwort(await res.text()))) ??
     // frisch: eindeutige Query als Cache-Buster — sonst kann auch eine erzwungene Prüfung noch einen Moment den alten Stand sehen
@@ -65,7 +80,12 @@ async function holeNeuesteVersion(frisch = false): Promise<string | null> {
       const refs = (await res.json()) as unknown
       return Array.isArray(refs) ? refs.map((r) => (r as { ref?: string } | null)?.ref ?? '') : []
     }))
-  if (version) cache = { version, geprueft: jetzt }
+  if (version) {
+    cache = { version, geprueft: jetzt }
+    letzterFehlschlag = 0
+  } else {
+    letzterFehlschlag = Date.now()
+  }
   return cache.version // beide Quellen fehlgeschlagen (offline) → letzter bekannter Wert (oder null)
 }
 
