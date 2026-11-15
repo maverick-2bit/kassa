@@ -30,7 +30,10 @@
 
 param(
   [string]$Ziel   = "$env:USERPROFILE\Desktop\kassa-offline-paket",
-  [string]$Branch = 'master',
+  # Ein bestimmtes Release statt des neuesten (z. B. v0.8.91 oder 0.8.91)
+  [string]$Version = '',
+  # NUR für Entwicklung/Tests: Stand dieses Branches statt eines Releases (ungeprüft!)
+  [string]$Branch = '',
   # Optional: fernwartung.json (siehe ops/fernwartung.example.json) — daraus wird der
   # TeamViewer-Host-Installer ins Paket gelegt. Die Datei selbst wird NICHT kopiert.
   [string]$FernwartungKonfig = ''
@@ -45,6 +48,16 @@ try {
 function Schritt([string]$Text) { Write-Host "`n==> $Text" -ForegroundColor Cyan }
 function Ok([string]$Text)      { Write-Host "    OK: $Text" -ForegroundColor Green }
 function Fehler([string]$Text)  { Write-Host "FEHLER: $Text" -ForegroundColor Red }
+
+# Alle Release-Tags (vX.Y.Z) von GitHub → das neueste (zahlenweise: v0.8.100 > v0.8.99); $null, wenn keins erreichbar ist
+function Finde-NeuestesRelease {
+  try {
+    $refs = Invoke-RestMethod -UseBasicParsing -Headers @{ 'User-Agent' = 'kassa-offline-paket' } -Uri 'https://api.github.com/repos/maverick-2bit/kassa/git/matching-refs/tags/v'
+  } catch { return $null }
+  $tags = @($refs | ForEach-Object { $_.ref } | Where-Object { $_ -match '^refs/tags/v\d+\.\d+\.\d+$' } | ForEach-Object { $_ -replace '^refs/tags/', '' })
+  if ($tags.Count -eq 0) { return $null }
+  return ($tags | Sort-Object { [version]$_.Substring(1) } | Select-Object -Last 1)
+}
 
 Write-Host ''
 Write-Host '================================================' -ForegroundColor Cyan
@@ -63,14 +76,28 @@ Ok 'Docker läuft'
 New-Item -ItemType Directory -Path $Ziel -Force | Out-Null
 
 # ── 2. Code von GitHub laden ─────────────────────────────────────────────────
-Schritt "Lade Kassa-Code (Branch '$Branch')"
+# Das neueste RELEASE (Git-Tag vX.Y.Z), nie die Spitze von master. Die Signatur prüft hier niemand — das Paket wird per
+# USB-Stick eingespielt; jedes spätere In-App-Update auf der Kasse prüft sie (ops/DEPLOYMENT.md, Abschnitt 11).
+if ($Branch) {
+  $Ref = $Branch
+  $zipUrl = "https://github.com/maverick-2bit/kassa/archive/refs/heads/$Branch.zip"
+  Write-Host "    ACHTUNG: Entwicklungsstand des Branches '$Branch' — ungeprüft, nicht für Kunden-Kassen." -ForegroundColor Yellow
+} else {
+  if ($Version) { $Ref = $(if ($Version.StartsWith('v')) { $Version } else { 'v' + $Version }) } else { $Ref = Finde-NeuestesRelease }
+  if (-not $Ref -or $Ref -notmatch '^v\d+\.\d+\.\d+$') { Fehler 'Kein Release auf GitHub gefunden — Internetverbindung prüfen (oder -Version vX.Y.Z angeben).'; exit 1 }
+  $zipUrl = "https://github.com/maverick-2bit/kassa/archive/refs/tags/$Ref.zip"
+}
+Schritt "Lade Kassa-Code ($Ref)"
 $tempDir = Join-Path $env:TEMP ("kassa-paket-" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
 $codeZip = Join-Path $tempDir 'code.zip'
-Invoke-WebRequest -Uri "https://github.com/maverick-2bit/kassa/archive/refs/heads/$Branch.zip" -OutFile $codeZip -UseBasicParsing
+Invoke-WebRequest -Uri $zipUrl -OutFile $codeZip -UseBasicParsing
 Expand-Archive -Path $codeZip -DestinationPath $tempDir -Force
-$codeDir = Join-Path $tempDir "kassa-$Branch"
-Ok 'Code geladen'
+# GitHub packt in genau einen Ordner (kassa-<Version> bzw. kassa-<Branch>); der Name ist unerheblich
+$codeOrdner = Get-ChildItem -LiteralPath $tempDir -Directory | Select-Object -First 1
+if (-not $codeOrdner) { Fehler "Entpacktes Verzeichnis nicht gefunden (in $tempDir)"; exit 1 }
+$codeDir = $codeOrdner.FullName
+Ok "Code geladen ($Ref)"
 
 # ── 3. Alle Images bauen ─────────────────────────────────────────────────────
 Schritt 'Baue alle Kassa-Images (dauert beim ersten Mal einige Minuten)'
@@ -133,7 +160,7 @@ if ($fwKonfigPfad) {
   Schritt 'Fernwartung: TeamViewer-Host-Installer ins Paket legen'
   try {
     $fwLib = Join-Path $codeDir 'ops\fernwartung.ps1'
-    if (-not (Test-Path -LiteralPath $fwLib)) { throw "ops\fernwartung.ps1 fehlt im Branch '$Branch'." }
+    if (-not (Test-Path -LiteralPath $fwLib)) { throw "ops\fernwartung.ps1 fehlt im Release '$Ref'." }
     . $fwLib
     $gelesen = Lese-FernwartungKonfig -Pfad $fwKonfigPfad
     foreach ($w in $gelesen.Warnungen) { Write-Host ("    Hinweis: " + (Maskiere-Geheimnisse $w)) -ForegroundColor Yellow }

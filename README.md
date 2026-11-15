@@ -176,7 +176,13 @@ die Signierung — die braucht das Backend.
 
 `.github/workflows/ci.yml` (push/PR auf `master`):
 Build + Unit-Tests, Migrations-Integrität, Integrationstests (Postgres-Service),
-E2E (Playwright), Security-Audit (Build rot bei high/critical).
+E2E (Playwright), Updater-Tests (Signaturprüfung + Rückweg, ohne Docker),
+Security-Audit (Build rot bei high/critical).
+
+Der In-App-Updater der Kassen installiert **nur signierte Release-Tags** (`vX.Y.Z`, `git tag -s`), nie
+die Spitze von `master`, und nimmt ein fehlgeschlagenes Update selbst zurück.
+`.github/workflows/release-pruefung.yml` prüft jedes neue Release-Tag. Ablauf, Schlüssel und Übergang:
+`ops/DEPLOYMENT.md`, Abschnitt 11.
 
 Auf `master`-Push werden zusätzlich versionierte Docker-Images nach **GHCR**
 gepusht (`ghcr.io/<owner>/kassa-<service>:latest` + `:<sha>`). Deployment auf der

@@ -260,12 +260,14 @@ services:
   # up -d --build der App-Services) — nimmt KEINE Befehle vom Backend entgegen; das
   # Backend legt nur eine leere „request"-Datei im geteilten /control-Volume an.
   # Der Docker-Socket ist NUR hier gemountet (nicht im Backend).
+  # Installiert wird nur ein SIGNIERTES Release (Git-Tag vX.Y.Z, Schlüssel in ops/updater/allowed_signers),
+  # nie die Spitze von master; scheitert ein Update, stellt der Dienst den alten Stand wieder her
+  # (ops/DEPLOYMENT.md, Abschnitt 11). Es gibt keine Branch-Einstellung mehr.
   updater:
     image: docker:27-cli
     restart: unless-stopped
     entrypoint: ["/bin/sh", "/updater.sh"]
     environment:
-      KASSA_BRANCH:       ${KASSA_BRANCH:-master}
       UPDATE_CONTROL_DIR: /control
       KASSA_WORKSPACE:    /workspace
     volumes:
