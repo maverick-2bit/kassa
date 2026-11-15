@@ -543,6 +543,15 @@ export function KassePage() {
         setFreigabe({ meldung: err.message, input: variables })
         return
       }
+      // Keine (gültige) Antwort: Netzfehler, kaputte Antwort oder Gateway (502/503/504) — der Verkauf
+      // kann trotzdem gebucht sein. Nicht „neu kassieren" provozieren: Derselbe Korb mit derselben
+      // Zahlung bucht dank Idempotency-Key nicht doppelt, ein geänderter erzeugte einen zweiten Beleg.
+      const ohneAntwort = !(err instanceof ApiError) || err.status === 502 || err.status === 503 || err.status === 504
+      if (ohneAntwort) {
+        setFehler('Keine Antwort von der Kassa — der Verkauf ist möglicherweise schon gebucht. ' +
+          'Bitte erst in der Belegliste nachsehen. Nochmal kassieren mit unverändertem Warenkorb und derselben Zahlungsart bucht ihn nicht doppelt.')
+        return
+      }
       setFehler(err instanceof Error ? err.message : String(err))
     },
   })

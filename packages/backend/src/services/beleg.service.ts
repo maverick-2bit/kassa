@@ -112,19 +112,26 @@ export interface Idempotenz {
 
 /**
  * Ist an dieser Kasse schon ein Verkauf mit diesem Schlüssel gebucht? Ja und derselbe Verkauf →
- * BelegSchonGebucht (Antwort: der vorhandene Beleg). Ja, aber ein ANDERER Warenkorb → 422: Die
- * Kassa hat den Schlüssel für einen neuen Verkauf weiterverwendet; mit dem alten Beleg zu
- * antworten hieße, den neuen Verkauf still zu verschlucken.
+ * BelegSchonGebucht (Antwort: der vorhandene Beleg). Ja, aber mit anderem Inhalt → 422 — mit dem
+ * alten Beleg als „Erfolg" zu antworten, könnte einen neuen Verkauf still verschlucken. Praktisch
+ * heißt das fast immer: Die Antwort ging verloren und der Kassier hat danach z. B. die Zahlungsart
+ * geändert. Die Meldung nennt darum den gebuchten Beleg und warnt vor dem Neu-Kassieren (sonst
+ * entstünde ein zweiter Beleg für denselben Verkauf).
  */
 async function pruefeIdempotenz(db: Db | Tx, kasseId: string, idem: Idempotenz): Promise<void> {
   const [row] = await db
-    .select({ id: belege.id, hash: belege.idempotenzHash })
+    .select({ id: belege.id, hash: belege.idempotenzHash, belegNummer: belege.belegNummer })
     .from(belege)
     .where(and(eq(belege.kasseId, kasseId), eq(belege.idempotenzSchluessel, idem.schluessel)))
     .limit(1)
   if (!row) return
   if (row.hash !== idem.hash) {
-    throw new BelegError(422, 'Dieser Idempotency-Key gehört zu einem anderen, schon gebuchten Verkauf — bitte den Verkauf neu kassieren.', 'idempotenz-konflikt')
+    throw new BelegError(
+      422,
+      `Dieser Verkauf ist schon gebucht (Beleg Nr. ${row.belegNummer}), allerdings mit anderem Inhalt oder anderer Zahlung. ` +
+        'Bitte NICHT neu kassieren — erst den Beleg in der Belegliste prüfen und ihn bei Bedarf dort stornieren.',
+      'idempotenz-konflikt',
+    )
   }
   throw new BelegSchonGebucht(row.id)
 }

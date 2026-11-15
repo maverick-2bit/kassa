@@ -216,6 +216,8 @@ test.describe('Antwort geht verloren (ohne Service Worker, der Server hat schon 
       await page.getByRole('button', { name: /^Bar \(/ }).click()
       await expect.poll(async () => (await belegeMit(request, artikel.bezeichnung)).length).toBe(1)
       await expect(page.getByTitle('Menge eingeben')).toHaveCount(1)   // Kasse hält den Korb (Fehler)
+      // Die Kasse warnt: vielleicht schon gebucht — erst nachsehen, nicht mit geändertem Korb neu kassieren
+      await expect(page.getByText(/Keine Antwort von der Kassa — der Verkauf ist möglicherweise schon gebucht/)).toBeVisible()
 
       await page.getByRole('button', { name: /^Bar \(/ }).click()
       await expect(page.getByText(/Beleg #\d+ erstellt/)).toBeVisible({ timeout: 20_000 })

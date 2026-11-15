@@ -157,10 +157,14 @@ describe('Verkauf mit Idempotency-Key (Integration, echtes PostgreSQL)', () => {
   it('derselbe Schlüssel mit ANDEREM Warenkorb: 422, kein zweiter Beleg — und nie der alte Beleg als „Erfolg"', async () => {
     const schluessel = randomUUID()
     const vorher = await anzahlBelege()
-    expect((await verkaufe(schluessel, 1)).statusCode).toBe(201)
+    const erst = await verkaufe(schluessel, 1)
+    expect(erst.statusCode).toBe(201)
     const anders = await verkaufe(schluessel, 3)
     expect(anders.statusCode).toBe(422)
-    expect(anders.json().fehler).toMatch(/anderen, schon gebuchten Verkauf/)
+    // Die Meldung nennt den gebuchten Beleg und warnt vor dem Neu-Kassieren (sonst zweiter Beleg)
+    const fehler = anders.json().fehler as string
+    expect(fehler).toContain(`schon gebucht (Beleg Nr. ${erst.json().belegNummer})`)
+    expect(fehler).toContain('NICHT neu kassieren')
     expect(await anzahlBelege()).toBe(vorher + 1)
   })
 
