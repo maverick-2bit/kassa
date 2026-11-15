@@ -225,12 +225,12 @@ import type {
   EinkaufBestellungUpdate,
 } from '@kassa/shared'
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function request<T>(method: string, path: string, body?: unknown, zusatzHeader?: Record<string, string>): Promise<T> {
   const token = getToken()
   // Content-Type NUR bei tatsächlichem Body setzen. Sonst wirft Fastify bei
   // body-losen POST/DELETE (Testdruck, Löschen …) FST_ERR_CTP_EMPTY_JSON_BODY
   // → HTTP 400 ("JSON angekündigt, aber leer").
-  const headers: Record<string, string> = {}
+  const headers: Record<string, string> = { ...zusatzHeader }
   if (body !== undefined) headers['Content-Type'] = 'application/json'
   if (token) headers['Authorization'] = `Bearer ${token}`
 
@@ -958,8 +958,18 @@ export const belegApi = {
     if (kundeId) p.set('kundeId', kundeId)
     return request<BelegResponse[]>('GET', `/api/belege?${p.toString()}`)
   },
-  barzahlung: (input: BarzahlungsbelegInput) =>
-    request<BelegResponse>('POST', '/api/belege/barzahlung', input),
+  /**
+   * Verkauf buchen. `verkauf.schluessel` (UUID, je Verkauf fest, auch über Wiederholungen hinweg):
+   * kommt derselbe Verkauf zweimal an, liefert das Backend den gebuchten Beleg statt eines zweiten.
+   * `verkauf.offlinePuffern`: Nur dann darf der Service Worker den Verkauf bei Netzausfall in die
+   * Offline-Warteschlange legen (Antwort 202 mit `_offline`) — nur für Verkäufe ohne Folgeschritt,
+   * der die Beleg-ID braucht (Gutschein einlösen, offener Posten).
+   */
+  barzahlung: (input: BarzahlungsbelegInput, verkauf?: { schluessel: string; offlinePuffern?: boolean }) =>
+    request<BelegResponse>('POST', '/api/belege/barzahlung', input, verkauf && {
+      'Idempotency-Key': verkauf.schluessel,
+      ...(verkauf.offlinePuffern && { 'X-Kassa-Offline': 'puffern' }),
+    }),
   storno:     (input: StornobelegInput) =>
     request<BelegResponse>('POST', '/api/belege/storno', input),
   nullbeleg:  (input: NullbelegInput) =>

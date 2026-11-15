@@ -93,6 +93,49 @@ export class BelegError extends Error {
   }
 }
 
+/**
+ * Ein Verkauf mit diesem Idempotenz-Schlüssel ist an dieser Kasse schon gebucht (die Kassa schickt
+ * ihn ein zweites Mal: Antwort im WLAN verloren, Nachsenden aus der Offline-Warteschlange). Kein
+ * Fehler für die Kassa — die Route antwortet mit dem vorhandenen Beleg, ohne Druck und Bonierung.
+ */
+export class BelegSchonGebucht extends Error {
+  constructor(public readonly belegId: string) {
+    super('Dieser Verkauf ist bereits gebucht')
+  }
+}
+
+/** Idempotency-Key der Kassa samt Fingerabdruck des Verkaufs (SHA-256, ohne Freigabe-PIN) */
+export interface Idempotenz {
+  schluessel: string
+  hash:       string
+}
+
+/**
+ * Ist an dieser Kasse schon ein Verkauf mit diesem Schlüssel gebucht? Ja und derselbe Verkauf →
+ * BelegSchonGebucht (Antwort: der vorhandene Beleg). Ja, aber mit anderem Inhalt → 422 — mit dem
+ * alten Beleg als „Erfolg" zu antworten, könnte einen neuen Verkauf still verschlucken. Praktisch
+ * heißt das fast immer: Die Antwort ging verloren und der Kassier hat danach z. B. die Zahlungsart
+ * geändert. Die Meldung nennt darum den gebuchten Beleg und warnt vor dem Neu-Kassieren (sonst
+ * entstünde ein zweiter Beleg für denselben Verkauf).
+ */
+async function pruefeIdempotenz(db: Db | Tx, kasseId: string, idem: Idempotenz): Promise<void> {
+  const [row] = await db
+    .select({ id: belege.id, hash: belege.idempotenzHash, belegNummer: belege.belegNummer })
+    .from(belege)
+    .where(and(eq(belege.kasseId, kasseId), eq(belege.idempotenzSchluessel, idem.schluessel)))
+    .limit(1)
+  if (!row) return
+  if (row.hash !== idem.hash) {
+    throw new BelegError(
+      422,
+      `Dieser Verkauf ist schon gebucht (Beleg Nr. ${row.belegNummer}), allerdings mit anderem Inhalt oder anderer Zahlung. ` +
+        'Bitte NICHT neu kassieren — erst den Beleg in der Belegliste prüfen und ihn bei Bedarf dort stornieren.',
+      'idempotenz-konflikt',
+    )
+  }
+  throw new BelegSchonGebucht(row.id)
+}
+
 /** BelegError.code: Die Signatureinheit/das Schlüsselmaterial weist uns ab — Warten hilft nicht. */
 export const SEE_ABGELEHNT = 'see-abgelehnt'
 
@@ -145,6 +188,12 @@ interface SigniereInput {
   ausserBetrieb?: boolean
   /** Läuft NACH dem Beleg-Insert in derselben Tx (z. B. Seriennummern als verkauft markieren). */
   nachPersist?: (tx: Tx, belegId: string, mandantId: string) => Promise<void>
+  /**
+   * Idempotenz des Verkaufs: Ist an der Kasse schon ein Beleg mit diesem Schlüssel gebucht, wirft
+   * die Tx BelegSchonGebucht (bzw. 422 bei anderem Warenkorb), bevor Lager, Seriennummern oder
+   * Signatur berührt werden.
+   */
+  idempotenz?: Idempotenz | undefined
 }
 
 /** mandanten.status nach der Übergabe an eine andere Kassa: keine neuen Belege mehr */
@@ -225,6 +274,10 @@ async function signiereImTxKern(
     if (mandantStatus?.status === MANDANT_UEBERTRAGEN) {
       throw new BelegError(409, 'Dieser Mandant wurde auf eine andere Kassa übertragen — hier sind keine Belege mehr möglich. (Einstellungen → System → Mandant übertragen → Sperre aufheben)')
     }
+    // Derselbe Verkauf ein zweites Mal? Erst HIER (unter der Kassen-Sperre) ist die Prüfung
+    // verlässlich: Eine gleichzeitige Zweitanfrage wartet auf die Sperre und sieht danach den
+    // gebuchten Beleg. Die Vorab-Prüfung in erstelleBarzahlungsbeleg spart nur Arbeit.
+    if (input.idempotenz) await pruefeIdempotenz(tx, kasse.id, input.idempotenz)
     // Hinweis: Eine NICHT bei FinanzOnline registrierte Kasse darf provisorisch
     // Belege ausstellen (Event-Einrichtung ohne FON-Daten). Die Belege werden
     // regulär signiert; die FON-Registrierung ist zeitnah nachzutragen. Das UI
@@ -404,6 +457,10 @@ async function signiereImTxKern(
       ...(input.verweisBelegId && { verweisBelegId: input.verweisBelegId }),
       ...(input.kundeId        && { kundeId:        input.kundeId }),
       ...(input.kundeSnapshot  && { kundeSnapshot:  input.kundeSnapshot }),
+      ...(input.idempotenz && {
+        idempotenzSchluessel: input.idempotenz.schluessel,
+        idempotenzHash:       input.idempotenz.hash,
+      }),
     }).returning()
     if (!persisted) throw new BelegError(500, 'Beleg konnte nicht gespeichert werden')
 
@@ -471,8 +528,18 @@ export async function erstelleBarzahlungsbeleg(
      * Transaktion aber trotzdem ab.
      */
     freigabeDb?: Db
+    /**
+     * Idempotency-Key der Kassa samt Fingerabdruck: Ist der Verkauf schon gebucht, wirft der Aufruf
+     * BelegSchonGebucht (die Route antwortet mit dem vorhandenen Beleg) — ohne neuen Kunden, Lager,
+     * Signatur; derselbe Schlüssel mit anderem Warenkorb → BelegError 422.
+     */
+    idempotenz?: Idempotenz
   } = {},
 ): Promise<BelegResponse> {
+  // Wiederholter Verkauf: früh abbrechen, bevor unten ein „neuer Kunde" ein zweites Mal entsteht.
+  // Verlässlich ist erst die Prüfung unter der Kassen-Sperre in signiereImTxKern.
+  if (opts.idempotenz) await pruefeIdempotenz(deps.db, input.kasseId, opts.idempotenz)
+
   // Kunden-Snapshot vor der Transaktion auflösen (neuer Kunde wird hier angelegt)
   let kundeId:       string | undefined
   let kundeSnapshot: KundeSnapshot | undefined
@@ -511,6 +578,7 @@ export async function erstelleBarzahlungsbeleg(
     validatePayment: true,
     kundeId,
     kundeSnapshot,
+    idempotenz:      opts.idempotenz,
     belegDaten: async (tx, mandantId) => {
       // Artikel-Positionen (mit artikelId) vs. freie Positionen trennen
       const artikelPositionen = input.positionen.filter(p => ArtikelPositionSchema.safeParse(p).success)

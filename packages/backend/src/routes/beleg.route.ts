@@ -3,6 +3,7 @@
  * Kasse-Zugehörigkeit wird gegen JWT-mandantId geprüft.
  */
 
+import { createHash } from 'node:crypto'
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import {
@@ -31,7 +32,9 @@ import {
   meldeSeeWiederherstellung,
   holeFoRegistrierungStatus,
   registriereKasseBeiFinanzOnline,
+  holeBeleg,
   BelegError,
+  BelegSchonGebucht,
   type BelegServiceDeps,
 } from '../services/beleg.service.js'
 import {
@@ -195,19 +198,64 @@ function tryBonierDirektverkauf(
   })()
 }
 
+/** JSON mit sortierten Schlüsseln (undefined weggelassen) — gleicher Inhalt, gleiche Zeichenkette */
+function stabilesJson(wert: unknown): string {
+  if (Array.isArray(wert)) return `[${wert.map(stabilesJson).join(',')}]`
+  if (wert !== null && typeof wert === 'object') {
+    const obj = wert as Record<string, unknown>
+    return `{${Object.keys(obj).sort().filter(k => obj[k] !== undefined)
+      .map(k => `${JSON.stringify(k)}:${stabilesJson(obj[k])}`).join(',')}}`
+  }
+  return JSON.stringify(wert)
+}
+
+/**
+ * Fingerabdruck eines Verkaufs für den Idempotency-Key: SHA-256 über die geprüfte Eingabe OHNE
+ * Freigabe-PIN und Druckwunsch — die Wiederholung nach der PIN-Freigabe ist derselbe Verkauf.
+ */
+function verkaufsFingerabdruck(input: BarzahlungsbelegInput): string {
+  const { freigabePin: _pin, keinAutodruck: _druck, ...verkauf } = input
+  return createHash('sha256').update(stabilesJson(verkauf)).digest('hex')
+}
+
 export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify, opts) => {
   const guard = { onRequest: [fastify.authenticate] }
 
   fastify.post('/belege/barzahlung', guard, async (request, reply) => {
+    // Idempotency-Key (optional, UUID): Die Kassa schickt je Verkauf einen. Kommt derselbe Verkauf
+    // ein zweites Mal (Antwort verloren, Offline-Warteschlange), gibt es den gebuchten Beleg zurück.
+    const schluesselRoh = request.headers['idempotency-key']
+    let idempotenzSchluessel: string | undefined
+    if (schluesselRoh !== undefined) {
+      const geprueft = z.string().uuid().safeParse(schluesselRoh)
+      if (!geprueft.success) return reply.status(400).send({ fehler: 'Idempotency-Key muss eine UUID sein' })
+      idempotenzSchluessel = geprueft.data.toLowerCase()
+    }
     const parsed = BarzahlungsbelegInputSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     if (!(await pruefeKasseScope(request, reply, opts.deps, parsed.data.kasseId))) return
     const freigabeKontext = freigabeKontextAus(request, parsed.data.kasseId)
-    return fuehreAus(fastify, reply, opts.deps, () => erstelleBarzahlungsbeleg(parsed.data, opts.deps, { freigabeKontext }), 201,
-      {
-        skipAutodruck: parsed.data.keinAutodruck ?? false,
-        onErstellt: () => tryBonierDirektverkauf(opts.deps, parsed.data, request.user.mandantId, fastify.log),
-      })
+    const idempotenz = idempotenzSchluessel
+      ? { schluessel: idempotenzSchluessel, hash: verkaufsFingerabdruck(parsed.data) }
+      : undefined
+    try {
+      return await fuehreAus(fastify, reply, opts.deps,
+        () => erstelleBarzahlungsbeleg(parsed.data, opts.deps, {
+          freigabeKontext,
+          ...(idempotenz && { idempotenz }),
+        }), 201,
+        {
+          skipAutodruck: parsed.data.keinAutodruck ?? false,
+          onErstellt: () => tryBonierDirektverkauf(opts.deps, parsed.data, request.user.mandantId, fastify.log),
+        })
+    } catch (err) {
+      if (!(err instanceof BelegSchonGebucht)) throw err
+      // Schon gebucht: den vorhandenen Beleg zurück (200 statt 201) — kein zweiter Druck, keine
+      // zweite Bonierung. Die Kasse ist schon gegen den Mandanten geprüft, der Beleg hängt an ihr.
+      const beleg = await holeBeleg(opts.deps.db, err.belegId, request.user.mandantId)
+      if (!beleg) return reply.status(409).send({ fehler: err.message })
+      return reply.status(200).header('Idempotent-Replayed', 'true').send(beleg)
+    }
   })
 
   fastify.post('/belege/storno', guard, async (request, reply) => {

@@ -330,9 +330,19 @@ export const belege = pgTable('belege', {
   /** Eingefrierter Kunden-Snapshot zum Zeitpunkt der Buchung */
   kundeSnapshot: jsonb('kunde_snapshot'),
 
+  /**
+   * Idempotenz-Schlüssel des Verkaufs (Header Idempotency-Key der Kassa, Migration 0084):
+   * derselbe Verkauf ein zweites Mal (verlorene Antwort, Offline-Warteschlange) liefert den
+   * schon gebuchten Beleg statt eines zweiten. Eindeutig je Kasse, NULL = ohne Schlüssel.
+   */
+  idempotenzSchluessel: uuid('idempotenz_schluessel'),
+  /** SHA-256 des Verkaufs (ohne Freigabe-PIN): derselbe Schlüssel mit anderem Warenkorb → 422 */
+  idempotenzHash:       varchar('idempotenz_hash', { length: 64 }),
+
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
   belegNrIdx:     uniqueIndex('belege_kasse_belegnr_idx').on(t.kasseId, t.belegNummer),
+  idempotenzIdx:  uniqueIndex('belege_kasse_idempotenz_idx').on(t.kasseId, t.idempotenzSchluessel),
   datumIdx:       index('belege_datum_idx').on(t.belegDatum),
   verweisIdx:     index('belege_verweis_idx').on(t.verweisBelegId),
 }))

@@ -14,6 +14,8 @@ import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vite
 import type { OfflineEvent } from './offline'
 
 let OfflineManager: typeof import('./offline').OfflineManager
+/** Manager mit fester Token-Quelle (im node-Env gibt es kein localStorage) */
+const neuerManager = () => new OfflineManager(() => 'TEST-TOKEN')
 
 // ---------------------------------------------------------------------------
 // Gestubbte Browser-Umgebung
@@ -24,7 +26,7 @@ interface FakeEnv {
   swListeners:  Record<string, ((...a: unknown[]) => void)[]>
   posted:       unknown[]
   fireWindow:   (type: string, ev?: unknown) => void
-  fireSwMessage: (data: unknown) => void
+  fireSwMessage: (data: unknown, ports?: Array<{ postMessage: (d: unknown) => void }>) => void
 }
 
 function stubEnv(opts?: { online?: boolean; withSW?: boolean; withController?: boolean }): FakeEnv {
@@ -61,7 +63,7 @@ function stubEnv(opts?: { online?: boolean; withSW?: boolean; withController?: b
     swListeners,
     posted,
     fireWindow:    (type, ev) => (winListeners[type] ?? []).forEach(fn => fn(ev)),
-    fireSwMessage: (data)     => (swListeners['message'] ?? []).forEach(fn => fn({ data })),
+    fireSwMessage: (data, ports = []) => (swListeners['message'] ?? []).forEach(fn => fn({ data, ports })),
   }
 }
 
@@ -92,14 +94,14 @@ afterEach(() => {
 describe('OfflineManager — Konstruktion', () => {
   it('übernimmt den initialen Online-Status von navigator.onLine', () => {
     stubEnv({ online: true })
-    expect(new OfflineManager().online).toBe(true)
+    expect(neuerManager().online).toBe(true)
     stubEnv({ online: false })
-    expect(new OfflineManager().online).toBe(false)
+    expect(neuerManager().online).toBe(false)
   })
 
   it('startet mit leerer Queue und nicht-bereitem SW', () => {
     stubEnv()
-    const m = new OfflineManager()
+    const m = neuerManager()
     expect(m.queueCount).toBe(0)
     expect(m.swReady).toBe(false)
   })
@@ -108,7 +110,7 @@ describe('OfflineManager — Konstruktion', () => {
 describe('OfflineManager — Observer-Pattern', () => {
   it('subscribe liefert eine Unsubscribe-Funktion; danach keine Events mehr', async () => {
     const env = stubEnv()
-    const m = new OfflineManager()
+    const m = neuerManager()
     await m.init()
 
     const events: OfflineEvent[] = []
@@ -125,7 +127,7 @@ describe('OfflineManager — Observer-Pattern', () => {
 
   it('ein werfender Listener bricht die Zustellung an andere nicht ab', async () => {
     const env = stubEnv()
-    const m = new OfflineManager()
+    const m = neuerManager()
     await m.init()
 
     const gesehen: OfflineEvent[] = []
@@ -140,7 +142,7 @@ describe('OfflineManager — Observer-Pattern', () => {
 describe('OfflineManager — Online/Offline', () => {
   it('offline-Event setzt Status und meldet STATUS_CHANGE', async () => {
     const env = stubEnv({ online: true })
-    const m = new OfflineManager()
+    const m = neuerManager()
     await m.init()
 
     const events: OfflineEvent[] = []
@@ -153,7 +155,7 @@ describe('OfflineManager — Online/Offline', () => {
 
   it('online-Event setzt Status, meldet STATUS_CHANGE und stößt Sync an', async () => {
     const env = stubEnv({ online: false })
-    const m = new OfflineManager()
+    const m = neuerManager()
     await m.init()
 
     const events: OfflineEvent[] = []
@@ -163,14 +165,14 @@ describe('OfflineManager — Online/Offline', () => {
     expect(m.online).toBe(true)
     expect(events).toContainEqual({ type: 'STATUS_CHANGE', online: true })
     // triggerSync postet SYNC_NOW an den Controller
-    expect(env.posted).toContainEqual({ type: 'SYNC_NOW' })
+    expect(env.posted).toContainEqual({ type: 'SYNC_NOW', token: 'TEST-TOKEN' })
   })
 })
 
 describe('OfflineManager — Queue-Zähler aus SW-Messages', () => {
   it('BELEG_QUEUED erhöht den Zähler und meldet beide Events', async () => {
     const env = stubEnv()
-    const m = new OfflineManager()
+    const m = neuerManager()
     await m.init()
     const events: OfflineEvent[] = []
     m.subscribe(e => events.push(e))
@@ -184,7 +186,7 @@ describe('OfflineManager — Queue-Zähler aus SW-Messages', () => {
 
   it('BELEG_SYNCED verringert den Zähler', async () => {
     const env = stubEnv()
-    const m = new OfflineManager()
+    const m = neuerManager()
     await m.init()
 
     env.fireSwMessage({ type: 'BELEG_QUEUED', id: 1 })
@@ -197,7 +199,7 @@ describe('OfflineManager — Queue-Zähler aus SW-Messages', () => {
 
   it('BELEG_SYNCED unter 0 wird auf 0 geklemmt', async () => {
     const env = stubEnv()
-    const m = new OfflineManager()
+    const m = neuerManager()
     await m.init()
 
     env.fireSwMessage({ type: 'BELEG_SYNCED', id: 1, status: 201 })
@@ -206,7 +208,7 @@ describe('OfflineManager — Queue-Zähler aus SW-Messages', () => {
 
   it('QUEUE_COUNT setzt den Zähler absolut', async () => {
     const env = stubEnv()
-    const m = new OfflineManager()
+    const m = neuerManager()
     await m.init()
 
     env.fireSwMessage({ type: 'QUEUE_COUNT', count: 5 })
@@ -215,7 +217,7 @@ describe('OfflineManager — Queue-Zähler aus SW-Messages', () => {
 
   it('SYNC_DONE fragt die Queue-Größe neu an und meldet SYNC_DONE', async () => {
     const env = stubEnv()
-    const m = new OfflineManager()
+    const m = neuerManager()
     await m.init()
     const events: OfflineEvent[] = []
     m.subscribe(e => events.push(e))
@@ -229,7 +231,7 @@ describe('OfflineManager — Queue-Zähler aus SW-Messages', () => {
 
   it('unbekannte Message-Typen werden ignoriert', async () => {
     const env = stubEnv()
-    const m = new OfflineManager()
+    const m = neuerManager()
     await m.init()
     const events: OfflineEvent[] = []
     m.subscribe(e => events.push(e))
@@ -245,7 +247,7 @@ describe('OfflineManager — Queue-Zähler aus SW-Messages', () => {
 describe('OfflineManager — Guards', () => {
   it('ohne SW-Controller wird nichts gepostet', async () => {
     const env = stubEnv({ withController: false })
-    const m = new OfflineManager()
+    const m = neuerManager()
     await m.init()
 
     m.triggerSync()
@@ -255,8 +257,80 @@ describe('OfflineManager — Guards', () => {
 
   it('ohne Service Worker bleibt swReady false und init wirft nicht', async () => {
     stubEnv({ withSW: false })
-    const m = new OfflineManager()
+    const m = neuerManager()
     await expect(m.init()).resolves.toBeUndefined()
     expect(m.swReady).toBe(false)
+  })
+})
+
+describe('OfflineManager — Warteschlange (Prüfbericht 2026-11)', () => {
+  it('beantwortet die Token-Anfrage des SW über den mitgeschickten Port — der SW speichert keinen Token', async () => {
+    const env = stubEnv()
+    const m = neuerManager()
+    await m.init()
+    const antworten: unknown[] = []
+    const events: OfflineEvent[] = []
+    m.subscribe(e => events.push(e))
+
+    env.fireSwMessage({ type: 'TOKEN_ANFRAGE' }, [{ postMessage: (d: unknown) => antworten.push(d) }])
+
+    expect(antworten).toEqual([{ token: 'TEST-TOKEN' }])
+    expect(events).toHaveLength(0)   // keine Weiterleitung an die Oberfläche
+  })
+
+  it('init sendet liegengebliebene Verkäufe gleich nach (online), mit Token', async () => {
+    const env = stubEnv({ online: true })
+    await neuerManager().init()
+    expect(env.posted).toContainEqual({ type: 'SYNC_NOW', token: 'TEST-TOKEN' })
+  })
+
+  it('init offline: kein Nachsendeversuch', async () => {
+    const env = stubEnv({ online: false })
+    await neuerManager().init()
+    expect(env.posted.some(p => (p as { type: string }).type === 'SYNC_NOW')).toBe(false)
+  })
+
+  it('QUEUE_LISTE meldet die Einträge und setzt den Zähler', async () => {
+    const env = stubEnv()
+    const m = neuerManager()
+    await m.init()
+    const events: OfflineEvent[] = []
+    m.subscribe(e => events.push(e))
+    const eintraege = [
+      { id: 1, createdAt: 1, summeCent: 450, fehler: null },
+      { id: 2, createdAt: 2, summeCent: 300, fehler: { status: 409, meldung: 'Kasse gesperrt', am: 3 } },
+    ]
+    env.fireSwMessage({ type: 'QUEUE_LISTE', eintraege })
+    expect(events).toContainEqual({ type: 'QUEUE_LISTE', eintraege })
+    expect(m.queueCount).toBe(2)
+  })
+
+  it('BELEG_SYNC_FEHLER reicht die Meldung durch, SYNC_ANMELDUNG_NOETIG wird gemeldet', async () => {
+    const env = stubEnv()
+    const m = neuerManager()
+    await m.init()
+    const events: OfflineEvent[] = []
+    m.subscribe(e => events.push(e))
+    env.fireSwMessage({ type: 'BELEG_SYNC_FEHLER', id: 2, status: 409, meldung: 'Kasse gesperrt' })
+    env.fireSwMessage({ type: 'SYNC_ANMELDUNG_NOETIG' })
+    expect(events).toEqual([
+      { type: 'BELEG_SYNC_FEHLER', id: 2, status: 409, meldung: 'Kasse gesperrt' },
+      { type: 'SYNC_ANMELDUNG_NOETIG' },
+    ])
+  })
+
+  it('Liste abfragen, erneut versuchen (mit Token) und verwerfen gehen als Nachricht an den SW', async () => {
+    const env = stubEnv()
+    const m = neuerManager()
+    await m.init()
+    env.posted.length = 0
+    m.requestQueueListe()
+    m.erneutVersuchen(7)
+    m.verwerfen(8)
+    expect(env.posted).toEqual([
+      { type: 'GET_QUEUE' },
+      { type: 'ERNEUT_VERSUCHEN', id: 7, token: 'TEST-TOKEN' },
+      { type: 'VERWERFEN', id: 8 },
+    ])
   })
 })
