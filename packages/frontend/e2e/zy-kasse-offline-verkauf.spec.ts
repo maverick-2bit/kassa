@@ -187,3 +187,72 @@ test('beim Nachbuchen abgelehnt → bleibt sichtbar, bis der Kassier ihn verwirf
     await request.delete(`/api/artikel/${artikel.id}`, { headers: auth })
   }
 })
+
+test.describe('Antwort geht verloren (ohne Service Worker, der Server hat schon gebucht)', () => {
+  test.use({ serviceWorkers: 'block' })   // page.route sieht nur Anfragen ohne Service Worker
+
+  /** Die nächste Verkaufs-Antwort kommt nicht an: der Server bucht, der Browser sieht einen Netzfehler */
+  async function naechsteAntwortVerlieren(page: Page) {
+    let verloren = false
+    await page.route('**/api/belege/barzahlung', async (route) => {
+      if (verloren) return route.fallback()
+      verloren = true
+      await route.fetch()          // beim Backend angekommen und gebucht …
+      await route.abort('failed')  // … aber die Antwort erreicht die Kasse nie
+    })
+  }
+
+  test('derselbe Warenkorb erneut kassiert → genau ein Beleg', async ({ page, request }) => {
+    const artikel = await (await request.post('/api/artikel', {
+      headers: auth,
+      data: { bezeichnung: `Verloren-Kaffee ${Date.now() % 100000}`, preisBruttoCent: 320, mwstSatz: 'normal' },
+    })).json() as { id: string; bezeichnung: string }
+    try {
+      await anmelden(page, request, login)
+      await page.goto('/kasse')
+      await inDenKorb(page, artikel.bezeichnung)
+      await naechsteAntwortVerlieren(page)
+
+      await page.getByRole('button', { name: /^Bar \(/ }).click()
+      await expect.poll(async () => (await belegeMit(request, artikel.bezeichnung)).length).toBe(1)
+      await expect(page.getByTitle('Menge eingeben')).toHaveCount(1)   // Kasse hält den Korb (Fehler)
+
+      await page.getByRole('button', { name: /^Bar \(/ }).click()
+      await expect(page.getByText(/Beleg #\d+ erstellt/)).toBeVisible({ timeout: 20_000 })
+      expect(await belegeMit(request, artikel.bezeichnung)).toHaveLength(1)
+    } finally {
+      await request.delete(`/api/artikel/${artikel.id}`, { headers: auth })
+    }
+  })
+
+  test('danach Korb verworfen und anderes kassiert → eigener Beleg, nicht der alte als „Erfolg"', async ({ page, request }) => {
+    const stamp = Date.now() % 100000
+    const erst = await (await request.post('/api/artikel', {
+      headers: auth, data: { bezeichnung: `Verloren-Tee ${stamp}`, preisBruttoCent: 280, mwstSatz: 'normal' },
+    })).json() as { id: string; bezeichnung: string }
+    const dann = await (await request.post('/api/artikel', {
+      headers: auth, data: { bezeichnung: `Neu-Kakao ${stamp}`, preisBruttoCent: 350, mwstSatz: 'normal' },
+    })).json() as { id: string; bezeichnung: string }
+    try {
+      await anmelden(page, request, login)
+      await page.goto('/kasse')
+      await inDenKorb(page, erst.bezeichnung)
+      await naechsteAntwortVerlieren(page)
+      await page.getByRole('button', { name: /^Bar \(/ }).click()
+      await expect.poll(async () => (await belegeMit(request, erst.bezeichnung)).length).toBe(1)
+
+      page.once('dialog', d => d.accept())
+      await page.getByRole('button', { name: /Alles verwerfen/ }).click()
+      await expect(page.getByTitle('Menge eingeben')).toHaveCount(0)
+      await inDenKorb(page, dann.bezeichnung)
+      await page.getByRole('button', { name: /^Bar \(/ }).click()
+      await expect(page.getByText(/Beleg #\d+ erstellt/)).toBeVisible({ timeout: 20_000 })
+
+      expect(await belegeMit(request, dann.bezeichnung)).toHaveLength(1)
+      expect(await belegeMit(request, erst.bezeichnung)).toHaveLength(1)
+    } finally {
+      await request.delete(`/api/artikel/${erst.id}`, { headers: auth })
+      await request.delete(`/api/artikel/${dann.id}`, { headers: auth })
+    }
+  })
+})

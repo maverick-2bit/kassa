@@ -95,12 +95,17 @@ function summeAusBody(body) {
   }
 }
 
+// Einträge dieses Formats sind geprüft (Idempotency-Key, kein Token); ältere bereinigt das Aktivieren
+var EINTRAG_FORMAT = 2
+var VERKAUF_PFAD   = '/api/belege/barzahlung'
+
 async function queueRequest(request) {
   var body = await request.clone().text()
   var headers = {}
   request.headers.forEach(function(wert, name) { headers[name] = wert })
   return mitStore('readwrite', function(store) {
     return store.add({
+      format:    EINTRAG_FORMAT,
       url:       request.url,
       method:    request.method,
       headers:   nurGespeicherteHeader(headers),
@@ -121,30 +126,59 @@ function removeQueued(id) {
   return mitStore('readwrite', function(store) { return store.delete(id) })
 }
 
-/** Eintrag lesen, ändern, zurückschreiben (fehlt er inzwischen: nichts tun) */
+/**
+ * Eintrag lesen, ändern, zurückschreiben — in EINER Transaktion: ein gleichzeitiges Löschen
+ * (Verwerfen, erfolgreiches Nachsenden) kann den Eintrag so nicht wieder auferstehen lassen.
+ * Fehlt er inzwischen: nichts tun.
+ */
 async function aendereEintrag(id, aendern) {
-  var eintrag = await mitStore('readonly', function(store) { return store.get(id) })
-  if (!eintrag) return
-  aendern(eintrag)
-  await mitStore('readwrite', function(store) { return store.put(eintrag) })
+  var db = await openDb()
+  return new Promise(function(resolve, reject) {
+    var store = db.transaction(OFFLINE_QUEUE_STORE, 'readwrite').objectStore(OFFLINE_QUEUE_STORE)
+    var get = store.get(id)
+    get.onsuccess = function() {
+      var eintrag = get.result
+      if (!eintrag) return resolve()
+      aendern(eintrag)
+      var put = store.put(eintrag)
+      put.onsuccess = function() { resolve() }
+      put.onerror   = function() { reject(put.error) }
+    }
+    get.onerror = function() { reject(get.error) }
+  })
 }
 
 /**
- * Einträge älterer SW-Versionen speicherten ALLE Header samt Login-Token —
- * beim Aktivieren auf die erlaubten Header kürzen (der Token ist dann weg).
+ * Einträge älterer SW-Versionen: Die nahmen JEDEN POST auf /api/belege/* auf (auch Storno,
+ * Sonderbelege, FinanzOnline-Registrierung samt PIN), mit allen Headern samt Login-Token und ohne
+ * Idempotency-Key. Beim Aktivieren: Token weg; nichts davon wird mehr ungefragt gesendet —
+ *  - Verkauf ohne Schlüssel: markiert, der Kassier prüft in der Belegliste, ob er schon gebucht
+ *    ist (kein Schutz vor Doppelbuchung), und sendet ihn dann erneut oder verwirft ihn;
+ *  - alles andere: Inhalt gelöscht (kann einen PIN tragen), nur noch Verwerfen möglich.
  */
 async function bereinigeAlteEintraege() {
   var eintraege = await getAllQueued()
   for (var i = 0; i < eintraege.length; i++) {
-    var e = eintraege[i]
-    var gekuerzt = nurGespeicherteHeader(e.headers)
-    if (Object.keys(gekuerzt).length !== Object.keys(e.headers || {}).length) {
-      await aendereEintrag(e.id, function(x) {
-        x.headers = gekuerzt
-        if (x.fehler === undefined) x.fehler = null
-        if (x.summeCent === undefined) x.summeCent = summeAusBody(x.body)
-      })
-    }
+    if (eintraege[i].format === EINTRAG_FORMAT) continue
+    await aendereEintrag(eintraege[i].id, function(x) {
+      var pfad = ''
+      try { pfad = new URL(x.url).pathname } catch (e) { /* kaputte URL: wie fremder Eintrag */ }
+      x.headers   = nurGespeicherteHeader(x.headers)
+      x.summeCent = pfad === VERKAUF_PFAD ? summeAusBody(x.body) : null
+      x.versuche  = x.versuche || 0
+      x.format    = EINTRAG_FORMAT
+      if (pfad !== VERKAUF_PFAD) {
+        x.body         = null
+        x.nurVerwerfen = true
+        x.fehler = { status: 0, am: Date.now(), meldung: 'Aus einer älteren Version gespeichert (' + (pfad || 'unbekannt') +
+          ', z. B. Storno oder Sonderbeleg) — wird nicht mehr nachgesendet. Bitte bei Bedarf von Hand erledigen und hier verwerfen.' }
+      } else if (!x.headers['idempotency-key']) {
+        x.fehler = { status: 0, am: Date.now(), meldung: 'Aus einer älteren Version gespeichert, ohne Schutz vor Doppelbuchung: ' +
+          'erst in der Belegliste prüfen, ob dieser Verkauf schon gebucht ist — dann verwerfen, sonst erneut senden.' }
+      } else if (x.fehler === undefined) {
+        x.fehler = null
+      }
+    })
   }
 }
 
@@ -342,34 +376,41 @@ self.addEventListener('sync', function(event) {
 self.addEventListener('message', function(event) {
   var d = event.data
   if (!d) return
+  var arbeit = null
   if (d.type === 'SYNC_NOW') {
-    syncQueue(d.token).then(function() { notifyClients({ type: 'SYNC_DONE' }) })
+    arbeit = syncQueue(d.token).then(function() { notifyClients({ type: 'SYNC_DONE' }) })
   }
   if (d.type === 'GET_QUEUE_COUNT') {
-    getAllQueued().then(function(items) {
+    arbeit = getAllQueued().then(function(items) {
       if (event.source) event.source.postMessage({ type: 'QUEUE_COUNT', count: items.length })
     })
   }
   if (d.type === 'GET_QUEUE') {
-    getAllQueued().then(function(items) {
+    arbeit = getAllQueued().then(function(items) {
       if (event.source) event.source.postMessage({ type: 'QUEUE_LISTE', eintraege: items.map(zurAnzeige) })
     })
   }
-  // Kassier: abgelehnten Verkauf noch einmal senden (z. B. nach neuer Anmeldung)
+  // Kassier: abgelehnten Verkauf noch einmal senden (z. B. nach neuer Anmeldung).
+  // Einträge, die nur noch verworfen werden können (Altbestand ohne Inhalt), bleiben unberührt.
   if (d.type === 'ERNEUT_VERSUCHEN') {
-    aendereEintrag(d.id, function(e) { e.fehler = null })
+    arbeit = aendereEintrag(d.id, function(e) { if (!e.nurVerwerfen) e.fehler = null })
       .then(function() { return syncQueue(d.token) })
       .then(function() { notifyClients({ type: 'SYNC_DONE' }) })
   }
   // Kassier: abgelehnten Verkauf bewusst verwerfen (er wird dann nicht gebucht)
   if (d.type === 'VERWERFEN') {
-    removeQueued(d.id).then(function() { notifyClients({ type: 'SYNC_DONE' }) })
+    arbeit = removeQueued(d.id).then(function() { notifyClients({ type: 'SYNC_DONE' }) })
   }
+  // Der Browser darf den SW nicht beenden, solange die Arbeit läuft
+  if (arbeit && typeof event.waitUntil === 'function') event.waitUntil(arbeit.catch(function() {}))
 })
 
 /** Was die Oberfläche von einem Eintrag sieht — ohne Body (der kann einen Freigabe-PIN tragen) */
 function zurAnzeige(e) {
-  return { id: e.id, createdAt: e.createdAt, summeCent: e.summeCent == null ? null : e.summeCent, fehler: e.fehler || null }
+  return {
+    id: e.id, createdAt: e.createdAt, summeCent: e.summeCent == null ? null : e.summeCent,
+    fehler: e.fehler || null, nurVerwerfen: !!e.nurVerwerfen,
+  }
 }
 
 /** Login-Token der Seite holen — der SW speichert ihn nie. Ohne Antwort: null. */
@@ -394,26 +435,55 @@ async function holeToken() {
   return null
 }
 
+/** Grund der Ablehnung für den Kassier — mit Hinweis, wenn offline keine Freigabe möglich war */
 async function fehlerText(response) {
+  var text = 'HTTP ' + response.status
+  var code = null
   try {
     var data = await response.json()
-    if (data && typeof data.fehler === 'string') return data.fehler
+    if (data && typeof data.fehler === 'string') text = data.fehler
+    if (data && typeof data.code === 'string') code = data.code
   } catch (e) { /* kein JSON */ }
-  return 'HTTP ' + response.status
+  if (code === 'freigabe_erforderlich') {
+    text += ' — Die Freigabe lässt sich nachträglich nicht erteilen: Verkauf verwerfen und mit Freigabe-PIN neu kassieren.'
+  }
+  return text
 }
 
-// Nur ein Nachsende-Lauf gleichzeitig (sync-Ereignis und SYNC_NOW können zusammenfallen)
+// Nur ein Nachsende-Lauf gleichzeitig (sync-Ereignis und SYNC_NOW können zusammenfallen).
+// Kommt währenddessen ein neuer Anstoß (z. B. „Erneut senden"), läuft danach noch ein Durchgang:
+// Der laufende hat seine Liste schon gelesen und sähe den freigegebenen Eintrag nicht mehr.
 var laufenderSync = null
+var nochEinLauf   = null   // Token oder '': Anstoß während eines Laufs; null: keiner
 
 function syncQueue(tokenVorgabe) {
-  if (!laufenderSync) {
-    laufenderSync = syncLauf(tokenVorgabe).finally(function() { laufenderSync = null })
+  if (laufenderSync) {
+    nochEinLauf = tokenVorgabe || nochEinLauf || ''
+    return laufenderSync
   }
+  laufenderSync = (async function() {
+    var token = tokenVorgabe
+    for (;;) {
+      await syncLauf(token)
+      if (nochEinLauf === null) break
+      token = nochEinLauf || undefined
+      nochEinLauf = null
+    }
+  })().finally(function() { laufenderSync = null })
   return laufenderSync
 }
 
+/** Nachsenden mit Zeitlimit — ein hängendes WLAN darf den Lauf nicht für immer blockieren */
+function sendeMitZeitlimit(url, init) {
+  var abbruch = new AbortController()
+  var t = setTimeout(function() { abbruch.abort() }, VERKAUF_ZEITLIMIT_MS)
+  init.signal = abbruch.signal
+  return fetch(url, init).finally(function() { clearTimeout(t) })
+}
+
 async function syncLauf(tokenVorgabe) {
-  var offen = (await getAllQueued()).filter(function(e) { return !e.fehler })
+  await bereinigeAlteEintraege().catch(function() {})
+  var offen = (await getAllQueued()).filter(function(e) { return !e.fehler && e.format === EINTRAG_FORMAT })
   if (offen.length === 0) return
 
   var token = tokenVorgabe || await holeToken()
@@ -429,9 +499,9 @@ async function syncLauf(tokenVorgabe) {
     headers['authorization'] = 'Bearer ' + token
     var response
     try {
-      response = await fetch(item.url, { method: item.method, headers: headers, body: item.body })
+      response = await sendeMitZeitlimit(item.url, { method: item.method, headers: headers, body: item.body })
     } catch (e) {
-      break // noch offline — später weiter
+      break // noch offline oder Zeitlimit — später weiter (der Schlüssel schützt vor Doppelbuchung)
     }
 
     if (response.ok) {
@@ -447,7 +517,7 @@ async function syncLauf(tokenVorgabe) {
       notifyClients({ type: 'BELEG_SYNC_FEHLER', id: item.id, status: response.status })
       break
     } else {
-      // Fachlich abgelehnt (400/403/404/409 …): stehen lassen, mit Grund markieren, nicht
+      // Fachlich abgelehnt (400/403/404/409/422 …): stehen lassen, mit Grund markieren, nicht
       // automatisch wiederholen. Der Kassier entscheidet: erneut versuchen oder verwerfen.
       var meldung = await fehlerText(response)
       await aendereEintrag(item.id, function(e) {

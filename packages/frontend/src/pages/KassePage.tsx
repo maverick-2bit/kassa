@@ -146,6 +146,10 @@ export function KassePage() {
   // einen neuen. Ohne ihn erzeugte eine verlorene Antwort samt Wiederholung zwei Belege.
   const verkaufSchluesselRef = useRef<string | null>(null)
   const verkaufSchluessel = () => (verkaufSchluesselRef.current ??= neueUuid())
+  // Anderer Warenkorb (auch „Alles verwerfen") = anderer Verkauf = neuer Schlüssel. Sonst bekäme
+  // der nächste Kunde nach einer verlorenen Antwort den alten Beleg zurück und sein Verkauf entfiele.
+  // (Das Backend lehnt denselben Schlüssel mit anderem Inhalt zusätzlich mit 422 ab.)
+  useEffect(() => { verkaufSchluesselRef.current = null }, [korb, rabatt, kunde, neuerKunde, kreditModus, gutschein])
   // Warenkorb geändert → bereits gewählte Seriennummern verwerfen (Indizes könnten veraltet sein)
   useEffect(() => { serialsRef.current = null }, [korb])
   // Angebot-spezifisch

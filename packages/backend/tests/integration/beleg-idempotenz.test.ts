@@ -154,6 +154,25 @@ describe('Verkauf mit Idempotency-Key (Integration, echtes PostgreSQL)', () => {
     expect(await anzahlBelege()).toBe(vorher + 4)
   })
 
+  it('derselbe Schlüssel mit ANDEREM Warenkorb: 422, kein zweiter Beleg — und nie der alte Beleg als „Erfolg"', async () => {
+    const schluessel = randomUUID()
+    const vorher = await anzahlBelege()
+    expect((await verkaufe(schluessel, 1)).statusCode).toBe(201)
+    const anders = await verkaufe(schluessel, 3)
+    expect(anders.statusCode).toBe(422)
+    expect(anders.json().fehler).toMatch(/anderen, schon gebuchten Verkauf/)
+    expect(await anzahlBelege()).toBe(vorher + 1)
+  })
+
+  it('anderer Druckwunsch ist derselbe Verkauf (Fingerabdruck ohne keinAutodruck/Freigabe-PIN)', async () => {
+    const schluessel = randomUUID()
+    const erst = await verkaufe(schluessel, 1)
+    const nochmal = await verkaufe(schluessel, 1, { keinAutodruck: true })
+    expect(erst.statusCode).toBe(201)
+    expect(nochmal.statusCode).toBe(200)
+    expect(nochmal.json().id).toBe(erst.json().id)
+  })
+
   it('ungültiger Schlüssel: 400, kein Beleg', async () => {
     const vorher = await anzahlBelege()
     const res = await verkaufe('kein-uuid')

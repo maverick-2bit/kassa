@@ -360,7 +360,7 @@ describe('Service Worker Kassa: Offline-Warteschlange', () => {
     sw.nachricht({ type: 'GET_QUEUE' })
     await sw.warteAuf('QUEUE_LISTE')
     const liste = sw.client.nachrichten.find(n => n.type === 'QUEUE_LISTE')!
-    expect(liste.eintraege).toEqual([{ id: 1, createdAt: expect.any(Number), summeCent: 450, fehler: null }])
+    expect(liste.eintraege).toEqual([{ id: 1, createdAt: expect.any(Number), summeCent: 450, fehler: null, nurVerwerfen: false }])
     expect(JSON.stringify(liste)).not.toContain('4711')
   })
 
@@ -378,18 +378,108 @@ describe('Service Worker Kassa: Offline-Warteschlange', () => {
     expect(sw.fetch).toHaveBeenCalledTimes(2)   // Verkauf + genau ein Nachsenden
   })
 
-  it('activate: Einträge älterer Versionen verlieren den gespeicherten Login-Token', async () => {
+  it('403 „Freigabe erforderlich": die Meldung sagt, dass nur Verwerfen und neu Kassieren hilft', async () => {
     const sw = ladeSw()
-    sw.idb.legeAn({
-      url: BASIS + '/api/belege/barzahlung', method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: 'Bearer ALT-TOKEN' },
-      body: JSON.stringify(VERKAUF), createdAt: 1, versuche: 0,
+    await offlineVerkauf(sw)
+    sw.fetch.mockResolvedValueOnce(json(403, { fehler: 'Rabatt braucht eine Freigabe', code: 'freigabe_erforderlich' }))
+    await sw.syncEreignis()
+    expect(sw.idb.eintraege()[0]!.fehler).toMatchObject({
+      status: 403, meldung: expect.stringMatching(/^Rabatt braucht eine Freigabe — .*neu kassieren/),
     })
-    await sw.aktivieren()
-    const [e] = sw.idb.eintraege()
-    expect(e!.headers).toEqual({ 'content-type': 'application/json' })
-    expect(e!.fehler).toBeNull()
-    expect(e!.summeCent).toBe(450)
-    expect(JSON.stringify(e)).not.toContain('ALT-TOKEN')
+  })
+
+  it('„Erneut senden" während eines laufenden Durchgangs: danach läuft noch einer und sendet ihn', async () => {
+    const sw = ladeSw()
+    await offlineVerkauf(sw, SCHLUESSEL)
+    await offlineVerkauf(sw, '7f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b')
+    sw.fetch.mockResolvedValueOnce(json(409, { fehler: 'Kasse gesperrt' }))   // erster abgelehnt
+    let freigeben!: (r: Response) => void
+    sw.fetch.mockImplementationOnce(() => new Promise<Response>(r => { freigeben = r }))   // zweiter hängt
+    const lauf = sw.syncEreignis()
+    await vi.waitFor(() => expect(freigeben).toBeTypeOf('function'))
+
+    const ersterId = sw.idb.eintraege()[0]!.id
+    sw.fetch.mockResolvedValueOnce(json(201, { id: 'b1' }))
+    sw.nachricht({ type: 'ERNEUT_VERSUCHEN', id: ersterId, token: 'TOKEN-AKTUELL' })
+    freigeben(json(201, { id: 'b2' }))
+    await lauf
+    await sw.warteAuf('SYNC_DONE')
+    await vi.waitFor(() => expect(sw.idb.eintraege()).toHaveLength(0))
+  })
+
+  it('Nachsenden hängt: nach dem Zeitlimit abgebrochen, der Eintrag bleibt, der nächste Lauf geht wieder', async () => {
+    const sw = ladeSw()
+    await offlineVerkauf(sw)
+    sw.fetch.mockImplementationOnce((_u, init) => new Promise<Response>((_ok, fehler) => {
+      init?.signal?.addEventListener('abort', () => fehler(new DOMException('abgebrochen', 'AbortError')))
+    }))
+    await sw.syncEreignis()
+    expect(sw.idb.eintraege()).toHaveLength(1)
+    sw.fetch.mockResolvedValueOnce(json(201, { id: 'b1' }))
+    await sw.syncEreignis()
+    expect(sw.idb.eintraege()).toHaveLength(0)
+  })
+
+  describe('Altbestand einer älteren SW-Version (beim Aktivieren bereinigt)', () => {
+    const alterEintrag = (pfad: string, body: unknown, extraHeader: Record<string, string> = {}) => ({
+      url: BASIS + pfad, method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer ALT-TOKEN', ...extraHeader },
+      body: JSON.stringify(body), createdAt: 1, versuche: 0,
+    })
+
+    it('Verkauf ohne Schlüssel: Token weg, markiert (kein Doppelschutz) — nie ungefragt gesendet', async () => {
+      const sw = ladeSw()
+      sw.idb.legeAn(alterEintrag('/api/belege/barzahlung', VERKAUF))
+      await sw.aktivieren()
+      const [e] = sw.idb.eintraege()
+      expect(e!.headers).toEqual({ 'content-type': 'application/json' })
+      expect(e!.summeCent).toBe(450)
+      expect(e!.fehler).toMatchObject({ status: 0, meldung: expect.stringMatching(/Belegliste prüfen/) })
+      expect(JSON.stringify(e)).not.toContain('ALT-TOKEN')
+
+      await sw.syncEreignis()
+      expect(sw.fetch).not.toHaveBeenCalled()
+
+      // Der Kassier hat geprüft und schickt ihn bewusst
+      sw.fetch.mockResolvedValueOnce(json(201, { id: 'b1' }))
+      sw.nachricht({ type: 'ERNEUT_VERSUCHEN', id: e!.id, token: 'TOKEN-AKTUELL' })
+      await sw.warteAuf('SYNC_DONE')
+      expect(sw.idb.eintraege()).toHaveLength(0)
+    })
+
+    it('Storno/FinanzOnline-Registrierung: Inhalt (PIN) gelöscht, nur noch Verwerfen — auch „Erneut senden" sendet nichts', async () => {
+      const sw = ladeSw()
+      sw.idb.legeAn(alterEintrag('/api/belege/fo-registrierung', { kasseId: VERKAUF.kasseId, credentials: { pin: 'FON-GEHEIM' } }))
+      sw.idb.legeAn(alterEintrag('/api/belege/storno', { belegId: 'x' }))
+      await sw.aktivieren()
+      for (const e of sw.idb.eintraege()) {
+        expect(e.body).toBeNull()
+        expect(e.nurVerwerfen).toBe(true)
+        expect(e.fehler).toMatchObject({ status: 0, meldung: expect.stringMatching(/älteren Version/) })
+      }
+      expect(JSON.stringify(sw.idb.eintraege())).not.toMatch(/FON-GEHEIM|ALT-TOKEN/)
+
+      const [fo] = sw.idb.eintraege()
+      sw.nachricht({ type: 'ERNEUT_VERSUCHEN', id: fo!.id, token: 'TOKEN-AKTUELL' })
+      await sw.warteAuf('SYNC_DONE')
+      expect(sw.fetch).not.toHaveBeenCalled()
+      expect(sw.idb.eintraege()).toHaveLength(2)
+
+      sw.nachricht({ type: 'GET_QUEUE' })
+      await sw.warteAuf('QUEUE_LISTE')
+      const liste = sw.client.nachrichten.find(n => n.type === 'QUEUE_LISTE')!
+      expect((liste.eintraege as Array<{ nurVerwerfen: boolean }>).every(x => x.nurVerwerfen)).toBe(true)
+    })
+
+    it('Verkauf, der schon einen Schlüssel trug: nur der Token fällt weg, er wird normal nachgesendet', async () => {
+      const sw = ladeSw()
+      sw.idb.legeAn(alterEintrag('/api/belege/barzahlung', VERKAUF, { 'idempotency-key': SCHLUESSEL }))
+      await sw.aktivieren()
+      expect(sw.idb.eintraege()[0]!.fehler).toBeNull()
+      sw.fetch.mockResolvedValueOnce(json(201, { id: 'b1' }))
+      await sw.syncEreignis()
+      expect((sw.fetch.mock.calls[0]![1]!.headers as Record<string, string>)['idempotency-key']).toBe(SCHLUESSEL)
+      expect(sw.idb.eintraege()).toHaveLength(0)
+    })
   })
 })

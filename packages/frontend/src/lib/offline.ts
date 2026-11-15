@@ -18,6 +18,8 @@ export interface WarteschlangenEintrag {
   summeCent: number | null
   /** Gesetzt, wenn das Backend den Verkauf fachlich abgelehnt hat — wird nicht automatisch wiederholt */
   fehler:    { status: number; meldung: string; am: number } | null
+  /** Altbestand einer älteren Version (z. B. Storno) ohne Inhalt: kann nur noch verworfen werden */
+  nurVerwerfen?: boolean
 }
 
 export type OfflineEvent =

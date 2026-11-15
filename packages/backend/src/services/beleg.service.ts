@@ -104,14 +104,29 @@ export class BelegSchonGebucht extends Error {
   }
 }
 
-/** Beleg-ID des Verkaufs mit diesem Idempotenz-Schlüssel an dieser Kasse, sonst null */
-async function findeBelegZuSchluessel(db: Db | Tx, kasseId: string, schluessel: string): Promise<string | null> {
+/** Idempotency-Key der Kassa samt Fingerabdruck des Verkaufs (SHA-256, ohne Freigabe-PIN) */
+export interface Idempotenz {
+  schluessel: string
+  hash:       string
+}
+
+/**
+ * Ist an dieser Kasse schon ein Verkauf mit diesem Schlüssel gebucht? Ja und derselbe Verkauf →
+ * BelegSchonGebucht (Antwort: der vorhandene Beleg). Ja, aber ein ANDERER Warenkorb → 422: Die
+ * Kassa hat den Schlüssel für einen neuen Verkauf weiterverwendet; mit dem alten Beleg zu
+ * antworten hieße, den neuen Verkauf still zu verschlucken.
+ */
+async function pruefeIdempotenz(db: Db | Tx, kasseId: string, idem: Idempotenz): Promise<void> {
   const [row] = await db
-    .select({ id: belege.id })
+    .select({ id: belege.id, hash: belege.idempotenzHash })
     .from(belege)
-    .where(and(eq(belege.kasseId, kasseId), eq(belege.idempotenzSchluessel, schluessel)))
+    .where(and(eq(belege.kasseId, kasseId), eq(belege.idempotenzSchluessel, idem.schluessel)))
     .limit(1)
-  return row?.id ?? null
+  if (!row) return
+  if (row.hash !== idem.hash) {
+    throw new BelegError(422, 'Dieser Idempotency-Key gehört zu einem anderen, schon gebuchten Verkauf — bitte den Verkauf neu kassieren.', 'idempotenz-konflikt')
+  }
+  throw new BelegSchonGebucht(row.id)
 }
 
 /** BelegError.code: Die Signatureinheit/das Schlüsselmaterial weist uns ab — Warten hilft nicht. */
@@ -167,10 +182,11 @@ interface SigniereInput {
   /** Läuft NACH dem Beleg-Insert in derselben Tx (z. B. Seriennummern als verkauft markieren). */
   nachPersist?: (tx: Tx, belegId: string, mandantId: string) => Promise<void>
   /**
-   * Idempotenz-Schlüssel des Verkaufs: Ist an der Kasse schon ein Beleg mit diesem Schlüssel
-   * gebucht, wirft die Tx BelegSchonGebucht, bevor Lager, Seriennummern oder Signatur berührt werden.
+   * Idempotenz des Verkaufs: Ist an der Kasse schon ein Beleg mit diesem Schlüssel gebucht, wirft
+   * die Tx BelegSchonGebucht (bzw. 422 bei anderem Warenkorb), bevor Lager, Seriennummern oder
+   * Signatur berührt werden.
    */
-  idempotenzSchluessel?: string | undefined
+  idempotenz?: Idempotenz | undefined
 }
 
 /** mandanten.status nach der Übergabe an eine andere Kassa: keine neuen Belege mehr */
@@ -254,10 +270,7 @@ async function signiereImTxKern(
     // Derselbe Verkauf ein zweites Mal? Erst HIER (unter der Kassen-Sperre) ist die Prüfung
     // verlässlich: Eine gleichzeitige Zweitanfrage wartet auf die Sperre und sieht danach den
     // gebuchten Beleg. Die Vorab-Prüfung in erstelleBarzahlungsbeleg spart nur Arbeit.
-    if (input.idempotenzSchluessel) {
-      const vorhanden = await findeBelegZuSchluessel(tx, kasse.id, input.idempotenzSchluessel)
-      if (vorhanden) throw new BelegSchonGebucht(vorhanden)
-    }
+    if (input.idempotenz) await pruefeIdempotenz(tx, kasse.id, input.idempotenz)
     // Hinweis: Eine NICHT bei FinanzOnline registrierte Kasse darf provisorisch
     // Belege ausstellen (Event-Einrichtung ohne FON-Daten). Die Belege werden
     // regulär signiert; die FON-Registrierung ist zeitnah nachzutragen. Das UI
@@ -437,7 +450,10 @@ async function signiereImTxKern(
       ...(input.verweisBelegId && { verweisBelegId: input.verweisBelegId }),
       ...(input.kundeId        && { kundeId:        input.kundeId }),
       ...(input.kundeSnapshot  && { kundeSnapshot:  input.kundeSnapshot }),
-      ...(input.idempotenzSchluessel && { idempotenzSchluessel: input.idempotenzSchluessel }),
+      ...(input.idempotenz && {
+        idempotenzSchluessel: input.idempotenz.schluessel,
+        idempotenzHash:       input.idempotenz.hash,
+      }),
     }).returning()
     if (!persisted) throw new BelegError(500, 'Beleg konnte nicht gespeichert werden')
 
@@ -506,18 +522,16 @@ export async function erstelleBarzahlungsbeleg(
      */
     freigabeDb?: Db
     /**
-     * Idempotency-Key der Kassa: Ist der Verkauf schon gebucht, wirft der Aufruf BelegSchonGebucht
-     * (die Route antwortet dann mit dem vorhandenen Beleg) — ohne neuen Kunden, Lager, Signatur.
+     * Idempotency-Key der Kassa samt Fingerabdruck: Ist der Verkauf schon gebucht, wirft der Aufruf
+     * BelegSchonGebucht (die Route antwortet mit dem vorhandenen Beleg) — ohne neuen Kunden, Lager,
+     * Signatur; derselbe Schlüssel mit anderem Warenkorb → BelegError 422.
      */
-    idempotenzSchluessel?: string
+    idempotenz?: Idempotenz
   } = {},
 ): Promise<BelegResponse> {
   // Wiederholter Verkauf: früh abbrechen, bevor unten ein „neuer Kunde" ein zweites Mal entsteht.
   // Verlässlich ist erst die Prüfung unter der Kassen-Sperre in signiereImTxKern.
-  if (opts.idempotenzSchluessel) {
-    const vorhanden = await findeBelegZuSchluessel(deps.db, input.kasseId, opts.idempotenzSchluessel)
-    if (vorhanden) throw new BelegSchonGebucht(vorhanden)
-  }
+  if (opts.idempotenz) await pruefeIdempotenz(deps.db, input.kasseId, opts.idempotenz)
 
   // Kunden-Snapshot vor der Transaktion auflösen (neuer Kunde wird hier angelegt)
   let kundeId:       string | undefined
@@ -557,7 +571,7 @@ export async function erstelleBarzahlungsbeleg(
     validatePayment: true,
     kundeId,
     kundeSnapshot,
-    idempotenzSchluessel: opts.idempotenzSchluessel,
+    idempotenz:      opts.idempotenz,
     belegDaten: async (tx, mandantId) => {
       // Artikel-Positionen (mit artikelId) vs. freie Positionen trennen
       const artikelPositionen = input.positionen.filter(p => ArtikelPositionSchema.safeParse(p).success)

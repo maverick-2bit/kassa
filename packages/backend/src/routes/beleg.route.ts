@@ -3,6 +3,7 @@
  * Kasse-Zugehörigkeit wird gegen JWT-mandantId geprüft.
  */
 
+import { createHash } from 'node:crypto'
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import {
@@ -197,6 +198,26 @@ function tryBonierDirektverkauf(
   })()
 }
 
+/** JSON mit sortierten Schlüsseln (undefined weggelassen) — gleicher Inhalt, gleiche Zeichenkette */
+function stabilesJson(wert: unknown): string {
+  if (Array.isArray(wert)) return `[${wert.map(stabilesJson).join(',')}]`
+  if (wert !== null && typeof wert === 'object') {
+    const obj = wert as Record<string, unknown>
+    return `{${Object.keys(obj).sort().filter(k => obj[k] !== undefined)
+      .map(k => `${JSON.stringify(k)}:${stabilesJson(obj[k])}`).join(',')}}`
+  }
+  return JSON.stringify(wert)
+}
+
+/**
+ * Fingerabdruck eines Verkaufs für den Idempotency-Key: SHA-256 über die geprüfte Eingabe OHNE
+ * Freigabe-PIN und Druckwunsch — die Wiederholung nach der PIN-Freigabe ist derselbe Verkauf.
+ */
+function verkaufsFingerabdruck(input: BarzahlungsbelegInput): string {
+  const { freigabePin: _pin, keinAutodruck: _druck, ...verkauf } = input
+  return createHash('sha256').update(stabilesJson(verkauf)).digest('hex')
+}
+
 export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify, opts) => {
   const guard = { onRequest: [fastify.authenticate] }
 
@@ -214,11 +235,14 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     if (!(await pruefeKasseScope(request, reply, opts.deps, parsed.data.kasseId))) return
     const freigabeKontext = freigabeKontextAus(request, parsed.data.kasseId)
+    const idempotenz = idempotenzSchluessel
+      ? { schluessel: idempotenzSchluessel, hash: verkaufsFingerabdruck(parsed.data) }
+      : undefined
     try {
       return await fuehreAus(fastify, reply, opts.deps,
         () => erstelleBarzahlungsbeleg(parsed.data, opts.deps, {
           freigabeKontext,
-          ...(idempotenzSchluessel && { idempotenzSchluessel }),
+          ...(idempotenz && { idempotenz }),
         }), 201,
         {
           skipAutodruck: parsed.data.keinAutodruck ?? false,

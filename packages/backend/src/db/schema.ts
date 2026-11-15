@@ -336,6 +336,8 @@ export const belege = pgTable('belege', {
    * schon gebuchten Beleg statt eines zweiten. Eindeutig je Kasse, NULL = ohne Schlüssel.
    */
   idempotenzSchluessel: uuid('idempotenz_schluessel'),
+  /** SHA-256 des Verkaufs (ohne Freigabe-PIN): derselbe Schlüssel mit anderem Warenkorb → 422 */
+  idempotenzHash:       varchar('idempotenz_hash', { length: 64 }),
 
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({

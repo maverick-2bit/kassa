@@ -64,6 +64,9 @@ export function OfflineStatusBar() {
       }
     })
     offlineManager.requestQueueListe()
+    // Die Leiste erscheint erst im angemeldeten Bereich: jetzt nachsenden, was beim App-Start noch
+    // auf die Anmeldung wartete (sonst bliebe die Warteschlange bis zum nächsten Anstoß liegen)
+    if (navigator.onLine) offlineManager.triggerSync()
     return () => { unsub(); clearTimeout(toastTimer) }
   }, [])
 
@@ -119,7 +122,9 @@ export function OfflineStatusBar() {
                   </div>
                 ) : (
                   <div className="flex items-center gap-2">
-                    <Button size="sm" onClick={() => offlineManager.erneutVersuchen(e.id)}>Erneut senden</Button>
+                    {!e.nurVerwerfen && (
+                      <Button size="sm" onClick={() => offlineManager.erneutVersuchen(e.id)}>Erneut senden</Button>
+                    )}
                     <Button size="sm" variant="secondary" onClick={() => setVerwerfenId(e.id)}>Verwerfen</Button>
                   </div>
                 )}
