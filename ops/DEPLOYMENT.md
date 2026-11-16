@@ -463,6 +463,8 @@ Container, die Daten (Postgres-Volume) bleiben erhalten.
 
 ## 9. Troubleshooting
 
+- **Internet weg, LAN läuft (Gateway ohne WAN):** Was weiterläuft und was nicht, plus eine
+  Checkliste für den Test vor Ort: [`ops/TEST-LAN-OHNE-INTERNET.md`](TEST-LAN-OHNE-INTERNET.md).
 - **Backend „unhealthy":** `docker compose logs backend` — meist DB-URL/Secret
   falsch oder `MASTER_PASSPHRASE` nachträglich geändert.
 - **Uhrzeit auf Bons/QR-Code 1–2 Stunden daneben:** Der Backend-Container läuft in
