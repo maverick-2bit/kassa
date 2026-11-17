@@ -46,6 +46,8 @@ export const LayoutArtikelSchema = z.object({
   variante:    z.string().nullable().optional(),
   /** Allergen-Buchstaben ("A,C,G"), nur für NEU angelegte Artikel; bestehende bleiben unberührt */
   allergene:   AllergeneEingabeSchema,
+  /** EAN/GTIN — übernommen nur wenn gültig, frei und der Artikel noch keine eigene hat (sonst im Bericht gezählt) */
+  ean:         z.string().trim().max(20).nullable().optional(),
   optionen:    z.array(LayoutOptionsgruppeSchema).max(50).default([]),
 })
 export type LayoutArtikel = z.infer<typeof LayoutArtikelSchema>
@@ -151,6 +153,10 @@ export interface LayoutBericht {
       nichtGefundenNichtAngelegt: number
       /** Zugeordnete Artikel, bei denen sich Gruppe/Farbe/Slot/Reihenfolge ändert */
       geaendert: number
+      /** EANs aus dem Layout gesetzt (neue Artikel oder bisher ohne EAN) */
+      eanUebernommen?: number
+      /** EANs aus dem Layout verworfen: ungültig, schon vergeben oder Artikel hat eine eigene */
+      eanUebersprungen?: number
     }
     favoriten: {
       gesetzt: number

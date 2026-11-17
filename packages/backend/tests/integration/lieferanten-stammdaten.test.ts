@@ -135,9 +135,11 @@ describe('Lieferanten-Stammdaten und Einkaufsdaten am Artikel (Integration, echt
   it('Datenübernahme: Bulk-Import legt Artikel samt Einkaufsdaten, Warengruppe und Lieferant an; ungültige Zeile blockiert die anderen nicht', async () => {
     const lid = ((await inject('POST', '/api/lieferanten', authA(), { name: 'Bulk-Lieferant', notiz: 'SelectLine-Nr. 70007' })).json() as LieferantRow).id
     const kat = (await inject('POST', '/api/kategorien', authA(), { name: 'Tinte', farbe: 'grau', reihenfolge: 0 })).json() as { id: string }
+    // Gültige, je Zeile verschiedene EANs (Prüfziffer + Eindeutigkeit je Mandant, Migration 0085)
+    const EAN: Record<string, string> = { Eins: '4006381333931', Zwei: '96385074', Drei: '2000000000015' }
     const zeile = (n: string, extra: Record<string, unknown> = {}) => ({
       bezeichnung: n, preisBruttoCent: 1000, mwstSatz: 'normal', kategorieId: kat.id, lieferantId: lid,
-      ean: `900${n.length}`, einkaufspreisCent: 800, lieferantenArtikelnummer: `SL-${n}`, ...extra,
+      ean: EAN[n] ?? null, einkaufspreisCent: 800, lieferantenArtikelnummer: `SL-${n}`, ...extra,
     })
     const res = await inject('POST', '/api/artikel/bulk', authA(), [zeile('Eins'), zeile('Zwei'), zeile('', { bezeichnung: '' }), zeile('Drei', { einkaufspreisCent: -1 })])
     expect(res.statusCode).toBe(200)

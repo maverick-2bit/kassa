@@ -94,6 +94,11 @@ export function BonAnzeige({ beleg, codeAufgeklappt = false, belegModus, onAkzep
             <tr key={i}>
               <td className="py-1.5 text-ink">
                 {p.bezeichnung}
+                {p.ean && (
+                  <span className="block text-[10px] text-ink-muted font-mono" data-testid="bon-position-ean">
+                    EAN {p.ean}
+                  </span>
+                )}
                 {p.seriennummern && p.seriennummern.length > 0 && (
                   <span className="block text-[10px] text-ink-muted font-mono">
                     S/N: {p.seriennummern.join(', ')}

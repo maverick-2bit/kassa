@@ -94,6 +94,7 @@ export function baueBon(
       const mengeStr = `${formatMenge(p.menge)}x ${p.bezeichnung}`
       const preisStr = formatCent(p.einzelpreisBreutto * p.menge)
       add(ep.textLine(zweispaltig(mengeStr, preisStr, W)))
+      if (p.ean) add(ep.textLine(truncate(`   EAN ${p.ean}`, W)))
     }
   }
   add(trennlinie(W))

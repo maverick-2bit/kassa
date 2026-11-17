@@ -8,7 +8,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
-import { LayoutImportSchema, type LayoutGruppe, type LayoutImport } from '@kassa/shared'
+import { LayoutImportSchema, eanSchluessel, type LayoutGruppe, type LayoutImport } from '@kassa/shared'
 import type { KassaArtikel, KassaGruppe, KassaZustand, LayoutPlan } from '../../src/services/layout-import.service.js'
 import { optionsgruppenSchluessel } from '../../src/services/modifikator.service.js'
 
@@ -82,9 +82,12 @@ export function wendePlanAn(z: KassaZustand, plan: LayoutPlan): KassaZustand {
       station: g.station, bonierdruckerId: g.bonierdruckerId, terminalSichtbar: g.terminalSichtbar })
   }
   for (const u of plan.gruppenUpdates) Object.assign(gruppen.find(g => g.id === u.id)!, u.werte)
+  // wie schreibePlan: nach „Katalog löschen" geben behaltene Altartikel ihre EAN an neue ab
+  const neueEans = new Set(plan.neueArtikel.flatMap(n => (n.ean ? [eanSchluessel(n.ean)] : [])))
+  if (plan.loeschung) for (const a of artikel) if (a.ean && neueEans.has(eanSchluessel(a.ean))) a.ean = null
   for (const n of plan.neueArtikel) {
     artikel.push({ id: n.id, bezeichnung: n.bezeichnung, kategorieId: n.kategorieId, farbe: n.farbe, rasterPosition: n.rasterPosition,
-      reihenfolge: n.reihenfolge, istFavorit: n.istFavorit, favoritenReihenfolge: n.favoritenReihenfolge, aktiv: true, istBestandteil: false })
+      reihenfolge: n.reihenfolge, istFavorit: n.istFavorit, favoritenReihenfolge: n.favoritenReihenfolge, aktiv: true, istBestandteil: false, ean: n.ean })
   }
   for (const u of plan.artikelUpdates) Object.assign(artikel.find(a => a.id === u.id)!, u.werte)
   // Optionen: inhaltsgleiche aktive Gruppen wiederverwenden, Zuordnungen ergänzen (wie ordneOptionsgruppeZu)

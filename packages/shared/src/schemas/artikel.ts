@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { StationSchema } from './station.js'
 import { KategorieFarbeSchema } from './kategorie.js'
 import { parseAllergene } from '../allergene.js'
+import { eanFehler } from '../ean.js'
 
 /**
  * Allergen-Eingabe ("a, c g") → normalisiert "A,C,G" (sortiert, ohne Doppelte);
@@ -70,6 +71,15 @@ export const ArtikelBestandteilInputSchema = z.object({
   menge:                z.number().int().positive('Menge muss positiv sein'),
 })
 
+/**
+ * EAN/GTIN-Eingabe: EAN-8, UPC-A, EAN-13 oder GTIN-14 mit gültiger Prüfziffer (siehe ean.ts).
+ * null leert das Feld. Eindeutig je Mandant prüft das Backend.
+ */
+export const EanEingabeSchema = z.string().trim().superRefine((v, ctx) => {
+  const fehler = eanFehler(v)
+  if (fehler) ctx.addIssue({ code: z.ZodIssueCode.custom, message: fehler })
+})
+
 // ---------------------------------------------------------------------------
 // Artikel
 // ---------------------------------------------------------------------------
@@ -108,7 +118,7 @@ export const ArtikelSchema = z.object({
   /** Abgeleitete Verfügbarkeit aus dem Rezept (min über Bestandteile); null = kein Rezept */
   verfuegbareMenge:     z.number().int().nonnegative().nullable().optional(),
   lieferantId:          z.string().guid().nullable(),
-  /** EAN/GTIN-Barcode */
+  /** EAN/GTIN als Artikelkennzeichnung (eindeutig je Mandant; Altbestand kann ungültig sein) */
   ean:                  z.string().nullable().optional(),
   /** Einkaufspreis netto in Cent; null = unbekannt */
   einkaufspreisCent:    z.number().int().nonnegative().nullable().optional(),
@@ -149,7 +159,7 @@ export const ArtikelInputSchema = z.object({
   istBestandteil:  z.boolean().default(false),
   bestandteile:    z.array(ArtikelBestandteilInputSchema).default([]),
   lieferantId:     z.string().guid().optional().nullable(),
-  ean:             z.string().trim().max(20).optional().nullable(),
+  ean:             EanEingabeSchema.optional().nullable(),
   einkaufspreisCent: z.number().int().nonnegative().optional().nullable(),
   lieferantenArtikelnummer: z.string().trim().max(60).optional().nullable(),
   hersteller:      z.string().trim().max(100).optional().nullable(),
@@ -182,7 +192,7 @@ export const ArtikelUpdateSchema = z.object({
   istBestandteil:       z.boolean().optional(),
   bestandteile:         z.array(ArtikelBestandteilInputSchema).optional(),
   lieferantId:          z.string().guid().nullable().optional(),
-  ean:                  z.string().trim().max(20).nullable().optional(),
+  ean:                  EanEingabeSchema.nullable().optional(),
   einkaufspreisCent:    z.number().int().nonnegative().nullable().optional(),
   lieferantenArtikelnummer: z.string().trim().max(60).nullable().optional(),
   hersteller:           z.string().trim().max(100).nullable().optional(),

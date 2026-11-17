@@ -157,6 +157,17 @@ describe('baueBon()', () => {
     expect(bytes.includes(Buffer.from('(keine Positionen)'))).toBe(true)
   })
 
+  it('druckt die EAN als Zusatzzeile unter der Position (nur wenn vorhanden)', () => {
+    const beleg = dummyBeleg()
+    const bytes = baueBon(
+      { ...beleg, positionen: [{ ...beleg.positionen[0]!, ean: '9002490100070' }, ...beleg.positionen.slice(1)] },
+      { firmenname: 'Test', uid: 'ATU12345678', kassenId: 'K1' },
+      { breite: 32 },
+    )
+    expect(bytes.includes(Buffer.from('   EAN 9002490100070'))).toBe(true)
+    expect(baueBon(beleg, { firmenname: 'Test', uid: 'ATU12345678', kassenId: 'K1' }, { breite: 32 }).includes(Buffer.from('EAN'))).toBe(false)
+  })
+
   it('produziert Bon mit korrekter Breite für 58mm', () => {
     const bytes = baueBon(
       dummyBeleg(),

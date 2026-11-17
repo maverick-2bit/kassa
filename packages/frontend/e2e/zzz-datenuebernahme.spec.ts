@@ -1,5 +1,6 @@
 import { test, expect, type APIRequestContext } from '@playwright/test'
 import * as XLSX from 'xlsx'
+import { eanPruefziffer } from '@kassa/shared'
 
 /**
  * Datenübernahme aus SelectLine über die Oberfläche (/uebernahme):
@@ -57,7 +58,9 @@ test('Datenübernahme: Lieferanten, Kunden und Artikel mit Preisen aus Excel; zw
   const gruppe      = `Übernahme-Gruppe ${ts}`
   const artikel     = `Übernahme-Artikel ${ts}`
   const artikelOhne = `Übernahme-ohne-Preis ${ts}`
-  const ean         = String(ts).padStart(13, '9').slice(-13)
+  // Hauseigene EAN-13 (Präfix 2) mit gültiger Prüfziffer — ungültige übernimmt der Import nur ohne EAN
+  const eanRumpf    = '2' + String(ts).slice(-11).padStart(11, '0')
+  const ean         = eanRumpf + eanPruefziffer(eanRumpf)
 
   const dateiLieferanten = excel('Lieferanten',
     ['Nummer', 'Firma', 'Name', 'Vorname', 'Straße', 'PLZ', 'Ort', 'Land', 'Telefon', 'E-Mail', 'UID', 'Zahlungsbed.', 'Notiz'],

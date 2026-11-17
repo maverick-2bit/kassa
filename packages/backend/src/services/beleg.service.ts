@@ -627,7 +627,9 @@ export async function erstelleBarzahlungsbeleg(
       // mitgespeichert, berühren aber nicht die RKSV-Signatur (nur menge/preis/mwst relevant).
       // artikelName = Name des Hauptartikels OHNE Optionen („Spritzer", nicht „Spritzer (süß)"): die
       // Artikelberichte zählen danach, egal ob mit Pommes oder Kartoffelsalat.
-      const positionen: (BelegPosition & { kategorieId?: string | undefined; kategorieName?: string | undefined; artikelName?: string | undefined })[] =
+      // ean = EAN des Artikels zum Verkaufszeitpunkt (Aufdruck auf dem Bon; spätere Änderungen am Artikel
+      // ändern den Beleg nicht).
+      const positionen: (BelegPosition & { kategorieId?: string | undefined; kategorieName?: string | undefined; artikelName?: string | undefined; ean?: string | undefined })[] =
         input.positionen.map((p) => {
           // Freie Position: direkt übernehmen, kein Artikel-Lookup
           if (!('artikelId' in p)) {
@@ -650,6 +652,7 @@ export async function erstelleBarzahlungsbeleg(
             menge:              p.menge,
             einzelpreisBreutto: preis,
             mwstSatz:           a.mwstSatz as MwStSatz,
+            ...(a.ean && { ean: a.ean }),
             ...(a.kategorieId && katNameMap.has(a.kategorieId) && {
               kategorieId:   a.kategorieId,
               kategorieName: katNameMap.get(a.kategorieId),
@@ -853,14 +856,15 @@ export async function erstelleStornobeleg(
       }
 
       // Positionen mit negiertem Einzelpreis
-      const originalPositionen = verweisBeleg.positionen as (BelegPosition & { artikelName?: string })[]
-      const positionen: (BelegPosition & { artikelName?: string | undefined })[] = originalPositionen.map(p => ({
+      const originalPositionen = verweisBeleg.positionen as (BelegPosition & { artikelName?: string; ean?: string })[]
+      const positionen: (BelegPosition & { artikelName?: string | undefined; ean?: string | undefined })[] = originalPositionen.map(p => ({
         bezeichnung:        `Storno: ${p.bezeichnung}`,
         // „Storno: Spritzer" statt je Option eine eigene Storno-Zeile in den Artikelberichten
         ...(p.artikelName && { artikelName: `Storno: ${p.artikelName}` }),
         menge:              p.menge,
         einzelpreisBreutto: -p.einzelpreisBreutto,
         mwstSatz:           p.mwstSatz,
+        ...(p.ean && { ean: p.ean }),
       }))
 
       // Zahlungsaufteilung 1:1 negieren

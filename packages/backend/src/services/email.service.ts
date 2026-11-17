@@ -62,6 +62,8 @@ export interface BelegEmailDaten {
     menge:       number
     preisBruttoCent: number
     mwstSatz:    string
+    /** EAN des Artikels zum Verkaufszeitpunkt */
+    ean?:        string | undefined
   }>
   summeCent:    number
   signaturwert: string
@@ -87,7 +89,7 @@ export async function sendeBelegEmail(
     const gesamt   = (p.preisBruttoCent * p.menge / 100).toFixed(2).replace('.', ',')
     return `
       <tr>
-        <td style="padding:6px 12px;border-bottom:1px solid #e5e7eb">${p.menge}× ${p.bezeichnung}</td>
+        <td style="padding:6px 12px;border-bottom:1px solid #e5e7eb">${p.menge}× ${p.bezeichnung}${p.ean && /^\d+$/.test(p.ean) ? `<div style="font-size:11px;color:#6b7280;font-family:monospace;margin-top:2px">EAN ${p.ean}</div>` : ''}</td>
         <td style="padding:6px 12px;border-bottom:1px solid #e5e7eb;text-align:right;font-family:monospace">${preis} €</td>
         <td style="padding:6px 12px;border-bottom:1px solid #e5e7eb;text-align:right;font-family:monospace;font-weight:600">${gesamt} €</td>
       </tr>`

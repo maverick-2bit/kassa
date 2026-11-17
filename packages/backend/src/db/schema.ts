@@ -886,7 +886,7 @@ export const artikel = pgTable('artikel', {
   istBestandteil:      boolean('ist_bestandteil').notNull().default(false),
   /** Lieferant für Bestellliste und Einkauf */
   lieferantId:         uuid('lieferant_id').references((): AnyPgColumn => lieferanten.id, { onDelete: 'set null' }),
-  /** EAN/GTIN-Barcode */
+  /** EAN/GTIN als Artikelkennzeichnung (EAN-8/UPC-A/EAN-13/GTIN-14 mit Prüfziffer; eindeutig je Mandant) */
   ean:                 varchar('ean', { length: 20 }),
   /** Einkaufspreis netto in Cent (letzter bekannter Preis beim Lieferanten) */
   einkaufspreisCent:   integer('einkaufspreis_cent'),
@@ -901,6 +901,10 @@ export const artikel = pgTable('artikel', {
 }, (t) => ({
   mandantNummerIdx: uniqueIndex('artikel_mandant_nummer_idx').on(t.mandantId, t.artikelnummer),
   kategorieIdx:     index('artikel_kategorie_idx').on(t.kategorieId),
+  /** EAN eindeutig je Mandant über den GTIN-14-Schlüssel (Migration 0085) */
+  eanIdx:           uniqueIndex('artikel_mandant_ean_idx')
+    .on(t.mandantId, sql`lpad(${t.ean}, greatest(length(${t.ean}), 14), '0')`)
+    .where(sql`${t.ean} IS NOT NULL`),
 }))
 
 // ---------------------------------------------------------------------------

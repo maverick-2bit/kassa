@@ -4,8 +4,8 @@
  * damit historische Belege weiterhin sinnvoll bleiben).
  */
 
-import { and, asc, eq, inArray, sql } from 'drizzle-orm'
-import type { Artikel, ArtikelInput, ArtikelUpdate } from '@kassa/shared'
+import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm'
+import { eanSchluessel, type Artikel, type ArtikelInput, type ArtikelUpdate } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import { artikel, lieferanten } from '../db/schema.js'
 import {
@@ -39,6 +39,50 @@ async function pruefeLieferant(db: DbOrTx, mandantId: string, lieferantId: strin
     .where(and(eq(lieferanten.id, lieferantId), eq(lieferanten.mandantId, mandantId)))
     .limit(1)
   if (!l) throw new ArtikelError(400, 'Lieferant nicht gefunden')
+}
+
+/**
+ * GTIN-14-Vergleichsschlüssel der EAN in SQL — exakt der Ausdruck des eindeutigen Index
+ * artikel_mandant_ean_idx (Migration 0085), damit Abfragen ihn nutzen. Gegenstück: eanSchluessel().
+ */
+export const eanSchluesselSql = sql`lpad(${artikel.ean}, greatest(length(${artikel.ean}), 14), '0')`
+
+const istEanKollision = (err: unknown): boolean => {
+  // postgres-js: constraint_name; drizzle verpackt den Treiberfehler je nach Version in `cause`
+  type PgFehler = { code?: string; constraint_name?: string }
+  const e = err as PgFehler & { cause?: PgFehler }
+  const pg = e?.code === '23505' ? e : e?.cause?.code === '23505' ? e.cause : undefined
+  return pg?.constraint_name === 'artikel_mandant_ean_idx'
+}
+
+/**
+ * Die EAN darf im Mandanten nur einmal vorkommen (auch nicht bei deaktivierten Artikeln — ein Scan
+ * muss eindeutig sein und ein reaktivierter Artikel darf keine Dublette erzeugen). 409 nennt den
+ * Artikel, der sie schon trägt. Der eindeutige Index fängt gleichzeitige Speicherungen zusätzlich ab.
+ */
+async function pruefeEanFrei(db: DbOrTx, mandantId: string, ean: string, eigeneId?: string): Promise<void> {
+  const [treffer] = await db
+    .select({ id: artikel.id, bezeichnung: artikel.bezeichnung, aktiv: artikel.aktiv })
+    .from(artikel)
+    .where(and(
+      eq(artikel.mandantId, mandantId),
+      sql`${eanSchluesselSql} = ${eanSchluessel(ean)}`,
+      eigeneId ? ne(artikel.id, eigeneId) : undefined,
+    ))
+    .limit(1)
+  if (treffer) {
+    throw new ArtikelError(409, `EAN ${ean} gehört schon zum Artikel „${treffer.bezeichnung}"${treffer.aktiv ? '' : ' (deaktiviert)'}`)
+  }
+}
+
+/** Unique-Verletzung des EAN-Index (gleichzeitiges Speichern) → dieselbe lesbare 409 wie pruefeEanFrei. */
+async function mitEanPruefung<T>(ean: string | null | undefined, schreiben: () => Promise<T>): Promise<T> {
+  try {
+    return await schreiben()
+  } catch (err) {
+    if (istEanKollision(err)) throw new ArtikelError(409, `EAN ${ean ?? ''} gehört schon zu einem anderen Artikel`)
+    throw err
+  }
 }
 
 /**
@@ -113,9 +157,10 @@ async function ladeArtikelDto(db: Db, row: typeof artikel.$inferSelect): Promise
 
 export async function erstelleArtikel(db: Db, input: ArtikelInput): Promise<Artikel> {
   if (input.lieferantId) await pruefeLieferant(db, input.mandantId, input.lieferantId)
+  if (input.ean) await pruefeEanFrei(db, input.mandantId, input.ean)
   // Artikelnummer außerhalb der Tx generieren (unverändertes Verhalten).
   const artikelnummer = await generiereArtikelNummer(db, input.mandantId)
-  const created = await db.transaction(async (tx) => {
+  const created = await mitEanPruefung(input.ean, () => db.transaction(async (tx) => {
     const [row] = await tx.insert(artikel).values({
       mandantId:       input.mandantId,
       bezeichnung:     input.bezeichnung,
@@ -150,7 +195,7 @@ export async function erstelleArtikel(db: Db, input: ArtikelInput): Promise<Arti
       await schreibeRezept(tx, row.id, input.mandantId, input.bestandteile)
     }
     return row
-  })
+  }))
   return ladeArtikelDto(db, created)
 }
 
@@ -218,11 +263,12 @@ export async function aktualisiereArtikel(
   if (update.optionenAbfrage      !== undefined) values.optionenAbfrage      = update.optionenAbfrage
   if (update.bild                 !== undefined) values.bild                 = update.bild ?? null
 
-  const updated = await db.transaction(async (tx) => {
-    // Lieferant: muss zum Mandanten dieses Artikels gehören — geprüft VOR dem Schreiben (null = Verknüpfung lösen)
-    if (typeof update.lieferantId === 'string') {
+  const updated = await mitEanPruefung(update.ean, () => db.transaction(async (tx) => {
+    // Lieferant und EAN: geprüft VOR dem Schreiben gegen den Mandanten dieses Artikels (null = lösen/leeren)
+    if (typeof update.lieferantId === 'string' || typeof update.ean === 'string') {
       const [a] = await tx.select({ mandantId: artikel.mandantId }).from(artikel).where(eq(artikel.id, id)).limit(1)
-      if (a) await pruefeLieferant(tx, a.mandantId, update.lieferantId)
+      if (a && typeof update.lieferantId === 'string') await pruefeLieferant(tx, a.mandantId, update.lieferantId)
+      if (a && typeof update.ean === 'string') await pruefeEanFrei(tx, a.mandantId, update.ean, id)
     }
     const [row] = await tx
       .update(artikel)
@@ -235,7 +281,7 @@ export async function aktualisiereArtikel(
       await schreibeRezept(tx, row.id, row.mandantId, update.bestandteile)
     }
     return row
-  })
+  }))
 
   return updated ? ladeArtikelDto(db, updated) : null
 }

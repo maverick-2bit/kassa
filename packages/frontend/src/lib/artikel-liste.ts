@@ -10,7 +10,7 @@
  * Werte (keine Warengruppe, keine Nummer, kein Lagerstand) stehen immer hinten.
  */
 
-import { MWST_LABELS, type Artikel, type Kategorie } from '@kassa/shared'
+import { MWST_LABELS, eanSchluessel, type Artikel, type Kategorie } from '@kassa/shared'
 import { baumFlach, kategorieAnzeigeNamen } from './kategorie-baum'
 
 export type ArtikelSortSpalte =
@@ -18,6 +18,7 @@ export type ArtikelSortSpalte =
   | 'bezeichnung'
   | 'kategorie'
   | 'nummer'
+  | 'ean'
   | 'mwst'
   | 'preis'
   | 'bestand'
@@ -69,6 +70,7 @@ export function sortiereArtikel(
       case 'bezeichnung': return a.bezeichnung
       case 'kategorie':   return a.kategorieId ? (anzeigeName(a.kategorieId) || null) : null
       case 'nummer':      return a.artikelnummer || null
+      case 'ean':         return a.ean || null
       case 'mwst':        return MWST_LABELS[a.mwstSatz]
       case 'preis':       return a.preisBruttoCent
       // Ohne Lagerführung leer; mit Lagerführung, aber ohne Menge = unbegrenzt
@@ -110,5 +112,8 @@ export function filtereArtikel(
     if (!s) return true
     return a.bezeichnung.toLocaleLowerCase('de').includes(s)
       || (a.artikelnummer ?? '').toLocaleLowerCase('de').includes(s)
+      || (a.ean ?? '').includes(s)
+      // Gescannte UPC-A (12-stellig) findet auch die als EAN-13 erfasste Nummer und umgekehrt
+      || (!!a.ean && /^\d{8,14}$/.test(s) && eanSchluessel(a.ean) === eanSchluessel(s))
   })
 }

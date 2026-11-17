@@ -169,7 +169,7 @@ function KundenKarte() {
 function ArtikelKarte() {
   const auth = getAuth()
   const qc = useQueryClient()
-  const [vorschau, setVorschau] = useState<{ eintraege: ParsedArtikel[]; uebersprungen: string[]; ohnePreis: number } | null>(null)
+  const [vorschau, setVorschau] = useState<{ eintraege: ParsedArtikel[]; uebersprungen: string[]; ohnePreis: number; eanVerworfen: string[] } | null>(null)
   const [auchOhnePreis, setAuchOhnePreis] = useState(false)
   const [busy, setBusy] = useState(false)
   const [fehler, setFehler] = useState<string | null>(null)
@@ -250,6 +250,12 @@ function ArtikelKarte() {
           </label>
           <p className="text-sm">{anzahl} Artikel bereit zur Übernahme.</p>
           <Uebersprungen liste={vorschau.uebersprungen} />
+          {vorschau.eanVerworfen.length > 0 && (
+            <details className="text-xs text-ink-muted" data-testid="uebernahme-ean-verworfen">
+              <summary className="cursor-pointer">{vorschau.eanVerworfen.length} Artikel werden ohne EAN übernommen (EAN ungültig oder doppelt)</summary>
+              <ul className="list-disc pl-5 max-h-32 overflow-auto">{vorschau.eanVerworfen.slice(0, 200).map((t, i) => <li key={i}>{t}</li>)}</ul>
+            </details>
+          )}
           <Button loading={busy} onClick={() => void uebernehmen()} data-testid="uebernahme-artikel-start">Artikel übernehmen</Button>
         </div>
       )}
