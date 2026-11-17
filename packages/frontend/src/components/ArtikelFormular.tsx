@@ -14,6 +14,8 @@ import {
   type Lieferant,
   type MwStSatz,
   type Station,
+  eanFehler,
+  eanSchluessel,
 } from '@kassa/shared'
 import { Field } from './ui/Field'
 import { Input } from './ui/Input'
@@ -214,6 +216,18 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
   const bestandteilKandidaten = (alleArtikel ?? [])
     .filter(a => a.aktiv && a.id !== initial?.id && !bestandteile.some(b => b.bestandteilArtikelId === a.id))
     .sort((a, b) => a.bezeichnung.localeCompare(b.bezeichnung))
+
+  // EAN: Prüfziffer sofort im Formular; Dublette gegen die geladenen Artikel (der Server prüft
+  // zusätzlich über alle Artikel des Mandanten, auch deaktivierte → 409 mit dem Artikelnamen)
+  const eanPruefen = (wert: string): true | string => {
+    const ean = wert.trim()
+    if (ean === '') return true
+    const fehler = eanFehler(ean)
+    if (fehler) return fehler
+    const schluessel = eanSchluessel(ean)
+    const andererArtikel = (alleArtikel ?? []).find(a => a.id !== initial?.id && a.ean && eanSchluessel(a.ean) === schluessel)
+    return andererArtikel ? `EAN gehört schon zum Artikel „${andererArtikel.bezeichnung}"` : true
+  }
 
   const bestandteilHinzufuegen = () => {
     if (!neuerBestandteilId) return
@@ -517,8 +531,15 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
           <Field label="Einkaufspreis netto (€)" hint="Letzter Preis beim Lieferanten">
             <Input data-testid="artikel-ek-preis" inputMode="decimal" placeholder="z. B. 12,50" {...register('einkaufspreisEuro')} />
           </Field>
-          <Field label="EAN / Barcode">
-            <Input data-testid="artikel-ean" inputMode="numeric" maxLength={20} placeholder="z. B. 9002490100070" {...register('eanStr')} />
+          <Field label="EAN / Barcode" hint="EAN-8, EAN-13, UPC-A oder GTIN-14 — Scan an der Kasse bucht den Artikel" error={errors.eanStr?.message}>
+            <Input
+              data-testid="artikel-ean"
+              inputMode="numeric"
+              maxLength={20}
+              placeholder="z. B. 9002490100070"
+              invalid={!!errors.eanStr}
+              {...register('eanStr', { validate: eanPruefen })}
+            />
           </Field>
           <Field label="Artikelnummer beim Lieferanten">
             <Input data-testid="artikel-lieferanten-nr" maxLength={60} {...register('lieferantenArtikelnummer')} />

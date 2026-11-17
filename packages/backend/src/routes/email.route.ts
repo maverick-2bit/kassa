@@ -63,6 +63,7 @@ export const emailRoute: FastifyPluginAsync<EmailRouteOptions> = async (fastify,
       menge:           number
       preisBruttoCent: number
       mwstSatz:        string
+      ean?:            string
     }>)
 
     const summeCent =

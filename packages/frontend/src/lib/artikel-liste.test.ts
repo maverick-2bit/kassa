@@ -75,6 +75,15 @@ describe('filtereArtikel', () => {
     expect(namen(filtereArtikel(alle, 'alle', 'a-1'))).toEqual(['Schnitzel'])
     expect(namen(filtereArtikel(alle, KAT_GETRAENKE, 'COL'))).toEqual(['Cola'])
   })
+
+  it('findet nach EAN — Teilnummer und gescannte UPC-A zur erfassten EAN-13 (gleicher GTIN-14-Schlüssel)', () => {
+    const milch = art({ bezeichnung: 'Milch', ean: '9002490100070' })
+    const usa   = art({ bezeichnung: 'Erdnussbutter', ean: '0012345678905' })
+    const liste = [...alle, milch, usa]
+    expect(namen(filtereArtikel(liste, 'alle', '9002490'))).toEqual(['Milch'])
+    expect(namen(filtereArtikel(liste, 'alle', '012345678905'))).toEqual(['Erdnussbutter'])
+    expect(namen(filtereArtikel(liste, 'alle', '4006381333931'))).toEqual([])
+  })
 })
 
 describe('findeDuplikate', () => {

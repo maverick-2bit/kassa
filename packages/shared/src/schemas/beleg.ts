@@ -13,6 +13,8 @@ export const BelegPositionSchema = z.object({
   mwstSatz:           MwStSatzSchema,
   /** Zugewiesene Seriennummern (für den Aufdruck auf der Rechnung) */
   seriennummern:      z.array(z.string()).optional(),
+  /** EAN des Artikels zum Verkaufszeitpunkt (Aufdruck unter der Position) */
+  ean:                z.string().optional(),
 })
 export type BelegPositionDto = z.infer<typeof BelegPositionSchema>
 

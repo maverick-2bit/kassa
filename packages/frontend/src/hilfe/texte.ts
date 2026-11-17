@@ -48,9 +48,10 @@ export const HILFE_THEMEN: HilfeThema[] = [
     titel: 'Kasse (Direktverkauf)',
     zweck: 'Artikel antippen, kassieren, Beleg ausgeben — ohne Tisch, wie an einer Bar oder einem Verkaufsstand.',
     pfade: ['/kasse'],
-    stichworte: ['kassieren', 'verkaufen', 'bon', 'warenkorb', 'rabatt', 'bar', 'karte'],
+    stichworte: ['kassieren', 'verkaufen', 'bon', 'warenkorb', 'rabatt', 'bar', 'karte', 'scanner', 'barcode', 'ean'],
     schritte: [
       'Oben im Raster die Warengruppe wählen (oder den Reiter „Favoriten") und die Artikel antippen. Jeder Tipp legt den Artikel in den Warenkorb.',
+      'Barcode-Scanner: Artikel mit EAN einfach scannen — der Artikel landet im Warenkorb (wie angetippt). Unbekannte EAN: oben erscheint ein Hinweis, nichts wird gebucht.',
       'Hat ein Artikel Optionen (z. B. pur/gespritzt), öffnet sich ein Fenster: Optionen antippen. „Pflicht" muss gewählt werden, „Optional" darf leer bleiben. Eine Option mehrfach antippen = mehrfach.',
       'Rechts im „Warenkorb" Menge ändern oder einzelne Zeilen entfernen. Mit dem Papierkorb-Knopf wird der ganze Warenkorb verworfen (mit Rückfrage).',
       'Bezahlen: unten auf „Bar (€ …)" oder „Karte (€ …)". Bei Karte läuft die Zahlung über das Kartenterminal, falls eines eingerichtet ist.',
@@ -269,12 +270,13 @@ export const HILFE_THEMEN: HilfeThema[] = [
     titel: 'Artikel',
     zweck: 'Artikelstamm pflegen: Bezeichnung, Preis, Steuersatz, Warengruppe, Allergene.',
     pfade: ['/artikel'],
-    stichworte: ['preis', 'warengruppe', 'kategorie', 'allergene', 'import', 'excel', 'favorit'],
+    stichworte: ['preis', 'warengruppe', 'kategorie', 'allergene', 'import', 'excel', 'favorit', 'ean', 'barcode'],
     schritte: [
       'Neuer Artikel: „+ Neuer Artikel", Bezeichnung und Preis (brutto) eintragen, MwSt-Satz und Warengruppe wählen, speichern.',
       'Allergene: im Artikelfenster die zutreffenden Allergene antippen — sie erscheinen später auf der Kachel und in der Liste.',
       'Bearbeiten: Artikel in der Liste wählen. Mit dem Schalter lässt sich ein Artikel deaktivieren (er verschwindet aus der Kasse, bleibt aber im Stamm).',
-      'Suchen: oben „Suchen (Bezeichnung, Nummer)…".',
+      'Suchen: oben „Suchen (Bezeichnung, Nummer, EAN)…".',
+      'EAN: im Artikel unter „Einkauf & Identifikation" — EAN-8, EAN-13, UPC-A oder GTIN-14 mit gültiger Prüfziffer, je Artikel eine, und jede EAN nur bei einem Artikel. Sie steht dann auf dem Bon und lässt sich an der Kasse scannen.',
       'Favoriten: der Stern macht einen Artikel zum Favoriten (Reiter „Favoriten" in der Kasse).',
     ],
     abschnitte: [

@@ -16,8 +16,9 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { allergeneAnzeige, allergeneBeschreibung, ausgeblendeteArtikelIds, farbeZuHex, nachbarReiter, type AktiveAktion, type Artikel, type KasseArtikelLayout, type Kategorie, type ModifikatorAuswahl, type ModifikatorGruppe, type RasterZelle } from '@kassa/shared'
+import { allergeneAnzeige, allergeneBeschreibung, ausgeblendeteArtikelIds, farbeZuHex, istGueltigeEan, nachbarReiter, type AktiveAktion, type Artikel, type KasseArtikelLayout, type Kategorie, type ModifikatorAuswahl, type ModifikatorGruppe, type RasterZelle } from '@kassa/shared'
 import { formatPreis } from '../lib/format'
+import { findeNachEan, ScanPuffer } from '../lib/ean-scan'
 import {
   artikelErlaubt,
   FAVORITEN_TAB_ID,
@@ -227,6 +228,55 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
     return () => { el.removeEventListener('scroll', check); ro.disconnect() }
   }, [reiterGruppen.length])
 
+  // ---- Barcode-Scan (EAN) ------------------------------------------------
+  // Ein Treffer bucht wie ein Tipp auf die Kachel (inkl. Optionen-Dialog); gesucht wird nur unter den
+  // Artikeln, die diese Kasse verkaufen darf. Hinweis bei unbekannter EAN, gesperrtem oder ausverkauftem Artikel.
+  const [scanHinweis, setScanHinweis] = useState<string | null>(null)
+  useEffect(() => {
+    if (!scanHinweis) return
+    const t = setTimeout(() => setScanHinweis(null), 5000)
+    return () => clearTimeout(t)
+  }, [scanHinweis])
+  const scanBuchen = (code: string): void => {
+    const a = findeNachEan(verkaufsartikel, code)
+    if (!a) {
+      const woanders = findeNachEan(artikel, code)
+      setScanHinweis(woanders
+        ? `„${woanders.bezeichnung}" (EAN ${code}) ist an dieser Kasse nicht verkäuflich`
+        : `Kein Artikel mit EAN ${code}`)
+      return
+    }
+    if ((a.lagerstandAktiv && a.lagerstandMenge === 0) || a.verfuegbareMenge === 0) {
+      setScanHinweis(`„${a.bezeichnung}" ist ausverkauft`)
+      return
+    }
+    setScanHinweis(null)
+    if ((artikelGruppen?.get(a.id) ?? []).length > 0) setModArtikel(a)
+    else onArtikelClick(a, [])
+  }
+  // Scan ohne Fokus in einem Eingabefeld (Handscanner = Tastatur): Ziffern schnell hintereinander + Enter.
+  // Capture-Phase + preventDefault: das Enter des Scanners darf keine fokussierte Kachel ein zweites Mal auslösen.
+  // Offene Dialoge (Zahlung, Optionen …) und Eingabefelder bleiben unberührt.
+  const scanBuchenRef = useRef(scanBuchen)
+  scanBuchenRef.current = scanBuchen
+  useEffect(() => {
+    const puffer = new ScanPuffer()
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.altKey || e.metaKey) return
+      const ziel = e.target instanceof HTMLElement ? e.target : null
+      if (ziel && (ziel.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(ziel.tagName))) return
+      if (document.querySelector('[aria-modal="true"]')) return
+      const code = puffer.taste(e.key, e.timeStamp)
+      if (code) {
+        e.preventDefault()
+        e.stopPropagation()
+        scanBuchenRef.current(code)
+      }
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [])
+
   // Raster-Zellen: Untergruppen zuerst, dann Artikel an ihrem Slot (Lücken = leere Felder).
   // Favoriten-Platzhalter (null) werden ebenfalls zu leeren Feldern.
   const zellen = useMemo<RasterZelle<Kategorie, Artikel>[]>(() => {
@@ -237,7 +287,8 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
       return verkaufsartikel
         .filter(a =>
           a.bezeichnung.toLowerCase().includes(q) ||
-          (a.artikelnummer?.toLowerCase().includes(q) ?? false))
+          (a.artikelnummer?.toLowerCase().includes(q) ?? false) ||
+          (a.ean?.includes(q) ?? false))
         .sort((a, b) => a.bezeichnung.localeCompare(b.bezeichnung))
         .map((a): RasterZelle<Kategorie, Artikel> => ({ typ: 'artikel', artikel: a }))
     }
@@ -272,12 +323,19 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
   return (
     <div className="flex flex-col h-full" data-testid="artikel-grid" {...swipe}>
 
-      {/* ---- Suchfeld (Name oder Artikelnummer) ---- */}
+      {/* ---- Suchfeld (Name, Artikelnummer oder EAN — ein Scan mit Enter bucht direkt) ---- */}
       {(!sucheKlein || suche !== '') && <div className="relative shrink-0 mb-2">
         <Input
           value={suche}
           onChange={(e) => setSuche(e.target.value)}
-          placeholder="Artikel suchen (Name oder Nummer)…"
+          onKeyDown={(e) => {
+            const code = suche.trim()
+            if (e.key !== 'Enter' || !istGueltigeEan(code)) return
+            e.preventDefault()
+            setSuche('')
+            scanBuchen(code)
+          }}
+          placeholder="Artikel suchen (Name, Nummer oder EAN scannen)…"
           className="pr-8"
           aria-label="Artikel suchen"
         />
@@ -292,6 +350,13 @@ export function ArtikelGrid({ artikel, kategorien, artikelGruppen, onArtikelClic
           </button>
         )}
       </div>}
+
+      {scanHinweis && (
+        <div role="status" data-testid="scan-hinweis"
+          className="shrink-0 mb-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          {scanHinweis}
+        </div>
+      )}
 
       {/* ---- Kategorie-Leiste (bleibt oben) + Knopf zum Ein-/Ausklappen der Suche ---- */}
       <div className="flex items-start gap-2 shrink-0 mb-3" data-swipe-aus>
