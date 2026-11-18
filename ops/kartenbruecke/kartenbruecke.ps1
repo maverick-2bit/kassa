@@ -20,14 +20,14 @@
 #
 # Aufruf (Dienst richtet installiere-kartenbruecke.ps1 ein):
 #   powershell -NoProfile -ExecutionPolicy Bypass -File kartenbruecke.ps1 [-Port 47110] [-Adresse 127.0.0.1]
-#              [-SchluesselDatei C:\ProgramData\Kassa\kartenbruecke\schluessel.txt] [-Schluessel …]
+#              [-SchluesselDatei C:\ProgramData\KassaPOS\kartenbruecke\schluessel.txt] [-Schluessel …]
 
 param(
   [int]    $Port           = 47110,
   [string] $Adresse        = '127.0.0.1',
-  [string] $SchluesselDatei = (Join-Path $env:ProgramData 'Kassa\kartenbruecke\schluessel.txt'),
+  [string] $SchluesselDatei = (Join-Path $env:ProgramData 'KassaPOS\kartenbruecke\schluessel.txt'),
   [string] $Schluessel     = '',
-  [string] $LogDatei       = (Join-Path $env:ProgramData 'Kassa\kartenbruecke\kartenbruecke.log')
+  [string] $LogDatei       = (Join-Path $env:ProgramData 'KassaPOS\kartenbruecke\kartenbruecke.log')
 )
 
 $ErrorActionPreference = 'Stop'
