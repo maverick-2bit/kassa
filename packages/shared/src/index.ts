@@ -158,6 +158,7 @@ export type {
 // Setup
 export {
   SetupModuleSchema,
+  SignaturWahlSchema,
   SetupInputSchema,
   SetupResponseSchema,
   EinrichtungsSchrittSchema,
@@ -170,6 +171,7 @@ export {
 export type {
   SetupModule,
   SetupInput,
+  SignaturWahl,
   SetupResponse,
   EinrichtungsSchrittDto,
   FinanzOnlineCredentialsInput,

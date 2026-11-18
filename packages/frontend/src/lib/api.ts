@@ -563,6 +563,16 @@ export async function postSetup(input: SetupInput): Promise<SetupResponse> {
 export const setupApi = {
   status: (): Promise<{ eingerichtet: boolean }> =>
     request<{ eingerichtet: boolean }>('GET', '/api/setup/status'),
+  /** Steckt eine Signaturkarte, und welche? Ohne PIN (kein Fehlversuch). */
+  signaturkarte: async (uid: string): Promise<SeeTestErgebnis> => {
+    const token = getToken()
+    const res = await fetch('/api/setup/signaturkarte', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body:    JSON.stringify({ uid }),
+    })
+    return (await res.json()) as SeeTestErgebnis
+  },
 }
 
 // ---------------------------------------------------------------------------

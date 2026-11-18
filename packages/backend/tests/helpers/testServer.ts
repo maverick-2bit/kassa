@@ -93,6 +93,8 @@ export async function buildTestServer(db: Db, opts: BuildTestServerOptions = {})
       db,
       masterPassphrase: TEST_MASTER,
       ...(opts.finanzOnlineClient && { rksvOptionen: { finanzOnlineClient: opts.finanzOnlineClient } }),
+      ...(opts.kartenTransport && { kartenTransport: opts.kartenTransport }),
+      lokaleAtrustUrlErlaubt: true,
     },
     belegDeps: {
       db,

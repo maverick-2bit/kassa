@@ -5,6 +5,7 @@
 
 import { z } from 'zod'
 import { AdminUserInputSchema } from './auth.js'
+import { KartePinSchema } from './see.js'
 
 // ---------------------------------------------------------------------------
 // FinanzOnline-Zugangsdaten
@@ -32,6 +33,32 @@ export const SetupModuleSchema = z.object({
 })
 export type SetupModule = z.infer<typeof SetupModuleSchema>
 
+// ---------------------------------------------------------------------------
+// Signatur: womit die Kasse RKSV-Belege signiert — gilt ab dem Startbeleg
+// ---------------------------------------------------------------------------
+
+/**
+ * Wahl bei der Einrichtung. Die Kasse wird KOMPLETT auf diese Variante gestellt: Schon der Startbeleg wird
+ * damit signiert, und FinanzOnline bekommt genau diese Einheit gemeldet.
+ *  - atrust_chip: A-Trust a.sign RK CHIP (Signaturkarte im Stick/Kartenleser am Kassen-PC) — ohne Internet
+ *  - atrust_hsm:  A-Trust a.sign RK HSM (online) — braucht Internet für jede Signatur
+ *  - software:    nur Test/Demo (selbst erzeugter Schlüssel, ZDA AT0 — FinanzOnline nimmt das nicht an)
+ */
+export const SignaturWahlSchema = z.discriminatedUnion('art', [
+  z.object({ art: z.literal('software') }),
+  z.object({
+    art:      z.literal('atrust_chip'),
+    kartePin: KartePinSchema,
+  }),
+  z.object({
+    art:            z.literal('atrust_hsm'),
+    atrustBasisUrl: z.string().url('Basis-URL ungültig').max(300),
+    atrustBenutzer: z.string().trim().min(1, 'A-Trust-Benutzer ist erforderlich').max(100),
+    atrustPasswort: z.string().min(1, 'A-Trust-Passwort ist erforderlich').max(200),
+  }),
+])
+export type SignaturWahl = z.infer<typeof SignaturWahlSchema>
+
 export const SetupInputSchema = z.object({
   firmenname: z.string().trim().min(1, 'Firmenname ist erforderlich'),
   uid:        z.string().trim().regex(/^ATU\d{8}$/, 'UID ungültig (Format: ATU + 8 Ziffern)'),
@@ -58,6 +85,11 @@ export const SetupInputSchema = z.object({
   admin:      AdminUserInputSchema,
   /** Optional: Gültigkeitsdauer des Zertifikats in Tagen (Standard: 5 Jahre) */
   zertifikatGueltigkeitTage: z.number().int().min(30).max(3650).optional(),
+  /**
+   * Womit signiert wird (Standard für Skripte/Tests ohne Angabe: Software = Test/Demo). Das Formular fragt
+   * es ausdrücklich ab.
+   */
+  signatur: SignaturWahlSchema.default({ art: 'software' }),
   /** Welche Module beim Setup aktiviert werden sollen */
   module: SetupModuleSchema.default({ gastro: true, angebote: false, mergeport: false, reservierungen: false, zeiterfassung: false, sbTerminal: false }),
 })
@@ -123,6 +155,11 @@ export const WeitereKasseInputSchema = z.object({
     return v
   }, FinanzOnlineCredentialsSchema.optional()),
   zertifikatGueltigkeitTage: z.number().int().min(30).max(3650).optional(),
+  /**
+   * Womit die neue Kasse signiert. Fehlt die Angabe, übernimmt sie die Variante der bestehenden Kassen des
+   * Betriebs (Signaturkarte: dieselbe Karte samt PIN; A-Trust online: derselbe Zugang).
+   */
+  signatur: SignaturWahlSchema.optional(),
 })
 export type WeitereKasseInput = z.infer<typeof WeitereKasseInputSchema>
 

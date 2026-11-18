@@ -40,7 +40,12 @@ Unterstützt werden:
    Er erzeugt den Schlüssel, trägt `KARTENBRUECKE_URL`/`KARTENBRUECKE_SCHLUESSEL` in die `.env` ein und
    zeigt im Selbsttest Leser und Karte an.
 3. Kassa neu starten: `docker compose up -d` (im Ordner der Kassa).
-4. In der Kassa: **Einstellungen → RKSV → Signaturerstellungseinheit → „Signaturkarte (lokal)"**.
+4. **Neue Kassa:** Bei der Einrichtung unter **„Signatur (RKSV)"** die Möglichkeit **„Signaturkarte im Stick (lokal)"** wählen, dort
+   „Karte prüfen (ohne PIN)" und die PIN eintragen. Die Kassa prüft Karte und PIN, *bevor* sie FinanzOnline meldet. Schon der
+   Startbeleg ist mit der Karte signiert, gemeldet wird die Einheit als `SIGNATURKARTE`/`AT1`. Weitere Kassen übernehmen
+   die Karte automatisch.
+
+   **Bestehende Kassa umstellen:** **Einstellungen → RKSV → Signaturerstellungseinheit → „Signaturkarte (lokal)"**.
    - **„Karte prüfen (ohne PIN)":** zeigt Kartentyp und Zertifikat.
    - **PIN eintragen → „Speichern":** Die Kassa prüft die PIN mit **einer** Probesignatur. Erst dann speichert sie die PIN verschlüsselt, für alle Kassen mit dieser Karte.
    - Das Zertifikat der Karte muss auf die UID des Betriebs lauten.
@@ -73,5 +78,4 @@ FinanzOnline: Die Einheit wird als `SIGNATURKARTE` mit `vda_id` `AT1` gemeldet.
 ## Bekannte Grenzen
 
 - Die Brücke gibt es nur für Windows. Für Linux und Raspberry Pi fehlt die Anbindung über `pcscd`.
-- Der Startbeleg einer neuen Kasse wird noch mit der Software-Signatur erstellt. Die Kasse wird erst danach auf die Karte umgestellt, wie bei A-Trust online.
 - Docker Desktop leitet `host.docker.internal` auf den PC weiter. Dass die Brücke, die nur auf 127.0.0.1 lauscht, dabei erreicht wird, ist auf dem Test-PC zu bestätigen.

@@ -501,6 +501,7 @@ export const OEFFENTLICHE_ROUTEN: ReadonlyArray<readonly [grund: string, routen:
       'GET /api/health',
       'GET /api/kassen/auswahl',
       'POST /api/setup',
+      'POST /api/setup/signaturkarte',
       'GET /api/setup/status',
     ],
   ],
