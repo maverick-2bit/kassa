@@ -56,7 +56,7 @@ Unterstützt werden:
 
 | Lage | Verhalten |
 |---|---|
-| Karte steckt, PIN stimmt | Belege mit ZDA `AT1`, etwa 230 ms je Signatur (gemessen mit ACOS-ID 4.1 und ACR39U) |
+| Karte steckt, PIN stimmt | Belege mit ZDA `AT1`, etwa 0,4 s je Signatur samt Identitätsprüfung der Karte (gemessen mit ACOS-ID 4.1 und ACR39U) |
 | Karte gezogen, Leser oder Brücke weg | SEE-Ausfall: Belege laufen mit Ausfallmarker weiter. Steckt die eingerichtete Karte wieder, stellt die Kassa innerhalb einer Minute von selbst wieder her (Sammelbeleg), sofern der Ausfall unter 48 h liegt. |
 | PIN falsch | Kein Beleg, Fehlermeldung, PIN gesperrt (siehe oben) |
 | andere Karte gesteckt | Kein Beleg. Abbruch **vor** der PIN-Prüfung, die fremde Karte verliert keinen Versuch. |
