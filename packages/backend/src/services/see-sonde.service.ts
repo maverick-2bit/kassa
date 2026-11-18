@@ -30,6 +30,7 @@ import type { Db } from '../db/client.js'
 import { kassen } from '../db/schema.js'
 import { decryptPrivateKey } from '../crypto/master-key.js'
 import { logAudit } from './audit.service.js'
+import { istKarteGesperrt } from './karten-sperre.js'
 import {
   BelegError,
   FON_MELDE_SCHWELLE_MIN,
@@ -102,7 +103,7 @@ export async function pruefeSeeWiederherstellung(
     if (dauerMinuten >= FON_MELDE_SCHWELLE_MIN) { ergebnis('zu-lange-ausgefallen'); continue }
     if ((pausiertBis.get(k.id) ?? 0) > jetzt.getTime()) { ergebnis('pausiert'); continue }
     const karte = k.seeTyp === 'atrust_chip'
-    if (karte && (k.pinGesperrt || !deps.kartenTransport)) { ergebnis('abgelehnt'); continue }
+    if (karte && (k.pinGesperrt || istKarteGesperrt(k.zertifikatDer) || !deps.kartenTransport)) { ergebnis('abgelehnt'); continue }
     if (!karte && (!k.basisUrl || !k.benutzer || !k.passwortEnc)) { ergebnis('fehlgeschlagen'); continue }
 
     try {

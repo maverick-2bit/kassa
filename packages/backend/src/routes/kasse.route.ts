@@ -9,7 +9,8 @@ import type { Config } from '../config.js'
 import { belege, kassen, mandanten } from '../db/schema.js'
 import { z } from 'zod'
 import { FinanzOnlineCredentialsSchema, KasseBezeichnungUpdateSchema, SeeConfigUpdateSchema, WeitereKasseInputSchema, istErlaubteAtrustBasisUrl, type KasseListeItem, type WeitereKasseResponse } from '@kassa/shared'
-import { ATrustHsmEinheit, ATrustHsmError, KartenError, SignaturkartenEinheit, jwsSigningInput, signiereMitKarte, verifiziere } from '@kassa/rksv'
+import { ATrustHsmEinheit, ATrustHsmError, KartenError, SignaturkartenEinheit, erneuereSoftwareZertifikat, jwsSigningInput, signiereMitKarte, verifiziere } from '@kassa/rksv'
+import { gibKarteFrei } from '../services/karten-sperre.js'
 import { X509Certificate } from 'node:crypto'
 import { decryptPrivateKey, encryptPrivateKey } from '../crypto/master-key.js'
 import { legeWeitereKasseAn } from '../services/kasse.service.js'
@@ -455,11 +456,27 @@ export const kasseRoute: FastifyPluginAsync<KasseRouteOptions> = async (fastify,
     if (!kasse) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
 
     if (body.data.seeTyp === 'software') {
+      // Zurück von A-Trust/Signaturkarte: deren Zertifikat steht noch in der Kasse — ohne ein Zertifikat zum
+      // Software-Schlüssel schlüge die Gegenprobe jeder Signatur fehl (die Kasse liefe still im Ausfall).
+      let zert: { der: string; sn: string; bis: Date } | null = null
+      if (kasse.seeTyp !== 'software') {
+        const [m] = await opts.db.select({ uid: mandanten.uid, firmenname: mandanten.firmenname })
+          .from(mandanten).where(eq(mandanten.id, kasse.mandantId)).limit(1)
+        const der = erneuereSoftwareZertifikat(
+          decryptPrivateKey(kasse.seePrivateKeyEnc, opts.belegDeps.masterPassphrase),
+          { kassenId: kasse.kassenId, uid: m?.uid ?? '', firmenname: m?.firmenname ?? '' },
+        )
+        const x = new X509Certificate(der)
+        zert = { der: der.toString('base64'), sn: x.serialNumber, bis: new Date(x.validTo) }
+      }
       await opts.db
         .update(kassen)
-        .set({ seeTyp: 'software', seeZdaId: 'AT0', updatedAt: new Date() })
+        .set({
+          seeTyp: 'software', seeZdaId: 'AT0', updatedAt: new Date(),
+          ...(zert && { seeZertifikatDer: zert.der, seeZertifikatSn: zert.sn, seeGueltigBis: zert.bis }),
+        })
         .where(eq(kassen.id, kasse.id))
-      return reply.send({ erfolgreich: true, zdaId: 'AT0', zertifikatSn: kasse.seeZertifikatSn })
+      return reply.send({ erfolgreich: true, zdaId: 'AT0', zertifikatSn: zert?.sn ?? kasse.seeZertifikatSn })
     }
 
     if (body.data.seeTyp === 'atrust_chip') {
@@ -489,6 +506,20 @@ export const kasseRoute: FastifyPluginAsync<KasseRouteOptions> = async (fastify,
           updatedAt:         new Date(),
         })
         .where(eq(kassen.id, kasse.id))
+      if (pin !== undefined) {
+        // Die PIN gehört zur KARTE: alle Kassen, die mit dieser Karte signieren, bekommen die geprüfte PIN —
+        // und die Sperre nach einer früheren Ablehnung fällt für alle.
+        const zertBase64 = k.zertifikatDer.toString('base64')
+        await opts.db.update(kassen)
+          .set({
+            kartePinEnc:      encryptPrivateKey(Buffer.from(pin, 'utf8'), opts.belegDeps.masterPassphrase),
+            kartePinGesperrt: false,
+            kartePinHinweis:  null,
+            updatedAt:        new Date(),
+          })
+          .where(and(eq(kassen.seeZertifikatDer, zertBase64), eq(kassen.seeTyp, 'atrust_chip')))
+        gibKarteFrei(zertBase64)
+      }
       return reply.send({
         erfolgreich: true, zdaId: 'AT1', zertifikatSn: k.seriennummer, karte: k.karte,
         ...(k.hinweis && { hinweis: k.hinweis }),

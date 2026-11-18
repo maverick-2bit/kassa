@@ -7,8 +7,8 @@
  * Ablauf:
  *   1. Leser und Karte finden, Zertifikat lesen (ohne PIN)
  *   2. PIN verdeckt abfragen — EIN Versuch; ist sie falsch, bricht das Skript sofort ab
- *   3. drei Testsignaturen über einen Probe-Code (KEIN Beleg, nichts wird gespeichert),
- *      jede gegen das Kartenzertifikat geprüft, mit Laufzeit
+ *   3. drei Testsignaturen über einen Probe-Code (KEIN Beleg, nichts wird gespeichert) auf demselben Weg wie
+ *      die Kassa (Identitätsprüfung der Karte in derselben Sitzung), jede gegen das Kartenzertifikat geprüft
  *   4. Gegenprobe: Signieren ohne PIN-Prüfung muss die Karte verweigern (6982) — das kostet
  *      keinen PIN-Versuch
  *
@@ -23,7 +23,7 @@ import { dirname, join } from 'node:path'
 
 const dist = pathToFileURL(join(dirname(fileURLToPath(import.meta.url)), '..', 'dist', 'index.js')).href
 const {
-  KartenbrueckeTransport, KartenError, SignaturkartenEinheit, APDU, findeKarte, signiereMitKarte,
+  KartenbrueckeTransport, KartenError, SignaturkartenEinheit, APDU, findeKarte,
   jwsSigningInput, verifiziere, statuswort,
 } = await import(dist)
 
@@ -56,10 +56,11 @@ try {
   if (!pin) { console.log('Keine PIN eingegeben — Abbruch, die Karte wurde nicht berührt.'); process.exit(1) }
 
   const probe = `_R1-AT1_ECHTTEST_${Date.now()}_2026-11-18T00:00:00_0,00_0,00_0,00_0,00_0,00_AAAAAAAAAAA=_${zert.serialNumber}_AAAAAAAAAAA=`
+  const wieKassa = new SignaturkartenEinheit({ transport, pin, erwartetesZertifikat: zertifikatDer })
   for (let i = 1; i <= 3; i++) {
     const t0 = Date.now()
     const input = jwsSigningInput(`${probe}-${i}`)
-    const sig = await signiereMitKarte(transport, await findeKarte(transport), input, pin)
+    const sig = await wieKassa.signiereBelegzeile(`${probe}-${i}`)
     const ok = verifiziere(input, sig, zertifikatDer)
     console.log(`Signatur ${i}:   ${sig.length} Byte, ${ok ? 'passt zum Zertifikat' : 'PASST NICHT ZUM ZERTIFIKAT'}, ${Date.now() - t0} ms`)
     if (!ok) process.exit(1)

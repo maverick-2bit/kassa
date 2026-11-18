@@ -17,6 +17,11 @@ Docker Desktop kann keinen USB-Leser in den Container durchreichen. Die **Karten
 - Sie arbeitet die Anfragen nacheinander ab.
 - Nach jeder Sitzung setzt sie die Karte zurück.
 - Sie protokolliert nie Befehlsinhalte, die PIN steht also nie im Protokoll.
+- **PIN-Wächter:** Eine PIN-Prüfung, die die Karte abgelehnt hat, schickt die Brücke nie wieder an die
+  Karte, egal von welcher Kasse und wie oft. Zusätzlich sperrt die Kassa die Karte für alle Kassen, die sie
+  nutzen, bis jemand in den Einstellungen die richtige PIN speichert.
+- Vor der PIN-Prüfung prüft sie in derselben Sitzung, dass die eingerichtete Karte steckt. Eine fremde Karte
+  bekommt die PIN nie zu sehen. Stecken mehrere Signaturkarten, nimmt die Kassa die eingerichtete.
 
 Unterstützt werden:
 
@@ -30,13 +35,14 @@ Unterstützt werden:
    ```powershell
    powershell -NoProfile -ExecutionPolicy Bypass -File C:\kassa-pos\ops\kartenbruecke\installiere-kartenbruecke.ps1
    ```
-   Der Installer richtet die Brücke als geplante Aufgabe ein: Start mit Windows, unter SYSTEM, Neustart nach Absturz.
+   Der Installer legt die Brücke nach `C:\Program Files\KassaPOS\Kartenbruecke` und richtet sie als geplante Aufgabe ein:
+   Start mit Windows, unter SYSTEM, Neustart nach Absturz.
    Er erzeugt den Schlüssel, trägt `KARTENBRUECKE_URL`/`KARTENBRUECKE_SCHLUESSEL` in die `.env` ein und
    zeigt im Selbsttest Leser und Karte an.
 3. Kassa neu starten: `docker compose up -d` (im Ordner der Kassa).
 4. In der Kassa: **Einstellungen → RKSV → Signaturerstellungseinheit → „Signaturkarte (lokal)"**.
    - **„Karte prüfen (ohne PIN)":** zeigt Kartentyp und Zertifikat.
-   - **PIN eintragen → „Speichern":** Die Kassa prüft die PIN mit **einer** Probesignatur. Erst dann speichert sie die PIN verschlüsselt.
+   - **PIN eintragen → „Speichern":** Die Kassa prüft die PIN mit **einer** Probesignatur. Erst dann speichert sie die PIN verschlüsselt, für alle Kassen mit dieser Karte.
    - Das Zertifikat der Karte muss auf die UID des Betriebs lauten.
 
 ## Die PIN
@@ -59,7 +65,7 @@ FinanzOnline: Die Einheit wird als `SIGNATURKARTE` mit `vda_id` `AT1` gemeldet.
 
 ## Prüfen und Fehlersuche
 
-- Protokoll: `C:\ProgramData\KassaPOS\kartenbruecke\kartenbruecke.log`. Lesbar nur für Administratoren, enthält nur die Anzahl der Befehle und die Statuswörter der Karte.
+- Protokoll: `C:\Program Files\KassaPOS\Kartenbruecke\kartenbruecke.log`. Lesbar nur für Administratoren, enthält nur die Anzahl der Befehle und die Statuswörter der Karte.
 - Echttest mit Karte, für Entwickler (fragt die PIN verdeckt ab, **ein** Versuch):
   `node packages/rksv/scripts/signaturkarte-echttest.mjs http://127.0.0.1:47110 <schlüsseldatei>`
 - Entfernen: `installiere-kartenbruecke.ps1 -Entfernen`

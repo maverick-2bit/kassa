@@ -13,8 +13,8 @@ import { X509Certificate } from 'node:crypto'
 import { jwsSigningInput } from '../../crypto/jws.js'
 import type { SignaturEinheit, ZertifikatInfo } from '../signatur-einheit.js'
 import {
-  APDU, KartenError, findeKarte, leseZertifikat, signiereMitKarte, statuswort,
-  type ApduTransport, type GefundeneKarte, type KartenLeser,
+  KartenError, findeKarte, findeKarten, leseZertifikat, signiereMitKarte,
+  type ApduTransport, type GefundeneKarte, type KartenLeser, type SitzungsBedingung,
 } from './rk-chip.js'
 
 /** ZDA-Kennung von A-Trust (die Karte ist ein A-Trust-Zertifikat, offenes System) */
@@ -64,32 +64,24 @@ export class SignaturkartenEinheit implements SignaturEinheit {
   async signiereBelegzeile(codeOhneSig: string): Promise<Buffer> {
     const pin = this.config.pin
     if (!pin) throw new KartenError('Für die Signaturkarte ist keine PIN hinterlegt', 'pin_fehlt')
-    const karte = await findeKarte(this.config.transport)
-    if (this.config.erwartetesZertifikat) await this.pruefeIdentitaet(karte, this.config.erwartetesZertifikat)
-    return signiereMitKarte(this.config.transport, karte, jwsSigningInput(codeOhneSig), pin)
-  }
+    const input = jwsSigningInput(codeOhneSig)
+    const erwartet = this.config.erwartetesZertifikat
+    if (!erwartet) return signiereMitKarte(this.config.transport, await findeKarte(this.config.transport), input, pin)
 
-  /**
-   * Steckt die eingerichtete Karte? Verglichen wird der erste Block des Zertifikats — er enthält
-   * Seriennummer und Aussteller; eine Lese-Sitzung, ohne PIN.
-   */
-  private async pruefeIdentitaet(karte: GefundeneKarte, erwartet: Buffer): Promise<void> {
-    const antworten = await this.config.transport.sende(karte.leser, [
-      APDU.selectMf, APDU.selectDfSig, APDU.selectEfZert, APDU.leseBinaer(0),
-    ])
-    const block = antworten[3]
-    const sw = block ? statuswort(block) : '----'
-    if (!block || !['9000', '6282'].includes(sw)) {
-      throw new KartenError(`Karte: Zertifikat nicht lesbar (Statuswort ${sw})`, 'karte_fehler')
+    // Unter allen gesteckten Signaturkarten die eingerichtete: Die Identität prüft die Sitzung selbst,
+    // VOR der PIN-Prüfung — eine fremde Karte bekommt die PIN nie zu sehen.
+    for (const karte of await findeKarten(this.config.transport)) {
+      try {
+        return await signiereMitKarte(this.config.transport, karte, input, pin, erwartet)
+      } catch (err) {
+        if (err instanceof KartenError && err.art === 'falsche_karte') continue
+        throw err
+      }
     }
-    const gelesen = block.subarray(0, block.length - 2)
-    const vergleich = erwartet.subarray(0, gelesen.length)
-    if (gelesen.length === 0 || !gelesen.equals(vergleich)) {
-      throw new KartenError(
-        'Im Kartenleser steckt eine andere Signaturkarte als die, mit der die Kasse eingerichtet ist',
-        'falsche_karte',
-      )
-    }
+    throw new KartenError(
+      'Im Kartenleser steckt eine andere Signaturkarte als die, mit der die Kasse eingerichtet ist',
+      'falsche_karte',
+    )
   }
 }
 
@@ -143,8 +135,15 @@ export class KartenbrueckeTransport implements ApduTransport {
       throw new KartenError('Die Kartenbrücke weist den Zugangsschlüssel der Kassa ab', 'zugang_abgewiesen')
     }
     if (!res.ok) {
-      const fehler = typeof json.fehler === 'string' ? json.fehler : text.slice(0, 200)
-      throw new KartenError(`Kartenbrücke: ${fehler || `HTTP ${res.status}`}`, res.status === 404 ? 'keine_karte' : 'karte_fehler')
+      // Den Wortlaut der Brücke nur gefiltert weitergeben (lange Hex-Folgen könnten Befehlsinhalte sein)
+      const roh = typeof json.fehler === 'string' ? json.fehler : ''
+      const fehler = roh.replace(/[0-9A-Fa-f]{16,}/g, '…').slice(0, 120) || `HTTP ${res.status}`
+      // 503: Leser/Karte gerade nicht da (vorübergehend); 500/408: Störung der Brücke (vorübergehend);
+      // alles andere (400, 404, 405, 413): die Kassa spricht die Brücke falsch an — Konfiguration
+      const art = res.status === 503 ? 'keine_karte'
+        : res.status >= 500 || res.status === 408 ? 'karte_fehler'
+        : 'bruecke_fehler'
+      throw new KartenError(`Kartenbrücke: ${fehler}`, art)
     }
     return json
   }
@@ -159,13 +158,25 @@ export class KartenbrueckeTransport implements ApduTransport {
     })
   }
 
-  async sende(leser: string, apdus: Buffer[]): Promise<Buffer[]> {
-    const json = await this.anfrage('/apdu', { leser, apdus: apdus.map(a => a.toString('hex')) })
+  async sende(leser: string, apdus: Buffer[], bedingungen?: SitzungsBedingung[]): Promise<Buffer[]> {
+    const json = await this.anfrage('/apdu', {
+      leser,
+      apdus: apdus.map(a => a.toString('hex')),
+      ...(bedingungen?.length && { pruefe: bedingungen.map(b => ({ index: b.index, daten: b.daten.toString('hex') })) }),
+    })
     const antworten = Array.isArray(json.antworten) ? json.antworten as unknown[] : null
     if (!antworten || antworten.some(a => typeof a !== 'string' || !/^([0-9a-fA-F]{2})*$/.test(a))) {
       throw new KartenError('Kartenbrücke: unlesbare Antwort', 'karte_fehler')
     }
-    if (antworten.length === 0 && typeof json.fehler === 'string') throw new KartenError(`Kartenbrücke: ${json.fehler}`, 'keine_karte')
+    if (json.abbruch === 'bedingung') {
+      throw new KartenError('Im Kartenleser steckt eine andere Signaturkarte als die eingerichtete', 'falsche_karte')
+    }
+    if (json.abbruch === 'pin_bereits_abgelehnt') {
+      throw new KartenError(
+        'Diese PIN hat die Karte schon einmal abgelehnt — die Kartenbrücke schickt sie nicht noch einmal',
+        'pin_bereits_abgelehnt',
+      )
+    }
     return (antworten as string[]).map(a => Buffer.from(a, 'hex'))
   }
 }

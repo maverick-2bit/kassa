@@ -41,7 +41,7 @@ export { verkettungswertStartbeleg, verkettungswertFolgebeleg, verkettungswertAu
 export type { KettenAnalyse } from './crypto/chain.js'
 
 // SEE
-export { generateSEE, ladeSeInfo, signiereRoh, verifiziere, verifiziereDerCodiert, zertifikatSN, derZuP1363, p1363ZuDer } from './see.js'
+export { generateSEE, erneuereSoftwareZertifikat, ladeSeInfo, signiereRoh, verifiziere, verifiziereDerCodiert, zertifikatSN, derZuP1363, p1363ZuDer } from './see.js'
 
 // Signatureinheiten (Software / A-Trust HSM)
 export {
@@ -56,9 +56,9 @@ export { klassifiziereSeeFehler } from './see/fehlerklasse.js'
 
 // Signaturkarte (a.sign RK CHIP) über die Kartenbrücke am Kassen-PC
 export {
-  KartenError, erkenneKartentyp, findeKarte, leseZertifikat, signiereMitKarte, pinBlockFormat2, statuswort, APDU,
+  KartenError, erkenneKartentyp, findeKarte, findeKarten, identitaetsBloecke, leseZertifikat, signiereMitKarte, pinBlockFormat2, statuswort, APDU,
 } from './see/karte/rk-chip.js'
-export type { ApduTransport, KartenLeser, KartenTyp, KartenFehlerArt, GefundeneKarte } from './see/karte/rk-chip.js'
+export type { ApduTransport, KartenLeser, KartenTyp, KartenFehlerArt, GefundeneKarte, SitzungsBedingung } from './see/karte/rk-chip.js'
 export { SignaturkartenEinheit, KartenbrueckeTransport, ATRUST_ZDA_ID } from './see/karte/einheit.js'
 export type { SignaturkartenConfig, KartenbrueckeConfig } from './see/karte/einheit.js'
 export { SimulierteSignaturkarte, SIMULATOR_ATR } from './see/karte/simulator.js'

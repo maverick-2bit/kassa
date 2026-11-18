@@ -59,6 +59,7 @@ import { bestimmeBelegZeit } from './beleg-zeit.js'
 import { dekrementiereBestandteile, ladeRezepte } from './bestandteil.service.js'
 import { baueBonRouting, ladeKasseRoutingAusnahmen, ladeKategorieRoutingZeilen, wirksamesRoutingVonArtikel } from './kategorie-routing.service.js'
 import { decryptPrivateKey, encryptPrivateKey } from '../crypto/master-key.js'
+import { istKarteGesperrt, istPinAblehnung, pinHinweis, schreibeKartenSperre, sperreKarteSofort } from './karten-sperre.js'
 
 export interface BelegServiceDeps {
   db:               Db
@@ -234,6 +235,9 @@ function seeFehlerAlsBelegError(err: unknown, klasse: 'ausfall' | 'konfiguration
       pin_falsch:        `${err.message}. Die Kassa versucht es NICHT von selbst erneut — bitte die richtige PIN eintragen ${wo}.`,
       pin_gesperrt:      `${err.message}. Bitte A-Trust verständigen (neue Signaturkarte) und bis dahin den Ausfall melden.`,
       pin_fehlt:         `Für die Signaturkarte ist keine gültige PIN hinterlegt ${wo}.`,
+      pin_unklar:        `${err.message}. Die Kassa versucht es NICHT von selbst erneut — bitte die PIN neu eintragen ${wo}.`,
+      pin_bereits_abgelehnt: `Die Signaturkarte hat diese PIN schon abgelehnt — die Kassa versucht es nicht erneut. Bitte die richtige PIN eintragen ${wo}.`,
+      bruecke_fehler:    `${err.message} — die Adresse der Kartenbrücke (KARTENBRUECKE_URL) prüfen.`,
       falsche_karte:     `${err.message}. Bitte die richtige Karte stecken.`,
       zugang_abgewiesen: `Die Kartenbrücke am Kassen-PC weist die Kassa ab (Schlüssel passt nicht) — die Brücke neu installieren.`,
     }
@@ -352,6 +356,7 @@ async function signiereImTxKern(
           passwort: decryptPrivateKey(kasse.atrustPasswortEnc, deps.masterPassphrase).toString('utf8'),
         })
       : kasse.seeTyp === 'atrust_chip' && deps.kartenTransport && kasse.kartePinEnc && !kasse.kartePinGesperrt
+          && !istKarteGesperrt(kasse.seeZertifikatDer)
         // Signaturkarte im Kartenleser (über die Kartenbrücke am PC): Karte gezogen, Leser oder Brücke weg →
         // Ausfallmodus; PIN falsch, andere Karte → Fehler, kein Beleg (und die PIN wird gesperrt, siehe unten).
         ? new SignaturkartenEinheit({
@@ -425,7 +430,7 @@ async function signiereImTxKern(
           !deps.kartenTransport
             ? 'Die Signaturkarte ist an diesem Kassa-Server nicht verfügbar: Die Kartenbrücke ist nicht eingerichtet ' +
               '(KARTENBRUECKE_SCHLUESSEL fehlt). Es wurde kein Beleg erstellt.'
-            : kasse.kartePinGesperrt
+            : kasse.kartePinGesperrt || istKarteGesperrt(kasse.seeZertifikatDer)
               ? `Die Signaturkarte hat die PIN abgelehnt${kasse.kartePinHinweis ? ` (${kasse.kartePinHinweis})` : ''}. Die Kassa ` +
                 'versucht es nicht von selbst erneut — bitte die richtige PIN eintragen (Einstellungen → Kassen & Drucker → ' +
                 'Signatureinheit). Es wurde kein Beleg erstellt.'
@@ -444,15 +449,16 @@ async function signiereImTxKern(
         // Wortlaut (Kassier braucht den Grund), der Ausfall bleibt bestehen.
         if (input.wiederherstellung && signErr instanceof ATrustHsmError) throw signErr
         if (input.wiederherstellung && signErr instanceof KartenError && signErr.vorlaeufig) throw signErr
-        // Die Karte hat die PIN abgelehnt: dauerhaft merken — NACH der Transaktion (die rollt zurück), sonst
-        // kostete jeder weitere Verkauf und jeder Lauf der SEE-Sonde einen der wenigen Fehlversuche der Karte.
-        if (signErr instanceof KartenError && (signErr.art === 'pin_falsch' || signErr.art === 'pin_gesperrt')) {
-          const hinweis = signErr.restVersuche === undefined ? null
-            : signErr.restVersuche === 0 ? 'Karte gesperrt' : `noch ${signErr.restVersuche} Versuch${signErr.restVersuche === 1 ? '' : 'e'}`
+        // Die Karte hat die PIN abgelehnt: sonst kostete jeder weitere Verkauf und jeder Lauf der SEE-Sonde einen
+        // der wenigen Fehlversuche der Karte. SOFORT im Prozess sperren (noch vor dem Rollback — eine gleichzeitige
+        // Anfrage, die auf die Kasse wartet, sieht es schon), dann für alle Kassen mit dieser Karte in der Datenbank.
+        if (istPinAblehnung(signErr)) {
+          const zert = kasse.seeZertifikatDer
+          const hinweis = pinHinweis(signErr)
+          sperreKarteSofort(zert)
           nachlauf.push(async () => {
-            await deps.db.update(kassen)
-              .set({ kartePinGesperrt: true, kartePinHinweis: hinweis, updatedAt: new Date() })
-              .where(eq(kassen.id, kasse.id))
+            // Ein Fehler hier darf die Meldung an die Bedienung nicht verdecken — die Sperre im Prozess hält
+            try { await schreibeKartenSperre(deps.db, zert, hinweis) } catch { /* bleibt im Prozess gesperrt */ }
           })
         }
         if (klasse === 'konfiguration') {
