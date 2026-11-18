@@ -75,6 +75,8 @@ FinanzOnline: Die Einheit wird als `SIGNATURKARTE` mit `vda_id` `AT1` gemeldet.
   `node packages/rksv/scripts/signaturkarte-echttest.mjs http://127.0.0.1:47110 <schlüsseldatei>`
 - Entfernen: `installiere-kartenbruecke.ps1 -Entfernen`
 
+Checkliste für den ersten Test unter Docker Desktop: [`TEST-PC.md`](TEST-PC.md).
+
 ## Bekannte Grenzen
 
 - Die Brücke gibt es nur für Windows. Für Linux und Raspberry Pi fehlt die Anbindung über `pcscd`.
