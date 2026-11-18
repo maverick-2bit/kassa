@@ -2966,7 +2966,7 @@ function TerminalUrlsSektion() {
 
 
 // ---------------------------------------------------------------------------
-// RKSV: Signaturerstellungseinheit (Software / A-Trust a.sign RK HSM)
+// RKSV: Signaturerstellungseinheit (Software / A-Trust a.sign RK HSM / Signaturkarte a.sign RK CHIP)
 // ---------------------------------------------------------------------------
 
 function SeeEinheitSektion() {
@@ -2982,6 +2982,7 @@ function SeeEinheitSektion() {
   const [basisUrl, setBasisUrl]   = useState('https://hs-abnahme.a-trust.at/RegistrierkasseMobile/v2')
   const [benutzer, setBenutzer]   = useState('')
   const [passwort, setPasswort]   = useState('')
+  const [kartePin, setKartePin]   = useState('')
   const [meldung, setMeldung]     = useState<{ typ: 'ok' | 'fehler'; text: string } | null>(null)
 
   useEffect(() => {
@@ -2998,12 +2999,16 @@ function SeeEinheitSektion() {
       atrustBenutzer: benutzer.trim(),
       ...(passwort ? { atrustPasswort: passwort } : {}),
     } : {}),
+    ...(typ === 'atrust_chip' && kartePin ? { kartePin } : {}),
   })
+  const kartenText = (r: { karte?: string | undefined; zertifikatSn?: string | undefined; hinweis?: string | undefined }) =>
+    `${r.karte ?? 'Signaturkarte'}, Zertifikat ${r.zertifikatSn ?? '?'}${r.hinweis ? ` — ${r.hinweis}` : ''}`
 
   const testen = useMutation({
-    mutationFn: () => seeApi.test(identity.kasseId, eingabe()),
+    // Karte prüfen geht bewusst OHNE PIN (kein Fehlversuch) — die PIN prüft erst „Speichern"
+    mutationFn: () => seeApi.test(identity.kasseId, { seeTyp: typ, ...(typ === 'atrust_hsm' ? eingabe() : {}) }),
     onSuccess: (r) => setMeldung(r.erfolgreich
-      ? { typ: 'ok',     text: `Verbindung OK — ZDA ${r.zdaId}, Zertifikat ${r.zertifikatSn}` }
+      ? { typ: 'ok',     text: typ === 'atrust_chip' ? `Karte erkannt — ${kartenText(r)}` : `Verbindung OK — ZDA ${r.zdaId}, Zertifikat ${r.zertifikatSn}` }
       : { typ: 'fehler', text: r.fehler ?? 'Verbindung fehlgeschlagen' }),
     onError: (e) => setMeldung({ typ: 'fehler', text: e instanceof Error ? e.message : 'Fehler' }),
   })
@@ -3012,13 +3017,19 @@ function SeeEinheitSektion() {
     mutationFn: () => seeApi.update(identity.kasseId, eingabe()),
     onSuccess: (r) => {
       setMeldung(r.erfolgreich
-        ? { typ: 'ok',     text: `Gespeichert — die Kasse signiert jetzt mit ${typ === 'software' ? 'dem Software-Schlüssel (AT0)' : `A-Trust (${r.zdaId})`}` }
+        ? { typ: 'ok',     text: `Gespeichert — die Kasse signiert jetzt mit ${
+            typ === 'software' ? 'dem Software-Schlüssel (AT0)'
+            : typ === 'atrust_chip' ? `der Signaturkarte (${kartenText(r)})`
+            : `A-Trust (${r.zdaId})`}` }
         : { typ: 'fehler', text: r.fehler ?? 'Speichern fehlgeschlagen' })
       setPasswort('')
+      setKartePin('')
       void queryClient.invalidateQueries({ queryKey: ['see-konfig', identity.kasseId] })
     },
-    onError: (e) => setMeldung({ typ: 'fehler', text: e instanceof Error ? e.message : 'Fehler' }),
+    onError: (e) => { setKartePin(''); setMeldung({ typ: 'fehler', text: e instanceof Error ? e.message : 'Fehler' }) },
   })
+
+  const aktuellName = (t: SeeTyp) => t === 'software' ? 'Software' : t === 'atrust_chip' ? 'Signaturkarte' : 'A-Trust HSM'
 
   return (
     <section className="rounded-xl border border-line bg-panel p-6 space-y-5">
@@ -3033,7 +3044,7 @@ function SeeEinheitSektion() {
 
       {konfig.data && (
         <p className="text-xs text-ink-muted">
-          Aktuell: <span className="font-medium text-ink">{konfig.data.seeTyp === 'software' ? 'Software' : 'A-Trust HSM'}</span>
+          Aktuell: <span className="font-medium text-ink">{aktuellName(konfig.data.seeTyp)}</span>
           {' · '}ZDA {konfig.data.seeZdaId}
           {' · '}Zertifikat {konfig.data.zertifikatSn.slice(0, 16)}…
           {' · '}gültig bis {new Date(konfig.data.zertifikatGueltigBis).toLocaleDateString('de-AT')}
@@ -3041,7 +3052,7 @@ function SeeEinheitSektion() {
       )}
 
       <div className="flex gap-2">
-        {(['software', 'atrust_hsm'] as SeeTyp[]).map(t => (
+        {(['software', 'atrust_hsm', 'atrust_chip'] as SeeTyp[]).map(t => (
           <button
             key={t}
             type="button"
@@ -3050,7 +3061,7 @@ function SeeEinheitSektion() {
               typ === t ? 'border-brand-500 bg-brand-50 text-brand-800' : 'border-line text-ink-muted hover:text-ink'
             }`}
           >
-            {t === 'software' ? 'Software (Dev)' : 'A-Trust a.sign RK HSM'}
+            {t === 'software' ? 'Software (Dev)' : t === 'atrust_chip' ? 'Signaturkarte (lokal)' : 'A-Trust a.sign RK HSM'}
           </button>
         ))}
       </div>
@@ -3069,10 +3080,40 @@ function SeeEinheitSektion() {
         </div>
       )}
 
+      {typ === 'atrust_chip' && (
+        <div className="space-y-3" data-testid="see-signaturkarte">
+          <p className="text-sm text-ink-muted">
+            A-Trust a.sign RK CHIP im Kartenleser am Kassen-PC — signiert ohne Internet. Der Leser hängt über die
+            Kartenbrücke an der Kassa (ops/kartenbruecke). Mehrere Kassen dürfen dieselbe Karte nutzen.
+          </p>
+          {konfig.data?.seeTyp === 'atrust_chip' && konfig.data.kartePinGesperrt && (
+            <div role="alert" className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">
+              Die Karte hat die gespeicherte PIN abgelehnt{konfig.data.kartePinHinweis ? ` (${konfig.data.kartePinHinweis})` : ''}.
+              Die Kasse signiert erst wieder, wenn hier die richtige PIN gespeichert wird — sie versucht es nicht
+              von selbst, damit die Karte nicht gesperrt wird.
+            </div>
+          )}
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Field label={konfig.data?.seeTyp === 'atrust_chip' && konfig.data.kartePinGesetzt && !konfig.data.kartePinGesperrt
+              ? 'Karten-PIN (leer = unverändert)' : 'Karten-PIN'}>
+              <Input
+                type="password" inputMode="numeric" autoComplete="off" maxLength={12}
+                value={kartePin} onChange={e => setKartePin(e.target.value.replace(/\D/g, ''))}
+                data-testid="see-karte-pin"
+              />
+            </Field>
+          </div>
+          <p className="text-xs text-amber-700">
+            ⚠️ „Speichern" prüft die PIN mit einer Probesignatur. Eine falsche PIN zählt als Fehlversuch der Karte —
+            nach wenigen Fehlversuchen ist sie für immer gesperrt. Die PIN steht im PIN-Brief von A-Trust.
+          </p>
+        </div>
+      )}
+
       <div className="flex items-center gap-2">
-        {typ === 'atrust_hsm' && (
+        {(typ === 'atrust_hsm' || typ === 'atrust_chip') && (
           <Button variant="secondary" onClick={() => testen.mutate()} loading={testen.isPending}>
-            Verbindung testen
+            {typ === 'atrust_chip' ? 'Karte prüfen (ohne PIN)' : 'Verbindung testen'}
           </Button>
         )}
         <Button onClick={() => speichern.mutate()} loading={speichern.isPending}>
@@ -3080,7 +3121,7 @@ function SeeEinheitSektion() {
         </Button>
       </div>
 
-      {typ === 'atrust_hsm' && (
+      {(typ === 'atrust_hsm' || typ === 'atrust_chip') && (
         <p className="text-xs text-amber-700">
           ⚠️ Beim Wechsel übernimmt die Kasse das A-Trust-Zertifikat — ältere Belege
           verifizieren nur noch gegen das frühere Zertifikat. Im Echtbetrieb die SEE
