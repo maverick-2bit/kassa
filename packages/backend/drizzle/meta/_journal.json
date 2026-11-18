@@ -589,6 +589,13 @@
       "when": 1793232000000,
       "tag": "0085_artikel_ean_eindeutig",
       "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1793318400000,
+      "tag": "0086_signaturkarte",
+      "breakpoints": true
     }
   ]
 }

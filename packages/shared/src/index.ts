@@ -740,6 +740,7 @@ export type {
 export {
   SeeTypSchema,
   SEE_TYP_LABELS,
+  KartePinSchema,
   SeeConfigSchema,
   SeeConfigUpdateSchema,
   SeeTestErgebnisSchema,

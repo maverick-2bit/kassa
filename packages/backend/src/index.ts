@@ -17,6 +17,7 @@ import { starteDruckerKeepAliveCron } from './services/drucker-keepalive.cron.js
 import { starteTicketshopCron } from './services/ticketshop.cron.js'
 import { starteTicketDatenschutzCron } from './services/ticket-datenschutz.cron.js'
 import { erstelleStubFinanzOnlineClient } from './services/finanz-online.stub.js'
+import { KartenbrueckeTransport, SimulierteSignaturkarte } from '@kassa/rksv'
 
 async function main(): Promise<void> {
   const config = loadConfig()
@@ -46,9 +47,21 @@ async function main(): Promise<void> {
     ...(config.FON_HERSTELLER_ID && { herstellerId: config.FON_HERSTELLER_ID }),
   }
 
+  // Signaturkarte: Kartenbrücke am PC (Produktion) oder Simulator (Entwicklung/E2E — in Produktion verboten)
+  if (config.KARTE_SIMULATOR && config.NODE_ENV === 'production') {
+    throw new Error('KARTE_SIMULATOR=true ist in Produktion nicht erlaubt — eine simulierte Signaturkarte signiert keine gültigen Belege.')
+  }
+  const kartenTransport = config.KARTE_SIMULATOR
+    ? await SimulierteSignaturkarte.erzeuge()
+    : config.KARTENBRUECKE_SCHLUESSEL
+      ? new KartenbrueckeTransport({ url: config.KARTENBRUECKE_URL, schluessel: config.KARTENBRUECKE_SCHLUESSEL })
+      : undefined
+  if (config.KARTE_SIMULATOR) console.warn('⚠️  KARTE_SIMULATOR aktiv — simulierte Signaturkarte (PIN 123456, nur für Entwicklung/Test).')
+
   const belegDeps = {
     db,
     masterPassphrase: config.MASTER_PASSPHRASE,
+    ...(kartenTransport && { kartenTransport }),
     ...(stubClient && { finanzOnlineClient: stubClient }),
     ...(config.FON_HERSTELLER_ID && { fonHerstellerId: config.FON_HERSTELLER_ID }),
   }

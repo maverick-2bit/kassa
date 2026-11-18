@@ -37,6 +37,23 @@ const ConfigSchema = z.object({
     ),
 
   /**
+   * Kartenbrücke am Kassen-PC für die Signaturkarte (Signatureinheit „A-Trust a.sign RK CHIP", ops/kartenbruecke).
+   * Aus dem Docker-Container ist der PC unter host.docker.internal erreichbar. Ohne KARTENBRUECKE_SCHLUESSEL
+   * ist die Signaturkarte nicht verfügbar (der Installer der Brücke trägt beides in die .env ein).
+   */
+  KARTENBRUECKE_URL: z.string().optional()
+    .transform(v => (v === undefined || v.trim() === '' ? 'http://host.docker.internal:47110' : v.trim().replace(/\/+$/, '')))
+    .refine(v => /^https?:\/\/[^\s/]+/.test(v), 'KARTENBRUECKE_URL muss mit http:// oder https:// beginnen'),
+  KARTENBRUECKE_SCHLUESSEL: z.string().optional()
+    .transform(v => (v === undefined || v.trim() === '' ? undefined : v.trim()))
+    .refine(v => v === undefined || v.length >= 32, 'KARTENBRUECKE_SCHLUESSEL muss mindestens 32 Zeichen lang sein'),
+  /**
+   * Simulierte Signaturkarte statt der Brücke (PIN 123456, Zertifikat je Start neu) — nur für Entwicklung und
+   * E2E-Tests. In Produktion verboten (index.ts bricht beim Start ab).
+   */
+  KARTE_SIMULATOR:   z.string().optional().default('false').transform(v => v === 'true' || v === '1'),
+
+  /**
    * Geheimes Token für den externen Monitoring-Endpoint (GET /api/monitoring/status
    * ?token=…). Nicht gesetzt = Endpoint deaktiviert (404). Für Uptime-Monitore
    * (Healthchecks.io, Uptime Kuma): 200 = gesund, 503 = degradiert.

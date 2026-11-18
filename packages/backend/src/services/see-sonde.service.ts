@@ -12,7 +12,10 @@
  * zurück, beides in einer Transaktion.
  *
  * Grenzen (bewusst):
- *  - Nur Kassen mit A-Trust-Anbindung. Eine Software-SEE „fällt" nur durch Fehler oder durch
+ *  - Nur Kassen mit A-Trust-Anbindung (Cloud) oder Signaturkarte. Bei der Karte prüft die Sonde OHNE PIN,
+ *    ob die eingerichtete Karte wieder steckt; eine Kasse, deren PIN die Karte abgelehnt hat, fasst sie nie
+ *    an (jeder Versuch kostete einen Fehlversuch — nach wenigen ist die Karte für immer gesperrt).
+ *    Software-SEE: Eine Software-SEE „fällt" nur durch Fehler oder durch
  *    eine Meldung von Hand aus; eine bewusste Ausfallmeldung hebt die Sonde nicht auf.
  *  - Nur Ausfälle unter 48 Stunden. Ab 48 Stunden ist der Ausfall FinanzOnline zu melden (RKSV);
  *    die Zugangsdaten dafür werden nie gespeichert, die Meldung kommt aus dem Banner — dort muss
@@ -21,8 +24,8 @@
  *    Viertelstunde wieder: Warten behebt kein falsches Passwort, und jeder Versuch schriebe ins Log.
  */
 
-import { and, eq, isNotNull } from 'drizzle-orm'
-import { ATrustHsmEinheit, ATrustHsmError, klassifiziereSeeFehler } from '@kassa/rksv'
+import { and, eq, inArray, isNotNull } from 'drizzle-orm'
+import { ATrustHsmEinheit, ATrustHsmError, KartenError, SignaturkartenEinheit, klassifiziereSeeFehler } from '@kassa/rksv'
 import type { Db } from '../db/client.js'
 import { kassen } from '../db/schema.js'
 import { decryptPrivateKey } from '../crypto/master-key.js'
@@ -78,11 +81,14 @@ export async function pruefeSeeWiederherstellung(
       basisUrl:         kassen.atrustBasisUrl,
       benutzer:         kassen.atrustBenutzer,
       passwortEnc:      kassen.atrustPasswortEnc,
+      seeTyp:           kassen.seeTyp,
+      zertifikatDer:    kassen.seeZertifikatDer,
+      pinGesperrt:      kassen.kartePinGesperrt,
     })
     .from(kassen)
     .where(and(
       isNotNull(kassen.seeAusgefallenSeit),
-      eq(kassen.seeTyp, 'atrust_hsm'),
+      inArray(kassen.seeTyp, ['atrust_hsm', 'atrust_chip']),
       eq(kassen.status, 'aktiv'),
     ))
 
@@ -95,18 +101,29 @@ export async function pruefeSeeWiederherstellung(
     const dauerMinuten = Math.max(0, Math.floor((jetzt.getTime() - k.seit!.getTime()) / 60_000))
     if (dauerMinuten >= FON_MELDE_SCHWELLE_MIN) { ergebnis('zu-lange-ausgefallen'); continue }
     if ((pausiertBis.get(k.id) ?? 0) > jetzt.getTime()) { ergebnis('pausiert'); continue }
-    if (!k.basisUrl || !k.benutzer || !k.passwortEnc) { ergebnis('fehlgeschlagen'); continue }
+    const karte = k.seeTyp === 'atrust_chip'
+    if (karte && (k.pinGesperrt || !deps.kartenTransport)) { ergebnis('abgelehnt'); continue }
+    if (!karte && (!k.basisUrl || !k.benutzer || !k.passwortEnc)) { ergebnis('fehlgeschlagen'); continue }
 
     try {
       // 1) Antwortet die Einheit wieder? Ein leichter Aufruf OHNE Signatur und ohne Sperre auf die Kasse
-      //    (die Wiederherstellung hielte die Kassensperre während des Aufrufs).
-      const einheit = new ATrustHsmEinheit({
-        basisUrl: k.basisUrl,
-        benutzer: k.benutzer,
-        passwort: decryptPrivateKey(k.passwortEnc, deps.masterPassphrase).toString('utf8'),
-      })
+      //    (die Wiederherstellung hielte die Kassensperre während des Aufrufs). Karte: steckt die
+      //    eingerichtete Karte wieder? — ohne PIN.
       try {
-        await einheit.zdaId()
+        if (karte) {
+          const { zertifikatDer } = await new SignaturkartenEinheit({ transport: deps.kartenTransport! }).karte()
+          if (zertifikatDer.toString('base64') !== k.zertifikatDer) {
+            pausiertBis.set(k.id, jetzt.getTime() + SONDE_PAUSE_NACH_ABLEHNUNG_MS)
+            ergebnis('abgelehnt')
+            continue
+          }
+        } else {
+          await new ATrustHsmEinheit({
+            basisUrl: k.basisUrl!,
+            benutzer: k.benutzer!,
+            passwort: decryptPrivateKey(k.passwortEnc!, deps.masterPassphrase).toString('utf8'),
+          }).zdaId()
+        }
       } catch {
         ergebnis('nicht-erreichbar')
         continue
@@ -128,12 +145,12 @@ export async function pruefeSeeWiederherstellung(
       // Die Wiederherstellung wirft ATrustHsmError, wenn die Einheit nicht (mehr) antwortet oder ablehnt;
       // ein BelegError mit SEE_ABGELEHNT, wenn Schlüssel/Zertifikat nicht zusammenpassen.
       const abgelehnt = (err instanceof BelegError && err.code === SEE_ABGELEHNT)
-        || (err instanceof ATrustHsmError && klassifiziereSeeFehler(err) === 'konfiguration')
+        || ((err instanceof ATrustHsmError || err instanceof KartenError) && klassifiziereSeeFehler(err) === 'konfiguration')
       if (abgelehnt) {
         pausiertBis.set(k.id, jetzt.getTime() + SONDE_PAUSE_NACH_ABLEHNUNG_MS)
         log?.error({ err, kasseId: k.id }, `SEE-Sonde ${k.kassenId}: Signatureinheit lehnt die Anfrage ab — nächster Versuch in 15 Min`)
         ergebnis('abgelehnt')
-      } else if (err instanceof ATrustHsmError) {
+      } else if (err instanceof ATrustHsmError || err instanceof KartenError) {
         // Die Einheit antwortet auf /ZDA, aber das Signieren scheitert noch (Teilausfall): beim nächsten Durchlauf erneut
         ergebnis('nicht-erreichbar')
       } else if (err instanceof BelegError && err.httpStatus === 409) {
