@@ -83,6 +83,8 @@ test('Onboarding: Setup-Formular richtet Kasse ein und signiert den Startbeleg',
   await page.fill('#admin-email', 'e2e-onboarding@test.at')
   await page.fill('#admin-passwort', 'e2e-passwort-12345')
 
+  // Signatur muss ausdrücklich gewählt werden — hier Test/Demo (Software, wie bisher)
+  await page.getByTestId('signatur-wahl').getByRole('radio', { name: /Test \/ Demo/ }).click()
   await page.getByRole('button', { name: 'Kasse einrichten' }).click()
 
   // Erfolg: Kasse registriert (FO-Stub) + Startbeleg geprueft. Grosszuegiges
