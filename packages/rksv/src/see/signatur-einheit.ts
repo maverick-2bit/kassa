@@ -4,7 +4,7 @@
  * Implementierungen:
  *   - SoftwareSignaturEinheit  (Dev/Test: lokaler ECDSA-Key, ZDA 'AT0')
  *   - ATrustHsmEinheit         (Produktion: a.sign RK HSM REST-API, ZDA 'AT1')
- *   - (a.sign RK CHIP / PKCS#11 später über dasselbe Interface andockbar)
+ *   - SignaturkartenEinheit    (Produktion lokal: a.sign RK CHIP im Kartenleser, ZDA 'AT1' — see/karte/)
  *
  * Die Einheit signiert die BELEGZEILE (maschinenlesbarer Code OHNE Signatur);
  * der JWS-Signing-Input (fixer Header {"alg":"ES256"}) entsteht je nach
@@ -24,7 +24,7 @@ export interface ZertifikatInfo {
 }
 
 export interface SignaturEinheit {
-  readonly typ: 'software' | 'atrust_hsm'
+  readonly typ: 'software' | 'atrust_hsm' | 'atrust_chip'
   /** ZDA-Kennzeichen für den QR-Prefix (_R1-<ZDA>_): AT0/AT1/… */
   zdaId(): Promise<string>
   /** Signaturzertifikat der Einheit */
