@@ -6,10 +6,10 @@ import type { FastifyPluginAsync } from 'fastify'
 import { and, asc, desc, eq, sql } from 'drizzle-orm'
 import type { Db } from '../db/client.js'
 import type { Config } from '../config.js'
-import { belege, kassen } from '../db/schema.js'
+import { belege, kassen, mandanten } from '../db/schema.js'
 import { z } from 'zod'
 import { FinanzOnlineCredentialsSchema, KasseBezeichnungUpdateSchema, SeeConfigUpdateSchema, WeitereKasseInputSchema, istErlaubteAtrustBasisUrl, type KasseListeItem, type WeitereKasseResponse } from '@kassa/shared'
-import { ATrustHsmEinheit, ATrustHsmError } from '@kassa/rksv'
+import { ATrustHsmEinheit, ATrustHsmError, KartenError, SignaturkartenEinheit, jwsSigningInput, signiereMitKarte, verifiziere } from '@kassa/rksv'
 import { X509Certificate } from 'node:crypto'
 import { decryptPrivateKey, encryptPrivateKey } from '../crypto/master-key.js'
 import { legeWeitereKasseAn } from '../services/kasse.service.js'
@@ -338,6 +338,53 @@ export const kasseRoute: FastifyPluginAsync<KasseRouteOptions> = async (fastify,
     return { basisUrl, benutzer, passwort }
   }
 
+  /**
+   * Signaturkarte prüfen: Karte steckt, ist auf die UID des Mandanten ausgestellt, Zertifikat gültig —
+   * und, wenn eine PIN mitkommt, EINE Probesignatur (kein Beleg). Eine falsche PIN kostet dabei genau einen
+   * Fehlversuch der Karte; die Meldung nennt die Restversuche.
+   */
+  const pruefeSignaturkarte = async (
+    kasse: typeof kassen.$inferSelect,
+    pin: string | undefined,
+  ): Promise<
+    | { ok: true; zertifikatDer: Buffer; seriennummer: string; gueltigBis: Date; karte: string; hinweis?: string; pinGeprueft: boolean }
+    | { ok: false; fehler: string; status: number }
+  > => {
+    const transport = opts.belegDeps.kartenTransport
+    if (!transport) {
+      return { ok: false, status: 400, fehler: 'Die Kartenbrücke ist an diesem Kassa-Server nicht eingerichtet (KARTENBRUECKE_SCHLUESSEL fehlt) — siehe ops/kartenbruecke.' }
+    }
+    try {
+      const { karte, zertifikatDer } = await new SignaturkartenEinheit({ transport }).karte()
+      const zert = new X509Certificate(zertifikatDer)
+      const [m] = await opts.db.select({ uid: mandanten.uid }).from(mandanten).where(eq(mandanten.id, kasse.mandantId)).limit(1)
+      const kartenUid = /CN=UID ([A-Z0-9]+)/.exec(zert.subject)?.[1] ?? null
+      const mandantUid = m?.uid?.replace(/\s+/g, '').toUpperCase() ?? null
+      if (mandantUid && kartenUid && kartenUid !== mandantUid) {
+        return { ok: false, status: 400, fehler: `Die Signaturkarte gehört zur UID ${kartenUid}, der Betrieb hat die UID ${mandantUid} — bitte die Karte dieses Betriebs stecken.` }
+      }
+      const gueltigBis = new Date(zert.validTo)
+      if (gueltigBis <= new Date()) {
+        return { ok: false, status: 400, fehler: `Das Zertifikat der Signaturkarte ist abgelaufen (${gueltigBis.toISOString().slice(0, 10)}).` }
+      }
+      if (pin !== undefined) {
+        const probe = jwsSigningInput(`_R1-AT1_PINPROBE_${kasse.kassenId}_${Date.now()}`)
+        const sig = await signiereMitKarte(transport, karte, probe, pin)
+        if (!verifiziere(probe, sig, zertifikatDer)) {
+          return { ok: false, status: 502, fehler: 'Die Signaturkarte liefert eine Signatur, die nicht zu ihrem Zertifikat passt.' }
+        }
+      }
+      return {
+        ok: true, zertifikatDer, seriennummer: zert.serialNumber, gueltigBis, karte: karte.typ.bezeichnung,
+        pinGeprueft: pin !== undefined,
+        ...(karte.typ.tauschpflichtig && { hinweis: 'Diese Kartengeneration ist nicht mehr zertifiziert und muss bis spätestens Mai 2027 getauscht werden (A-Trust).' }),
+      }
+    } catch (err) {
+      if (!(err instanceof KartenError)) throw err
+      return { ok: false, status: err.vorlaeufig ? 502 : 400, fehler: err.message }
+    }
+  }
+
   /** GET /kassen/:id/see — aktuelle SEE-Konfiguration (ohne Geheimnisse) */
   fastify.get('/kassen/:id/see', auth, async (request, reply) => {
     const id    = uuidParam(request.params)
@@ -350,6 +397,9 @@ export const kasseRoute: FastifyPluginAsync<KasseRouteOptions> = async (fastify,
       atrustBasisUrl:        kasse.atrustBasisUrl,
       atrustBenutzer:        kasse.atrustBenutzer,
       atrustPasswortGesetzt: kasse.atrustPasswortEnc != null,
+      kartePinGesetzt:       kasse.kartePinEnc != null,
+      kartePinGesperrt:      kasse.kartePinGesperrt,
+      kartePinHinweis:       kasse.kartePinHinweis,
       zertifikatSn:          kasse.seeZertifikatSn,
       zertifikatGueltigBis:  kasse.seeGueltigBis.toISOString(),
     })
@@ -364,6 +414,15 @@ export const kasseRoute: FastifyPluginAsync<KasseRouteOptions> = async (fastify,
 
     const kasse = await ladeKasse(id, request.user.mandantId)
     if (!kasse) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
+
+    if (body.data.seeTyp === 'atrust_chip') {
+      const k = await pruefeSignaturkarte(kasse, body.data.kartePin)
+      if (!k.ok) return reply.send({ erfolgreich: false, fehler: k.fehler })
+      return reply.send({
+        erfolgreich: true, zdaId: 'AT1', zertifikatSn: k.seriennummer, karte: k.karte,
+        ...(k.hinweis && { hinweis: k.hinweis }),
+      })
+    }
 
     const zugang = atrustZugang(kasse, body.data)
     if ('fehler' in zugang) return reply.status(400).send({ erfolgreich: false, fehler: zugang.fehler })
@@ -401,6 +460,39 @@ export const kasseRoute: FastifyPluginAsync<KasseRouteOptions> = async (fastify,
         .set({ seeTyp: 'software', seeZdaId: 'AT0', updatedAt: new Date() })
         .where(eq(kassen.id, kasse.id))
       return reply.send({ erfolgreich: true, zdaId: 'AT0', zertifikatSn: kasse.seeZertifikatSn })
+    }
+
+    if (body.data.seeTyp === 'atrust_chip') {
+      // Die gespeicherte PIN darf bleiben, solange es dieselbe Karte ist und die Karte sie nicht abgelehnt hat.
+      // Sonst muss eine PIN mitkommen — sie wird mit einer Probesignatur geprüft, BEVOR sie gespeichert wird.
+      const pin = body.data.kartePin
+      const k = await pruefeSignaturkarte(kasse, pin)
+      if (!k.ok) return reply.status(k.status).send({ erfolgreich: false, fehler: k.fehler })
+      const gleicheKarte = kasse.seeTyp === 'atrust_chip' && kasse.seeZertifikatDer === k.zertifikatDer.toString('base64')
+      const altePinGilt = gleicheKarte && kasse.kartePinEnc != null && !kasse.kartePinGesperrt
+      if (pin === undefined && !altePinGilt) {
+        return reply.status(400).send({ erfolgreich: false, fehler: 'Bitte die PIN der Signaturkarte eingeben.' })
+      }
+      await opts.db
+        .update(kassen)
+        .set({
+          seeTyp:            'atrust_chip',
+          seeZdaId:          'AT1',
+          seeZertifikatDer:  k.zertifikatDer.toString('base64'),
+          seeZertifikatSn:   k.seriennummer,
+          seeGueltigBis:     k.gueltigBis,
+          ...(pin !== undefined && {
+            kartePinEnc:      encryptPrivateKey(Buffer.from(pin, 'utf8'), opts.belegDeps.masterPassphrase),
+            kartePinGesperrt: false,
+            kartePinHinweis:  null,
+          }),
+          updatedAt:         new Date(),
+        })
+        .where(eq(kassen.id, kasse.id))
+      return reply.send({
+        erfolgreich: true, zdaId: 'AT1', zertifikatSn: k.seriennummer, karte: k.karte,
+        ...(k.hinweis && { hinweis: k.hinweis }),
+      })
     }
 
     // atrust_hsm: Verbindung pruefen, dann Zugang + Zertifikat uebernehmen

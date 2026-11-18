@@ -25,6 +25,9 @@ import {
   klassifiziereSeeFehler,
   formatBelegDatumUhrzeit,
   ATrustHsmError,
+  KartenError,
+  SignaturkartenEinheit,
+  type ApduTransport,
   type FinanzOnlineCredentials,
   type BelegPosition,
   type BelegTyp,
@@ -70,6 +73,11 @@ export interface BelegServiceDeps {
    * Fehlt sie, verwendet der echte Client einen Platzhalter.
    */
   fonHerstellerId?: string
+  /**
+   * Weg zur Signaturkarte (see_typ 'atrust_chip'): die Kartenbrücke am Kassen-PC, in Tests der Simulator.
+   * Fehlt er, kann keine Kasse mit der Signaturkarte signieren (die Fehlermeldung nennt den Grund).
+   */
+  kartenTransport?: ApduTransport
 }
 
 /**
@@ -220,6 +228,17 @@ function seeFehlerAlsBelegError(err: unknown, klasse: 'ausfall' | 'konfiguration
     )
   }
   const ende = wiederherstellung ? 'Die Kasse bleibt im Ausfallmodus.' : 'Es wurde kein Beleg erstellt.'
+  if (err instanceof KartenError) {
+    const wo = '(Einstellungen → Kassen & Drucker → Signatureinheit)'
+    const text: Record<string, string> = {
+      pin_falsch:        `${err.message}. Die Kassa versucht es NICHT von selbst erneut — bitte die richtige PIN eintragen ${wo}.`,
+      pin_gesperrt:      `${err.message}. Bitte A-Trust verständigen (neue Signaturkarte) und bis dahin den Ausfall melden.`,
+      pin_fehlt:         `Für die Signaturkarte ist keine gültige PIN hinterlegt ${wo}.`,
+      falsche_karte:     `${err.message}. Bitte die richtige Karte stecken.`,
+      zugang_abgewiesen: `Die Kartenbrücke am Kassen-PC weist die Kassa ab (Schlüssel passt nicht) — die Brücke neu installieren.`,
+    }
+    return new BelegError(409, `${text[err.art] ?? err.message} ${ende}`, SEE_ABGELEHNT)
+  }
   if (err instanceof ATrustHsmError && err.status !== undefined) {
     return new BelegError(
       409,
@@ -332,7 +351,15 @@ async function signiereImTxKern(
           benutzer: kasse.atrustBenutzer,
           passwort: decryptPrivateKey(kasse.atrustPasswortEnc, deps.masterPassphrase).toString('utf8'),
         })
-      : undefined
+      : kasse.seeTyp === 'atrust_chip' && deps.kartenTransport && kasse.kartePinEnc && !kasse.kartePinGesperrt
+        // Signaturkarte im Kartenleser (über die Kartenbrücke am PC): Karte gezogen, Leser oder Brücke weg →
+        // Ausfallmodus; PIN falsch, andere Karte → Fehler, kein Beleg (und die PIN wird gesperrt, siehe unten).
+        ? new SignaturkartenEinheit({
+            transport:            deps.kartenTransport,
+            pin:                  decryptPrivateKey(kasse.kartePinEnc, deps.masterPassphrase).toString('utf8'),
+            erwartetesZertifikat: see.zertifikatDER,
+          })
+        : undefined
 
     // Signierungs-Kontext aus letztem DB-Zustand
     const umsatzzaehler = new Umsatzzaehler(kasse.umsatzzaehlerCent)
@@ -392,6 +419,21 @@ async function signiereImTxKern(
           SEE_ABGELEHNT,
         )
       }
+      if (kasse.seeTyp === 'atrust_chip' && !einheit) {
+        throw new BelegError(
+          409,
+          !deps.kartenTransport
+            ? 'Die Signaturkarte ist an diesem Kassa-Server nicht verfügbar: Die Kartenbrücke ist nicht eingerichtet ' +
+              '(KARTENBRUECKE_SCHLUESSEL fehlt). Es wurde kein Beleg erstellt.'
+            : kasse.kartePinGesperrt
+              ? `Die Signaturkarte hat die PIN abgelehnt${kasse.kartePinHinweis ? ` (${kasse.kartePinHinweis})` : ''}. Die Kassa ` +
+                'versucht es nicht von selbst erneut — bitte die richtige PIN eintragen (Einstellungen → Kassen & Drucker → ' +
+                'Signatureinheit). Es wurde kein Beleg erstellt.'
+              : 'Für die Signaturkarte ist keine PIN hinterlegt (Einstellungen → Kassen & Drucker → Signatureinheit). ' +
+                'Es wurde kein Beleg erstellt.',
+          SEE_ABGELEHNT,
+        )
+      }
       try {
         signed = await signiereBeleg(raw, kontext)
       } catch (signErr) {
@@ -401,6 +443,18 @@ async function signiereImTxKern(
         // Wiederherstellen, A-Trust antwortet nicht/lehnt ab: Vorbestand — die Route antwortet mit 502 und dem
         // Wortlaut (Kassier braucht den Grund), der Ausfall bleibt bestehen.
         if (input.wiederherstellung && signErr instanceof ATrustHsmError) throw signErr
+        if (input.wiederherstellung && signErr instanceof KartenError && signErr.vorlaeufig) throw signErr
+        // Die Karte hat die PIN abgelehnt: dauerhaft merken — NACH der Transaktion (die rollt zurück), sonst
+        // kostete jeder weitere Verkauf und jeder Lauf der SEE-Sonde einen der wenigen Fehlversuche der Karte.
+        if (signErr instanceof KartenError && (signErr.art === 'pin_falsch' || signErr.art === 'pin_gesperrt')) {
+          const hinweis = signErr.restVersuche === undefined ? null
+            : signErr.restVersuche === 0 ? 'Karte gesperrt' : `noch ${signErr.restVersuche} Versuch${signErr.restVersuche === 1 ? '' : 'e'}`
+          nachlauf.push(async () => {
+            await deps.db.update(kassen)
+              .set({ kartePinGesperrt: true, kartePinHinweis: hinweis, updatedAt: new Date() })
+              .where(eq(kassen.id, kasse.id))
+          })
+        }
         if (klasse === 'konfiguration') {
           nachlauf.push(() => logAudit(deps.db, {
             mandantId: kasse.mandantId, aktion: 'see.signatur_abgelehnt',
@@ -982,7 +1036,7 @@ function baueSeeStatus(seit: Date | null, seeTyp: string, bezug: Date = new Date
     seit:             seit.toISOString(),
     dauerMinuten,
     fonMeldungNoetig: dauerMinuten >= FON_MELDE_SCHWELLE_MIN,
-    automatischePruefung: seeTyp === 'atrust_hsm' && dauerMinuten < FON_MELDE_SCHWELLE_MIN,
+    automatischePruefung: (seeTyp === 'atrust_hsm' || seeTyp === 'atrust_chip') && dauerMinuten < FON_MELDE_SCHWELLE_MIN,
   }
 }
 
@@ -1130,7 +1184,7 @@ export async function registriereKasseBeiFinanzOnline(
     credentials,
     benutzerschluesselBase64: aesSchluessel.toString('base64'),
     vdaId:         k.seeZdaId,
-    artSe:         k.seeTyp === 'atrust_hsm' ? 'HSM_DIENSTLEISTER' : 'EIGENES_HSM',
+    artSe:         k.seeTyp === 'atrust_hsm' ? 'HSM_DIENSTLEISTER' : k.seeTyp === 'atrust_chip' ? 'SIGNATURKARTE' : 'EIGENES_HSM',
   })
   if (!reg.erfolgreich) throw new BelegError(502, reg.fehler ?? 'FinanzOnline-Registrierung fehlgeschlagen')
 
