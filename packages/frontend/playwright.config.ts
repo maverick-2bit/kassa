@@ -53,6 +53,8 @@ export default defineConfig({
       env: {
         DATABASE_URL:      E2E_DB_URL,
         FO_STUB:           'true',
+        // Simulierte Signaturkarte (PIN 123456) für zzzz-signaturkarte.spec.ts — nur Entwicklung/Test
+        KARTE_SIMULATOR:   'true',
         NODE_ENV:          'test',
         PORT:              '3000',
         LOG_LEVEL:         'warn',
