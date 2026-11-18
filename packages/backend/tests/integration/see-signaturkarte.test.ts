@@ -7,6 +7,9 @@
  *   - PIN falsch → kein Beleg, PIN dauerhaft gesperrt: weder Verkauf noch Sonde fassen die Karte wieder an
  *   - fremde Karte → Abbruch VOR der PIN-Prüfung
  *   - FinanzOnline: Einheit wird als SIGNATURKARTE (vda AT1) gemeldet
+ *   - zwei Kassen, eine Karte: Ablehnung sperrt die Karte für beide, die neue PIN gilt für beide
+ *   - gleichzeitige Verkäufe mit falscher PIN: genau EIN Fehlversuch auf der Karte
+ *   - zurück auf die Software-SEE: neues passendes Zertifikat, Belege wieder signiert
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest'
@@ -24,6 +27,7 @@ import { encryptPrivateKey } from '../../src/crypto/master-key.js'
 import { buildTestServer, TEST_MASTER, type TestServer } from '../helpers/testServer.js'
 import { erstelleIntegrationsDb, type IntegrationsDb } from './helpers/integrationsDb.js'
 import { pruefeSeeWiederherstellung, vergesseSondenZustand } from '../../src/services/see-sonde.service.js'
+import { vergesseKartenSperren } from '../../src/services/karten-sperre.js'
 
 const ADMIN_EMAIL    = 'admin@signaturkarte.at'
 const ADMIN_PASSWORT = 'signaturkarte-passwort-123'
@@ -52,7 +56,7 @@ describe('SEE: Signaturkarte über die Kartenbrücke (Integration, echtes Postgr
 
   const leser: ApduTransport = {
     leser: () => gesteckt.leser(),
-    sende: (l, apdus) => gesteckt.sende(l, apdus),
+    sende: (l, apdus, bedingungen) => gesteckt.sende(l, apdus, bedingungen),
   }
 
   const auth = () => ({ authorization: `Bearer ${token}` })
@@ -157,6 +161,7 @@ describe('SEE: Signaturkarte über die Kartenbrücke (Integration, echtes Postgr
       karte.gesteckt = true
       karte.erreichbar = true
       vergesseSondenZustand()
+      vergesseKartenSperren()
       await idb.db.update(kassen).set({
         seeAusgefallenSeit: null,
         kartePinGesperrt:   false,
@@ -254,6 +259,83 @@ describe('SEE: Signaturkarte über die Kartenbrücke (Integration, echtes Postgr
     })
   })
 
+  describe('Zwei Kassen, eine Karte', () => {
+    let kasse2Id: string
+    const verkaufAuf = (id: string) => srv.fastify.inject({
+      method: 'POST', url: '/api/belege/barzahlung', headers: auth(),
+      payload: {
+        kasseId: id,
+        positionen: [{ bezeichnung: 'Probe', preisBruttoCent: 300, mwstSatz: 'normal', menge: 1 }],
+        zahlung: { barCent: 300, karteCent: 0, sonstigeCent: 0 },
+      },
+    })
+
+    beforeAll(async () => {
+      gesteckt = karte
+      karte.gesteckt = true
+      karte.erreichbar = true
+      vergesseKartenSperren()
+      await idb.db.update(kassen).set({ seeAusgefallenSeit: null }).where(eq(kassen.id, kasseId))
+      // Kasse 1 mit richtiger PIN (frisch über die Einstellungen), dann Kasse 2 anlegen und auf dieselbe Karte stellen
+      expect((await seePatch({ seeTyp: 'atrust_chip', kartePin: RICHTIGE_PIN })).statusCode).toBe(200)
+      const neu = await srv.fastify.inject({
+        method: 'POST', url: '/api/kassen', headers: auth(), payload: { kassenId: 'SK-002', umgebung: 'test' },
+      })
+      expect([200, 201]).toContain(neu.statusCode)
+      kasse2Id = (neu.json() as { kasseId: string }).kasseId
+      const p2 = await srv.fastify.inject({
+        method: 'PATCH', url: `/api/kassen/${kasse2Id}/see`, headers: auth(), payload: { seeTyp: 'atrust_chip', kartePin: RICHTIGE_PIN },
+      })
+      expect(p2.statusCode).toBe(200)
+    })
+
+    it('beide signieren mit der Karte', async () => {
+      expect((await verkaufAuf(kasseId)).statusCode).toBe(201)
+      expect((await verkaufAuf(kasse2Id)).statusCode).toBe(201)
+    })
+
+    it('veraltete PIN in beiden Kassen: EIN Fehlversuch sperrt die Karte für beide; neue PIN in einer Kasse gilt für beide', async () => {
+      const alt = encryptPrivateKey(Buffer.from('333333', 'utf8'), TEST_MASTER)
+      await idb.db.update(kassen).set({ kartePinEnc: alt }).where(eq(kassen.seeZertifikatDer, karte.zertifikatDer.toString('base64')))
+      const pruefungen = karte.pinPruefungen
+
+      expect((await verkaufAuf(kasseId)).statusCode).toBe(409)
+      const zweite = await verkaufAuf(kasse2Id)
+      expect(zweite.statusCode).toBe(409)
+      expect(zweite.json().fehler).toMatch(/PIN abgelehnt/)
+      expect(karte.pinPruefungen).toBe(pruefungen + 1)
+      const k2 = (await idb.db.select().from(kassen).where(eq(kassen.id, kasse2Id)))[0]!
+      expect(k2.kartePinGesperrt).toBe(true)
+
+      // Sonde im Ausfall lässt BEIDE in Ruhe
+      await idb.db.update(kassen).set({ seeAusgefallenSeit: new Date() }).where(eq(kassen.seeZertifikatDer, karte.zertifikatDer.toString('base64')))
+      const sonde = await pruefeSeeWiederherstellung(idb.db, deps())
+      expect(sonde.map(e => e.ausgang)).toEqual(['abgelehnt', 'abgelehnt'])
+      expect(karte.pinPruefungen).toBe(pruefungen + 1)
+      await idb.db.update(kassen).set({ seeAusgefallenSeit: null }).where(eq(kassen.seeZertifikatDer, karte.zertifikatDer.toString('base64')))
+
+      // richtige PIN in Kasse 2 speichern → beide wieder frei
+      const p = await srv.fastify.inject({
+        method: 'PATCH', url: `/api/kassen/${kasse2Id}/see`, headers: auth(), payload: { seeTyp: 'atrust_chip', kartePin: RICHTIGE_PIN },
+      })
+      expect(p.statusCode).toBe(200)
+      expect((await verkaufAuf(kasseId)).statusCode).toBe(201)
+      expect((await verkaufAuf(kasse2Id)).statusCode).toBe(201)
+    })
+
+    it('gleichzeitige Verkäufe auf beiden Kassen mit falscher PIN: genau EIN Fehlversuch', async () => {
+      await idb.db.update(kassen)
+        .set({ kartePinEnc: encryptPrivateKey(Buffer.from('444444', 'utf8'), TEST_MASTER) })
+        .where(eq(kassen.seeZertifikatDer, karte.zertifikatDer.toString('base64')))
+      const pruefungen = karte.pinPruefungen
+      const ergebnisse = await Promise.all([verkaufAuf(kasseId), verkaufAuf(kasse2Id), verkaufAuf(kasseId), verkaufAuf(kasse2Id)])
+      expect(ergebnisse.map(e => e.statusCode)).toEqual([409, 409, 409, 409])
+      expect(karte.pinPruefungen).toBe(pruefungen + 1)
+      // aufräumen: richtige PIN
+      expect((await seePatch({ seeTyp: 'atrust_chip', kartePin: RICHTIGE_PIN })).statusCode).toBe(200)
+    })
+  })
+
   it('FinanzOnline-Nachtrag meldet die Einheit als SIGNATURKARTE mit vda AT1', async () => {
     gesteckt = karte
     const res = await srv.fastify.inject({
@@ -262,5 +344,18 @@ describe('SEE: Signaturkarte über die Kartenbrücke (Integration, echtes Postgr
     })
     expect(res.statusCode).toBe(200)
     expect(foClient.kasseInBetriebNehmen).toHaveBeenCalledWith(expect.objectContaining({ artSe: 'SIGNATURKARTE', vdaId: 'AT1' }))
+  })
+
+  it('zurück auf die Software-SEE: neues Zertifikat zum Software-Schlüssel, Belege wieder signiert (kein stiller Ausfall)', async () => {
+    const res = await seePatch({ seeTyp: 'software' })
+    expect(res.statusCode).toBe(200)
+    const k = await kasse()
+    expect(k.seeTyp).toBe('software')
+    expect(k.seeZertifikatDer).not.toBe(karte.zertifikatDer.toString('base64'))
+    const verkauf = await barzahlen(120)
+    expect(verkauf.statusCode).toBe(201)
+    const beleg = verkauf.json() as BelegResponse
+    expect(istAusfallBeleg(beleg.signaturwert)).toBe(false)
+    expect(verifiziereQrCode(beleg.maschinenlesbareCode, Buffer.from(k.seeZertifikatDer, 'base64'))).toBe(true)
   })
 })

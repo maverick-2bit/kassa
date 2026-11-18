@@ -4,7 +4,8 @@
 #   powershell -NoProfile -ExecutionPolicy Bypass -File installiere-kartenbruecke.ps1 -Entfernen
 #
 # Was passiert:
-#   1. kartenbruecke.ps1 nach C:\ProgramData\KassaPOS\kartenbruecke\ kopieren
+#   1. kartenbruecke.ps1 nach C:\Program Files\KassaPOS\Kartenbruecke\ kopieren (nur Administratoren dürfen dort
+#      schreiben — das Skript läuft als SYSTEM und darf von niemand anderem austauschbar sein)
 #   2. Zugangsschlüssel erzeugen (einmalig; bleibt bei Updates erhalten), lesbar nur für SYSTEM und Administratoren
 #   3. Geplante Aufgabe „Kassa Kartenbrücke": startet mit Windows unter SYSTEM, startet nach Absturz neu
 #   4. KARTENBRUECKE_URL und KARTENBRUECKE_SCHLUESSEL in die .env der Kassa eintragen
@@ -19,9 +20,10 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $AUFGABE = 'Kassa Kartenbruecke'
-$ordner  = Join-Path $env:ProgramData 'KassaPOS\kartenbruecke'
+$ordner  = Join-Path $env:ProgramFiles 'KassaPOS\Kartenbruecke'
 $skript  = Join-Path $ordner 'kartenbruecke.ps1'
 $schluesselDatei = Join-Path $ordner 'schluessel.txt'
+$logDatei        = Join-Path $ordner 'kartenbruecke.log'
 
 function Schritt([string] $t) { Write-Host "`n>> $t" -ForegroundColor Cyan }
 function Ok([string] $t)      { Write-Host "   OK  $t" -ForegroundColor Green }
@@ -60,8 +62,10 @@ if (Test-Path -LiteralPath $schluesselDatei) {
   Set-Content -LiteralPath $schluesselDatei -Value $schluessel -Encoding ASCII -NoNewline
   Ok 'neu erzeugt'
 }
-# Nur SYSTEM und Administratoren dürfen den Ordner lesen (Schlüssel, Protokoll)
+# Nur SYSTEM und Administratoren dürfen den Ordner lesen und schreiben (Skript, Schlüssel, Protokoll);
+# Besitzer sind die Administratoren — ein vorher angelegter Ordner eines anderen Benutzers wird übernommen
 $acl = New-Object System.Security.AccessControl.DirectorySecurity
+$acl.SetOwner((New-Object System.Security.Principal.NTAccount('BUILTIN\Administrators')))
 $acl.SetAccessRuleProtection($true, $false)
 foreach ($wer in @('NT AUTHORITY\SYSTEM', 'BUILTIN\Administrators')) {
   $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($wer, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')))
@@ -76,7 +80,7 @@ if (Get-ScheduledTask -TaskName $AUFGABE -ErrorAction SilentlyContinue) {
   Unregister-ScheduledTask -TaskName $AUFGABE -Confirm:$false
 }
 $aktion = New-ScheduledTaskAction -Execute 'powershell.exe' `
-  -Argument "-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$skript`" -Port $Port"
+  -Argument "-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$skript`" -Port $Port -SchluesselDatei `"$schluesselDatei`" -LogDatei `"$logDatei`""
 $ausloeser = New-ScheduledTaskTrigger -AtStartup
 $konto     = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
 $optionen  = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
@@ -111,7 +115,7 @@ for ($i = 0; $i -lt 15 -and -not $antwort; $i++) {
   } catch { }
 }
 if (-not $antwort) {
-  Hinweis "Die Brücke antwortet nicht. Protokoll: $(Join-Path $ordner 'kartenbruecke.log')"
+  Hinweis "Die Brücke antwortet nicht. Protokoll: $logDatei"
   exit 1
 }
 Ok 'Brücke antwortet'

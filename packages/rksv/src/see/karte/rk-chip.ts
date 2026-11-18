@@ -34,14 +34,29 @@ export interface KartenLeser {
 }
 
 /**
+ * Bedingung innerhalb einer Sitzung: Die Antwortdaten des APDU Nr. `index` müssen genau `daten` sein,
+ * sonst bricht die Sitzung dort ab (KartenError 'falsche_karte'). So prüft die Kassa, dass die
+ * eingerichtete Karte steckt, BEVOR in derselben Sitzung die PIN an die Karte geht. Mehrere Bedingungen
+ * je Sitzung möglich (z. B. Anfang des Zertifikats UND der Block mit dem öffentlichen Schlüssel).
+ */
+export interface SitzungsBedingung {
+  index: number
+  daten: Buffer
+}
+
+/**
  * Übertragungsweg zur Karte — z. B. die Kartenbrücke am Kassen-PC (HTTP) oder ein Simulator.
  * `sende` arbeitet die APDUs in EINER exklusiven Kartensitzung der Reihe nach ab und hört nach
  * der ersten Antwort auf, deren Statuswort weder 9000 noch 6282 (Dateiende) ist. Jede Antwort ist
  * Daten ‖ SW1 SW2.
+ *
+ * Pflicht jedes Transports (PIN-Wächter): Eine PIN-Prüfung (VERIFY mit Daten), die die Karte nicht mit
+ * 9000 bestätigt hat, wird nie wieder an die Karte geschickt — stattdessen KartenError
+ * 'pin_bereits_abgelehnt'. Das gilt über alle Kassen und Anfragen hinweg.
  */
 export interface ApduTransport {
   leser(): Promise<KartenLeser[]>
-  sende(leser: string, apdus: Buffer[]): Promise<Buffer[]>
+  sende(leser: string, apdus: Buffer[], bedingungen?: SitzungsBedingung[]): Promise<Buffer[]>
 }
 
 // ---------------------------------------------------------------------------
@@ -65,6 +80,12 @@ export type KartenFehlerArt =
   | 'pin_gesperrt'
   /** PIN fehlt oder ist der Kassa schon als falsch bekannt — es wurde gar nicht erst versucht */
   | 'pin_fehlt'
+  /** Diese PIN hat die Karte schon einmal abgelehnt — die Brücke schickt sie nicht noch einmal */
+  | 'pin_bereits_abgelehnt'
+  /** Die PIN-Prüfung endete mit einer unklaren Antwort — wie eine Ablehnung behandeln, nie wiederholen */
+  | 'pin_unklar'
+  /** Die Kartenbrücke lehnt die Anfrage ab (falsche Adresse, falsches Format) — Konfiguration */
+  | 'bruecke_fehler'
 
 export class KartenError extends Error {
   constructor(
@@ -155,15 +176,18 @@ export interface GefundeneKarte {
   typ:   KartenTyp
 }
 
-/** Erste gesteckte RKSV-Signaturkarte (andere Karten — Windows Hello, Bankomatkarte — werden übergangen) */
-export async function findeKarte(transport: ApduTransport): Promise<GefundeneKarte> {
+/**
+ * Alle gesteckten RKSV-Signaturkarten (andere Karten — Windows Hello, Bankomatkarte — werden übergangen).
+ * Mindestens eine, sonst KartenError 'keine_karte'.
+ */
+export async function findeKarten(transport: ApduTransport): Promise<GefundeneKarte[]> {
   const leser = await transport.leser()
   if (leser.length === 0) throw new KartenError('Kein Kartenleser angeschlossen', 'keine_karte')
-  for (const l of leser) {
-    if (!l.atr) continue
-    const typ = erkenneKartentyp(l.atr)
-    if (typ) return { leser: l.name, atr: l.atr.toUpperCase(), typ }
-  }
+  const karten = leser.flatMap((l): GefundeneKarte[] => {
+    const typ = l.atr ? erkenneKartentyp(l.atr) : null
+    return typ && l.atr ? [{ leser: l.name, atr: l.atr.toUpperCase(), typ }] : []
+  })
+  if (karten.length > 0) return karten
   const gesteckt = leser.filter(l => l.atr)
   throw new KartenError(
     gesteckt.length === 0
@@ -171,6 +195,11 @@ export async function findeKarte(transport: ApduTransport): Promise<GefundeneKar
       : `Im Kartenleser steckt keine A-Trust-Signaturkarte (gefunden: ${gesteckt.map(l => l.name).join(', ')})`,
     'keine_karte',
   )
+}
+
+/** Erste gesteckte RKSV-Signaturkarte */
+export async function findeKarte(transport: ApduTransport): Promise<GefundeneKarte> {
+  return (await findeKarten(transport))[0]!
 }
 
 function erwarte9000(antworten: Buffer[], schritte: string[]): void {
@@ -198,42 +227,54 @@ function derGesamtlaenge(kopf: Buffer): number | null {
 export async function leseZertifikat(transport: ApduTransport, karte: GefundeneKarte): Promise<Buffer> {
   const vorspann = [APDU.selectMf, APDU.selectDfSig, APDU.selectEfZert]
   const schritte = ['SELECT MF', 'SELECT DF Signatur', 'SELECT Zertifikat']
-  // Erster Block: Länge aus dem DER-Kopf, danach genau die nötigen Blöcke
-  const erste = await transport.sende(karte.leser, [...vorspann, APDU.leseBinaer(0)])
-  erwarte9000(erste, schritte)
-  const block0 = erste[3]
-  if (!block0 || !['9000', '6282'].includes(statuswort(block0))) {
-    throw new KartenError(`Karte: Zertifikat nicht lesbar (Statuswort ${block0 ? statuswort(block0) : '----'})`, 'karte_fehler')
-  }
-  const kopf = daten(block0)
-  const gesamt = derGesamtlaenge(kopf)
-  if (gesamt === null || gesamt > 8192) throw new KartenError('Karte: Zertifikat hat kein gültiges Format', 'karte_fehler')
-
-  const teile = [kopf]
-  let gelesen = kopf.length
-  if (gelesen < gesamt) {
+  const teile: Buffer[] = []
+  let gelesen = 0
+  let gesamt: number | null = null
+  // Blöcke ab dem tatsächlich Gelesenen anfordern: liefert eine Karte/ein Leser weniger als 256 Byte
+  // je Block, geht es in der nächsten Sitzung beim richtigen Offset weiter.
+  for (let runde = 0; runde < 40 && (gesamt === null || gelesen < gesamt); runde++) {
     const offsets: number[] = []
-    for (let o = 256; o < gesamt; o += 256) offsets.push(o)
-    const rest = await transport.sende(karte.leser, [...vorspann, ...offsets.map(o => APDU.leseBinaer(o))])
-    erwarte9000(rest, schritte)
+    const bis = gesamt ?? gelesen + 256
+    for (let o = gelesen; o < bis && offsets.length < 32; o += 256) offsets.push(o)
+    const antworten = await transport.sende(karte.leser, [...vorspann, ...offsets.map(o => APDU.leseBinaer(o))])
+    erwarte9000(antworten, schritte)
     for (let i = 0; i < offsets.length; i++) {
-      const a = rest[3 + i]
+      const a = antworten[3 + i]
       if (!a || !['9000', '6282'].includes(statuswort(a))) {
-        throw new KartenError(`Karte: Zertifikat bei Byte ${offsets[i]} nicht lesbar`, 'karte_fehler')
+        throw new KartenError(`Karte: Zertifikat bei Byte ${offsets[i]} nicht lesbar (Statuswort ${a ? statuswort(a) : '----'})`, 'karte_fehler')
       }
-      teile.push(daten(a))
-      gelesen += daten(a).length
+      const block = daten(a)
+      if (block.length === 0) throw new KartenError('Karte: Zertifikat endet unerwartet', 'karte_fehler')
+      teile.push(block)
+      gelesen += block.length
+      if (gesamt === null) {
+        gesamt = derGesamtlaenge(Buffer.concat(teile))
+        if (gesamt === null || gesamt > 8192) throw new KartenError('Karte: Zertifikat hat kein gültiges Format', 'karte_fehler')
+      }
+      if (block.length < 256 || gelesen >= gesamt) break   // kurzer Block: ab hier neu anfordern
     }
   }
-  const der = Buffer.concat(teile)
-  if (der.length < gesamt) throw new KartenError('Karte: Zertifikat unvollständig gelesen', 'karte_fehler')
-  const zert = der.subarray(0, gesamt)
+  if (gesamt === null || gelesen < gesamt) throw new KartenError('Karte: Zertifikat unvollständig gelesen', 'karte_fehler')
+  const zert = Buffer.concat(teile).subarray(0, gesamt)
   try {
     new X509Certificate(zert)
   } catch {
     throw new KartenError('Karte: Zertifikat lässt sich nicht lesen', 'karte_fehler')
   }
   return zert
+}
+
+/**
+ * Block-Offsets (je 256 Byte) des Zertifikats, die die Karte eindeutig machen: Block 0 (Seriennummer,
+ * Aussteller) und die Blöcke, in denen der öffentliche Schlüssel (SubjectPublicKeyInfo) steht.
+ */
+export function identitaetsBloecke(zertifikatDer: Buffer): number[] {
+  const offsets = new Set<number>([0])
+  const spki = new X509Certificate(zertifikatDer).publicKey.export({ type: 'spki', format: 'der' }) as Buffer
+  const start = zertifikatDer.indexOf(spki)
+  if (start < 0) throw new KartenError('Zertifikat: öffentlicher Schlüssel nicht auffindbar', 'karte_fehler')
+  for (let o = Math.floor(start / 256) * 256; o < start + spki.length; o += 256) offsets.add(o)
+  return [...offsets].sort((a, b) => a - b)
 }
 
 /**
@@ -246,12 +287,29 @@ export async function signiereMitKarte(
   karte: GefundeneKarte,
   signingInput: string,
   pin: string,
+  /**
+   * Zertifikat (DER) der eingerichteten Karte: In DERSELBEN Sitzung wird zuerst sein Anfang von der Karte
+   * gelesen und verglichen — steckt eine andere Karte, bricht die Sitzung ab, bevor die PIN die Karte erreicht.
+   */
+  erwartetesZertifikat?: Buffer,
 ): Promise<Buffer> {
   const pinBlock = pinBlockFormat2(pin)
   const hash = createHash('sha256').update(signingInput, 'utf8').digest()
-  const antworten = await transport.sende(karte.leser, [
+  // Identität: Anfang des Zertifikats (Seriennummer, Aussteller) UND die Blöcke mit dem öffentlichen
+  // Schlüssel — gegen ihn prüft die Kassa jede Signatur, er macht die Karte eindeutig.
+  const bloecke = erwartetesZertifikat ? identitaetsBloecke(erwartetesZertifikat) : []
+  const identitaet = erwartetesZertifikat
+    ? [APDU.selectMf, APDU.selectDfSig, APDU.selectEfZert, ...bloecke.map(o => APDU.leseBinaer(o))]
+    : []
+  const bedingungen = erwartetesZertifikat
+    ? bloecke.map((o, i) => ({ index: 3 + i, daten: erwartetesZertifikat.subarray(o, o + 256) }))
+    : undefined
+  const alle = await transport.sende(karte.leser, [
+    ...identitaet,
     APDU.selectMf, APDU.selectDfSig, APDU.verify(karte.typ.pinReferenz, pinBlock), APDU.signiere(hash),
-  ])
+  ], bedingungen)
+  if (erwartetesZertifikat) erwarte9000(alle, ['SELECT MF', 'SELECT DF Signatur', 'SELECT Zertifikat', ...bloecke.map(() => 'Zertifikat lesen')])
+  const antworten = alle.slice(identitaet.length)
   erwarte9000(antworten, ['SELECT MF', 'SELECT DF Signatur'])
 
   const verify = antworten[2]
@@ -268,7 +326,9 @@ export async function signiereMitKarte(
     )
   }
   if (swV === '6983') throw new KartenError('Die Karten-PIN ist gesperrt — die Karte kann nicht mehr signieren', 'pin_gesperrt', 0)
-  if (swV !== '9000') throw new KartenError(`Karte: PIN-Prüfung fehlgeschlagen (Statuswort ${swV})`, 'karte_fehler')
+  // Jede andere Antwort auf die PIN-Prüfung ist unklar: NICHT als vorübergehend behandeln (sonst versuchte es
+  // die Wiederherstellung minütlich erneut) — wie eine Ablehnung, ein Mensch muss hinsehen.
+  if (swV !== '9000') throw new KartenError(`Die Karte hat die PIN-Prüfung nicht bestätigt (Statuswort ${swV})`, 'pin_unklar')
 
   const sig = antworten[3]
   if (!sig) throw new KartenError('Karte: keine Antwort auf das Signieren', 'karte_fehler')

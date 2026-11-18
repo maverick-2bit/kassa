@@ -8,7 +8,7 @@ import { createHash, X509Certificate } from 'node:crypto'
 import {
   APDU, KartenError, SignaturkartenEinheit, SimulierteSignaturkarte, SIMULATOR_ATR,
   erkenneKartentyp, findeKarte, klassifiziereSeeFehler, leseZertifikat, pinBlockFormat2,
-  signiereMitKarte, generateSEE, verifiziere, verifiziereQrCode, erstelleStartbeleg,
+  signiereMitKarte, generateSEE, verifiziere, verifiziereQrCode, erstelleStartbeleg, identitaetsBloecke,
   jwsSigningInput, p1363ZuDer, KartenbrueckeTransport,
 } from '../src/index.js'
 import { createVerify } from 'node:crypto'
@@ -169,7 +169,129 @@ describe('SignaturkartenEinheit', () => {
   })
 })
 
+describe('Identität der Karte', () => {
+  it('geprüft werden Block 0 und die Blöcke mit dem öffentlichen Schlüssel', async () => {
+    const karte = await SimulierteSignaturkarte.erzeuge()
+    const bloecke = identitaetsBloecke(karte.zertifikatDer)
+    expect(bloecke[0]).toBe(0)
+    const spki = new X509Certificate(karte.zertifikatDer).publicKey.export({ type: 'spki', format: 'der' }) as Buffer
+    const start = karte.zertifikatDer.indexOf(spki)
+    expect(bloecke).toContain(Math.floor(start / 256) * 256)
+    expect(bloecke).toContain(Math.floor((start + spki.length - 1) / 256) * 256)
+  })
+
+  it('zwei Karten mit gleichem Zertifikatsanfang (gleiche Seriennummer und Namen): die fremde wird erkannt', async () => {
+    const eigene = await SimulierteSignaturkarte.erzeuge()
+    const fremde = await SimulierteSignaturkarte.erzeuge({ pin: '999999' })
+    const e = await fehler(new SignaturkartenEinheit({ transport: fremde, pin: '123456', erwartetesZertifikat: eigene.zertifikatDer })
+      .signiereBelegzeile('_R1-AT1_K1'))
+    expect(e.art).toBe('falsche_karte')
+    expect(fremde.pinPruefungen).toBe(0)
+  })
+})
+
+describe('PIN-Wächter, mehrere Karten, unklare Antworten', () => {
+  it('dieselbe falsche PIN geht nie ein zweites Mal an die Karte', async () => {
+    const karte = await SimulierteSignaturkarte.erzeuge()
+    const einheit = new SignaturkartenEinheit({ transport: karte, pin: '555555', erwartetesZertifikat: karte.zertifikatDer })
+    expect((await fehler(einheit.signiereBelegzeile('_R1-AT1_K1'))).art).toBe('pin_falsch')
+    const zweiter = await fehler(einheit.signiereBelegzeile('_R1-AT1_K1'))
+    expect(zweiter.art).toBe('pin_bereits_abgelehnt')
+    expect(klassifiziereSeeFehler(zweiter)).toBe('konfiguration')
+    expect(karte.pinPruefungen).toBe(1)
+    expect(karte.restVersuche).toBe(2)
+    expect(karte.zurueckgehalten).toBe(1)
+    // die richtige PIN geht weiterhin
+    await new SignaturkartenEinheit({ transport: karte, pin: '123456' }).signiereBelegzeile('_R1-AT1_K1')
+    expect(karte.signaturen).toBe(1)
+  })
+
+  it('unklare Antwort auf die PIN-Prüfung (6984): pin_unklar, Konfiguration, und nie wiederholt', async () => {
+    const karte = await SimulierteSignaturkarte.erzeuge({ verifyAntwort: '6984' })
+    const einheit = new SignaturkartenEinheit({ transport: karte, pin: '123456' })
+    const e = await fehler(einheit.signiereBelegzeile('_R1-AT1_K1'))
+    expect(e.art).toBe('pin_unklar')
+    expect(klassifiziereSeeFehler(e)).toBe('konfiguration')
+    expect((await fehler(einheit.signiereBelegzeile('_R1-AT1_K1'))).art).toBe('pin_bereits_abgelehnt')
+    expect(karte.pinPruefungen).toBe(1)
+  })
+
+  it('zwei Signaturkarten gesteckt: signiert wird mit der eingerichteten, die andere bekommt die PIN nie', async () => {
+    const eingerichtet = await SimulierteSignaturkarte.erzeuge({ leserName: 'Leser B' })
+    const andere       = await SimulierteSignaturkarte.erzeuge({ leserName: 'Leser A', pin: '999999' })
+    const beide = {
+      leser: async () => [...await andere.leser(), ...await eingerichtet.leser()],
+      sende: (l: string, a: Buffer[], b?: Parameters<typeof eingerichtet.sende>[2]) =>
+        (l === 'Leser A' ? andere : eingerichtet).sende(l, a, b),
+    }
+    const sig = await new SignaturkartenEinheit({ transport: beide, pin: '123456', erwartetesZertifikat: eingerichtet.zertifikatDer })
+      .signiereBelegzeile('_R1-AT1_K1')
+    expect(sig).toHaveLength(64)
+    expect(eingerichtet.signaturen).toBe(1)
+    expect(andere.pinPruefungen).toBe(0)
+  })
+
+  it('Leser liefert kurze Blöcke (100 Byte je READ BINARY): Zertifikat wird trotzdem vollständig gelesen', async () => {
+    const karte = await SimulierteSignaturkarte.erzeuge({ blockGroesse: 100 })
+    const zert = await leseZertifikat(karte, await findeKarte(karte))
+    expect(zert.equals(karte.zertifikatDer)).toBe(true)
+  })
+})
+
 describe('KartenbrueckeTransport', () => {
+  async function brueckeMit(status: number, body: unknown): Promise<{ url: string; schliessen: () => void; letzte: () => unknown }> {
+    const { createServer } = await import('node:http')
+    let letzte: unknown = null
+    const server = createServer((req, res) => {
+      let roh = ''
+      req.on('data', (c: Buffer) => { roh += c.toString() })
+      req.on('end', () => {
+        letzte = roh ? JSON.parse(roh) : null
+        res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body))
+      })
+    })
+    await new Promise<void>(r => server.listen(0, '127.0.0.1', r))
+    const a = server.address() as { port: number }
+    return { url: `http://127.0.0.1:${a.port}`, schliessen: () => server.close(), letzte: () => letzte }
+  }
+
+  it.each([
+    [503, 'keine_karte', 'ausfall'],
+    [500, 'karte_fehler', 'ausfall'],
+    [401, 'zugang_abgewiesen', 'konfiguration'],
+    [404, 'bruecke_fehler', 'konfiguration'],
+    [400, 'bruecke_fehler', 'konfiguration'],
+  ] as const)('HTTP %i → %s (%s)', async (status, art, klasse) => {
+    const b = await brueckeMit(status, { fehler: 'x' })
+    try {
+      const e = await fehler(new KartenbrueckeTransport({ url: b.url, schluessel: 's'.repeat(32) }).leser())
+      expect(e.art).toBe(art)
+      expect(klassifiziereSeeFehler(e)).toBe(klasse)
+    } finally { b.schliessen() }
+  })
+
+  it('Fehlertext der Brücke: lange Hex-Folgen werden nicht weitergegeben', async () => {
+    const b = await brueckeMit(500, { fehler: 'kaputt bei 0020008A0826123456FFFFFFFF' })
+    try {
+      const e = await fehler(new KartenbrueckeTransport({ url: b.url, schluessel: 's'.repeat(32) }).leser())
+      expect(e.message).not.toMatch(/123456/)
+    } finally { b.schliessen() }
+  })
+
+  it('Bedingung geht als „pruefe" an die Brücke; Abbrüche werden zu falsche_karte / pin_bereits_abgelehnt', async () => {
+    const b1 = await brueckeMit(200, { antworten: ['9000'], abbruch: 'bedingung' })
+    const b2 = await brueckeMit(200, { antworten: [], abbruch: 'pin_bereits_abgelehnt' })
+    try {
+      const t1 = new KartenbrueckeTransport({ url: b1.url, schluessel: 's'.repeat(32) })
+      expect((await fehler(t1.sende('L', [APDU.selectMf], [{ index: 0, daten: Buffer.from('3082', 'hex') }]))).art).toBe('falsche_karte')
+      expect(b1.letzte()).toMatchObject({ leser: 'L', apdus: ['00a4000c023f00'], pruefe: [{ index: 0, daten: '3082' }] })
+      const t2 = new KartenbrueckeTransport({ url: b2.url, schluessel: 's'.repeat(32) })
+      const e = await fehler(t2.sende('L', [APDU.selectMf]))
+      expect(e.art).toBe('pin_bereits_abgelehnt')
+      expect(klassifiziereSeeFehler(e)).toBe('konfiguration')
+    } finally { b1.schliessen(); b2.schliessen() }
+  })
+
   it('nicht erreichbare Brücke → nicht_erreichbar (Ausfall), nach Zeitlimit', async () => {
     const t = new KartenbrueckeTransport({ url: 'http://127.0.0.1:9', schluessel: 'x', timeoutMs: 1_000 })
     const e = await fehler(t.leser())

@@ -43,7 +43,11 @@ const ConfigSchema = z.object({
    */
   KARTENBRUECKE_URL: z.string().optional()
     .transform(v => (v === undefined || v.trim() === '' ? 'http://host.docker.internal:47110' : v.trim().replace(/\/+$/, '')))
-    .refine(v => /^https?:\/\/[^\s/]+/.test(v), 'KARTENBRUECKE_URL muss mit http:// oder https:// beginnen'),
+    // Nur der eigene PC: Über die Verbindung gehen Kartenbefehle samt PIN — nie im Klartext durchs LAN
+    .refine(v => {
+      try { const u = new URL(v); return /^https?:$/.test(u.protocol) && ['127.0.0.1', 'localhost', 'host.docker.internal', '[::1]'].includes(u.hostname) }
+      catch { return false }
+    }, 'KARTENBRUECKE_URL muss auf den eigenen PC zeigen (host.docker.internal, 127.0.0.1 oder localhost)'),
   KARTENBRUECKE_SCHLUESSEL: z.string().optional()
     .transform(v => (v === undefined || v.trim() === '' ? undefined : v.trim()))
     .refine(v => v === undefined || v.length >= 32, 'KARTENBRUECKE_SCHLUESSEL muss mindestens 32 Zeichen lang sein'),

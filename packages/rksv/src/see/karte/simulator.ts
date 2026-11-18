@@ -4,15 +4,17 @@
  * Verhält sich wie die echte Karte: Dateistruktur MF/DF 01/EF C0 00, PIN-Prüfung mit
  * Fehlbedienungszähler (63Cx, gesperrt 6983), Signieren nur direkt nach erfolgreicher
  * PIN-Prüfung (sonst 6982), Signatur 64 Byte r‖s über den übergebenen SHA-256-Hash.
- * Zusätzlich lassen sich Ausfälle stellen: Karte gezogen, Brücke weg.
+ * Zusätzlich lassen sich Ausfälle stellen: Karte gezogen, Brücke weg. Der Simulator spielt auch die Rolle
+ * der Kartenbrücke: Bedingung je Sitzung und PIN-Wächter (eine abgelehnte PIN-Prüfung geht nie wieder an
+ * die Karte) wie in ops/kartenbruecke/kartenbruecke.ps1.
  *
  * Die Karte rechnet ECDSA über einen fertigen Hash; Node kann das nicht direkt (crypto.sign
  * hasht selbst) — daher hier eine kleine P-256-Rechnung mit BigInt. Nur für den Simulator.
  */
 
-import { createPrivateKey, randomBytes } from 'node:crypto'
+import { createHash, createPrivateKey, randomBytes } from 'node:crypto'
 import { generateSEE } from '../../see.js'
-import { KartenError, pinBlockFormat2, type ApduTransport, type KartenLeser } from './rk-chip.js'
+import { KartenError, pinBlockFormat2, type ApduTransport, type KartenLeser, type SitzungsBedingung } from './rk-chip.js'
 
 export const SIMULATOR_ATR = '3BDF97008131FE4680319052410464050401AC73D622C0F9'
 
@@ -98,6 +100,10 @@ export interface SimulatorOptionen {
   /** Kartenseriennummer im Zertifikat (Default zufällig) */
   firmenname?: string
   uid?: string
+  /** Höchstens so viele Byte je READ BINARY (Default 256) — manche Leser liefern kürzere Blöcke */
+  blockGroesse?: number
+  /** Antwort auf jede PIN-Prüfung erzwingen (z. B. '6984'), um unklare Antworten zu testen */
+  verifyAntwort?: string
 }
 
 export class SimulierteSignaturkarte implements ApduTransport {
@@ -110,6 +116,11 @@ export class SimulierteSignaturkarte implements ApduTransport {
   /** Zähler zum Nachprüfen in Tests */
   signaturen = 0
   pinPruefungen = 0
+  /** Wie oft der PIN-Wächter eine schon abgelehnte PIN-Prüfung zurückgehalten hat */
+  zurueckgehalten = 0
+
+  /** PIN-Wächter der Brücke: SHA-256 abgelehnter PIN-Prüfungen */
+  private readonly abgelehnt = new Set<string>()
 
   private auswahl: 'keine' | 'MF' | 'DF' | 'EF' = 'keine'
   private pinOk = false
@@ -148,7 +159,7 @@ export class SimulierteSignaturkarte implements ApduTransport {
     ])
   }
 
-  sende(leser: string, apdus: Buffer[]): Promise<Buffer[]> {
+  sende(leser: string, apdus: Buffer[], bedingungen?: SitzungsBedingung[]): Promise<Buffer[]> {
     if (!this.erreichbar) return Promise.reject(new KartenError('Kartenbrücke nicht erreichbar (Simulator)', 'nicht_erreichbar'))
     if (leser !== this.opts.leserName || !this.gesteckt) {
       return Promise.reject(new KartenError(`Keine Karte im Leser ${leser}`, 'keine_karte'))
@@ -157,11 +168,22 @@ export class SimulierteSignaturkarte implements ApduTransport {
     this.auswahl = 'keine'
     this.pinOk = false
     const antworten: Buffer[] = []
-    for (const apdu of apdus) {
+    for (let i = 0; i < apdus.length; i++) {
+      const apdu = apdus[i]!
+      const pinHash = apdu.length > 5 && apdu[1] === 0x20 ? createHash('sha256').update(apdu).digest('hex') : null
+      if (pinHash && this.abgelehnt.has(pinHash)) {
+        this.zurueckgehalten++
+        return Promise.reject(new KartenError('Diese PIN hat die Karte schon einmal abgelehnt (Simulator)', 'pin_bereits_abgelehnt'))
+      }
       const a = this.verarbeite(apdu)
       antworten.push(a)
       const sw = a.subarray(a.length - 2).toString('hex').toUpperCase()
+      if (pinHash && sw !== '9000') this.abgelehnt.add(pinHash)
       if (sw !== '9000' && sw !== '6282') break
+      const bedingung = bedingungen?.find(b => b.index === i)
+      if (bedingung && !a.subarray(0, a.length - 2).equals(bedingung.daten)) {
+        return Promise.reject(new KartenError('Andere Signaturkarte im Leser (Simulator)', 'falsche_karte'))
+      }
     }
     return Promise.resolve(antworten)
   }
@@ -182,13 +204,14 @@ export class SimulierteSignaturkarte implements ApduTransport {
       if (this.auswahl !== 'EF') return sw('6986')
       const offset = ((apdu[2]! & 0x7f) << 8) | apdu[3]!
       if (offset >= this.zertifikatDer.length) return sw('6B00')
-      const le = apdu[4] === 0 ? 256 : apdu[4]!
+      const le = Math.min(apdu[4] === 0 ? 256 : apdu[4]!, this.opts.blockGroesse ?? 256)
       return sw('9000', this.zertifikatDer.subarray(offset, offset + le))
     }
     if (kopf.startsWith('002000')) {
       this.pinPruefungen++
       if (this.auswahl !== 'DF' && this.auswahl !== 'EF') return sw('6982')
       if (apdu[3] !== 0x8a) return sw('6A88')
+      if (this.opts.verifyAntwort) return sw(this.opts.verifyAntwort)
       if (this.restVersuche === 0) return sw('6983')
       if (daten.equals(pinBlockFormat2(this.opts.pin))) {
         this.restVersuche = this.opts.maxVersuche
