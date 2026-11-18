@@ -87,3 +87,41 @@ test('Signaturkarte: prüfen ohne PIN, falsche PIN abgewiesen, richtige PIN — 
     expect(((await beleg.json()) as { maschinenlesbareCode: string }).maschinenlesbareCode).toMatch(/^_R1-AT1_/)
   }
 })
+
+test('Einrichtung mit dem Stick: Abfrage der Signatur, Karte prüfen, Startbeleg gleich mit der Karte (AT1)', async ({ page, request }) => {
+  // Als Betreiber einen weiteren Mandanten einrichten — dasselbe Formular wie die Ersteinrichtung
+  const login = await adminLogin(request)
+  await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
+    localStorage.setItem('kassa:token', d.token)
+    localStorage.setItem('kassa:auth', d.authJson)
+    localStorage.setItem('kassa:mandantId', d.mandantId)
+    localStorage.setItem('kassa:kasseId', d.kasseId)
+  }, {
+    token: login.token, kasseId: login.kassen[0]!.id, mandantId: login.mandant.id,
+    authJson: JSON.stringify({ user: login.user, mandant: login.mandant, kassen: login.kassen }),
+  })
+  const nr = String(Date.now() % 100_000_000).padStart(8, '0')
+
+  await page.goto('/setup')
+  await page.getByRole('textbox', { name: 'Firmenname' }).fill('E2E Stick GmbH')
+  await page.getByRole('textbox', { name: 'UID-Nummer' }).fill(`ATU${nr}`)
+  await page.getByRole('textbox', { name: 'Kassen-ID' }).fill('E2E-STICK-001')
+
+  // Ohne Wahl der Signatur geht es nicht
+  await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Stick Admin')
+  await page.getByRole('textbox', { name: 'E-Mail' }).fill(`stick-${nr}@test.at`)
+  await page.getByRole('textbox', { name: 'Passwort', exact: true }).fill('stick-passwort-123')
+  await page.getByRole('button', { name: 'Kasse einrichten' }).click()
+  await expect(page.getByText('Bitte wählen, womit die Kasse signiert.')).toBeVisible()
+
+  const wahl = page.getByTestId('signatur-wahl')
+  await wahl.getByRole('radio', { name: /Signaturkarte im Stick/ }).click()
+  await wahl.getByRole('button', { name: 'Karte prüfen (ohne PIN)' }).click()
+  await expect(wahl.getByText(/Karte erkannt — A-Trust ACOS-ID 4\.1/)).toBeVisible({ timeout: 10_000 })
+  await page.getByTestId('setup-karte-pin').fill('123456')
+  await page.locator('fieldset', { has: wahl }).screenshot({ path: test.info().outputPath('setup-signatur.png') })
+  await page.getByRole('button', { name: 'Kasse einrichten' }).click()
+
+  await expect(page.getByRole('heading', { name: 'Kasse erfolgreich eingerichtet' })).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByText(/^_R1-AT1_E2E-STICK-001_/)).toBeVisible()
+})

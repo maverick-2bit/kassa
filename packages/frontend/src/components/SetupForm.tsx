@@ -1,9 +1,12 @@
+import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { MANDANT_MODUL_BESCHREIBUNGEN, MANDANT_MODUL_LABELS, SetupInputSchema, type MandantModul, type SetupInput } from '@kassa/shared'
 import { Field } from './ui/Field'
 import { Input } from './ui/Input'
 import { Button } from './ui/Button'
+import { LEERE_SIGNATUR, SignaturWahlAuswahl, baueSignaturWahl, type SignaturEingabe } from './SignaturWahl'
+import { setupApi } from '../lib/api'
 
 interface Props {
   onSubmit: (data: SetupInput) => void
@@ -44,9 +47,21 @@ export function SetupForm({ onSubmit, loading = false, error }: Props) {
 
   const umgebung = watch('umgebung')
   const module   = watch('module')
+  const uid      = watch('uid')
+
+  // Signatur: bewusst außerhalb des Formular-Schemas — sie muss ausdrücklich gewählt werden (kein Vorschlag)
+  const [signatur, setSignatur] = useState<SignaturEingabe>(LEERE_SIGNATUR)
+  const [signaturFehler, setSignaturFehler] = useState<string | undefined>()
+
+  const absenden = handleSubmit((daten) => {
+    const s = baueSignaturWahl(signatur)
+    if ('fehler' in s) { setSignaturFehler(s.fehler); return }
+    setSignaturFehler(undefined)
+    onSubmit({ ...daten, signatur: s.wahl })
+  })
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-8" noValidate>
+    <form onSubmit={(e) => { void absenden(e) }} className="space-y-8" noValidate>
       {/* Sektion: Unternehmensdaten */}
       <fieldset className="space-y-4">
         <SectionHeader title="Unternehmensdaten" subtitle="Wem gehört die Kasse?" />
@@ -92,6 +107,21 @@ export function SetupForm({ onSubmit, loading = false, error }: Props) {
             {...register('kassenId')}
           />
         </Field>
+      </fieldset>
+
+      {/* Sektion: Signatur (RKSV) */}
+      <fieldset className="space-y-4">
+        <SectionHeader
+          title="Signatur (RKSV)"
+          subtitle="Womit signiert die Kasse ihre Belege? Die Kasse wird komplett darauf eingerichtet — schon der Startbeleg."
+        />
+        <SignaturWahlAuswahl
+          wert={signatur}
+          onChange={(e) => { setSignatur(e); setSignaturFehler(undefined) }}
+          uid={uid ?? ''}
+          fehler={signaturFehler}
+          karteLesen={setupApi.signaturkarte}
+        />
       </fieldset>
 
       {/* Sektion: FinanzOnline (optional) */}

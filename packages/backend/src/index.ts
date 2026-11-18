@@ -73,6 +73,8 @@ async function main(): Promise<void> {
       db,
       masterPassphrase: config.MASTER_PASSPHRASE,
       rksvOptionen,
+      ...(kartenTransport && { kartenTransport }),
+      lokaleAtrustUrlErlaubt: config.NODE_ENV !== 'production',
     },
     belegDeps,
     backupDir:         config.DEP_BACKUP_DIR,

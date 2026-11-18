@@ -9,8 +9,10 @@
  */
 
 import { useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import type { EinrichtungKasse, WeitereKasseInput } from '@kassa/shared'
-import { einrichtungApi, kasseApi } from '../../lib/api'
+import { einrichtungApi, kasseApi, seeApi } from '../../lib/api'
+import { getKasseIdentity } from '../../lib/kasse'
 import { addKasse } from '../../lib/auth'
 import { kassenIdsFolge, kassenName, naechsteKassenIds } from '../../lib/einrichtung'
 import { Button } from '../ui/Button'
@@ -26,6 +28,18 @@ export function NeueKasseFormular({ kassen, onFertig, onAbbrechen }: {
   onFertig:    (m: Meldung) => void
   onAbbrechen: () => void
 }) {
+  // Die neue Kasse übernimmt die Signatur der bestehenden (Signaturkarte: dieselbe Karte; A-Trust: derselbe Zugang)
+  const kasseIdJetzt = getKasseIdentity()?.kasseId
+  const see = useQuery({
+    queryKey: ['see-konfig', kasseIdJetzt],
+    queryFn:  () => seeApi.get(kasseIdJetzt!),
+    enabled:  !!kasseIdJetzt,
+  })
+  const signaturText = see.data
+    ? see.data.seeTyp === 'atrust_chip' ? 'Signaturkarte im Stick (dieselbe Karte, Startbeleg mit der Karte)'
+      : see.data.seeTyp === 'atrust_hsm' ? 'A-Trust online (derselbe Zugang)'
+      : 'Test / Demo (Software)'
+    : null
   const aktive = kassen.filter(k => k.status === 'aktiv')
   // Vorgeschlagen: die nächste freie ID in der Schreibweise der vorhandenen, Umgebung wie die meisten Kassen
   const vorschlag = useMemo(() => naechsteKassenIds(kassen.map(k => k.kassenId), 1)[0]!, [kassen])
@@ -95,9 +109,13 @@ export function NeueKasseFormular({ kassen, onFertig, onAbbrechen }: {
       <div>
         <p className="text-sm font-medium text-ink">Neue Registrierkasse</p>
         <p className="text-xs text-ink-muted mt-0.5">
-          Jede Kasse bekommt eine eigene Signatureinheit (SEE-Zertifikat) samt Startbeleg.
-          Firmenname und UID werden vom Mandanten übernommen.
+          Jede Kasse bekommt ihren eigenen Startbeleg. Firmenname und UID werden vom Mandanten übernommen.
         </p>
+        {signaturText && (
+          <p className="text-xs text-ink mt-1" data-testid="neue-kasse-signatur">
+            Signatur: wie die bestehenden Kassen — <span className="font-medium">{signaturText}</span>
+          </p>
+        )}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

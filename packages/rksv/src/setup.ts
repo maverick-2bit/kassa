@@ -32,9 +32,12 @@ import type {
   SEEConfig,
   SignedBeleg,
 } from './types.js'
+import type { ArtSe } from './types.js'
+import { X509Certificate } from 'node:crypto'
 import { generateSEE } from './see.js'
 import { FinanzOnlineClient } from './finanz-online.js'
 import { erstelleStartbeleg } from './beleg.js'
+import type { SignaturEinheit } from './see/signatur-einheit.js'
 
 // ---------------------------------------------------------------------------
 // Eingabedaten (entsprechen den UI-Formularfeldern)
@@ -117,6 +120,23 @@ export interface KasseEinrichtenOptionen {
    * anlegt — bei einem mitgegebenen `finanzOnlineClient` ohne Wirkung. Im Backend die Einstellung FON_HERSTELLER_ID.
    */
   herstellerId?: string | undefined
+  /**
+   * Externe Signatureinheit (A-Trust online, Signaturkarte). Gesetzt → die Kasse wird KOMPLETT darauf
+   * eingerichtet: ihr Zertifikat und ihre ZDA-Kennung gelten, FinanzOnline bekommt sie gemeldet und schon der
+   * Startbeleg wird mit ihr signiert. Fehlt sie, signiert ein selbst erzeugter Software-Schlüssel (Test/Demo).
+   */
+  signaturEinheit?: SignaturEinheit
+  /**
+   * Prüfung der Einheit VOR der FinanzOnline-Meldung (z. B. Signaturkarte: steckt sie, passt die UID, stimmt
+   * die PIN?). Liefert eine kurze Beschreibung für die Fortschrittsanzeige; wirft bei einem Problem.
+   */
+  signaturEinheitPruefen?: () => Promise<string>
+}
+
+/** Art der Signaturerstellungseinheit für die FinanzOnline-Meldung */
+function artSeFuer(einheit: SignaturEinheit | undefined): ArtSe {
+  if (!einheit || einheit.typ === 'software') return 'EIGENES_HSM'
+  return einheit.typ === 'atrust_chip' ? 'SIGNATURKARTE' : 'HSM_DIENSTLEISTER'
 }
 
 // ---------------------------------------------------------------------------
@@ -215,10 +235,15 @@ export async function kasseAutomatischEinrichten(
   // -------------------------------------------------------------------------
   // 1. SEE generieren (Software-Zertifikat)
   // -------------------------------------------------------------------------
-  log('see-generierung', 'startet', 'Generiere Signaturzertifikat (ECDSA P-256)...')
+  const einheit = optionen.signaturEinheit
+  log('see-generierung', 'startet', einheit
+    ? (einheit.typ === 'atrust_chip' ? 'Prüfe die Signaturkarte...' : 'Prüfe die Verbindung zu A-Trust...')
+    : 'Generiere Signaturzertifikat (ECDSA P-256)...')
 
   let see: SEEConfig
   try {
+    // Der Software-Schlüssel entsteht immer (AES-Schlüssel für den Umsatzzähler, Rückfall für Tests); mit einer
+    // externen Einheit gelten aber DEREN Zertifikat und ZDA-Kennung.
     see = await generateSEE({
       kassenId:        input.kassenId,
       uid:             input.uid,
@@ -227,10 +252,22 @@ export async function kasseAutomatischEinrichten(
         gueltigkeitTage: input.zertifikatGueltigkeitTage,
       }),
     })
-    log('see-generierung', 'erfolgreich', 'Zertifikat erstellt')
+    if (einheit) {
+      const beschreibung = optionen.signaturEinheitPruefen ? await optionen.signaturEinheitPruefen() : ''
+      const [zda, zert] = await Promise.all([einheit.zdaId(), einheit.zertifikat()])
+      const zertifikatDER = Buffer.from(zert.derBase64, 'base64')
+      if (new Date(new X509Certificate(zertifikatDER).validTo) <= new Date()) {
+        throw new Error('Das Zertifikat der Signatureinheit ist abgelaufen')
+      }
+      see = { ...see, zertifikatDER, zdaId: zda }
+      log('see-generierung', 'erfolgreich',
+        `${beschreibung || (einheit.typ === 'atrust_chip' ? 'Signaturkarte' : 'A-Trust online')} — Zertifikat ${zert.seriennummerHex}, ZDA ${zda}`)
+    } else {
+      log('see-generierung', 'erfolgreich', 'Zertifikat erstellt (Software — nur Test/Demo)')
+    }
   } catch (err) {
     const meldung = err instanceof Error ? err.message : String(err)
-    log('see-generierung', 'fehler', `Zertifikatsgenerierung fehlgeschlagen: ${meldung}`)
+    log('see-generierung', 'fehler', einheit ? meldung : `Zertifikatsgenerierung fehlgeschlagen: ${meldung}`)
     return { erfolgreich: false, fonRegistriert: false, schritte, fehler: meldung }
   }
 
@@ -255,7 +292,7 @@ export async function kasseAutomatischEinrichten(
         zertifikatDER: see.zertifikatDER,
         benutzerschluesselBase64: see.aesSchluessel.toString('base64'),
         vdaId:         see.zdaId,
-        artSe:         see.zdaId === 'AT0' ? 'EIGENES_HSM' : 'HSM_DIENSTLEISTER',
+        artSe:         artSeFuer(einheit),
         credentials:   fo!,
       })
       registrierungErfolg = ergebnis.erfolgreich
@@ -284,10 +321,10 @@ export async function kasseAutomatischEinrichten(
 
   let startbeleg: SignedBeleg
   try {
-    const result = await erstelleStartbeleg(input.kassenId, see)
+    const result = await erstelleStartbeleg(input.kassenId, see, einheit)
     startbeleg   = result.beleg
     log('startbeleg-erstellung', 'erfolgreich',
-      `Startbeleg #${startbeleg.belegNummer} signiert`)
+      `Startbeleg #${startbeleg.belegNummer} signiert${einheit ? (einheit.typ === 'atrust_chip' ? ' (mit der Signaturkarte)' : ' (von A-Trust)') : ''}`)
   } catch (err) {
     const meldung = err instanceof Error ? err.message : String(err)
     log('startbeleg-erstellung', 'fehler', `Startbeleg-Erstellung fehlgeschlagen: ${meldung}`)

@@ -10,9 +10,11 @@
 import { eq, and, sql } from 'drizzle-orm'
 import {
   kasseAutomatischEinrichten,
+  type ApduTransport,
   type KasseEinrichtenOptionen,
   type SignedBeleg,
 } from '@kassa/rksv'
+import { bereiteSignaturVor } from './signatur-einrichtung.service.js'
 import type { SetupInput, SetupResponse, EinrichtungsSchrittDto } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import { mandanten, kassen, belege, users } from '../db/schema.js'
@@ -28,6 +30,10 @@ export interface SetupServiceDeps {
    * (UID des Softwareherstellers) für den Login des echten Clients
    */
   rksvOptionen?: Pick<KasseEinrichtenOptionen, 'finanzOnlineClient' | 'herstellerId'>
+  /** Weg zur Signaturkarte (Kartenbrücke; in Tests der Simulator) — für die Einrichtung mit dem Stick */
+  kartenTransport?: ApduTransport
+  /** Entwicklung/Tests: A-Trust-Mock auf dem eigenen Rechner zulassen (NIE in Produktion) */
+  lokaleAtrustUrlErlaubt?: boolean
 }
 
 /**
@@ -77,6 +83,19 @@ export async function fuehreSetupDurch(
   // E-Mail: eine Adresse darf in mehreren Betrieben vorkommen (eindeutig ist sie nur je Mandant) — der neue Mandant
   // ist leer, also gibt es hier keinen Konflikt. Die Anmeldung unterscheidet die Betriebe am Passwort bzw. per Auswahl.
 
+  // Signatur: die Kasse wird komplett auf die gewählte Variante gestellt (schon der Startbeleg)
+  const signatur = bereiteSignaturVor(input.signatur, {
+    uid: input.uid, kassenId: input.kassenId, masterPassphrase: deps.masterPassphrase,
+    kartenTransport: deps.kartenTransport, lokaleAtrustUrlErlaubt: deps.lokaleAtrustUrlErlaubt,
+  })
+  if ('fehler' in signatur) {
+    return {
+      erfolgreich: false,
+      schritte: [{ schritt: 'see-generierung', status: 'fehler', meldung: signatur.fehler, zeitstempel: new Date().toISOString() }],
+      fehler: signatur.fehler,
+    }
+  }
+
   // RKSV-Einrichtung durchführen
   const rksvInput = {
     firmenname:   input.firmenname,
@@ -90,6 +109,8 @@ export async function fuehreSetupDurch(
   }
   const ergebnis = await kasseAutomatischEinrichten(rksvInput, {
     ...deps.rksvOptionen,
+    ...(signatur.einheit && { signaturEinheit: signatur.einheit }),
+    ...(signatur.pruefen && { signaturEinheitPruefen: signatur.pruefen }),
     onSchritt: (s) => onSchritt?.({
       schritt:     s.schritt,
       status:      s.status,
@@ -154,6 +175,8 @@ export async function fuehreSetupDurch(
       seePrivateKeyEnc:    encryptedKey,
       seeZertifikatSn:     cert.serialNumber,
       seeGueltigBis:       new Date(cert.validTo),
+      seeZdaId:            see.zdaId,
+      ...signatur.kassenFelder,
       aesSchluesselEnc:    encryptPrivateKey(see.aesSchluessel, deps.masterPassphrase),
       umsatzzaehlerCent:   0n,
       letzteBelegNummer:   startbeleg.belegNummer,

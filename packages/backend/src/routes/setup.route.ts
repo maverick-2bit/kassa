@@ -27,6 +27,7 @@ import { users } from '../db/schema.js'
 import { istAktiverBetreiber } from '../auth/betreiber.js'
 import { ipSchluessel } from '../auth/rate-limit.js'
 import { getClientIp, logAudit } from '../services/audit.service.js'
+import { pruefeSignaturkarte } from '../services/signatur-einrichtung.service.js'
 
 export interface SetupRoutePluginOptions {
   deps: SetupServiceDeps
@@ -151,5 +152,22 @@ export const setupRoute: FastifyPluginAsync<SetupRoutePluginOptions> = async (fa
       fastify.log.error({ err }, 'Setup unerwartet fehlgeschlagen')
       return reply.status(500).send(fehlerAntwort('Interner Serverfehler'))
     }
+  })
+
+  /**
+   * POST /setup/signaturkarte — steckt eine Signaturkarte, und welche? OHNE PIN (kein Fehlversuch).
+   * Für „Karte prüfen" im Einrichtungsformular; dieselbe Berechtigung wie die Einrichtung selbst.
+   */
+  fastify.post('/setup/signaturkarte', rateLimit, async (request, reply) => {
+    const berechtigt = await ermittleErlaubnis(request)
+    if (!berechtigt) return reply.status(403).send({ erfolgreich: false, fehler: SETUP_GESPERRT_MELDUNG })
+    const body = (request.body ?? {}) as { uid?: unknown }
+    const uid = typeof body.uid === 'string' && /^ATU\d{8}$/.test(body.uid.trim()) ? body.uid.trim() : null
+    const k = await pruefeSignaturkarte(opts.deps.kartenTransport, { uid, probeKennung: 'SETUP' })
+    if (!k.ok) return reply.send({ erfolgreich: false, fehler: k.fehler })
+    return reply.send({
+      erfolgreich: true, zdaId: 'AT1', zertifikatSn: k.seriennummer, karte: k.karte,
+      ...(k.hinweis && { hinweis: k.hinweis }),
+    })
   })
 }
