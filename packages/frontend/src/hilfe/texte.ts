@@ -152,15 +152,15 @@ export const HILFE_THEMEN: HilfeThema[] = [
   },
   {
     id: 'angebote',
-    titel: 'Angebote & Beleg-Archiv',
+    titel: 'Angebote & Auftragsbelege',
     zweck: 'Angebote und Lieferscheine erstellen und später in eine Rechnung übernehmen.',
     pfade: ['/angebote', '/beleg-archiv'],
-    stichworte: ['lieferschein', 'angebot'],
+    stichworte: ['lieferschein', 'angebot', 'beleg-archiv', 'auftragsbelege'],
     schritte: [
       'Ein Angebot erstellst du an der Kasse im Angebot-Modus.',
       'Hier siehst du die Angebote, kannst den Status ändern, „Gültig bis" prüfen und ein Angebot in einen Lieferschein übernehmen.',
-      'Im Beleg-Archiv suchst du nach Nummer oder Kunde.',
-      'Eine Rechnung stornierst du im Beleg-Archiv (Reiter „Rechnungen" → Rechnung öffnen → „Rechnung stornieren"). Sie bleibt mit ihrer Nummer als „storniert" erhalten, ihre Lieferscheine sind wieder offen und lassen sich neu verrechnen. Ist schon eine Zahlung erfasst, geht das erst, nachdem du die Zahlung geklärt hast.',
+      'Unter „Auftragsbelege" (früher „Beleg-Archiv") suchst du Angebote, Lieferscheine und Rechnungen nach Nummer oder Kunde. Die Kassenbelege (Bons) stehen unter „Auswertung → Belege".',
+      'Eine Rechnung stornierst du unter „Auftragsbelege" (Reiter „Rechnungen" → Rechnung öffnen → „Rechnung stornieren"). Sie bleibt mit ihrer Nummer als „storniert" erhalten, ihre Lieferscheine sind wieder offen und lassen sich neu verrechnen. Ist schon eine Zahlung erfasst, geht das erst, nachdem du die Zahlung geklärt hast.',
     ],
   },
   {
@@ -485,12 +485,14 @@ export const HILFE_THEMEN: HilfeThema[] = [
   {
     id: 'belege',
     titel: 'Belege & Storno',
-    zweck: 'Alle Belege dieser Kasse ansehen, stornieren und die RKSV-Spezialbelege auslösen.',
+    zweck: 'Die Belege jeder Kasse des Betriebs (Barkasse, Kellner-Geräte) ansehen, nachdrucken, stornieren, zurückholen und die RKSV-Spezialbelege auslösen.',
     pfade: ['/belege'],
-    stichworte: ['storno', 'bon', 'rechnung', 'jahresbeleg', 'nullbeleg', 'kontrollbeleg'],
+    stichworte: ['storno', 'bon', 'rechnung', 'jahresbeleg', 'nullbeleg', 'kontrollbeleg', 'nachdruck', 'zurückholen', 'kellner'],
     schritte: [
-      'Belege suchen: „Suche…" oder nach Kunde filtern; „Filter zurücksetzen" zeigt wieder alle.',
-      'Beleg anklicken, um Details zu sehen und ihn neu zu drucken.',
+      'Oben die Kasse wählen: jede Kasse (Barkasse, Kellner-Gerät …) hat ihre eigenen Belege und Nummern. Vorausgewählt ist die Kasse dieses Geräts.',
+      'Belege suchen: unter „Suche" Belegnummer, Betrag (z. B. 12,50) oder Kunde eingeben, dazu „Von"/„Bis" und den Kunden-Filter; „Filter zurücksetzen" zeigt wieder alle.',
+      'Mit „Ältere →" und „← Neuere" blätterst du durch alle Belege der Kasse.',
+      'Beleg anklicken, um Details zu sehen. „Ausgeben" druckt den Bon nach oder erzeugt die A4-Rechnung bzw. eine E-Mail.',
     ],
     abschnitte: [
       {
@@ -500,6 +502,16 @@ export const HILFE_THEMEN: HilfeThema[] = [
           'Unter „Storno-Grund" kurz eintragen, warum.',
           'Verlangt die Kassa die „Freigabe — PIN eines Berechtigten", gibt eine berechtigte Person ihre PIN ein.',
           '„Storno bestätigen". Es entsteht ein eigener Stornobeleg — der Originalbeleg wird nie gelöscht (Vorschrift).',
+          'Der Stornobeleg entsteht immer auf der Kasse des Originalbelegs (deren RKSV-Kette), auch wenn du ihn an einem anderen Gerät auslöst.',
+        ],
+      },
+      {
+        titel: 'Einen Beleg zurückholen (korrigieren)',
+        schritte: [
+          'Beim falschen Beleg „Zurückholen" wählen.',
+          'Die Kassa storniert ihn wie oben (gegebenenfalls mit Freigabe-PIN) und legt seine Positionen in den Warenkorb dieses Geräts.',
+          'Im Warenkorb korrigieren und wie gewohnt neu kassieren.',
+          'Die Positionen kommen mit Bezeichnung, Preis und Steuersatz wie gebucht zurück. Lagerstand und Küchenbons werden dabei nicht noch einmal gebucht.',
         ],
       },
       {

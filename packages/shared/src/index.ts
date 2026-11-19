@@ -945,6 +945,8 @@ export {
   JahresbelegInputSchema,
   BelegResponseSchema,
   BelegPositionSchema,
+  BelegSucheQuerySchema,
+  BelegListeEintragSchema,
 } from './schemas/beleg.js'
 export type {
   RabattInput,
@@ -958,6 +960,9 @@ export type {
   JahresbelegInput,
   BelegResponse,
   BelegPositionDto,
+  BelegSucheQuery,
+  BelegListeEintrag,
+  BelegSeite,
 } from './schemas/beleg.js'
 
 // Kassenbuch

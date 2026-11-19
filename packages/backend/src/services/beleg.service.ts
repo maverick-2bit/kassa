@@ -8,7 +8,7 @@
  *     und dann signiereImTx() innerhalb einer Transaktion aufruft.
  */
 
-import { and, asc, desc, eq, gte, inArray, lt, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, gte, inArray, lt, or, sql, type SQL } from 'drizzle-orm'
 import { Buffer } from 'node:buffer'
 import {
   ATrustHsmEinheit,
@@ -37,14 +37,16 @@ import {
 } from '@kassa/rksv'
 import type {
   BarzahlungsbelegInput,
+  BelegListeEintrag,
   BelegResponse,
+  BelegSeite,
   JahresbelegInput,
   KundeSnapshot,
   MonatsbelegInput,
   NullbelegInput,
   StornobelegInput,
 } from '@kassa/shared'
-import { ArtikelPositionSchema, hatBonRouting } from '@kassa/shared'
+import { ArtikelPositionSchema, hatBonRouting, wienerZeitpunkt } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import { artikel, belege, kassen, kategorien, mandanten, modifikatoren, seriennummern } from '../db/schema.js'
 import { erstelleKunde, ladeKundeSnapshot } from './kunde.service.js'
@@ -1272,6 +1274,96 @@ export async function listeBelege(
     .limit(opts.limit ?? 50)
 
   return rows.map(r => toDto(r, r.positionen as BelegPosition[]))
+}
+
+export interface BelegSucheFilter {
+  kasseId:  string
+  /** Wiener Kalendertag (JJJJ-MM-TT), inklusive */
+  von?:     string | undefined
+  /** Wiener Kalendertag (JJJJ-MM-TT), inklusive */
+  bis?:     string | undefined
+  /** Belegnummer, Betrag („12,50") oder Kunde (Name, Kundennummer) */
+  suche?:   string | undefined
+  kundeId?: string | undefined
+  typen?:   string[] | undefined
+  limit:    number
+  offset:   number
+}
+
+function naechsterKalendertag(datum: string): string {
+  const d = new Date(`${datum}T00:00:00.000Z`)
+  d.setUTCDate(d.getUTCDate() + 1)
+  return d.toISOString().slice(0, 10)
+}
+
+/** Suchtext → Bedingung: Belegnummer, Betrag (auch als Storno negativ) oder Kunde. */
+function suchBedingung(suche: string): SQL | undefined {
+  const text = suche.trim().replace(/^#/, '')
+  if (text === '') return undefined
+  const gesamt = sql`(${belege.summeBarCent} + ${belege.summeKarteCent} + ${belege.summeSonstigeCent})`
+  const teile: SQL[] = []
+
+  if (/^\d{1,9}$/.test(text)) {
+    const n = Number(text)
+    teile.push(eq(belege.belegNummer, n))
+    // „12" kann auch 12,00 € meinen
+    if (n <= 9_999_999) teile.push(sql`abs(${gesamt}) = ${n * 100}`)
+    teile.push(sql`${belege.kundeSnapshot}->>'nummer' = ${text}`)
+  } else if (/^-?\d{1,7}[.,]\d{1,2}$/.test(text)) {
+    const [ganz, rest = ''] = text.replace('-', '').split(/[.,]/)
+    const cent = Number(ganz) * 100 + Number(rest.padEnd(2, '0'))
+    teile.push(sql`abs(${gesamt}) = ${cent}`)
+  }
+
+  // Kundenname: LIKE-Platzhalter im Suchtext wörtlich nehmen
+  const muster = `%${text.replace(/[\\%_]/g, m => `\\${m}`)}%`
+  teile.push(sql`${belege.kundeSnapshot}->>'bezeichnung' ilike ${muster}`)
+  teile.push(sql`${belege.kundeSnapshot}->>'firma' ilike ${muster}`)
+
+  return or(...teile)
+}
+
+/**
+ * Belege EINER Kasse des Mandanten — mit Zeitraum, Suche und Paging.
+ *
+ * Mandantentrennung doppelt: Die Route prüft, dass die Kasse zum Mandanten gehört, und die
+ * Abfrage verlangt zusätzlich `mandant_id`. `storniertDurch` kommt aus der Datenbank, nicht
+ * aus der geladenen Seite — der Stornobeleg kann auf einer anderen Seite stehen.
+ */
+export async function sucheBelege(db: Db, mandantId: string, filter: BelegSucheFilter): Promise<BelegSeite> {
+  const bedingungen: SQL[] = [eq(belege.mandantId, mandantId), eq(belege.kasseId, filter.kasseId)]
+  if (filter.von) bedingungen.push(gte(belege.belegDatum, wienerZeitpunkt(filter.von, '00:00')))
+  if (filter.bis) bedingungen.push(lt(belege.belegDatum, wienerZeitpunkt(naechsterKalendertag(filter.bis), '00:00')))
+  if (filter.kundeId) bedingungen.push(eq(belege.kundeId, filter.kundeId))
+  if (filter.typen && filter.typen.length > 0) bedingungen.push(inArray(belege.belegTyp, filter.typen))
+  const such = filter.suche ? suchBedingung(filter.suche) : undefined
+  if (such) bedingungen.push(such)
+  const wo = and(...bedingungen)
+
+  const [rows, [zaehler]] = await Promise.all([
+    db.select().from(belege).where(wo)
+      .orderBy(desc(belege.belegNummer))
+      .limit(filter.limit)
+      .offset(filter.offset),
+    db.select({ anzahl: count() }).from(belege).where(wo),
+  ])
+
+  const ids = rows.filter(r => r.belegTyp === 'Barzahlungsbeleg').map(r => r.id)
+  const stornos = ids.length === 0 ? [] : await db
+    .select({ id: belege.id, belegNummer: belege.belegNummer, verweisBelegId: belege.verweisBelegId })
+    .from(belege)
+    .where(and(
+      eq(belege.mandantId, mandantId),
+      eq(belege.belegTyp, 'Stornobeleg'),
+      inArray(belege.verweisBelegId, ids),
+    ))
+  const stornoVon = new Map(stornos.map(s => [s.verweisBelegId, { id: s.id, belegNummer: s.belegNummer }]))
+
+  const eintraege: BelegListeEintrag[] = rows.map(r => {
+    const storno = stornoVon.get(r.id)
+    return { ...toDto(r, r.positionen as BelegPosition[]), ...(storno && { storniertDurch: storno }) }
+  })
+  return { belege: eintraege, gesamt: zaehler?.anzahl ?? 0 }
 }
 
 /** Einzelnen Beleg laden (mandanten-scoped) — z. B. für den Rechnungsdruck am KDS. */
