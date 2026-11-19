@@ -869,6 +869,9 @@ was jede Kassa als Root ausführte.)
   5 Minuten nicht **gesund mit der Zielversion**, stellt er Code und Images wieder her, startet ohne Neubau und zeigt
   in der Kassa: „Update auf vX fehlgeschlagen — automatisch auf vY zurückgesetzt". Die Sicherung liegt im Dateisystem des
   Updater-Containers, **nicht** im Volume `update_control` (auf das auch das Backend schreiben darf).
+  Gibt es das Image eines laufenden Containers nicht mehr (z. B. nach einem Neubau von Hand aufgeräumt, der Container lief
+  weiter), bricht das Update deshalb nicht ab: Der Updater vermerkt es im Log („Kein altes Image für …"), und ein Rückweg
+  baut den vorherigen Stand dann aus dem gesicherten Code neu, statt mit dem gescheiterten Image zu starten.
 - **Stromausfall / Docker-Neustart mitten im Update:** Beim nächsten Start findet der Updater die Marke „Update läuft"
   und prüft: Backend gesund mit der Zielversion → fertig; sonst Rückweg.
 - **Die Datenbank wird nicht zurückgerollt.** Migrationen laufen nur vorwärts; der alte Code muss mit dem neueren Schema
