@@ -221,6 +221,14 @@ sichere_vorher() {
     _bild="${_info%%|*}"; _bildid="${_info##*|}"
     case "$_bildid" in sha256:*) ;; *) continue ;; esac
     case "$_bild" in ''|sha256:*) continue ;; esac
+    # Das laufende Image gibt es nicht mehr (nach einem Neubau aufgeräumt, der Container läuft weiter): kein Grund,
+    # das Update abzubrechen. Für diesen Dienst gibt es dann kein altes Image — ein Rückweg baut aus dem gesicherten
+    # Code neu (Marke neu_bauen), statt mit dem neuen, gescheiterten Image zu starten.
+    if ! docker image inspect "$_bildid" >/dev/null 2>&1; then # M:image-fehlt
+      log "Kein altes Image für $_dienst ($_bildid gibt es nicht mehr) — ein Rückweg baut neu"
+      : > "$RUECKWEG/neu_bauen" || return 1
+      continue
+    fi
     # Eigener Tag, damit ein „docker image prune" das alte Image nicht wegräumt, bevor der Rückweg es braucht
     docker tag "$_bildid" "kassa-rueckweg/$_dienst:vorher" >/dev/null 2>&1 || return 1
     printf '%s|%s|%s\n' "$_dienst" "$_bild" "$_bildid" >> "$RUECKWEG/images.txt"
@@ -288,9 +296,10 @@ rueckweg_ausfuehren() {
     done < "$RUECKWEG/images.txt"
   fi
   _dienste="$(app_dienste)"
+  # Ohne Neubau nur, wenn es für jeden Dienst das alte Image gab — sonst liefe dort das neue, gescheiterte weiter.
   # shellcheck disable=SC2086 — Wortauftrennung der Service-Liste ist gewollt
-  if ! compose up -d --no-build $_dienste; then
-    log "Rückweg ohne Neubau scheiterte — versuche mit Neubau"
+  if [ -f "$RUECKWEG/neu_bauen" ] || ! compose up -d --no-build $_dienste; then # M:neu-bauen
+    log "Rückweg ohne Neubau nicht möglich oder gescheitert — baue den vorherigen Stand neu"
     # shellcheck disable=SC2086
     if ! compose up -d --build $_dienste; then
       status fehler "Update auf v$_ziel fehlgeschlagen — der Rückweg konnte die Dienste nicht starten (docker compose logs prüfen)" "$_grund"

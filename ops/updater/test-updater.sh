@@ -147,9 +147,13 @@ case "${1:-}" in
       *Config.Image*) case "$d" in postgres) printf 'postgres:17-alpine|%s\n' "$id" ;; *) printf 'kassa-%s|%s\n' "$d" "$id" ;; esac ;;
     esac
     exit 0 ;;
+  image)  # image inspect <id>: ein Image unter $Z/weg/ gibt es nicht mehr (nach Neubau aufgeräumt, Container läuft weiter)
+    [ "${2:-}" = inspect ] || exit 0
+    [ -e "$Z/weg/$(enc "${3:-}")" ] && exit 1
+    exit 0 ;;
   tag)
     [ -f "$Z/fail_tag" ] && exit 1
-    case "$2" in sha256:*) id="$2" ;; *) id="$(cat "$Z/tag/$(enc "$2")" 2>/dev/null)" ;; esac
+    case "$2" in sha256:*) [ -e "$Z/weg/$(enc "$2")" ] && exit 1; id="$2" ;; *) id="$(cat "$Z/tag/$(enc "$2")" 2>/dev/null)" ;; esac
     [ -n "$id" ] || exit 1
     printf '%s\n' "$id" > "$Z/tag/$(enc "$3")"; exit 0 ;;
   rmi) rm -f "$Z/tag/$(enc "$2")"; exit 0 ;;
@@ -199,7 +203,7 @@ basis_bauen() {
 baum_hash() { ( cd "$1" && find . -type f ! -name .env | sort | xargs cksum | cksum ); }
 
 docker_zustand_setzen() { # <Version der laufenden Container>
-  rm -rf "$DS"; mkdir -p "$DS/cont" "$DS/tag"
+  rm -rf "$DS"; mkdir -p "$DS/cont" "$DS/tag" "$DS/weg"
   printf 'sha256:img-pg\n' > "$DS/cont/postgres"
   for d in backend frontend; do
     printf 'sha256:img-%s\n' "$1" > "$DS/cont/$d"
@@ -474,6 +478,30 @@ sz_sicherung_scheitert() {
   pruefe "Kein Build gestartet" keine_ups
 }
 
+sz_altes_image_fehlt() {
+  gruppe "19a. Die laufenden Images gibt es nicht mehr (nach Neubau aufgeräumt) → Update läuft trotzdem"
+  neues_szenario altes_image_fehlt
+  : > "$DS/weg/sha256_img-1.0.0"
+  upd run_update
+  pruefe "Status fertig, gemeldete Version 1.1.0" gleich "$(status_feld status) $(status_feld version)" "fertig 1.1.0"
+  pruefe "Im Container läuft die neue Version" gleich "$(laeuft_version)" 1.1.0
+  pruefe "Das Log nennt den Dienst ohne altes Image" ausgabe_hat "Kein altes Image für backend"
+  pruefe "Für ihn wurde kein Rückweg-Tag versucht" log_hat_nicht 'tag sha256:img-1.0.0 kassa-rueckweg/backend:vorher'
+  pruefe "Rückweg-Sicherung ist danach weggeräumt" datei_weg "$RW"
+}
+
+sz_altes_image_fehlt_rueckweg() {
+  gruppe "19b. Rückweg ohne altes Image: baut den vorherigen Stand neu statt das gescheiterte Image zu starten"
+  neues_szenario altes_image_fehlt_rueckweg
+  : > "$DS/weg/sha256_img-1.0.0"
+  : > "$DS/unhealthy_1.1.0"
+  upd run_update
+  pruefe "Status fehler: automatisch auf v1.0.0 zurückgesetzt" status_text_hat "automatisch auf v1.0.0 zurückgesetzt"
+  pruefe "Workspace ist wieder der alte Stand" ws_unveraendert
+  pruefe "Es läuft wieder v1.0.0 (aus dem alten Code neu gebaut)" gleich "$(laeuft_version)" 1.0.0
+  pruefe "Der Rückweg baute neu (kein Start mit dem gescheiterten Image): zwei Builds, kein --no-build" gleich "$(anzahl_ups build) $(anzahl_ups nobuild)" "2 0"
+}
+
 sz_kopieren_scheitert() {
   gruppe "20. Rückweg: Kopieren in den Installationsordner bricht halb ab"
   neues_szenario kopieren_scheitert
@@ -617,7 +645,7 @@ WRAPPER
   pruefe "Beim Start ist der Status 'idle' gesetzt und der Heartbeat da" sh -c "grep -q '\"status\":\"idle\"' '$CTRL/status.json' && [ -s '$CTRL/heartbeat' ]"
 }
 
-alle_szenarien="gluecklich unsigniert nur_ungueltig fremder_schluessel leichtgewichtig umbenannt manipuliert version_passt_nicht aussperren aelter neuer_schluessel schluesselwechsel keine_liste vertrauensdatei_fehlt erzwingen build_scheitert unhealthy nicht_uebernommen sicherung_scheitert kopieren_scheitert rueckweg_scheitert unterbrochen_gesund unterbrochen_defekt vertrauensdatei_echt rsync_echt release_pruefen hauptschleife"
+alle_szenarien="gluecklich unsigniert nur_ungueltig fremder_schluessel leichtgewichtig umbenannt manipuliert version_passt_nicht aussperren aelter neuer_schluessel schluesselwechsel keine_liste vertrauensdatei_fehlt erzwingen build_scheitert unhealthy nicht_uebernommen sicherung_scheitert altes_image_fehlt altes_image_fehlt_rueckweg kopieren_scheitert rueckweg_scheitert unterbrochen_gesund unterbrochen_defekt vertrauensdatei_echt rsync_echt release_pruefen hauptschleife"
 
 szenarien_laufen_lassen() {
   for _n in $alle_szenarien; do
@@ -669,6 +697,8 @@ mutationsprobe() {
   mutation rueckweg-images '      true' "unhealthy unterbrochen_defekt" "Rückweg setzt die Images nicht zurück"
   mutation gesund '      if true; then' "unhealthy unterbrochen_defekt" "Gesundheitscheck wird ignoriert"
   mutation warten '  GELADEN="$ZIEL_VERSION"; _rc=0' "unhealthy nicht_uebernommen" "Nach dem Build wird nicht auf das Backend gewartet"
+  mutation image-fehlt '    if false; then' "altes_image_fehlt altes_image_fehlt_rueckweg" "Fehlendes altes Image bricht das Update wieder ab"
+  mutation neu-bauen '  if ! compose up -d --no-build $_dienste; then' "altes_image_fehlt_rueckweg" "Rückweg startet ohne Neubau, obwohl ein altes Image fehlt"
   mutation marke '  true' "gluecklich" "Unterbrechungs-Marke wird nicht gesetzt"
   mutation marke-weg '  true' "rueckweg_scheitert" "Unterbrechungs-Marke bleibt nach gescheitertem Rückweg stehen"
   mutation request-weg '  true' "hauptschleife" "Anforderung während des Laufs bleibt liegen (zweiter, unnötiger Lauf nach dem Neustart)"
