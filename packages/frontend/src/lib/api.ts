@@ -85,6 +85,8 @@ import type {
   BerichtFilter,
   BerichtResponse,
   BelegResponse,
+  BelegSeite,
+  BelegSucheQuery,
   BonierungErgebnis,
   BonierungInput,
   JahresbelegInput,
@@ -965,6 +967,14 @@ export const belegApi = {
    * Offline-Warteschlange legen (Antwort 202 mit `_offline`) — nur für Verkäufe ohne Folgeschritt,
    * der die Beleg-ID braucht (Gutschein einlösen, offener Posten).
    */
+  /** Belege einer wählbaren Kasse des Mandanten — Zeitraum, Suche, Paging (Auswertung → Belege) */
+  seite: (q: BelegSucheQuery) => {
+    const p = new URLSearchParams()
+    for (const [k, v] of Object.entries(q)) {
+      if (v !== undefined && v !== null && v !== '') p.set(k, String(v))
+    }
+    return request<BelegSeite>('GET', `/api/belege/seite?${p.toString()}`)
+  },
   barzahlung: (input: BarzahlungsbelegInput, verkauf?: { schluessel: string; offlinePuffern?: boolean }) =>
     request<BelegResponse>('POST', '/api/belege/barzahlung', input, verkauf && {
       'Idempotency-Key': verkauf.schluessel,

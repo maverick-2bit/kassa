@@ -54,6 +54,7 @@ import { BarRueckgeldModal } from '../components/BarRueckgeldModal'
 import { BarKarteSplitModal } from '../components/BarKarteSplitModal'
 import { ArtikelGrid } from '../components/ArtikelGrid'
 import { KundePicker } from '../components/KundePicker'
+import { leseZurueckgeholt, vergissZurueckgeholt, type ZurueckgeholterBeleg } from '../lib/zurueckgeholt'
 
 // ---------------------------------------------------------------------------
 // Warenkorb-Typen
@@ -97,13 +98,17 @@ export function KassePage() {
   const initialKategorieId = searchParams.get('tab') === 'favoriten' ? '__favoriten__' : null
 
   const [modus, setModus] = useState<'verkauf' | 'angebot'>('verkauf')
-  const [korb, setKorb] = useState<KorbPosition[]>([])
+  // „Zurückholen" aus Auswertung → Belege: stornierter Beleg kommt als Warenkorb an
+  const [zurueckgeholt, setZurueckgeholt] = useState<ZurueckgeholterBeleg | null>(() => leseZurueckgeholt())
+  const [korb, setKorb] = useState<KorbPosition[]>(() =>
+    (zurueckgeholt?.positionen ?? []).map((p): FreieKorbPosition => ({ typ: 'frei', ...p })),
+  )
 
   const [rabatt, setRabatt] = useState<RabattInput | null>(null)
   const [rabattOffen, setRabattOffen] = useState(false)
   const [artikelRabattIdx, setArtikelRabattIdx] = useState<number | null>(null)
   const [freiePositionOffen, setFreiePositionOffen] = useState(false)
-  const [kunde,     setKunde]     = useState<KundeSnapshot | null>(null)
+  const [kunde,     setKunde]     = useState<KundeSnapshot | null>(() => zurueckgeholt?.kunde ?? null)
   const [neuerKunde, setNeuerKunde] = useState<KundeInput | undefined>(undefined)
   const [tisch, setTisch] = useState<string>('1')
   const leistenAus = useKassenLeistenAusgeblendet()
@@ -447,8 +452,12 @@ export function KassePage() {
   // Ziffernblock-Ziel (Warenkorb-Index) + „alles verwerfen"-Rückfrage
   const [numpadIdx, setNumpadIdx] = useState<number | null>(null)
 
+  // Übernommen — beim nächsten Öffnen der Kasse nicht noch einmal einlesen
+  useEffect(() => { if (zurueckgeholt) vergissZurueckgeholt() }, [zurueckgeholt])
+
   const reset = () => {
     setKorb([])
+    setZurueckgeholt(null)
     setRabatt(null)
     setFehler(null)
     setKunde(null)
@@ -756,6 +765,26 @@ export function KassePage() {
             {/* Bons, die der Server selbst ausgelöst hat (Direktverkauf-Beleg, Gast-, SB-Bestellung) */}
             <BonProblemeBanner kasseId={identity.kasseId} />
           </div>
+
+          {zurueckgeholt && (
+            <div data-testid="zurueckgeholt-hinweis"
+                 className="mb-3 bg-blue-50 border border-blue-300 text-blue-900
+                            rounded-lg px-4 py-3 flex items-center gap-3 text-sm">
+              <span className="text-lg">↩</span>
+              <span>
+                Beleg <strong>#{zurueckgeholt.belegNummer}</strong> ({zurueckgeholt.kasseBezeichnung}) zurückgeholt,
+                storniert mit #{zurueckgeholt.stornoNummer}. Korrigieren und neu kassieren.
+              </span>
+              <button
+                type="button"
+                onClick={() => setZurueckgeholt(null)}
+                className="ml-auto text-blue-700 hover:text-blue-900 px-1"
+                aria-label="Ausblenden"
+              >
+                ×
+              </button>
+            </div>
+          )}
 
           {/* Beleg-erstellt-Bestätigung (Druck-Modus: kein Dialog, nur kurze Rückmeldung
               + Options-Schaltfläche für einen anderen Ausgabeweg) */}

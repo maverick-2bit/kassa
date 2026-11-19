@@ -243,6 +243,7 @@ export const ROUTEN_RECHTE: ReadonlyArray<readonly [Zugriff, readonly RoutenSchl
     [
       'POST /api/belege/jahresbeleg',
       'POST /api/belege/monatsbeleg',
+      'GET /api/belege/seite',
       'GET /api/belege/tagesabschluss',
       'POST /api/belege/tagesabschluss/drucken',
       'GET /api/berichte/artikel',

@@ -8,6 +8,7 @@ import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import {
   BarzahlungsbelegInputSchema,
+  BelegSucheQuerySchema,
   StornobelegInputSchema,
   NullbelegInputSchema,
   MonatsbelegInputSchema,
@@ -25,6 +26,7 @@ import {
   erstelleMonatsbeleg,
   erstelleJahresbeleg,
   listeBelege,
+  sucheBelege,
   erstelleDep7Json,
   erstelleDep131Json,
   holeSeeStatus,
@@ -426,6 +428,19 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
       }
       throw err
     }
+  })
+
+  // Belege einer wählbaren Kasse des Mandanten (Auswertung → Belege): Zeitraum, Suche, Paging.
+  fastify.get('/belege/seite', guard, async (request, reply) => {
+    const parsed = BelegSucheQuerySchema.safeParse(request.query)
+    if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
+    if (!(await pruefeKasseScope(request, reply, opts.deps, parsed.data.kasseId))) return
+    const { typen, ...rest } = parsed.data
+    const seite = await sucheBelege(opts.deps.db, request.user.mandantId, {
+      ...rest,
+      ...(typen && { typen: typen.split(',').map(t => t.trim()).filter(Boolean) }),
+    })
+    return reply.send(seite)
   })
 
   fastify.get('/belege', guard, async (request, reply) => {
