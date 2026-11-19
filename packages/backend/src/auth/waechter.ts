@@ -14,6 +14,8 @@ export type Waechter =
   | { art: 'rolle'; rollen: readonly Rolle[] }
   | { art: 'berechtigung'; berechtigungen: readonly Berechtigung[] }
   | { art: 'betreiber' }
+  /** Admin laut Datenbank (aktiv, Rolle admin) — nicht nur laut Token */
+  | { art: 'aktiver_admin' }
   /** Nur ein bestimmtes Geräte-Token (z. B. Einlass-Scanner) — kein Benutzer. */
   | { art: 'geraet'; typ: string }
 

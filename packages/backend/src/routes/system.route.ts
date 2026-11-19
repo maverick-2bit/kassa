@@ -4,11 +4,14 @@
  *  GET  /system/status  (auth) — installierte Version, neueste bekannte Version
  *                          (GitHub), ob ein Update verfügbar ist, ob der Updater-
  *                          Dienst läuft, sowie der aktuelle Update-Status.
- *  POST /system/update  (Betreiber) — löst das Update aus: legt die „request"-Datei im
+ *  POST /system/update  (admin) — löst das Update aus: legt die „request"-Datei im
  *                          geteilten Kontroll-Volume an, die der Updater-Dienst
- *                          abholt. 409 wenn kein Updater-Dienst läuft. Das Update
- *                          betrifft die ganze Installation (alle Mandanten) und läuft
- *                          als Root mit Docker-Zugriff — nur der Betreiber darf es.
+ *                          abholt. 409 wenn kein Updater-Dienst läuft. Jeder Admin darf
+ *                          es (Entscheidung 2026-11-19): Das Signal ist body-los, der
+ *                          Updater holt nur den offiziellen GitHub-Stand — es gibt keine
+ *                          Daten preis, schlimmstenfalls ist die Kassa ~1 Minute offline.
+ *                          Datenbank-Dump, Systemwerte und weitere Mandanten bleiben beim
+ *                          Betreiber.
  *  GET  /system/fernwartung (admin) — Fernwartungs-Anbindung dieser Kasse (TeamViewer ID,
  *                          Gerätename, Gruppe). Liest NUR die Statusdatei, die der
  *                          Installer ins Kontroll-Volume legt (services/fernwartung-status.ts).
@@ -24,7 +27,7 @@ import { join } from 'path'
 import type { Db } from '../db/client.js'
 import type { Config } from '../config.js'
 import { holePortalStatus } from '../services/portal-melder.service.js'
-import { istAktiverBetreiber, requireBetreiber } from '../auth/betreiber.js'
+import { istAktiverBetreiber, requireAktiverAdmin, requireBetreiber } from '../auth/betreiber.js'
 import { leseFernwartungStatus } from '../services/fernwartung-status.js'
 import { neuesteVersionAusTags, tagRefsAusGitAntwort } from '../services/release-version.js'
 
@@ -126,6 +129,8 @@ export const systemRoute: FastifyPluginAsync<SystemRouteOptions> = async (fastif
   const guard      = { onRequest: [fastify.authenticate] }
   const adminOnly  = { onRequest: [fastify.requireRolle('admin')] }
   const betreiber  = { onRequest: [fastify.authenticate, requireBetreiber(opts.db)] }
+  // Update: jeder Admin, aber frisch aus der Datenbank (ein deaktiviertes Konto mit gültigem Token nicht)
+  const aktiverAdmin = { onRequest: [fastify.requireRolle('admin'), requireAktiverAdmin(opts.db)] }
 
   /** Verbindung zum Serviceportal: aktiv? letzter Kontakt, letzter Fehler — nie das Token */
   fastify.get('/system/portal', betreiber, async () => holePortalStatus(opts.config))
@@ -138,8 +143,8 @@ export const systemRoute: FastifyPluginAsync<SystemRouteOptions> = async (fastif
       holeNeuesteVersion(frisch),
       updaterLaeuft(),
       leseUpdateStatus(),
-      // Frisch aus der Datenbank (nicht aus dem Token): die Oberfläche zeigt Update, Datenbank-
-      // Sicherung und Systemwerte nur dem Betreiber — auch direkt nach der Umstellung, wenn eine
+      // Frisch aus der Datenbank (nicht aus dem Token): die Oberfläche zeigt Datenbank-
+      // Sicherung, Systemwerte und weitere Mandanten nur dem Betreiber — auch direkt nach der Umstellung, wenn eine
       // alte Anmeldung noch nichts davon weiß
       request.user.typ ? false : istAktiverBetreiber(opts.db, request.user.sub, request.user.mandantId),
     ])
@@ -190,7 +195,7 @@ export const systemRoute: FastifyPluginAsync<SystemRouteOptions> = async (fastif
     return leseFernwartungStatus(verzeichnis, (grund) => request.log.warn(`Fernwartung: ${grund}`))
   })
 
-  fastify.post('/system/update', betreiber, async (_request, reply) => {
+  fastify.post('/system/update', aktiverAdmin, async (_request, reply) => {
     if (!(await updaterLaeuft())) {
       return reply.status(409).send({
         fehler:

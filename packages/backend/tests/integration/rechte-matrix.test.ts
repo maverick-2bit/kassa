@@ -63,7 +63,7 @@ describe('Rechte-Matrix (Integration, echtes PostgreSQL)', () => {
 
   /** Wer darf die Route? Eine Identität je erlaubtem Recht (Kellner mit genau diesem Recht), Admin bei Rollen-Wächtern. */
   const erlaubte = (r: Route): Array<{ name: string; kopf: { authorization: string } }> | null => {
-    if (r.waechter.some(w => w.art === 'betreiber' || w.art === 'geraet')) return null // eigene Tests (betreiber.test.ts, Einlass)
+    if (r.waechter.some(w => w.art === 'betreiber' || w.art === 'aktiver_admin' || w.art === 'geraet')) return null // eigene Tests (betreiber.test.ts, Einlass)
     if (r.waechter.length === 0) return null                                          // öffentlich
 
     const recht = r.waechter.find(w => w.art === 'berechtigung')
