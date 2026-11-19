@@ -1,0 +1,101 @@
+# =============================================================================
+# Kassa – HTTPS im LAN (optionales Profil „lan-https", Dienst „lan-https")
+#
+# Wozu: Handys und Tablets im Lokal erreichen die Kassa sonst nur über
+# http://<IP>:<Port>. Ohne HTTPS verweigert der Browser Mikrofon
+# (Sprachbestellung), Kamera (Einlass) und Service Worker (Offline-Puffer).
+#
+# Wie: Caddy betreibt eine EIGENE Zertifizierungsstelle (CA) für diese Box und
+# stellt damit Zertifikate für die LAN-IP aus — ohne Internet, ohne Domain.
+# Jedes Gerät vertraut dieser CA einmal (Einrichtungsseite http://<IP>:9079).
+# Das Stammzertifikat liegt im Volume „lan_https_data" (samt privatem
+# Schlüssel); Zwischen- und Serverzertifikate erneuert Caddy selbst.
+#
+# Voraussetzung: KASSA_LAN_IP (feste IPv4 der Box im LAN) in der .env — der
+# Browser schickt bei einer IP-Adresse keinen Servernamen (SNI) mit, Caddy muss
+# also wissen, für welche Adresse das Zertifikat gilt.
+#
+# Der Weg über http://<IP>:<Port> bleibt unverändert bestehen.
+#
+# Ports (fest; dieselbe Tabelle in packages/frontend/src/lib/geraeteAdressen.ts,
+# docker-compose.yml, ops/caddy/lan/index.html und den Installern — Tests:
+# packages/frontend/src/lib/geraeteAdressen.test.ts, packages/backend/tests/lan-https.test.ts):
+#   8443  Kasse          9080  KDS            9083  Kellner-App
+#   9084  SB-Terminal    9087  Einlass        9079  Einrichtungsseite (http)
+#
+# Ziel ist jeweils Port 8090 der App (Caddy-Eingang: Client-IP aus
+# X-Forwarded-For, siehe nginx.conf der Apps).
+# =============================================================================
+
+{
+	# Nie in einen Vertrauensspeicher des Rechners/Containers eingreifen
+	skip_install_trust
+	# Keine Umleitung http→https auf Port 80 (der gehört der Kasse)
+	auto_https disable_redirects
+	# Aufruf per IP: kein SNI → Zertifikat für diese Adresse wählen
+	default_sni {$KASSA_LAN_IP}
+	pki {
+		ca local {
+			name "Kassa LAN"
+			root_cn "Kassa LAN Root"
+			intermediate_cn "Kassa LAN Intermediate"
+		}
+	}
+}
+
+# Für alle Eingänge: Stammzertifikat und Kurzinfo. Bewusst nur diese zwei Pfade —
+# im CA-Ordner liegt auch der private Schlüssel, der NIE ausgeliefert wird.
+(lan_info) {
+	handle /kassa-ca.crt {
+		root * {$KASSA_CA_DIR:/data/caddy/pki/authorities/local}
+		rewrite * /root.crt
+		header Content-Type application/x-x509-ca-cert
+		header Content-Disposition "attachment; filename=kassa-ca.crt"
+		header Cache-Control no-store
+		file_server
+	}
+	handle /kassa-lan.json {
+		header Content-Type application/json
+		header Access-Control-Allow-Origin *
+		header Cache-Control no-store
+		respond `\{"ip":"{$KASSA_LAN_IP}","ports":\{"kasse":8443,"kds":9080,"kellner":9083,"terminal":9084,"einlass":9087,"einrichtung":9079\}\}` 200
+	}
+}
+
+(app) {
+	tls internal
+	import lan_info
+	handle {
+		reverse_proxy {args[0]}:8090
+	}
+}
+
+https://{$KASSA_LAN_IP}:8443, https://localhost:8443 {
+	import app frontend
+}
+
+https://{$KASSA_LAN_IP}:9080, https://localhost:9080 {
+	import app kds
+}
+
+https://{$KASSA_LAN_IP}:9083, https://localhost:9083 {
+	import app kellner
+}
+
+https://{$KASSA_LAN_IP}:9084, https://localhost:9084 {
+	import app terminal
+}
+
+https://{$KASSA_LAN_IP}:9087, https://localhost:9087 {
+	import app einlass
+}
+
+# Einrichtungsseite für Handys — absichtlich über http, denn vor der Einrichtung
+# vertraut das Gerät der CA noch nicht.
+http://:9079 {
+	import lan_info
+	handle {
+		root * {$KASSA_LAN_SEITE_DIR:/srv/kassa-lan}
+		file_server
+	}
+}
