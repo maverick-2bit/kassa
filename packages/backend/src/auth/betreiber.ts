@@ -36,6 +36,27 @@ export async function istAktiverBetreiber(db: Db, userId: string, mandantId: str
   return zeile !== undefined
 }
 
+/**
+ * onRequest-Hook NACH `fastify.requireRolle('admin')`: lässt nur ein Konto durch, das JETZT noch aktiver Admin ist.
+ * Für Aktionen, die jeder Admin darf, die aber die ganze Installation treffen (Update) — ein deaktiviertes oder
+ * herabgestuftes Konto darf sie mit seinem noch gültigen Token nicht mehr auslösen.
+ */
+export function requireAktiverAdmin(db: Db) {
+  return alsWaechter(async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
+    const [zeile] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(and(
+        eq(users.id, request.user.sub),
+        eq(users.mandantId, request.user.mandantId),
+        eq(users.rolle, 'admin'),
+        eq(users.aktiv, true),
+      ))
+      .limit(1)
+    if (!zeile) return reply.status(403).send({ fehler: 'Erforderliche Rolle: admin' })
+  }, { art: 'aktiver_admin' })
+}
+
 /** onRequest-Hook NACH `fastify.authenticate` (setzt `request.user`): lässt nur den Betreiber durch. */
 export function requireBetreiber(db: Db) {
   return alsWaechter(async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {

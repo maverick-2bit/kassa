@@ -145,10 +145,25 @@ describe('Betreiber-Rechte (Integration, echtes PostgreSQL)', () => {
   })
 
   describe('Update der Kassa', () => {
-    it('nur der Betreiber löst es aus (hier ohne Update-Dienst: 409 statt 403)', async () => {
-      expect((await srv.fastify.inject({ method: 'POST', url: '/api/system/update', headers: h(tokenA) })).statusCode).toBe(409)
-      expect((await srv.fastify.inject({ method: 'POST', url: '/api/system/update', headers: h(tokenB) })).statusCode).toBe(403)
-      expect((await srv.fastify.inject({ method: 'POST', url: '/api/system/update', headers: h(tokenA2) })).statusCode).toBe(403)
+    // Jeder Admin darf das Update auslösen, nicht nur der Betreiber (hier ohne Update-Dienst: 409 = an der
+    // Berechtigung vorbei, beim fehlenden Dienst angekommen)
+    it('jeder Admin löst es aus — Betreiber, Admin eines anderen Mandanten, zweiter Admin', async () => {
+      for (const token of [tokenA, tokenB, tokenA2]) {
+        expect((await srv.fastify.inject({ method: 'POST', url: '/api/system/update', headers: h(token) })).statusCode).toBe(409)
+      }
+    })
+
+    it('ohne Anmeldung 401', async () => {
+      expect((await srv.fastify.inject({ method: 'POST', url: '/api/system/update' })).statusCode).toBe(401)
+    })
+
+    it('ein deaktivierter Admin (kein Betreiber) löst es mit seinem noch gültigen Token nicht mehr aus', async () => {
+      await idb.db.update(users).set({ aktiv: false }).where(eq(users.id, idA2))
+      try {
+        expect((await srv.fastify.inject({ method: 'POST', url: '/api/system/update', headers: h(tokenA2) })).statusCode).toBe(403)
+      } finally {
+        await idb.db.update(users).set({ aktiv: true }).where(eq(users.id, idA2))
+      }
     })
   })
 

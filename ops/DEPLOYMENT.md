@@ -203,9 +203,8 @@ darf nur der **Betreiber** — das Konto, das die Kassa betreibt, nicht jeder Ma
 | Nur der Betreiber | Jeder Mandanten-Admin (für den eigenen Betrieb) |
 |-------------------|--------------------------------------------------|
 | Datenbank-Sicherung anlegen, ansehen, herunterladen (Dump der **ganzen** Datenbank, alle Mandanten) | Export des eigenen Mandanten („Mandant übertragen"), DEP-Sicherung der eigenen Kassen |
-| Kassa aktualisieren (Einstellungen → System → Aktualisierung) | Drucker-Status und Keep-Alive des eigenen Betriebs |
-| Systemwerte: Speicher, Platte, Laufzeit, Datenbank, Sicherungsalter | Version und Update-Hinweis ansehen |
-| Weitere Mandanten anlegen; eine Übergabedatei als Mandant einspielen | |
+| Systemwerte: Speicher, Platte, Laufzeit, Datenbank, Sicherungsalter | Drucker-Status und Keep-Alive des eigenen Betriebs |
+| Weitere Mandanten anlegen; eine Übergabedatei als Mandant einspielen | **Kassa aktualisieren** (Einstellungen → System → Aktualisierung) — betrifft alle Mandanten, gibt aber keine Daten preis |
 
 **Wer ist Betreiber?** Der erste Admin einer frisch eingerichteten Installation. Auf einer bestehenden
 Installation macht das Update die aktiven Admins des **zuerst angelegten** Mandanten zu Betreibern
@@ -433,7 +432,7 @@ Test-Events an die lokale Kassa weiter.
 
 **Am einfachsten — direkt in der Kassa (Ein-Klick):**
 **Einstellungen → System → Aktualisierung**. Zeigt installierte vs. neueste Version;
-ein Klick auf **„Jetzt aktualisieren"** (nur der Betreiber, siehe 4b) holt das **neueste signierte
+ein Klick auf **„Jetzt aktualisieren"** (jeder Admin, siehe 4b) holt das **neueste signierte
 Release** (Git-Tag `vX.Y.Z`, nie die master-Spitze), prüft seine Signatur und baut die
 Container neu. Die Kassa ist dabei ~1 Minute offline (nicht während des Kassierens
 starten). Nach Abschluss erscheint **„Jetzt neu laden"**. Scheitert das Update, setzt der
@@ -501,7 +500,7 @@ Container, die Daten (Postgres-Volume) bleiben erhalten.
 - **„Die Systemuhr der Kassa geht nach":** Die Uhr des Kassen-PCs liegt mehr als eine Minute VOR
   dem letzten Beleg. Belege dürfen nicht rückdatiert werden; Uhr/Zeitsynchronisation des PCs
   prüfen. Kleine Rücksprünge (bis 1 Minute) gleicht die Kassa selbst an.
-- **„Jetzt aktualisieren" / Datenbank-Backups / „Weiteren Mandanten anlegen" fehlen, oder
+- **Datenbank-Backups / „Weiteren Mandanten anlegen" fehlen, oder
   „Das darf nur der Betreiber dieser Kassa":** das angemeldete Konto ist nicht als Betreiber
   markiert (Abschnitt 4b). Auf dem Kassen-PC prüfen und setzen:
   `docker compose exec postgres psql -U kassa -d kassa -c "SELECT email, ist_betreiber FROM users WHERE rolle = 'admin'"`

@@ -285,7 +285,7 @@ export interface SystemStatus {
   updateVerfuegbar:  boolean
   updaterVerfuegbar: boolean
   update:            SystemUpdateStatus
-  /** Ist der angemeldete Benutzer der Betreiber der Installation? (Update, DB-Sicherung, weitere Mandanten) */
+  /** Ist der angemeldete Benutzer der Betreiber der Installation? (DB-Sicherung, Systemwerte, weitere Mandanten) */
   istBetreiber:      boolean
 }
 
@@ -303,7 +303,7 @@ export interface FernwartungStatus {
 export const systemApi = {
   /** frisch=true umgeht Server- und CDN-Cache — für den manuellen Prüf-Knopf. */
   status:    (frisch = false) => request<SystemStatus>('GET', `/api/system/status${frisch ? '?frisch=1' : ''}`),
-  /** Löst das Update aus (nur Betreiber). Body-los — der Updater-Dienst holt das Signal ab. */
+  /** Löst das Update aus (jeder Admin). Body-los — der Updater-Dienst holt das Signal ab. */
   ausloesen: () => request<{ angefordert: boolean }>('POST', '/api/system/update'),
   /** LAN-IPv4s des Servers; im Docker-Betrieb ehrlich leer (imContainer=true). */
   netzwerk:  () => request<{ ips: string[]; imContainer?: boolean }>('GET', '/api/system/netzwerk'),

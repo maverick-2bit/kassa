@@ -2,12 +2,12 @@
  * Ist der angemeldete Benutzer der Betreiber dieser Installation?
  *
  * Betreiber sind die Konten, die den Rechner betreiben (nicht ein Mandant unter vielen): nur sie sehen
- * und dürfen Datenbank-Sicherung, Update, Systemwerte und weitere Mandanten. Die Wahrheit steht auf
+ * und dürfen Datenbank-Sicherung, Systemwerte und weitere Mandanten (das Update darf jeder Admin). Die Wahrheit steht auf
  * dem Server und wird bei jedem Aufruf dort geprüft — das hier steuert nur, was die Oberfläche zeigt.
  *
  * Der Stand kommt frisch vom Server (System-Status), nicht aus der gespeicherten Anmeldung: Direkt
- * nach der Umstellung weiß eine alte Anmeldung noch nichts davon und würde dem Betreiber das Update
- * verstecken. Bis die Antwort da ist, gilt der Wert aus der Anmeldung.
+ * nach der Umstellung weiß eine alte Anmeldung noch nichts davon und würde dem Betreiber z. B. die
+ * Datenbank-Sicherung verstecken. Bis die Antwort da ist, gilt der Wert aus der Anmeldung.
  */
 
 import { useQuery } from '@tanstack/react-query'

@@ -2045,7 +2045,8 @@ function PortalSektion() {
 }
 
 function AktualisierungSektion() {
-  const istBetreiber = useIstBetreiber()
+  // Update starten darf jeder Admin (nicht nur der Betreiber) — der Server prüft dasselbe
+  const istAdmin = getAuth()?.user.rolle === 'admin'
   const qc      = useQueryClient()
   const [angefordert, setAngefordert] = useState(false)
   const [schnell, setSchnell]         = useState(false)
@@ -2151,7 +2152,7 @@ function AktualisierungSektion() {
       ) : s?.updateVerfuegbar ? (
         <div className="rounded-lg border border-brand-200 bg-brand-50 p-4">
           <p className="text-sm font-medium text-brand-800">Update verfügbar: v{s.neueste}</p>
-          {istBetreiber ? (
+          {istAdmin ? (
             bestaetigen ? (
               <div className="mt-3 space-y-2">
                 <p className="text-xs text-brand-700">
@@ -2171,7 +2172,7 @@ function AktualisierungSektion() {
               </div>
             )
           ) : (
-            <p className="mt-1 text-xs text-brand-600">Ein Update kann nur der Betreiber dieser Kassa starten.</p>
+            <p className="mt-1 text-xs text-brand-600">Ein Update kann nur ein Admin starten.</p>
           )}
         </div>
       ) : (
@@ -2180,7 +2181,7 @@ function AktualisierungSektion() {
           {/* Notfall: Update auch OHNE angezeigte neuere Version anstoßen — der
               Updater holt immer das neueste GEPRÜFTE Release (signiert) von GitHub;
               nur die Anzeige kann (Cache) nachhinken. Für dringende Umstellungen im Event. */}
-          {s && istBetreiber && s.updaterVerfuegbar && (
+          {s && istAdmin && s.updaterVerfuegbar && (
             erzwingen ? (
               <div className="space-y-2 border-t border-line pt-3">
                 <p className="text-xs text-ink-muted">
