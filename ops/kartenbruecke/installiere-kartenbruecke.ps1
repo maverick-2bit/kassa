@@ -78,7 +78,7 @@ Set-Acl -LiteralPath $ordner -AclObject $acl
 Ok 'Zugriff auf SYSTEM und Administratoren beschränkt'
 
 # ── 3. Geplante Aufgabe ──────────────────────────────────────────────────────
-Schritt "Geplante Aufgabe „$AUFGABE“ (Start mit Windows, als SYSTEM)"
+Schritt ('Geplante Aufgabe „' + $AUFGABE + '“ (Start mit Windows, als SYSTEM)')
 if (Get-ScheduledTask -TaskName $AUFGABE -ErrorAction SilentlyContinue) {
   Stop-ScheduledTask -TaskName $AUFGABE -ErrorAction SilentlyContinue
   Unregister-ScheduledTask -TaskName $AUFGABE -Confirm:$false
@@ -129,4 +129,5 @@ foreach ($l in $leser) {
   $text = if ($l.atr) { "Karte gesteckt (ATR $($l.atr))" } else { 'leer' }
   Write-Host "      $($l.name): $text"
 }
-Write-Host "`nFertig. In der Kassa: Einstellungen → RKSV → Signaturerstellungseinheit → „Signaturkarte (lokal)“." -ForegroundColor Green
+Write-Host ''
+Write-Host 'Fertig. In der Kassa: Einstellungen → RKSV → Signaturerstellungseinheit → „Signaturkarte (lokal)“.' -ForegroundColor Green
