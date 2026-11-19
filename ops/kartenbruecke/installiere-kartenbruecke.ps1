@@ -64,10 +64,14 @@ if (Test-Path -LiteralPath $schluesselDatei) {
 }
 # Nur SYSTEM und Administratoren dürfen den Ordner lesen und schreiben (Skript, Schlüssel, Protokoll);
 # Besitzer sind die Administratoren — ein vorher angelegter Ordner eines anderen Benutzers wird übernommen
+# Über die SIDs, nicht die Namen: Auf deutschem Windows heißt die Gruppe „VORDEFINIERT\Administratoren",
+# „BUILTIN\Administrators" ist dort unbekannt (IdentityNotMappedException, Test-PC 2026-11-19)
+$sidAdmins = New-Object System.Security.Principal.SecurityIdentifier('S-1-5-32-544')
+$sidSystem = New-Object System.Security.Principal.SecurityIdentifier('S-1-5-18')
 $acl = New-Object System.Security.AccessControl.DirectorySecurity
-$acl.SetOwner((New-Object System.Security.Principal.NTAccount('BUILTIN\Administrators')))
+$acl.SetOwner($sidAdmins)
 $acl.SetAccessRuleProtection($true, $false)
-foreach ($wer in @('NT AUTHORITY\SYSTEM', 'BUILTIN\Administrators')) {
+foreach ($wer in @($sidSystem, $sidAdmins)) {
   $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($wer, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')))
 }
 Set-Acl -LiteralPath $ordner -AclObject $acl
