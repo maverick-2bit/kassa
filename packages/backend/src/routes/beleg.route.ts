@@ -49,7 +49,7 @@ import { baueBonRouting, ladeKasseRoutingAusnahmen, ladeKategorieRoutingZeilen, 
 import { hatBonRouting } from '@kassa/shared'
 import { baueZBon, baueKassensturzBon } from '../services/escpos/layout.js'
 import { listeKassenbuchBuchungen } from '../services/kassenbuch.service.js'
-import { pruefeKasseGehoertZuMandant } from '../auth/scope.js'
+import { pruefeKasseErlaubt, pruefeKasseGehoertZuMandant } from '../auth/scope.js'
 import { and, eq, inArray } from 'drizzle-orm'
 import { artikel, belege, kassen, kategorien, mandanten } from '../db/schema.js'
 import {
@@ -130,6 +130,21 @@ async function pruefeKasseScope(
   const ok = await pruefeKasseGehoertZuMandant(deps.db, kasseId, request.user.mandantId)
   if (!ok) {
     void reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
+    return false
+  }
+  return true
+}
+
+/** Mandant-Scope UND Kassen-Zuordnung des Benutzers: Belege ansehen, stornieren, Spezialbelege */
+async function pruefeKasseZugriff(
+  request: FastifyRequest,
+  reply:   FastifyReply,
+  deps:    BelegServiceDeps,
+  kasseId: string,
+): Promise<boolean> {
+  if (!(await pruefeKasseScope(request, reply, deps, kasseId))) return false
+  if (!(await pruefeKasseErlaubt(deps.db, kasseId, request.user))) {
+    void reply.status(403).send({ fehler: 'Diese Kasse ist dir nicht zugeordnet' })
     return false
   }
   return true
@@ -263,7 +278,7 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
   fastify.post('/belege/storno', guard, async (request, reply) => {
     const parsed = StornobelegInputSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
-    if (!(await pruefeKasseScope(request, reply, opts.deps, parsed.data.kasseId))) return
+    if (!(await pruefeKasseZugriff(request, reply, opts.deps, parsed.data.kasseId))) return
 
     // Freigabe-Schwelle: gegen den Betrag des zu stornierenden Belegs prüfen,
     // BEVOR signiert wird. Der Storno selbst bleibt Kellner-Funktion — es muss
@@ -323,21 +338,21 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
   fastify.post('/belege/nullbeleg', guard, async (request, reply) => {
     const parsed = NullbelegInputSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
-    if (!(await pruefeKasseScope(request, reply, opts.deps, parsed.data.kasseId))) return
+    if (!(await pruefeKasseZugriff(request, reply, opts.deps, parsed.data.kasseId))) return
     return fuehreAus(fastify, reply, opts.deps, () => erstelleNullbeleg(parsed.data, opts.deps))
   })
 
   fastify.post('/belege/monatsbeleg', guard, async (request, reply) => {
     const parsed = MonatsbelegInputSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
-    if (!(await pruefeKasseScope(request, reply, opts.deps, parsed.data.kasseId))) return
+    if (!(await pruefeKasseZugriff(request, reply, opts.deps, parsed.data.kasseId))) return
     return fuehreAus(fastify, reply, opts.deps, () => erstelleMonatsbeleg(parsed.data, opts.deps))
   })
 
   fastify.post('/belege/jahresbeleg', guard, async (request, reply) => {
     const parsed = JahresbelegInputSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
-    if (!(await pruefeKasseScope(request, reply, opts.deps, parsed.data.kasseId))) return
+    if (!(await pruefeKasseZugriff(request, reply, opts.deps, parsed.data.kasseId))) return
     return fuehreAus(fastify, reply, opts.deps, () => erstelleJahresbeleg(parsed.data, opts.deps))
   })
 
@@ -434,7 +449,7 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
   fastify.get('/belege/seite', guard, async (request, reply) => {
     const parsed = BelegSucheQuerySchema.safeParse(request.query)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
-    if (!(await pruefeKasseScope(request, reply, opts.deps, parsed.data.kasseId))) return
+    if (!(await pruefeKasseZugriff(request, reply, opts.deps, parsed.data.kasseId))) return
     const { typen, ...rest } = parsed.data
     const seite = await sucheBelege(opts.deps.db, request.user.mandantId, {
       ...rest,
@@ -446,7 +461,7 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
   fastify.get('/belege', guard, async (request, reply) => {
     const parsed = ListQuerySchema.safeParse(request.query)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
-    if (!(await pruefeKasseScope(request, reply, opts.deps, parsed.data.kasseId))) return
+    if (!(await pruefeKasseZugriff(request, reply, opts.deps, parsed.data.kasseId))) return
     const liste = await listeBelege(opts.deps.db, parsed.data.kasseId, {
       ...(parsed.data.limit   !== undefined && { limit:   parsed.data.limit }),
       ...(parsed.data.kundeId !== undefined && { kundeId: parsed.data.kundeId }),

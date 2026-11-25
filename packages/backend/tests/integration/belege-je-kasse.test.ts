@@ -17,9 +17,10 @@
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import bcrypt from 'bcryptjs'
+import { eq } from 'drizzle-orm'
 import type { BelegResponse, BelegSeite } from '@kassa/shared'
 import type { FinanzOnlineClient } from '@kassa/rksv'
-import { users } from '../../src/db/schema.js'
+import { userKassen, users } from '../../src/db/schema.js'
 import { buildTestServer, type TestServer, TEST_SETUP_TOKEN } from '../helpers/testServer.js'
 import { erstelleIntegrationsDb, type IntegrationsDb } from './helpers/integrationsDb.js'
 
@@ -260,6 +261,75 @@ describe('Belege je Kasse (Integration, echtes PostgreSQL)', () => {
     // Betragssuche findet Original und Storno (negativer Betrag)
     const nachBetrag = await seiteOk({ kasseId: kellnerKasse, suche: '7,77' })
     expect(nachBetrag.belege.map(b => b.id).sort()).toEqual([original.id, stornoBeleg.id].sort())
+  })
+
+  describe('Kassen-Zuordnung des Benutzers', () => {
+    const RECHTE = ['kasse', 'belege.lesen', 'belege.stornieren']
+    let mandantA: string
+
+    async function benutzer(name: string, kassen: string[], rechte = RECHTE): Promise<string> {
+      const email = `${name}@belege-je-kasse.at`
+      const [u] = await idb.db.insert(users).values({
+        mandantId: mandantA, email, passwordHash: bcrypt.hashSync(PASSWORT, 4), name, rolle: 'kellner', berechtigungen: rechte,
+      }).returning()
+      for (const kasseId of kassen) await idb.db.insert(userKassen).values({ userId: u!.id, kasseId })
+      return (await login(email)).token
+    }
+    const post = (token: string, pfad: string, payload: Record<string, unknown>) =>
+      srv.fastify.inject({ method: 'POST', url: `/api/belege/${pfad}`, headers: auth(token), payload })
+
+    beforeAll(async () => { mandantA = (await login('admin1@belege-je-kasse.at')).mandant.id })
+
+    it('zugeordnet nur Kellner-Kasse: Barkasse gesperrt beim Ansehen, Storno und bei Spezialbelegen — nichts wird signiert', async () => {
+      const t = await benutzer('nur-kellner', [kellnerKasse])
+      expect((await seite(t, { kasseId: kellnerKasse })).statusCode).toBe(200)
+
+      const vorher = (await seiteOk({ kasseId: barkasse })).gesamt
+      const gesperrt = [
+        await seite(t, { kasseId: barkasse }),
+        await srv.fastify.inject({ method: 'GET', url: `/api/belege?kasseId=${barkasse}`, headers: auth(t) }),
+        await post(t, 'storno', { kasseId: barkasse, verweisBelegId: verkaufe[0]!.id }),
+        await post(t, 'nullbeleg', { kasseId: barkasse }),
+        await post(t, 'monatsbeleg', { kasseId: barkasse }),
+        await post(t, 'jahresbeleg', { kasseId: barkasse }),
+      ]
+      for (const res of gesperrt) {
+        expect(res.statusCode, res.body).toBe(403)
+        expect(res.json().fehler).toMatch(/nicht zugeordnet/)
+      }
+      expect((await seiteOk({ kasseId: barkasse })).gesamt).toBe(vorher)
+      // Fremder Mandant bleibt 404 (verrät nicht, dass es die Kasse gibt)
+      expect((await seite(t, { kasseId: kasseB })).statusCode).toBe(404)
+    })
+
+    it('auf der zugeordneten Kasse läuft alles weiter (Storno)', async () => {
+      const t = await benutzer('storniert', [kellnerKasse])
+      const beleg = await verkauf(tokenA, kellnerKasse, 310)
+      expect((await post(t, 'storno', { kasseId: kellnerKasse, verweisBelegId: beleg.id })).statusCode).toBe(201)
+    })
+
+    it('eine geänderte Zuordnung gilt sofort, ohne neue Anmeldung', async () => {
+      const t = await benutzer('wechselt', [kellnerKasse])
+      expect((await seite(t, { kasseId: barkasse })).statusCode).toBe(403)
+      await idb.db.update(userKassen).set({ kasseId: barkasse }).where(eq(
+        userKassen.userId, (await idb.db.select({ id: users.id }).from(users).where(eq(users.name, 'wechselt')))[0]!.id,
+      ))
+      expect((await seite(t, { kasseId: barkasse })).statusCode).toBe(200)
+      expect((await seite(t, { kasseId: kellnerKasse })).statusCode).toBe(403)
+    })
+
+    it('Einstellungs-Recht: alle Kassen trotz Zuordnung; ohne jede Zuordnung nicht eingeschränkt', async () => {
+      const chef = await benutzer('chef', [kellnerKasse], [...RECHTE, 'einstellungen'])
+      expect((await seite(chef, { kasseId: barkasse })).statusCode).toBe(200)
+      const ohne = await benutzer('ohne-zuordnung', [])
+      expect((await seite(ohne, { kasseId: barkasse })).statusCode).toBe(200)
+    })
+
+    it('Altbestand: eine zugeordnete Kasse eines anderen Mandanten zählt nicht als Zuordnung', async () => {
+      const t = await benutzer('altbestand', [kasseB])
+      expect((await seite(t, { kasseId: barkasse })).statusCode).toBe(200)
+      expect((await seite(t, { kasseId: kasseB })).statusCode).toBe(404)
+    })
   })
 
   it('Belegtypen-Filter (Fälligkeit Monatsbeleg)', async () => {
