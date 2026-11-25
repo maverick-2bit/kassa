@@ -489,7 +489,7 @@ export const HILFE_THEMEN: HilfeThema[] = [
     pfade: ['/belege'],
     stichworte: ['storno', 'bon', 'rechnung', 'jahresbeleg', 'nullbeleg', 'kontrollbeleg', 'nachdruck', 'zurückholen', 'kellner'],
     schritte: [
-      'Oben die Kasse wählen: jede Kasse (Barkasse, Kellner-Gerät …) hat ihre eigenen Belege und Nummern. Vorausgewählt ist die Kasse dieses Geräts.',
+      'Oben die Kasse wählen: jede Kasse (Barkasse, Kellner-Gerät …) hat ihre eigenen Belege und Nummern. Ohne Einstellungs-Recht siehst du nur die dir zugeordneten Kassen (Benutzerverwaltung → Kassen-Zuordnung). Vorausgewählt ist die Kasse dieses Geräts.',
       'Belege suchen: unter „Suche" Belegnummer, Betrag (z. B. 12,50) oder Kunde eingeben, dazu „Von"/„Bis" und den Kunden-Filter; „Filter zurücksetzen" zeigt wieder alle.',
       'Mit „Ältere →" und „← Neuere" blätterst du durch alle Belege der Kasse.',
       'Beleg anklicken, um Details zu sehen. „Ausgeben" druckt den Bon nach oder erzeugt die A4-Rechnung bzw. eine E-Mail.',
@@ -510,7 +510,8 @@ export const HILFE_THEMEN: HilfeThema[] = [
         schritte: [
           'Beim falschen Beleg „Zurückholen" wählen.',
           'Die Kassa storniert ihn wie oben (gegebenenfalls mit Freigabe-PIN) und legt seine Positionen in den Warenkorb dieses Geräts.',
-          'Im Warenkorb korrigieren und wie gewohnt neu kassieren.',
+          'Im Warenkorb korrigieren und wie gewohnt neu kassieren. Bis dahin bleibt er auf diesem Gerät gespeichert, auch nach dem Neuladen; „Verwerfen" fragt nach.',
+          'Belege, die mit Gutschein oder auf Kredit bezahlt wurden, lassen sich nicht zurückholen. Eine Kartenzahlung buchst du am Terminal selbst zurück.',
           'Die Positionen kommen mit Bezeichnung, Preis und Steuersatz wie gebucht zurück. Lagerstand und Küchenbons werden dabei nicht noch einmal gebucht.',
         ],
       },

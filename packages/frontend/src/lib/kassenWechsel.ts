@@ -44,6 +44,24 @@ export function umschaltKassen(opts: {
 }
 
 /**
+ * Die Kassen, deren Belege dieser Benutzer sieht (Auswertung → Belege) — dieselbe Regel wie beim Umschalten,
+ * nur inklusive stillgelegter Kassen (ihre Belege bleiben aufzubewahren). Ohne Einstellungs-Recht: die zugeordneten
+ * Kassen; ohne jede Zuordnung nur die Kasse dieses Geräts. Das Backend prüft die Zuordnung selbst
+ * (auth/scope.ts pruefeKasseErlaubt).
+ */
+export function belegKassen<K extends { id: string }>(opts: {
+  alleErlaubt:    boolean
+  serverListe:    readonly K[] | undefined
+  zugeordneteIds: readonly string[]
+  geraeteKasseId: string
+}): K[] {
+  const liste = opts.serverListe ?? []
+  if (opts.alleErlaubt) return [...liste]
+  const erlaubt = opts.zugeordneteIds.length > 0 ? opts.zugeordneteIds : [opts.geraeteKasseId]
+  return liste.filter(k => erlaubt.includes(k.id))
+}
+
+/**
  * Wohin geht es nach dem Wechsel? Ein einzelner offener Tisch gehört zur bisherigen Kasse — zur neuen
  * führt die Tischübersicht. Alles andere bleibt auf derselben Seite.
  */

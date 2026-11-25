@@ -8,7 +8,9 @@ import { test, expect, type APIRequestContext, type Page } from '@playwright/tes
  *  - „Ausgeben" öffnet den Ausgabe-Dialog (Bon, Rechnung, E-Mail)
  *  - Storno eines Belegs der Kellner-Kasse vom Gerät der Barkasse aus: der Stornobeleg landet in der
  *    Kette der Kellner-Kasse, die Zeile zeigt „storniert (#…)"
- *  - „Zurückholen": Storno auf der eigenen Kasse + Positionen im Warenkorb dieses Geräts
+ *  - „Zurückholen": Storno auf der eigenen Kasse + Positionen im Warenkorb dieses Geräts; der Warenkorb übersteht Neuladen,
+ *    Seitenwechsel und eine verlorene Storno-Antwort und geht nur nach Rückfrage verloren; nicht bei Gutschein/Kredit
+ *  - ohne Einstellungs-Recht nur die zugeordneten Kassen
  *
  * Liegt am Ende der Suite (zzz-): legt eine Kasse an und legt sie am Schluss still.
  */
@@ -65,7 +67,7 @@ async function anmelden(page: Page, login: Login, kasseId: string) {
   })
 }
 
-test('Belege je Kasse: Auswahl, Suche, Ausgeben, Storno auf der Kellner-Kasse, Zurückholen in den Warenkorb', async ({ page, request }) => {
+test('Belege je Kasse: Auswahl, Suche, Ausgeben, Storno auf der Kellner-Kasse, Zurückholen in den Warenkorb', async ({ page, request, browser }) => {
   const login = await adminLogin(request)
   const auth = { Authorization: `Bearer ${login.token}` }
   const p = `Bjk${Date.now() % 1_000_000}`
@@ -96,7 +98,7 @@ test('Belege je Kasse: Auswahl, Suche, Ausgeben, Storno auf der Kellner-Kasse, Z
 
     const kellnerBeleg = await verkauf(kellner.kasseId, `${p} Spritzer`, 1777)
     const schnitzel    = await verkauf(barkasse, `${p} Schnitzel`, 4321)
-    await verkauf(barkasse, `${p} Melange`, 330)
+    const melange      = await verkauf(barkasse, `${p} Melange`, 330)
 
     await anmelden(page, login, barkasse)
     await page.goto('/belege')
@@ -163,9 +165,90 @@ test('Belege je Kasse: Auswahl, Suche, Ausgeben, Storno auf der Kellner-Kasse, Z
     const barStorno = await seite({ kasseId: barkasse, typen: 'Barzahlungsbeleg', suche: '43,21' })
     expect(barStorno.belege.find(b => b.id === schnitzel.id)?.storniertDurch).toBeTruthy()
 
-    // Erneutes Öffnen der Kasse holt den Beleg nicht noch einmal
+    // Der Storno ist gebucht: der Warenkorb übersteht Neuladen und Seitenwechsel — samt Änderungen
+    const hinweis = page.getByTestId('zurueckgeholt-hinweis')
+    const zeile   = page.getByText(`${p} Schnitzel`).first()
+    await page.getByRole('button', { name: '+', exact: true }).first().click()           // Menge 2
+    await expect(page.getByText(/86,42/).first()).toBeVisible()
     await page.reload()
-    await expect(page.getByTestId('zurueckgeholt-hinweis')).toHaveCount(0)
+    await expect(hinweis).toContainText(`#${schnitzel.belegNummer}`)
+    await expect(zeile).toBeVisible()
+    await expect(page.getByText(/86,42/).first()).toBeVisible()
+    await page.goto('/belege')
+
+    // Ein zweiter Beleg darf ihn nicht überschreiben
+    await page.getByTestId(`beleg-zeile-${melange.belegNummer}`).getByRole('button', { name: 'Zurückholen' }).click()
+    await expect(page.getByTestId('zurueckholen-gesperrt')).toContainText(`#${schnitzel.belegNummer}`)
+    await expect(page.getByRole('button', { name: 'Stornieren und zurückholen' })).toBeDisabled()
+    await page.getByRole('button', { name: 'Abbrechen' }).click()
+
+    // „Leeren" und „Angebot" fragen nach; Abbrechen lässt den Warenkorb stehen
+    await page.goto('/kasse')
+    for (const knopf of ['Leeren', 'Angebot', 'Verwerfen']) {
+      const frage = new Promise<string>(resolve => page.once('dialog', d => { resolve(d.message()); void d.dismiss() }))
+      await page.getByRole('button', { name: knopf, exact: true }).click()
+      expect(await frage).toContain('bereits storniert')
+      await expect(zeile).toBeVisible()
+    }
+
+    // Kassieren erledigt ihn — danach kommt er nicht wieder
+    await page.getByRole('button', { name: /^Bar \(/ }).click()
+    await expect(hinweis).toHaveCount(0)
+    await page.reload()
+    await expect(page.getByRole('button', { name: 'Leeren', exact: true }).or(page.getByText(/Warenkorb/).first()).first()).toBeVisible()
+    await expect(hinweis).toHaveCount(0)
+    const neu = await seite({ kasseId: barkasse, typen: 'Barzahlungsbeleg', suche: '86,42' })
+    expect(neu.gesamt).toBe(1)
+
+    // ---- Antwort auf den Storno geht verloren: gebucht ist er trotzdem, der Warenkorb kommt an ----
+    const verloren = await verkauf(barkasse, `${p} Verloren`, 5151)
+    await page.goto('/belege')
+    let stornos = 0
+    await page.route('**/api/belege/storno', async route => {
+      stornos++
+      await route.fetch()
+      await route.abort('connectionreset')
+    })
+    await page.getByTestId(`beleg-zeile-${verloren.belegNummer}`).getByRole('button', { name: 'Zurückholen' }).click()
+    await page.getByRole('button', { name: 'Stornieren und zurückholen' }).click()
+    await expect(page).toHaveURL(/\/kasse$/, { timeout: 20_000 })
+    await expect(hinweis).toContainText(`#${verloren.belegNummer}`)
+    await expect(page.getByText(`${p} Verloren`).first()).toBeVisible()
+    expect(stornos).toBe(1)
+    await page.unroute('**/api/belege/storno')
+    page.once('dialog', d => void d.accept())
+    await page.getByRole('button', { name: 'Verwerfen', exact: true }).click()
+    await expect(hinweis).toHaveCount(0)
+
+    // ---- Mit Gutschein/Kredit bezahlt: Zurückholen gesperrt, Stornieren geht ----
+    const gutschein = await post<BelegRes>('/api/belege/barzahlung', {
+      kasseId: barkasse, keinAutodruck: true,
+      positionen: [{ bezeichnung: `${p} Gutschein`, preisBruttoCent: 6161, mwstSatz: 'normal', menge: 1 }],
+      zahlung:    { barCent: 161, karteCent: 0, sonstigeCent: 6000 },
+    })
+    await page.goto('/belege')
+    await page.getByTestId(`beleg-zeile-${gutschein.belegNummer}`).getByRole('button', { name: 'Zurückholen' }).click()
+    await expect(page.getByTestId('zurueckholen-gesperrt')).toContainText('doppelt zahlen')
+    await expect(page.getByRole('button', { name: 'Stornieren und zurückholen' })).toBeDisabled()
+
+    // ---- Benutzer ohne Einstellungs-Recht: nur die zugeordnete Kasse ----
+    const email = `${p.toLowerCase()}@test.at`
+    const user = await post<{ id: string }>('/api/users', {
+      name: `${p} Bedienung`, email, passwort: 'bedienung-passwort-123', rolle: 'kellner',
+      berechtigungen: ['kasse', 'belege.lesen', 'belege.stornieren'], kassenIds: [kellner.kasseId],
+    })
+    aufraeumen.push(() => request.delete(`/api/users/${user.id}`, { headers: auth }))
+    const res = await loginAbwarten(request, email, 'bedienung-passwort-123')
+    expect(res.ok(), await res.text()).toBe(true)
+    const bedienung = (await res.json()) as Login
+    const ctx = await browser.newContext({ serviceWorkers: 'block' })
+    try {
+      const seiteK = await ctx.newPage()
+      await anmelden(seiteK, bedienung, kellner.kasseId)
+      await seiteK.goto('/belege')
+      await expect(seiteK.getByTestId('belege-tabelle')).toContainText('17,77')
+      await expect(seiteK.getByTestId('kassen-auswahl')).toHaveCount(0)                  // nur eine Kasse → keine Reiter
+    } finally { await ctx.close() }
   } finally {
     for (const f of aufraeumen.reverse()) await f().catch(() => {})
   }

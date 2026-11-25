@@ -7,7 +7,10 @@ import { getKasseIdentity } from '../lib/kasse'
 import { getAuth, hasBerechtigung } from '../lib/auth'
 import { formatPreis, formatDatum } from '../lib/format'
 import { druckeRechnung } from '../lib/rechnung'
-import { merkeZurueckgeholt, positionenAusBeleg } from '../lib/zurueckgeholt'
+import { belegKassen } from '../lib/kassenWechsel'
+import {
+  leseOffenenStorno, leseZurueckgeholt, merkeZurueckgeholt, positionenAusBeleg, vergissZurueckgeholt, zurueckholenGesperrt,
+} from '../lib/zurueckgeholt'
 import { Modal } from '../components/ui/Modal'
 import { Button } from '../components/ui/Button'
 import { BonAnzeige } from '../components/BonAnzeige'
@@ -83,6 +86,13 @@ export function BelegePage() {
     queryFn:   () => kasseApi.liste(),
     staleTime: 1000 * 60,
   })
+  // Wie der Kassen-Umschalter: ohne Einstellungs-Recht nur die zugeordneten Kassen (das Backend prüft es auch)
+  const sichtbareKassen = belegKassen({
+    alleErlaubt:    hasBerechtigung('einstellungen'),
+    serverListe:    kassen.data,
+    zugeordneteIds: getAuth()?.user.kassenIds ?? [],
+    geraeteKasseId: identity.kasseId,
+  })
   const gewaehlteKasse = kassen.data?.find(k => k.id === kasseId)
   const kasseLabel = gewaehlteKasse ? kassenName(gewaehlteKasse) : 'diese Kasse'
   const kasseAusserBetrieb = !!gewaehlteKasse?.ausserBetriebAm
@@ -134,30 +144,75 @@ export function BelegePage() {
     setAktionsfehler(null)
   }
 
+  /** Der Storno ist gebucht: Vormerkung freigeben, die Kasse übernimmt den Warenkorb */
+  const holeInDieKasse = (stornoNummer: number) => {
+    const offen = leseOffenenStorno(identity.kasseId)
+    if (offen) merkeZurueckgeholt(identity.kasseId, { ...offen, status: 'bereit', stornoNummer })
+    navigate('/kasse')
+  }
+
+  // Storno fürs Zurückholen ohne Antwort (Netz weg): in der Belegliste nachsehen, ob er gebucht ist
+  const [offenerStorno, setOffenerStorno] = useState(() => leseOffenenStorno(identity.kasseId))
+  const klaerung = useQuery({
+    queryKey: ['belege', offenerStorno?.belegKasseId, 'klaerung', offenerStorno?.belegId],
+    queryFn:  () => belegApi.seite({ kasseId: offenerStorno!.belegKasseId, suche: `#${offenerStorno!.belegNummer}`, limit: 200 }),
+    enabled:  !!offenerStorno && !stornoAuftrag,
+    refetchInterval: 3000,
+  })
+  const gebuchterStorno = klaerung.data?.belege.find(b => b.id === offenerStorno?.belegId)?.storniertDurch
+  useEffect(() => {
+    if (!offenerStorno || !gebuchterStorno) return
+    setOffenerStorno(null)
+    holeInDieKasse(gebuchterStorno.belegNummer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offenerStorno, gebuchterStorno])
+
   const stornoMutation = useMutation({
-    mutationFn: (auftrag: StornoAuftrag) => belegApi.storno({
-      kasseId:        auftrag.kasseId,
-      verweisBelegId: auftrag.beleg.id,
-      ...(stornoGrund.trim() && { grund: stornoGrund.trim() }),
-      ...(freigabePin && { freigabePin }),
-    }),
+    mutationFn: async (auftrag: StornoAuftrag) => {
+      // Warenkorb VOR dem Storno sichern: geht das nicht, darf auch nicht storniert werden
+      if (auftrag.art === 'zurueckholen' && !merkeZurueckgeholt(identity.kasseId, {
+        status:           'offen',
+        zeit:             Date.now(),
+        belegId:          auftrag.beleg.id,
+        belegNummer:      auftrag.beleg.belegNummer,
+        belegKasseId:     auftrag.kasseId,
+        kasseBezeichnung: kasseLabel,
+        positionen:       positionenAusBeleg(auftrag.beleg),
+        ...(auftrag.beleg.kunde && { kunde: auftrag.beleg.kunde }),
+      })) {
+        throw new ApiError(0, 'Dieses Gerät kann den Warenkorb nicht speichern (Speicher gesperrt oder voll) — es wurde nichts storniert.')
+      }
+      return belegApi.storno({
+        kasseId:        auftrag.kasseId,
+        verweisBelegId: auftrag.beleg.id,
+        ...(stornoGrund.trim() && { grund: stornoGrund.trim() }),
+        ...(freigabePin && { freigabePin }),
+      })
+    },
     onSuccess:  (storno, auftrag) => {
       void queryClient.invalidateQueries({ queryKey: ['belege', auftrag.kasseId] })
       stornoZuruecksetzen()
       if (auftrag.art === 'zurueckholen') {
-        merkeZurueckgeholt({
-          belegNummer:      auftrag.beleg.belegNummer,
-          kasseBezeichnung: kasseLabel,
-          stornoNummer:     storno.belegNummer,
-          positionen:       positionenAusBeleg(auftrag.beleg),
-          ...(auftrag.beleg.kunde && { kunde: auftrag.beleg.kunde }),
-        })
-        navigate('/kasse')
+        setOffenerStorno(null)
+        holeInDieKasse(storno.belegNummer)
         return
       }
       setNeuErzeugt(storno)
     },
-    onError: (err) => {
+    onError: (err, auftrag) => {
+      if (auftrag.art === 'zurueckholen') {
+        const ohneAntwort   = !(err instanceof ApiError) || err.status >= 500
+        // Zweiter Versuch nach verlorener Antwort: „bereits storniert" kann unser eigener Storno sein
+        const vielleichtWir = err instanceof ApiError && err.status === 409 && offenerStorno?.belegId === auftrag.beleg.id
+        if (ohneAntwort || vielleichtWir) {
+          // Der Storno kann gebucht sein → über die Belegliste klären statt neu zu versuchen
+          stornoZuruecksetzen()
+          setOffenerStorno(leseOffenenStorno(identity.kasseId))
+          void queryClient.invalidateQueries({ queryKey: ['belege', auftrag.kasseId] })
+          return
+        }
+        vergissZurueckgeholt(identity.kasseId)
+      }
       // Über der Freigabeschwelle: PIN-Feld einblenden statt nur zu meckern.
       if (err instanceof ApiError && err.code === 'freigabe_erforderlich') {
         setFreigabeNoetig(true)
@@ -205,6 +260,8 @@ export function BelegePage() {
   const bisNr       = Math.min(offset + SEITENGROESSE, gesamt)
 
   const oeffneStorno = (b: BelegListeEintrag, art: StornoArt) => {
+    // Ein gewöhnlicher Storno darf eine alte Vormerkung nicht zum „Zurückholen" machen
+    if (art === 'storno' && offenerStorno) { vergissZurueckgeholt(identity.kasseId); setOffenerStorno(null) }
     setStornoAuftrag({ beleg: b, kasseId, art })
     setStornoGrund('')
     setFreigabePin('')
@@ -213,6 +270,11 @@ export function BelegePage() {
   }
 
   const stornoBeleg = stornoAuftrag?.beleg
+  /** Grund, warum sich der gewählte Beleg nicht zurückholen lässt */
+  const wartender  = leseZurueckgeholt(identity.kasseId)
+  const sperrGrund = stornoAuftrag?.art !== 'zurueckholen' ? null
+    : zurueckholenGesperrt(stornoAuftrag.beleg)
+      ?? (wartender ? `Im Warenkorb liegt noch der zurückgeholte Beleg #${wartender.belegNummer}. Bitte zuerst neu kassieren oder verwerfen.` : null)
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 sm:py-8 space-y-6">
@@ -224,10 +286,17 @@ export function BelegePage() {
         </p>
       </div>
 
+      {offenerStorno && !stornoAuftrag && (
+        <div role="status" className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+          Keine Antwort auf den Storno von Beleg #{offenerStorno.belegNummer}. Es wird geprüft, ob er gebucht ist; dann geht es
+          in der Kasse weiter. Steht der Beleg weiter ohne „storniert" in der Liste, hole ihn noch einmal zurück.
+        </div>
+      )}
+
       {/* Kassen-Auswahl: jede Kasse für sich (eigene RKSV-Kette) */}
-      {kassen.data && kassen.data.length > 1 && (
+      {sichtbareKassen.length > 1 && (
         <div role="tablist" aria-label="Kasse" className="flex flex-wrap gap-2" data-testid="kassen-auswahl">
-          {kassen.data.map(k => {
+          {sichtbareKassen.map(k => {
             const aktiv = k.id === kasseId
             return (
               <button
@@ -580,11 +649,19 @@ export function BelegePage() {
       >
         {stornoAuftrag && stornoBeleg && (
           <div className="space-y-4">
+            {sperrGrund && (
+              <div data-testid="zurueckholen-gesperrt" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                {sperrGrund}
+              </div>
+            )}
             <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
               Es wird ein <strong>Stornobeleg</strong> mit negierten Beträgen auf <strong>{kasseLabel}</strong> erstellt
               (in deren RKSV-Kette). Diese Aktion kann nicht rückgängig gemacht werden.
               {stornoAuftrag.art === 'zurueckholen' && (
                 <> Danach liegen die Positionen im Warenkorb <strong>dieses Geräts</strong> — korrigieren und neu kassieren.</>
+              )}
+              {stornoBeleg.summeKarteCent !== 0 && (
+                <> Die Kartenzahlung wird dabei <strong>nicht</strong> am Terminal rückgebucht.</>
               )}
             </div>
             <dl className="space-y-1 text-sm">
@@ -638,7 +715,7 @@ export function BelegePage() {
                 Abbrechen
               </Button>
               <Button
-                disabled={freigabeNoetig && freigabePin.length < 4}
+                disabled={!!sperrGrund || (freigabeNoetig && freigabePin.length < 4)}
                 onClick={() => stornoMutation.mutate(stornoAuftrag)}
                 loading={stornoMutation.isPending}
               >
