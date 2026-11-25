@@ -59,7 +59,7 @@ export {
   KartenError, erkenneKartentyp, findeKarte, findeKarten, identitaetsBloecke, leseZertifikat, signiereMitKarte, pinBlockFormat2, statuswort, APDU,
 } from './see/karte/rk-chip.js'
 export type { ApduTransport, KartenLeser, KartenTyp, KartenFehlerArt, GefundeneKarte, SitzungsBedingung } from './see/karte/rk-chip.js'
-export { SignaturkartenEinheit, KartenbrueckeTransport, ATRUST_ZDA_ID } from './see/karte/einheit.js'
+export { SignaturkartenEinheit, KartenbrueckeTransport, ATRUST_ZDA_ID, KARTENBRUECKE_VERSION, istBrueckeVeraltet } from './see/karte/einheit.js'
 export type { SignaturkartenConfig, KartenbrueckeConfig } from './see/karte/einheit.js'
 export { SimulierteSignaturkarte, SIMULATOR_ATR } from './see/karte/simulator.js'
 export type { SimulatorOptionen } from './see/karte/simulator.js'

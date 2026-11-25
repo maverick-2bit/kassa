@@ -14,6 +14,7 @@
 
 import { createHash, createPrivateKey, randomBytes } from 'node:crypto'
 import { generateSEE } from '../../see.js'
+import { KARTENBRUECKE_VERSION } from './einheit.js'
 import { KartenError, pinBlockFormat2, type ApduTransport, type KartenLeser, type SitzungsBedingung } from './rk-chip.js'
 
 export const SIMULATOR_ATR = '3BDF97008131FE4680319052410464050401AC73D622C0F9'
@@ -111,6 +112,8 @@ export class SimulierteSignaturkarte implements ApduTransport {
   gesteckt = true
   /** Kartenbrücke antwortet (false = Dienst weg / PC-Leser abgesteckt) */
   erreichbar = true
+  /** Version, die die (simulierte) Kartenbrücke meldet */
+  brueckenVersion: string | null = String(KARTENBRUECKE_VERSION)
   /** Verbleibende PIN-Versuche */
   restVersuche: number
   /** Zähler zum Nachprüfen in Tests */
@@ -150,6 +153,11 @@ export class SimulierteSignaturkarte implements ApduTransport {
   }
 
   get leserName(): string { return this.opts.leserName }
+
+  version(): Promise<string | null> {
+    if (!this.erreichbar) return Promise.reject(new KartenError('Kartenbrücke nicht erreichbar (Simulator)', 'nicht_erreichbar'))
+    return Promise.resolve(this.brueckenVersion)
+  }
 
   leser(): Promise<KartenLeser[]> {
     if (!this.erreichbar) return Promise.reject(new KartenError('Kartenbrücke nicht erreichbar (Simulator)', 'nicht_erreichbar'))

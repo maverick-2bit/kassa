@@ -12,7 +12,7 @@
  *   - zurück auf die Software-SEE: neues passendes Zertifikat, Belege wieder signiert
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, afterEach, beforeEach, vi } from 'vitest'
 import { desc, eq } from 'drizzle-orm'
 import {
   SimulierteSignaturkarte,
@@ -57,6 +57,7 @@ describe('SEE: Signaturkarte über die Kartenbrücke (Integration, echtes Postgr
   const leser: ApduTransport = {
     leser: () => gesteckt.leser(),
     sende: (l, apdus, bedingungen) => gesteckt.sende(l, apdus, bedingungen),
+    version: () => gesteckt.version(),
   }
 
   const auth = () => ({ authorization: `Bearer ${token}` })
@@ -107,6 +108,44 @@ describe('SEE: Signaturkarte über die Kartenbrücke (Integration, echtes Postgr
   })
 
   // ── Einrichten ────────────────────────────────────────────────────────────
+
+  describe('Kartenbrücke', () => {
+    const bruecke = (kopf: Record<string, string> = auth()) =>
+      srv.fastify.inject({ method: 'GET', url: `/api/kassen/${kasseId}/see/kartenbruecke`, headers: kopf })
+
+    afterEach(() => { karte.brueckenVersion = '2'; karte.erreichbar = true })
+
+    it('aktuelle Brücke: erreichbar, nicht veraltet, ohne die Karte anzufassen', async () => {
+      const res = await bruecke()
+      expect(res.statusCode).toBe(200)
+      expect(res.json()).toEqual({ eingerichtet: true, erreichbar: true, version: '2', erwartet: '2', veraltet: false })
+      expect(karte.pinPruefungen).toBe(0)
+    })
+
+    it('ältere Brücke bzw. Brücke ohne Angabe: veraltet', async () => {
+      karte.brueckenVersion = '1'
+      expect((await bruecke()).json()).toMatchObject({ erreichbar: true, version: '1', veraltet: true })
+      karte.brueckenVersion = null
+      expect((await bruecke()).json()).toMatchObject({ erreichbar: true, version: null, veraltet: true })
+    })
+
+    it('nicht erreichbare Brücke: Meldung statt Fehler 500', async () => {
+      karte.erreichbar = false
+      const res = await bruecke()
+      expect(res.statusCode).toBe(200)
+      expect(res.json()).toMatchObject({ erreichbar: false, veraltet: false, fehler: expect.stringContaining('nicht erreichbar') })
+    })
+
+    it('nur mit Verwaltungsrecht, nur für die eigene Kasse', async () => {
+      expect((await bruecke({})).statusCode).toBe(401)
+      const kellner = srv.authHeader({ rolle: 'kellner', berechtigungen: [] })
+      expect((await bruecke(kellner)).statusCode).toBe(403)
+      const fremd = await srv.fastify.inject({
+        method: 'GET', url: '/api/kassen/00000000-0000-4000-8000-000000000000/see/kartenbruecke', headers: auth(),
+      })
+      expect(fremd.statusCode).toBe(404)
+    })
+  })
 
   describe('Einrichten', () => {
     it('„Verbindung testen" ohne PIN: erkennt die Karte, liest das Zertifikat, keine PIN-Prüfung', async () => {

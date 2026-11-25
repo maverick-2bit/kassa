@@ -2992,6 +2992,13 @@ function SeeEinheitSektion() {
     if (konfig.data.atrustBenutzer) setBenutzer(konfig.data.atrustBenutzer)
   }, [konfig.data])
 
+  const bruecke = useQuery({
+    queryKey: ['kartenbruecke', identity.kasseId],
+    queryFn:  () => seeApi.kartenbruecke(identity.kasseId),
+    enabled:  typ === 'atrust_chip',
+    retry:    false,
+  })
+
   const eingabe = () => ({
     seeTyp: typ,
     ...(typ === 'atrust_hsm' ? {
@@ -3086,6 +3093,20 @@ function SeeEinheitSektion() {
             A-Trust a.sign RK CHIP im Kartenleser am Kassen-PC — signiert ohne Internet. Der Leser hängt über die
             Kartenbrücke an der Kassa (ops/kartenbruecke). Mehrere Kassen dürfen dieselbe Karte nutzen.
           </p>
+          {bruecke.data && !bruecke.data.erreichbar && (
+            <p role="alert" className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">
+              {bruecke.data.fehler ?? 'Die Kartenbrücke ist nicht erreichbar.'}
+            </p>
+          )}
+          {bruecke.data?.veraltet && (
+            <p role="alert" className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              Die Kartenbrücke am PC ist veraltet (Version {bruecke.data.version ?? 'unbekannt'}, aktuell {bruecke.data.erwartet}).
+              Das Update der Kassa erneuert sie nicht — bitte am Kassen-PC einmal Kassa-Setup ausführen.
+            </p>
+          )}
+          {bruecke.data?.erreichbar && !bruecke.data.veraltet && bruecke.data.version && (
+            <p className="text-xs text-ink-muted">Kartenbrücke: Version {bruecke.data.version} (aktuell)</p>
+          )}
           {konfig.data?.seeTyp === 'atrust_chip' && konfig.data.kartePinGesperrt && (
             <div role="alert" className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">
               Die Karte hat die gespeicherte PIN abgelehnt{konfig.data.kartePinHinweis ? ` (${konfig.data.kartePinHinweis})` : ''}.

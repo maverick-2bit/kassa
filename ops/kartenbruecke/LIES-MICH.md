@@ -31,13 +31,15 @@ Unterstützt werden:
 ## Einrichten
 
 1. Kartenleser anstecken (getestet: ACS ACR39U) und die Karte einlegen.
-2. Als Administrator ausführen:
+2. **Kassa-Setup** ausführen (online oder offline). Findet es einen Kartenleser und noch keine Brücke, fragt es, ob es sie
+   einrichten soll (Enter = nein). Ohne Rückfrage: `install.ps1 -Kartenbruecke`. Dann weiter mit Punkt 4, die Container startet Kassa-Setup selbst.
+   Auf einer schon laufenden Kassa geht es auch einzeln, als Administrator:
    ```powershell
    powershell -NoProfile -ExecutionPolicy Bypass -File C:\kassa-pos\ops\kartenbruecke\installiere-kartenbruecke.ps1
    ```
    Der Installer legt die Brücke nach `C:\Program Files\KassaPOS\Kartenbruecke` und richtet sie als geplante Aufgabe ein:
    Start mit Windows, unter SYSTEM, Neustart nach Absturz.
-   Er erzeugt den Schlüssel, trägt `KARTENBRUECKE_URL`/`KARTENBRUECKE_SCHLUESSEL` in die `.env` ein und
+   Er erzeugt den Schlüssel, trägt (ohne die übrigen Zeilen zu verändern) `KARTENBRUECKE_URL`/`KARTENBRUECKE_SCHLUESSEL` in die `.env` ein und
    zeigt im Selbsttest Leser und Karte an.
 3. Kassa neu starten: `docker compose up -d` (im Ordner der Kassa).
 4. **Neue Kassa:** Bei der Einrichtung unter **„Signatur (RKSV)"** die Möglichkeit **„Signaturkarte im Stick (lokal)"** wählen, dort
@@ -49,6 +51,20 @@ Unterstützt werden:
    - **„Karte prüfen (ohne PIN)":** zeigt Kartentyp und Zertifikat.
    - **PIN eintragen → „Speichern":** Die Kassa prüft die PIN mit **einer** Probesignatur. Erst dann speichert sie die PIN verschlüsselt, für alle Kassen mit dieser Karte.
    - Das Zertifikat der Karte muss auf die UID des Betriebs lauten.
+
+## Aktualisieren
+
+Die Brücke läuft außerhalb der Container und mit vollen Windows-Rechten. **„Jetzt aktualisieren" in der Kassa erneuert sie
+darum bewusst nicht.** Der Update-Container darf kein Programm austauschen, das unter SYSTEM läuft.
+
+- **Kassa-Setup** aktualisiert eine eingerichtete Brücke bei jedem Lauf. Schlüssel, Port, Karte und PIN bleiben.
+  Überspringen: `install.ps1 -OhneKartenbruecke`.
+- Ist die Brücke älter als die Kassa, steht das unter **Einstellungen → RKSV → Signaturerstellungseinheit**.
+- Wer `kartenbruecke.ps1` ändert, erhöht `$VERSION` und `KARTENBRUECKE_VERSION` (`packages/rksv/src/see/karte/einheit.ts`).
+  Ein Test hält beide gleich.
+
+**Nicht zurück auf einen Stand vor der Signaturkarte:** Ältere Versionen kennen die Karte nicht und signieren dann mit dem
+Software-Schlüssel, geben aber weiter das Kartenzertifikat an. Solche Belege sind ungültig.
 
 ## Die PIN
 
@@ -75,9 +91,11 @@ FinanzOnline: Die Einheit wird als `SIGNATURKARTE` mit `vda_id` `AT1` gemeldet.
   `node packages/rksv/scripts/signaturkarte-echttest.mjs http://127.0.0.1:47110 <schlüsseldatei>`
 - Entfernen: `installiere-kartenbruecke.ps1 -Entfernen`
 
+- Tests der Skripte (ohne Karte, ohne Installation): `powershell -NoProfile -ExecutionPolicy Bypass -File ops\kartenbruecke\test-kartenbruecke.ps1`
+
 Checkliste für den ersten Test unter Docker Desktop: [`TEST-PC.md`](TEST-PC.md).
 
 ## Bekannte Grenzen
 
 - Die Brücke gibt es nur für Windows. Für Linux und Raspberry Pi fehlt die Anbindung über `pcscd`.
-- Docker Desktop leitet `host.docker.internal` auf den PC weiter. Dass die Brücke, die nur auf 127.0.0.1 lauscht, dabei erreicht wird, ist auf dem Test-PC zu bestätigen.
+- Docker Desktop leitet `host.docker.internal` auf den PC weiter und erreicht die Brücke, obwohl sie nur auf 127.0.0.1 lauscht (Test-PC, 2026-11-19).

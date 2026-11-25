@@ -74,6 +74,14 @@ Am neuen Betrieb anmelden.
 
 - [ ] Nur Zeilen wie `Sitzung …: 9 APDUs, SW 9000 …`. Keine langen Hex-Folgen, keine PIN.
 
+## 8. Update der Brücke über Kassa-Setup
+
+Den Installer aus Punkt 1 noch einmal ausführen (er macht dasselbe wie Kassa-Setup):
+
+- [ ] Es erscheint „Kartenbrücke (RKSV-Signaturkarte) aktualisieren", „vorhandener Schlüssel bleibt" und „Brücke antwortet (Version 2)"
+- [ ] Danach geht ein Verkauf mit `_R1-AT1_` durch
+- [ ] Einstellungen → RKSV → Signaturerstellungseinheit zeigt „Kartenbrücke: Version 2 (aktuell)"
+
 ## Nicht testen
 
 Eine **falsche PIN** absichtlich probieren: Jeder Versuch zählt auf der echten Karte. Der Schutz dagegen ist mit dem

@@ -9,9 +9,10 @@ import {
   APDU, KartenError, SignaturkartenEinheit, SimulierteSignaturkarte, SIMULATOR_ATR,
   erkenneKartentyp, findeKarte, klassifiziereSeeFehler, leseZertifikat, pinBlockFormat2,
   signiereMitKarte, generateSEE, verifiziere, verifiziereQrCode, erstelleStartbeleg, identitaetsBloecke,
-  jwsSigningInput, p1363ZuDer, KartenbrueckeTransport,
+  jwsSigningInput, p1363ZuDer, KartenbrueckeTransport, KARTENBRUECKE_VERSION, istBrueckeVeraltet,
 } from '../src/index.js'
 import { createVerify } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 
 const fehler = async (p: Promise<unknown>): Promise<KartenError> => {
   try { await p } catch (e) { if (e instanceof KartenError) return e; throw e }
@@ -290,6 +291,29 @@ describe('KartenbrueckeTransport', () => {
       expect(e.art).toBe('pin_bereits_abgelehnt')
       expect(klassifiziereSeeFehler(e)).toBe('konfiguration')
     } finally { b1.schliessen(); b2.schliessen() }
+  })
+
+  it('Version der Brücke: gemeldet bzw. null, wenn sie keine nennt', async () => {
+    const neu = await brueckeMit(200, { leser: [], version: '7' })
+    const alt = await brueckeMit(200, { leser: [] })
+    try {
+      expect(await new KartenbrueckeTransport({ url: neu.url, schluessel: 's'.repeat(32) }).version()).toBe('7')
+      expect(await new KartenbrueckeTransport({ url: alt.url, schluessel: 's'.repeat(32) }).version()).toBeNull()
+    } finally { neu.schliessen(); alt.schliessen() }
+  })
+
+  it('veraltet: älter, ohne oder mit unlesbarer Angabe — gleich oder neuer nicht', () => {
+    expect(istBrueckeVeraltet(String(KARTENBRUECKE_VERSION - 1))).toBe(true)
+    expect(istBrueckeVeraltet(null)).toBe(true)
+    expect(istBrueckeVeraltet('abc')).toBe(true)
+    expect(istBrueckeVeraltet('')).toBe(true)
+    expect(istBrueckeVeraltet(String(KARTENBRUECKE_VERSION))).toBe(false)
+    expect(istBrueckeVeraltet(String(KARTENBRUECKE_VERSION + 1))).toBe(false)
+  })
+
+  it('KARTENBRUECKE_VERSION ist die Version des ausgelieferten kartenbruecke.ps1', () => {
+    const skript = readFileSync(new URL('../../../ops/kartenbruecke/kartenbruecke.ps1', import.meta.url), 'utf8')
+    expect(/^\$VERSION = '(\d+)'/m.exec(skript)?.[1]).toBe(String(KARTENBRUECKE_VERSION))
   })
 
   it('nicht erreichbare Brücke → nicht_erreichbar (Ausfall), nach Zeitlimit', async () => {

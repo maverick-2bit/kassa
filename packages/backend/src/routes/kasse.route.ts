@@ -11,7 +11,7 @@ import { z } from 'zod'
 import { FinanzOnlineCredentialsSchema, KasseBezeichnungUpdateSchema, SeeConfigUpdateSchema, WeitereKasseInputSchema, istErlaubteAtrustBasisUrl, type KasseListeItem, type WeitereKasseResponse } from '@kassa/shared'
 import { ATrustHsmEinheit, ATrustHsmError, erneuereSoftwareZertifikat } from '@kassa/rksv'
 import { gibKarteFrei } from '../services/karten-sperre.js'
-import { pruefeSignaturkarte as pruefeSignaturkarteService, type KartenPruefung } from '../services/signatur-einrichtung.service.js'
+import { pruefeKartenbruecke, pruefeSignaturkarte as pruefeSignaturkarteService, type KartenPruefung } from '../services/signatur-einrichtung.service.js'
 import { X509Certificate } from 'node:crypto'
 import { decryptPrivateKey, encryptPrivateKey } from '../crypto/master-key.js'
 import { legeWeitereKasseAn } from '../services/kasse.service.js'
@@ -368,6 +368,14 @@ export const kasseRoute: FastifyPluginAsync<KasseRouteOptions> = async (fastify,
       zertifikatSn:          kasse.seeZertifikatSn,
       zertifikatGueltigBis:  kasse.seeGueltigBis.toISOString(),
     })
+  })
+
+  /** GET /kassen/:id/see/kartenbruecke — läuft die Kartenbrücke am PC, und ist sie aktuell? (ohne Karte, ohne PIN) */
+  fastify.get('/kassen/:id/see/kartenbruecke', auth, async (request, reply) => {
+    if (!darfVerwalten(request.user)) return reply.status(403).send({ fehler: 'Keine Berechtigung' })
+    const kasse = await ladeKasse(uuidParam(request.params), request.user.mandantId)
+    if (!kasse) return reply.status(404).send({ fehler: 'Kasse nicht gefunden' })
+    return reply.send(await pruefeKartenbruecke(opts.belegDeps.kartenTransport))
   })
 
   /** POST /kassen/:id/see/test — Verbindung zur A-Trust-Einheit pruefen (ohne zu speichern) */

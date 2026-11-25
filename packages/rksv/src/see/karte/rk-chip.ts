@@ -57,6 +57,8 @@ export interface SitzungsBedingung {
 export interface ApduTransport {
   leser(): Promise<KartenLeser[]>
   sende(leser: string, apdus: Buffer[], bedingungen?: SitzungsBedingung[]): Promise<Buffer[]>
+  /** Version der Kartenbrücke (null = sie nennt keine). Fehlt bei Transporten ohne Brücke. */
+  version?(): Promise<string | null>
 }
 
 // ---------------------------------------------------------------------------

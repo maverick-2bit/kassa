@@ -49,6 +49,12 @@ param(
   [switch]$OhneFernwartung,
   # Bereits zugeordnetes Gerät erneut zuordnen (--reassign; ersetzt Zuordnung, Manager, Richtlinien)
   [switch]$FernwartungNeuZuordnen,
+
+  # ── Kartenbrücke (RKSV-Signaturkarte im Stick) — siehe ops/kartenbruecke/LIES-MICH.md ──
+  # Eine eingerichtete Brücke wird bei jedem Lauf aktualisiert. Neu einrichten ohne Rückfrage:
+  [switch]$Kartenbruecke,
+  # Kartenbrücken-Schritt überspringen
+  [switch]$OhneKartenbruecke,
   # NUR die geplanten Fernwartungs-Schritte anzeigen (Token maskiert) — tut sonst nichts
   [switch]$Trockenlauf
 )
@@ -428,6 +434,15 @@ if ($OhneDocker) {
   Schritt 'Testlauf (-OhneDocker): Docker-Build, Firewall und Start übersprungen'
   Ok ("Code + .env liegen bereit in " + $Ziel)
   exit 0
+}
+
+# ── 4c. Kartenbrücke (optional): RKSV-Signaturkarte am PC ─────────────────────
+# Vor dem Start der Container, damit das Backend Adresse und Schlüssel aus der .env gleich liest.
+# Ältere Stände (-Version) haben die Bibliothek nicht — dann gibt es den Schritt nicht.
+$kbBibliothek = Join-Path $Ziel 'ops\kartenbruecke\bibliothek.ps1'
+if (Test-Path -LiteralPath $kbBibliothek -PathType Leaf) {
+  . $kbBibliothek
+  [void](Invoke-KartenbrueckeImInstaller -Ziel $Ziel -Neu:$Kartenbruecke -Ohne:$OhneKartenbruecke)
 }
 
 # ── 5. Container bauen + starten ─────────────────────────────────────────────

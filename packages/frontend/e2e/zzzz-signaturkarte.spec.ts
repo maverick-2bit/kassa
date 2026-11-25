@@ -10,7 +10,8 @@ import { test, expect, type APIRequestContext } from '@playwright/test'
 const ADMIN_EMAIL    = 'e2e-onboarding@test.at'
 const ADMIN_PASSWORT = 'e2e-passwort-12345'
 
-test.use({ viewport: { width: 1280, height: 900 } })
+// Ohne Service Worker: nach einem Reload liefe die Anfrage über ihn und am page.route vorbei
+test.use({ viewport: { width: 1280, height: 900 }, serviceWorkers: 'block' })
 
 type Login = { token: string; user: unknown; mandant: { id: string }; kassen: { id: string }[] }
 
@@ -54,6 +55,15 @@ test('Signaturkarte: prüfen ohne PIN, falsche PIN abgewiesen, richtige PIN — 
 
     await sektion.getByRole('button', { name: 'Signaturkarte (lokal)' }).click()
     await expect(sektion.getByTestId('see-signaturkarte')).toBeVisible()
+    await expect(sektion.getByText(/Kartenbrücke: Version \d+ \(aktuell\)/)).toBeVisible({ timeout: 10_000 })
+
+    // veraltete Brücke: Hinweis auf Kassa-Setup
+    const brueckePfad = '**/api/kassen/*/see/kartenbruecke'
+    await page.route(brueckePfad, r => r.fulfill({ json: { eingerichtet: true, erreichbar: true, version: '1', erwartet: '2', veraltet: true } }))
+    await page.reload()
+    await sektion.getByRole('button', { name: 'Signaturkarte (lokal)' }).click()
+    await expect(sektion.getByText(/Kartenbrücke am PC ist veraltet \(Version 1, aktuell 2\)/)).toBeVisible({ timeout: 10_000 })
+    await page.unroute(brueckePfad)
 
     // Karte prüfen — ohne PIN
     await sektion.getByRole('button', { name: 'Karte prüfen (ohne PIN)' }).click()

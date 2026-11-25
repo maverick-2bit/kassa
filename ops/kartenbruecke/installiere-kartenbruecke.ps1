@@ -9,7 +9,8 @@
 #   2. Zugangsschlüssel erzeugen (einmalig; bleibt bei Updates erhalten), lesbar nur für SYSTEM und Administratoren
 #   3. Geplante Aufgabe „Kassa Kartenbrücke": startet mit Windows unter SYSTEM, startet nach Absturz neu
 #   4. KARTENBRUECKE_URL und KARTENBRUECKE_SCHLUESSEL in die .env der Kassa eintragen
-#   5. Selbsttest: Brücke antwortet, Kartenleser und Karte werden angezeigt
+#   5. Selbsttest: Brücke antwortet in der neuen Version, Kartenleser und Karte werden angezeigt
+# Erneut ausführen = Update der Brücke (Schlüssel und Port bleiben). Kassa-Setup macht das bei jedem Lauf von selbst.
 # Danach die Kassa neu starten (docker compose up -d), damit das Backend den Schlüssel liest.
 
 param(
@@ -19,7 +20,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$AUFGABE = 'Kassa Kartenbruecke'
+. (Join-Path $PSScriptRoot 'bibliothek.ps1')
+$AUFGABE = $KARTENBRUECKE_AUFGABE
 $ordner  = Join-Path $env:ProgramFiles 'KassaPOS\Kartenbruecke'
 $skript  = Join-Path $ordner 'kartenbruecke.ps1'
 $schluesselDatei = Join-Path $ordner 'schluessel.txt'
@@ -42,6 +44,36 @@ if ($Entfernen) {
   Hinweis "Ordner $ordner (Schlüssel, Protokoll) bleibt liegen — bei Bedarf von Hand löschen."
   Hinweis 'In der .env der Kassa KARTENBRUECKE_SCHLUESSEL leeren, dann: docker compose up -d'
   return
+}
+
+$vorhandene = Get-ScheduledTask -TaskName $AUFGABE -ErrorAction SilentlyContinue
+if ($vorhandene -and -not $PSBoundParameters.ContainsKey('Port')) {
+  $Port = Lies-BrueckenPort ([string]$vorhandene.Actions[0].Arguments) $Port
+}
+
+# Läuft die alte Brücke weiter, belegt sie den Port und die neue startet nicht
+function Warte-BisPortFrei([int] $p) {
+  for ($i = 0; $i -lt 20; $i++) {
+    $c = New-Object System.Net.Sockets.TcpClient
+    try { $c.Connect('127.0.0.1', $p) } catch { return } finally { $c.Close() }
+    Start-Sleep -Milliseconds 500
+  }
+  throw "Port $p ist belegt — die alte Kartenbrücke hat sich nicht beendet oder ein anderes Programm verwendet ihn. PC neu starten und erneut ausführen."
+}
+
+# Scheitert etwas, bevor die neue Brücke läuft, startet die bisherige wieder (sonst stünde die Signatur)
+trap {
+  if (Get-ScheduledTask -TaskName $AUFGABE -ErrorAction SilentlyContinue) {
+    Start-ScheduledTask -TaskName $AUFGABE -ErrorAction SilentlyContinue
+  }
+  break
+}
+
+if ($vorhandene) {
+  Schritt 'Laufende Kartenbrücke anhalten'
+  Stop-ScheduledTask -TaskName $AUFGABE -ErrorAction SilentlyContinue
+  Warte-BisPortFrei $Port
+  Ok 'angehalten'
 }
 
 # ── 1. Skript kopieren ──────────────────────────────────────────────────────
@@ -79,17 +111,13 @@ Ok 'Zugriff auf SYSTEM und Administratoren beschränkt'
 
 # ── 3. Geplante Aufgabe ──────────────────────────────────────────────────────
 Schritt ('Geplante Aufgabe „' + $AUFGABE + '“ (Start mit Windows, als SYSTEM)')
-if (Get-ScheduledTask -TaskName $AUFGABE -ErrorAction SilentlyContinue) {
-  Stop-ScheduledTask -TaskName $AUFGABE -ErrorAction SilentlyContinue
-  Unregister-ScheduledTask -TaskName $AUFGABE -Confirm:$false
-}
 $aktion = New-ScheduledTaskAction -Execute 'powershell.exe' `
   -Argument "-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$skript`" -Port $Port -SchluesselDatei `"$schluesselDatei`" -LogDatei `"$logDatei`""
 $ausloeser = New-ScheduledTaskTrigger -AtStartup
 $konto     = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
 $optionen  = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
   -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -StartWhenAvailable
-Register-ScheduledTask -TaskName $AUFGABE -Action $aktion -Trigger $ausloeser -Principal $konto -Settings $optionen `
+Register-ScheduledTask -Force -TaskName $AUFGABE -Action $aktion -Trigger $ausloeser -Principal $konto -Settings $optionen `
   -Description 'Reicht Befehle der Kassa an die RKSV-Signaturkarte im Kartenleser durch (nur 127.0.0.1).' | Out-Null
 Start-ScheduledTask -TaskName $AUFGABE
 Ok 'eingerichtet und gestartet'
@@ -98,10 +126,10 @@ Ok 'eingerichtet und gestartet'
 Schritt "Schlüssel in die .env der Kassa eintragen ($KassaOrdner)"
 $envDatei = Join-Path $KassaOrdner '.env'
 if (Test-Path -LiteralPath $envDatei) {
-  $zeilen = @(Get-Content -LiteralPath $envDatei | Where-Object { $_ -notmatch '^\s*KARTENBRUECKE_(URL|SCHLUESSEL)\s*=' })
-  $zeilen += "KARTENBRUECKE_URL=http://host.docker.internal:$Port"
-  $zeilen += "KARTENBRUECKE_SCHLUESSEL=$schluessel"
-  Set-Content -LiteralPath $envDatei -Value $zeilen -Encoding utf8
+  Setze-EnvWerte -Pfad $envDatei -Werte ([ordered]@{
+    KARTENBRUECKE_URL        = "http://host.docker.internal:$Port"
+    KARTENBRUECKE_SCHLUESSEL = $schluessel
+  })
   Ok 'eingetragen — jetzt die Kassa neu starten: docker compose up -d'
 } else {
   Hinweis ".env nicht gefunden. Von Hand eintragen:"
@@ -122,7 +150,12 @@ if (-not $antwort) {
   Hinweis "Die Brücke antwortet nicht. Protokoll: $logDatei"
   exit 1
 }
-Ok 'Brücke antwortet'
+$soll = Lies-BrueckenVersion $skript
+if ($soll -and [string]$antwort.version -ne $soll) {
+  Hinweis "Es antwortet noch Version $($antwort.version) statt $soll — PC neu starten."
+  exit 1
+}
+Ok "Brücke antwortet (Version $($antwort.version))"
 $leser = @($antwort.leser)
 if ($leser.Count -eq 0) { Hinweis 'Kein Kartenleser gefunden — Leser anstecken.' }
 foreach ($l in $leser) {

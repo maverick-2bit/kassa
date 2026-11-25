@@ -57,6 +57,7 @@ import type {
   SbBestellung,
   SeeConfig,
   SeeConfigUpdate,
+  KartenbrueckeStatus,
   SeeTestErgebnis,
   Seriennummer,
   TischplanBereich,
@@ -658,6 +659,9 @@ export const preisregelApi = {
 export const seeApi = {
   get:    (kasseId: string) =>
     request<SeeConfig>('GET', `/api/kassen/${kasseId}/see`),
+  /** Läuft die Kartenbrücke am PC, und ist sie aktuell? */
+  kartenbruecke: (kasseId: string) =>
+    request<KartenbrueckeStatus>('GET', `/api/kassen/${kasseId}/see/kartenbruecke`),
   test:   (kasseId: string, input: SeeConfigUpdate) =>
     request<SeeTestErgebnis>('POST', `/api/kassen/${kasseId}/see/test`, input),
   update: (kasseId: string, input: SeeConfigUpdate) =>

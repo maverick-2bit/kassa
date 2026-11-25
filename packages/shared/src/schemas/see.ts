@@ -76,6 +76,21 @@ export const SeeConfigUpdateSchema = z.object({
 })
 export type SeeConfigUpdate = z.infer<typeof SeeConfigUpdateSchema>
 
+/** Zustand der Kartenbrücke am Kassen-PC (Signaturkarte) */
+export const KartenbrueckeStatusSchema = z.object({
+  /** An diesem Kassa-Server ist eine Brücke hinterlegt */
+  eingerichtet: z.boolean(),
+  erreichbar:   z.boolean(),
+  /** Von der Brücke gemeldete Version (null = sie nennt keine bzw. nicht erreichbar) */
+  version:      z.string().nullable(),
+  /** Version, mit der diese Kassa ausgeliefert wird */
+  erwartet:     z.string(),
+  /** Die Brücke läuft, ist aber älter — Kassa-Setup am PC ausführen */
+  veraltet:     z.boolean(),
+  fehler:       z.string().optional(),
+})
+export type KartenbrueckeStatus = z.infer<typeof KartenbrueckeStatusSchema>
+
 /** Ergebnis von „Verbindung testen" bzw. der Übernahme beim Speichern */
 export const SeeTestErgebnisSchema = z.object({
   erfolgreich:   z.boolean(),

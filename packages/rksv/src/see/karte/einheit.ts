@@ -98,6 +98,18 @@ export interface KartenbrueckeConfig {
   timeoutMs?: number
 }
 
+/**
+ * Version der Kartenbrücke, mit der diese Kassa ausgeliefert wird ($VERSION in ops/kartenbruecke/kartenbruecke.ps1 —
+ * ein Test hält beide gleich). Die Brücke läuft am PC außerhalb der Container: das In-App-Update erreicht sie
+ * nicht, erst ein Lauf von Kassa-Setup. Ist sie älter, sagt es die Kassa in den Einstellungen.
+ */
+export const KARTENBRUECKE_VERSION = 2
+
+/** Ist die gemeldete Version älter als die ausgelieferte? Keine oder unlesbare Angabe zählt als alt. */
+export function istBrueckeVeraltet(version: string | null): boolean {
+  return version === null || !/^\d+$/.test(version) || Number(version) < KARTENBRUECKE_VERSION
+}
+
 export class KartenbrueckeTransport implements ApduTransport {
   private readonly timeoutMs: number
 
@@ -146,6 +158,11 @@ export class KartenbrueckeTransport implements ApduTransport {
       throw new KartenError(`Kartenbrücke: ${fehler}`, art)
     }
     return json
+  }
+
+  async version(): Promise<string | null> {
+    const json = await this.anfrage('/leser')
+    return typeof json.version === 'string' ? json.version : null
   }
 
   async leser(): Promise<KartenLeser[]> {

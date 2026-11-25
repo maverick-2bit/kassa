@@ -10,8 +10,10 @@
 import { X509Certificate } from 'node:crypto'
 import {
   ATrustHsmEinheit,
+  KARTENBRUECKE_VERSION,
   KartenError,
   SignaturkartenEinheit,
+  istBrueckeVeraltet,
   jwsSigningInput,
   signiereMitKarte,
   verifiziere,
@@ -19,7 +21,7 @@ import {
   type SignaturEinheit,
   type ZertifikatInfo,
 } from '@kassa/rksv'
-import { istErlaubteAtrustBasisUrl, type SignaturWahl } from '@kassa/shared'
+import { istErlaubteAtrustBasisUrl, type KartenbrueckeStatus, type SignaturWahl } from '@kassa/shared'
 import type { kassen } from '../db/schema.js'
 import { encryptPrivateKey } from '../crypto/master-key.js'
 
@@ -67,6 +69,20 @@ export async function pruefeSignaturkarte(
   } catch (err) {
     if (!(err instanceof KartenError)) throw err
     return { ok: false, status: err.vorlaeufig ? 502 : 400, fehler: err.message }
+  }
+}
+
+/** Läuft die Kartenbrücke, und ist sie so neu wie diese Kassa? Fasst die Karte nicht an. */
+export async function pruefeKartenbruecke(transport: ApduTransport | undefined): Promise<KartenbrueckeStatus> {
+  const basis = { eingerichtet: true, erreichbar: false, version: null, erwartet: String(KARTENBRUECKE_VERSION), veraltet: false }
+  if (!transport) return { ...basis, eingerichtet: false, fehler: KEINE_BRUECKE }
+  if (!transport.version) return { ...basis, erreichbar: true }
+  try {
+    const version = await transport.version()
+    return { ...basis, erreichbar: true, version, veraltet: istBrueckeVeraltet(version) }
+  } catch (err) {
+    if (!(err instanceof KartenError)) throw err
+    return { ...basis, fehler: err.message }
   }
 }
 

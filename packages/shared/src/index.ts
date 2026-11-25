@@ -745,6 +745,7 @@ export {
   KartePinSchema,
   SeeConfigSchema,
   SeeConfigUpdateSchema,
+  KartenbrueckeStatusSchema,
   SeeTestErgebnisSchema,
   ATRUST_ERLAUBTE_HOSTS,
   istErlaubteAtrustBasisUrl,
@@ -753,6 +754,7 @@ export type {
   SeeTyp,
   SeeConfig,
   SeeConfigUpdate,
+  KartenbrueckeStatus,
   SeeTestErgebnis,
 } from './schemas/see.js'
 
