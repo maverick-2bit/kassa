@@ -84,6 +84,11 @@ export const BarzahlungsbelegInputSchema = z.object({
    * eingestellten Freigabeschwelle liegt (Einstellungen → Freigaben).
    */
   freigabePin: z.string().trim().min(4).max(12).optional(),
+  /**
+   * Bestell-IDs der Bonierungen dieses Warenkorbs („Bonieren" an der Kasse, dann kassieren): Was sie schon vom Lager
+   * abgezogen haben, bucht der Beleg nicht noch einmal ab. Jede Bonierung zählt nur einmal.
+   */
+  bonierungen: z.array(z.string().guid()).max(50).optional(),
 })
 export type BarzahlungsbelegInput = z.infer<typeof BarzahlungsbelegInputSchema>
 

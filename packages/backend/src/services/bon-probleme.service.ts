@@ -90,7 +90,8 @@ export async function bonierUndMelde(
   let fehler:      BonierZielFehler[] = []
   let umleitungen: BonierUmleitung[]  = []
   try {
-    const ergebnis = await bonierBestellung(mitId, { db }, quelle.sb ? { sb: quelle.sb } : {})
+    // Der Beleg hat den Lagerstand schon abgebucht (jede Ware genau einmal) — der Bon druckt nur
+    const ergebnis = await bonierBestellung(mitId, { db }, { ohneLagerabzug: true, ...(quelle.sb && { sb: quelle.sb }) })
     const stand = bonStand(ergebnis)
     if (!stand) return
     ;({ fehler, umleitungen } = stand)
@@ -175,7 +176,7 @@ export async function sendeBonProblemNochmal(db: Db, id: string, mandantId: stri
   if (!eingabe.success) throw new BonProblemError(422, 'Die gespeicherte Bestellung ist nicht lesbar')
   const { ohneLagerabzug: _o, storno: _s, ...bestellung } = eingabe.data
 
-  const ergebnis = await bonierBestellung(bestellung, { db }, row.sb ? { sb: row.sb as NonNullable<BonQuelle['sb']> } : {})
+  const ergebnis = await bonierBestellung(bestellung, { db }, { ohneLagerabzug: true, ...(row.sb ? { sb: row.sb as NonNullable<BonQuelle['sb']> } : {}) })
   const stand = bonStand(ergebnis)
 
   const [neu] = await db

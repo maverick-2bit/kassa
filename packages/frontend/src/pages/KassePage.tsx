@@ -151,6 +151,11 @@ export function KassePage() {
   // Seriennummern-Auswahl (serialisierte Artikel) — Ref hält die Zuweisung über den ZVT-Flow hinweg
   const [serialModalOffen, setSerialModalOffen] = useState(false)
   const serialsRef = useRef<Map<number, string[]> | null>(null)
+  /**
+   * Bestell-IDs der Bonierungen dieses Warenkorbs: Was „Bonieren" schon vom Lager abgezogen hat, verrechnet der Beleg
+   * (jede Ware genau einmal). Leert sich mit dem Warenkorb.
+   */
+  const bonierungenRef = useRef<string[]>([])
   const [kreditModus,          setKreditModus]          = useState(false)
   const [gutschein,            setGutschein]            = useState<{ id: string; code: string; maxCent: number; einloesungCent: number; erstelleRestgutschein: boolean } | null>(null)
   const [gutscheinModalOffen,  setGutscheinModalOffen]  = useState(false)
@@ -498,6 +503,7 @@ export function KassePage() {
   /** Nach dem Verkauf (bzw. nach Rückfrage): Warenkorb leer, zurückgeholter Beleg erledigt */
   const reset = () => {
     if (zurueckgeholt) vergissZurueckgeholt(identity.kasseId)
+    bonierungenRef.current = []
     setKorb([])
     setZurueckgeholt(null)
     setRabatt(null)
@@ -717,8 +723,13 @@ export function KassePage() {
       return
     }
 
+    // Schon VOR der Antwort merken: Der Server verrechnet beim Beleg nur Abzüge, die er wirklich gespeichert hat —
+    // reißt die Verbindung nach dem Bonieren ab, bucht der Beleg so trotzdem nicht doppelt ab.
+    const bestellId = neueUuid()
+    bonierungenRef.current = [...bonierungenRef.current, bestellId]
     bonierMutation.mutate({
       kasseId:    identity.kasseId,
+      bestellId,
       ...(tisch.trim() && { tisch: tisch.trim() }),
       kellner:    kellner.trim(),
       positionen: artikelPositionen.map((p) => ({ artikelId: p.artikel.id, menge: p.menge })),
@@ -763,6 +774,7 @@ export function KassePage() {
       ...(neuerKunde ? { neuerKunde }           : {}),
       ...(kunde && !neuerKunde ? { kundeId: kunde.id } : {}),
       ...(alternativRef.current ? { keinAutodruck: true } : {}),
+      ...(bonierungenRef.current.length > 0 ? { bonierungen: bonierungenRef.current } : {}),
     }
     belegMutation.mutate(input)
   }
@@ -1031,7 +1043,7 @@ export function KassePage() {
                   type="button"
                   onClick={() => {
                     if (zurueckgeholt) { verwerfen(); return }
-                    if (confirm('Gesamten Warenkorb verwerfen?')) { setKorb([]); setRabatt(null) }
+                    if (confirm('Gesamten Warenkorb verwerfen?')) { setKorb([]); setRabatt(null); bonierungenRef.current = [] }
                   }}
                   className="text-xs text-red-500 hover:text-red-700 hover:underline font-medium"
                 >

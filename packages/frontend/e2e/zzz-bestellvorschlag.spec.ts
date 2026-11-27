@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { createServer, type AddressInfo } from 'node:net'
 import { test, expect, type APIRequestContext } from '@playwright/test'
 
 /**
@@ -167,4 +168,77 @@ test('Bestellvorschlag aus dem Verbrauch: Vorschlag, Reichweite, CSV, PDF, Druck
     await expect(page).toHaveURL(/\/kasse/, { timeout: 15_000 })
     expect(await bestand()).toBe(vorher - 3)
   })
+})
+
+test('Lager genau einmal: „Bonieren" an der Kasse, dann bar kassieren — der Beleg bucht nichts doppelt ab', async ({ page, request }) => {
+  test.setTimeout(120_000)
+  const login = await adminLogin(request)
+  const auth  = { Authorization: `Bearer ${login.token}` }
+  const ts    = Date.now()
+  const name  = `Einmal-Bier ${ts}`
+
+  // Bonierdrucker auf einen TCP-Empfänger in diesem Prozess (das Backend läuft auf demselben Rechner)
+  const empfaenger = createServer(s => { s.on('data', () => undefined); s.on('error', () => undefined) })
+  await new Promise<void>(r => empfaenger.listen(0, '127.0.0.1', () => r()))
+  const port = (empfaenger.address() as AddressInfo).port
+  const drucker = await request.post('/api/bonierdrucker', { headers: auth, data: { name: `Einmal-Drucker ${ts}`, ip: '127.0.0.1', port } })
+  expect(drucker.ok(), await drucker.text()).toBe(true)
+  const druckerId = (await drucker.json() as { id: string }).id
+  try {
+    const artikel = await request.post('/api/artikel', {
+      headers: auth,
+      data: { bezeichnung: name, preisBruttoCent: 400, mwstSatz: 'normal', bonierdruckerId: druckerId, lagerstandAktiv: true, lagerstandMenge: 10 },
+    })
+    expect(artikel.ok(), await artikel.text()).toBe(true)
+    const artikelId = (await artikel.json() as { id: string }).id
+    const bestand = async () => ((await (await request.get('/api/artikel', { headers: auth })).json()) as { id: string; lagerstandMenge: number }[])
+      .find(a => a.id === artikelId)!.lagerstandMenge
+
+    await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
+      localStorage.setItem('kassa:token', d.token)
+      localStorage.setItem('kassa:auth', d.authJson)
+      localStorage.setItem('kassa:mandantId', d.mandantId)
+      localStorage.setItem('kassa:kasseId', d.kasseId)
+    }, {
+      token: login.token, mandantId: login.mandant.id, kasseId: login.kassen[0]!.id,
+      authJson: JSON.stringify({ user: login.user, mandant: login.mandant, kassen: login.kassen }),
+    })
+    await page.goto('/kasse')
+    await page.getByPlaceholder(/Artikel suchen/).fill(name)
+    const kachel = page.getByTestId('artikel-kachel').filter({ hasText: name })
+    await kachel.click()
+    await kachel.click()
+
+    // Bonieren: zieht 2 ab
+    await page.getByRole('button', { name: 'Bonieren', exact: true }).click()
+    const dialog = page.getByRole('dialog').filter({ hasText: /Bonierung/ })
+    await expect(dialog).toBeVisible({ timeout: 15_000 })
+    await expect.poll(bestand).toBe(8)
+    await page.keyboard.press('Escape')
+    await expect(dialog).toHaveCount(0)
+
+    // Bar kassieren: der Beleg verrechnet die Bonierung — bleibt 8 (vorher wäre der Artikel hier gar nicht oder
+    // ohne Station doppelt abgebucht worden)
+    await page.getByRole('button', { name: /^Bar \(/ }).click()
+    await expect(page.getByText(/Beleg #\d+ erstellt/).first()).toBeVisible({ timeout: 20_000 })
+    expect(await bestand()).toBe(8)
+    // Steht die Kasse (durch andere Tests) auf digitalem Beleg, fragt ein Dialog nach — quittieren
+    const belegDialog = page.getByRole('dialog').filter({ hasText: /Beleg #\d+ erstellt/ })
+    if (await belegDialog.count() > 0) {
+      const akzeptiert = belegDialog.getByRole('button', { name: 'Akzeptiert', exact: true })
+      if (await akzeptiert.count() > 0) await akzeptiert.click()
+      else await belegDialog.getByRole('button', { name: 'Schließen' }).first().click()
+      await expect(belegDialog).toHaveCount(0)
+    }
+
+    // Direkt kassieren ohne Bonieren: wird abgebucht, obwohl der Artikel einen Bonierdrucker hat
+    await page.getByPlaceholder(/Artikel suchen/).fill(name)
+    await kachel.click()
+    await page.getByRole('button', { name: /^Bar \(/ }).click()
+    await expect.poll(bestand, { timeout: 20_000 }).toBe(7)
+  } finally {
+    // Immer aufräumen — ein übrig gebliebener Drucker brächte spätere Tests (Drucker-Listen) durcheinander
+    await request.delete(`/api/bonierdrucker/${druckerId}`, { headers: auth }).catch(() => undefined)
+    empfaenger.close()
+  }
 })

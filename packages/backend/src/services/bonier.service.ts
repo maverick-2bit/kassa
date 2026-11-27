@@ -9,10 +9,13 @@
  * Dies ist KEIN RKSV-Vorgang — es wird kein Beleg signiert oder persistiert.
  */
 
-import { and, eq, inArray, sql } from 'drizzle-orm'
+import { and, eq, inArray, lt, sql } from 'drizzle-orm'
 import { hatBonRouting, type BonierungErgebnis, type BonierungInput, type Station } from '@kassa/shared'
 import type { Db } from '../db/client.js'
-import { artikel, bonierdrucker, kategorien, kassen, kasseBonierdruckerSichtbarkeit } from '../db/schema.js'
+import { artikel, bonierdrucker, bonierLagerabzuege, kategorien, kassen, kasseBonierdruckerSichtbarkeit } from '../db/schema.js'
+
+/** Gemerkte Lagerabzüge von Bonierungen: so lange kann ein Beleg sie noch verrechnen */
+const LAGERABZUG_AUFBEWAHRUNG_MS = 14 * 24 * 60 * 60_000
 import { baueBonierbon, generiereBonNummer } from './kds/bonierbon.js'
 import { sendeBonierbon, type KdsZiel } from './kds/sender.js'
 import { druckeBonierbonDirekt, druckeBonierbonMitErsatz } from './bonierdrucker.service.js'
@@ -378,6 +381,17 @@ export async function bonierBestellung(
           .where(and(eq(artikel.id, a.id), eq(artikel.mandantId, kasse.mandantId)))
       }
       await dekrementiereBestandteile(tx, kasse.mandantId, bestandteilPositionen, rezepte)
+      // Bonierung an der Kasse mit Bestell-ID: den Abzug merken — der Beleg dieses Warenkorbs verrechnet ihn
+      // (jede Ware genau einmal vom Lager). SB/Gast bonieren erst nach dem Beleg und ziehen nichts ab.
+      if (bestellId && !optionen.sb) {
+        const jeArtikel = new Map<string, number>()
+        for (const p of input.positionen) jeArtikel.set(p.artikelId, (jeArtikel.get(p.artikelId) ?? 0) + p.menge)
+        await tx.delete(bonierLagerabzuege).where(lt(bonierLagerabzuege.createdAt, new Date(Date.now() - LAGERABZUG_AUFBEWAHRUNG_MS)))
+        await tx.insert(bonierLagerabzuege).values({
+          bestellId, mandantId: kasse.mandantId, kasseId: kasse.id,
+          positionen: [...jeArtikel].map(([artikelId, menge]) => ({ artikelId, menge })),
+        }).onConflictDoNothing()
+      }
     })
 
     // Lagerstand-Warnungen emittieren wenn Bestand ≤ Mindestbestand nach Dekrement

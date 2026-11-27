@@ -603,6 +603,13 @@
       "when": 1793404800000,
       "tag": "0087_storno_lager",
       "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1793491200000,
+      "tag": "0088_bonier_lagerabzug",
+      "breakpoints": true
     }
   ]
 }

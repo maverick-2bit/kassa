@@ -8,7 +8,7 @@
  *     und dann signiereImTx() innerhalb einer Transaktion aufruft.
  */
 
-import { and, asc, count, desc, eq, gte, inArray, lt, or, sql, type SQL } from 'drizzle-orm'
+import { and, asc, count, desc, eq, gte, inArray, isNull, lt, or, sql, type SQL } from 'drizzle-orm'
 import { Buffer } from 'node:buffer'
 import {
   ATrustHsmEinheit,
@@ -50,16 +50,15 @@ import type {
   StornobelegInput,
   StornoLagerPosition,
 } from '@kassa/shared'
-import { ArtikelPositionSchema, hatBonRouting, wienerZeitpunkt } from '@kassa/shared'
+import { ArtikelPositionSchema, wienerZeitpunkt } from '@kassa/shared'
 import type { Db } from '../db/client.js'
-import { artikel, belege, kassen, kategorien, mandanten, modifikatoren, seriennummern } from '../db/schema.js'
+import { artikel, belege, bonierLagerabzuege, kassen, kategorien, mandanten, modifikatoren, seriennummern } from '../db/schema.js'
 import { erstelleKunde, ladeKundeSnapshot } from './kunde.service.js'
 import { pruefeRabattFreigabe, type FreigabeKontext } from './freigabe.service.js'
 import { logAudit } from './audit.service.js'
 import { bestimmeBelegZeit } from './beleg-zeit.js'
 import { dekrementiereBestandteile, ladeRezepte } from './bestandteil.service.js'
 import { bewerteStornoLager, bucheStornoLagerZurueck } from './storno-lager.service.js'
-import { baueBonRouting, ladeKasseRoutingAusnahmen, ladeKategorieRoutingZeilen, wirksamesRoutingVonArtikel } from './kategorie-routing.service.js'
 import { decryptPrivateKey, encryptPrivateKey } from '../crypto/master-key.js'
 import { istKarteGesperrt, istPinAblehnung, pinHinweis, schreibeKartenSperre, sperreKarteSofort } from './karten-sperre.js'
 
@@ -665,26 +664,18 @@ export async function erstelleBarzahlungsbeleg(
       }
       const artikelById = new Map(artikelRows.map(a => [a.id, a]))
 
-      // Kategorie-Infos laden (für Bonierdrucker-Check UND Warengruppen-Reporting).
-      // Eine fremde Warengruppe am eigenen Artikel (ungeprüfte Stammdaten) zählt wie keine.
+      // Kategorie-Namen laden (Warengruppen-Reporting). Eine fremde Warengruppe am eigenen Artikel (ungeprüfte
+      // Stammdaten) zählt wie keine.
       const katergorieIds = [...new Set(
         artikelRows.map(a => a.kategorieId).filter((id): id is string => id !== null),
       )]
       const katNameMap = new Map<string, string>()
-      /** Bon-Routing DIESER Kasse (Warengruppen erben von der Elterngruppe; Kassen-Ausnahmen für Warengruppen und Artikel) */
-      let bonRouting = baueBonRouting([], [])
       if (katergorieIds.length > 0) {
         const katRows = await tx
           .select({ id: kategorien.id, name: kategorien.name })
           .from(kategorien)
           .where(and(inArray(kategorien.id, katergorieIds), eq(kategorien.mandantId, mandantId)))
         for (const k of katRows) katNameMap.set(k.id, k.name)
-      }
-      if (artikelRows.length > 0) {
-        const kategorieZeilen = katergorieIds.length > 0
-          ? await ladeKategorieRoutingZeilen(tx, mandantId)
-          : []
-        bonRouting = baueBonRouting(kategorieZeilen, await ladeKasseRoutingAusnahmen(tx, input.kasseId))
       }
 
       // Positionen aufbauen — extra Felder (kategorieId, kategorieName, artikelName) werden im JSONB
@@ -823,38 +814,50 @@ export async function erstelleBarzahlungsbeleg(
         }
       }
 
-      // Lagerstand-Countdown: Zwei-Pfad-Logik um Doppel-Abzug zu vermeiden.
-      //
-      //  • Artikel MIT Bonierrouting (station oder bonierdruckerId, egal ob auf Artikel- oder
-      //    Kategorieebene) → Lagerstand wurde bereits beim Bonieren dekrementiert; hier NICHT.
-      //  • Artikel OHNE Bonierrouting (reines Direktkassieren, z. B. To-go) → hier dekrementieren.
-      //
-      // skipLagerstand: Für Tisch-Zahlungen komplett überspringen — dort ist der
-      // Lagerstand bereits über aktualisiereStockDeltas (Positionsänderung) abgezogen
-      // (einzige Quelle der Wahrheit im Tisch-Fluss), sonst Doppel-Abzug.
-      // Bestandteil-Positionen sammeln (Direktkassieren, kein Bonierrouting) → nach der
-      // Schleife abbuchen. Rezepte werden auch dann abgebucht, wenn der zusammengesetzte
-      // Artikel selbst keinen Lagerstand führt.
+      // Lagerstand: Jede verkaufte Ware wird genau einmal abgebucht — hier im Beleg, unabhängig davon, ob ein Bon
+      // gedruckt wird (eine Speisen-Bar ohne Bon bucht genauso ab).
+      //  • Hat eine Bonierung an der Kasse für diesen Warenkorb schon abgezogen („Bonieren", dann kassieren), schickt
+      //    die Kasse deren Bestell-ID mit (input.bonierungen): diese Mengen zieht der Beleg ab. Jede Bonierung wird
+      //    nur einmal verrechnet (verrechnet_am), nur Bonierungen dieses Mandanten.
+      //  • Bons NACH dem Beleg (Direktverkauf-Bon, SB, Gast) ziehen nichts ab (ohneLagerabzug).
+      //  • skipLagerstand: Tisch-Zahlungen — dort läuft der Lagerstand über die Positionsänderungen.
+      // Rezepte werden auch dann abgebucht, wenn der zusammengesetzte Artikel selbst keinen Lagerstand führt.
       const direktBestandteilPositionen: { artikelId: string; menge: number }[] = []
-      for (const p of (opts.skipLagerstand ? [] : input.positionen)) {
-        if (!('artikelId' in p)) continue  // freie Position: kein Lagerstand
-        const a = artikelById.get(p.artikelId)
-        if (!a) continue
-        // Bonierbar? → Lagerstand (Artikel + Bestandteile) wurde beim Bonieren abgezogen, nicht hier.
-        // Maßgeblich ist das Routing dieser Kasse (Artikel/Warengruppe, jeweils mit Kassen-Ausnahme).
-        if (hatBonRouting(wirksamesRoutingVonArtikel(bonRouting, a))) continue
-
-        // Kein Bonierrouting → Direktkassieren
-        if (a.lagerstandAktiv) {
-          await tx
-            .update(artikel)
-            .set({
-              lagerstandMenge: sql`GREATEST(0, COALESCE(${artikel.lagerstandMenge}, 0) - ${p.menge})`,
-              updatedAt:       new Date(),
-            })
-            .where(and(eq(artikel.id, a.id), eq(artikel.mandantId, mandantId)))
+      if (!opts.skipLagerstand) {
+        const zuBuchen = new Map<string, number>()
+        for (const p of input.positionen) {
+          if (!('artikelId' in p) || !artikelById.has(p.artikelId)) continue  // freie Position: kein Lagerstand
+          zuBuchen.set(p.artikelId, (zuBuchen.get(p.artikelId) ?? 0) + p.menge)
         }
-        direktBestandteilPositionen.push({ artikelId: a.id, menge: p.menge })
+        if (input.bonierungen?.length && zuBuchen.size > 0) {
+          const verrechnet = await tx.update(bonierLagerabzuege)
+            .set({ verrechnetAm: new Date() })
+            .where(and(
+              inArray(bonierLagerabzuege.bestellId, input.bonierungen),
+              eq(bonierLagerabzuege.mandantId, mandantId),
+              isNull(bonierLagerabzuege.verrechnetAm),
+            ))
+            .returning({ positionen: bonierLagerabzuege.positionen })
+          for (const r of verrechnet) {
+            for (const b of r.positionen as { artikelId: string; menge: number }[]) {
+              if (zuBuchen.has(b.artikelId)) zuBuchen.set(b.artikelId, zuBuchen.get(b.artikelId)! - b.menge)
+            }
+          }
+        }
+        for (const [artikelId, menge] of zuBuchen) {
+          if (menge <= 0) continue   // schon beim Bonieren abgezogen (oder mehr boniert als verkauft)
+          const a = artikelById.get(artikelId)!
+          if (a.lagerstandAktiv) {
+            await tx
+              .update(artikel)
+              .set({
+                lagerstandMenge: sql`GREATEST(0, COALESCE(${artikel.lagerstandMenge}, 0) - ${menge})`,
+                updatedAt:       new Date(),
+              })
+              .where(and(eq(artikel.id, a.id), eq(artikel.mandantId, mandantId)))
+          }
+          direktBestandteilPositionen.push({ artikelId, menge })
+        }
       }
       // Rezept-Bestandteile der direkt kassierten Positionen abbuchen
       if (direktBestandteilPositionen.length > 0) {

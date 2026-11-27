@@ -386,6 +386,7 @@ export const HILFE_THEMEN: HilfeThema[] = [
       '„Sortieren nach: Reichweite" stellt die Artikel nach oben, die zuerst ausgehen.',
       '„CSV-Export", „PDF" und „Drucken" geben die Liste samt Reichweite aus.',
       '„Warengruppe in Lagerführung aufnehmen" schaltet den Lagerstand für eine ganze Warengruppe ein.',
+      'Abgebucht wird jede verkaufte Ware genau einmal — auch ohne Bon (z. B. eine Speisen-Bar ohne Küchendrucker). Wird an der Kasse erst boniert und dann kassiert, zählt der Beleg das Bonierte nicht noch einmal. Am Tisch bucht das Erfassen der Positionen ab.',
     ],
   },
   {

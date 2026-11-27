@@ -1518,6 +1518,21 @@ export const bonierBestellungen = pgTable('bonier_bestellungen', {
 }))
 
 /**
+ * Lagerabzug einer Bonierung an der Kasse („Bonieren", dann kassieren): Der Beleg verrechnet ihn, damit jede Ware
+ * genau einmal vom Lager abgebucht wird (Migration 0088). positionen = [{ artikelId, menge }] je Verkaufsartikel.
+ */
+export const bonierLagerabzuege = pgTable('bonier_lagerabzuege', {
+  bestellId:    uuid('bestell_id').primaryKey(),
+  mandantId:    uuid('mandant_id').notNull().references(() => mandanten.id, { onDelete: 'cascade' }),
+  kasseId:      uuid('kasse_id').notNull().references(() => kassen.id, { onDelete: 'cascade' }),
+  positionen:   jsonb('positionen').notNull(),
+  verrechnetAm: timestamp('verrechnet_am', { withTimezone: true }),
+  createdAt:    timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  createdIdx: index('bonier_lagerabzuege_created_idx').on(t.createdAt),
+}))
+
+/**
  * Offene Meldungen zu Bons, die der SERVER selbst ausgelöst hat (Direktverkauf-Beleg, Gast-Bestellung,
  * SB-Terminal): dort wartet an der Kasse niemand auf die Antwort der Bonierung. Eine Zeile je Bestellung, solange
  * der Bon nicht (am vorgesehenen Gerät) ankam bzw. am Backup-Drucker liegt und das Personal es nicht bestätigt hat.
