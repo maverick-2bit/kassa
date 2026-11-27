@@ -70,6 +70,24 @@ try {
   Pruefe 'UTF-16: klarer Abbruch, Datei unverändert' { $geworfen -and (IstGleich $utf16) }
   Pruefe 'keine Nebendatei bleibt liegen' { @(Get-ChildItem -LiteralPath $tmp -Force).Count -eq 1 }
 
+  Write-Host "`n1b. Lies-EnvWert und HTTPS im LAN (ops/lan-https.ps1 nutzt dieselben Funktionen)"
+  Schreibe $utf8.GetBytes("# A=kommentar`nA= g${ue}ltig `nA=zweiter`n")
+  Pruefe 'Lies-EnvWert: erste nicht auskommentierte Zeile, Umlaut heil, getrimmt' { (Lies-EnvWert $envDatei 'A') -ceq "g${ue}ltig" }
+  Pruefe 'Lies-EnvWert: fehlender Name bzw. fehlende Datei → $null' { $null -eq (Lies-EnvWert $envDatei 'B') -and $null -eq (Lies-EnvWert (Join-Path $tmp 'fehlt.env') 'A') }
+  $lan = [System.IO.Path]::GetFullPath((Join-Path $here '..\lan-https.ps1'))
+  $lanFunktionen = & {
+    function Hinweis([string]$t) { }
+    function Ok([string]$t) { }
+    . $lan
+    Schreibe $utf8.GetBytes("MASTER_PASSPHRASE=geheim${ue}`nCOMPOSE_PROFILES=lan-https`n")
+    Set-EnvWert $envDatei 'KASSA_LAN_IP' '192.168.1.5'
+    return @{ Ip = (Get-EnvWert $envDatei 'KASSA_LAN_IP'); Aktiv = (Test-LanHttpsAktiv $envDatei) }
+  }
+  Pruefe 'lan-https.ps1 Set-EnvWert: Umlaut in der Passphrase bleibt heil, IP angehängt' {
+    IstGleich $utf8.GetBytes("MASTER_PASSPHRASE=geheim${ue}`nCOMPOSE_PROFILES=lan-https`nKASSA_LAN_IP=192.168.1.5`n")
+  }
+  Pruefe 'lan-https.ps1 Get-EnvWert/Test-LanHttpsAktiv lesen über dieselbe Funktion' { $lanFunktionen.Ip -eq '192.168.1.5' -and $lanFunktionen.Aktiv }
+
   Write-Host "`n2. Version und Port"
   Pruefe 'Version aus dem ausgelieferten kartenbruecke.ps1' { (Lies-BrueckenVersion (Join-Path $here 'kartenbruecke.ps1')) -match '^\d+$' }
   Pruefe 'fehlendes Skript → keine Version' { $null -eq (Lies-BrueckenVersion (Join-Path $tmp 'gibt-es-nicht.ps1')) }
@@ -121,7 +139,7 @@ try {
   }
 
   Write-Host "`n5. Skripte"
-  foreach ($datei in @('bibliothek.ps1', 'installiere-kartenbruecke.ps1', 'kartenbruecke.ps1', 'test-kartenbruecke.ps1', '..\install.ps1', '..\install-offline.ps1')) {
+  foreach ($datei in @('..\env-datei.ps1', '..\lan-https.ps1', 'bibliothek.ps1', 'installiere-kartenbruecke.ps1', 'kartenbruecke.ps1', 'test-kartenbruecke.ps1', '..\install.ps1', '..\install-offline.ps1')) {
     $pfad = [System.IO.Path]::GetFullPath((Join-Path $here $datei))
     $t = $null; $f = $null
     [void][System.Management.Automation.Language.Parser]::ParseFile($pfad, [ref]$t, [ref]$f)

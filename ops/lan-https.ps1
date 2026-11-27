@@ -13,6 +13,9 @@
 #     eine funktionierende Einrichtung nicht überschreiben.
 # =============================================================================
 
+# .env lesen/schreiben ohne Kodierungsschäden (Umlaute in Passwörtern bleiben heil)
+. (Join-Path $PSScriptRoot 'env-datei.ps1')
+
 # Feste Ports des lan-https-Dienstes (docker-compose.yml, Caddyfile.lan)
 $LanHttpsPorts = [ordered]@{
   'Kassa (HTTPS)'         = 8443
@@ -38,23 +41,11 @@ function Get-KassaLanIp {
 }
 
 # Wert einer NICHT auskommentierten Zeile NAME=… (oder $null)
-function Get-EnvWert([string]$Datei, [string]$Name) {
-  foreach ($zeile in (Get-Content -LiteralPath $Datei -ErrorAction SilentlyContinue)) {
-    if ($zeile -match ('^' + [regex]::Escape($Name) + '=(.*)$')) { return $Matches[1].Trim() }
-  }
-  return $null
-}
+function Get-EnvWert([string]$Datei, [string]$Name) { return Lies-EnvWert $Datei $Name }
 
-# Setzt NAME=Wert: ersetzt die erste nicht auskommentierte Zeile oder hängt an.
+# Setzt NAME=Wert: ersetzt die nicht auskommentierte Zeile oder hängt an; der Rest der Datei bleibt Byte für Byte
 function Set-EnvWert([string]$Datei, [string]$Name, [string]$Wert) {
-  $zeilen = @(Get-Content -LiteralPath $Datei -ErrorAction SilentlyContinue)
-  $muster = '^' + [regex]::Escape($Name) + '='
-  $gesetzt = $false
-  for ($i = 0; $i -lt $zeilen.Count; $i++) {
-    if (-not $gesetzt -and $zeilen[$i] -match $muster) { $zeilen[$i] = $Name + '=' + $Wert; $gesetzt = $true }
-  }
-  if (-not $gesetzt) { $zeilen += ($Name + '=' + $Wert) }
-  Set-Content -LiteralPath $Datei -Value $zeilen -Encoding utf8
+  Setze-EnvWerte -Pfad $Datei -Werte ([ordered]@{ $Name = $Wert })
 }
 
 function Test-LanHttpsAktiv([string]$EnvDatei) {

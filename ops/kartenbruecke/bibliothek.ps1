@@ -5,57 +5,10 @@
 # Achtung: PowerShell zählt auch typografische Anführungszeichen als Anführungszeichen. In doppelt quotierten
 # Texten darum keine verwenden.
 
-$KARTENBRUECKE_AUFGABE = 'Kassa Kartenbruecke'
+# .env lesen/schreiben ohne Kodierungsschäden (gemeinsam mit ops/lan-https.ps1)
+. (Join-Path $PSScriptRoot '..\env-datei.ps1')
 
-# Werte in einer .env setzen, ohne den Rest anzufassen: Kodierung (UTF-8 mit/ohne BOM, sonst ANSI), Zeilenenden
-# und alle anderen Zeilen bleiben Byte für Byte erhalten. Get-Content/Set-Content können das unter PowerShell 5.1
-# nicht: eine UTF-8-Datei ohne BOM lesen sie als ANSI, ein Umlaut in einem Passwort wäre danach zerstört.
-function Setze-EnvWerte {
-  param([string]$Pfad, [System.Collections.IDictionary]$Werte)
-  $bytes = [System.IO.File]::ReadAllBytes($Pfad)
-  if ($bytes.Length -ge 2 -and (($bytes[0] -eq 0xFF -and $bytes[1] -eq 0xFE) -or ($bytes[0] -eq 0xFE -and $bytes[1] -eq 0xFF))) {
-    throw "$Pfad ist als UTF-16 gespeichert — bitte als UTF-8 speichern und erneut ausführen."
-  }
-  $bom = $bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF
-  $start = if ($bom) { 3 } else { 0 }
-  $kodierung = New-Object System.Text.UTF8Encoding($false, $true)
-  try { $text = $kodierung.GetString($bytes, $start, $bytes.Length - $start) }
-  catch {
-    $kodierung = [System.Text.Encoding]::Default
-    $text = $kodierung.GetString($bytes, $start, $bytes.Length - $start)
-  }
-  $ende = if ($text.Contains("`r`n")) { "`r`n" } else { "`n" }
-  # Nur am LF trennen: ein CR am Zeilenende bleibt so an seiner Zeile hängen
-  $zeilen = New-Object System.Collections.Generic.List[string]
-  $gesetzt = @{}
-  foreach ($zeile in $text.Split([char]10)) {
-    $name = $null
-    if ($zeile -match '^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=') { $name = $Matches[1] }
-    if ($name -and $Werte.Contains($name)) {
-      if ($gesetzt[$name]) { continue }   # doppelte Einträge zusammenfassen
-      $cr = if ($zeile.EndsWith("`r")) { "`r" } else { '' }
-      $zeilen.Add($name + '=' + $Werte[$name] + $cr)
-      $gesetzt[$name] = $true
-    } else { $zeilen.Add($zeile) }
-  }
-  $neu = [string]::Join("`n", $zeilen)
-  foreach ($name in $Werte.Keys) {
-    if ($gesetzt[$name]) { continue }
-    if ($neu.Length -gt 0 -and -not $neu.EndsWith("`n")) { $neu += $ende }
-    $neu += $name + '=' + $Werte[$name] + $ende
-  }
-  if ($neu -ceq $text) { return }
-  $inhalt = $kodierung.GetBytes($neu)
-  if ($bom) { $inhalt = [byte[]]@(0xEF, 0xBB, 0xBF) + $inhalt }
-  # Erst daneben schreiben, dann ersetzen (Rechte der .env bleiben): nie eine halb geschriebene .env
-  $neben = $Pfad + '.kartenbruecke-neu'
-  try {
-    [System.IO.File]::WriteAllBytes($neben, [byte[]]$inhalt)
-    [System.IO.File]::Replace($neben, $Pfad, [NullString]::Value)
-  } finally {
-    if (Test-Path -LiteralPath $neben) { Remove-Item -LiteralPath $neben -Force }
-  }
-}
+$KARTENBRUECKE_AUFGABE = 'Kassa Kartenbruecke'
 
 # Version, die in einem kartenbruecke.ps1 steht ($VERSION = '2'); $null, wenn keine zu finden ist
 function Lies-BrueckenVersion([string]$Skript) {
