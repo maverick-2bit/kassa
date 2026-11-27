@@ -5,6 +5,7 @@ import { App } from './App'
 import { offlineManager } from './lib/offline'
 import { sichereAktivesKonto } from './lib/kontoWechsel'
 import { initTheme } from './lib/theme'
+import { seeStatusNachAktion } from './lib/seeStatus'
 import '@fontsource-variable/inter'
 import './index.css'
 
@@ -17,7 +18,9 @@ sichereAktivesKonto()
 // Service Worker + Offline-Manager initialisieren
 offlineManager.init().catch(console.warn)
 
-const queryClient = new QueryClient({
+const queryClient: QueryClient = new QueryClient({
+  // Nach jedem Verkauf (und jeder anderen Aktion) den SEE-Status neu abfragen: ein Ausfall zeigt sich sofort
+  mutationCache: seeStatusNachAktion(() => queryClient),
   defaultOptions: {
     // refetchOnWindowFocus: neue Einträge (auch aus anderen Fenstern/Tabs)
     // erscheinen automatisch, sobald man zum Fenster zurückkehrt — ohne Reload.
