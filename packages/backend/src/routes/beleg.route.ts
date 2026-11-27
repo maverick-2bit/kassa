@@ -3,10 +3,12 @@
  * Kasse-Zugehörigkeit wird gegen JWT-mandantId geprüft.
  */
 
+import { createHash } from 'node:crypto'
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import {
   BarzahlungsbelegInputSchema,
+  BelegSucheQuerySchema,
   StornobelegInputSchema,
   NullbelegInputSchema,
   MonatsbelegInputSchema,
@@ -24,6 +26,7 @@ import {
   erstelleMonatsbeleg,
   erstelleJahresbeleg,
   listeBelege,
+  sucheBelege,
   erstelleDep7Json,
   erstelleDep131Json,
   holeSeeStatus,
@@ -31,7 +34,9 @@ import {
   meldeSeeWiederherstellung,
   holeFoRegistrierungStatus,
   registriereKasseBeiFinanzOnline,
+  holeBeleg,
   BelegError,
+  BelegSchonGebucht,
   type BelegServiceDeps,
 } from '../services/beleg.service.js'
 import {
@@ -44,7 +49,7 @@ import { baueBonRouting, ladeKasseRoutingAusnahmen, ladeKategorieRoutingZeilen, 
 import { hatBonRouting } from '@kassa/shared'
 import { baueZBon, baueKassensturzBon } from '../services/escpos/layout.js'
 import { listeKassenbuchBuchungen } from '../services/kassenbuch.service.js'
-import { pruefeKasseGehoertZuMandant } from '../auth/scope.js'
+import { pruefeKasseErlaubt, pruefeKasseGehoertZuMandant } from '../auth/scope.js'
 import { and, eq, inArray } from 'drizzle-orm'
 import { artikel, belege, kassen, kategorien, mandanten } from '../db/schema.js'
 import {
@@ -130,6 +135,21 @@ async function pruefeKasseScope(
   return true
 }
 
+/** Mandant-Scope UND Kassen-Zuordnung des Benutzers: Belege ansehen, stornieren, Spezialbelege */
+async function pruefeKasseZugriff(
+  request: FastifyRequest,
+  reply:   FastifyReply,
+  deps:    BelegServiceDeps,
+  kasseId: string,
+): Promise<boolean> {
+  if (!(await pruefeKasseScope(request, reply, deps, kasseId))) return false
+  if (!(await pruefeKasseErlaubt(deps.db, kasseId, request.user))) {
+    void reply.status(403).send({ fehler: 'Diese Kasse ist dir nicht zugeordnet' })
+    return false
+  }
+  return true
+}
+
 /**
  * Fire-and-forget: druckt beim direkten „Bon erstellen" einen Bonierbon (Küchenzettel)
  * für Positionen, deren Artikel `bonierBeiDirektverkauf` gesetzt haben. Läuft NACH der
@@ -195,25 +215,70 @@ function tryBonierDirektverkauf(
   })()
 }
 
+/** JSON mit sortierten Schlüsseln (undefined weggelassen) — gleicher Inhalt, gleiche Zeichenkette */
+function stabilesJson(wert: unknown): string {
+  if (Array.isArray(wert)) return `[${wert.map(stabilesJson).join(',')}]`
+  if (wert !== null && typeof wert === 'object') {
+    const obj = wert as Record<string, unknown>
+    return `{${Object.keys(obj).sort().filter(k => obj[k] !== undefined)
+      .map(k => `${JSON.stringify(k)}:${stabilesJson(obj[k])}`).join(',')}}`
+  }
+  return JSON.stringify(wert)
+}
+
+/**
+ * Fingerabdruck eines Verkaufs für den Idempotency-Key: SHA-256 über die geprüfte Eingabe OHNE
+ * Freigabe-PIN und Druckwunsch — die Wiederholung nach der PIN-Freigabe ist derselbe Verkauf.
+ */
+function verkaufsFingerabdruck(input: BarzahlungsbelegInput): string {
+  const { freigabePin: _pin, keinAutodruck: _druck, ...verkauf } = input
+  return createHash('sha256').update(stabilesJson(verkauf)).digest('hex')
+}
+
 export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify, opts) => {
   const guard = { onRequest: [fastify.authenticate] }
 
   fastify.post('/belege/barzahlung', guard, async (request, reply) => {
+    // Idempotency-Key (optional, UUID): Die Kassa schickt je Verkauf einen. Kommt derselbe Verkauf
+    // ein zweites Mal (Antwort verloren, Offline-Warteschlange), gibt es den gebuchten Beleg zurück.
+    const schluesselRoh = request.headers['idempotency-key']
+    let idempotenzSchluessel: string | undefined
+    if (schluesselRoh !== undefined) {
+      const geprueft = z.string().uuid().safeParse(schluesselRoh)
+      if (!geprueft.success) return reply.status(400).send({ fehler: 'Idempotency-Key muss eine UUID sein' })
+      idempotenzSchluessel = geprueft.data.toLowerCase()
+    }
     const parsed = BarzahlungsbelegInputSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
     if (!(await pruefeKasseScope(request, reply, opts.deps, parsed.data.kasseId))) return
     const freigabeKontext = freigabeKontextAus(request, parsed.data.kasseId)
-    return fuehreAus(fastify, reply, opts.deps, () => erstelleBarzahlungsbeleg(parsed.data, opts.deps, { freigabeKontext }), 201,
-      {
-        skipAutodruck: parsed.data.keinAutodruck ?? false,
-        onErstellt: () => tryBonierDirektverkauf(opts.deps, parsed.data, request.user.mandantId, fastify.log),
-      })
+    const idempotenz = idempotenzSchluessel
+      ? { schluessel: idempotenzSchluessel, hash: verkaufsFingerabdruck(parsed.data) }
+      : undefined
+    try {
+      return await fuehreAus(fastify, reply, opts.deps,
+        () => erstelleBarzahlungsbeleg(parsed.data, opts.deps, {
+          freigabeKontext,
+          ...(idempotenz && { idempotenz }),
+        }), 201,
+        {
+          skipAutodruck: parsed.data.keinAutodruck ?? false,
+          onErstellt: () => tryBonierDirektverkauf(opts.deps, parsed.data, request.user.mandantId, fastify.log),
+        })
+    } catch (err) {
+      if (!(err instanceof BelegSchonGebucht)) throw err
+      // Schon gebucht: den vorhandenen Beleg zurück (200 statt 201) — kein zweiter Druck, keine
+      // zweite Bonierung. Die Kasse ist schon gegen den Mandanten geprüft, der Beleg hängt an ihr.
+      const beleg = await holeBeleg(opts.deps.db, err.belegId, request.user.mandantId)
+      if (!beleg) return reply.status(409).send({ fehler: err.message })
+      return reply.status(200).header('Idempotent-Replayed', 'true').send(beleg)
+    }
   })
 
   fastify.post('/belege/storno', guard, async (request, reply) => {
     const parsed = StornobelegInputSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
-    if (!(await pruefeKasseScope(request, reply, opts.deps, parsed.data.kasseId))) return
+    if (!(await pruefeKasseZugriff(request, reply, opts.deps, parsed.data.kasseId))) return
 
     // Freigabe-Schwelle: gegen den Betrag des zu stornierenden Belegs prüfen,
     // BEVOR signiert wird. Der Storno selbst bleibt Kellner-Funktion — es muss
@@ -273,21 +338,21 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
   fastify.post('/belege/nullbeleg', guard, async (request, reply) => {
     const parsed = NullbelegInputSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
-    if (!(await pruefeKasseScope(request, reply, opts.deps, parsed.data.kasseId))) return
+    if (!(await pruefeKasseZugriff(request, reply, opts.deps, parsed.data.kasseId))) return
     return fuehreAus(fastify, reply, opts.deps, () => erstelleNullbeleg(parsed.data, opts.deps))
   })
 
   fastify.post('/belege/monatsbeleg', guard, async (request, reply) => {
     const parsed = MonatsbelegInputSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
-    if (!(await pruefeKasseScope(request, reply, opts.deps, parsed.data.kasseId))) return
+    if (!(await pruefeKasseZugriff(request, reply, opts.deps, parsed.data.kasseId))) return
     return fuehreAus(fastify, reply, opts.deps, () => erstelleMonatsbeleg(parsed.data, opts.deps))
   })
 
   fastify.post('/belege/jahresbeleg', guard, async (request, reply) => {
     const parsed = JahresbelegInputSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
-    if (!(await pruefeKasseScope(request, reply, opts.deps, parsed.data.kasseId))) return
+    if (!(await pruefeKasseZugriff(request, reply, opts.deps, parsed.data.kasseId))) return
     return fuehreAus(fastify, reply, opts.deps, () => erstelleJahresbeleg(parsed.data, opts.deps))
   })
 
@@ -380,10 +445,23 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
     }
   })
 
+  // Belege einer wählbaren Kasse des Mandanten (Auswertung → Belege): Zeitraum, Suche, Paging.
+  fastify.get('/belege/seite', guard, async (request, reply) => {
+    const parsed = BelegSucheQuerySchema.safeParse(request.query)
+    if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
+    if (!(await pruefeKasseZugriff(request, reply, opts.deps, parsed.data.kasseId))) return
+    const { typen, ...rest } = parsed.data
+    const seite = await sucheBelege(opts.deps.db, request.user.mandantId, {
+      ...rest,
+      ...(typen && { typen: typen.split(',').map(t => t.trim()).filter(Boolean) }),
+    })
+    return reply.send(seite)
+  })
+
   fastify.get('/belege', guard, async (request, reply) => {
     const parsed = ListQuerySchema.safeParse(request.query)
     if (!parsed.success) return reply.status(400).send({ fehler: parsed.error.issues })
-    if (!(await pruefeKasseScope(request, reply, opts.deps, parsed.data.kasseId))) return
+    if (!(await pruefeKasseZugriff(request, reply, opts.deps, parsed.data.kasseId))) return
     const liste = await listeBelege(opts.deps.db, parsed.data.kasseId, {
       ...(parsed.data.limit   !== undefined && { limit:   parsed.data.limit }),
       ...(parsed.data.kundeId !== undefined && { kundeId: parsed.data.kundeId }),

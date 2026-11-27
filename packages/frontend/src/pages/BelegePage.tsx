@@ -1,20 +1,54 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { BelegResponse, Kunde } from '@kassa/shared'
-import { belegApi, druckerApi, kundeApi, kasseApi, ApiError, type JahresbelegStatus } from '../lib/api'
+import { useNavigate } from 'react-router-dom'
+import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
+import type { BelegListeEintrag, BelegResponse, Kunde, KasseListeItem } from '@kassa/shared'
+import { belegApi, druckerApi, emailApi, kundeApi, kasseApi, ApiError, type JahresbelegStatus } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
-import { hasBerechtigung } from '../lib/auth'
+import { getAuth, hasBerechtigung } from '../lib/auth'
 import { formatPreis, formatDatum } from '../lib/format'
+import { druckeRechnung } from '../lib/rechnung'
+import { belegKassen } from '../lib/kassenWechsel'
+import {
+  leseOffenenStorno, leseZurueckgeholt, merkeZurueckgeholt, positionenAusBeleg, vergissZurueckgeholt, zurueckholenGesperrt,
+} from '../lib/zurueckgeholt'
 import { Modal } from '../components/ui/Modal'
 import { Button } from '../components/ui/Button'
 import { BonAnzeige } from '../components/BonAnzeige'
+import { AusgabeDialog } from '../components/AusgabeDialog'
 
+const SEITENGROESSE = 50
+
+/** Storno oder „Zurückholen" (= Storno + Positionen in den Warenkorb dieses Geräts) */
+type StornoArt = 'storno' | 'zurueckholen'
+
+interface StornoAuftrag {
+  beleg:   BelegListeEintrag
+  /** Kasse des Originalbelegs — der Stornobeleg kommt in DEREN RKSV-Kette */
+  kasseId: string
+  art:     StornoArt
+}
+
+function kassenName(k: Pick<KasseListeItem, 'bezeichnung' | 'kassenId'>): string {
+  return k.bezeichnung?.trim() || k.kassenId
+}
+
+/**
+ * Auswertung → Belege: die Belege JE KASSE des Betriebs.
+ *
+ * Oben wählt man die Kasse (Barkasse, Kellner-Geräte …); vorausgewählt ist die Kasse dieses
+ * Geräts. Die Belege bleiben je Kasse getrennt — jede Kasse hat ihre eigene RKSV-Kette und
+ * Nummernfolge. Storno, Zurückholen und die Spezialbelege laufen immer auf der gewählten Kasse.
+ */
 export function BelegePage() {
   const identity    = getKasseIdentity()!
   const queryClient = useQueryClient()
+  const navigate    = useNavigate()
+
+  const [kasseId, setKasseId] = useState(identity.kasseId)
 
   const [ausgewaehlt, setAusgewaehlt] = useState<BelegResponse | null>(null)
-  const [stornoKandidat, setStornoKandidat] = useState<BelegResponse | null>(null)
+  const [ausgabeBeleg, setAusgabeBeleg] = useState<BelegResponse | null>(null)
+  const [stornoAuftrag, setStornoAuftrag] = useState<StornoAuftrag | null>(null)
   const [stornoGrund, setStornoGrund] = useState('')
   /**
    * Freigabe-PIN. Das Feld erscheint erst, wenn das Backend den Storno mit
@@ -26,45 +60,159 @@ export function BelegePage() {
   const [aktionsfehler, setAktionsfehler] = useState<string | null>(null)
   const [neuErzeugt, setNeuErzeugt] = useState<BelegResponse | null>(null)
 
-  // Kunden-Filter
+  // Filter
   const [filterKunde, setFilterKunde] = useState<Pick<Kunde, 'id' | 'bezeichnung'> | null>(null)
+  const [von, setVon] = useState('')
+  const [bis, setBis] = useState('')
+  const [sucheEingabe, setSucheEingabe] = useState('')
+  const [suche, setSuche] = useState('')
+  const [offset, setOffset] = useState(0)
+
+  useEffect(() => {
+    const t = setTimeout(() => setSuche(sucheEingabe.trim()), 300)
+    return () => clearTimeout(t)
+  }, [sucheEingabe])
+
+  // Neue Kasse oder neuer Filter → wieder bei Seite 1 anfangen
+  useEffect(() => { setOffset(0) }, [kasseId, von, bis, suche, filterKunde?.id])
+
+  const filterAktiv = !!(von || bis || suche || filterKunde)
+  const filterZuruecksetzen = () => {
+    setVon(''); setBis(''); setSucheEingabe(''); setSuche(''); setFilterKunde(null)
+  }
+
+  const kassen = useQuery({
+    queryKey:  ['kassen-liste'],
+    queryFn:   () => kasseApi.liste(),
+    staleTime: 1000 * 60,
+  })
+  // Wie der Kassen-Umschalter: ohne Einstellungs-Recht nur die zugeordneten Kassen (das Backend prüft es auch)
+  const sichtbareKassen = belegKassen({
+    alleErlaubt:    hasBerechtigung('einstellungen'),
+    serverListe:    kassen.data,
+    zugeordneteIds: getAuth()?.user.kassenIds ?? [],
+    geraeteKasseId: identity.kasseId,
+  })
+  const gewaehlteKasse = kassen.data?.find(k => k.id === kasseId)
+  const kasseLabel = gewaehlteKasse ? kassenName(gewaehlteKasse) : 'diese Kasse'
+  const kasseAusserBetrieb = !!gewaehlteKasse?.ausserBetriebAm
 
   const kasseStatus = useQuery({
-    queryKey: ['kasse-status', identity.kasseId],
-    queryFn:  () => kasseApi.getStatus(identity.kasseId),
+    queryKey: ['kasse-status', kasseId],
+    queryFn:  () => kasseApi.getStatus(kasseId),
     staleTime: 1000 * 60 * 10,   // 10 Minuten cachen
   })
 
   const jahresbelegStatus = useQuery({
-    queryKey:  ['jahresbeleg-status', identity.kasseId],
-    queryFn:   () => kasseApi.getJahresbelegStatus(identity.kasseId),
+    queryKey:  ['jahresbeleg-status', kasseId],
+    queryFn:   () => kasseApi.getJahresbelegStatus(kasseId),
     staleTime: 1000 * 60 * 5,
   })
 
   const liste = useQuery({
-    queryKey: ['belege', identity.kasseId, filterKunde?.id],
-    queryFn:  () => belegApi.list(identity.kasseId, 200, filterKunde?.id),
+    queryKey: ['belege', kasseId, 'seite', { von, bis, suche, kundeId: filterKunde?.id, offset }],
+    queryFn:  () => belegApi.seite({
+      kasseId,
+      ...(von && { von }),
+      ...(bis && { bis }),
+      ...(suche && { suche }),
+      ...(filterKunde && { kundeId: filterKunde.id }),
+      limit:  SEITENGROESSE,
+      offset,
+    }),
+    placeholderData: keepPreviousData,
+  })
+
+  // Monatsbeleg-Fälligkeit: die letzten Spezialbelege der Kasse, unabhängig von Filter und Seite
+  const spezialbelege = useQuery({
+    queryKey: ['belege', kasseId, 'spezial'],
+    queryFn:  () => belegApi.seite({ kasseId, typen: 'Monatsbeleg,Jahresbeleg,Startbeleg', limit: 20 }),
   })
 
   const invalidate = () =>
-    queryClient.invalidateQueries({ queryKey: ['belege', identity.kasseId] })
+    queryClient.invalidateQueries({ queryKey: ['belege', kasseId] })
 
   // -------------------------------------------------------------------------
   // Mutationen
   // -------------------------------------------------------------------------
 
+  const stornoZuruecksetzen = () => {
+    setStornoAuftrag(null)
+    setStornoGrund('')
+    setFreigabePin('')
+    setFreigabeNoetig(false)
+    setAktionsfehler(null)
+  }
+
+  /** Der Storno ist gebucht: Vormerkung freigeben, die Kasse übernimmt den Warenkorb */
+  const holeInDieKasse = (stornoNummer: number) => {
+    const offen = leseOffenenStorno(identity.kasseId)
+    if (offen) merkeZurueckgeholt(identity.kasseId, { ...offen, status: 'bereit', stornoNummer })
+    navigate('/kasse')
+  }
+
+  // Storno fürs Zurückholen ohne Antwort (Netz weg): in der Belegliste nachsehen, ob er gebucht ist
+  const [offenerStorno, setOffenerStorno] = useState(() => leseOffenenStorno(identity.kasseId))
+  const klaerung = useQuery({
+    queryKey: ['belege', offenerStorno?.belegKasseId, 'klaerung', offenerStorno?.belegId],
+    queryFn:  () => belegApi.seite({ kasseId: offenerStorno!.belegKasseId, suche: `#${offenerStorno!.belegNummer}`, limit: 200 }),
+    enabled:  !!offenerStorno && !stornoAuftrag,
+    refetchInterval: 3000,
+  })
+  const gebuchterStorno = klaerung.data?.belege.find(b => b.id === offenerStorno?.belegId)?.storniertDurch
+  useEffect(() => {
+    if (!offenerStorno || !gebuchterStorno) return
+    setOffenerStorno(null)
+    holeInDieKasse(gebuchterStorno.belegNummer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offenerStorno, gebuchterStorno])
+
   const stornoMutation = useMutation({
-    mutationFn: belegApi.storno,
-    onSuccess:  (beleg) => {
-      setNeuErzeugt(beleg)
-      setStornoKandidat(null)
-      setStornoGrund('')
-      setFreigabePin('')
-      setFreigabeNoetig(false)
-      setAktionsfehler(null)
-      invalidate()
+    mutationFn: async (auftrag: StornoAuftrag) => {
+      // Warenkorb VOR dem Storno sichern: geht das nicht, darf auch nicht storniert werden
+      if (auftrag.art === 'zurueckholen' && !merkeZurueckgeholt(identity.kasseId, {
+        status:           'offen',
+        zeit:             Date.now(),
+        belegId:          auftrag.beleg.id,
+        belegNummer:      auftrag.beleg.belegNummer,
+        belegKasseId:     auftrag.kasseId,
+        kasseBezeichnung: kasseLabel,
+        positionen:       positionenAusBeleg(auftrag.beleg),
+        ...(auftrag.beleg.kunde && { kunde: auftrag.beleg.kunde }),
+      })) {
+        throw new ApiError(0, 'Dieses Gerät kann den Warenkorb nicht speichern (Speicher gesperrt oder voll) — es wurde nichts storniert.')
+      }
+      return belegApi.storno({
+        kasseId:        auftrag.kasseId,
+        verweisBelegId: auftrag.beleg.id,
+        ...(stornoGrund.trim() && { grund: stornoGrund.trim() }),
+        ...(freigabePin && { freigabePin }),
+      })
     },
-    onError: (err) => {
+    onSuccess:  (storno, auftrag) => {
+      void queryClient.invalidateQueries({ queryKey: ['belege', auftrag.kasseId] })
+      stornoZuruecksetzen()
+      if (auftrag.art === 'zurueckholen') {
+        setOffenerStorno(null)
+        holeInDieKasse(storno.belegNummer)
+        return
+      }
+      setNeuErzeugt(storno)
+    },
+    onError: (err, auftrag) => {
+      if (auftrag.art === 'zurueckholen') {
+        const ohneAntwort   = !(err instanceof ApiError) || err.status >= 500
+        // Zweiter Versuch nach verlorener Antwort: „bereits storniert" kann unser eigener Storno sein
+        const vielleichtWir = err instanceof ApiError && err.status === 409 && offenerStorno?.belegId === auftrag.beleg.id
+        if (ohneAntwort || vielleichtWir) {
+          // Der Storno kann gebucht sein → über die Belegliste klären statt neu zu versuchen
+          stornoZuruecksetzen()
+          setOffenerStorno(leseOffenenStorno(identity.kasseId))
+          void queryClient.invalidateQueries({ queryKey: ['belege', auftrag.kasseId] })
+          return
+        }
+        vergissZurueckgeholt(identity.kasseId)
+      }
       // Über der Freigabeschwelle: PIN-Feld einblenden statt nur zu meckern.
       if (err instanceof ApiError && err.code === 'freigabe_erforderlich') {
         setFreigabeNoetig(true)
@@ -75,24 +223,24 @@ export function BelegePage() {
   })
 
   const nullbelegMutation = useMutation({
-    mutationFn: () => belegApi.nullbeleg({ kasseId: identity.kasseId }),
+    mutationFn: () => belegApi.nullbeleg({ kasseId }),
     onSuccess:  (beleg) => { setNeuErzeugt(beleg); invalidate() },
     onError: (err) => setAktionsfehler(err instanceof Error ? err.message : String(err)),
   })
 
   const monatsbelegMutation = useMutation({
-    mutationFn: () => belegApi.monatsbeleg({ kasseId: identity.kasseId }),
+    mutationFn: () => belegApi.monatsbeleg({ kasseId }),
     onSuccess:  (beleg) => { setNeuErzeugt(beleg); invalidate() },
     onError: (err) => setAktionsfehler(err instanceof Error ? err.message : String(err)),
   })
 
   const jahresbelegMutation = useMutation({
-    mutationFn: () => belegApi.jahresbeleg({ kasseId: identity.kasseId }),
+    mutationFn: () => belegApi.jahresbeleg({ kasseId }),
     onSuccess:  (beleg) => {
       setNeuErzeugt(beleg)
       invalidate()
       // Jahresbeleg-Status sofort neu laden → Banner verschwindet
-      void queryClient.invalidateQueries({ queryKey: ['jahresbeleg-status', identity.kasseId] })
+      void queryClient.invalidateQueries({ queryKey: ['jahresbeleg-status', kasseId] })
     },
     onError: (err) => setAktionsfehler(err instanceof Error ? err.message : String(err)),
   })
@@ -101,20 +249,32 @@ export function BelegePage() {
   // Fälligkeit prüfen
   // -------------------------------------------------------------------------
 
-  const faelligkeit = useMemo(() => berechneFaelligkeit(liste.data ?? []), [liste.data])
+  const faelligkeit = useMemo(() => berechneFaelligkeit(spezialbelege.data?.belege ?? []), [spezialbelege.data])
 
-  // IDs aller Barzahlungsbelege die bereits einen Stornobeleg haben
-  const bereitsStornoiert = useMemo(() => {
-    const ids = new Set<string>()
-    for (const b of liste.data ?? []) {
-      if (b.belegTyp === 'Stornobeleg' && b.verweisBelegId) {
-        ids.add(b.verweisBelegId)
-      }
-    }
-    return ids
-  }, [liste.data])
+  const kannStornieren   = hasBerechtigung('belege.stornieren')
+  // Zurückholen legt den Beleg in den Warenkorb dieses Geräts → braucht auch die Kasse
+  const kannZurueckholen = kannStornieren && hasBerechtigung('kasse')
 
-  const kannStornieren = hasBerechtigung('belege.stornieren')
+  const belegeSeite = liste.data?.belege ?? []
+  const gesamt      = liste.data?.gesamt ?? 0
+  const bisNr       = Math.min(offset + SEITENGROESSE, gesamt)
+
+  const oeffneStorno = (b: BelegListeEintrag, art: StornoArt) => {
+    // Ein gewöhnlicher Storno darf eine alte Vormerkung nicht zum „Zurückholen" machen
+    if (art === 'storno' && offenerStorno) { vergissZurueckgeholt(identity.kasseId); setOffenerStorno(null) }
+    setStornoAuftrag({ beleg: b, kasseId, art })
+    setStornoGrund('')
+    setFreigabePin('')
+    setFreigabeNoetig(false)
+    setAktionsfehler(null)
+  }
+
+  const stornoBeleg = stornoAuftrag?.beleg
+  /** Grund, warum sich der gewählte Beleg nicht zurückholen lässt */
+  const wartender  = leseZurueckgeholt(identity.kasseId)
+  const sperrGrund = stornoAuftrag?.art !== 'zurueckholen' ? null
+    : zurueckholenGesperrt(stornoAuftrag.beleg)
+      ?? (wartender ? `Im Warenkorb liegt noch der zurückgeholte Beleg #${wartender.belegNummer}. Bitte zuerst neu kassieren oder verwerfen.` : null)
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 sm:py-8 space-y-6">
@@ -122,31 +282,67 @@ export function BelegePage() {
       <div>
         <h1 className="text-2xl font-bold text-ink">Belege</h1>
         <p className="mt-1 text-sm text-ink-muted">
-          Alle Belege dieser Kasse, RKSV-Spezialbelege, Storno
+          Belege je Kasse: ansehen, nachdrucken, stornieren, zurückholen. Dazu die RKSV-Spezialbelege.
         </p>
       </div>
 
+      {offenerStorno && !stornoAuftrag && (
+        <div role="status" className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+          Keine Antwort auf den Storno von Beleg #{offenerStorno.belegNummer}. Es wird geprüft, ob er gebucht ist; dann geht es
+          in der Kasse weiter. Steht der Beleg weiter ohne „storniert" in der Liste, hole ihn noch einmal zurück.
+        </div>
+      )}
+
+      {/* Kassen-Auswahl: jede Kasse für sich (eigene RKSV-Kette) */}
+      {sichtbareKassen.length > 1 && (
+        <div role="tablist" aria-label="Kasse" className="flex flex-wrap gap-2" data-testid="kassen-auswahl">
+          {sichtbareKassen.map(k => {
+            const aktiv = k.id === kasseId
+            return (
+              <button
+                key={k.id}
+                type="button"
+                role="tab"
+                aria-selected={aktiv}
+                onClick={() => setKasseId(k.id)}
+                className={`rounded-lg border px-3 py-2 text-sm text-left transition-colors ${
+                  aktiv
+                    ? 'border-brand-500 bg-brand-50 text-brand-900 font-semibold'
+                    : 'border-line bg-panel text-ink hover:bg-panel-2'
+                }`}
+              >
+                <span className="block">{kassenName(k)}</span>
+                <span className="block text-xs font-normal text-ink-muted">
+                  {k.id === identity.kasseId ? 'dieses Gerät' : k.kassenId}
+                  {k.ausserBetriebAm ? ' · außer Betrieb' : ''}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       {/* SEE-Zertifikats-Banner */}
-      {kasseStatus.data?.seeAbgelaufen && (
+      {!kasseAusserBetrieb && kasseStatus.data?.seeAbgelaufen && (
         <Banner
           farbe="red"
           titel="SEE-Zertifikat abgelaufen"
-          beschreibung={`Das Sicherheitseinrichtungs-Zertifikat ist seit dem ${new Date(kasseStatus.data.seeGueltigBis).toLocaleDateString('de-AT')} abgelaufen. Die Kasse kann keine Belege mehr ausstellen. Bitte Kasse neu einrichten.`}
+          beschreibung={`Das Sicherheitseinrichtungs-Zertifikat von „${kasseLabel}" ist seit dem ${new Date(kasseStatus.data.seeGueltigBis).toLocaleDateString('de-AT')} abgelaufen. Die Kasse kann keine Belege mehr ausstellen. Bitte Kasse neu einrichten.`}
         />
       )}
-      {kasseStatus.data && !kasseStatus.data.seeAbgelaufen && kasseStatus.data.seeRestTage <= 90 && (
+      {!kasseAusserBetrieb && kasseStatus.data && !kasseStatus.data.seeAbgelaufen && kasseStatus.data.seeRestTage <= 90 && (
         <Banner
           farbe={kasseStatus.data.seeRestTage <= 30 ? 'red' : 'amber'}
           titel={`SEE-Zertifikat läuft in ${kasseStatus.data.seeRestTage} Tagen ab`}
-          beschreibung={`Das Sicherheitseinrichtungs-Zertifikat ist bis ${new Date(kasseStatus.data.seeGueltigBis).toLocaleDateString('de-AT')} gültig. Bitte rechtzeitig Kasse neu einrichten, um Betriebsunterbrechungen zu vermeiden.`}
+          beschreibung={`Das Sicherheitseinrichtungs-Zertifikat von „${kasseLabel}" ist bis ${new Date(kasseStatus.data.seeGueltigBis).toLocaleDateString('de-AT')} gültig. Bitte rechtzeitig Kasse neu einrichten, um Betriebsunterbrechungen zu vermeiden.`}
         />
       )}
 
       {/* Fälligkeits-Banner */}
-      {faelligkeit.monatsbelegFaellig && (
+      {!kasseAusserBetrieb && faelligkeit.monatsbelegFaellig && (
         <Banner
           farbe="amber"
-          titel="Monatsbeleg fällig"
+          titel={`Monatsbeleg fällig (${kasseLabel})`}
           beschreibung={`Der letzte Monatsbeleg ist älter als 1 Monat${
             faelligkeit.letzterMonatsbeleg
               ? ` (zuletzt am ${formatDatum(faelligkeit.letzterMonatsbeleg)})`
@@ -159,7 +355,7 @@ export function BelegePage() {
           }
         />
       )}
-      {jahresbelegStatus.data?.jahresbelegFaellig && (
+      {!kasseAusserBetrieb && jahresbelegStatus.data?.jahresbelegFaellig && (
         <JahresbelegBanner
           status={jahresbelegStatus.data}
           isPending={jahresbelegMutation.isPending}
@@ -168,70 +364,111 @@ export function BelegePage() {
       )}
 
       {/* Spezialbelege */}
-      <div className="rounded-lg bg-panel shadow-sm border border-line p-4 space-y-4">
-        <h2 className="text-sm font-semibold text-ink">RKSV-Spezialbelege</h2>
+      {!kasseAusserBetrieb && (
+        <div className="rounded-lg bg-panel shadow-sm border border-line p-4 space-y-4">
+          <h2 className="text-sm font-semibold text-ink">RKSV-Spezialbelege — {kasseLabel}</h2>
 
-        {/* Kontrollbeleg — primäre Aktion */}
-        <div className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-blue-900">Kontrollbeleg (Nullbeleg)</p>
-            <p className="text-xs text-blue-700 mt-0.5">
-              Nullbeleg gem. RKSV § 8 — wird signiert, gedruckt und in die Signaturkette eingereiht.
-              Bei Behördenkontrolle auf Verlangen sofort erstellen.
-            </p>
+          {/* Kontrollbeleg — primäre Aktion */}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-blue-900">Kontrollbeleg (Nullbeleg)</p>
+              <p className="text-xs text-blue-700 mt-0.5">
+                Nullbeleg gem. RKSV § 8 — wird signiert, gedruckt und in die Signaturkette eingereiht.
+                Bei Behördenkontrolle auf Verlangen sofort erstellen.
+              </p>
+            </div>
+            <Button onClick={() => nullbelegMutation.mutate()} loading={nullbelegMutation.isPending}>
+              Kontrollbeleg erstellen
+            </Button>
           </div>
-          <Button onClick={() => nullbelegMutation.mutate()} loading={nullbelegMutation.isPending}>
-            Kontrollbeleg erstellen
-          </Button>
-        </div>
 
-        {/* Monats- und Jahresbeleg — sekundär */}
-        <div className="flex flex-wrap gap-2 pt-1 border-t border-line">
-          <Button variant="secondary" onClick={() => monatsbelegMutation.mutate()} loading={monatsbelegMutation.isPending}>
-            Monatsbeleg erstellen
-          </Button>
-          <Button variant="secondary" onClick={() => jahresbelegMutation.mutate()} loading={jahresbelegMutation.isPending}>
-            Jahresbeleg erstellen
-          </Button>
+          {/* Monats- und Jahresbeleg — sekundär */}
+          <div className="flex flex-wrap gap-2 pt-1 border-t border-line">
+            <Button variant="secondary" onClick={() => monatsbelegMutation.mutate()} loading={monatsbelegMutation.isPending}>
+              Monatsbeleg erstellen
+            </Button>
+            <Button variant="secondary" onClick={() => jahresbelegMutation.mutate()} loading={jahresbelegMutation.isPending}>
+              Jahresbeleg erstellen
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
 
-      {aktionsfehler && !stornoKandidat && (
+      {aktionsfehler && !stornoAuftrag && (
         <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           {aktionsfehler}
         </div>
       )}
 
-      {/* Kunden-Filter */}
-      <div className="flex items-center gap-3 flex-wrap">
+      {/* Filter */}
+      <div className="flex items-end gap-3 flex-wrap">
+        <label className="flex-1 min-w-[200px] max-w-xs">
+          <span className="block text-xs font-medium text-ink-muted mb-1">Suche</span>
+          <input
+            type="search"
+            value={sucheEingabe}
+            onChange={e => setSucheEingabe(e.target.value)}
+            placeholder="Belegnummer, Betrag, Kunde …"
+            aria-label="Belege durchsuchen"
+            className="w-full rounded-md border border-line-strong px-3 py-2 text-sm
+                       focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+          />
+        </label>
+        <label>
+          <span className="block text-xs font-medium text-ink-muted mb-1">Von</span>
+          <input
+            type="date"
+            value={von}
+            onChange={e => setVon(e.target.value)}
+            aria-label="Von Datum"
+            className="rounded-md border border-line-strong px-3 py-2 text-sm focus:border-brand-500 outline-none"
+          />
+        </label>
+        <label>
+          <span className="block text-xs font-medium text-ink-muted mb-1">Bis</span>
+          <input
+            type="date"
+            value={bis}
+            onChange={e => setBis(e.target.value)}
+            aria-label="Bis Datum"
+            className="rounded-md border border-line-strong px-3 py-2 text-sm focus:border-brand-500 outline-none"
+          />
+        </label>
         <div className="flex-1 min-w-[220px] max-w-sm">
+          <span className="block text-xs font-medium text-ink-muted mb-1">Kunde</span>
           <KundeFilterSuche
             value={filterKunde}
             onChange={setFilterKunde}
           />
         </div>
-        {filterKunde && (
-          <p className="text-sm text-ink-muted">
-            Belege für <strong className="text-ink">{filterKunde.bezeichnung}</strong>
-          </p>
+        {filterAktiv && (
+          <Button variant="secondary" onClick={filterZuruecksetzen}>Filter zurücksetzen</Button>
         )}
       </div>
 
       {/* Tabelle */}
-      <div className="rounded-lg bg-panel shadow-sm border border-line overflow-hidden">
+      <div className="rounded-lg bg-panel shadow-sm border border-line overflow-x-auto">
         {liste.isLoading ? (
           <div className="p-8 text-center text-sm text-ink-muted">Wird geladen…</div>
         ) : liste.isError ? (
           <div className="p-8 text-center text-sm text-red-600">
             Fehler: {liste.error instanceof Error ? liste.error.message : 'Unbekannt'}
           </div>
-        ) : liste.data && liste.data.length === 0 ? (
+        ) : belegeSeite.length === 0 ? (
           <div className="p-8 text-center">
-            <p className="text-sm text-ink-muted">Noch keine Belege.</p>
-            <a href="/kasse" className="mt-2 inline-block text-sm text-brand-600 hover:underline">Zur Kasse →</a>
+            {filterAktiv ? (
+              <p className="text-sm text-ink-muted">Keine Belege für diese Filter.</p>
+            ) : (
+              <>
+                <p className="text-sm text-ink-muted">Noch keine Belege auf {kasseLabel}.</p>
+                {kasseId === identity.kasseId && (
+                  <a href="/kasse" className="mt-2 inline-block text-sm text-brand-600 hover:underline">Zur Kasse →</a>
+                )}
+              </>
+            )}
           </div>
         ) : (
-          <table className="w-full text-sm">
+          <table className="w-full text-sm" data-testid="belege-tabelle">
             <thead className="bg-panel-2 text-left text-xs uppercase tracking-wide text-ink-muted">
               <tr>
                 <th className="px-4 py-2 font-semibold">Nr.</th>
@@ -246,12 +483,12 @@ export function BelegePage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
-              {liste.data?.map((b) => (
-                <tr key={b.id} className="hover:bg-brand-50/40">
+              {belegeSeite.map((b) => (
+                <tr key={b.id} className="hover:bg-brand-50/40" data-testid={`beleg-zeile-${b.belegNummer}`}>
                   <td className="px-4 py-2 font-mono font-medium text-ink cursor-pointer" onClick={() => setAusgewaehlt(b)}>
                     #{b.belegNummer}
                   </td>
-                  <td className="px-4 py-2 text-ink-muted cursor-pointer" onClick={() => setAusgewaehlt(b)}>
+                  <td className="px-4 py-2 text-ink-muted cursor-pointer whitespace-nowrap" onClick={() => setAusgewaehlt(b)}>
                     {formatDatum(b.belegDatum)}
                   </td>
                   <td className="px-4 py-2 cursor-pointer" onClick={() => setAusgewaehlt(b)}>
@@ -289,19 +526,40 @@ export function BelegePage() {
                     {formatPreis(b.gesamtbetragCent)}
                   </td>
                   <td className="px-4 py-2 text-right">
-                    {b.belegTyp === 'Barzahlungsbeleg' && kannStornieren && (
-                      bereitsStornoiert.has(b.id) ? (
-                        <span className="text-xs text-ink-subtle italic whitespace-nowrap">storniert</span>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); setStornoKandidat(b); setStornoGrund(''); setAktionsfehler(null) }}
-                          className="text-xs text-red-600 hover:underline whitespace-nowrap"
-                        >
-                          Stornieren
-                        </button>
-                      )
-                    )}
+                    <div className="flex items-center justify-end gap-3 whitespace-nowrap">
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setAusgabeBeleg(b) }}
+                        className="text-xs text-brand-700 hover:underline"
+                      >
+                        Ausgeben
+                      </button>
+                      {b.belegTyp === 'Barzahlungsbeleg' && kannStornieren && (
+                        b.storniertDurch ? (
+                          <span className="text-xs text-ink-subtle italic">storniert (#{b.storniertDurch.belegNummer})</span>
+                        ) : (
+                          <>
+                            {kannZurueckholen && (
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); oeffneStorno(b, 'zurueckholen') }}
+                                className="text-xs text-amber-700 hover:underline"
+                                title="Stornieren und die Positionen in den Warenkorb dieses Geräts legen"
+                              >
+                                Zurückholen
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); oeffneStorno(b, 'storno') }}
+                              className="text-xs text-red-600 hover:underline"
+                            >
+                              Stornieren
+                            </button>
+                          </>
+                        )
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -310,32 +568,107 @@ export function BelegePage() {
         )}
       </div>
 
+      {/* Paging */}
+      {gesamt > 0 && (
+        <div className="flex items-center justify-between gap-3 text-sm text-ink-muted" data-testid="belege-paging">
+          <span>Belege {offset + 1}–{bisNr} von {gesamt}</span>
+          <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              disabled={offset === 0 || liste.isFetching}
+              onClick={() => setOffset(o => Math.max(0, o - SEITENGROESSE))}
+            >
+              ← Neuere
+            </Button>
+            <Button
+              variant="secondary"
+              disabled={bisNr >= gesamt || liste.isFetching}
+              onClick={() => setOffset(o => o + SEITENGROESSE)}
+            >
+              Ältere →
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Detail-Modal */}
       <Modal
         open={!!ausgewaehlt}
         onClose={() => setAusgewaehlt(null)}
-        title={`Beleg #${ausgewaehlt?.belegNummer}`}
+        title={`Beleg #${ausgewaehlt?.belegNummer} · ${kasseLabel}`}
         size="lg"
       >
-        {ausgewaehlt && <BonAnzeige beleg={ausgewaehlt} />}
+        {ausgewaehlt && (
+          <div className="space-y-4">
+            <BonAnzeige beleg={ausgewaehlt} />
+            <div className="flex justify-end pt-2 border-t border-line">
+              <Button
+                variant="secondary"
+                onClick={() => { const b = ausgewaehlt; setAusgewaehlt(null); setAusgabeBeleg(b) }}
+              >
+                Ausgeben (Bon, Rechnung, E-Mail) …
+              </Button>
+            </div>
+          </div>
+        )}
       </Modal>
 
-      {/* Storno-Bestätigung */}
+      {/* Nachdruck / Rechnung / E-Mail — derselbe Ausgabe-Dialog wie an der Kasse */}
+      <AusgabeDialog
+        open={!!ausgabeBeleg}
+        onClose={() => setAusgabeBeleg(null)}
+        titel={ausgabeBeleg ? `Beleg #${ausgabeBeleg.belegNummer} ausgeben` : 'Ausgabe wählen'}
+        beschreibung={`Nachdruck eines Belegs von ${kasseLabel}. „Bon" druckt am Bondrucker dieser Kasse.`}
+        wege={{ ohne: false }}
+        {...(ausgabeBeleg?.kunde?.email && { mailVorschlag: ausgabeBeleg.kunde.email })}
+        onAusgabe={async (ziel) => {
+          const b = ausgabeBeleg
+          if (!b) return
+          // Fehler (kein Drucker an dieser Kasse …) zeigt der Dialog selbst an und bleibt offen
+          switch (ziel.art) {
+            case 'bon':     await druckerApi.reprint(b.id); break
+            case 'drucker': await druckerApi.reprint(b.id, { druckerId: ziel.druckerId }); break
+            case 'mail':    await emailApi.sendBeleg(b.id, ziel.empfaenger); break
+            case 'a4': {
+              const auth = getAuth()
+              if (auth) druckeRechnung(b, { firmenname: auth.mandant.firmenname, uid: auth.mandant.uid })
+              break
+            }
+            case 'keine':   break
+          }
+        }}
+      />
+
+      {/* Storno / Zurückholen */}
       <Modal
-        open={!!stornoKandidat}
-        onClose={() => { setStornoKandidat(null); setStornoGrund('') }}
-        title={`Beleg #${stornoKandidat?.belegNummer} stornieren?`}
+        open={!!stornoAuftrag}
+        onClose={stornoZuruecksetzen}
+        title={stornoAuftrag?.art === 'zurueckholen'
+          ? `Beleg #${stornoBeleg?.belegNummer} zurückholen?`
+          : `Beleg #${stornoBeleg?.belegNummer} stornieren?`}
       >
-        {stornoKandidat && (
+        {stornoAuftrag && stornoBeleg && (
           <div className="space-y-4">
+            {sperrGrund && (
+              <div data-testid="zurueckholen-gesperrt" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                {sperrGrund}
+              </div>
+            )}
             <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-              Es wird ein <strong>Stornobeleg</strong> mit negierten Beträgen erstellt.
-              Diese Aktion kann nicht rückgängig gemacht werden.
+              Es wird ein <strong>Stornobeleg</strong> mit negierten Beträgen auf <strong>{kasseLabel}</strong> erstellt
+              (in deren RKSV-Kette). Diese Aktion kann nicht rückgängig gemacht werden.
+              {stornoAuftrag.art === 'zurueckholen' && (
+                <> Danach liegen die Positionen im Warenkorb <strong>dieses Geräts</strong> — korrigieren und neu kassieren.</>
+              )}
+              {stornoBeleg.summeKarteCent !== 0 && (
+                <> Die Kartenzahlung wird dabei <strong>nicht</strong> am Terminal rückgebucht.</>
+              )}
             </div>
             <dl className="space-y-1 text-sm">
-              <div className="flex justify-between"><dt className="text-ink-muted">Original-Beleg</dt><dd className="font-mono">#{stornoKandidat.belegNummer}</dd></div>
-              <div className="flex justify-between"><dt className="text-ink-muted">Datum</dt><dd>{formatDatum(stornoKandidat.belegDatum)}</dd></div>
-              <div className="flex justify-between font-medium"><dt>Betrag</dt><dd className="font-mono">{formatPreis(stornoKandidat.gesamtbetragCent)}</dd></div>
+              <div className="flex justify-between"><dt className="text-ink-muted">Kasse</dt><dd>{kasseLabel}</dd></div>
+              <div className="flex justify-between"><dt className="text-ink-muted">Original-Beleg</dt><dd className="font-mono">#{stornoBeleg.belegNummer}</dd></div>
+              <div className="flex justify-between"><dt className="text-ink-muted">Datum</dt><dd>{formatDatum(stornoBeleg.belegDatum)}</dd></div>
+              <div className="flex justify-between font-medium"><dt>Betrag</dt><dd className="font-mono">{formatPreis(stornoBeleg.gesamtbetragCent)}</dd></div>
             </dl>
             <div>
               <label className="block text-sm font-medium text-ink mb-1">
@@ -378,26 +711,15 @@ export function BelegePage() {
               </div>
             )}
             <div className="flex justify-end gap-2 pt-2 border-t border-line">
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setStornoKandidat(null); setStornoGrund('')
-                  setFreigabePin(''); setFreigabeNoetig(false); setAktionsfehler(null)
-                }}
-              >
+              <Button variant="secondary" onClick={stornoZuruecksetzen}>
                 Abbrechen
               </Button>
               <Button
-                disabled={freigabeNoetig && freigabePin.length < 4}
-                onClick={() => stornoMutation.mutate({
-                  kasseId:        identity.kasseId,
-                  verweisBelegId: stornoKandidat.id,
-                  ...(stornoGrund.trim() && { grund: stornoGrund.trim() }),
-                  ...(freigabePin && { freigabePin }),
-                })}
+                disabled={!!sperrGrund || (freigabeNoetig && freigabePin.length < 4)}
+                onClick={() => stornoMutation.mutate(stornoAuftrag)}
                 loading={stornoMutation.isPending}
               >
-                Storno bestätigen
+                {stornoAuftrag.art === 'zurueckholen' ? 'Stornieren und zurückholen' : 'Storno bestätigen'}
               </Button>
             </div>
           </div>
@@ -639,7 +961,7 @@ interface Faelligkeit {
   letzterMonatsbeleg?:   string
 }
 
-function berechneFaelligkeit(belege: BelegResponse[]): Faelligkeit {
+function berechneFaelligkeit(belege: readonly BelegResponse[]): Faelligkeit {
   const monatsbelege  = belege.filter(b => b.belegTyp === 'Monatsbeleg')
   const jahresbelege  = belege.filter(b => b.belegTyp === 'Jahresbeleg')
   const startbeleg    = belege.find(b => b.belegTyp === 'Startbeleg')

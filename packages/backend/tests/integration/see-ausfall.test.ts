@@ -185,6 +185,10 @@ describe('SEE-Ausfall + Wiederinbetriebnahme (Integration, echtes PostgreSQL)', 
     expect(seeAusfallSpy).toHaveBeenCalledTimes(1)
     expect(seeAusfallSpy.mock.calls[0]![0]).toBe(kassenKID)
     expect(seeAusfallSpy.mock.calls[0]![2]).toEqual(FON_CREDS)
+    // beginn_ausfall = Beginn des laufenden Ausfalls (aus der ersten Meldung), nicht der Zeitpunkt dieser Meldung
+    const [k] = await idb.db.select().from(kassen).where(eq(kassen.id, kasseId))
+    expect(k!.seeAusgefallenSeit).toBeInstanceOf(Date)
+    expect(seeAusfallSpy.mock.calls[0]![3]).toEqual({ beginn: k!.seeAusgefallenSeit })
   })
 
   it('ohne Zugangsdaten wird KEINE FON-Meldung gesendet', async () => {

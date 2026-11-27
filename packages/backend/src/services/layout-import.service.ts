@@ -18,15 +18,15 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { and, eq, sql } from 'drizzle-orm'
-import type { LayoutBericht, LayoutGruppe, LayoutImport, LayoutImportOptionen } from '@kassa/shared'
+import { and, eq, inArray, sql } from 'drizzle-orm'
+import { eanSchluessel, istGueltigeEan, type LayoutBericht, type LayoutGruppe, type LayoutImport, type LayoutImportOptionen } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import {
   artikel, kassekategorieSichtbarkeit, kassen, kasseFavoriten, kategorien,
   artikelModifikatorGruppen, modifikatoren, modifikatorGruppen,
 } from '../db/schema.js'
 import type { DbOrTx } from './bestandteil.service.js'
-import { generiereArtikelNummer } from './artikel.service.js'
+import { eanSchluesselSql, generiereArtikelNummer } from './artikel.service.js'
 import { ermittleLoeschPlan, fuehreLoeschungAus, type LoeschPlan } from './katalog-loeschen.service.js'
 import { ladeOptionenKontext, optionsgruppenSchluessel, ordneOptionsgruppeZu } from './modifikator.service.js'
 
@@ -96,6 +96,8 @@ export interface KassaArtikel {
   rasterPosition: number | null; reihenfolge: number
   istFavorit: boolean; favoritenReihenfolge: number
   aktiv: boolean; istBestandteil: boolean
+  /** EAN/GTIN (eindeutig je Mandant); fehlt bei älteren Aufrufern = keine */
+  ean?: string | null
 }
 export interface KassaOptionsgruppe {
   id: string; name: string; typ: 'pflicht' | 'optional'; maxAuswahl: number | null
@@ -132,9 +134,9 @@ export interface LayoutPlan {
   gruppenUpdates: { id: string; werte: { parentId?: string | null; farbe?: string; reihenfolge?: number; station?: string } }[]
   neueArtikel: { id: string; bezeichnung: string; preisBruttoCent: number; mwstSatz: string; kategorieId: string
     farbe: string | null; rasterPosition: number | null; reihenfolge: number
-    istFavorit: boolean; favoritenReihenfolge: number; allergene: string | null }[]
+    istFavorit: boolean; favoritenReihenfolge: number; allergene: string | null; ean: string | null }[]
   artikelUpdates: { id: string; werte: { kategorieId?: string; farbe?: string | null; rasterPosition?: number | null
-    reihenfolge?: number; istFavorit?: boolean; favoritenReihenfolge?: number } }[]
+    reihenfolge?: number; istFavorit?: boolean; favoritenReihenfolge?: number; ean?: string } }[]
   kassenFavoritenLoeschen: boolean
   kassenUpdates: { id: string; artikelProZeile: number }[]
   /** Optionsgruppen je Artikel (artikelId = bestehender oder neu angelegter Artikel) */
@@ -396,6 +398,22 @@ export function planeLayout(ist: KassaZustand, layout: LayoutImport, opts: Layou
   const neueArtikel = new Map<string, LayoutPlan['neueArtikel'][number]>()
   let zugeordnet = 0, neu = 0, mehrdeutig = 0, nichtAngelegt = 0, artikelGeaendert = 0
 
+  // EAN: eindeutig je Mandant (GTIN-14-Schlüssel). Eine EAN aus dem Layout wird nur übernommen, wenn sie
+  // gültig ist und noch keinem anderen Artikel gehört; eine bestehende EAN am Artikel wird nie überschrieben.
+  // Bei „Katalog löschen" ist zustand.artikel leer → alle EANs des Altbestands werden frei (schreibePlan räumt sie ab).
+  const eanVergeben = new Map<string, string>()
+  for (const a of zustand.artikel) if (a.ean) eanVergeben.set(eanSchluessel(a.ean), a.id)
+  let eanUebernommen = 0, eanUebersprungen = 0
+  const eanFuer = (roh: string | null | undefined, artikelId: string): string | null => {
+    const ean = roh?.trim()
+    if (!ean) return null
+    const schluessel = eanSchluessel(ean)
+    const besitzer = eanVergeben.get(schluessel)
+    if (!istGueltigeEan(ean) || (besitzer !== undefined && besitzer !== artikelId)) { eanUebersprungen++; return null }
+    eanVergeben.set(schluessel, artikelId)
+    return ean
+  }
+
   for (const k of knotenListe) {
     const belegteSlots = new Set<number>()
     for (const z of k.zeilen) {
@@ -425,6 +443,15 @@ export function planeLayout(ist: KassaZustand, layout: LayoutImport, opts: Layou
         if (a.farbe !== farbe)                  werte.farbe          = farbe
         if (a.rasterPosition !== rasterPosition) werte.rasterPosition = rasterPosition
         if (a.reihenfolge !== z.artikel.slot)   werte.reihenfolge    = z.artikel.slot
+        const layoutEan = z.artikel.ean?.trim()
+        if (layoutEan && !(a.ean && eanSchluessel(a.ean) === eanSchluessel(layoutEan))) {
+          // Eigene EAN des Artikels bleibt; nur eine fehlende wird aus dem Layout ergänzt
+          if (a.ean) eanUebersprungen++
+          else {
+            const ean = eanFuer(layoutEan, a.id)
+            if (ean) { werte.ean = ean; eanUebernommen++ }
+          }
+        }
         if (Object.keys(werte).length > 0) { artikelUpdates.set(a.id, werte); artikelGeaendert++ }
       } else if (z.status === 'fehlt') {
         const satz = mwstZuSatz(z.artikel.mwst)
@@ -439,10 +466,12 @@ export function planeLayout(ist: KassaZustand, layout: LayoutImport, opts: Layou
           neu++
           z.status = 'neu'
           z.neuId = randomUUID()
+          const ean = eanFuer(z.artikel.ean, z.neuId)
+          if (ean) eanUebernommen++
           neueArtikel.set(z.neuId, {
             id: z.neuId, bezeichnung: z.artikel.name.trim(), preisBruttoCent: z.artikel.preisCent, mwstSatz: satz,
             kategorieId, farbe, rasterPosition, reihenfolge: z.artikel.slot, istFavorit: false, favoritenReihenfolge: 0,
-            allergene: z.artikel.allergene ?? null,
+            allergene: z.artikel.allergene ?? null, ean,
           })
         }
       }
@@ -571,7 +600,8 @@ export function planeLayout(ist: KassaZustand, layout: LayoutImport, opts: Layou
       geaendert: gruppenGeaendert,
       umgehaengt: gruppenUmgehaengt,
     },
-    artikel: { imLayout: zeilen.length, zugeordnet, neu, mehrdeutig, nichtGefundenNichtAngelegt: nichtAngelegt, geaendert: artikelGeaendert },
+    artikel: { imLayout: zeilen.length, zugeordnet, neu, mehrdeutig, nichtGefundenNichtAngelegt: nichtAngelegt, geaendert: artikelGeaendert,
+      eanUebernommen, eanUebersprungen },
     favoriten: { ...favoriten, kassenFavoritenGeloescht },
     kassen: { rasterAufSpaltenGesetzt: plan.kassenUpdates.length },
     optionen: optionenZaehler,
@@ -588,6 +618,12 @@ export function planeLayout(ist: KassaZustand, layout: LayoutImport, opts: Layou
       ? `Raster: ${z.kassen.rasterAufSpaltenGesetzt} Kasse(n) auf ${layout.spalten} Spalten gestellt.`
       : 'Raster: Spaltenanzahl unverändert.',
   ]
+  if (eanUebernommen > 0 || eanUebersprungen > 0) {
+    zusammenfassung.push(
+      `EAN: ${eanUebernommen} übernommen` +
+      (eanUebersprungen > 0 ? `, ${eanUebersprungen} nicht übernommen (ungültig, schon bei einem anderen Artikel oder der Artikel hat schon eine eigene EAN).` : '.'),
+    )
+  }
   zusammenfassung.push(
     `Optionen: ${z.optionen.gruppenNeu} Optionsgruppe(n) neu, ${z.optionen.gruppenWiederverwendet} wiederverwendet, ${z.optionen.zuordnungenNeu} Zuordnung(en) neu` +
     (z.optionen.uebersprungen > 0 ? `, ${z.optionen.uebersprungen} übersprungen (Artikel mehrdeutig oder nicht angelegt).` : '.'),
@@ -665,7 +701,7 @@ async function ladeZustand(db: DbOrTx, mandantId: string, katalogLoeschen: boole
       id: a.id, bezeichnung: a.bezeichnung, kategorieId: a.kategorieId, farbe: a.farbe,
       rasterPosition: a.rasterPosition, reihenfolge: a.reihenfolge,
       istFavorit: a.istFavorit, favoritenReihenfolge: a.favoritenReihenfolge,
-      aktiv: a.aktiv, istBestandteil: a.istBestandteil,
+      aktiv: a.aktiv, istBestandteil: a.istBestandteil, ean: a.ean,
     })),
     kassen: kassenRows,
     kassenFavoritenAnzahl: fav?.n ?? 0,
@@ -686,6 +722,17 @@ async function schreibePlan(tx: DbOrTx, mandantId: string, plan: LayoutPlan): Pr
     await tx.update(kategorien).set({ ...u.werte, updatedAt: jetzt })
       .where(and(eq(kategorien.id, u.id), eq(kategorien.mandantId, mandantId)))
   }
+  if (plan.loeschung) {
+    // Katalog gelöscht: Altartikel, die wegen laufender Vorgänge nur deaktiviert wurden, geben ihre EAN
+    // an den neu angelegten Artikel ab (sonst verletzt das Anlegen die Eindeutigkeit)
+    const neueSchluessel = plan.neueArtikel.flatMap(n => (n.ean ? [eanSchluessel(n.ean)] : []))
+    if (neueSchluessel.length > 0) {
+      await tx.update(artikel).set({ ean: null, updatedAt: jetzt }).where(and(
+        eq(artikel.mandantId, mandantId),
+        inArray(eanSchluesselSql, neueSchluessel),
+      ))
+    }
+  }
   if (plan.neueArtikel.length > 0) {
     let nummer = Number(await generiereArtikelNummer(tx, mandantId))
     for (const n of plan.neueArtikel) {
@@ -693,7 +740,7 @@ async function schreibePlan(tx: DbOrTx, mandantId: string, plan: LayoutPlan): Pr
         id: n.id, mandantId, bezeichnung: n.bezeichnung, preisBruttoCent: n.preisBruttoCent, mwstSatz: n.mwstSatz,
         artikelnummer: String(nummer++).padStart(4, '0'), kategorieId: n.kategorieId, farbe: n.farbe,
         rasterPosition: n.rasterPosition, reihenfolge: n.reihenfolge,
-        istFavorit: n.istFavorit, favoritenReihenfolge: n.favoritenReihenfolge, allergene: n.allergene,
+        istFavorit: n.istFavorit, favoritenReihenfolge: n.favoritenReihenfolge, allergene: n.allergene, ean: n.ean,
       })
     }
   }

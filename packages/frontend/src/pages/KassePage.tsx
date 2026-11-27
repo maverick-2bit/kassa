@@ -19,7 +19,7 @@ import type {
   TischTabErstellenInput,
   TischTabResponse,
 } from '@kassa/shared'
-import { GUTSCHEIN_STATUS_LABELS, MWST_LABELS, STATION_LABELS, aktionsPreisCent, aktiverRabattProzent, aktiveAktion, bonierUmleitungen, fragtNachOptionen, mengenRabattZeilen, warengruppenWahl } from '@kassa/shared'
+import { GUTSCHEIN_STATUS_LABELS, MWST_LABELS, STATION_LABELS, aktionsPreisCent, aktiverRabattProzent, aktiveAktion, bonierUmleitungen, fragtNachOptionen, mengenRabattZeilen, neueUuid, warengruppenWahl } from '@kassa/shared'
 import type { AktiveAktion, MengenPosition } from '@kassa/shared'
 import { angebotApi, artikelApi, belegApi, bonierApi, druckerApi, emailApi, gutscheinApi, kategorieApi, lieferscheinApi, modifikatorApi, offenerPostenApi, posConfigApi, preislisteApi, preisregelApi, tischTabApi, zvtApi, displayApi, ApiError } from '../lib/api'
 import { korbNeuBepreisen, listenPreise, listenPreisFuer } from '../lib/preisliste'
@@ -54,6 +54,7 @@ import { BarRueckgeldModal } from '../components/BarRueckgeldModal'
 import { BarKarteSplitModal } from '../components/BarKarteSplitModal'
 import { ArtikelGrid } from '../components/ArtikelGrid'
 import { KundePicker } from '../components/KundePicker'
+import { beobachteVergessen, leseZurueckgeholt, merkeZurueckgeholt, vergissZurueckgeholt, type ZurueckgeholterBeleg } from '../lib/zurueckgeholt'
 
 // ---------------------------------------------------------------------------
 // Warenkorb-Typen
@@ -84,6 +85,17 @@ interface FreieKorbPosition {
 
 type KorbPosition = ArtikelKorbPosition | FreieKorbPosition
 
+/** Bearbeiteter Stand eines zurückgeholten Belegs (lib/zurueckgeholt, Feld `stand`) */
+interface ZurueckgeholtStand {
+  korb:        KorbPosition[]
+  rabatt:      RabattInput | null
+  kunde:       KundeSnapshot | null
+  neuerKunde?: KundeInput | undefined
+}
+
+const freiePositionen = (z: ZurueckgeholterBeleg): KorbPosition[] =>
+  z.positionen.map((p): FreieKorbPosition => ({ typ: 'frei', ...p }))
+
 // ---------------------------------------------------------------------------
 // Hauptseite
 // ---------------------------------------------------------------------------
@@ -97,14 +109,19 @@ export function KassePage() {
   const initialKategorieId = searchParams.get('tab') === 'favoriten' ? '__favoriten__' : null
 
   const [modus, setModus] = useState<'verkauf' | 'angebot'>('verkauf')
-  const [korb, setKorb] = useState<KorbPosition[]>([])
+  // „Zurückholen" aus Auswertung → Belege: stornierter Beleg kommt als Warenkorb an
+  const [zurueckgeholt, setZurueckgeholt] = useState<ZurueckgeholterBeleg | null>(() => leseZurueckgeholt(identity.kasseId))
+  const geladenerStand = zurueckgeholt?.stand as ZurueckgeholtStand | undefined
+  const [korb, setKorb] = useState<KorbPosition[]>(() =>
+    geladenerStand?.korb ?? (zurueckgeholt ? freiePositionen(zurueckgeholt) : []),
+  )
 
-  const [rabatt, setRabatt] = useState<RabattInput | null>(null)
+  const [rabatt, setRabatt] = useState<RabattInput | null>(() => geladenerStand?.rabatt ?? null)
   const [rabattOffen, setRabattOffen] = useState(false)
   const [artikelRabattIdx, setArtikelRabattIdx] = useState<number | null>(null)
   const [freiePositionOffen, setFreiePositionOffen] = useState(false)
-  const [kunde,     setKunde]     = useState<KundeSnapshot | null>(null)
-  const [neuerKunde, setNeuerKunde] = useState<KundeInput | undefined>(undefined)
+  const [kunde,     setKunde]     = useState<KundeSnapshot | null>(() => (geladenerStand ? geladenerStand.kunde : zurueckgeholt?.kunde) ?? null)
+  const [neuerKunde, setNeuerKunde] = useState<KundeInput | undefined>(() => geladenerStand?.neuerKunde)
   const [tisch, setTisch] = useState<string>('1')
   const leistenAus = useKassenLeistenAusgeblendet()
   const [kellner, setKellner] = useState<string>('Service')
@@ -141,6 +158,46 @@ export function KassePage() {
   // Ref for gutschein — safe to read inside mutation callbacks (before reset() clears state)
   const gutscheinRef = useRef(gutschein)
   useEffect(() => { gutscheinRef.current = gutschein }, [gutschein])
+  // Idempotenz-Schlüssel des laufenden Verkaufs: bleibt über PIN-Freigabe und Wiederholungen
+  // gleich (das Backend bucht ihn höchstens einmal), erst reset() nach dem Abschluss beginnt
+  // einen neuen. Ohne ihn erzeugte eine verlorene Antwort samt Wiederholung zwei Belege.
+  const verkaufSchluesselRef = useRef<string | null>(zurueckgeholt?.schluessel ?? null)
+  /**
+   * Zurückgeholten Beleg samt Änderungen sichern. Nur aktualisieren, nie neu anlegen: ein anderer Tab kann ihn
+   * inzwischen kassiert oder verworfen haben.
+   */
+  const sichereZurueckgeholt = () => {
+    const gespeichert = zurueckgeholt ? leseZurueckgeholt(identity.kasseId) : null
+    if (!gespeichert || gespeichert.belegId !== zurueckgeholt?.belegId) return
+    const { schluessel: _alt, ...rest } = gespeichert
+    merkeZurueckgeholt(identity.kasseId, {
+      ...rest,
+      stand: { korb, rabatt, kunde, neuerKunde } satisfies ZurueckgeholtStand,
+      ...(verkaufSchluesselRef.current ? { schluessel: verkaufSchluesselRef.current } : {}),
+    })
+  }
+  const verkaufSchluessel = () => {
+    const schluessel = (verkaufSchluesselRef.current ??= neueUuid())
+    sichereZurueckgeholt()   // samt Schlüssel: derselbe Korb bucht auch nach einem Neuladen nicht doppelt
+    return schluessel
+  }
+  // Anderer Warenkorb (auch „Alles verwerfen") = anderer Verkauf = neuer Schlüssel. Sonst bekäme
+  // der nächste Kunde nach einer verlorenen Antwort den alten Beleg zurück und sein Verkauf entfiele.
+  // (Das Backend lehnt denselben Schlüssel mit anderem Inhalt zusätzlich mit 422 ab.)
+  // Nur bei echter Änderung, nicht beim Aufbau: ein wiederhergestellter Korb behält seinen Schlüssel.
+  const schluesselFuer = useRef<unknown[]>([korb, rabatt, kunde, neuerKunde, kreditModus, gutschein])
+  useEffect(() => {
+    const jetzt = [korb, rabatt, kunde, neuerKunde, kreditModus, gutschein]
+    if (jetzt.every((w, i) => Object.is(w, schluesselFuer.current[i]))) return
+    schluesselFuer.current = jetzt
+    verkaufSchluesselRef.current = null
+  }, [korb, rabatt, kunde, neuerKunde, kreditModus, gutschein])
+  // Zurückgeholter Beleg: jede Änderung sichern. Der Storno ist gebucht — der Warenkorb darf weder beim
+  // Neuladen noch beim Verlassen der Kasse verloren gehen (bis kassiert oder ausdrücklich verworfen).
+  useEffect(() => {
+    sichereZurueckgeholt()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zurueckgeholt, korb, rabatt, kunde, neuerKunde])
   // Warenkorb geändert → bereits gewählte Seriennummern verwerfen (Indizes könnten veraltet sein)
   useEffect(() => { serialsRef.current = null }, [korb])
   // Angebot-spezifisch
@@ -438,8 +495,11 @@ export function KassePage() {
   // Ziffernblock-Ziel (Warenkorb-Index) + „alles verwerfen"-Rückfrage
   const [numpadIdx, setNumpadIdx] = useState<number | null>(null)
 
+  /** Nach dem Verkauf (bzw. nach Rückfrage): Warenkorb leer, zurückgeholter Beleg erledigt */
   const reset = () => {
+    if (zurueckgeholt) vergissZurueckgeholt(identity.kasseId)
     setKorb([])
+    setZurueckgeholt(null)
     setRabatt(null)
     setFehler(null)
     setKunde(null)
@@ -448,14 +508,38 @@ export function KassePage() {
     setAngebotNotiz('')
     setKreditModus(false)
     setGutschein(null)
+    verkaufSchluesselRef.current = null
   }
+
+  /** Zurückgeholten Beleg nie nebenbei verwerfen: er ist storniert, sein Umsatz fehlt ohne neues Kassieren */
+  const darfVerwerfen = () => !zurueckgeholt || confirm(
+    `Beleg #${zurueckgeholt.belegNummer} ist bereits storniert.\n\nWenn du den Warenkorb verwirfst, wird er NICHT neu kassiert. Wirklich verwerfen?`,
+  )
+  const verwerfen = () => { if (darfVerwerfen()) reset() }
+
+  // Anderer Tab hat denselben zurückgeholten Beleg kassiert oder verworfen → hier nicht noch einmal kassieren
+  const resetRef = useRef(reset)
+  resetRef.current = reset
+  useEffect(() => {
+    if (!zurueckgeholt) return
+    return beobachteVergessen(identity.kasseId, () => resetRef.current())
+  }, [zurueckgeholt, identity.kasseId])
 
   // ---------------------------------------------------------------------------
   // Beleg erstellen
   // ---------------------------------------------------------------------------
 
   const belegMutation = useMutation({
-    mutationFn: belegApi.barzahlung,
+    // Auch ohne Netz SOFORT senden: Der Service Worker puffert den Verkauf (202) oder die
+    // Anfrage scheitert sichtbar. Mit dem Standard ('online') hielt React Query die Mutation
+    // bei navigator.onLine=false still an — der Knopf drehte endlos, ein Neuladen verlor sie.
+    networkMode: 'always',
+    // Offline puffern nur ohne Gutschein: dessen Einlösung braucht die Beleg-ID sofort (unten) —
+    // ein nachgesendeter Verkauf ließe den Gutschein sonst unberührt.
+    mutationFn: (input: BarzahlungsbelegInput) => belegApi.barzahlung(input, {
+      schluessel:     verkaufSchluessel(),
+      offlinePuffern: !gutscheinRef.current,
+    }),
     onSuccess: async (beleg, variables) => {
       // Offline-Fall: SW gibt 202 + { _offline: true } zurück
       if ((beleg as unknown as { _offline?: boolean })?._offline) {
@@ -524,11 +608,22 @@ export function KassePage() {
         setFreigabe({ meldung: err.message, input: variables })
         return
       }
+      // Keine (gültige) Antwort: Netzfehler, kaputte Antwort oder Gateway (502/503/504) — der Verkauf
+      // kann trotzdem gebucht sein. Nicht „neu kassieren" provozieren: Derselbe Korb mit derselben
+      // Zahlung bucht dank Idempotency-Key nicht doppelt, ein geänderter erzeugte einen zweiten Beleg.
+      const ohneAntwort = !(err instanceof ApiError) || err.status === 502 || err.status === 503 || err.status === 504
+      if (ohneAntwort) {
+        setFehler('Keine Antwort von der Kassa — der Verkauf ist möglicherweise schon gebucht. ' +
+          'Bitte erst in der Belegliste nachsehen. Nochmal kassieren mit unverändertem Warenkorb und derselben Zahlungsart bucht ihn nicht doppelt.')
+        return
+      }
       setFehler(err instanceof Error ? err.message : String(err))
     },
   })
 
   const kreditMutation = useMutation({
+    // Ohne Netz sofort mit Fehler statt still angehalten (Kredit wird nie gepuffert)
+    networkMode: 'always',
     mutationFn: async ({ kundeId, betragCent }: { kundeId: string; betragCent: number }) => {
       const input: BarzahlungsbelegInput = {
         kasseId: identity.kasseId,
@@ -547,7 +642,8 @@ export function KassePage() {
         ...(rabatt && { rabatt }),
         kundeId,
       }
-      const beleg = await belegApi.barzahlung(input)
+      // Nie offline puffern: der offene Posten braucht die Beleg-ID sofort
+      const beleg = await belegApi.barzahlung(input, { schluessel: verkaufSchluessel() })
       const op    = await offenerPostenApi.create({ kundeId, belegId: beleg.id, betragCent })
       return { beleg, offenerPosten: op }
     },
@@ -726,6 +822,26 @@ export function KassePage() {
             <BonProblemeBanner kasseId={identity.kasseId} />
           </div>
 
+          {zurueckgeholt && (
+            <div data-testid="zurueckgeholt-hinweis"
+                 className="mb-3 bg-blue-50 border border-blue-300 text-blue-900
+                            rounded-lg px-4 py-3 flex items-center gap-3 text-sm">
+              <span className="text-lg">↩</span>
+              <span>
+                Beleg <strong>#{zurueckgeholt.belegNummer}</strong> ({zurueckgeholt.kasseBezeichnung}) zurückgeholt,
+                storniert mit #{zurueckgeholt.stornoNummer}. Korrigieren und neu kassieren — der Warenkorb bleibt bis dahin gespeichert.
+              </span>
+              <span className="ml-auto flex gap-3 whitespace-nowrap">
+                {korb.length === 0 && (
+                  <button type="button" onClick={() => setKorb(freiePositionen(zurueckgeholt))} className="text-blue-700 hover:underline">
+                    Positionen neu laden
+                  </button>
+                )}
+                <button type="button" onClick={verwerfen} className="text-red-600 hover:underline">Verwerfen</button>
+              </span>
+            </div>
+          )}
+
           {/* Beleg-erstellt-Bestätigung (Druck-Modus: kein Dialog, nur kurze Rückmeldung
               + Options-Schaltfläche für einen anderen Ausgabeweg) */}
           {bestaetigterBeleg && (
@@ -773,7 +889,7 @@ export function KassePage() {
                             rounded-lg px-4 py-3 flex items-center gap-3 text-sm font-medium">
               <span className="text-lg">📥</span>
               <span>
-                Beleg offline gespeichert — wird automatisch übermittelt sobald die Verbindung wiederhergestellt ist
+                Verkauf offline gespeichert — er wird gebucht (und der Bon gedruckt), sobald die Kassa wieder erreichbar ist
               </span>
             </div>
           )}
@@ -798,7 +914,7 @@ export function KassePage() {
             <div className="inline-flex rounded-md border border-line-strong overflow-hidden shrink-0">
               <button
                 type="button"
-                onClick={() => { setModus('verkauf'); reset() }}
+                onClick={() => { if (!darfVerwerfen()) return; setModus('verkauf'); reset() }}
                 className={`px-3 py-1.5 text-sm font-medium transition ${
                   modus === 'verkauf'
                     ? 'bg-brand-600 text-white'
@@ -809,7 +925,7 @@ export function KassePage() {
               </button>
               <button
                 type="button"
-                onClick={() => { setModus('angebot'); reset() }}
+                onClick={() => { if (!darfVerwerfen()) return; setModus('angebot'); reset() }}
                 className={`px-3 py-1.5 text-sm font-medium transition border-l border-line-strong ${
                   modus === 'angebot'
                     ? 'bg-amber-500 text-white'
@@ -914,6 +1030,7 @@ export function KassePage() {
                 <button
                   type="button"
                   onClick={() => {
+                    if (zurueckgeholt) { verwerfen(); return }
                     if (confirm('Gesamten Warenkorb verwerfen?')) { setKorb([]); setRabatt(null) }
                   }}
                   className="text-xs text-red-500 hover:text-red-700 hover:underline font-medium"
@@ -1176,7 +1293,7 @@ export function KassePage() {
                 )}
 
                 <div className="flex gap-2 pt-1">
-                  <Button variant="secondary" onClick={reset} className="flex-1">Leeren</Button>
+                  <Button variant="secondary" onClick={verwerfen} className="flex-1">Leeren</Button>
                   {!kreditModus && (
                     <Button
                       variant="secondary"
@@ -1251,7 +1368,7 @@ export function KassePage() {
                 )}
 
                 <div className="flex gap-2 pt-1">
-                  <Button variant="secondary" onClick={reset} className="flex-1">Leeren</Button>
+                  <Button variant="secondary" onClick={verwerfen} className="flex-1">Leeren</Button>
                   <Button
                     onClick={handleAngebotErstellen}
                     loading={angebotMutation.isPending}

@@ -3,7 +3,7 @@ import { test, expect, request as playwrightRequest, type APIRequestContext, typ
 /**
  * Betreiber der Installation (Sicherheitsprüfung 2026-11).
  *
- * Eine Installation hostet mehrere Mandanten. Datenbank-Sicherung (die GANZE Datenbank), Update, Systemwerte und
+ * Eine Installation hostet mehrere Mandanten. Datenbank-Sicherung (die GANZE Datenbank), Systemwerte und
  * weitere Mandanten sind Sache des Betreibers — der erste Admin der Installation (hier der aus dem Onboarding) —
  * und nicht jedes Mandanten-Admins. Und die Einrichtungsseite legt auf einer eingerichteten Installation nur noch
  * für den angemeldeten Betreiber einen weiteren Mandanten an.

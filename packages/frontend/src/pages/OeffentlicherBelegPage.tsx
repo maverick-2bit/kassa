@@ -74,6 +74,9 @@ export function OeffentlicherBelegPage() {
                     <tr key={i}>
                       <td className="py-2 pl-5 text-gray-800">
                         {p.menge} × {p.bezeichnung}
+                        {p.ean && (
+                          <span className="block text-[10px] text-gray-400 font-mono">EAN {p.ean}</span>
+                        )}
                         {p.seriennummern && p.seriennummern.length > 0 && (
                           <span className="block text-[10px] text-gray-400 font-mono">
                             S/N: {p.seriennummern.join(', ')}

@@ -10,7 +10,7 @@
  *   Artikel:   Artikelnummer beim Lieferanten = SelectLine-Artikelnummer
  */
 
-import { MWST_PROZENT_SATZ } from '@kassa/shared'
+import { MWST_PROZENT_SATZ, eanFehler, eanSchluessel } from '@kassa/shared'
 import type { ArtikelInput, KundeInput, LieferantInput, MwStSatz } from '@kassa/shared'
 
 export type Zeile = Record<string, unknown>
@@ -174,9 +174,16 @@ export function mwstAusProzent(pct: number | null): MwStSatz | null {
   return null
 }
 
-export function parseArtikel(zeilen: Zeile[]): { eintraege: ParsedArtikel[]; uebersprungen: string[]; ohnePreis: number } {
+/**
+ * SelectLine-Artikel. Eine ungültige EAN (Prüfziffer, Länge) oder eine, die in der Datei schon ein
+ * früherer Artikel trägt, wird verworfen — der Artikel kommt trotzdem, nur ohne EAN (`eanVerworfen`
+ * nennt sie). Gegen bestehende Kassa-Artikel prüft der Server (409 je Zeile).
+ */
+export function parseArtikel(zeilen: Zeile[]): { eintraege: ParsedArtikel[]; uebersprungen: string[]; ohnePreis: number; eanVerworfen: string[] } {
   const eintraege: ParsedArtikel[] = []
   const uebersprungen: string[] = []
+  const eanVerworfen: string[] = []
+  const eanGesehen = new Map<string, string>()
   let ohnePreis = 0
   for (const z of zeilen) {
     const nummer = text(z, 'Artikelnummer')
@@ -195,7 +202,14 @@ export function parseArtikel(zeilen: Zeile[]): { eintraege: ParsedArtikel[]; ueb
     if (!hatPreis) ohnePreis++
 
     const ek = zahl(z, 'Einkaufspreis (letzter)', 'Einkaufspreis')
-    const ean = text(z, 'EAN').replace(/\.0+$/, '')
+    let ean: string | null = text(z, 'EAN').replace(/\.0+$/, '').trim() || null
+    if (ean) {
+      const fehler = eanFehler(ean)
+      const frueher = eanGesehen.get(eanSchluessel(ean))
+      if (fehler) { eanVerworfen.push(`${bezeichnung}: EAN „${ean}" — ${fehler}`); ean = null }
+      else if (frueher) { eanVerworfen.push(`${bezeichnung}: EAN ${ean} trägt schon „${frueher}"`); ean = null }
+      else eanGesehen.set(eanSchluessel(ean), bezeichnung)
+    }
     const hersteller = text(z, 'Hersteller')
     const hstNr = text(z, 'Hersteller-Art.Nr.', 'Hersteller-Artikelnummer')
 
@@ -208,7 +222,7 @@ export function parseArtikel(zeilen: Zeile[]): { eintraege: ParsedArtikel[]; ueb
         bezeichnung:     bezeichnung.slice(0, 200),
         preisBruttoCent: preisCent,
         mwstSatz:        mwst,
-        ean:             ean ? ean.slice(0, 20) : null,
+        ean,
         einkaufspreisCent: ek !== null && ek > 0 ? eurZuCent(ek) : null,
         // Die SelectLine-Artikelnummer ist die Nummer, unter der beim Lieferanten bestellt wird
         lieferantenArtikelnummer: nummer ? nummer.slice(0, 60) : null,
@@ -226,7 +240,7 @@ export function parseArtikel(zeilen: Zeile[]): { eintraege: ParsedArtikel[]; ueb
       },
     })
   }
-  return { eintraege, uebersprungen, ohnePreis }
+  return { eintraege, uebersprungen, ohnePreis, eanVerworfen }
 }
 
 // ---------------------------------------------------------------------------

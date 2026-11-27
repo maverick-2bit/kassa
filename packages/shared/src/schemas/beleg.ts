@@ -13,6 +13,8 @@ export const BelegPositionSchema = z.object({
   mwstSatz:           MwStSatzSchema,
   /** Zugewiesene Seriennummern (für den Aufdruck auf der Rechnung) */
   seriennummern:      z.array(z.string()).optional(),
+  /** EAN des Artikels zum Verkaufszeitpunkt (Aufdruck unter der Position) */
+  ean:                z.string().optional(),
 })
 export type BelegPositionDto = z.infer<typeof BelegPositionSchema>
 
@@ -171,3 +173,42 @@ export const BelegResponseSchema = z.object({
   createdAt: z.string(),
 })
 export type BelegResponse = z.infer<typeof BelegResponseSchema>
+
+// ---------------------------------------------------------------------------
+// Belegliste einer Kasse mit Filter + Paging (Auswertung → Belege)
+// ---------------------------------------------------------------------------
+
+const DatumSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Datum im Format JJJJ-MM-TT')
+
+/**
+ * Suche in den Belegen EINER Kasse des Mandanten. Die Kasse ist frei wählbar
+ * (Barkasse, Kellner-Geräte …), die Belege bleiben aber je Kasse getrennt —
+ * jede Kasse hat ihre eigene RKSV-Kette und Nummernfolge.
+ */
+export const BelegSucheQuerySchema = z.object({
+  kasseId: z.string().guid(),
+  /** Wiener Kalendertag, inklusive */
+  von:     DatumSchema.optional(),
+  /** Wiener Kalendertag, inklusive */
+  bis:     DatumSchema.optional(),
+  /** Belegnummer, Betrag (12,50) oder Kundenname */
+  suche:   z.string().trim().max(100).optional(),
+  kundeId: z.string().guid().optional(),
+  /** Komma-getrennte Belegtypen, z. B. „Monatsbeleg,Jahresbeleg" */
+  typen:   z.string().max(200).optional(),
+  limit:   z.coerce.number().int().min(1).max(200).default(50),
+  offset:  z.coerce.number().int().min(0).default(0),
+})
+export type BelegSucheQuery = z.input<typeof BelegSucheQuerySchema>
+
+export const BelegListeEintragSchema = BelegResponseSchema.extend({
+  /** Gesetzt, wenn ein Stornobeleg auf diesen Beleg verweist */
+  storniertDurch: z.object({ id: z.string().guid(), belegNummer: z.number().int() }).optional(),
+})
+export type BelegListeEintrag = z.infer<typeof BelegListeEintragSchema>
+
+export interface BelegSeite {
+  belege: BelegListeEintrag[]
+  /** Anzahl aller Treffer (für das Paging) */
+  gesamt: number
+}

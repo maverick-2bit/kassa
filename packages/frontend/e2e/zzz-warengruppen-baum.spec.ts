@@ -322,7 +322,7 @@ test('Warengruppen-Baum: Pfadlabel, Matrix „Warengruppen-Verteilung" und POS-K
     const artikel = (await (await request.get('/api/artikel?nurAktive=false', { headers: auth })).json()) as { bezeichnung: string; kategorieId: string | null }[]
     expect(artikel.find(a => a.bezeichnung === `${p} Soda`)?.kategorieId).toBe(kelAlk.id)
     // Artikelliste: Spalte „Warengruppe" nennt bei Namensgleichheit den Pfad
-    await page.getByPlaceholder('Suchen (Bezeichnung, Nummer)…').fill(`${p} Soda`)
+    await page.getByLabel('Artikel suchen').fill(`${p} Soda`)
     await expect(page.locator('tr', { hasText: `${p} Soda` }).getByText(pfade.kelAlk, { exact: true })).toBeVisible()
   } finally {
     await setzeListe([])

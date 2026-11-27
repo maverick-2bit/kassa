@@ -25,12 +25,12 @@ echo  Kassa POS - Setup / Update
 echo  ==========================
 echo.
 
-rem -- 2. Aktuellen Installer von GitHub laden (curl ist Teil von Windows 10/11) --
-echo Lade aktuellen Installer von GitHub...
-curl.exe -fsSL -o "%TEMP%\kassa-install.ps1" https://raw.githubusercontent.com/maverick-2bit/kassa/master/ops/install.ps1
+rem -- 2. Neuestes RELEASE (Git-Tag vX.Y.Z, nicht die master-Spitze) ermitteln und dessen Installer laden --
+echo Suche das neueste Release auf GitHub...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "try { [Net.ServicePointManager]::SecurityProtocol = 3072; $r = Invoke-RestMethod -UseBasicParsing -Headers @{ 'User-Agent' = 'kassa-setup' } -Uri 'https://api.github.com/repos/maverick-2bit/kassa/git/matching-refs/tags/v'; $t = $r | ForEach-Object { $_.ref } | Where-Object { $_ -match '^refs/tags/v\d+\.\d+\.\d+$' } | ForEach-Object { $_ -replace '^refs/tags/', '' } | Sort-Object { [version]$_.Substring(1) } | Select-Object -Last 1; if (-not $t) { exit 2 }; Write-Host ('Neuestes Release: ' + $t); Invoke-WebRequest -UseBasicParsing -OutFile (Join-Path $env:TEMP 'kassa-install.ps1') -Uri ('https://raw.githubusercontent.com/maverick-2bit/kassa/' + $t + '/ops/install.ps1'); exit 0 } catch { exit 1 }"
 if %errorlevel% neq 0 (
   echo.
-  echo FEHLER: Download fehlgeschlagen - bitte Internetverbindung pruefen.
+  echo FEHLER: Kein Release gefunden oder Download fehlgeschlagen - bitte Internetverbindung pruefen.
   echo.
   pause
   exit /b 1

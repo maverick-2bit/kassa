@@ -266,8 +266,9 @@ export interface FinanzOnlineCredentials {
   benutzerkennung: string
   pin: string
   /**
-   * Software-Hersteller-ID (10–24 Zeichen), bei BMF registriert. Optional —
-   * fehlt sie, wird die konfigurierte Default-Hersteller-ID verwendet.
+   * Hersteller-ID für den Login: UID-Nummer des SOFTWAREHERSTELLERS (10–24 Buchstaben/Ziffern, z. B. ATU12345678).
+   * Optional — fehlt sie, gilt die des Clients (`FinanzOnlineClient`-Option `herstellerId`, im Backend die
+   * Einstellung FON_HERSTELLER_ID) bzw. deren Platzhalter.
    */
   herstellerId?: string
 }
@@ -282,7 +283,11 @@ export interface KassenRegistrierung {
   credentials:     FinanzOnlineCredentials
   /** Umsatzzähler-AES-Schlüssel base64 (FON-Feld `benutzerschluessel`) */
   benutzerschluesselBase64: string
-  /** ZDA-/VDA-Kennung (FON-Feld `vda_id`), z. B. 'AT1' (A-Trust), 'AT0' (Software) */
+  /**
+   * ZDA-/VDA-Kennung (FON-Feld `vda_id`): 'AT1' (A-Trust), 'AT2' (GlobalTrust), 'AT3' (PrimeSign). 'AT0' (die
+   * Software-Signatur der Kassa) ist bei FinanzOnline NICHT als Signaturerstellungseinheit meldbar — der Client weist
+   * sie ab, ohne etwas zu senden.
+   */
   vdaId:           string
   /** Art der SEE (FON-Feld `art_se`) */
   artSe:           ArtSe

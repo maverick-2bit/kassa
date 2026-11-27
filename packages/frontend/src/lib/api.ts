@@ -85,6 +85,8 @@ import type {
   BerichtFilter,
   BerichtResponse,
   BelegResponse,
+  BelegSeite,
+  BelegSucheQuery,
   BonierungErgebnis,
   BonierungInput,
   JahresbelegInput,
@@ -225,12 +227,12 @@ import type {
   EinkaufBestellungUpdate,
 } from '@kassa/shared'
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function request<T>(method: string, path: string, body?: unknown, zusatzHeader?: Record<string, string>): Promise<T> {
   const token = getToken()
   // Content-Type NUR bei tatsächlichem Body setzen. Sonst wirft Fastify bei
   // body-losen POST/DELETE (Testdruck, Löschen …) FST_ERR_CTP_EMPTY_JSON_BODY
   // → HTTP 400 ("JSON angekündigt, aber leer").
-  const headers: Record<string, string> = {}
+  const headers: Record<string, string> = { ...zusatzHeader }
   if (body !== undefined) headers['Content-Type'] = 'application/json'
   if (token) headers['Authorization'] = `Bearer ${token}`
 
@@ -285,7 +287,7 @@ export interface SystemStatus {
   updateVerfuegbar:  boolean
   updaterVerfuegbar: boolean
   update:            SystemUpdateStatus
-  /** Ist der angemeldete Benutzer der Betreiber der Installation? (Update, DB-Sicherung, weitere Mandanten) */
+  /** Ist der angemeldete Benutzer der Betreiber der Installation? (DB-Sicherung, Systemwerte, weitere Mandanten) */
   istBetreiber:      boolean
 }
 
@@ -303,7 +305,7 @@ export interface FernwartungStatus {
 export const systemApi = {
   /** frisch=true umgeht Server- und CDN-Cache — für den manuellen Prüf-Knopf. */
   status:    (frisch = false) => request<SystemStatus>('GET', `/api/system/status${frisch ? '?frisch=1' : ''}`),
-  /** Löst das Update aus (nur Betreiber). Body-los — der Updater-Dienst holt das Signal ab. */
+  /** Löst das Update aus (jeder Admin). Body-los — der Updater-Dienst holt das Signal ab. */
   ausloesen: () => request<{ angefordert: boolean }>('POST', '/api/system/update'),
   /** LAN-IPv4s des Servers; im Docker-Betrieb ehrlich leer (imContainer=true). */
   netzwerk:  () => request<{ ips: string[]; imContainer?: boolean }>('GET', '/api/system/netzwerk'),
@@ -958,8 +960,26 @@ export const belegApi = {
     if (kundeId) p.set('kundeId', kundeId)
     return request<BelegResponse[]>('GET', `/api/belege?${p.toString()}`)
   },
-  barzahlung: (input: BarzahlungsbelegInput) =>
-    request<BelegResponse>('POST', '/api/belege/barzahlung', input),
+  /**
+   * Verkauf buchen. `verkauf.schluessel` (UUID, je Verkauf fest, auch über Wiederholungen hinweg):
+   * kommt derselbe Verkauf zweimal an, liefert das Backend den gebuchten Beleg statt eines zweiten.
+   * `verkauf.offlinePuffern`: Nur dann darf der Service Worker den Verkauf bei Netzausfall in die
+   * Offline-Warteschlange legen (Antwort 202 mit `_offline`) — nur für Verkäufe ohne Folgeschritt,
+   * der die Beleg-ID braucht (Gutschein einlösen, offener Posten).
+   */
+  /** Belege einer wählbaren Kasse des Mandanten — Zeitraum, Suche, Paging (Auswertung → Belege) */
+  seite: (q: BelegSucheQuery) => {
+    const p = new URLSearchParams()
+    for (const [k, v] of Object.entries(q)) {
+      if (v !== undefined && v !== null && v !== '') p.set(k, String(v))
+    }
+    return request<BelegSeite>('GET', `/api/belege/seite?${p.toString()}`)
+  },
+  barzahlung: (input: BarzahlungsbelegInput, verkauf?: { schluessel: string; offlinePuffern?: boolean }) =>
+    request<BelegResponse>('POST', '/api/belege/barzahlung', input, verkauf && {
+      'Idempotency-Key': verkauf.schluessel,
+      ...(verkauf.offlinePuffern && { 'X-Kassa-Offline': 'puffern' }),
+    }),
   storno:     (input: StornobelegInput) =>
     request<BelegResponse>('POST', '/api/belege/storno', input),
   nullbeleg:  (input: NullbelegInput) =>

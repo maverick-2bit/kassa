@@ -330,9 +330,19 @@ export const belege = pgTable('belege', {
   /** Eingefrierter Kunden-Snapshot zum Zeitpunkt der Buchung */
   kundeSnapshot: jsonb('kunde_snapshot'),
 
+  /**
+   * Idempotenz-Schlüssel des Verkaufs (Header Idempotency-Key der Kassa, Migration 0084):
+   * derselbe Verkauf ein zweites Mal (verlorene Antwort, Offline-Warteschlange) liefert den
+   * schon gebuchten Beleg statt eines zweiten. Eindeutig je Kasse, NULL = ohne Schlüssel.
+   */
+  idempotenzSchluessel: uuid('idempotenz_schluessel'),
+  /** SHA-256 des Verkaufs (ohne Freigabe-PIN): derselbe Schlüssel mit anderem Warenkorb → 422 */
+  idempotenzHash:       varchar('idempotenz_hash', { length: 64 }),
+
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
   belegNrIdx:     uniqueIndex('belege_kasse_belegnr_idx').on(t.kasseId, t.belegNummer),
+  idempotenzIdx:  uniqueIndex('belege_kasse_idempotenz_idx').on(t.kasseId, t.idempotenzSchluessel),
   datumIdx:       index('belege_datum_idx').on(t.belegDatum),
   verweisIdx:     index('belege_verweis_idx').on(t.verweisBelegId),
 }))
@@ -876,7 +886,7 @@ export const artikel = pgTable('artikel', {
   istBestandteil:      boolean('ist_bestandteil').notNull().default(false),
   /** Lieferant für Bestellliste und Einkauf */
   lieferantId:         uuid('lieferant_id').references((): AnyPgColumn => lieferanten.id, { onDelete: 'set null' }),
-  /** EAN/GTIN-Barcode */
+  /** EAN/GTIN als Artikelkennzeichnung (EAN-8/UPC-A/EAN-13/GTIN-14 mit Prüfziffer; eindeutig je Mandant) */
   ean:                 varchar('ean', { length: 20 }),
   /** Einkaufspreis netto in Cent (letzter bekannter Preis beim Lieferanten) */
   einkaufspreisCent:   integer('einkaufspreis_cent'),
@@ -891,6 +901,10 @@ export const artikel = pgTable('artikel', {
 }, (t) => ({
   mandantNummerIdx: uniqueIndex('artikel_mandant_nummer_idx').on(t.mandantId, t.artikelnummer),
   kategorieIdx:     index('artikel_kategorie_idx').on(t.kategorieId),
+  /** EAN eindeutig je Mandant über den GTIN-14-Schlüssel (Migration 0085) */
+  eanIdx:           uniqueIndex('artikel_mandant_ean_idx')
+    .on(t.mandantId, sql`lpad(${t.ean}, greatest(length(${t.ean}), 14), '0')`)
+    .where(sql`${t.ean} IS NOT NULL`),
 }))
 
 // ---------------------------------------------------------------------------

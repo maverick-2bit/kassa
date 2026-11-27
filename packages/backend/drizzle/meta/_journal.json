@@ -575,6 +575,20 @@
       "when": 1793059200000,
       "tag": "0083_artikel_synonyme",
       "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1793145600000,
+      "tag": "0084_beleg_idempotenz",
+      "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1793232000000,
+      "tag": "0085_artikel_ean_eindeutig",
+      "breakpoints": true
     }
   ]
 }

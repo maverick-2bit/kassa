@@ -86,7 +86,7 @@ describe('Layout-Export (Integration, echtes PostgreSQL)', () => {
     const artikelA = await idb.db.insert(artikel).values([
       { mandantId: mandant.A, bezeichnung: 'Cola 0,33',      preisBruttoCent: 320,  mwstSatz: 'normal',      artikelnummer: '0001', kategorieId: ids.getraenke, rasterPosition: 1, reihenfolge: 1 },
       { mandantId: mandant.A, bezeichnung: 'Wasser',         preisBruttoCent: 290,  mwstSatz: 'ermaessigt1', artikelnummer: '0002', kategorieId: ids.getraenke, rasterPosition: 3, reihenfolge: 3, farbe: 'gruen' },
-      { mandantId: mandant.A, bezeichnung: 'Pils 0,5',       preisBruttoCent: 450,  mwstSatz: 'normal',      artikelnummer: '0003', kategorieId: ids.bier,      rasterPosition: 1, reihenfolge: 1 },
+      { mandantId: mandant.A, bezeichnung: 'Pils 0,5',       preisBruttoCent: 450,  mwstSatz: 'normal',      artikelnummer: '0003', kategorieId: ids.bier,      rasterPosition: 1, reihenfolge: 1, ean: '9002490100070' },
       { mandantId: mandant.A, bezeichnung: 'Schnitzel',      preisBruttoCent: 1450, mwstSatz: 'normal',      artikelnummer: '0004', kategorieId: ids.speisen,   rasterPosition: 2, reihenfolge: 2, allergene: 'A,C', farbe: '#aa5500' },
       { mandantId: mandant.A, bezeichnung: 'Pfand-Rückgabe', preisBruttoCent: -50,  mwstSatz: 'null',        artikelnummer: '0005', kategorieId: ids.getraenke, rasterPosition: 4, reihenfolge: 4 },
       { mandantId: mandant.A, bezeichnung: 'Alt (inaktiv)',  preisBruttoCent: 100,  mwstSatz: 'normal',      artikelnummer: '0006', kategorieId: ids.speisen,   aktiv: false },
@@ -102,7 +102,7 @@ describe('Layout-Export (Integration, echtes PostgreSQL)', () => {
     // Mandant B: Unbeteiligter mit eigenen Daten — darf weder im Export von A auftauchen noch vom Import in C berührt werden
     const [fremd] = await idb.db.insert(kategorien).values({ mandantId: mandant.B, name: 'Nur in B', farbe: 'lila', reihenfolge: 0 }).returning()
     ids.fremd = fremd!.id
-    await idb.db.insert(artikel).values({ mandantId: mandant.B, bezeichnung: 'Geheimartikel B', preisBruttoCent: 999, mwstSatz: 'normal', artikelnummer: '0001', kategorieId: fremd!.id })
+    await idb.db.insert(artikel).values({ mandantId: mandant.B, bezeichnung: 'Geheimartikel B', preisBruttoCent: 999, mwstSatz: 'normal', artikelnummer: '0001', kategorieId: fremd!.id, ean: '9002490100070' })
   })
 
   afterAll(async () => {
@@ -204,7 +204,10 @@ describe('Layout-Export (Integration, echtes PostgreSQL)', () => {
     expect(artikelC).toHaveLength(5)
     expect(a('Cola 0,33')).toMatchObject({ preisBruttoCent: 320, mwstSatz: 'normal', rasterPosition: 1, kategorieId: gruppe('Kellner Getränke').id })
     expect(a('Wasser')).toMatchObject({ preisBruttoCent: 290, mwstSatz: 'ermaessigt1', rasterPosition: 3, farbe: farbeZuHex('gruen') })
-    expect(a('Pils 0,5')).toMatchObject({ preisBruttoCent: 450, kategorieId: gruppe('Bier').id })
+    // EAN wandert mit (dieselbe EAN bei Mandant B stört nicht: eindeutig nur je Mandant)
+    expect(a('Pils 0,5')).toMatchObject({ preisBruttoCent: 450, kategorieId: gruppe('Bier').id, ean: '9002490100070' })
+    expect(a('Cola 0,33').ean).toBeNull()
+    expect(bericht.zaehler.artikel).toMatchObject({ eanUebernommen: 1, eanUebersprungen: 0 })
     expect(a('Schnitzel')).toMatchObject({ preisBruttoCent: 1450, allergene: 'A,C', farbe: '#aa5500', kategorieId: gruppe('Kellner Speisen').id })
     expect(a('Pfand-Rückgabe')).toMatchObject({ preisBruttoCent: -50, mwstSatz: 'null', rasterPosition: 4 })
     expect(new Set(artikelC.map(x => x.artikelnummer)).size).toBe(5)                  // eigene, eindeutige Nummern in C

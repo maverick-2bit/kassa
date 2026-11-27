@@ -15,12 +15,17 @@
 # und alle Belege bleiben erhalten).
 #
 # Nutzung:
-#   curl -fsSL https://raw.githubusercontent.com/maverick-2bit/kassa/master/ops/install.sh | bash
+#   T=$(curl -fsSL https://api.github.com/repos/maverick-2bit/kassa/git/matching-refs/tags/v | grep -Eo '"refs/tags/v[0-9]+\.[0-9]+\.[0-9]+"' | tr -d '"' | sed 's|refs/tags/||' | sort -V | tail -n 1); curl -fsSL "https://raw.githubusercontent.com/maverick-2bit/kassa/$T/ops/install.sh" | bash
 #   # oder aus einem Checkout:  bash ops/install.sh
+#
+# Installiert wird das neueste RELEASE (Git-Tag vX.Y.Z), nie die Spitze von master. Das Skript prüft die Signatur des
+# Releases nicht — das tut der In-App-Updater bei jedem späteren Update (ops/updater/updater.sh, ops/DEPLOYMENT.md
+# Abschnitt 11); die Erstinstallation vertraut GitHub per TLS.
 #
 # Optionale Umgebungsvariablen:
 #   KASSA_DIR=~/kassa        Zielverzeichnis (Default: $HOME/kassa)
-#   KASSA_BRANCH=master      Git-Branch (Default: master)
+#   KASSA_VERSION=v0.8.91    ein bestimmtes Release statt des neuesten (Default: neuestes Release-Tag)
+#   KASSA_BRANCH=<branch>    NUR für Entwicklung/Tests: Stand dieses Branches statt eines Releases (ungeprüft!)
 #   KASSA_OHNE_DOCKER=1      Nur Code + .env vorbereiten (Testlauf, kein Docker)
 #
 # Fernwartung (optional, nur Linux, best effort — siehe ops/DEPLOYMENT.md):
@@ -36,9 +41,11 @@
 set -euo pipefail
 
 KASSA_DIR="${KASSA_DIR:-$HOME/kassa}"
-KASSA_BRANCH="${KASSA_BRANCH:-master}"
+KASSA_BRANCH="${KASSA_BRANCH:-}"
+KASSA_VERSION="${KASSA_VERSION:-}"
 REPO="maverick-2bit/kassa"
-TARURL="https://github.com/${REPO}/archive/refs/heads/${KASSA_BRANCH}.tar.gz"
+KASSA_REF=""        # Tag (vX.Y.Z) bzw. Branch, von dem installiert wird — siehe bestimme_ref
+TARURL=""
 
 # ── Ausgabe-Helfer ───────────────────────────────────────────────────────────
 if [ -t 1 ]; then
@@ -51,6 +58,43 @@ ok()       { printf '%s✓ %s%s\n' "$C_G" "$*" "$C_0"; }
 hinweis()  { printf '%s… %s%s\n' "$C_Y" "$*" "$C_0"; }
 fehler()   { printf '%s✗ %s%s\n' "$C_R" "$*" "$C_0" 1>&2; }
 abbruch()  { fehler "$*"; exit 1; }
+
+# ── Welcher Stand wird installiert? ──────────────────────────────────────────
+# Alle Release-Tags (vX.Y.Z) von GitHub, neueste zuerst (zahlenweise: v0.8.100 > v0.8.99). Erst die GitHub-API,
+# ohne Antwort (Limit/Netz) `git ls-remote`, falls git da ist.
+release_tags() {
+  curl -fsSL -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/${REPO}/git/matching-refs/tags/v" 2>/dev/null \
+    | grep -Eo '"refs/tags/v[0-9]+\.[0-9]+\.[0-9]+"' | tr -d '"' || true
+}
+neuestes_release() {
+  local liste
+  liste="$(release_tags)"
+  if [ -z "$liste" ] && command -v git >/dev/null 2>&1; then
+    liste="$(git ls-remote --tags --refs "https://github.com/${REPO}.git" 'refs/tags/v*' 2>/dev/null | awk '{ print $2 }' || true)"
+  fi
+  printf '%s\n' "$liste" | sed 's|^refs/tags/||' | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true; } \
+    | awk -F'[v.]' '{ printf "%09d%09d%09d %s\n", $2, $3, $4, $0 }' | sort | tail -n 1 | awk '{ print $2 }'
+}
+# setzt KASSA_REF und TARURL (einmal, beim ersten Bedarf); 1 = kein Release gefunden
+ermittle_ref() {
+  [ -z "$KASSA_REF" ] || return 0
+  if [ -n "$KASSA_BRANCH" ]; then
+    KASSA_REF="$KASSA_BRANCH"
+    TARURL="https://github.com/${REPO}/archive/refs/heads/${KASSA_REF}.tar.gz"
+    hinweis "ACHTUNG: Entwicklungsstand des Branches '$KASSA_BRANCH' — ungeprüft, nicht für Kunden-Kassen."
+    return 0
+  fi
+  if [ -n "$KASSA_VERSION" ]; then
+    case "$KASSA_VERSION" in v*) KASSA_REF="$KASSA_VERSION" ;; *) KASSA_REF="v$KASSA_VERSION" ;; esac
+  else
+    KASSA_REF="$(neuestes_release)"
+  fi
+  if ! printf '%s' "$KASSA_REF" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then KASSA_REF=""; return 1; fi
+  TARURL="https://github.com/${REPO}/archive/refs/tags/${KASSA_REF}.tar.gz"
+}
+bestimme_ref() {
+  ermittle_ref || abbruch "Kein Release auf GitHub gefunden (Internetverbindung prüfen; später erneut oder KASSA_VERSION=vX.Y.Z setzen)."
+}
 
 # ── Plattform erkennen ───────────────────────────────────────────────────────
 case "$(uname -s)" in
@@ -94,7 +138,8 @@ fw_bibliothek_laden() {
     [ -f "$k" ] && { . "$k"; return 0; }
   done
   dl="$(mktemp 2>/dev/null)" || return 1
-  if curl -fsSL -o "$dl" "https://raw.githubusercontent.com/${REPO}/${KASSA_BRANCH}/ops/fernwartung.sh" 2>/dev/null; then
+  ermittle_ref || { rm -f "$dl"; return 1; }
+  if curl -fsSL -o "$dl" "https://raw.githubusercontent.com/${REPO}/${KASSA_REF}/ops/fernwartung.sh" 2>/dev/null; then
     # shellcheck disable=SC1090
     . "$dl"; rm -f "$dl"; return 0
   fi
@@ -185,13 +230,16 @@ fi
 # ─────────────────────────────────────────────────────────────────────────────
 # 2. Quellcode laden (nach $KASSA_DIR spiegeln, .env bleibt erhalten)
 # ─────────────────────────────────────────────────────────────────────────────
-schritt "Lade aktuellen Quellcode (Branch: $KASSA_BRANCH)"
 linux_paket curl curl
+bestimme_ref
+schritt "Lade Quellcode (${KASSA_REF})"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 curl -fsSL "$TARURL" | tar -xz -C "$tmp" || abbruch "Download/Entpacken fehlgeschlagen — Internetverbindung prüfen."
-quelle="$tmp/kassa-${KASSA_BRANCH}"
-[ -d "$quelle" ] || abbruch "Entpacktes Verzeichnis nicht gefunden ($quelle)."
+# GitHub packt in genau einen Ordner (kassa-<Version> bzw. kassa-<Branch>); der Name ist unerheblich
+quelle="$(ls -d "$tmp"/*/ 2>/dev/null | head -n 1 || true)"
+quelle="${quelle%/}"
+[ -n "$quelle" ] && [ -d "$quelle" ] || abbruch "Entpacktes Verzeichnis nicht gefunden (in $tmp)."
 
 mkdir -p "$KASSA_DIR"
 if command -v rsync >/dev/null 2>&1; then
@@ -207,6 +255,7 @@ ok "Code liegt in $KASSA_DIR"
 # ─────────────────────────────────────────────────────────────────────────────
 schritt "Konfiguration (.env)"
 envf="$KASSA_DIR/.env"
+ERSTINSTALLATION=0; [ -f "$envf" ] || ERSTINSTALLATION=1
 gen_secret() { # $1 = Anzahl Bytes → 2*$1 Hex-Zeichen (RKSV-sicher, nur [0-9a-f])
   if command -v openssl >/dev/null 2>&1; then openssl rand -hex "$1"
   else LC_ALL=C od -An -N"$1" -tx1 /dev/urandom | tr -d ' \n'; fi
@@ -233,6 +282,69 @@ env_port() { # $1 = Name, $2 = Default
   v="$(grep -E "^$1=" "$envf" 2>/dev/null | head -1 | cut -d= -f2 | tr -dc '0-9')"
   [ -n "$v" ] && echo "$v" || echo "$2"
 }
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 3a. HTTPS im LAN (Profil „lan-https", ops/caddy/Caddyfile.lan)
+#     Erstinstallation: einschalten, wenn die LAN-IP eindeutig ist und kein Port belegt.
+#     Update: .env bleibt; nur eine fehlende KASSA_LAN_IP wird nachgetragen, eine
+#     abweichende nur gemeldet (falsch erkannte Adressen überschreiben nichts).
+#     Gleiche Regeln wie ops/lan-https.ps1 (Windows).
+# ─────────────────────────────────────────────────────────────────────────────
+LAN_HTTPS_PORTS="8443 9079 9080 9083 9084 9087"
+env_wert() { # $1 = Name → Wert der ersten NICHT auskommentierten Zeile
+  grep -E "^$1=" "$envf" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\r' || true
+}
+env_setzen() { # $1 = Name, $2 = Wert — ersetzt die erste aktive Zeile oder hängt an
+  if grep -qE "^$1=" "$envf"; then
+    # cat statt mv: Rechte (600) und Besitzer der .env bleiben erhalten
+    awk -v n="$1" -v w="$2" 'BEGIN { d = 0 } { if (!d && index($0, n "=") == 1) { print n "=" w; d = 1 } else print }' \
+      "$envf" > "$envf.neu" && cat "$envf.neu" > "$envf" && rm -f "$envf.neu"
+  else
+    printf '%s=%s\n' "$1" "$2" >> "$envf"
+  fi
+}
+lan_ip_ermitteln() { # IPv4 der Schnittstelle mit Standard-Route (leer = unklar)
+  if [ "$PLATTFORM" = "macos" ]; then
+    s="$(route -n get default 2>/dev/null | awk '/interface:/ { print $2 }')"
+    if [ -n "$s" ]; then ipconfig getifaddr "$s" 2>/dev/null || true; fi
+  else
+    ip -4 route get 1.1.1.1 2>/dev/null | awk '{ for (i = 1; i < NF; i++) if ($i == "src") { print $(i + 1); exit } }' || true
+  fi
+}
+lan_https_aktiv() {
+  case ",$(env_wert COMPOSE_PROFILES | tr -d ' ')," in *,lan-https,*) return 0 ;; *) return 1 ;; esac
+}
+port_belegt() { # $1 = Port
+  if command -v ss >/dev/null 2>&1; then ss -ltnH 2>/dev/null | awk '{ print $4 }' | grep -qE "[:.]$1\$"
+  elif command -v lsof >/dev/null 2>&1; then lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1
+  else return 1; fi
+}
+LAN_IP_ERKANNT="$(lan_ip_ermitteln)"
+if [ "$ERSTINSTALLATION" = "1" ] && ! lan_https_aktiv; then
+  belegt=""
+  for p in $LAN_HTTPS_PORTS; do if port_belegt "$p"; then belegt="$belegt $p"; fi; done
+  if [ -z "$LAN_IP_ERKANNT" ]; then
+    hinweis "HTTPS im LAN nicht eingeschaltet: Die LAN-IP ist nicht eindeutig. Nachholen: COMPOSE_PROFILES=lan-https und KASSA_LAN_IP=<IPv4> in der .env (ops/DEPLOYMENT.md)."
+  elif [ -n "$belegt" ]; then
+    hinweis "HTTPS im LAN nicht eingeschaltet: Port(s)$belegt sind schon belegt."
+  else
+    profile="$(env_wert COMPOSE_PROFILES)"
+    env_setzen COMPOSE_PROFILES "${profile:+$profile,}lan-https"
+    env_setzen KASSA_LAN_IP "$LAN_IP_ERKANNT"
+    ok "HTTPS im LAN eingeschaltet (Zertifikat für $LAN_IP_ERKANNT)"
+  fi
+elif lan_https_aktiv; then
+  eingetragen="$(env_wert KASSA_LAN_IP)"
+  if [ -z "$eingetragen" ] && [ -n "$LAN_IP_ERKANNT" ]; then
+    env_setzen KASSA_LAN_IP "$LAN_IP_ERKANNT"
+    ok "HTTPS im LAN: KASSA_LAN_IP auf $LAN_IP_ERKANNT gesetzt"
+  elif [ -z "$eingetragen" ]; then
+    hinweis "HTTPS im LAN ist eingeschaltet, aber KASSA_LAN_IP fehlt in der .env — bitte die IPv4 dieses Geräts eintragen."
+  elif [ -n "$LAN_IP_ERKANNT" ] && [ "$LAN_IP_ERKANNT" != "$eingetragen" ]; then
+    hinweis "HTTPS im LAN: Das Zertifikat gilt für $eingetragen, dieses Gerät hat jetzt aber $LAN_IP_ERKANNT."
+    hinweis "Ist die neue Adresse richtig, KASSA_LAN_IP in der .env anpassen und erneut installieren. Die Geräte behalten ihr Zertifikat."
+  fi
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 3b. Fernwartung (optional, nur Linux): TeamViewer Host installieren + dem Konto zuordnen
@@ -342,6 +454,15 @@ echo "$DIENSTE" | while IFS='|' read -r label var def; do
   if [ "$port" = "80" ]; then suffix=""; else suffix=":$port"; fi
   printf '   %-20s http://%s%s\n' "${label}:" "$lan_ip" "$suffix"
 done
+
+if lan_https_aktiv; then
+  ip_https="$(env_wert KASSA_LAN_IP)"; [ -n "$ip_https" ] || ip_https="<IP-dieses-Geräts>"
+  printf '\n%s Gesicherte Adressen (HTTPS im LAN):%s\n' "$C_C" "$C_0"
+  for eintrag in "Kassa|8443" "KDS Küche/Schank|9080" "Kellner-App|9083" "SB-Terminal|9084" "Einlass-App|9087"; do
+    printf '   %-20s https://%s:%s\n' "${eintrag%%|*}:" "$ip_https" "${eintrag##*|}"
+  done
+  printf '   Jedes Handy/Tablet einmal einrichten: http://%s:9079 öffnen und den Schritten folgen.\n' "$ip_https"
+fi
 
 hp="$(env_port FRONTEND_PORT 80)"
 if [ "$hp" = "80" ]; then lokal="http://localhost"; else lokal="http://localhost:$hp"; fi

@@ -57,6 +57,26 @@ describe('loadConfig', () => {
     })
   })
 
+  describe('FON_HERSTELLER_ID (UID des Softwareherstellers für den FinanzOnline-Login)', () => {
+    it('ist optional: nicht gesetzt oder leer (docker-compose reicht bei fehlendem Eintrag "" durch) = undefined', () => {
+      expect(loadConfig(validEnv as NodeJS.ProcessEnv).FON_HERSTELLER_ID).toBeUndefined()
+      expect(loadConfig({ ...validEnv, FON_HERSTELLER_ID: '' } as NodeJS.ProcessEnv).FON_HERSTELLER_ID).toBeUndefined()
+      expect(loadConfig({ ...validEnv, FON_HERSTELLER_ID: '   ' } as NodeJS.ProcessEnv).FON_HERSTELLER_ID).toBeUndefined()
+    })
+
+    it('übernimmt eine gültige ID (Leerraum am Rand weg)', () => {
+      expect(loadConfig({ ...validEnv, FON_HERSTELLER_ID: 'ATU12345678' } as NodeJS.ProcessEnv).FON_HERSTELLER_ID).toBe('ATU12345678')
+      expect(loadConfig({ ...validEnv, FON_HERSTELLER_ID: ' ATU12345678\n' } as NodeJS.ProcessEnv).FON_HERSTELLER_ID).toBe('ATU12345678')
+      expect(loadConfig({ ...validEnv, FON_HERSTELLER_ID: 'A'.repeat(24) } as NodeJS.ProcessEnv).FON_HERSTELLER_ID).toBe('A'.repeat(24))
+    })
+
+    it('lehnt ab, was das Schema des Logins ablehnen würde (10–24 Buchstaben/Ziffern) — der Start scheitert, nicht erst der Login', () => {
+      for (const falsch of ['ATU_KASSA_RKSV_0001', 'KURZ', 'A'.repeat(9), 'A'.repeat(25), 'ATU 12345678', 'ATU-12345678', 'ÄTU12345678']) {
+        expect(() => loadConfig({ ...validEnv, FON_HERSTELLER_ID: falsch } as NodeJS.ProcessEnv), falsch).toThrow(/FON_HERSTELLER_ID/)
+      }
+    })
+  })
+
   describe('SETUP_TOKEN (Einrichtungs-Schlüssel für weitere Mandanten)', () => {
     it('ist optional: nicht gesetzt oder leer (docker-compose reicht bei fehlendem Eintrag "" durch) = Weg zu', () => {
       expect(loadConfig(validEnv as NodeJS.ProcessEnv).SETUP_TOKEN).toBeUndefined()

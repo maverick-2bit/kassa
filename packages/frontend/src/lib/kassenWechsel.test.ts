@@ -1,7 +1,30 @@
 import { describe, it, expect } from 'vitest'
-import { KASSEN_ANSICHT, kasseName, umschaltKassen, zielNachWechsel } from './kassenWechsel'
+import { KASSEN_ANSICHT, belegKassen, kasseName, umschaltKassen, zielNachWechsel } from './kassenWechsel'
 
 const k = (id: string, kassenId: string, bezeichnung: string | null = null) => ({ id, kassenId, bezeichnung })
+
+describe('belegKassen: wessen Belege darf dieser Benutzer sehen?', () => {
+  const serverListe = [
+    { ...k('1', 'K-1'), ausserBetriebAm: null },
+    { ...k('2', 'K-2'), ausserBetriebAm: '2026-01-01' },
+    { ...k('3', 'K-3'), ausserBetriebAm: null },
+  ]
+  const ids = (o: { alleErlaubt?: boolean; zugeordneteIds?: string[]; serverListe?: typeof serverListe }) =>
+    belegKassen({ alleErlaubt: false, serverListe, zugeordneteIds: [], geraeteKasseId: '3', ...o }).map(x => x.id)
+
+  it('mit Einstellungs-Recht alle, auch stillgelegte', () => {
+    expect(ids({ alleErlaubt: true, zugeordneteIds: ['1'] })).toEqual(['1', '2', '3'])
+  })
+  it('sonst nur die zugeordneten (auch stillgelegte), nicht die des Geräts', () => {
+    expect(ids({ zugeordneteIds: ['1', '2'] })).toEqual(['1', '2'])
+  })
+  it('ohne Zuordnung nur die Kasse dieses Geräts', () => {
+    expect(ids({})).toEqual(['3'])
+  })
+  it('Liste noch nicht geladen → leer', () => {
+    expect(belegKassen({ alleErlaubt: true, serverListe: undefined, zugeordneteIds: [], geraeteKasseId: '3' })).toEqual([])
+  })
+})
 
 describe('umschaltKassen: zwischen welchen Kassen darf dieses Gerät umschalten?', () => {
   const auth = [k('1', 'K-1', 'Bar'), k('2', 'K-2', 'Kuchen')]

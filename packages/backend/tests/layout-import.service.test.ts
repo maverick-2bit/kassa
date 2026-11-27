@@ -203,6 +203,50 @@ describe('Gruppen', () => {
   })
 })
 
+describe('EAN', () => {
+  // Layout mit EAN je Artikel: [name, slot, ean]
+  const grpEan = (name: string, artikel: [string, number, string][]) => ({
+    name, farbe: '#60aa30', farbeGesetzt: true, untergruppen: [],
+    artikel: artikel.map(([n, slot, ean]) => ({ name: n, preisCent: 300, mwst: 0.2, slot, ean })),
+  })
+
+  it('neue Artikel bekommen eine gültige, freie EAN; ungültige und in der Datei doppelte werden gezählt, nicht gesetzt', () => {
+    const plan = planeLayout(zustand([], []), mkLayout([grpEan('Shop', [
+      ['Milch', 1, '9002490100070'], ['Kaputt', 2, '9002490100071'], ['Doppelt', 3, '9002490100070'],
+    ])]), OPT)
+    expect(plan.neueArtikel.map(n => [n.bezeichnung, n.ean])).toEqual([['Milch', '9002490100070'], ['Kaputt', null], ['Doppelt', null]])
+    expect(plan.bericht.zaehler.artikel).toMatchObject({ eanUebernommen: 1, eanUebersprungen: 2 })
+    expect(plan.bericht.zusammenfassung.some(z => z.startsWith('EAN: 1 übernommen, 2 nicht übernommen'))).toBe(true)
+  })
+
+  it('bestehender Artikel: fehlende EAN wird ergänzt, eigene EAN bleibt, fremde (auch als UPC-A) wird nicht übernommen', () => {
+    const shop = kg('Shop')
+    const ohne   = ka('Ohne', shop.id, { rasterPosition: 1, reihenfolge: 1 })
+    const eigene = ka('Eigene', shop.id, { rasterPosition: 2, reihenfolge: 2, ean: '96385074' })
+    const fremd  = ka('Fremd', shop.id, { rasterPosition: 3, reihenfolge: 3 })
+    const usa    = ka('USA', null, { ean: '0012345678905', aktiv: false })
+    const plan = planeLayout(zustand([shop], [ohne, eigene, fremd, usa]), mkLayout([grpEan('Shop', [
+      ['Ohne', 1, '4006381333931'], ['Eigene', 2, '9002490100070'], ['Fremd', 3, '012345678905'],
+    ])]), OPT)
+    expect(plan.artikelUpdates).toEqual([{ id: ohne.id, werte: { ean: '4006381333931' } }])
+    expect(plan.bericht.zaehler.artikel).toMatchObject({ eanUebernommen: 1, eanUebersprungen: 2 })
+  })
+
+  it('Katalog löschen: die EAN eines nur deaktivierten Altartikels geht an den neu angelegten über', () => {
+    const shop = kg('Shop')
+    const alt = ka('Milch', shop.id, { ean: '9002490100070' })
+    const ist: KassaZustand = { ...zustand([shop], [alt]),
+      loeschung: {
+        artikelLoeschen: 0, gruppenLoeschen: 1, optionsgruppen: 0, seriennummern: 0, inventurPositionen: 0, sichtbarkeiten: 0, ausnahmen: 0,
+        artikelBehalten: [{ id: alt.id, bezeichnung: 'Milch', grund: 'offene Bestellung' }], gruppenBehalten: [], preisregeln: [],
+      } }
+    const plan = planeLayout(ist, mkLayout([grpEan('Shop', [['Milch', 1, '9002490100070']])]), { ...OPT, katalogLoeschen: true })
+    expect(plan.neueArtikel.map(n => n.ean)).toEqual(['9002490100070'])
+    const danach = wendePlanAn(ist, plan)
+    expect(danach.artikel.filter(a => a.ean === '9002490100070').map(a => a.aktiv)).toEqual([true])
+  })
+})
+
 describe('Favoriten', () => {
   it('setzt die Favoriten in fester Reihenfolge, entfernt alte, löscht Kassen-Listen', () => {
     const g = kg('Bar')

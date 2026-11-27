@@ -14,9 +14,28 @@
 // Urteil: nur die Wurzeln der Dateien N_app/N_cashbox/N_dep und DEP-global.json. Ein Lauf ohne ein einziges erkanntes PASS
 // gilt nicht als bestanden.
 
-const URTEIL_DATEIEN = [/(^|[\\/])\d{4}_(app|cashbox|dep)\.json$/, /(^|[\\/])DEP-global\.json$/]
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { join } from 'node:path'
+
+// \d{4,}: ab Beleg 10000 hat der Dateiname fünf Stellen — mit genau vier wären diese Belege nie ausgewertet worden.
+const URTEIL_DATEIEN = [/(^|[\\/])\d{4,}_(app|cashbox|dep)\.json$/, /(^|[\\/])DEP-global\.json$/]
 
 export const istUrteilsdatei = name => URTEIL_DATEIEN.some(m => m.test(name))
+
+/**
+ * Liefert die Urteilsdateien unter `ordner` nacheinander statt alle auf einmal. Die `*_full.json` und `DEP-full.json` werden gar
+ * nicht erst gelesen: sie sind groß und zählen nicht. Bei 20 000 Belegen (langer Burn-in) sprengte das Einlesen aller Dateien den
+ * Speicher von Node (Nachtlauf 2026-11-08: Abbruch in `NewRawTwoByteString`, keine Zusammenfassung).
+ */
+export function* urteilsDateien(ordner, tiefe = 0) {
+  if (!existsSync(ordner) || tiefe > 3) return
+  for (const name of readdirSync(ordner)) {
+    const pfad = join(ordner, name)
+    const st = statSync(pfad)
+    if (st.isDirectory()) yield* urteilsDateien(pfad, tiefe + 1)
+    else if (istUrteilsdatei(pfad) && st.size < 50 * 1024 * 1024) yield { name: pfad, inhalt: readFileSync(pfad, 'utf8') }
+  }
+}
 
 const KONSOLE_PROBLEME = [
   /validation process failed/i,
@@ -56,7 +75,7 @@ export function sammleFehler(wert, datei, fehlgeschlagen) {
 }
 
 /**
- * @param {{ name: string, inhalt: string }[]} dateien  Inhalte der JSON-Dateien im Ausgabeordner (alle; ausgewertet werden die Urteilsdateien)
+ * @param {Iterable<{ name: string, inhalt: string }>} dateien  Inhalte der JSON-Dateien im Ausgabeordner (Liste oder Generator `urteilsDateien`; ausgewertet werden nur die Urteilsdateien)
  * @param {string} konsole  Standardausgabe + Fehlerausgabe des Tools
  * @param {number|null} exitCode
  */

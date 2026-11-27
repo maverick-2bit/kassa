@@ -13,10 +13,39 @@ import { useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useKassenLeistenAusgeblendet } from '../lib/kassenLeisten'
 import { belegApi } from '../lib/api'
+import { hasBerechtigung } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
 
 /** Hinweis verkleinert (schmale Zeile), pro Gerät; Standard: groß. */
 const KLEIN_KEY = 'kassa:foBannerKlein'
+
+/**
+ * Rechts im Banner: der Knopf „Jetzt nachtragen" — nur für Benutzer mit dem Recht „Einstellungen" (die Registrierung
+ * trägt FinanzOnline-Zugangsdaten des Betriebs ein). Alle anderen sehen den Hinweis statt eines Knopfs, der nur mit
+ * „Keine Berechtigung" enden würde.
+ */
+export function FoNachtragenAktion({ darfRegistrieren, offen, onUmschalten }: {
+  darfRegistrieren: boolean
+  offen:            boolean
+  onUmschalten:     () => void
+}) {
+  if (!darfRegistrieren) {
+    return (
+      <span data-testid="fo-banner-hinweis" className="ml-auto text-xs text-amber-900">
+        Bitte der Chefin oder dem Chef Bescheid geben.
+      </span>
+    )
+  }
+  return (
+    <button
+      type="button"
+      onClick={onUmschalten}
+      className="ml-auto rounded-md bg-amber-950/10 hover:bg-amber-950/20 px-3 py-1 font-medium transition whitespace-nowrap"
+    >
+      {offen ? 'Schließen' : 'Jetzt nachtragen'}
+    </button>
+  )
+}
 
 export function FoStatusBanner() {
   const identity    = getKasseIdentity()
@@ -60,6 +89,9 @@ export function FoStatusBanner() {
   if (leistenAus && /^\/kasse\/?$/.test(pfad)) return null
 
   const kannRegistrieren = tid.trim() && benId.trim() && pin.trim()
+  // Der Server verlangt für die Registrierung das Recht „Einstellungen" (POST /belege/fo-registrierung) — wer es nicht hat,
+  // bekommt statt des Formulars den Hinweis, es der Chefin oder dem Chef zu sagen.
+  const darfRegistrieren = hasBerechtigung('einstellungen')
 
   // Verkleinert: nur eine schmale Erinnerungszeile (pro Gerät gemerkt)
   if (klein && !offen) {
@@ -91,13 +123,11 @@ export function FoStatusBanner() {
           <span className="text-amber-900">
             Provisorische Kasse — Belege werden signiert, aber die FON-Registrierung ist <strong>zeitnah nachzutragen</strong>.
           </span>
-          <button
-            type="button"
-            onClick={() => { setOffen(o => !o); setFehler(null) }}
-            className="ml-auto rounded-md bg-amber-950/10 hover:bg-amber-950/20 px-3 py-1 font-medium transition whitespace-nowrap"
-          >
-            {offen ? 'Schließen' : 'Jetzt nachtragen'}
-          </button>
+          <FoNachtragenAktion
+            darfRegistrieren={darfRegistrieren}
+            offen={offen}
+            onUmschalten={() => { setOffen(o => !o); setFehler(null) }}
+          />
           <button
             type="button"
             onClick={() => { setOffen(false); kleinSetzen(true) }}
@@ -108,7 +138,7 @@ export function FoStatusBanner() {
           </button>
         </div>
 
-        {offen && (
+        {offen && darfRegistrieren && (
           <div className="mt-2.5 rounded-md bg-amber-50 border border-amber-300 p-3">
             <p className="text-xs text-amber-800 mb-2">
               FinanzOnline-Zugangsdaten eingeben — Kasse und Signatureinrichtung werden registriert

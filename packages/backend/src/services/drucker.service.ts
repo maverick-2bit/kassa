@@ -447,11 +447,12 @@ export function belegRowZuDto(row: typeof belege.$inferSelect): BelegResponse {
     summeKarteCent:              row.summeKarteCent,
     summeSonstigeCent:           row.summeSonstigeCent,
     gesamtbetragCent,
-    positionen:                  (row.positionen as BelegPosition[]).map((p) => ({
+    positionen:                  (row.positionen as (BelegPosition & { ean?: string })[]).map((p) => ({
       bezeichnung:        p.bezeichnung,
       menge:              p.menge,
       einzelpreisBreutto: p.einzelpreisBreutto,
       mwstSatz:           p.mwstSatz as MwStSatz,
+      ...(p.ean && { ean: p.ean }),
     })),
     zertifikatSn:                row.zertifikatSn,
     sigVorbeleg:                 row.sigVorbeleg,

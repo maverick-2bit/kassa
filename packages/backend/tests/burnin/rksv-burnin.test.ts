@@ -392,6 +392,9 @@ describe('RKSV-Burn-in (Integration, echtes PostgreSQL)', () => {
 
     const bmf = fuehreBmfPrueftoolAus(dateien)
     externes.bmf = bmf
+    if (bmf.belege && bmf.belege.geprueft < bmf.belege.gesamt) {
+      melde('hinweis', 'bmf-pruefer-ausschnitt', `Das BMF-Prüftool sah nur die ersten ${bmf.belege.geprueft} von ${bmf.belege.gesamt} Belegen (BMF_MAX_BELEGE); den ganzen Bestand prüft der Python-Zweitprüfer`)
+    }
     if (!bmf.ausgefuehrt) {
       melde('hinweis', 'bmf-pruefer-uebersprungen', bmf.hinweis ?? 'nicht ausgeführt')
     } else if (!bmf.ok) {

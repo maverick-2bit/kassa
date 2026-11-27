@@ -36,6 +36,7 @@ export interface ExportArtikel {
   id: string; bezeichnung: string; artikelnummer: string | null; preisBruttoCent: number; mwstSatz: string
   farbe: string | null; kategorieId: string | null; rasterPosition: number | null; reihenfolge: number
   allergene: string | null; aktiv: boolean; istBestandteil: boolean
+  ean?: string | null
 }
 export interface ExportOptionsgruppe {
   id: string; name: string; typ: string; maxAuswahl: number | null; jeAuswahlArtikel?: boolean
@@ -167,6 +168,7 @@ export function baueLayoutExport(z: ExportZustand, opts: ExportOptionen = {}): L
         farbe:     farbeZuHex(a.farbe) ?? null,
         slot,
         allergene: a.allergene,
+        ...(a.ean && { ean: a.ean }),
         optionen,
       })
     }
@@ -226,7 +228,7 @@ export async function exportiereLayout(db: Db, mandantId: string, opts: ExportOp
     id: artikel.id, bezeichnung: artikel.bezeichnung, artikelnummer: artikel.artikelnummer,
     preisBruttoCent: artikel.preisBruttoCent, mwstSatz: artikel.mwstSatz, farbe: artikel.farbe,
     kategorieId: artikel.kategorieId, rasterPosition: artikel.rasterPosition, reihenfolge: artikel.reihenfolge,
-    allergene: artikel.allergene, aktiv: artikel.aktiv, istBestandteil: artikel.istBestandteil,
+    allergene: artikel.allergene, aktiv: artikel.aktiv, istBestandteil: artikel.istBestandteil, ean: artikel.ean,
   }).from(artikel).where(eq(artikel.mandantId, mandantId))
   const ogRows = await db.select().from(modifikatorGruppen)
     .where(and(eq(modifikatorGruppen.mandantId, mandantId), eq(modifikatorGruppen.aktiv, true)))

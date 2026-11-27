@@ -1,4 +1,13 @@
+import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
+import { installiereWorkerDiagnose } from './tests/integration/helpers/workerDiagnoseHaupt.js'
+
+/**
+ * Worker-Diagnose: Exit-Code/Signal jedes Worker-Prozesses und Lebenszeichen
+ * der Kinder nach test-results/worker-diagnose.jsonl (siehe workerDiagnoseHaupt.ts).
+ */
+installiereWorkerDiagnose(resolve(fileURLToPath(new URL('.', import.meta.url)), 'test-results/worker-diagnose.jsonl'))
 
 /**
  * Integrationstests gegen ein echtes PostgreSQL.
@@ -15,14 +24,14 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['tests/integration/**/*.test.ts'],
+    setupFiles: ['./tests/integration/helpers/workerDiagnoseKind.ts'],
     testTimeout: 30_000,
     hookTimeout: 60_000,
     /**
-     * Worker deckeln: Mit dem Default (ein Fork je CPU-Thread, hier 16) stirbt
-     * unter RAM-Druck gelegentlich ein Worker („Worker exited unexpectedly",
-     * zuletzt regelmäßig bei nebenlaeufigkeit.test.ts mit seinen 50 parallelen
-     * Signierungen) — die Datei wird rot, obwohl kein Test fehlschlägt. Die
-     * Suite ist ohnehin DB-gebunden; 8 Worker sind praktisch gleich schnell.
+     * Worker deckeln: Die Suite ist DB-gebunden; mehr als 4 Worker bringen kaum
+     * etwas. Hinweis: Die „Worker exited unexpectedly"-Abbrüche, die früher hier
+     * RAM-Druck zugeschrieben wurden, waren (zumindest ab Node 24) der
+     * libuv-Fehler nodejs/node#63620 — siehe workerDiagnoseHaupt.ts/nodeBetroffen().
      */
     poolOptions: { forks: { minForks: 1, maxForks: 4 } },
     /**

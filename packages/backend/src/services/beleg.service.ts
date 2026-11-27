@@ -8,7 +8,7 @@
  *     und dann signiereImTx() innerhalb einer Transaktion aufruft.
  */
 
-import { and, asc, desc, eq, gte, inArray, lt, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, gte, inArray, lt, or, sql, type SQL } from 'drizzle-orm'
 import { Buffer } from 'node:buffer'
 import {
   ATrustHsmEinheit,
@@ -37,14 +37,16 @@ import {
 } from '@kassa/rksv'
 import type {
   BarzahlungsbelegInput,
+  BelegListeEintrag,
   BelegResponse,
+  BelegSeite,
   JahresbelegInput,
   KundeSnapshot,
   MonatsbelegInput,
   NullbelegInput,
   StornobelegInput,
 } from '@kassa/shared'
-import { ArtikelPositionSchema, hatBonRouting } from '@kassa/shared'
+import { ArtikelPositionSchema, hatBonRouting, wienerZeitpunkt } from '@kassa/shared'
 import type { Db } from '../db/client.js'
 import { artikel, belege, kassen, kategorien, mandanten, modifikatoren, seriennummern } from '../db/schema.js'
 import { erstelleKunde, ladeKundeSnapshot } from './kunde.service.js'
@@ -63,6 +65,23 @@ export interface BelegServiceDeps {
    * wird für reale Meldungen ein Client passend zur Kassen-Umgebung erzeugt.
    */
   finanzOnlineClient?: FinanzOnlineClient
+  /**
+   * Hersteller-ID für den FinanzOnline-Login (Einstellung FON_HERSTELLER_ID): UID des Softwareherstellers.
+   * Fehlt sie, verwendet der echte Client einen Platzhalter.
+   */
+  fonHerstellerId?: string
+}
+
+/**
+ * FinanzOnline-Client einer Kasse: der eingespritzte (Stub in Dev/E2E, Mock im Test) — sonst ein echter für die
+ * Umgebung der Kasse, mit der Hersteller-ID dieser Installation.
+ */
+export function erzeugeFinanzOnlineClient(
+  deps:     Pick<BelegServiceDeps, 'finanzOnlineClient' | 'fonHerstellerId'>,
+  umgebung: string,
+): FinanzOnlineClient {
+  return deps.finanzOnlineClient
+    ?? new FinanzOnlineClient(umgebung === 'test' ? 'test' : 'produktion', { herstellerId: deps.fonHerstellerId })
 }
 
 export class BelegError extends Error {
@@ -74,6 +93,49 @@ export class BelegError extends Error {
   ) {
     super(message)
   }
+}
+
+/**
+ * Ein Verkauf mit diesem Idempotenz-Schlüssel ist an dieser Kasse schon gebucht (die Kassa schickt
+ * ihn ein zweites Mal: Antwort im WLAN verloren, Nachsenden aus der Offline-Warteschlange). Kein
+ * Fehler für die Kassa — die Route antwortet mit dem vorhandenen Beleg, ohne Druck und Bonierung.
+ */
+export class BelegSchonGebucht extends Error {
+  constructor(public readonly belegId: string) {
+    super('Dieser Verkauf ist bereits gebucht')
+  }
+}
+
+/** Idempotency-Key der Kassa samt Fingerabdruck des Verkaufs (SHA-256, ohne Freigabe-PIN) */
+export interface Idempotenz {
+  schluessel: string
+  hash:       string
+}
+
+/**
+ * Ist an dieser Kasse schon ein Verkauf mit diesem Schlüssel gebucht? Ja und derselbe Verkauf →
+ * BelegSchonGebucht (Antwort: der vorhandene Beleg). Ja, aber mit anderem Inhalt → 422 — mit dem
+ * alten Beleg als „Erfolg" zu antworten, könnte einen neuen Verkauf still verschlucken. Praktisch
+ * heißt das fast immer: Die Antwort ging verloren und der Kassier hat danach z. B. die Zahlungsart
+ * geändert. Die Meldung nennt darum den gebuchten Beleg und warnt vor dem Neu-Kassieren (sonst
+ * entstünde ein zweiter Beleg für denselben Verkauf).
+ */
+async function pruefeIdempotenz(db: Db | Tx, kasseId: string, idem: Idempotenz): Promise<void> {
+  const [row] = await db
+    .select({ id: belege.id, hash: belege.idempotenzHash, belegNummer: belege.belegNummer })
+    .from(belege)
+    .where(and(eq(belege.kasseId, kasseId), eq(belege.idempotenzSchluessel, idem.schluessel)))
+    .limit(1)
+  if (!row) return
+  if (row.hash !== idem.hash) {
+    throw new BelegError(
+      422,
+      `Dieser Verkauf ist schon gebucht (Beleg Nr. ${row.belegNummer}), allerdings mit anderem Inhalt oder anderer Zahlung. ` +
+        'Bitte NICHT neu kassieren — erst den Beleg in der Belegliste prüfen und ihn bei Bedarf dort stornieren.',
+      'idempotenz-konflikt',
+    )
+  }
+  throw new BelegSchonGebucht(row.id)
 }
 
 /** BelegError.code: Die Signatureinheit/das Schlüsselmaterial weist uns ab — Warten hilft nicht. */
@@ -128,6 +190,12 @@ interface SigniereInput {
   ausserBetrieb?: boolean
   /** Läuft NACH dem Beleg-Insert in derselben Tx (z. B. Seriennummern als verkauft markieren). */
   nachPersist?: (tx: Tx, belegId: string, mandantId: string) => Promise<void>
+  /**
+   * Idempotenz des Verkaufs: Ist an der Kasse schon ein Beleg mit diesem Schlüssel gebucht, wirft
+   * die Tx BelegSchonGebucht (bzw. 422 bei anderem Warenkorb), bevor Lager, Seriennummern oder
+   * Signatur berührt werden.
+   */
+  idempotenz?: Idempotenz | undefined
 }
 
 /** mandanten.status nach der Übergabe an eine andere Kassa: keine neuen Belege mehr */
@@ -208,6 +276,10 @@ async function signiereImTxKern(
     if (mandantStatus?.status === MANDANT_UEBERTRAGEN) {
       throw new BelegError(409, 'Dieser Mandant wurde auf eine andere Kassa übertragen — hier sind keine Belege mehr möglich. (Einstellungen → System → Mandant übertragen → Sperre aufheben)')
     }
+    // Derselbe Verkauf ein zweites Mal? Erst HIER (unter der Kassen-Sperre) ist die Prüfung
+    // verlässlich: Eine gleichzeitige Zweitanfrage wartet auf die Sperre und sieht danach den
+    // gebuchten Beleg. Die Vorab-Prüfung in erstelleBarzahlungsbeleg spart nur Arbeit.
+    if (input.idempotenz) await pruefeIdempotenz(tx, kasse.id, input.idempotenz)
     // Hinweis: Eine NICHT bei FinanzOnline registrierte Kasse darf provisorisch
     // Belege ausstellen (Event-Einrichtung ohne FON-Daten). Die Belege werden
     // regulär signiert; die FON-Registrierung ist zeitnah nachzutragen. Das UI
@@ -387,6 +459,10 @@ async function signiereImTxKern(
       ...(input.verweisBelegId && { verweisBelegId: input.verweisBelegId }),
       ...(input.kundeId        && { kundeId:        input.kundeId }),
       ...(input.kundeSnapshot  && { kundeSnapshot:  input.kundeSnapshot }),
+      ...(input.idempotenz && {
+        idempotenzSchluessel: input.idempotenz.schluessel,
+        idempotenzHash:       input.idempotenz.hash,
+      }),
     }).returning()
     if (!persisted) throw new BelegError(500, 'Beleg konnte nicht gespeichert werden')
 
@@ -454,8 +530,18 @@ export async function erstelleBarzahlungsbeleg(
      * Transaktion aber trotzdem ab.
      */
     freigabeDb?: Db
+    /**
+     * Idempotency-Key der Kassa samt Fingerabdruck: Ist der Verkauf schon gebucht, wirft der Aufruf
+     * BelegSchonGebucht (die Route antwortet mit dem vorhandenen Beleg) — ohne neuen Kunden, Lager,
+     * Signatur; derselbe Schlüssel mit anderem Warenkorb → BelegError 422.
+     */
+    idempotenz?: Idempotenz
   } = {},
 ): Promise<BelegResponse> {
+  // Wiederholter Verkauf: früh abbrechen, bevor unten ein „neuer Kunde" ein zweites Mal entsteht.
+  // Verlässlich ist erst die Prüfung unter der Kassen-Sperre in signiereImTxKern.
+  if (opts.idempotenz) await pruefeIdempotenz(deps.db, input.kasseId, opts.idempotenz)
+
   // Kunden-Snapshot vor der Transaktion auflösen (neuer Kunde wird hier angelegt)
   let kundeId:       string | undefined
   let kundeSnapshot: KundeSnapshot | undefined
@@ -494,6 +580,7 @@ export async function erstelleBarzahlungsbeleg(
     validatePayment: true,
     kundeId,
     kundeSnapshot,
+    idempotenz:      opts.idempotenz,
     belegDaten: async (tx, mandantId) => {
       // Artikel-Positionen (mit artikelId) vs. freie Positionen trennen
       const artikelPositionen = input.positionen.filter(p => ArtikelPositionSchema.safeParse(p).success)
@@ -542,7 +629,9 @@ export async function erstelleBarzahlungsbeleg(
       // mitgespeichert, berühren aber nicht die RKSV-Signatur (nur menge/preis/mwst relevant).
       // artikelName = Name des Hauptartikels OHNE Optionen („Spritzer", nicht „Spritzer (süß)"): die
       // Artikelberichte zählen danach, egal ob mit Pommes oder Kartoffelsalat.
-      const positionen: (BelegPosition & { kategorieId?: string | undefined; kategorieName?: string | undefined; artikelName?: string | undefined })[] =
+      // ean = EAN des Artikels zum Verkaufszeitpunkt (Aufdruck auf dem Bon; spätere Änderungen am Artikel
+      // ändern den Beleg nicht).
+      const positionen: (BelegPosition & { kategorieId?: string | undefined; kategorieName?: string | undefined; artikelName?: string | undefined; ean?: string | undefined })[] =
         input.positionen.map((p) => {
           // Freie Position: direkt übernehmen, kein Artikel-Lookup
           if (!('artikelId' in p)) {
@@ -565,6 +654,7 @@ export async function erstelleBarzahlungsbeleg(
             menge:              p.menge,
             einzelpreisBreutto: preis,
             mwstSatz:           a.mwstSatz as MwStSatz,
+            ...(a.ean && { ean: a.ean }),
             ...(a.kategorieId && katNameMap.has(a.kategorieId) && {
               kategorieId:   a.kategorieId,
               kategorieName: katNameMap.get(a.kategorieId),
@@ -768,14 +858,15 @@ export async function erstelleStornobeleg(
       }
 
       // Positionen mit negiertem Einzelpreis
-      const originalPositionen = verweisBeleg.positionen as (BelegPosition & { artikelName?: string })[]
-      const positionen: (BelegPosition & { artikelName?: string | undefined })[] = originalPositionen.map(p => ({
+      const originalPositionen = verweisBeleg.positionen as (BelegPosition & { artikelName?: string; ean?: string })[]
+      const positionen: (BelegPosition & { artikelName?: string | undefined; ean?: string | undefined })[] = originalPositionen.map(p => ({
         bezeichnung:        `Storno: ${p.bezeichnung}`,
         // „Storno: Spritzer" statt je Option eine eigene Storno-Zeile in den Artikelberichten
         ...(p.artikelName && { artikelName: `Storno: ${p.artikelName}` }),
         menge:              p.menge,
         einzelpreisBreutto: -p.einzelpreisBreutto,
         mwstSatz:           p.mwstSatz,
+        ...(p.ean && { ean: p.ean }),
       }))
 
       // Zahlungsaufteilung 1:1 negieren
@@ -868,13 +959,14 @@ async function sendeFonSeeMeldung(
   kasse:       { kassenId: string; seeZertifikatSn: string; umgebung: string },
   operation:   'ausfall' | 'wiederinbetriebnahme',
   credentials?: FinanzOnlineCredentials,
+  /** Beginn des laufenden Ausfalls — wird als `beginn_ausfall` gemeldet (nicht der Zeitpunkt der Meldung) */
+  ausfallSeit?: Date | null,
 ): Promise<FonMeldungErgebnis | undefined> {
   if (!credentials) return undefined
-  const client = deps.finanzOnlineClient
-    ?? new FinanzOnlineClient(kasse.umgebung === 'test' ? 'test' : 'produktion')
+  const client = erzeugeFinanzOnlineClient(deps, kasse.umgebung)
   try {
     const res = operation === 'ausfall'
-      ? await client.seeAusfallMelden(kasse.kassenId, kasse.seeZertifikatSn, credentials)
+      ? await client.seeAusfallMelden(kasse.kassenId, kasse.seeZertifikatSn, credentials, ausfallSeit ? { beginn: ausfallSeit } : {})
       : await client.seeWiederinbetriebnahmeMelden(kasse.kassenId, kasse.seeZertifikatSn, credentials)
     return { versucht: true, erfolgreich: res.erfolgreich, ...(res.fehler && { fehler: res.fehler }) }
   } catch (err) {
@@ -925,7 +1017,7 @@ export async function meldeSeeAusfall(
   })
 
   const status = baueSeeStatus(kasse.seeAusgefallenSeit, kasse.seeTyp)
-  const fon = await sendeFonSeeMeldung(deps, kasse, 'ausfall', credentials)
+  const fon = await sendeFonSeeMeldung(deps, kasse, 'ausfall', credentials, kasse.seeAusgefallenSeit)
   return { ...status, ...(fon && { fonMeldung: fon }) }
 }
 
@@ -1026,8 +1118,7 @@ export async function registriereKasseBeiFinanzOnline(
   if (k.registriert) throw new BelegError(409, 'Kasse ist bereits bei FinanzOnline registriert')
   if (!k.aesSchluesselEnc) throw new BelegError(409, 'Kasse hat noch keinen Umsatzzähler-Schlüssel — bitte zuerst einen Beleg erstellen')
 
-  const client = deps.finanzOnlineClient
-    ?? new FinanzOnlineClient(k.umgebung === 'test' ? 'test' : 'produktion')
+  const client = erzeugeFinanzOnlineClient(deps, k.umgebung)
   const zertifikatDER = Buffer.from(k.seeZertifikatDer, 'base64')
   const aesSchluessel = decryptPrivateKey(k.aesSchluesselEnc, deps.masterPassphrase)
 
@@ -1142,8 +1233,7 @@ export async function nimmKasseAusserBetrieb(
 
   // 2. Optionale FON-Abmeldung — NACH der Transaktion, nicht-fatal
   if (credentials && k.registriert) {
-    const client = deps.finanzOnlineClient
-      ?? new FinanzOnlineClient(k.umgebung === 'test' ? 'test' : 'produktion')
+    const client = erzeugeFinanzOnlineClient(deps, k.umgebung)
     try {
       const res = await client.kasseAusserBetriebNehmen(k.kassenId, credentials)
       ergebnis.fonMeldung = {
@@ -1184,6 +1274,96 @@ export async function listeBelege(
     .limit(opts.limit ?? 50)
 
   return rows.map(r => toDto(r, r.positionen as BelegPosition[]))
+}
+
+export interface BelegSucheFilter {
+  kasseId:  string
+  /** Wiener Kalendertag (JJJJ-MM-TT), inklusive */
+  von?:     string | undefined
+  /** Wiener Kalendertag (JJJJ-MM-TT), inklusive */
+  bis?:     string | undefined
+  /** Belegnummer, Betrag („12,50") oder Kunde (Name, Kundennummer) */
+  suche?:   string | undefined
+  kundeId?: string | undefined
+  typen?:   string[] | undefined
+  limit:    number
+  offset:   number
+}
+
+function naechsterKalendertag(datum: string): string {
+  const d = new Date(`${datum}T00:00:00.000Z`)
+  d.setUTCDate(d.getUTCDate() + 1)
+  return d.toISOString().slice(0, 10)
+}
+
+/** Suchtext → Bedingung: Belegnummer, Betrag (auch als Storno negativ) oder Kunde. */
+function suchBedingung(suche: string): SQL | undefined {
+  const text = suche.trim().replace(/^#/, '')
+  if (text === '') return undefined
+  const gesamt = sql`(${belege.summeBarCent} + ${belege.summeKarteCent} + ${belege.summeSonstigeCent})`
+  const teile: SQL[] = []
+
+  if (/^\d{1,9}$/.test(text)) {
+    const n = Number(text)
+    teile.push(eq(belege.belegNummer, n))
+    // „12" kann auch 12,00 € meinen
+    if (n <= 9_999_999) teile.push(sql`abs(${gesamt}) = ${n * 100}`)
+    teile.push(sql`${belege.kundeSnapshot}->>'nummer' = ${text}`)
+  } else if (/^-?\d{1,7}[.,]\d{1,2}$/.test(text)) {
+    const [ganz, rest = ''] = text.replace('-', '').split(/[.,]/)
+    const cent = Number(ganz) * 100 + Number(rest.padEnd(2, '0'))
+    teile.push(sql`abs(${gesamt}) = ${cent}`)
+  }
+
+  // Kundenname: LIKE-Platzhalter im Suchtext wörtlich nehmen
+  const muster = `%${text.replace(/[\\%_]/g, m => `\\${m}`)}%`
+  teile.push(sql`${belege.kundeSnapshot}->>'bezeichnung' ilike ${muster}`)
+  teile.push(sql`${belege.kundeSnapshot}->>'firma' ilike ${muster}`)
+
+  return or(...teile)
+}
+
+/**
+ * Belege EINER Kasse des Mandanten — mit Zeitraum, Suche und Paging.
+ *
+ * Mandantentrennung doppelt: Die Route prüft, dass die Kasse zum Mandanten gehört, und die
+ * Abfrage verlangt zusätzlich `mandant_id`. `storniertDurch` kommt aus der Datenbank, nicht
+ * aus der geladenen Seite — der Stornobeleg kann auf einer anderen Seite stehen.
+ */
+export async function sucheBelege(db: Db, mandantId: string, filter: BelegSucheFilter): Promise<BelegSeite> {
+  const bedingungen: SQL[] = [eq(belege.mandantId, mandantId), eq(belege.kasseId, filter.kasseId)]
+  if (filter.von) bedingungen.push(gte(belege.belegDatum, wienerZeitpunkt(filter.von, '00:00')))
+  if (filter.bis) bedingungen.push(lt(belege.belegDatum, wienerZeitpunkt(naechsterKalendertag(filter.bis), '00:00')))
+  if (filter.kundeId) bedingungen.push(eq(belege.kundeId, filter.kundeId))
+  if (filter.typen && filter.typen.length > 0) bedingungen.push(inArray(belege.belegTyp, filter.typen))
+  const such = filter.suche ? suchBedingung(filter.suche) : undefined
+  if (such) bedingungen.push(such)
+  const wo = and(...bedingungen)
+
+  const [rows, [zaehler]] = await Promise.all([
+    db.select().from(belege).where(wo)
+      .orderBy(desc(belege.belegNummer))
+      .limit(filter.limit)
+      .offset(filter.offset),
+    db.select({ anzahl: count() }).from(belege).where(wo),
+  ])
+
+  const ids = rows.filter(r => r.belegTyp === 'Barzahlungsbeleg').map(r => r.id)
+  const stornos = ids.length === 0 ? [] : await db
+    .select({ id: belege.id, belegNummer: belege.belegNummer, verweisBelegId: belege.verweisBelegId })
+    .from(belege)
+    .where(and(
+      eq(belege.mandantId, mandantId),
+      eq(belege.belegTyp, 'Stornobeleg'),
+      inArray(belege.verweisBelegId, ids),
+    ))
+  const stornoVon = new Map(stornos.map(s => [s.verweisBelegId, { id: s.id, belegNummer: s.belegNummer }]))
+
+  const eintraege: BelegListeEintrag[] = rows.map(r => {
+    const storno = stornoVon.get(r.id)
+    return { ...toDto(r, r.positionen as BelegPosition[]), ...(storno && { storniertDurch: storno }) }
+  })
+  return { belege: eintraege, gesamt: zaehler?.anzahl ?? 0 }
 }
 
 /** Einzelnen Beleg laden (mandanten-scoped) — z. B. für den Rechnungsdruck am KDS. */

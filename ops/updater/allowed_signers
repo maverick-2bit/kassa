@@ -1,0 +1,8 @@
+# Kassa — Prüfschlüssel für signierte Release-Tags (Quelle der Wahrheit für den In-App-Updater,
+# ops/release/pruefe-release.sh und den GitHub-Workflow „Release-Tag prüfen").
+#
+# Format (ssh-keygen -Y, allowed_signers):  <Principal> namespaces="git" <Schlüsseltyp> <Schlüssel> [Kommentar]
+# Es gilt nur der Stand, der schon auf der Kasse INSTALLIERT ist — ein neuer Schlüssel kommt erst mit einem
+# Release dazu, das noch mit einem alten Schlüssel signiert wurde. Ablauf und Notfall: ops/DEPLOYMENT.md, Abschnitt 11.
+kassa-release namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMTrLm0jPsd2jDC0vStVdu7/y4zlRx1kGoJHNkWN7Txi kassa-release-arbeit-2026-11
+kassa-release-reserve namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICaadPTaXbzF4PaCME3QPQMmCTTYtdsbg1YO0kI78o6h kassa-release-reserve-2026-11

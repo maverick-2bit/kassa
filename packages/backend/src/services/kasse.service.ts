@@ -27,8 +27,11 @@ import { belegToInsert } from './setup.service.js'
 export interface WeitereKasseServiceDeps {
   db:               Db
   masterPassphrase: string
-  /** Für Tests: vorkonfigurierter Mock-Client (FO_STUB) */
-  rksvOptionen?: Pick<KasseEinrichtenOptionen, 'finanzOnlineClient'>
+  /**
+   * Für Tests: vorkonfigurierter Mock-Client (FO_STUB); `herstellerId` = Einstellung FON_HERSTELLER_ID
+   * (UID des Softwareherstellers) für den Login des echten Clients
+   */
+  rksvOptionen?: Pick<KasseEinrichtenOptionen, 'finanzOnlineClient' | 'herstellerId'>
 }
 
 export async function legeWeitereKasseAn(

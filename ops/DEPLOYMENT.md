@@ -69,11 +69,13 @@ Für PCs ohne Internetzugang gibt es ein **Offline-Paket** (USB-Stick, ~2–3 GB
 <summary>Alternative: Installation per PowerShell-Befehl (ohne Setup-Datei)</summary>
 
 PowerShell **als Administrator** öffnen (blaues Fenster, nicht CMD) und diese eine
-Zeile einfügen:
+Zeile einfügen (sie holt den Installer des **neuesten Release-Tags**, nicht der master-Spitze):
 
 ```powershell
-Set-ExecutionPolicy Bypass -Scope Process -Force; [Net.ServicePointManager]::SecurityProtocol = 3072; iwr 'https://raw.githubusercontent.com/maverick-2bit/kassa/master/ops/install.ps1' -OutFile "$env:TEMP\kassa-install.ps1" -UseBasicParsing; & "$env:TEMP\kassa-install.ps1"
+Set-ExecutionPolicy Bypass -Scope Process -Force; [Net.ServicePointManager]::SecurityProtocol = 3072; $t = (Invoke-RestMethod 'https://api.github.com/repos/maverick-2bit/kassa/git/matching-refs/tags/v').ref | Where-Object { $_ -match '^refs/tags/v\d+\.\d+\.\d+$' } | ForEach-Object { $_ -replace '^refs/tags/','' } | Sort-Object { [version]$_.Substring(1) } | Select-Object -Last 1; iwr "https://raw.githubusercontent.com/maverick-2bit/kassa/$t/ops/install.ps1" -OutFile "$env:TEMP\kassa-install.ps1" -UseBasicParsing; & "$env:TEMP\kassa-install.ps1"
 ```
+
+Ein bestimmtes Release statt des neuesten: `& "$env:TEMP\kassa-install.ps1" -Version v0.8.91`.
 </details>
 
 > Der Windows-Weg ist für **Test/Pilot** gedacht; für die endgültige Laden-Box wird
@@ -95,7 +97,7 @@ mit Zufalls-Secrets erzeugen, alle Container bauen + starten, Geräte-URLs anzei
 **Variante B — ein Terminal-Befehl** (Programme → Dienstprogramme → Terminal):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/maverick-2bit/kassa/master/ops/install.sh | bash
+T=$(curl -fsSL https://api.github.com/repos/maverick-2bit/kassa/git/matching-refs/tags/v | grep -Eo '"refs/tags/v[0-9]+\.[0-9]+\.[0-9]+"' | tr -d '"' | sed 's|refs/tags/||' | sort -V | tail -n 1); curl -fsSL "https://raw.githubusercontent.com/maverick-2bit/kassa/$T/ops/install.sh" | bash
 ```
 
 Fehlt Docker, installiert das Skript **Docker Desktop per Homebrew** (`brew install --cask
@@ -114,7 +116,7 @@ Empfohlen: **Raspberry Pi 4 oder 5 mit 64-bit Raspberry Pi OS** (Bookworm) und *
 Ein Terminal öffnen und **einen** Befehl ausführen:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/maverick-2bit/kassa/master/ops/install.sh | bash
+T=$(curl -fsSL https://api.github.com/repos/maverick-2bit/kassa/git/matching-refs/tags/v | grep -Eo '"refs/tags/v[0-9]+\.[0-9]+\.[0-9]+"' | tr -d '"' | sed 's|refs/tags/||' | sort -V | tail -n 1); curl -fsSL "https://raw.githubusercontent.com/maverick-2bit/kassa/$T/ops/install.sh" | bash
 ```
 
 Das Skript installiert Docker (offizielles `get.docker.com`), lädt den Code und baut die
@@ -131,6 +133,7 @@ Container **nativ für arm64** — es sind keine vorgefertigten Images nötig.
 - **Update:** denselben Befehl erneut ausführen (`.env`, Datenbank, Belege bleiben erhalten).
 
 > Zielverzeichnis ist standardmäßig `~/kassa`. Anpassbar per `KASSA_DIR=/opt/kassa curl … | bash`.
+> Ein bestimmtes Release statt des neuesten: `KASSA_VERSION=v0.8.91` (vor `bash`).
 > Ein Testlauf ohne Docker (nur Code + `.env`): `KASSA_OHNE_DOCKER=1 bash ops/install.sh`.
 
 ---
@@ -151,6 +154,7 @@ docker compose version          # prüfen: v2.x
 ```bash
 git clone https://github.com/maverick-2bit/kassa.git
 cd kassa
+git checkout vX.Y.Z      # Kunden-Kassa: ein Release (signiertes Tag), nicht die master-Spitze — das neueste Tag: git tag -l 'v*' | sort -V | tail -n 1
 cp .env.example .env
 ```
 
@@ -199,9 +203,8 @@ darf nur der **Betreiber** — das Konto, das die Kassa betreibt, nicht jeder Ma
 | Nur der Betreiber | Jeder Mandanten-Admin (für den eigenen Betrieb) |
 |-------------------|--------------------------------------------------|
 | Datenbank-Sicherung anlegen, ansehen, herunterladen (Dump der **ganzen** Datenbank, alle Mandanten) | Export des eigenen Mandanten („Mandant übertragen"), DEP-Sicherung der eigenen Kassen |
-| Kassa aktualisieren (Einstellungen → System → Aktualisierung) | Drucker-Status und Keep-Alive des eigenen Betriebs |
-| Systemwerte: Speicher, Platte, Laufzeit, Datenbank, Sicherungsalter | Version und Update-Hinweis ansehen |
-| Weitere Mandanten anlegen; eine Übergabedatei als Mandant einspielen | |
+| Systemwerte: Speicher, Platte, Laufzeit, Datenbank, Sicherungsalter | Drucker-Status und Keep-Alive des eigenen Betriebs |
+| Weitere Mandanten anlegen; eine Übergabedatei als Mandant einspielen | **Kassa aktualisieren** (Einstellungen → System → Aktualisierung) — betrifft alle Mandanten, gibt aber keine Daten preis |
 
 **Wer ist Betreiber?** Der erste Admin einer frisch eingerichteten Installation. Auf einer bestehenden
 Installation macht das Update die aktiven Admins des **zuerst angelegten** Mandanten zu Betreibern
@@ -238,6 +241,42 @@ gibt es nur an Kassen im **Testmodus** (RKSV-Umgebung „test" — das setzt die
 ändert sie keine Oberfläche). Eine Kasse im Produktivmodus lehnt beides ab; ein SB-Terminal braucht dort
 ein eingerichtetes Kartenterminal.
 
+## 4c. Rechte: wer darf was (auch über die Schnittstelle)
+
+Die Rechte eines Benutzers (Benutzerverwaltung) gelten nicht nur für die Menüs, sondern **für jede Route der
+Schnittstelle** — wer ein Anmelde-Token hat, kommt mit einem selbst gebauten Aufruf nicht weiter als die
+Oberfläche. Admins dürfen immer; ein Kellner-Konto nur, was es als Recht trägt. Eines der genannten Rechte
+genügt, wo mehrere Seiten dieselbe Funktion brauchen.
+
+| Recht | schaltet in der Schnittstelle frei |
+|-------|-------------------------------------|
+| Einstellungen | Drucker, Kassen, KDS-Zuordnung, Sicherungen (DEP), Prüfer-Zugänge, Mandanten-Stammdaten/Module/Stripe, Werbefolien, Zeiterfassung/Dienstplan, Exporte (BMD, DEP), Audit-Log |
+| Artikel verwalten | Artikel, Warengruppen, Optionen, Lagerstand, Inventur, Lieferanten, Einkauf, Preislisten, Preisregeln |
+| Schnellkasse | Verkauf (Barzahlung), Gutscheine, Angebote, Lieferscheine, Wartungsverträge, Reservierungen, Lieferungen |
+| Kreditverkauf | offenen Posten anlegen („Auf Kredit buchen") |
+| Belege einsehen | Belegliste, Berichte, Tagesabschluss, Monats-/Jahresbeleg, Kassenbuch lesen |
+| Belege stornieren | Storno |
+| Kunden (CRM) | Kundenstamm, offene Posten, Kundenbelege |
+| Tickets | Ticketing |
+| nur Administratoren (Rolle) | Benutzerverwaltung, Tischplan und Layout-Pflege, KDS-Geräte, Mandanten-Übergabe, Monitoring, RKSV-Selbsttest |
+
+Die vollständige Tabelle — jede Route mit ihrem Recht — steht in `packages/backend/src/auth/route-rechte.ts`;
+`tests/route-schutz.test.ts` schlägt an, wenn eine Route ohne Entscheidung hinzukommt.
+
+**Bewusst offen für jeden angemeldeten Benutzer** bleiben die Wege der **Kellner-App** (Tische öffnen und
+abrechnen, bonieren, Karte und Kassen-Konfiguration lesen), der Küchenbildschirm sowie die Statusleisten. Die
+Kellner-App prüft selbst keine Rechte, und ein Kellner-Konto ohne „Tische"-Recht arbeitet damit heute — ein
+Recht dort zu verlangen, würde solche Konten ohne Vorwarnung aussperren. Wer das schließen will, prüft zuerst
+die Konten (Kellner ohne „Tische" **und** ohne „Schnellkasse"):
+
+```bash
+docker compose exec postgres psql -U kassa -d kassa -c "SELECT name, email, berechtigungen FROM users WHERE rolle = 'kellner' AND aktiv AND NOT ('tische' = ANY(berechtigungen) OR 'kasse' = ANY(berechtigungen));"
+```
+
+Rechte stecken im Anmelde-Token: Änderungen in der Benutzerverwaltung gelten ab der **nächsten Anmeldung** des
+Benutzers (das Token läuft nach 8 Stunden ab, `JWT_EXPIRES_IN`); ein gesperrtes Konto kommt nicht mehr hinein,
+ein bereits ausgestelltes Token aber bis zum Ablauf.
+
 ## 5. Geräte-URLs
 
 **LAN-Modus (Standard, Port pro App)** — `<box>` = IP der Box:
@@ -262,7 +301,73 @@ als offener Tisch mit Kellner „Gast") oder *Mit Online-Zahlung* (Abschnitt 7b)
 
 Tablets/Displays am besten im **Kiosk-/Vollbildmodus** des Browsers betreiben.
 
+**HTTPS im LAN (gesicherte Adressen für Handys und Tablets)** — siehe Abschnitt 5b.
+
 **Proxy-Modus (optional, HTTPS unter einer Domain)** — siehe Abschnitt 7.
+
+## 5b. HTTPS im LAN (Handys und Tablets)
+
+Über `http://<IP>:<Port>` verweigern Handy- und Tablet-Browser das **Mikrofon**
+(Sprachbestellung), die **Kamera** (Einlass-Scanner) und den **Service Worker**
+(Offline-Puffer, App-Cache). Am Kassen-PC selbst (`http://localhost`) gilt das nicht.
+Abhilfe ohne Internet und ohne Domain: Der Dienst `lan-https` (Profil `lan-https`, Caddy)
+betreibt eine **eigene Zertifizierungsstelle (CA)** für diese Box und stellt damit
+Zertifikate für ihre LAN-IP aus. Jedes Gerät vertraut dieser CA einmal; die
+http-Adressen aus Abschnitt 5 bleiben daneben bestehen.
+
+| App | Gesicherte Adresse |
+|-----|--------------------|
+| Kasse | `https://<box>:8443` |
+| KDS | `https://<box>:9080` |
+| Kellner | `https://<box>:9083` |
+| SB-Terminal | `https://<box>:9084` |
+| Einlass | `https://<box>:9087` |
+| **Geräte-Einrichtung** (Zertifikat + Anleitung) | `http://<box>:9079` |
+
+Gast-Bestellung, Kundendisplay und Abholmonitor bleiben bei http (fremde Handys bzw.
+Bildschirme ohne Mikrofon und Kamera).
+
+**Einschalten.** Die Installer schalten es bei der **Erstinstallation** selbst ein, wenn sie
+die LAN-IP eindeutig erkennen (Netzwerkkarte mit Standard-Gateway) und keiner der Ports
+belegt ist; die Geräte-URL-Tabelle am Ende zeigt dann auch die https-Adressen. Bestehende
+Installationen (oder wenn der Installer es übersprungen hat): in der `.env`
+
+```
+COMPOSE_PROFILES=lan-https          # mit Tunnel: COMPOSE_PROFILES=tunnel,lan-https
+KASSA_LAN_IP=192.168.1.50           # feste IPv4 der Box
+```
+
+eintragen und den Installer erneut ausführen (öffnet unter Windows auch die Firewall-Ports)
+bzw. `docker compose up -d`. Die IP der Box im Router **fest zuweisen** — das Zertifikat gilt
+nur für diese Adresse.
+
+**Geräte einrichten.** In der Kasse unter **Einstellungen → Geräte** steht der Stand
+(„aktiv") mit einem QR-Code zur Einrichtungsseite. Am Handy scannen → „Zertifikat laden" →
+installieren:
+- **Android:** Einstellungen → nach „CA-Zertifikat" suchen → Zertifikat installieren →
+  CA-Zertifikat → „Trotzdem installieren" → `kassa-ca.crt` wählen. Android verlangt dafür eine
+  Bildschirmsperre und zeigt danach den Hinweis, das Netzwerk könne überwacht werden — das
+  bezieht sich auf dieses Kassa-Zertifikat.
+- **iPhone/iPad** (in Safari laden): Einstellungen → „Profil geladen" → Installieren; danach
+  Einstellungen → Allgemein → Info → Zertifikatsvertrauenseinstellungen → „Kassa LAN Root"
+  einschalten.
+
+Die Einrichtungsseite prüft selbst, ob das Gerät der CA vertraut. Danach zeigen die
+QR-Codes unter Einstellungen → Geräte die https-Adressen (für Geräte ohne Einrichtung lassen
+sie sich auf http umschalten). Die Einlass-Adresse `https://<box>:9087` unter
+Tickets → Adressen eintragen.
+
+**Gut zu wissen**
+- Stammzertifikat: rund 10 Jahre gültig; Zwischen- (7 Tage) und Serverzertifikate (12 Stunden)
+  erneuert Caddy selbst, ohne Internet.
+- Ändert sich die IP der Box, meldet der Installer das, überschreibt die `.env` aber nicht.
+  Nach dem Anpassen von `KASSA_LAN_IP` stellt Caddy ein neues Serverzertifikat aus — die
+  Geräte behalten ihr Stammzertifikat.
+- Der private Schlüssel der CA liegt im Docker-Volume `lan_https_data`. Geht es verloren
+  (`docker compose down -v`, Neuinstallation der Box), entsteht eine neue CA, und alle Geräte
+  müssen das neue Zertifikat noch einmal installieren.
+- Startet der Dienst nicht: `docker compose logs lan-https` — „KASSA_LAN_IP fehlt" heißt, die
+  Zeile in der `.env` ist leer.
 
 ## 6. Backup + Monitoring (dringend empfohlen)
 
@@ -276,6 +381,23 @@ Default 7 Jahre, RKSV). Ohne diese Werte ist Backup deaktiviert.
 (Healthchecks.io, Uptime Kuma) auf
 `http://<box>/api/monitoring/status?token=<TOKEN>` zeigen lassen
 (200 = gesund, 503 = DB weg oder Sicherung veraltet).
+
+## 6b. FinanzOnline: Hersteller-ID
+
+Für Meldungen an FinanzOnline (Registrierung nachtragen, SEE-Ausfall und -Wiederinbetriebnahme, Kasse außer Betrieb
+nehmen) meldet sich die Kassa als Webservice-Client an. Der Login braucht außer den Zugangsdaten des
+Webservice-Benutzers die **Hersteller-ID**: die UID-Nummer des **Softwareherstellers** (nicht die des Betriebs, der die
+Kassa benutzt), 10–24 Buchstaben/Ziffern ohne Leerzeichen, z. B. `ATU12345678`. Sie ist für die ganze Installation
+gleich — einmal in `.env` eintragen und das Backend neu starten (`docker compose up -d`):
+
+```
+FON_HERSTELLER_ID=ATU12345678
+```
+
+Ohne Eintrag verwendet die Kassa einen Platzhalter (der Login ist dann formal gültig, FinanzOnline lehnt ihn aber
+voraussichtlich ab; die Fehlermeldung nennt `FON_HERSTELLER_ID`, das Backend warnt beim Start). Ein ungültiger Wert
+(Unterstrich, Leerzeichen, zu kurz/lang) verhindert den Start mit einer klaren Meldung — so fällt der Tippfehler sofort auf
+und nicht erst beim Login. Der Stand der FinanzOnline-Anbindung steht in `packages/rksv/FINANZONLINE-ABGLEICH.md`.
 
 ## 7. Optional: HTTPS unter einer Domain (Caddy-Proxy)
 
@@ -376,14 +498,17 @@ Test-Events an die lokale Kassa weiter.
 
 **Am einfachsten — direkt in der Kassa (Ein-Klick):**
 **Einstellungen → System → Aktualisierung**. Zeigt installierte vs. neueste Version;
-ein Klick auf **„Jetzt aktualisieren"** (nur der Betreiber, siehe 4b) holt den neuen Stand und baut die
+ein Klick auf **„Jetzt aktualisieren"** (jeder Admin, siehe 4b) holt das **neueste signierte
+Release** (Git-Tag `vX.Y.Z`, nie die master-Spitze), prüft seine Signatur und baut die
 Container neu. Die Kassa ist dabei ~1 Minute offline (nicht während des Kassierens
-starten). Nach Abschluss erscheint **„Jetzt neu laden"**.
+starten). Nach Abschluss erscheint **„Jetzt neu laden"**. Scheitert das Update, setzt der
+Updater die Kassa selbst auf den vorherigen Stand zurück und meldet es dort — siehe Abschnitt 11.
 
 > Dahinter steckt ein eigener `updater`-Container (in `docker-compose.yml` enthalten),
-> der als Einziger den Docker-Socket sieht und **ausschließlich** den festen Rebuild
+> der als Einziger den Docker-Socket sieht und **ausschließlich** den festen Ablauf
 > ausführt — das Backend gibt nur das Startsignal (Datei im `update_control`-Volume),
-> kann also keine beliebigen Befehle auslösen.
+> kann also keine beliebigen Befehle auslösen. Was er installiert, muss mit einem Schlüssel aus
+> `ops/updater/allowed_signers` signiert sein (Abschnitt 11).
 >
 > **Erststart des Update-Dienstes:** Auf bereits laufenden Installationen ohne
 > `updater`-Container zeigt das Panel „Update-Dienst nicht aktiv". Dann **einmal**
@@ -403,6 +528,8 @@ Container, die Daten (Postgres-Volume) bleiben erhalten.
 
 ## 9. Troubleshooting
 
+- **Internet weg, LAN läuft (Gateway ohne WAN):** Was weiterläuft und was nicht, plus eine
+  Checkliste für den Test vor Ort: [`ops/TEST-LAN-OHNE-INTERNET.md`](TEST-LAN-OHNE-INTERNET.md).
 - **Backend „unhealthy":** `docker compose logs backend` — meist DB-URL/Secret
   falsch oder `MASTER_PASSPHRASE` nachträglich geändert.
 - **Uhrzeit auf Bons/QR-Code 1–2 Stunden daneben:** Der Backend-Container läuft in
@@ -430,10 +557,16 @@ Container, die Daten (Postgres-Volume) bleiben erhalten.
   A-Trust die Anfrage ab (HTTP 4xx, meist Benutzer/Passwort/Adresse), erstellt die Kassa KEINEN
   Beleg und nennt den Grund — das lässt sich nur in den Einstellungen beheben. Ab 48 Stunden
   Ausfall ist der Ausfall FinanzOnline zu melden (Banner, „Wieder in Betrieb nehmen").
+- **„FON-Login fehlgeschlagen … Platzhalter-Hersteller-ID":** in `.env` ist noch keine `FON_HERSTELLER_ID` gesetzt
+  (Abschnitt 6b). Eintragen, `docker compose up -d`, erneut versuchen. Dieselbe Meldung ohne den Hinweis auf die
+  Hersteller-ID betrifft die Zugangsdaten des Webservice-Benutzers (TID, BenID, PIN).
+- **„Die Software-Signatur dieser Kasse (Kennung AT0 …) kann bei FinanzOnline nicht … registriert werden":** FinanzOnline
+  nimmt als Signaturerstellungseinheit nur Zertifikate von Vertrauensdiensteanbietern (A-Trust u. a.) an, nicht die
+  Software-Signatur. Für die Registrierung die Kasse in den Einstellungen auf A-Trust umstellen (Abschnitt „RKSV-Hinweis" oben).
 - **„Die Systemuhr der Kassa geht nach":** Die Uhr des Kassen-PCs liegt mehr als eine Minute VOR
   dem letzten Beleg. Belege dürfen nicht rückdatiert werden; Uhr/Zeitsynchronisation des PCs
   prüfen. Kleine Rücksprünge (bis 1 Minute) gleicht die Kassa selbst an.
-- **„Jetzt aktualisieren" / Datenbank-Backups / „Weiteren Mandanten anlegen" fehlen, oder
+- **Datenbank-Backups / „Weiteren Mandanten anlegen" fehlen, oder
   „Das darf nur der Betreiber dieser Kassa":** das angemeldete Konto ist nicht als Betreiber
   markiert (Abschnitt 4b). Auf dem Kassen-PC prüfen und setzen:
   `docker compose exec postgres psql -U kassa -d kassa -c "SELECT email, ist_betreiber FROM users WHERE rolle = 'admin'"`
@@ -778,3 +911,137 @@ ein X-Server, landet die Verbindung auf der aktiven Sitzung. macOS: nicht unters
 - Linux ohne grafische Oberfläche (`teamviewer info`, `setup`, `passwd`): <https://www.teamviewer.com/en/global/support/knowledge-base/teamviewer-classic/installation/linux/install-teamviewer-classic-on-linux-without-graphical-user-interface>
 - TeamViewer-ID in der Registry (Antwort eines TeamViewer-Mitarbeiters): <https://community.teamviewer.com/English/discussion/7503/teamviewer-id>
 - Sicherheit: <https://community.teamviewer.com/English/kb/articles/108689-set-up-unattended-access> (Zufallspasswort aus), <https://community.teamviewer.com/English/kb/articles/108694-golden-security-rules>, <https://community.teamviewer.com/English/kb/articles/108687-restrict-access> (Allowlist), Zwei-Faktor: <https://www.teamviewer.com/en-us/global/support/knowledge-base/teamviewer-remote/account/two-factor-authentication-for-your-account/>, Protokolle: <https://www.teamviewer.com/en-us/global/support/knowledge-base/teamviewer-remote/security/connection-reports/> und <https://www.teamviewer.com/en/global/support/knowledge-base/teamviewer-tensor/security/auditability-event-log/>
+
+## 11. Update-Kette: Herkunft, Signatur, Rückweg
+
+Der In-App-Updater läuft als Root mit Docker-Zugriff. Er installiert deshalb **nur, was nachweislich von
+Ihnen stammt**, und nimmt ein fehlgeschlagenes Update selbst zurück. (Prüfbericht 2026-11, Befund 4: bis v0.8.91
+zog er die master-Spitze von GitHub ohne jede Prüfung — wer das GitHub-Konto oder master kontrollierte, bestimmte,
+was jede Kassa als Root ausführte.)
+
+### 11.1 So funktioniert es
+
+- **Nur signierte Release-Tags.** Ein Release ist ein Git-Tag `vX.Y.Z`, mit `git tag -s` (SSH-Signatur) signiert.
+  Der Updater lädt das neueste Tag, prüft die Signatur gegen `ops/updater/allowed_signers` und installiert erst dann.
+  Ohne gültige Signatur passiert **nichts** — die Kassa zeigt „Update abgelehnt: …".
+- **Der Prüfschlüssel ist der des INSTALLIERTEN Stands**, nie der des frisch geladenen. Ein neuer Schlüssel gilt
+  deshalb erst nach einem Release, das noch mit einem alten signiert wurde (Abschnitt 11.3).
+- **Weitere Prüfungen:** Das Tag-Objekt muss selbst `vX.Y.Z` heißen (kein altes Tag unter neuem Namen);
+  `package.json` im Release muss `X.Y.Z` melden; das Release muss Updater und `allowed_signers` enthalten und darf
+  seinen eigenen Signierer nicht aussperren; **ältere Versionen als die installierte werden nie eingespielt**.
+  Unsigniert/ungültig übergeht der Updater (bis zu 20 Tags) und nimmt das neueste gültige — meldet aber, was er abgelehnt hat.
+- **Rückweg.** Vor jeder Änderung sichert der Updater den Installationsordner (ohne `.env`) und merkt sich die laufenden
+  Images (Tag `kassa-rueckweg/<dienst>:vorher`). Scheitert der Build, ein Dienst oder meldet sich das Backend binnen
+  5 Minuten nicht **gesund mit der Zielversion**, stellt er Code und Images wieder her, startet ohne Neubau und zeigt
+  in der Kassa: „Update auf vX fehlgeschlagen — automatisch auf vY zurückgesetzt". Die Sicherung liegt im Dateisystem des
+  Updater-Containers, **nicht** im Volume `update_control` (auf das auch das Backend schreiben darf).
+  Gibt es das Image eines laufenden Containers nicht mehr (z. B. nach einem Neubau von Hand aufgeräumt, der Container lief
+  weiter), bricht das Update deshalb nicht ab: Der Updater vermerkt es im Log („Kein altes Image für …"), und ein Rückweg
+  baut den vorherigen Stand dann aus dem gesicherten Code neu, statt mit dem gescheiterten Image zu starten.
+- **Stromausfall / Docker-Neustart mitten im Update:** Beim nächsten Start findet der Updater die Marke „Update läuft"
+  und prüft: Backend gesund mit der Zielversion → fertig; sonst Rückweg.
+- **Die Datenbank wird nicht zurückgerollt.** Migrationen laufen nur vorwärts; der alte Code muss mit dem neueren Schema
+  zurechtkommen (neue Spalten/Tabellen sind unkritisch). Es gibt weiter die nächtliche DB-Sicherung (Abschnitt 6).
+- **Fehlerbilder in der Kassa** (Einstellungen → System → rote Box „Letztes Update fehlgeschlagen"):
+  - *„Update abgelehnt: … nicht gültig signiert"* — das Release ist nicht (richtig) signiert; Abschnitt 11.2. Die Kassa bleibt unverändert.
+  - *„… die Vertrauensdatei ops/updater/allowed_signers fehlt"* — `Kassa-Setup` einmal erneut ausführen.
+  - *„… automatisch auf vY zurückgesetzt"* — das neue Release ist nicht angelaufen; alles läuft wieder auf dem alten Stand. Logs:
+    `docker compose logs backend`.
+  - *„… der Rückweg konnte … nicht starten"* — selten; die Sicherung liegt dann noch im Updater (`docker compose exec updater ls /var/lib/kassa-rueckweg`).
+    `Kassa-Setup` erneut ausführen holt das neueste Release und startet alles neu.
+
+### 11.2 Ein Release veröffentlichen (Betreiber/Entwickler)
+
+Wie bisher: Branch → Verify (Build, `pnpm test`, Integration, E2E) → `merge --no-ff` → alle 13 `package.json` auf die neue Version →
+`git push origin HEAD:master`. **Neu ist nur der Tag:**
+
+```bash
+git tag -s -m "Release vX.Y.Z" vX.Y.Z                  # signiert (statt -a); fragt nichts, wenn der Arbeitsschlüssel eingerichtet ist
+sh ops/release/pruefe-release.sh vX.Y.Z --master       # prüft Signatur (auch gegen den Vorgänger), Versionen, Pflichtdateien
+git push origin vX.Y.Z
+```
+
+`pruefe-release.sh` prüft genau das, worauf sich der Updater verlässt. Nach dem Push prüft derselbe Test der GitHub-Workflow
+**„Release-Tag prüfen"** (Actions): Rot + Mail von GitHub heißt, dass die Kassen das Release **ablehnen und still übergehen** —
+dann beheben (Tag neu setzen: `git push --delete origin vX.Y.Z`, `git tag -d vX.Y.Z`, erneut signieren; die GitHub-Regel „Tags fest" muss dafür
+kurz ausgesetzt werden: Repo → Settings → Rules). Die Kassen zeigen weiter das alte Release, bis ein gültiges da ist.
+
+**Einmalig einrichten** (nur im Kassa-Repo, nicht global; die Pfade des Arbeitsschlüssels anpassen):
+
+```bash
+git config gpg.format ssh
+git config user.signingkey C:/Users/<Benutzer>/.ssh/kassa-release     # Arbeitsschlüssel (privat, ohne Passphrase)
+```
+
+### 11.3 Schlüssel
+
+| Schlüssel | Zweck | Wo der geheime Teil liegt |
+|---|---|---|
+| **Arbeitsschlüssel** `kassa-release` | signiert jedes Release | auf dem Release-PC, `~/.ssh/kassa-release` (nur dieses Benutzerkonto) |
+| **Reserveschlüssel** `kassa-release-reserve` | Notfall: ersetzt einen verlorenen/gestohlenen Arbeitsschlüssel | **offline** (USB-Stick/Tresor/Passwortmanager), nie auf dem Release-PC; empfohlen: mit Passphrase (`ssh-keygen -p -f <Datei>`) |
+
+Die öffentlichen Teile stehen in `ops/updater/allowed_signers` (Fingerprints: Arbeitsschlüssel
+`SHA256:3JcXRo5pyc0zWaBK52uIHL/KyNzxcmAIStKkMGI5iWI`, Reserveschlüssel `SHA256:28+xTrvbo0IfeqEl2OjLZV7mBESlcqo5aESJlqFiDs0`;
+den Fingerprint einer Schlüsseldatei zeigt `ssh-keygen -l -f <datei>.pub`).
+
+- **Schlüsselwechsel (geplant):** Release N führt den neuen Schlüssel in `allowed_signers` ein und wird noch mit einem **alten**
+  Schlüssel signiert. Erst Release N+1 darf mit dem neuen signiert werden. `pruefe-release.sh` meldet es, wenn man beides in
+  einem Schritt versucht („eine Kasse mit vX würde dieses Release ABLEHNEN").
+- **Arbeitsschlüssel verloren oder gestohlen:** ein Release mit dem **Reserveschlüssel** signieren, das den alten Schlüssel aus
+  `allowed_signers` streicht und einen neuen einträgt. Kassen, die dieses Release installieren, vertrauen danach nur noch den neuen.
+  Bis dahin kann mit dem gestohlenen Schlüssel signierter Code auf Kassen gelangen — das Release also schnell machen und die Kunden
+  zum Update bewegen.
+- **Beide Schlüssel verloren:** Kassen, die schon auf dem neuen Updater laufen, nehmen kein Update mehr an. Dann hilft nur ein Neuaufsetzen
+  mit `Kassa-Setup` (holt das neueste Release samt neuem `allowed_signers`) — daher den Reserveschlüssel sorgfältig sichern.
+
+### 11.4 Übergang für bestehende Installationen
+
+Kassen mit dem **alten** Updater (bis v0.8.91) ziehen beim nächsten Klick auf „Jetzt aktualisieren" noch die master-Spitze — das ist
+die **eine** Lieferung ohne Prüfung. Sie bringt den neuen Updater und `allowed_signers` mit; der Updater-Container startet danach von selbst neu
+(die Datei `ops/updater/updater.sh` wird beim Neustart frisch eingebunden). **Jedes weitere Update ist dann geprüft.**
+
+- Bis alle Kassen umgestellt sind, muss **master dem neuesten Release entsprechen** (keine unveröffentlichten Commits) — die alten Updater
+  und die alte Versionsanzeige lesen weiter master.
+- Wer den Übergang nicht dem alten Updater überlassen will, führt `Kassa-Setup` aus: Es installiert das neueste **Release** (nicht master).
+- Neue Kassen: `Kassa-Setup`/Einzeiler holen ebenfalls das neueste Release-Tag. Die **Erstinstallation vertraut GitHub (TLS) und dem Installer**,
+  den Sie weitergeben — erst das erste Update ist signaturgeprüft. Dasselbe gilt für Offline-Pakete (`erstelle-offline-paket.ps1`).
+
+### 11.5 Was das NICHT abdeckt
+
+- **Der Release-PC:** Wer den Arbeitsschlüssel von dort stiehlt (oder eine fehlgeleitete Sitzung dort signieren lässt), kann Releases signieren.
+  Mit Passphrase bzw. Hardware-Schlüssel (FIDO2) wäre das schwerer — heute bewusst ohne, damit Releases ohne Rückfrage laufen.
+- **Abhängigkeiten außerhalb des Repos:** Basis-Images (`docker:27-cli`, `postgres`, `nginx`, `node`), npm-Pakete im Build (`pnpm-lock.yaml`)
+  und die Alpine-Pakete des Updaters (`apk`) prüft der Updater nicht.
+- **Die Datenbank** (siehe oben) und **Fremdzugriff auf den Installationsordner:** Wer dort schreiben darf, kann `updater.sh` und
+  `allowed_signers` ändern — die Windows-Installer beschränken die Rechte darauf (Abschnitt „Zugriffsrechte").
+- **Erstinstallation und Offline-Pakete** (siehe 11.4).
+
+### 11.6 GitHub-Regeln
+
+Im Repo `maverick-2bit/kassa` (Settings → Rules): **Tags `v*` sind fest** (nicht löschen, nicht verschieben) und **master** erlaubt
+kein Force-Push und kein Löschen. Direkt-Push-Releases bleiben möglich; einen Pull-Request mit CI zu verlangen wäre mit der Signatur
+kaum nötig und würde den Direkt-Push-Release brechen. Die Regeln schützen vor Versehen und anderen Konten, **nicht** vor dem Admin-Konto selbst —
+das übernimmt die Signatur.
+
+### 11.7 Tests
+
+```bash
+sh ops/updater/test-updater.sh                # Updater + pruefe-release.sh: echte SSH-Signaturen, Docker-/rsync-Attrappen, über 90 Prüfungen
+sh ops/updater/test-updater.sh mutationen     # Gegenprobe: jede gezielte Zerstörung des Updaters MUSS die Tests röten
+bash ops/test-fernwartung.sh                  # Installer install.sh (Release-Wahl) + Fernwartung
+pwsh -File ops/test-fernwartung.ps1           # Installer install.ps1 / Offline-Paket / Kassa-Setup.cmd (auch Windows PowerShell 5.1)
+```
+
+Die CI führt `test-updater.sh` (mit Mutationsprobe) in jedem Lauf aus (Job „Updater"). **Nicht automatisch getestet** ist der Lauf gegen ein
+echtes Docker (kein Docker auf dem Entwicklungs-PC): ein echter Rückweg und ein echter Update-Lauf wurden mit Attrappen geprüft — vor dem ersten
+Kunden-Rollout einmal am Test-PC durchspielen (Release einspielen; zum Test des Rückwegs ein Release mit absichtlich kaputtem Backend-Start).
+
+### 11.8 Entscheidungen (2026-11-14) und verworfene Alternativen
+
+| Frage | Entscheidung | Verworfen, weil |
+|---|---|---|
+| Woran erkennt der Updater, dass ein Update von Ihnen stammt? | **Signiertes Release-Tag** (SSH-Signatur, Prüfschlüssel im Updater) | *Nur Release-Tags ohne Signatur:* schützt vor halbfertigem Stand, nicht vor Missbrauch — wer GitHub-Zugriff hat, kann ein Tag setzen. *Prüfsumme im GitHub-Release:* gleiche Vertrauensbasis wie GitHub selbst (kein Schutz bei Kontoübernahme); die von GitHub erzeugten Tarball-Bytes sind nicht garantiert stabil. Eine im Updater fest hinterlegte Prüfsumme geht nicht (jedes Release hat eine neue). |
+| Wo liegt der Schlüssel? | **Zwei Schlüssel ohne Passphrase** (Arbeitsschlüssel auf dem Release-PC, Reserveschlüssel offline) | Passphrase bzw. FIDO2-Stick: stärker, aber Releases brauchen dann Sie am PC; kann später nachgerüstet werden (neuen Schlüssel einführen, 11.3). |
+| Rückweg | **Code + Images automatisch**, keine DB-Sicherung vor dem Update | *Nur Code:* Neubau nötig (Netz, Minuten, Cache evtl. geleert). *DB-Dump vor jedem Update:* länger, Datenbank-Zugriff für den Updater — die nächtliche Sicherung (Abschnitt 6) bleibt. |
+| GitHub-Regeln | **Tags `v*` fest, kein Force-Push/Löschen auf master**, Pull-Request-Pflicht nicht | Pull-Request + grüne CI würde den Direkt-Push-Release brechen und schützt nicht vor dem Admin-Konto; die Signatur schließt die Lücke. |
+| Installer | **Neuestes Release-Tag statt master**, keine Signaturprüfung im Installer | Ein signierter Installer-Weg (Windows ohne git/ssh-keygen) wäre ein eigenes Vorhaben; die Erstinstallation vertraut weiter GitHub per TLS. |

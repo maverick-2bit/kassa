@@ -17,6 +17,7 @@ import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import { EinlassScanInputSchema, EinlassSyncInputSchema, type EinlassIch } from '@kassa/shared'
 import type { Db } from '../db/client.js'
+import { alsWaechter } from '../auth/waechter.js'
 import type { EinlassGeraetRow } from '../db/schema.js'
 import {
   EinlassError,
@@ -47,7 +48,7 @@ export const einlassRoute: FastifyPluginAsync<EinlassRouteOptions> = async (fast
   const { db } = opts
   const geraete = new WeakMap<FastifyRequest, EinlassGeraetRow>()
 
-  async function nurEinlassGeraet(request: FastifyRequest, reply: FastifyReply) {
+  const nurEinlassGeraet = alsWaechter(async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       await request.jwtVerify()
     } catch {
@@ -62,7 +63,7 @@ export const einlassRoute: FastifyPluginAsync<EinlassRouteOptions> = async (fast
       if (err instanceof EinlassError) return reply.status(err.httpStatus).send({ fehler: err.message })
       throw err
     }
-  }
+  }, { art: 'geraet', typ: 'einlass_geraet' })
   const guard = { onRequest: [nurEinlassGeraet], config: { rateLimit: geraeteLimit } }
   const geraetVon = (request: FastifyRequest): EinlassGeraetRow => geraete.get(request)!
 

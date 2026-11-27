@@ -24,10 +24,11 @@
 
 import { spawnSync } from 'node:child_process'
 import { X509Certificate } from 'node:crypto'
-import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
-import { analysiere } from './lib/bmf-ergebnis.mjs'
+import { analysiere, urteilsDateien } from './lib/bmf-ergebnis.mjs'
+import { ladeBytes } from './lib/download.mjs'
 import { entpacke, sha256Datei } from './lib/zip.mjs'
 
 // ---------------------------------------------------------------------------
@@ -84,9 +85,7 @@ async function ladeUndEntpacke(quelle, unterordner) {
   mkdirSync(cacheOrdner(), { recursive: true })
   if (!existsSync(zipPfad) || sha256Datei(zipPfad) !== quelle.sha256) {
     console.log(`Lade ${quelle.url}`)
-    const antwort = await fetch(quelle.url, { redirect: 'follow' })
-    if (!antwort.ok) throw new Error(`Download fehlgeschlagen: HTTP ${antwort.status} (${quelle.url})`)
-    writeFileSync(zipPfad, Buffer.from(await antwort.arrayBuffer()))
+    writeFileSync(zipPfad, await ladeBytes(quelle.url))
   }
   const ist = sha256Datei(zipPfad)
   if (ist !== quelle.sha256) throw new Error(`Prüfsumme von ${basename(zipPfad)} stimmt nicht: ${ist} statt ${quelle.sha256} — nicht entpackt, nichts ausgeführt`)
@@ -124,18 +123,6 @@ function containerAlsPublicKey(container) {
 // Ein Lauf
 // ---------------------------------------------------------------------------
 
-function jsonDateien(ordner, tiefe = 0) {
-  const liste = []
-  if (!existsSync(ordner) || tiefe > 3) return liste
-  for (const name of readdirSync(ordner)) {
-    const pfad = join(ordner, name)
-    const st = statSync(pfad)
-    if (st.isDirectory()) liste.push(...jsonDateien(pfad, tiefe + 1))
-    else if (name.endsWith('.json') && st.size < 50 * 1024 * 1024 && !name.startsWith('bmf-zusammenfassung') && !name.startsWith('eingabe-')) liste.push({ name: pfad, inhalt: readFileSync(pfad, 'utf8') })
-  }
-  return liste
-}
-
 function fuehreAus({ jar, opt, dep, crypto, ausgabe, name }) {
   mkdirSync(ausgabe, { recursive: true })
   const befehl = opt.befehl ?? [opt.java ?? process.env.JAVA ?? 'java', '-jar', jar]
@@ -144,7 +131,7 @@ function fuehreAus({ jar, opt, dep, crypto, ausgabe, name }) {
   const r = spawnSync(befehl[0], args, { cwd: ausgabe, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, timeout: 10 * 60_000 })
   const konsole = `${r.stdout ?? ''}${r.stderr ?? ''}${r.error ? `\n${r.error.message}` : ''}`
   writeFileSync(join(ausgabe, `bmf-konsole-${name}.txt`), konsole)
-  const a = analysiere(jsonDateien(ausgabe), konsole, r.error ? -1 : r.status)
+  const a = analysiere(urteilsDateien(ausgabe), konsole, r.error ? -1 : r.status)
   return { name, ...a }
 }
 

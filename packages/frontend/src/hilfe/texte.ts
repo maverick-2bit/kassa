@@ -28,7 +28,8 @@ export const HILFE_THEMEN: HilfeThema[] = [
         titel: 'Wenn etwas nicht klappt',
         schritte: [
           'Der Bon druckt nicht: „Einstellungen → Kassen & Drucker", beim Drucker auf „Testdruck" klicken. Meldet er einen Fehler, Netzwerkkabel und Strom des Druckers prüfen.',
-          'Steht „Kasse arbeitet im Offline-Modus": Es gibt gerade keine Verbindung zum Kassen-PC. Weiter kassieren geht nicht ohne ihn — Verbindung prüfen (WLAN/Kabel).',
+          'Steht „Kasse arbeitet im Offline-Modus": Es gibt gerade keine Verbindung zum Kassen-PC — Verbindung prüfen (WLAN/Kabel). Normale Verkäufe (bar oder Karte) werden gespeichert und gebucht, sobald die Verbindung zurück ist; erst dann kommt auch der Bon. Storno, Gutschein, Kredit und Sonderbelege gehen nur mit Verbindung.',
+          'Ein roter Balken „… offline erfasster Verkauf wurde nicht gebucht": Der Kassen-PC hat den Verkauf beim Nachbuchen abgelehnt (z. B. Artikel inzwischen gelöscht). Auf „Anzeigen" klicken: Grund lesen, dann „Erneut senden" oder den Verkauf bewusst „Verwerfen" und von Hand neu kassieren.',
           'Die Seite sieht seltsam aus oder zeigt „Neu laden": auf „Neu laden" klicken oder die Seite neu laden (Taste F5).',
           'Ein Menüpunkt fehlt: Dafür fehlt dir die Berechtigung — die Chefin oder der Chef kann sie unter „Personal → Benutzer" vergeben.',
         ],
@@ -47,9 +48,10 @@ export const HILFE_THEMEN: HilfeThema[] = [
     titel: 'Kasse (Direktverkauf)',
     zweck: 'Artikel antippen, kassieren, Beleg ausgeben — ohne Tisch, wie an einer Bar oder einem Verkaufsstand.',
     pfade: ['/kasse'],
-    stichworte: ['kassieren', 'verkaufen', 'bon', 'warenkorb', 'rabatt', 'bar', 'karte'],
+    stichworte: ['kassieren', 'verkaufen', 'bon', 'warenkorb', 'rabatt', 'bar', 'karte', 'scanner', 'barcode', 'ean'],
     schritte: [
       'Oben im Raster die Warengruppe wählen (oder den Reiter „Favoriten") und die Artikel antippen. Jeder Tipp legt den Artikel in den Warenkorb.',
+      'Barcode-Scanner: Artikel mit EAN einfach scannen — der Artikel landet im Warenkorb (wie angetippt). Unbekannte EAN: oben erscheint ein Hinweis, nichts wird gebucht.',
       'Hat ein Artikel Optionen (z. B. pur/gespritzt), öffnet sich ein Fenster: Optionen antippen. „Pflicht" muss gewählt werden, „Optional" darf leer bleiben. Eine Option mehrfach antippen = mehrfach.',
       'Rechts im „Warenkorb" Menge ändern oder einzelne Zeilen entfernen. Mit dem Papierkorb-Knopf wird der ganze Warenkorb verworfen (mit Rückfrage).',
       'Bezahlen: unten auf „Bar (€ …)" oder „Karte (€ …)". Bei Karte läuft die Zahlung über das Kartenterminal, falls eines eingerichtet ist.',
@@ -150,15 +152,15 @@ export const HILFE_THEMEN: HilfeThema[] = [
   },
   {
     id: 'angebote',
-    titel: 'Angebote & Beleg-Archiv',
+    titel: 'Angebote & Auftragsbelege',
     zweck: 'Angebote und Lieferscheine erstellen und später in eine Rechnung übernehmen.',
     pfade: ['/angebote', '/beleg-archiv'],
-    stichworte: ['lieferschein', 'angebot'],
+    stichworte: ['lieferschein', 'angebot', 'beleg-archiv', 'auftragsbelege'],
     schritte: [
       'Ein Angebot erstellst du an der Kasse im Angebot-Modus.',
       'Hier siehst du die Angebote, kannst den Status ändern, „Gültig bis" prüfen und ein Angebot in einen Lieferschein übernehmen.',
-      'Im Beleg-Archiv suchst du nach Nummer oder Kunde.',
-      'Eine Rechnung stornierst du im Beleg-Archiv (Reiter „Rechnungen" → Rechnung öffnen → „Rechnung stornieren"). Sie bleibt mit ihrer Nummer als „storniert" erhalten, ihre Lieferscheine sind wieder offen und lassen sich neu verrechnen. Ist schon eine Zahlung erfasst, geht das erst, nachdem du die Zahlung geklärt hast.',
+      'Unter „Auftragsbelege" (früher „Beleg-Archiv") suchst du Angebote, Lieferscheine und Rechnungen nach Nummer oder Kunde. Die Kassenbelege (Bons) stehen unter „Auswertung → Belege".',
+      'Eine Rechnung stornierst du unter „Auftragsbelege" (Reiter „Rechnungen" → Rechnung öffnen → „Rechnung stornieren"). Sie bleibt mit ihrer Nummer als „storniert" erhalten, ihre Lieferscheine sind wieder offen und lassen sich neu verrechnen. Ist schon eine Zahlung erfasst, geht das erst, nachdem du die Zahlung geklärt hast.',
     ],
   },
   {
@@ -268,12 +270,13 @@ export const HILFE_THEMEN: HilfeThema[] = [
     titel: 'Artikel',
     zweck: 'Artikelstamm pflegen: Bezeichnung, Preis, Steuersatz, Warengruppe, Allergene.',
     pfade: ['/artikel'],
-    stichworte: ['preis', 'warengruppe', 'kategorie', 'allergene', 'import', 'excel', 'favorit'],
+    stichworte: ['preis', 'warengruppe', 'kategorie', 'allergene', 'import', 'excel', 'favorit', 'ean', 'barcode'],
     schritte: [
       'Neuer Artikel: „+ Neuer Artikel", Bezeichnung und Preis (brutto) eintragen, MwSt-Satz und Warengruppe wählen, speichern.',
       'Allergene: im Artikelfenster die zutreffenden Allergene antippen — sie erscheinen später auf der Kachel und in der Liste.',
       'Bearbeiten: Artikel in der Liste wählen. Mit dem Schalter lässt sich ein Artikel deaktivieren (er verschwindet aus der Kasse, bleibt aber im Stamm).',
-      'Suchen: oben „Suchen (Bezeichnung, Nummer)…".',
+      'Suchen: oben „Suchen (Bezeichnung, Nummer, EAN)…".',
+      'EAN: im Artikel unter „Einkauf & Identifikation" — EAN-8, EAN-13, UPC-A oder GTIN-14 mit gültiger Prüfziffer, je Artikel eine, und jede EAN nur bei einem Artikel. Sie steht dann auf dem Bon und lässt sich an der Kasse scannen.',
       'Favoriten: der Stern macht einen Artikel zum Favoriten (Reiter „Favoriten" in der Kasse).',
     ],
     abschnitte: [
@@ -482,12 +485,14 @@ export const HILFE_THEMEN: HilfeThema[] = [
   {
     id: 'belege',
     titel: 'Belege & Storno',
-    zweck: 'Alle Belege dieser Kasse ansehen, stornieren und die RKSV-Spezialbelege auslösen.',
+    zweck: 'Die Belege jeder Kasse des Betriebs (Barkasse, Kellner-Geräte) ansehen, nachdrucken, stornieren, zurückholen und die RKSV-Spezialbelege auslösen.',
     pfade: ['/belege'],
-    stichworte: ['storno', 'bon', 'rechnung', 'jahresbeleg', 'nullbeleg', 'kontrollbeleg'],
+    stichworte: ['storno', 'bon', 'rechnung', 'jahresbeleg', 'nullbeleg', 'kontrollbeleg', 'nachdruck', 'zurückholen', 'kellner'],
     schritte: [
-      'Belege suchen: „Suche…" oder nach Kunde filtern; „Filter zurücksetzen" zeigt wieder alle.',
-      'Beleg anklicken, um Details zu sehen und ihn neu zu drucken.',
+      'Oben die Kasse wählen: jede Kasse (Barkasse, Kellner-Gerät …) hat ihre eigenen Belege und Nummern. Ohne Einstellungs-Recht siehst du nur die dir zugeordneten Kassen (Benutzerverwaltung → Kassen-Zuordnung). Vorausgewählt ist die Kasse dieses Geräts.',
+      'Belege suchen: unter „Suche" Belegnummer, Betrag (z. B. 12,50) oder Kunde eingeben, dazu „Von"/„Bis" und den Kunden-Filter; „Filter zurücksetzen" zeigt wieder alle.',
+      'Mit „Ältere →" und „← Neuere" blätterst du durch alle Belege der Kasse.',
+      'Beleg anklicken, um Details zu sehen. „Ausgeben" druckt den Bon nach oder erzeugt die A4-Rechnung bzw. eine E-Mail.',
     ],
     abschnitte: [
       {
@@ -497,6 +502,17 @@ export const HILFE_THEMEN: HilfeThema[] = [
           'Unter „Storno-Grund" kurz eintragen, warum.',
           'Verlangt die Kassa die „Freigabe — PIN eines Berechtigten", gibt eine berechtigte Person ihre PIN ein.',
           '„Storno bestätigen". Es entsteht ein eigener Stornobeleg — der Originalbeleg wird nie gelöscht (Vorschrift).',
+          'Der Stornobeleg entsteht immer auf der Kasse des Originalbelegs (deren RKSV-Kette), auch wenn du ihn an einem anderen Gerät auslöst.',
+        ],
+      },
+      {
+        titel: 'Einen Beleg zurückholen (korrigieren)',
+        schritte: [
+          'Beim falschen Beleg „Zurückholen" wählen.',
+          'Die Kassa storniert ihn wie oben (gegebenenfalls mit Freigabe-PIN) und legt seine Positionen in den Warenkorb dieses Geräts.',
+          'Im Warenkorb korrigieren und wie gewohnt neu kassieren. Bis dahin bleibt er auf diesem Gerät gespeichert, auch nach dem Neuladen; „Verwerfen" fragt nach.',
+          'Belege, die mit Gutschein oder auf Kredit bezahlt wurden, lassen sich nicht zurückholen. Eine Kartenzahlung buchst du am Terminal selbst zurück.',
+          'Die Positionen kommen mit Bezeichnung, Preis und Steuersatz wie gebucht zurück. Lagerstand und Küchenbons werden dabei nicht noch einmal gebucht.',
         ],
       },
       {
@@ -634,7 +650,7 @@ export const HILFE_THEMEN: HilfeThema[] = [
         titel: 'System',
         schritte: [
           'Zeigt die installierte Version. Gibt es eine neuere, erscheint „Neu laden" bzw. „Jetzt aktualisieren".',
-          'Aktualisieren, die Datenbank-Sicherungen (sie enthalten die Daten aller Mandanten), die Systemwerte und „Weiteren Mandanten anlegen" sieht und darf nur der Betreiber der Kassa — der erste Admin der Installation. In der Benutzerverwaltung trägt er ein „Betreiber"-Schild. Alle anderen Admins sehen dort nur ihren eigenen Betrieb (Drucker, Mandant übertragen).',
+          'Aktualisieren darf jeder Admin. Die Datenbank-Sicherungen (sie enthalten die Daten aller Mandanten), die Systemwerte und „Weiteren Mandanten anlegen" sieht und darf nur der Betreiber der Kassa — der erste Admin der Installation. In der Benutzerverwaltung trägt er ein „Betreiber"-Schild. Alle anderen Admins sehen dort nur ihren eigenen Betrieb (Drucker, Mandant übertragen).',
           'Serviceportal (nur Betreiber): Zeigt, ob diese Kassa ihren technischen Zustand (Erreichbarkeit, Version, Sicherungen, Geräte, Serverfehler — nie Umsätze oder Belege) an das Serviceportal meldet, und wann der letzte Kontakt war. Eingeschaltet wird es in der .env der Box mit PORTAL_URL und PORTAL_TOKEN.',
           'Dieselbe E-Mail-Adresse darf in mehreren Betrieben vorkommen (z. B. wenn du mehrere Betriebe führst). Bei der Anmeldung erkennt die Kassa den Betrieb am Passwort. Hast du in mehreren Betrieben dasselbe Passwort, fragt sie nach, wo du dich anmelden möchtest. Innerhalb eines Betriebs bleibt die E-Mail eindeutig.',
         ],

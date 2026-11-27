@@ -72,11 +72,18 @@ EOF
 cat > "$BIN/curl" <<EOF
 #!/bin/sh
 echo "curl \$*" >> "$LOG"
-# Quellcode-Tarball (Download-Schritt von install.sh): winziger Ersatz aus dem Test
-case "\$*" in *archive/refs/heads*) cat "$TMP/kassa-master.tar.gz"; exit 0 ;; esac
+# Release-Liste von GitHub (Auswahl des neuesten Release-Tags in install.sh) und Quellcode-Tarball: winziger Ersatz aus dem Test
+case "\$*" in *api.github.com*matching-refs*) [ -f "$TMP/tags.json" ] || exit 22; cat "$TMP/tags.json"; exit 0 ;; esac
+case "\$*" in *archive/refs/tags/*|*archive/refs/heads/*) cat "$TMP/kassa-release.tar.gz"; exit 0 ;; esac
 # -o <Datei>: Attrappe schreiben
 while [ \$# -gt 0 ]; do [ "\$1" = "-o" ] && { echo "dummy-paket" > "\$2"; }; shift; done
 exit 0
+EOF
+# git: nie echtes Netz — install.sh fällt ohne API-Antwort auf `git ls-remote` zurück
+cat > "$BIN/git" <<EOF
+#!/bin/sh
+echo "git \$*" >> "$LOG"
+exit 1
 EOF
 # docker: schreibt Aufruf und (bei exec) den Inhalt von stdin mit
 cat > "$BIN/docker" <<EOF
@@ -104,7 +111,7 @@ case "\$1" in
 esac
 exit 0
 EOF
-chmod +x "$BIN/hostname" "$BIN/uname" "$BIN/sudo" "$BIN/id" "$BIN/dpkg" "$BIN/systemctl" "$BIN/curl" "$BIN/docker" "$BIN/apt-get"
+chmod +x "$BIN/hostname" "$BIN/uname" "$BIN/sudo" "$BIN/id" "$BIN/dpkg" "$BIN/systemctl" "$BIN/curl" "$BIN/git" "$BIN/docker" "$BIN/apt-get"
 export PATH="$BIN:$PATH"
 export FAKE_TV_ID=123456789
 FW_STATUS_DATEI_STANDARD_TEST="$TMP/status/fernwartung-status.json"
@@ -262,16 +269,29 @@ pruefe "install.sh Trockenlauf ohne Konfiguration: Exit-Code 0 mit Fehlermeldung
 # ═════════════════════════════════════════════════════════════════════════════
 gruppe "5b. install.sh normaler Lauf bis zum Docker-Schritt (KASSA_OHNE_DOCKER=1)"
 # ═════════════════════════════════════════════════════════════════════════════
-# winziger Quellcode-Tarball für den Download-Schritt des Installers
-mkdir -p "$TMP/quelle/kassa-master/ops"
-printf 'POSTGRES_PASSWORD=x\nMASTER_PASSPHRASE=x\nJWT_SECRET=x\nFRONTEND_PORT=80\n' > "$TMP/quelle/kassa-master/.env.example"
-cp "$HIER/fernwartung.sh" "$TMP/quelle/kassa-master/ops/fernwartung.sh"
-( cd "$TMP/quelle" && tar -czf "$TMP/kassa-master.tar.gz" kassa-master )
+# winziger Quellcode-Tarball für den Download-Schritt des Installers (GitHub packt das Release v0.8.100 in „kassa-0.8.100")
+mkdir -p "$TMP/quelle/kassa-0.8.100/ops"
+printf 'POSTGRES_PASSWORD=x\nMASTER_PASSPHRASE=x\nJWT_SECRET=x\nFRONTEND_PORT=80\n' > "$TMP/quelle/kassa-0.8.100/.env.example"
+cp "$HIER/fernwartung.sh" "$TMP/quelle/kassa-0.8.100/ops/fernwartung.sh"
+( cd "$TMP/quelle" && tar -czf "$TMP/kassa-release.tar.gz" kassa-0.8.100 )
+# Release-Liste von GitHub (Format der API matching-refs/tags/v): Vorabversionen und Fremdes müssen übergangen werden
+cat > "$TMP/tags.json" <<'JSON'
+[
+  { "ref": "refs/tags/v0.8.9", "node_id": "x" },
+  { "ref": "refs/tags/v0.8.91", "node_id": "x" },
+  { "ref": "refs/tags/v0.8.100", "node_id": "x" },
+  { "ref": "refs/tags/v0.8.99", "node_id": "x" },
+  { "ref": "refs/tags/v0.9.0-rc1", "node_id": "x" },
+  { "ref": "refs/tags/vtest", "node_id": "x" }
+]
+JSON
 
 setze_szenario
 mkdir -p "$TMP/lauf2"; cp "$TMP/fw.json" "$TMP/lauf2/fernwartung.json"; cp "$TMP/teamviewer-host_amd64.deb" "$TMP/lauf2/"
 OUT="$(cd "$TMP/lauf2" && KASSA_DIR="$TMP/ziel1" KASSA_STATE_DIR="$TMP/state1" KASSA_OHNE_DOCKER=1 KASSA_FERNWARTUNG=1 KASSA_FERNWARTUNG_NAME=Testkasse bash "$HIER/install.sh" 2>&1)"; RC=$?
 pruefe "install.sh mit KASSA_FERNWARTUNG=1: läuft bis zum Ende (Exit 0), .env wurde erzeugt" test "$RC" -eq 0 -a -f "$TMP/ziel1/.env"
+pruefe "install.sh lädt das NEUESTE Release-Tag (v0.8.100 zahlenweise, nicht v0.8.99, nicht die Vorabversion), nie einen Branch" test "$(log_zeilen 'archive/refs/tags/v0.8.100.tar.gz')" -eq 1 -a "$(log_zeilen 'refs/heads')" -eq 0 -a "$(log_zeilen 'master')" -eq 0
+pruefe "install.sh: der entpackte Ordner heißt kassa-0.8.100 (GitHub lässt das v weg) und wird trotzdem gefunden" test -f "$TMP/ziel1/ops/fernwartung.sh"
 pruefe "install.sh mit KASSA_FERNWARTUNG=1: installiert TeamViewer, ordnet zu, schreibt den Status" test "$(log_zeilen '^apt-get install')" -eq 1 -a "$(log_zeilen '^teamviewer assignment --id')" -eq 1 -a -s "$TMP/state1/fernwartung-status.json"
 pruefe "install.sh mit KASSA_FERNWARTUNG=1: ID/Name in der Ausgabe, die Assignment-ID NICHT" test "$(enthaelt "$OUT" '123 456 789' && enthaelt "$OUT" Testkasse && enthaelt_nicht "$OUT" "$ASSID" && echo ja)" = ja
 pruefe "install.sh mit KASSA_FERNWARTUNG=1: kein Docker-Aufruf (OHNE_DOCKER), Status wird erst nach compose up veröffentlicht" test "$(log_zeilen '^docker')" -eq 0
@@ -283,6 +303,21 @@ pruefe "install.sh nur mit KASSA_OHNE_DOCKER=1 (Testlauf): installiert NIE verse
 setze_szenario
 OUT="$(cd "$TMP/lauf2" && KASSA_DIR="$TMP/ziel3" KASSA_STATE_DIR="$TMP/state3" KASSA_OHNE_DOCKER=1 KASSA_FERNWARTUNG=1 KASSA_OHNE_FERNWARTUNG=1 bash "$HIER/install.sh" 2>&1)"; RC=$?
 pruefe "install.sh mit KASSA_OHNE_FERNWARTUNG=1: überspringt den Schritt trotz KASSA_FERNWARTUNG=1" test "$RC" -eq 0 -a "$(log_zeilen '^apt-get')" -eq 0
+
+# Welcher Stand wird geladen? (Release-Tag statt master)
+setze_szenario
+OUT="$(cd "$TMP/lauf2" && KASSA_VERSION=0.8.9 KASSA_DIR="$TMP/ziel7" KASSA_STATE_DIR="$TMP/state7" KASSA_OHNE_DOCKER=1 bash "$HIER/install.sh" 2>&1)"; RC=$?
+pruefe "install.sh mit KASSA_VERSION=0.8.9: genau dieses Release (ohne v angegeben), keine Abfrage der Release-Liste" test "$RC" -eq 0 -a "$(log_zeilen 'archive/refs/tags/v0.8.9.tar.gz')" -eq 1 -a "$(log_zeilen 'matching-refs')" -eq 0
+
+setze_szenario
+OUT="$(cd "$TMP/lauf2" && KASSA_BRANCH=entwicklung KASSA_DIR="$TMP/ziel8" KASSA_STATE_DIR="$TMP/state8" KASSA_OHNE_DOCKER=1 bash "$HIER/install.sh" 2>&1)"; RC=$?
+pruefe "install.sh mit KASSA_BRANCH=entwicklung (nur Entwicklung): lädt den Branch, warnt deutlich vor dem ungeprüften Stand" test "$RC" -eq 0 -a "$(log_zeilen 'archive/refs/heads/entwicklung.tar.gz')" -eq 1 -a "$(enthaelt "$OUT" ungeprüft && echo ja)" = ja
+
+setze_szenario
+mv "$TMP/tags.json" "$TMP/tags.json.weg"
+OUT="$(cd "$TMP/lauf2" && KASSA_DIR="$TMP/ziel9" KASSA_STATE_DIR="$TMP/state9" KASSA_OHNE_DOCKER=1 bash "$HIER/install.sh" 2>&1)"; RC=$?
+mv "$TMP/tags.json.weg" "$TMP/tags.json"
+pruefe "install.sh ohne erreichbare Release-Liste: bricht mit klarer Meldung ab, installiert nichts, weicht NIE auf master aus" test "$RC" -ne 0 -a "$(enthaelt "$OUT" 'Kein Release auf GitHub gefunden' && echo ja)" = ja -a ! -e "$TMP/ziel9/.env" -a "$(log_zeilen 'archive/refs/')" -eq 0
 
 # Voller Lauf mit Docker-Attrappe: Fernwartung VOR dem Container-Build, Status erst NACH „compose up"
 setze_szenario

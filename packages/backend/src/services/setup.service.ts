@@ -23,8 +23,11 @@ import { X509Certificate } from 'node:crypto'
 export interface SetupServiceDeps {
   db:               Db
   masterPassphrase: string
-  /** Für Tests: vorkonfigurierter Mock-Client */
-  rksvOptionen?: Pick<KasseEinrichtenOptionen, 'finanzOnlineClient'>
+  /**
+   * Für Tests: vorkonfigurierter Mock-Client (`finanzOnlineClient`); `herstellerId` = Einstellung FON_HERSTELLER_ID
+   * (UID des Softwareherstellers) für den Login des echten Clients
+   */
+  rksvOptionen?: Pick<KasseEinrichtenOptionen, 'finanzOnlineClient' | 'herstellerId'>
 }
 
 /**

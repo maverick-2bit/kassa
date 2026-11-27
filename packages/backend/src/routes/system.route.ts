@@ -4,11 +4,14 @@
  *  GET  /system/status  (auth) — installierte Version, neueste bekannte Version
  *                          (GitHub), ob ein Update verfügbar ist, ob der Updater-
  *                          Dienst läuft, sowie der aktuelle Update-Status.
- *  POST /system/update  (Betreiber) — löst das Update aus: legt die „request"-Datei im
+ *  POST /system/update  (admin) — löst das Update aus: legt die „request"-Datei im
  *                          geteilten Kontroll-Volume an, die der Updater-Dienst
- *                          abholt. 409 wenn kein Updater-Dienst läuft. Das Update
- *                          betrifft die ganze Installation (alle Mandanten) und läuft
- *                          als Root mit Docker-Zugriff — nur der Betreiber darf es.
+ *                          abholt. 409 wenn kein Updater-Dienst läuft. Jeder Admin darf
+ *                          es (Entscheidung 2026-11-19): Das Signal ist body-los, der
+ *                          Updater holt nur den offiziellen GitHub-Stand — es gibt keine
+ *                          Daten preis, schlimmstenfalls ist die Kassa ~1 Minute offline.
+ *                          Datenbank-Dump, Systemwerte und weitere Mandanten bleiben beim
+ *                          Betreiber.
  *  GET  /system/fernwartung (admin) — Fernwartungs-Anbindung dieser Kasse (TeamViewer ID,
  *                          Gerätename, Gruppe). Liest NUR die Statusdatei, die der
  *                          Installer ins Kontroll-Volume legt (services/fernwartung-status.ts).
@@ -24,35 +27,69 @@ import { join } from 'path'
 import type { Db } from '../db/client.js'
 import type { Config } from '../config.js'
 import { holePortalStatus } from '../services/portal-melder.service.js'
-import { istAktiverBetreiber, requireBetreiber } from '../auth/betreiber.js'
+import { istAktiverBetreiber, requireAktiverAdmin, requireBetreiber } from '../auth/betreiber.js'
 import { leseFernwartungStatus } from '../services/fernwartung-status.js'
+import { neuesteVersionAusTags, tagRefsAusGitAntwort } from '../services/release-version.js'
 
 const require = createRequire(import.meta.url)
 const { version: INSTALLIERT } = require('../../package.json') as { version: string }
 
 const CONTROL_DIR = process.env.UPDATE_CONTROL_DIR ?? '/control'
-const BRANCH      = process.env.KASSA_BRANCH ?? 'master'
-const GITHUB_VERSION_URL = `https://raw.githubusercontent.com/maverick-2bit/kassa/${BRANCH}/package.json`
+// Alle Release-Tags (vX.Y.Z) des Repos in EINER Antwort. Der Updater installiert nur das neueste signierte Release-Tag,
+// nie die Spitze von master — die Anzeige folgt derselben Regel (services/release-version.ts).
+// Erst das Git-Protokoll (dieselbe Liste wie `git ls-remote`, ohne Anfragelimit), dann die REST-API (anonym nur
+// 60 Anfragen pro Stunde und IP — an einem Standort mit mehreren Kassen schnell aufgebraucht).
+const GITHUB_REFS_URL = 'https://github.com/maverick-2bit/kassa.git/info/refs?service=git-upload-pack'
+const GITHUB_TAGS_URL = 'https://api.github.com/repos/maverick-2bit/kassa/git/matching-refs/tags/v'
+const USER_AGENT = 'kassa-pos-update-check'
 
 // Neueste Version von GitHub — kurz gecacht, damit nicht jeder Statusaufruf fetcht.
 let cache: { version: string | null; geprueft: number } = { version: null, geprueft: 0 }
 const CACHE_MS = 10 * 60_000
+// Ohne Internet: Auch der FEHLSCHLAG wird gemerkt. Sonst wartete jede Statusabfrage (jeder
+// Seitenaufruf, alle 5 Minuten je Gerät) erneut bis zu 2 × 5 s auf GitHub und hielte so lange
+// eine der wenigen Browser-Verbindungen zur Kassa fest. „Nach Updates suchen" (frisch) fragt trotzdem.
+const FEHLSCHLAG_CACHE_MS = 5 * 60_000
+let letzterFehlschlag = 0
+// Gleichzeitige Abfragen teilen sich eine Prüfung (mehrere Geräte rufen nach dem Start zugleich)
+let laufendePruefung: Promise<string | null> | null = null
+
+/** Eine Quelle abfragen und die neueste Release-Version daraus lesen — null bei jedem Fehler */
+async function versionVon(url: string, headers: Record<string, string>, tagRefs: (res: Response) => Promise<string[]>): Promise<string | null> {
+  try {
+    const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT, ...headers }, signal: AbortSignal.timeout(5000) })
+    if (!res.ok) return null
+    return neuesteVersionAusTags(await tagRefs(res))
+  } catch {
+    return null
+  }
+}
 
 async function holeNeuesteVersion(frisch = false): Promise<string | null> {
   const jetzt = Date.now()
   if (!frisch && cache.version && jetzt - cache.geprueft < CACHE_MS) return cache.version
-  try {
-    // frisch: eindeutige Query als Cache-Buster gegen das GitHub-CDN — sonst
-    // kann auch eine erzwungene Prüfung noch minutenlang den alten Stand sehen.
-    const url = frisch ? `${GITHUB_VERSION_URL}?frisch=${jetzt}` : GITHUB_VERSION_URL
-    const res = await fetch(url, { signal: AbortSignal.timeout(5000) })
-    if (!res.ok) return cache.version
-    const pkg = (await res.json()) as { version?: string }
-    if (pkg.version) cache = { version: pkg.version, geprueft: jetzt }
-    return cache.version
-  } catch {
-    return cache.version // offline → letzter bekannter Wert (oder null)
+  if (!frisch && jetzt - letzterFehlschlag < FEHLSCHLAG_CACHE_MS) return cache.version
+  if (!frisch && laufendePruefung) return laufendePruefung
+  const pruefung = pruefeNeuesteVersion(frisch, jetzt)
+  if (!frisch) laufendePruefung = pruefung.finally(() => { laufendePruefung = null })
+  return pruefung
+}
+
+async function pruefeNeuesteVersion(frisch: boolean, jetzt: number): Promise<string | null> {
+  const version =
+    (await versionVon(GITHUB_REFS_URL, {}, async (res) => tagRefsAusGitAntwort(await res.text()))) ??
+    // frisch: eindeutige Query als Cache-Buster — sonst kann auch eine erzwungene Prüfung noch einen Moment den alten Stand sehen
+    (await versionVon(frisch ? `${GITHUB_TAGS_URL}?frisch=${jetzt}` : GITHUB_TAGS_URL, { Accept: 'application/vnd.github+json' }, async (res) => {
+      const refs = (await res.json()) as unknown
+      return Array.isArray(refs) ? refs.map((r) => (r as { ref?: string } | null)?.ref ?? '') : []
+    }))
+  if (version) {
+    cache = { version, geprueft: jetzt }
+    letzterFehlschlag = 0
+  } else {
+    letzterFehlschlag = Date.now()
   }
+  return cache.version // beide Quellen fehlgeschlagen (offline) → letzter bekannter Wert (oder null)
 }
 
 /** Semver-ähnlicher Vergleich: ist a echt neuer als b? */
@@ -92,6 +129,8 @@ export const systemRoute: FastifyPluginAsync<SystemRouteOptions> = async (fastif
   const guard      = { onRequest: [fastify.authenticate] }
   const adminOnly  = { onRequest: [fastify.requireRolle('admin')] }
   const betreiber  = { onRequest: [fastify.authenticate, requireBetreiber(opts.db)] }
+  // Update: jeder Admin, aber frisch aus der Datenbank (ein deaktiviertes Konto mit gültigem Token nicht)
+  const aktiverAdmin = { onRequest: [fastify.requireRolle('admin'), requireAktiverAdmin(opts.db)] }
 
   /** Verbindung zum Serviceportal: aktiv? letzter Kontakt, letzter Fehler — nie das Token */
   fastify.get('/system/portal', betreiber, async () => holePortalStatus(opts.config))
@@ -104,8 +143,8 @@ export const systemRoute: FastifyPluginAsync<SystemRouteOptions> = async (fastif
       holeNeuesteVersion(frisch),
       updaterLaeuft(),
       leseUpdateStatus(),
-      // Frisch aus der Datenbank (nicht aus dem Token): die Oberfläche zeigt Update, Datenbank-
-      // Sicherung und Systemwerte nur dem Betreiber — auch direkt nach der Umstellung, wenn eine
+      // Frisch aus der Datenbank (nicht aus dem Token): die Oberfläche zeigt Datenbank-
+      // Sicherung, Systemwerte und weitere Mandanten nur dem Betreiber — auch direkt nach der Umstellung, wenn eine
       // alte Anmeldung noch nichts davon weiß
       request.user.typ ? false : istAktiverBetreiber(opts.db, request.user.sub, request.user.mandantId),
     ])
@@ -156,7 +195,7 @@ export const systemRoute: FastifyPluginAsync<SystemRouteOptions> = async (fastif
     return leseFernwartungStatus(verzeichnis, (grund) => request.log.warn(`Fernwartung: ${grund}`))
   })
 
-  fastify.post('/system/update', betreiber, async (_request, reply) => {
+  fastify.post('/system/update', aktiverAdmin, async (_request, reply) => {
     if (!(await updaterLaeuft())) {
       return reply.status(409).send({
         fehler:

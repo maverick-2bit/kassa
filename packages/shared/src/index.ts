@@ -182,6 +182,7 @@ export type {
 export {
   ArtikelSchema,
   ArtikelInputSchema,
+  EanEingabeSchema,
   ArtikelUpdateSchema,
   ArtikelBestandteilSchema,
   ArtikelBestandteilInputSchema,
@@ -345,6 +346,9 @@ export type {
   BepreisteOption, BetroffeneGruppe, BetroffenerArtikel, VariantenArtikel,
   VariantenGruppe, VariantenKasse, VariantenKategorie, VariantenPlanEintrag,
 } from './bepreiste-varianten.js'
+
+// EAN/GTIN als Artikelkennzeichnung (Prüfziffer, Vergleichsschlüssel)
+export { EAN_LAENGEN, eanFehler, eanPruefziffer, eanSchluessel, istGueltigeEan } from './ean.js'
 
 // Raster-Platzierung (Untergruppen-Kacheln, Slots, Leerfelder)
 export { baueRaster, baueKassenRaster, loeseAnordnungAuf, ausgeblendeteArtikelIds, kompakteArtikelListe, RASTER_MAX_SLOT } from './raster.js'
@@ -988,6 +992,8 @@ export {
   JahresbelegInputSchema,
   BelegResponseSchema,
   BelegPositionSchema,
+  BelegSucheQuerySchema,
+  BelegListeEintragSchema,
 } from './schemas/beleg.js'
 export type {
   RabattInput,
@@ -1001,6 +1007,9 @@ export type {
   JahresbelegInput,
   BelegResponse,
   BelegPositionDto,
+  BelegSucheQuery,
+  BelegListeEintrag,
+  BelegSeite,
 } from './schemas/beleg.js'
 
 // Kassenbuch

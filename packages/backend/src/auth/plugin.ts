@@ -8,6 +8,7 @@ import fastifyJwt from '@fastify/jwt'
 import type { Berechtigung, Rolle } from '@kassa/shared'
 import type { Config } from '../config.js'
 import { erstelleGeraetVertrauen } from './geraet-vertrauen.js'
+import { alsWaechter } from './waechter.js'
 import './jwt.js'
 
 export async function registerAuth(fastify: FastifyInstance, config: Config): Promise<void> {
@@ -28,7 +29,9 @@ export async function registerAuth(fastify: FastifyInstance, config: Config): Pr
   const geraetBereich = (request: FastifyRequest) =>
     request.user.typ ? GERAETE_BEREICH[request.user.typ] : undefined
 
-  fastify.decorate('authenticate', async (request: FastifyRequest, reply: FastifyReply) => {
+  // Jeder Wächter trägt ein Merkmal, WAS er prüft (auth/waechter.ts) — tests/route-schutz.test.ts liest daran ab,
+  // welche Route wie geschützt ist.
+  fastify.decorate('authenticate', alsWaechter(async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       await request.jwtVerify()
     } catch {
@@ -38,10 +41,10 @@ export async function registerAuth(fastify: FastifyInstance, config: Config): Pr
     if (bereich && !request.url.startsWith(bereich.pfad)) {
       return reply.status(403).send({ fehler: bereich.fehler })
     }
-  })
+  }, { art: 'angemeldet' }))
 
   fastify.decorate('requireRolle', (...rollen: Rolle[]) =>
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    alsWaechter(async (request: FastifyRequest, reply: FastifyReply) => {
       try {
         await request.jwtVerify()
       } catch {
@@ -55,12 +58,13 @@ export async function registerAuth(fastify: FastifyInstance, config: Config): Pr
       if (!rollen.includes(request.user.rolle)) {
         return reply.status(403).send({ fehler: `Erforderliche Rolle: ${rollen.join(' oder ')}` })
       }
-    },
+    }, { art: 'rolle', rollen }),
   )
 
-  // Berechtigungs-Decorator: Admin darf immer, Kellner nur wenn Berechtigung im Token
-  fastify.decorate('requireBerechtigung', (berechtigung: Berechtigung) =>
-    async (request: FastifyRequest, reply: FastifyReply) => {
+  // Berechtigungs-Decorator: Admin darf immer, Kellner nur wenn mindestens eine der genannten Berechtigungen im
+  // Token steht (mehrere = „oder": ein Endpunkt, den zwei Seiten brauchen, z. B. Kasse UND Tischabrechnung).
+  fastify.decorate('requireBerechtigung', (...berechtigungen: Berechtigung[]) =>
+    alsWaechter(async (request: FastifyRequest, reply: FastifyReply) => {
       try {
         await request.jwtVerify()
       } catch {
@@ -73,10 +77,10 @@ export async function registerAuth(fastify: FastifyInstance, config: Config): Pr
       }
       if (
         request.user.rolle !== 'admin' &&
-        !request.user.berechtigungen.includes(berechtigung)
+        !berechtigungen.some(b => request.user.berechtigungen?.includes(b))
       ) {
         return reply.status(403).send({ fehler: 'Keine Berechtigung' })
       }
-    },
+    }, { art: 'berechtigung', berechtigungen }),
   )
 }

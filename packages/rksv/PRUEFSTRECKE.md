@@ -31,7 +31,8 @@ Workflows: `.github/workflows/rksv-nacht.yml`, `rksv-mutation.yml` (die regulär
 
 Befunde, die der Produktivcode noch nicht behoben hat, sind in den Tests als **`it.fails`** festgehalten: grün, solange der
 Mangel besteht; sobald er behoben ist, meldet vitest „Expect test to fail" — dann an der Stelle das `.fails` entfernen
-(und in den Zweitprüfer-Tests die Ausnahme `--ignoriere zksn-format` für Befund D streichen). Befund A ist so behoben worden.
+(und in den Zweitprüfer-Tests die Ausnahme `--ignoriere zksn-format` für Befund D streichen). Befund A ist so behoben worden,
+Befund C (FinanzOnline-Client, `fon-xsd.test.ts`) ebenfalls (v0.8.91); F-11 ist entschieden (AT0 nur Test/Demo) und kein `it.fails` mehr.
 
 ### A — Verkettung der Folgebelege war falsch (BEHOBEN; Altketten im Selbsttest als „Altformat" ausgewiesen)
 
@@ -74,29 +75,34 @@ Mangel besteht; sobald er behoben ist, meldet vitest „Expect test to fail" —
 * Eigenheit des Formats (kein Defekt): In der Herbst-Umstellungsstunde läuft die Wanduhr zurück (02:50 Sommerzeit, 20 min später 02:10 Winterzeit).
   Ein Prüfer, der die Zeiten als Text liest, sieht „rückwärts" (`zeit-rueckwaerts` im Zweitprüfer, „chronologische Abfolge" im BMF-Prüftool).
 
-### C — FinanzOnline-Client erzeugt keinen schema-gültigen Request
+### C — FinanzOnline-Client erzeugte keinen schema-gültigen Request (BEHOBEN in v0.8.91; F-11 entschieden: AT0 nur Test/Demo)
 
-Alle Requests des Clients scheitern an den amtlichen Schemas (`fon-xsd.test.ts`, 9× `it.fails` + 4× `it.fails` bei Antworten):
+Alle Requests des Clients scheiterten an den amtlichen Schemas (`fon-xsd.test.ts`, 9× `it.fails` + 4× `it.fails` bei Antworten). **Behoben am 2026-11-13, released als v0.8.91:**
+Der Client erzeugt schema-gültige Requests und wertet die Antworten richtig aus; die `it.fails` sind entfernt, die Mocks in `finanz-online.test.ts` sind schema-gültig.
+Die Umsetzung, die Entscheidungen im Einzelnen und was erst ein Testzugang klärt: `FINANZONLINE-ABGLEICH.md`.
 
-| # | Befund |
-|---|---|
-| F-1 | `login`: Wurzelelement muss `loginRequest` heißen (Client: `login`) |
-| F-2 | `logout`: Wurzelelement muss `logoutRequest` heißen |
-| F-3 | rkdb-Datensätze (`registrierung_se`, `status_kasse` …) sind globale Elemente → Namespace `https://finanzonline.bmf.gv.at/rkdb`; der Client sendet sie ohne Namespace |
-| F-4 | Pflichtfelder `paket_nr`, `ts_erstellung` (rkdb, status_*) und `satznr` (status_*) fehlen |
-| F-5 | `status_se` heißt im Schema `status_see` |
-| F-6 | Je `rkdb` nur **eine** Datensatzart (xs:choice): `registrierung_se` und `registrierung_kasse` brauchen getrennte Aufrufe |
-| F-7 | Ausfall/Wiederinbetriebnahme/Außerbetriebnahme: falsche Namen/Felder (`ausserbetriebnahme_kasse` gibt es nicht → `ausfall_kasse` mit `ausserbetriebnahme/begruendung`; `ausfall_se` braucht `ausfall{begruendung, beginn_ausfall}`; `wiederinbetriebnahme_se` braucht `ende_ausfall`) |
-| F-8 | Antwort: `abfrage_ergebnis` hat Kinder (`ts_registrierung`, `status`, `ts_status`); der Client liest den ganzen Inhalt als Status — die Statusabfrage kann nie „REGISTRIERT" erkennen |
-| F-9 | Antwort: mehrere `result`/`rkdbMessage` sind erlaubt; nur der erste `rc` wird ausgewertet (ein abgelehnter zweiter Datensatz gilt als Erfolg) |
-| F-10 | `herstellerid`: Muster `[0-9A-Za-z]{10,24}`; der Standardwert `ATU_KASSA_RKSV_0001` (Unterstriche) ist ungültig |
-| F-11 | `vda_id`: Muster `[A-Z]{2}[1-9][0-9]?` schließt `AT0` aus — die Software-SEE kann nicht als `registrierung_se` gemeldet werden (Schema: `registrierung_ggs` mit `art_se_ggs` SW_GGS) |
+| # | Befund | Stand |
+|---|---|---|
+| F-1 | `login`: Wurzelelement muss `loginRequest` heißen (Client: `login`) | behoben |
+| F-2 | `logout`: Wurzelelement muss `logoutRequest` heißen | behoben |
+| F-3 | rkdb-Datensätze (`registrierung_se`, `status_kasse` …) sind globale Elemente → Namespace `https://finanzonline.bmf.gv.at/rkdb`; der Client sendet sie ohne Namespace | behoben |
+| F-4 | Pflichtfelder `paket_nr`, `ts_erstellung` (rkdb, status_*) und `satznr` (status_*) fehlen | behoben |
+| F-5 | `status_se` heißt im Schema `status_see` | behoben |
+| F-6 | Je `rkdb` nur **eine** Datensatzart (xs:choice): `registrierung_se` und `registrierung_kasse` brauchen getrennte Aufrufe | behoben (zwei Aufrufe, SE nur wenn FinanzOnline sie noch nicht kennt) |
+| F-7 | Ausfall/Wiederinbetriebnahme/Außerbetriebnahme: falsche Namen/Felder (`ausserbetriebnahme_kasse` gibt es nicht → `ausfall_kasse` mit `ausserbetriebnahme/begruendung`; `ausfall_se` braucht `ausfall{begruendung, beginn_ausfall}`; `wiederinbetriebnahme_se` braucht `ende_ausfall`) | behoben (Begründungscodes aus der BMF-Beschreibung) |
+| F-8 | Antwort: `abfrage_ergebnis` hat Kinder (`ts_registrierung`, `status`, `ts_status`); der Client liest den ganzen Inhalt als Status — die Statusabfrage kann nie „REGISTRIERT" erkennen | behoben |
+| F-9 | Antwort: mehrere `result`/`rkdbMessage` sind erlaubt; nur der erste `rc` wird ausgewertet (ein abgelehnter zweiter Datensatz gilt als Erfolg) | behoben (jede Meldung zählt, `rc` ist ein Text, 0 der einzige Erfolg) |
+| F-10 | `herstellerid`: Muster `[0-9A-Za-z]{10,24}`; der Standardwert `ATU_KASSA_RKSV_0001` (Unterstriche) ist ungültig | behoben: gültiger Platzhalter, einstellbar über `FON_HERSTELLER_ID` (= UID des Softwareherstellers laut BMF) |
+| F-11 | `vda_id`: Muster `[A-Z]{2}[1-9][0-9]?` schließt `AT0` aus — die Software-SEE kann nicht als `registrierung_se` gemeldet werden (Schema: `registrierung_ggs` mit `art_se_ggs` SW_GGS) | **entschieden (Option B, 2026-11-13)**: AT0 bleibt Test/Demo, FinanzOnline nur mit A-Trust (AT1); der Client weist AT0 mit Meldung ab und sendet nichts, siehe `FINANZONLINE-ABGLEICH.md` |
 
 Endpunkte, SOAPAction und document/literal stimmen mit den WSDL-Dateien überein; Werte (Seriennummer dezimal, AES-Schlüssel 44 Zeichen Base64) passen in die Muster.
-Die Mocks in `finanz-online.test.ts` sind selbst nicht schema-gültig und haben das verdeckt; `FINANZONLINE-ABGLEICH.md` („verifiziert gegen die offiziellen Schemas") stimmt so nicht.
-`tests/fixtures/fon-beispiele.ts` enthält für jede Nachricht ein **schema-gültiges Soll-Beispiel** (Requests und Antworten) — Grundlage für die Reparatur.
+Die Mocks in `finanz-online.test.ts` waren selbst nicht schema-gültig und haben das verdeckt; `FINANZONLINE-ABGLEICH.md` („verifiziert gegen die offiziellen Schemas") stimmte so nicht und ist korrigiert.
+`tests/fixtures/fon-beispiele.ts` enthält für jede Nachricht ein **schema-gültiges Soll-Beispiel** (Requests und Antworten); `fon-xsd.test.ts` prüft zusätzlich JEDE Nachricht, die der Client in den Testläufen sendet.
+Beim Beheben aufgefallen (kein Schema-Fehler, die Prüfung sieht ihn nicht): Die Seriennummer der SEE aus Datenbank/Beleg ist hexadezimal, ging aber bei Ausfall, Wiederinbetriebnahme und Statusabfrage
+unmarkiert hinaus — FinanzOnline hätte sie als Dezimalzahl gelesen; jetzt mit `hex="true"`. Und: `beginn_ausfall` war „jetzt" statt des tatsächlichen Ausfallbeginns.
 
-Zusatzfund: Das Schema kennt `belegpruefung` (amtliche Belegprüfung inkl. `verificationResultList`) über den Webservice. Der Client nutzt sie nicht („Startbeleg nur per App" stimmt so nicht). Mit Webservice-Zugang wäre das die amtliche Gegenprobe für **jeden** Beleg.
+Zusatzfund: Das Schema kennt `belegpruefung` (amtliche Belegprüfung inkl. `verificationResultList`) über den Webservice. Der Client nutzt sie bewusst noch nicht („Startbeleg nur per App" stimmt so nicht, aber siehe die Gründe in
+`FINANZONLINE-ABGLEICH.md`: ein wiederholt fehlerhaft geprüfter Beleg wird bis zu 24 Stunden nicht mehr geprüft). Mit Webservice-Zugang wäre das die amtliche Gegenprobe für **jeden** Beleg — Folgekarte.
 
 ### D — Software-SEE (AT0): Seriennummer im Beleg
 
@@ -107,7 +113,7 @@ Laut RIS § 20 Abs. 3 steht bei geschlossenen Gesamtsystemen (AT0) statt der Zer
 214 von 214 Belegen — auch beim Startbeleg —, daraus folgt im DEP `DEP_STATE` („Am Beginn des exportierten RKSV-DEP befindet sich kein gültiger Startbeleg"). Das Tool kommt bei
 AT0 nie zu Verkettung, Zähler und Signatur. Folgen: Belege der Software-SEE bestehen die amtliche Belegprüfung nicht; echter Betrieb braucht ein offenes System (A-Trust). Und
 der Wechsel von AT0 auf A-Trust innerhalb einer Kette mischt geschlossenes und offenes System in einem DEP (Prüfung „keine Vermischung von Systemtypen").
-Als offenes System gelesen (ZDA `AT100`, Zertifikat im Container) besteht dagegen die Einzelbelegprüfung aller Belege; dort blieb nur Befund A (inzwischen behoben).
+Als offenes System gelesen (ZDA `AT100`, Zertifikat im Container) besteht dagegen die Einzelbelegprüfung aller Belege; dort blieb nur Befund A (inzwischen behoben). Mit der Entscheidung zu AT0 (Option B: nur Test/Demo, 2026-11-13) wird D für die Software-Signatur nicht behoben; die bekannten Regeln im Nacht-Workflow bleiben stehen.
 
 ### Bestätigt (positive Gegenproben)
 
@@ -140,7 +146,9 @@ gegenüber der Spezifikation falsch (Befund A, behoben). Die Tests nageln die *I
 (BMF-Daten, BMF-Prüftool, Zweitprüfer) — genau dafür ist diese Strecke da.
 
 Aufruf: `pnpm --filter @kassa/rksv test:mutation` (3–4 Minuten, Bericht `packages/rksv/reports/mutation/mutation.html`); Überlebende als Liste:
-`node scripts/rksv/mutation-bericht.mjs packages/rksv/reports/mutation/mutation.json`. Wöchentlich in `rksv-mutation.yml` (nur Auswertung, wird nicht rot).
+`node scripts/rksv/mutation-bericht.mjs packages/rksv/reports/mutation/mutation.json`. Wöchentlich in `rksv-mutation.yml` (nur Auswertung: überlebende Mutanten machen den Lauf nicht rot, ein scheiternder Probelauf schon).
+`tests/zeit.test.ts` ist ausgenommen (`vitest.mutation.config.ts`): Die Tests stellen die Prozess-Zeitzone um, Strykers Läufer arbeitet mit Worker-Threads, in denen das nicht greift
+(„Prozess-TZ … wirkt nicht"). Der Lauf vom 2026-11-08 scheiterte deshalb schon im Probelauf, bevor ein Mutant lief; geprüft mit `pnpm exec stryker run --dryRunOnly` im Paket `rksv`.
 
 ## Lokal ausführen
 
@@ -157,7 +165,7 @@ node scripts/rksv/bmf-pruefer.mjs --dep dep-export.json --crypto cryptographicMa
 
 Burn-in-Schalter: `BURNIN_BELEGE`, `BURNIN_MINUTEN`, `BURNIN_SEED`, `BURNIN_PARALLEL`, `BURNIN_ZWEITPRUEFER=0`,
 `BURNIN_BEKANNTE_REGELN` (bekannte Befunde nur als Hinweis; für Befund D, das AT0-Format: `zweitpruefer-zksn-format,bmf-FORMAT_CLOSED_SYSTEM_SERIAL,bmf-DEP_STATE,bmf-VERIFICATION_FROM_APP,bmf-DEP_RECEIPT_LIST` — der Nacht-Workflow setzt genau diese Liste als Standard),
-`BMF_PRUEFTOOL_DIR`.
+`BMF_PRUEFTOOL_DIR`, `BMF_MAX_BELEGE` (so viele Belege, vom Startbeleg an, bekommt das BMF-Prüftool höchstens; Standard 2000 — den ganzen Bestand prüft der Python-Zweitprüfer).
 
 ## Der Nacht-Workflow (`rksv-nacht`)
 
@@ -176,14 +184,19 @@ Burn-in-Schalter: `BURNIN_BELEGE`, `BURNIN_MINUTEN`, `BURNIN_SEED`, `BURNIN_PARA
   (`verificationState` PASS/FAIL). Die `*_full.json`/`DEP-full.json` enthalten ALLE Prüfungen inklusive der verworfenen Typ-Hypothesen (`TYPE_OF_RECEIPT_*` als FAIL unter einer
   PASS-Wurzel) und zählen nicht. Ein Lauf ohne erkanntes PASS gilt als **nicht** bestanden. (Die erste Fassung wertete alle Dateien aus und hielt deshalb auch die BMF-Beispiele
   für durchgefallen — der Probelauf hat das gezeigt; seitdem prüft der Kontrolllauf 16 von 16 BMF-Szenarien als bestanden.)
+* **Lange Läufe und Ausfälle der ersten Woche (2026-11-08/09), behoben:** Der lange Sonntags-Burn-in (45 Minuten, rund 19 000 Belege) brach beim BMF-Prüftool ab, weil das Skript
+  alle Ergebnisdateien — auch die großen `*_full.json` — als Text im Speicher hielt (`NewRawTwoByteString`, keine Zusammenfassung). Jetzt: Die Ausgabe wird nacheinander gelesen, nur die
+  Urteilsdateien (auch fünfstellige Belegnummern ab 10000, die der Dateimuster-Filter vorher übersehen hätte), und das Prüftool sieht höchstens `BMF_MAX_BELEGE` Belege (Standard 2000;
+  ein Hinweis „[bmf-pruefer-ausschnitt]" im Bericht nennt es). Am 2026-11-09 scheiterte der Kontrolllauf an einem HTTP 504 beim Laden der BMF-Beispiele; Downloads wiederholen jetzt
+  (4 Versuche, 5/15/45 s Pause) bei Netzwerkfehlern, 5xx, 408 und 429 — ein 404 ist endgültig. Tests: `bmf-runner.test.ts` und `backend/tests/rksv-bmf-ausschnitt.test.ts`.
 * **Wie das Tool bisher gelaufen ist:** Lokal wurde das heruntergeladene JAR bei der Entwicklung NICHT gestartet (die Berechtigungsprüfung hat es verhindert; nicht umgangen). Es lief
   ausschließlich in GitHub Actions (Probelauf auf dem Wegwerf-Branch `trial/rksv-nacht`, Java 8) — dort mit den hier beschriebenen Ergebnissen.
 
 ## Mit Zugang (noch nicht gebaut — braucht Zugänge des Users)
 
 **FinanzOnline-Testübermittlung** (`art_uebermittlung=T`, verbucht nichts): FinanzOnline-Webservice-Benutzer (TID/BENID/PIN) und Hersteller-ID
-(`herstellerid`, 10–24 alphanumerische Zeichen laut Schema — Bedeutung mit der FinanzOnline-Dokumentation klären; das Feld ist heute nur im rksv-Paket
-mit ungültigem Platzhalter-Default setzbar, nicht aus Backend/UI). **Voraussetzung: erst den Client auf die Schemas bringen (Befund C).** Danach `scripts/fon-testlauf.ts`:
+(`herstellerid` = UID-Nummer des Softwareherstellers laut BMF-Beschreibung des Session-Webservice, 10–24 alphanumerische Zeichen; im Backend die Einstellung `FON_HERSTELLER_ID`).
+Der Client entspricht den Schemas (Befund C, `FINANZONLINE-ABGLEICH.md`) — Voraussetzung erfüllt. Danach `scripts/fon-testlauf.ts`:
 Login → `status_kasse` → `registrierung_se`/`registrierung_kasse` (T) → Status → `ausfall_se` + `wiederinbetriebnahme_se` → `belegpruefung` für Startbeleg und je einen Beleg
 jeder Art (amtliches Urteil) → `ausfall_kasse`/`ausserbetriebnahme` → Logout; jede Anfrage/Antwort (ohne PIN) als Fixture unter `tests/fixtures/fon-live/`,
 die dann die Mocks in `finanz-online.test.ts` ersetzen. Für Software-SEE (AT0) zusätzlich `registrierung_ggs` ausprobieren.

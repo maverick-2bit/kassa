@@ -112,6 +112,11 @@ export interface KasseEinrichtenOptionen {
   onSchritt?: (schritt: EinrichtungsSchritt) => void
   /** Vorkonfigurierter Client (für Tests/Mocks) */
   finanzOnlineClient?: FinanzOnlineClient
+  /**
+   * Hersteller-ID (UID des Softwareherstellers) für den FinanzOnline-Login des Clients, den diese Funktion selbst
+   * anlegt — bei einem mitgegebenen `finanzOnlineClient` ohne Wirkung. Im Backend die Einstellung FON_HERSTELLER_ID.
+   */
+  herstellerId?: string | undefined
 }
 
 // ---------------------------------------------------------------------------
@@ -205,7 +210,7 @@ export async function kasseAutomatischEinrichten(
   log('eingabe-validierung', 'erfolgreich', 'Eingabedaten gültig')
 
   const umgebung = input.umgebung ?? 'produktion'
-  const foClient = optionen.finanzOnlineClient ?? new FinanzOnlineClient(umgebung)
+  const foClient = optionen.finanzOnlineClient ?? new FinanzOnlineClient(umgebung, { herstellerId: optionen.herstellerId })
 
   // -------------------------------------------------------------------------
   // 1. SEE generieren (Software-Zertifikat)

@@ -4,6 +4,7 @@
  */
 
 import { z } from 'zod'
+import { FON_HERSTELLER_ID_MUSTER } from '@kassa/rksv'
 
 const ConfigSchema = z.object({
   DATABASE_URL:      z.string().url(),
@@ -22,6 +23,18 @@ const ConfigSchema = z.object({
    * In Produktion verboten (index.ts bricht beim Start ab).
    */
   FO_STUB:           z.string().optional().default('false').transform(v => v === 'true' || v === '1'),
+  /**
+   * Hersteller-ID für den FinanzOnline-Login: die UID-Nummer des SOFTWAREHERSTELLERS (10–24 Buchstaben/Ziffern,
+   * ohne Leerzeichen, z. B. ATU12345678) — nicht die des Betriebs, der die Kassa benutzt. Leer/nicht gesetzt =
+   * ein Platzhalter, der das Schema erfüllt, aber kein echter Wert ist (FinanzOnline wird ihn voraussichtlich
+   * ablehnen; die Fehlermeldung sagt es). Wird einmal je Installation eingetragen.
+   */
+  FON_HERSTELLER_ID: z.string().optional()
+    .transform(v => (v === undefined || v.trim() === '' ? undefined : v.trim()))
+    .refine(
+      v => v === undefined || FON_HERSTELLER_ID_MUSTER.test(v),
+      'FON_HERSTELLER_ID muss aus 10 bis 24 Buchstaben und Ziffern bestehen (UID des Softwareherstellers ohne Leerzeichen, z. B. ATU12345678)',
+    ),
 
   /**
    * Geheimes Token für den externen Monitoring-Endpoint (GET /api/monitoring/status

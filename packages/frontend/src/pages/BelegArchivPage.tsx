@@ -1,5 +1,5 @@
 /**
- * Beleg-Archiv — Verlauf des Zweigs Angebot → Lieferschein → Rechnung.
+ * Auftragsbelege (früher „Beleg-Archiv") — Verlauf des Zweigs Angebot → Lieferschein → Rechnung.
  *
  * Drei Reiter mit je einer Liste, Detailansicht und dem einheitlichen
  * Ausgabe-Dialog zum Nachdrucken/Versenden. Erzeugt wird hier nichts — das passiert auf der
@@ -118,7 +118,7 @@ export function BelegArchivPage() {
   return (
     <div className="mx-auto max-w-5xl space-y-4 p-4">
       <div>
-        <h1 className="text-lg font-black text-ink">Beleg-Archiv</h1>
+        <h1 className="text-lg font-black text-ink">Auftragsbelege</h1>
         <p className="text-sm text-ink-muted">
           Verlauf des Zweigs Angebot → Lieferschein → Rechnung: ansehen, nachdrucken, versenden.
         </p>

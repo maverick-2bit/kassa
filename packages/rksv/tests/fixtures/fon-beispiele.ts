@@ -6,8 +6,11 @@
  * Wer den FinanzOnline-Client auf die Schemas bringt, kann daran ablesen, wie die Nachrichten
  * aufgebaut sind; die Antworten taugen als Mock-Antworten, die der echte Dienst so liefern darf.
  *
- * Inhaltliche Vorbehalte (aus dem Schema nicht ableitbar, erst mit Testzugang klärbar): Bedeutung der
- * Begründungs-Codes (`begruendung`, 1–99) und die Hersteller-ID (nur das Muster `[0-9A-Za-z]{10,24}` ist bekannt).
+ * Inhaltliche Quellen außerhalb des Schemas: die BMF-Beschreibung „Registrierkassen-Webservice" (Stand 12.05.2017) für die
+ * Begründungscodes (Ausfall SE: 1 Diebstahl/Verlust, 2 Signatur unmöglich oder fehlerhaft, 99 sonstiger Grund;
+ * Außerbetriebnahme: 6 planmäßig, 7 irreparabler Ausfall), die Seriennummer (dezimal oder hexadezimal mit hex="true"),
+ * die Rückgabecodes (`rc` als Text; 0 = ok) und die Beschreibung des Session-Webservice für die Hersteller-ID (UID des
+ * Softwareherstellers, Muster `[0-9A-Za-z]{10,24}`). Was erst eine Testübermittlung klärt, steht in FINANZONLINE-ABGLEICH.md.
  */
 
 import type { FonSchema } from '../helpers/xsd.js'
@@ -30,6 +33,8 @@ export const BSP_SESSION_ID   = 'ABCDEF1234567890'
 export const BSP_HERSTELLER   = 'ATU12345678'
 export const BSP_KASSE        = 'KASSE-1'
 export const BSP_SEE_SN       = '1793602611047'
+/** Dieselbe Art Angabe hexadezimal (Attribut hex="true", ohne Präfix 0x) — das BMF-Beispiel `01E240` entspricht der Dezimalzahl 123456 */
+export const BSP_SEE_SN_HEX   = '01E240'
 /** 32 Byte AES-Schlüssel als Base64 = 44 Zeichen (Schema: `benutzerschluessel` length 44) */
 export const BSP_AES_B64      = 'PPrlztI80Y9fMmCCUtsiWoKgGKcNVAqFbKj0KZoJrHE='
 
@@ -70,6 +75,12 @@ export const SOLL_ANFRAGEN: Record<string, FonBeispiel> = {
     xml: rkdbAnfrage(`<rk:status_see>${paket}<rk:satznr>1</rk:satznr>` +
          `<rk:zertifikatsseriennummer>${BSP_SEE_SN}</rk:zertifikatsseriennummer></rk:status_see>`),
   },
+  /** Seriennummer hexadezimal: Attribut hex="true" (BMF-Beschreibung), Wert ohne Präfix 0x */
+  'status-see-hex': {
+    schema: 'rkdb',
+    xml: rkdbAnfrage(`<rk:status_see>${paket}<rk:satznr>1</rk:satznr>` +
+         `<rk:zertifikatsseriennummer hex="true">${BSP_SEE_SN_HEX}</rk:zertifikatsseriennummer></rk:status_see>`),
+  },
   'registrierung-se': {
     schema: 'rkdb',
     xml: rkdbAnfrage(`<rk:rkdb>${paket}<rk:registrierung_se><rk:satznr>1</rk:satznr><rk:art_se>HSM_DIENSTLEISTER</rk:art_se>` +
@@ -93,7 +104,7 @@ export const SOLL_ANFRAGEN: Record<string, FonBeispiel> = {
     schema: 'rkdb',
     xml: rkdbAnfrage(`<rk:rkdb>${paket}<rk:ausfall_se><rk:satznr>1</rk:satznr>` +
          `<rk:zertifikatsseriennummer>${BSP_SEE_SN}</rk:zertifikatsseriennummer>` +
-         `<rk:ausfall><rk:begruendung>1</rk:begruendung><rk:beginn_ausfall>2026-11-02T07:30:00</rk:beginn_ausfall></rk:ausfall>` +
+         `<rk:ausfall><rk:begruendung>2</rk:begruendung><rk:beginn_ausfall>2026-11-02T07:30:00</rk:beginn_ausfall></rk:ausfall>` +
          `</rk:ausfall_se></rk:rkdb>`),
   },
   'wiederinbetriebnahme-se': {
@@ -107,7 +118,7 @@ export const SOLL_ANFRAGEN: Record<string, FonBeispiel> = {
     schema: 'rkdb',
     xml: rkdbAnfrage(`<rk:rkdb>${paket}<rk:ausfall_kasse><rk:satznr>1</rk:satznr>` +
          `<rk:kassenidentifikationsnummer>${BSP_KASSE}</rk:kassenidentifikationsnummer>` +
-         `<rk:ausserbetriebnahme><rk:begruendung>1</rk:begruendung></rk:ausserbetriebnahme></rk:ausfall_kasse></rk:rkdb>`),
+         `<rk:ausserbetriebnahme><rk:begruendung>6</rk:begruendung></rk:ausserbetriebnahme></rk:ausfall_kasse></rk:rkdb>`),
   },
   'wiederinbetriebnahme-kasse': {
     schema: 'rkdb',
@@ -126,11 +137,12 @@ export const SOLL_ANFRAGEN: Record<string, FonBeispiel> = {
 // Antworten, die der Dienst laut Schema liefern darf
 // ---------------------------------------------------------------------------
 
-const rkdbAntwort = (ergebnisse: string): string =>
+export const rkdbAntwort = (ergebnisse: string): string =>
   `<rk:rkdbResponse xmlns:rk="${NS_RKDB}"><rk:paket_nr>1</rk:paket_nr>` +
   `<rk:ts_erstellung>2026-11-02T08:00:01</rk:ts_erstellung>${ergebnisse}</rk:rkdbResponse>`
 
-const ergebnis = (satznr: number, rc: string, msg: string, extra = ''): string =>
+/** `rc` ist im Schema ein TEXT (1–12 Zeichen): die BMF-Fehlercodes sind u. a. `0`, `-1`, `4`, `B14`, `V6`. `msg` ist bereits XML-maskiert. */
+export const ergebnis = (satznr: number, rc: string, msg: string, extra = ''): string =>
   `<rk:result><rk:satznr>${satznr}</rk:satznr><rk:rkdbMessage><rk:rc>${rc}</rk:rc><rk:msg>${msg}</rk:msg></rk:rkdbMessage>${extra}</rk:result>`
 
 /** Die Kinder von `abfrage_ergebnis` sind im Schema lokale Elemente — ohne Namespace (kein `elementFormDefault`). */
@@ -175,5 +187,38 @@ export const ANTWORTEN: Record<string, FonBeispiel> = {
   'status-see-aktiviert': {
     schema: 'rkdb',
     xml: rkdbAntwort(ergebnis(1, '0', 'ok', abfrageErgebnis('AKTIVIERT'))),
+  },
+  'status-see-ausfall': {
+    schema: 'rkdb',
+    xml: rkdbAntwort(ergebnis(1, '0', 'ok', abfrageErgebnis('AUSFALL'))),
+  },
+  'status-kasse-in-betrieb': {
+    schema: 'rkdb',
+    xml: rkdbAntwort(ergebnis(1, '0', 'ok', abfrageErgebnis('IN_BETRIEB'))),
+  },
+  'status-kasse-ausfall': {
+    schema: 'rkdb',
+    xml: rkdbAntwort(ergebnis(1, '0', 'ok', abfrageErgebnis('AUSFALL'))),
+  },
+  /** Die SE ist FinanzOnline unbekannt: kein Status, ein fachlicher Fehler (Code als Text, nicht als Zahl). */
+  'status-see-unbekannt': {
+    schema: 'rkdb',
+    xml: rkdbAntwort(ergebnis(1, 'V6', 'Die Seriennummer ist nicht registriert oder bereits au&#223;er Betrieb genommen.')),
+  },
+  /** Ein fachlicher Fehler mit alphanumerischem Code und maskierten Sonderzeichen im Text (&amp; &lt; &gt;). */
+  'rkdb-fehler': {
+    schema: 'rkdb',
+    xml: rkdbAntwort(ergebnis(1, 'B20', 'Der angegebene Status &lt;AUSFALL&gt; ist bereits gesetzt &amp; wird ignoriert.')),
+  },
+  /**
+   * Dieselbe Statusantwort mit Standard-Namespace statt Präfix — so schreiben JAXB-Serialisierer sie gern. Die Kinder von
+   * `abfrage_ergebnis` sind lokale Elemente und müssen dann ausdrücklich `xmlns=""` tragen.
+   */
+  'status-kasse-standardnamespace': {
+    schema: 'rkdb',
+    xml: `<rkdbResponse xmlns="${NS_RKDB}"><paket_nr>7</paket_nr><ts_erstellung>2026-11-02T08:00:01</ts_erstellung>` +
+         `<result><satznr>1</satznr><rkdbMessage><rc>0</rc><msg>ok</msg></rkdbMessage>` +
+         `<abfrage_ergebnis><ts_registrierung xmlns="">2026-11-01T10:00:00</ts_registrierung><status xmlns="">IN_BETRIEB</status>` +
+         `<ts_status xmlns="">2026-11-01T10:00:00</ts_status></abfrage_ergebnis></result></rkdbResponse>`,
   },
 }
