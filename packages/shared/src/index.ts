@@ -836,6 +836,53 @@ export {
 } from './schemas/portal.js'
 export type { PortalFehler, PortalMeldung, PortalStatus } from './schemas/portal.js'
 
+// Serviceportal: Verwaltungs-API (Betriebe, Boxen, Übersicht, Anmeldung)
+export {
+  PORTAL_MODULE,
+  PortalModulSchema,
+  PORTAL_MODUL_LABELS,
+  BoxStatusSchema,
+  BOX_STATUS_LABELS,
+  BoxGrundSchema,
+  BoxKurzSchema,
+  BetriebUebersichtSchema,
+  UebersichtSchema,
+  PortalFehlerSammlungSchema,
+  BoxDetailSchema,
+  BetriebAnlegenSchema,
+  BetriebAktualisierenSchema,
+  BoxAnlegenSchema,
+  BoxAktualisierenSchema,
+  BoxMitTokenSchema,
+  PASSWORT_MIN_LAENGE,
+  PortalAnmeldenSchema,
+  PortalBenutzerSchema,
+  PortalAnmeldeAntwortSchema,
+  TotpEinrichtenAntwortSchema,
+  TotpBestaetigenSchema,
+} from './schemas/portal-verwaltung.js'
+export type {
+  PortalModul,
+  BoxStatus,
+  BoxGrund,
+  BoxKurz,
+  BetriebUebersicht,
+  Uebersicht,
+  PortalFehlerSammlung,
+  BoxDetail,
+  BetriebAnlegen,
+  BetriebAktualisieren,
+  BoxAnlegen,
+  BoxAktualisieren,
+  BoxMitToken,
+  PortalAnmelden,
+  PortalBenutzer,
+  PortalAnmeldeAntwort,
+  TotpEinrichtenAntwort,
+  TotpBestaetigen,
+} from './schemas/portal-verwaltung.js'
+
+
 // Wartungsverträge
 export {
   WartungsIntervallSchema,
