@@ -38,7 +38,7 @@ export type ErkennungStatus = { ok: true } | { ok: false; grund: string }
 /** Kann dieses Gerät/dieser Browser Sprache erkennen? Mit lesbarem Grund, wenn nicht. */
 export function erkennungStatus(): ErkennungStatus {
   if (typeof window !== 'undefined' && window.isSecureContext === false) {
-    return { ok: false, grund: 'Das Mikrofon braucht eine gesicherte Verbindung (HTTPS). Bitte die App über https:// öffnen.' }
+    return { ok: false, grund: 'Das Mikrofon braucht eine gesicherte Verbindung (HTTPS). Bitte die App über ihre https-Adresse öffnen (Kasse: Einstellungen → Geräte).' }
   }
   if (!erkennerKlasse()) {
     return { ok: false, grund: 'Dieser Browser kann keine Sprache erkennen. Bitte Chrome oder Edge verwenden.' }
