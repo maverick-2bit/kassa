@@ -18,13 +18,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   findeBepreisteVarianten, istAkut, kategoriePfad, planeVariantenArtikel, ursprungDeaktivieren,
   type BetroffeneGruppe, type BetroffenerArtikel, type ModifikatorGruppe,
-  type VariantenAufloesenErgebnis,
+  type VarianteErledigt, type VariantenAufloesenErgebnis,
 } from '@kassa/shared'
 import { artikelApi, einrichtungApi, kategorieApi, modifikatorApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
 import { kassenName } from '../lib/einrichtung'
 import { formatPreis } from '../lib/format'
 import { Button } from './ui/Button'
+
+const NEUE_ZEILE = String.fromCharCode(10)
 
 const aufschlag = (cent: number): string => `${cent > 0 ? '+' : ''}${formatPreis(cent)}`
 
@@ -60,6 +62,8 @@ export function useBepreisteVarianten(gruppen: readonly ModifikatorGruppe[]) {
     treffer,
     alleArtikel,
     kategorien,
+    /** Schon getroffene Entscheidungen (auch zu inzwischen deaktivierten Artikeln) */
+    erledigt: erledigtQuery.data ?? [],
     /** Anzahl offener Varianten — die Zahl am Umschalter */
     anzahl: treffer.reduce((n, a) => n + a.gruppen.reduce((m, g) => m + g.optionen.length, 0), 0),
     laedt:  artikelQuery.isLoading || zuweisungenQuery.isLoading || erledigtQuery.isLoading,
@@ -74,7 +78,7 @@ export function BepreisteVariantenAnsicht({ gruppen }: { gruppen: readonly Modif
   const [meldung, setMeldung] = useState<string | null>(null)
   const [fehler,  setFehler]  = useState<string | null>(null)
 
-  const { treffer, alleArtikel, kategorien, laedt } = useBepreisteVarianten(gruppen)
+  const { treffer, alleArtikel, kategorien, erledigt, laedt } = useBepreisteVarianten(gruppen)
 
   const aufloesen = useMutation({
     mutationFn: ({ artikelId, gruppeId, anlegen, verwerfen }: {
@@ -88,6 +92,19 @@ export function BepreisteVariantenAnsicht({ gruppen }: { gruppen: readonly Modif
       setMeldung(ergebnisText(e))
     },
     onError: (e) => setFehler(e instanceof Error ? e.message : 'Fehler beim Anlegen'),
+  })
+
+  const zuruecknehmen = useMutation({
+    mutationFn: ({ artikelId, modifikatorId }: { artikelId: string; modifikatorId: string; text: string }) =>
+      modifikatorApi.nimmVarianteZurueck(artikelId, modifikatorId),
+    onSuccess: (_, v) => {
+      qc.invalidateQueries({ queryKey: ['artikel'] })
+      qc.invalidateQueries({ queryKey: ['artikel-modifikator-gruppen'] })
+      qc.invalidateQueries({ queryKey: ['artikel-varianten-erledigt'] })
+      setFehler(null)
+      setMeldung(v.text)
+    },
+    onError: (e) => setFehler(e instanceof Error ? e.message : 'Fehler beim Zurücknehmen'),
   })
 
   if (laedt) {
@@ -141,6 +158,14 @@ export function BepreisteVariantenAnsicht({ gruppen }: { gruppen: readonly Modif
           />
         ))
       )}
+
+      <ErledigtAbschnitt
+        erledigt={erledigt}
+        gruppen={gruppen}
+        alleArtikel={alleArtikel}
+        laeuft={aufloesen.isPending || zuruecknehmen.isPending}
+        onZuruecknehmen={(e, text) => zuruecknehmen.mutate({ artikelId: e.artikelId, modifikatorId: e.modifikatorId, text })}
+      />
     </div>
   )
 }
@@ -299,6 +324,143 @@ function GruppenBlock({
           )
         })}
       </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+
+type ArtikelKurz = { id: string; bezeichnung: string; aktiv: boolean; preisBruttoCent: number }
+
+/** Eine Zeile im Abschnitt „Schon erledigt" — alles schon als Text, damit die Darstellung nichts mehr rechnet. */
+export interface ErledigtZeile {
+  eintrag:     VarianteErledigt
+  artikelName: string
+  optionName:  string
+  /** „+0,50" o. ä.; leer, wenn die Option nicht mehr gefunden wurde */
+  aufschlag:   string
+  gruppeName:  string | null
+  ergebnis:    string
+  /** Ursprungsartikel ist deaktiviert */
+  deaktiviert: boolean
+  /** Die Rücknahme aktiviert den Ursprungsartikel wieder (er wurde wegen Basispreis 0,00 deaktiviert) */
+  wirdAktiv:   boolean
+  /** Hinweis für Rückfrage und Meldung: was bei der Rücknahme stehen bleibt bzw. sich ändert */
+  hinweise:    string[]
+  /** Artikel oder Option gibt es nicht mehr — dann ist keine Rücknahme möglich */
+  nichtMehrDa: boolean
+}
+
+/**
+ * Macht aus den Erledigt-Einträgen lesbare Zeilen. Die Namen kommen aus den ohnehin geladenen Artikeln und
+ * Optionsgruppen. Es wird nichts weggefiltert: auch Einträge zu deaktivierten Artikeln stehen hier — gerade
+ * dort braucht man die Rücknahme (ein Artikel mit Basispreis 0,00 wird beim Auflösen deaktiviert).
+ */
+export function baueErledigtZeilen(
+  erledigt:    readonly VarianteErledigt[],
+  gruppen:     readonly ModifikatorGruppe[],
+  alleArtikel: readonly ArtikelKurz[],
+): ErledigtZeile[] {
+  const artikelVon = new Map(alleArtikel.map(a => [a.id, a] as const))
+  const optionVon  = new Map(gruppen.flatMap(g => g.modifikatoren.map(m => [m.id, { ...m, gruppeName: g.name }] as const)))
+
+  return erledigt
+    .map((eintrag): ErledigtZeile => {
+      const artikel = artikelVon.get(eintrag.artikelId)
+      const option  = optionVon.get(eintrag.modifikatorId)
+      const neu     = eintrag.artikelNeuId ? artikelVon.get(eintrag.artikelNeuId) : undefined
+      const artikelName = artikel?.bezeichnung ?? 'Artikel nicht mehr vorhanden'
+      const wirdAktiv   = !!artikel && !artikel.aktiv && ursprungDeaktivieren(artikel.preisBruttoCent, true)
+      const ergebnis = eintrag.art === 'verworfen'
+        ? 'verworfen'
+        : neu
+          ? `eigener Artikel: ${neu.bezeichnung}`
+          : 'eigener Artikel angelegt (inzwischen nicht mehr vorhanden)'
+      return {
+        eintrag,
+        artikelName,
+        optionName:  option?.name ?? 'Option nicht mehr vorhanden',
+        aufschlag:   option ? aufschlag(option.aufschlagCent) : '',
+        gruppeName:  option?.gruppeName ?? null,
+        ergebnis,
+        deaktiviert: !!artikel && !artikel.aktiv,
+        wirdAktiv,
+        hinweise: [
+          eintrag.art === 'angelegt' && neu ? `Der Artikel „${neu.bezeichnung}" bleibt bestehen.` : '',
+          wirdAktiv ? `„${artikelName}" wird wieder aktiviert.` : '',
+        ].filter(Boolean),
+        nichtMehrDa: !artikel || !option,
+      }
+    })
+    .sort((a, b) =>
+      a.artikelName.localeCompare(b.artikelName, 'de') || a.optionName.localeCompare(b.optionName, 'de'))
+}
+
+/** Schon getroffene Entscheidungen, einzeln zurücknehmbar (aufklappbar, damit die offene Liste oben bleibt). */
+function ErledigtAbschnitt({
+  erledigt, gruppen, alleArtikel, laeuft, onZuruecknehmen,
+}: {
+  erledigt:        readonly VarianteErledigt[]
+  gruppen:         readonly ModifikatorGruppe[]
+  alleArtikel:     readonly ArtikelKurz[]
+  laeuft:          boolean
+  onZuruecknehmen: (e: VarianteErledigt, meldung: string) => void
+}) {
+  const [offen, setOffen] = useState(false)
+  const zeilen = useMemo(() => baueErledigtZeilen(erledigt, gruppen, alleArtikel), [erledigt, gruppen, alleArtikel])
+
+  if (zeilen.length === 0) return null
+
+  return (
+    <div className="max-w-3xl rounded-xl border border-line bg-panel overflow-hidden">
+      <button
+        onClick={() => setOffen(o => !o)}
+        aria-expanded={offen}
+        className="w-full px-4 py-3 flex items-center justify-between gap-3 text-left hover:bg-panel-2 transition-colors"
+      >
+        <span className="text-sm font-medium text-ink">Schon erledigt ({zeilen.length})</span>
+        <span className="text-xs text-ink-subtle">{offen ? 'Zuklappen ▴' : 'Aufklappen ▾'}</span>
+      </button>
+
+      {offen && (
+        <div className="border-t border-line">
+          <p className="px-4 py-2 text-xs text-ink-muted bg-panel-2 border-b border-line">
+            „Zurücknehmen" hängt die Optionsgruppe wieder an den Artikel; die Variante steht dann oben wieder zur
+            Entscheidung. Ein dafür angelegter eigener Artikel bleibt bestehen — den löschst du in der Artikelverwaltung.
+          </p>
+          <div className="divide-y divide-line">
+            {zeilen.map(z => (
+              <div key={`${z.eintrag.artikelId}|${z.eintrag.modifikatorId}`} className="px-4 py-2.5 flex items-center gap-3 flex-wrap">
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm text-ink">
+                    {z.artikelName}
+                    {z.deaktiviert && <span className="ml-2 text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-ink-muted">deaktiviert</span>}
+                    <span className="text-ink-muted"> · {z.optionName}{z.aufschlag ? ` ${z.aufschlag}` : ''}</span>
+                  </div>
+                  <div className="text-xs text-ink-subtle mt-0.5">
+                    {z.ergebnis}{z.gruppeName ? ` · Gruppe „${z.gruppeName}"` : ''}
+                  </div>
+                </div>
+                <Button
+                  variant="secondary"
+                  disabled={laeuft || z.nichtMehrDa}
+                  title={z.nichtMehrDa ? 'Artikel oder Option gibt es nicht mehr' : undefined}
+                  onClick={() => {
+                    const frage = `Entscheidung für „${z.artikelName} · ${z.optionName}" zurücknehmen?`
+                    if (!confirm(z.hinweise.length ? [frage, '', ...z.hinweise].join(NEUE_ZEILE) : frage)) return
+                    onZuruecknehmen(z.eintrag, [
+                      `„${z.artikelName} · ${z.optionName}" zurückgenommen — steht oben wieder zur Entscheidung`,
+                      ...z.hinweise,
+                    ].join(' · '))
+                  }}
+                >
+                  Zurücknehmen
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
