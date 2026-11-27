@@ -17,6 +17,7 @@ import type { FastifyPluginAsync, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import { eq } from 'drizzle-orm'
 import {
+  BestellvorschlagQuerySchema,
   EinkaufBestellstatusSchema,
   EinkaufBestellungEmailSchema,
   EinkaufBestellungInputSchema,
@@ -35,6 +36,7 @@ import {
   wechsleStatus,
 } from '../services/einkauf-bestellung.service.js'
 import { erzeugeBestellungPdf, formatDatum } from '../services/einkauf-bestellung-pdf.service.js'
+import { holeBestellvorschlag } from '../services/bestellvorschlag.service.js'
 import { EmailVersandError, isEmailAktiv, sendeBestellungEmail } from '../services/email.service.js'
 
 export interface EinkaufBestellungRouteOptions { db: Db; config: Config }
@@ -77,6 +79,14 @@ export const einkaufBestellungRoute: FastifyPluginAsync<EinkaufBestellungRouteOp
     )
     return { bestellung, pdf, firmenname: m.firmenname, lieferantEmail: l.email }
   }
+
+  /** Bestellvorschlag aus dem Verbrauch der letzten Tage (?tage=14&reichweite=14) */
+  fastify.get('/einkauf/bestellvorschlag', auth, async (request, reply) => {
+    if (!darfVerwalten(request)) return reply.status(403).send({ fehler: 'Keine Berechtigung' })
+    const q = BestellvorschlagQuerySchema.safeParse(request.query)
+    if (!q.success) return reply.status(400).send({ fehler: q.error.issues })
+    return reply.send(await holeBestellvorschlag(db, request.user.mandantId, q.data))
+  })
 
   fastify.get('/einkauf/bestellungen', auth, async (request, reply) => {
     if (!darfVerwalten(request)) return reply.status(403).send({ fehler: 'Keine Berechtigung' })

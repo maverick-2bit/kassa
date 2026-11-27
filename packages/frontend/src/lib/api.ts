@@ -225,6 +225,7 @@ import type {
   EinkaufBestellung,
   EinkaufBestellungInput,
   EinkaufBestellungKurz,
+  Bestellvorschlag,
   EinkaufBestellungUpdate,
 } from '@kassa/shared'
 
@@ -721,6 +722,14 @@ export const preislisteApi = {
 }
 
 export const einkaufBestellungApi = {
+  /** Bestellvorschlag/Reichweite aus dem Verbrauch der letzten `tage` Tage, Bedarf für `reichweite` Tage */
+  vorschlag: (q: { tage?: number; reichweite?: number } = {}) => {
+    const p = new URLSearchParams()
+    if (q.tage)       p.set('tage', String(q.tage))
+    if (q.reichweite) p.set('reichweite', String(q.reichweite))
+    const s = p.toString()
+    return request<Bestellvorschlag>('GET', `/api/einkauf/bestellvorschlag${s ? `?${s}` : ''}`)
+  },
   liste: (filter: { status?: EinkaufBestellstatus; lieferantId?: string } = {}) => {
     const p = new URLSearchParams()
     if (filter.status)      p.set('status', filter.status)

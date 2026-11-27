@@ -691,7 +691,9 @@ export async function erstelleBarzahlungsbeleg(
       // Artikelberichte zählen danach, egal ob mit Pommes oder Kartoffelsalat.
       // ean = EAN des Artikels zum Verkaufszeitpunkt (Aufdruck auf dem Bon; spätere Änderungen am Artikel
       // ändern den Beleg nicht).
-      const positionen: (BelegPosition & { kategorieId?: string | undefined; kategorieName?: string | undefined; artikelName?: string | undefined; ean?: string | undefined })[] =
+      // artikelId = der Artikel selbst: Der Bestellvorschlag zählt den Verbrauch danach, auch wenn der Artikel
+      // später umbenannt wird.
+      const positionen: (BelegPosition & { artikelId?: string | undefined; kategorieId?: string | undefined; kategorieName?: string | undefined; artikelName?: string | undefined; ean?: string | undefined })[] =
         input.positionen.map((p) => {
           // Freie Position: direkt übernehmen, kein Artikel-Lookup
           if (!('artikelId' in p)) {
@@ -710,6 +712,7 @@ export async function erstelleBarzahlungsbeleg(
             : a.bezeichnung
           return {
             bezeichnung,
+            artikelId:          a.id,
             artikelName:        a.bezeichnung,
             menge:              p.menge,
             einzelpreisBreutto: preis,
@@ -918,9 +921,10 @@ export async function erstelleStornobeleg(
       }
 
       // Positionen mit negiertem Einzelpreis
-      const originalPositionen = verweisBeleg.positionen as (BelegPosition & { artikelName?: string; ean?: string })[]
-      const positionen: (BelegPosition & { artikelName?: string | undefined; ean?: string | undefined })[] = originalPositionen.map(p => ({
+      const originalPositionen = verweisBeleg.positionen as (BelegPosition & { artikelId?: string; artikelName?: string; ean?: string })[]
+      const positionen: (BelegPosition & { artikelId?: string | undefined; artikelName?: string | undefined; ean?: string | undefined })[] = originalPositionen.map(p => ({
         bezeichnung:        `Storno: ${p.bezeichnung}`,
+        ...(p.artikelId && { artikelId: p.artikelId }),
         // „Storno: Spritzer" statt je Option eine eigene Storno-Zeile in den Artikelberichten
         ...(p.artikelName && { artikelName: `Storno: ${p.artikelName}` }),
         menge:              p.menge,

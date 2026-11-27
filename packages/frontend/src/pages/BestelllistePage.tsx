@@ -1,318 +1,240 @@
+/**
+ * Bestellliste — Bestellvorschlag aus dem Verbrauch der letzten Tage (Artikel & Lager).
+ *
+ * Vorschlag = Bedarf für die Reichweite + Mindestbestand − Lagerstand − unterwegs (bestellt, nicht geliefert).
+ * Die Rechnung macht der Server (GET /api/einkauf/bestellvorschlag), hier wird gefiltert, geändert, exportiert,
+ * gedruckt und je Lieferant die Bestellung angelegt.
+ */
+
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { Artikel, Lieferant } from '@kassa/shared'
-import { artikelApi, einkaufBestellungApi, lieferantApi } from '../lib/api'
+import { BESTELLVORSCHLAG_STANDARD_TAGE, type Lieferant } from '@kassa/shared'
+import { einkaufBestellungApi, lieferantApi } from '../lib/api'
 import { getAuth } from '../lib/auth'
-import { formatPreis } from '../lib/format'
 import { heuteKalendertag } from '../lib/geschaeftstag'
+import { berichtPdfVorschauUrl, downloadBerichtPdf } from '../lib/pdf'
+import { alsCsv, bestellvorschlagTabelle, ladeCsvHerunter, type ExportZeile } from '../lib/bestellvorschlagExport'
+import { PdfVorschauModal } from '../components/PdfVorschauModal'
 
-// ---------------------------------------------------------------------------
-// Status-Helfer (gleiche Logik wie LagerstandPage)
-// ---------------------------------------------------------------------------
-
-type LagerStatus = 'kritisch' | 'niedrig'
-
-function brauchtNachbestellung(a: Artikel): boolean {
-  if (!a.lagerstandAktiv) return false
-  const menge = a.lagerstandMenge ?? 0
-  if (menge <= 0) return true
-  if (a.mindestbestand != null && menge <= a.mindestbestand) return true
-  return false
-}
-
-function lagerStatus(a: Artikel): LagerStatus {
-  const menge = a.lagerstandMenge ?? 0
-  if (menge <= 0) return 'kritisch'
-  return 'niedrig'
-}
-
-const STATUS_FARBE: Record<LagerStatus, string> = {
-  kritisch: 'bg-red-100 text-red-700 border-red-200',
-  niedrig:  'bg-yellow-100 text-yellow-700 border-yellow-200',
-}
-
-// ---------------------------------------------------------------------------
-// CSV-Export (client-seitig)
-// ---------------------------------------------------------------------------
-
-function exportiereCsv(zeilen: BestellZeile[], lieferantenMap: Map<string, string>) {
-  const header = ['Lieferant', 'Art.-Nr. Lieferant', 'Artikel', 'Aktuell', 'Mindestbestand', 'Zu bestellen', 'EK netto/Stück', 'VK brutto/Stück']
-  const rows = zeilen.map(z => [
-    z.lieferantId ? (lieferantenMap.get(z.lieferantId) ?? 'Unbekannt') : 'Ohne Lieferant',
-    z.lieferantenArtikelnummer ?? '',
-    z.bezeichnung,
-    String(z.lagerstandMenge ?? 0),
-    String(z.mindestbestand ?? '–'),
-    String(z.bestellmenge),
-    z.einkaufspreisCent != null ? formatPreis(z.einkaufspreisCent) : '',
-    formatPreis(z.preisBruttoCent),
-  ])
-  const csv = '﻿' + [header, ...rows].map(r => r.join(';')).join('\r\n')
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
-  const url  = URL.createObjectURL(blob)
-  const a    = document.createElement('a')
-  a.href     = url
-  a.download  = `Bestellliste-${heuteKalendertag()}.csv`
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
-}
-
-// ---------------------------------------------------------------------------
-// Typen
-// ---------------------------------------------------------------------------
-
-interface BestellZeile {
-  id:              string
-  bezeichnung:     string
-  lieferantId:     string | null
-  lagerstandMenge: number | null
-  mindestbestand:  number | null
-  preisBruttoCent: number
-  einkaufspreisCent: number | null
-  lieferantenArtikelnummer: string | null
-  status:          LagerStatus
-  bestellmenge:    number
-}
-
-// ---------------------------------------------------------------------------
-// Komponente
-// ---------------------------------------------------------------------------
+const OHNE = '__ohne__'
+const zahl = (n: number) => n.toLocaleString('de-AT', { maximumFractionDigits: 2 })
 
 export function BestelllistePage() {
-  const auth = getAuth()
-
-  // Nur aktive: deaktivierte Artikel werden nicht mehr nachbestellt
-  const { data: alleArtikel = [], isLoading: artikelLaed } = useQuery({
-    queryKey: ['artikel', auth?.mandant.id, true],
-    queryFn:  () => artikelApi.list(auth!.mandant.id, true),
-    enabled:  !!auth,
-  })
-
-  const { data: lieferanten = [] } = useQuery({
-    queryKey: ['lieferanten'],
-    queryFn:  lieferantApi.list,
-  })
-
-  const lieferantenMap = useMemo(
-    () => new Map(lieferanten.map((l: Lieferant) => [l.id, l])),
-    [lieferanten],
-  )
-  const lieferantenNamenMap = useMemo(
-    () => new Map(lieferanten.map((l: Lieferant) => [l.id, l.name])),
-    [lieferanten],
-  )
-
-  const [mengen, setMengen] = useState<Record<string, number>>({})
   const navigate = useNavigate()
   const qc = useQueryClient()
-  const [bestellFehler, setBestellFehler] = useState<string | null>(null)
+  const [tage, setTage] = useState(BESTELLVORSCHLAG_STANDARD_TAGE)
+  const [reichweite, setReichweite] = useState(BESTELLVORSCHLAG_STANDARD_TAGE)
+  const [nurMitVorschlag, setNurMitVorschlag] = useState(true)
+  const [filterLieferant, setFilterLieferant] = useState<string>('alle')
+  const [mengen, setMengen] = useState<Record<string, number>>({})
+  const [fehler, setFehler] = useState<string | null>(null)
+  const [vorschauUrl, setVorschauUrl] = useState<string | null>(null)
 
-  // Bestellung (Entwurf) aus den Zeilen eines Lieferanten anlegen und direkt öffnen
+  const vorschlagQ = useQuery({
+    queryKey: ['bestellvorschlag', tage, reichweite],
+    queryFn:  () => einkaufBestellungApi.vorschlag({ tage, reichweite }),
+  })
+  const { data: lieferanten = [] } = useQuery({ queryKey: ['lieferanten'], queryFn: lieferantApi.list })
+  const lieferantenMap = useMemo(() => new Map(lieferanten.map((l: Lieferant) => [l.id, l])), [lieferanten])
+  const lieferantName = (id: string | null) => (id && lieferantenMap.get(id)?.name) || 'Ohne Lieferant'
+
+  const zeilen: ExportZeile[] = useMemo(() => (vorschlagQ.data?.zeilen ?? [])
+    .map(z => ({ ...z, bestellmenge: mengen[z.artikelId] ?? z.vorschlag }))
+    .filter(z => !nurMitVorschlag || z.vorschlag > 0 || (mengen[z.artikelId] ?? 0) > 0)
+    .filter(z => filterLieferant === 'alle' || (filterLieferant === OHNE ? !z.lieferantId : z.lieferantId === filterLieferant)),
+  [vorschlagQ.data, mengen, nurMitVorschlag, filterLieferant])
+
+  const gruppen = useMemo(() => {
+    const map = new Map<string, ExportZeile[]>()
+    for (const z of zeilen) {
+      const key = z.lieferantId ?? OHNE
+      map.set(key, [...(map.get(key) ?? []), z])
+    }
+    return [...map.entries()].sort(([a], [b]) => lieferantName(a === OHNE ? null : a).localeCompare(lieferantName(b === OHNE ? null : b), 'de'))
+  }, [zeilen, lieferantenMap]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const lieferantenImVorschlag = useMemo(() =>
+    [...new Set((vorschlagQ.data?.zeilen ?? []).map(z => z.lieferantId).filter((id): id is string => !!id))],
+  [vorschlagQ.data])
+
   const bestellungAnlegen = useMutation({
-    mutationFn: (p: { lieferantId: string; zeilen: BestellZeile[] }) => einkaufBestellungApi.erstelle({
+    mutationFn: (p: { lieferantId: string; zeilen: ExportZeile[] }) => einkaufBestellungApi.erstelle({
       lieferantId: p.lieferantId,
       positionen: p.zeilen.filter(z => z.bestellmenge > 0).map(z => ({
-        artikelId: z.id, bezeichnung: z.bezeichnung, lieferantenArtikelnummer: z.lieferantenArtikelnummer,
+        artikelId: z.artikelId, bezeichnung: z.bezeichnung, lieferantenArtikelnummer: z.lieferantenArtikelnummer,
         menge: z.bestellmenge, einkaufspreisCent: z.einkaufspreisCent,
       })),
     }),
-    onSuccess: b => { setBestellFehler(null); void qc.invalidateQueries({ queryKey: ['einkauf-bestellungen'] }); navigate(`/einkaufsbestellungen?oeffne=${b.id}`) },
-    onError:   e => setBestellFehler(e instanceof Error ? e.message : 'Fehler'),
+    onSuccess: b => {
+      setFehler(null)
+      void qc.invalidateQueries({ queryKey: ['einkauf-bestellungen'] })
+      void qc.invalidateQueries({ queryKey: ['bestellvorschlag'] })
+      navigate(`/einkaufsbestellungen?oeffne=${b.id}`)
+    },
+    onError: e => setFehler(e instanceof Error ? e.message : 'Fehler'),
   })
-  const [filterLieferant, setFilterLieferant] = useState<string>('alle')
 
-  const basisZeilen: BestellZeile[] = useMemo(() => {
-    return alleArtikel
-      .filter(brauchtNachbestellung)
-      .map(a => {
-        const menge     = a.lagerstandMenge ?? 0
-        const mindest   = a.mindestbestand ?? 0
-        const fehlmenge = Math.max(mindest - menge, 0)
-        const vorschlag = Math.max(fehlmenge, mindest, 1)
-        return {
-          id:              a.id,
-          bezeichnung:     a.bezeichnung,
-          lieferantId:     a.lieferantId ?? null,
-          lagerstandMenge: a.lagerstandMenge,
-          mindestbestand:  a.mindestbestand,
-          preisBruttoCent: a.preisBruttoCent,
-          einkaufspreisCent: a.einkaufspreisCent ?? null,
-          lieferantenArtikelnummer: a.lieferantenArtikelnummer ?? null,
-          status:          lagerStatus(a),
-          bestellmenge:    mengen[a.id] ?? vorschlag,
-        }
-      })
-  }, [alleArtikel, mengen])
+  // ── Export / PDF / Druck ───────────────────────────────────────────────────
+  const tabelle = () => bestellvorschlagTabelle(zeilen, lieferantName, tage)
+  const titel = 'Bestellvorschlag'
+  const zeitraum = `Verbrauch der letzten ${tage} Tage, Bedarf für ${reichweite} Tage`
+  const firma = getAuth()?.mandant.firmenname ?? ''
+  const dateiBasis = `Bestellvorschlag-${heuteKalendertag()}`
 
-  const gefilterteZeilen = useMemo(() => {
-    if (filterLieferant === 'alle') return basisZeilen
-    if (filterLieferant === 'ohne') return basisZeilen.filter(z => !z.lieferantId)
-    return basisZeilen.filter(z => z.lieferantId === filterLieferant)
-  }, [basisZeilen, filterLieferant])
-
-  // Gruppierung nach Lieferant
-  const gruppen = useMemo(() => {
-    const map = new Map<string, BestellZeile[]>()
-    for (const z of gefilterteZeilen) {
-      const key = z.lieferantId ?? '__ohne__'
-      const arr = map.get(key) ?? []
-      arr.push(z)
-      map.set(key, arr)
-    }
-    return map
-  }, [gefilterteZeilen])
-
-  function setMenge(id: string, wert: number) {
-    setMengen(prev => ({ ...prev, [id]: Math.max(0, wert) }))
+  const pdf = async () => {
+    try { await downloadBerichtPdf(titel, zeitraum, firma, tabelle(), `${dateiBasis}.pdf`) }
+    catch (e) { setFehler(e instanceof Error ? e.message : 'PDF fehlgeschlagen') }
+  }
+  // Drucken: PDF-Vorschau mit „Drucken" (wie bei den Berichten)
+  const drucken = async () => {
+    try { setVorschauUrl(await berichtPdfVorschauUrl(titel, zeitraum, firma, tabelle())) }
+    catch (e) { setFehler(e instanceof Error ? e.message : 'Druckansicht fehlgeschlagen') }
+  }
+  const schliesseVorschau = () => {
+    if (vorschauUrl) URL.revokeObjectURL(vorschauUrl)
+    setVorschauUrl(null)
   }
 
-  const lieferantenMitBestellung = useMemo(() =>
-    [...new Set(basisZeilen.map(z => z.lieferantId))].filter(Boolean),
-  [basisZeilen])
+  const zahlFeld = (wert: number, setzen: (n: number) => void, testid: string, label: string) => (
+    <label className="flex items-center gap-2 text-sm text-ink-muted">
+      {label}
+      <input
+        type="number" min={1} max={365} value={wert} data-testid={testid}
+        onChange={e => { const n = parseInt(e.target.value, 10); if (n >= 1 && n <= 365) setzen(n) }}
+        className="w-20 text-right border border-line-strong rounded-md px-2 py-1 text-sm font-semibold text-ink bg-panel focus:outline-none focus:ring-2 focus:ring-brand-500"
+      />
+      Tage
+    </label>
+  )
 
-  if (artikelLaed) return <div className="p-8 text-sm text-ink-muted">Wird geladen…</div>
+  const knopf = 'px-3 py-2 rounded-lg border border-line-strong text-sm font-medium text-ink hover:bg-panel-2 transition disabled:opacity-50'
+  const chip = (aktiv: boolean) => `px-3 py-1.5 rounded-full text-sm font-medium border transition ${aktiv ? 'bg-brand-600 text-white border-brand-600' : 'bg-panel text-ink border-line-strong hover:border-brand-400'}`
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-6">
-      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
+    <div className="mx-auto max-w-6xl px-4 py-6">
+      <PdfVorschauModal url={vorschauUrl} titel={titel} dateiname={`${dateiBasis}.pdf`} onClose={schliesseVorschau} />
+      <div className="flex items-start justify-between mb-4 flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-ink">Bestellliste</h1>
           <p className="text-sm text-ink-muted mt-0.5">
-            {basisZeilen.length === 0
-              ? 'Alle Bestände sind ausreichend.'
-              : `${basisZeilen.length} Artikel unter Mindestbestand`}
+            Vorschlag aus dem Verbrauch: Bedarf für die Reichweite + Mindestbestand − Lagerstand − bereits bestellt
           </p>
         </div>
         <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => window.print()}
-            className="px-3 py-2 rounded-lg border border-line-strong text-sm font-medium text-ink hover:bg-panel-2 transition"
-          >
-            Drucken
-          </button>
-          <button
-            type="button"
-            onClick={() => exportiereCsv(gefilterteZeilen, lieferantenNamenMap)}
-            className="px-3 py-2 rounded-lg border border-line-strong text-sm font-medium text-ink hover:bg-panel-2 transition"
-          >
-            CSV-Export
-          </button>
+          <button type="button" className={knopf} disabled={zeilen.length === 0} onClick={() => ladeCsvHerunter(alsCsv(tabelle()), `${dateiBasis}.csv`)} data-testid="vorschlag-csv">CSV-Export</button>
+          <button type="button" className={knopf} disabled={zeilen.length === 0} onClick={() => { void pdf() }} data-testid="vorschlag-pdf">PDF</button>
+          <button type="button" className={knopf} disabled={zeilen.length === 0} onClick={() => { void drucken() }} data-testid="vorschlag-drucken">Drucken</button>
         </div>
       </div>
 
-      {basisZeilen.length === 0 ? (
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mb-5 rounded-xl border border-line bg-panel px-4 py-3">
+        {zahlFeld(tage, setTage, 'vorschlag-tage', 'Verbrauch der letzten')}
+        {zahlFeld(reichweite, setReichweite, 'vorschlag-reichweite', 'Bestellen für')}
+        <label className="flex items-center gap-2 text-sm text-ink">
+          <input type="checkbox" checked={nurMitVorschlag} onChange={e => setNurMitVorschlag(e.target.checked)} data-testid="vorschlag-nur-mit" />
+          Nur Artikel mit Vorschlag
+        </label>
+      </div>
+
+      {lieferantenImVorschlag.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-5">
+          <button type="button" onClick={() => setFilterLieferant('alle')} className={chip(filterLieferant === 'alle')}>Alle</button>
+          {lieferantenImVorschlag.map(lid => (
+            <button key={lid} type="button" onClick={() => setFilterLieferant(lid)} className={chip(filterLieferant === lid)}>
+              {lieferantName(lid)}
+            </button>
+          ))}
+          <button type="button" onClick={() => setFilterLieferant(OHNE)} className={chip(filterLieferant === OHNE)}>Ohne Lieferant</button>
+        </div>
+      )}
+
+      {fehler && <p className="mb-3 text-sm text-red-600" role="alert">{fehler}</p>}
+
+      {vorschlagQ.isLoading ? (
+        <div className="p-8 text-sm text-ink-muted">Wird berechnet…</div>
+      ) : vorschlagQ.isError ? (
+        <p className="text-sm text-red-600" role="alert">{vorschlagQ.error instanceof Error ? vorschlagQ.error.message : 'Fehler'}</p>
+      ) : zeilen.length === 0 ? (
         <div className="rounded-xl border border-green-200 bg-green-50 p-12 text-center">
-          <p className="text-green-700 font-medium">Alle Bestände sind ausreichend.</p>
-          <p className="text-green-600 text-sm mt-1">Es gibt keine Artikel unter dem Mindestbestand.</p>
+          <p className="text-green-700 font-medium">Nichts zu bestellen.</p>
+          <p className="text-green-600 text-sm mt-1">Bestand und bereits Bestelltes reichen für {reichweite} Tage.</p>
         </div>
       ) : (
-        <>
-          {/* Lieferant-Filter */}
-          {lieferantenMitBestellung.length > 0 && (
-            <div className="flex flex-wrap gap-2 mb-5">
-              <button type="button" onClick={() => setFilterLieferant('alle')}
-                className={`px-3 py-1.5 rounded-full text-sm font-medium border transition ${filterLieferant === 'alle' ? 'bg-brand-600 text-white border-brand-600' : 'bg-panel text-ink border-line-strong hover:border-brand-400'}`}>
-                Alle
-              </button>
-              {lieferantenMitBestellung.map(lid => (
-                <button key={lid} type="button" onClick={() => setFilterLieferant(lid!)}
-                  className={`px-3 py-1.5 rounded-full text-sm font-medium border transition ${filterLieferant === lid ? 'bg-brand-600 text-white border-brand-600' : 'bg-panel text-ink border-line-strong hover:border-brand-400'}`}>
-                  {lieferantenMap.get(lid!)?.name ?? lid}
-                </button>
-              ))}
-              <button type="button" onClick={() => setFilterLieferant('ohne')}
-                className={`px-3 py-1.5 rounded-full text-sm font-medium border transition ${filterLieferant === 'ohne' ? 'bg-brand-600 text-white border-brand-600' : 'bg-panel text-ink border-line-strong hover:border-brand-400'}`}>
-                Ohne Lieferant
-              </button>
-            </div>
-          )}
-
-          {bestellFehler && <p className="mb-3 text-sm text-red-600" role="alert">{bestellFehler}</p>}
-
-          {/* Gruppen */}
-          <div className="space-y-6">
-            {[...gruppen.entries()].map(([gruppeKey, zeilen]) => {
-              const lieferant = gruppeKey !== '__ohne__' ? lieferantenMap.get(gruppeKey) : null
-              return (
-                <div key={gruppeKey} className="bg-panel rounded-xl border border-line overflow-hidden">
-                  {/* Gruppen-Header */}
-                  <div className="px-4 py-3 bg-panel-2 border-b border-line flex items-center justify-between flex-wrap gap-2">
-                    <div>
-                      <p className="font-semibold text-ink">
-                        {lieferant ? lieferant.name : 'Ohne Lieferant'}
-                      </p>
-                      {lieferant && (
-                        <div className="flex gap-4 text-xs text-ink-muted mt-0.5">
-                          {lieferant.kontakt && <span>{lieferant.kontakt}</span>}
-                          {lieferant.email   && <a href={`mailto:${lieferant.email}`} className="text-brand-600 hover:underline">{lieferant.email}</a>}
-                          {lieferant.telefon && <a href={`tel:${lieferant.telefon}`}  className="text-brand-600 hover:underline">{lieferant.telefon}</a>}
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <p className="text-xs text-ink-muted">{zeilen.length} Artikel</p>
-                      {lieferant && (
-                        <button
-                          type="button"
-                          data-testid="bestellung-anlegen"
-                          disabled={bestellungAnlegen.isPending || zeilen.every(z => z.bestellmenge <= 0)}
-                          onClick={() => bestellungAnlegen.mutate({ lieferantId: lieferant.id, zeilen })}
-                          className="px-3 py-1.5 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 disabled:opacity-50 transition"
-                        >
-                          Bestellung anlegen
-                        </button>
-                      )}
-                    </div>
+        <div className="space-y-6">
+          {gruppen.map(([key, gz]) => {
+            const lieferant = key !== OHNE ? lieferantenMap.get(key) : undefined
+            return (
+              <div key={key} className="bg-panel rounded-xl border border-line overflow-hidden">
+                <div className="px-4 py-3 bg-panel-2 border-b border-line flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <p className="font-semibold text-ink">{lieferant ? lieferant.name : 'Ohne Lieferant'}</p>
+                    {lieferant && (
+                      <div className="flex gap-4 text-xs text-ink-muted mt-0.5">
+                        {lieferant.kontakt && <span>{lieferant.kontakt}</span>}
+                        {lieferant.email   && <a href={`mailto:${lieferant.email}`} className="text-brand-600 hover:underline">{lieferant.email}</a>}
+                        {lieferant.telefon && <a href={`tel:${lieferant.telefon}`}  className="text-brand-600 hover:underline">{lieferant.telefon}</a>}
+                      </div>
+                    )}
                   </div>
-
-                  {/* Artikel-Tabelle */}
+                  <div className="flex items-center gap-3">
+                    <p className="text-xs text-ink-muted">{gz.length} Artikel</p>
+                    {lieferant && (
+                      <button
+                        type="button" data-testid="bestellung-anlegen"
+                        disabled={bestellungAnlegen.isPending || gz.every(z => z.bestellmenge <= 0)}
+                        onClick={() => bestellungAnlegen.mutate({ lieferantId: lieferant.id, zeilen: gz })}
+                        className="px-3 py-1.5 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 disabled:opacity-50 transition"
+                      >
+                        Bestellung anlegen
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="text-xs font-semibold text-ink-muted uppercase tracking-wide border-b border-line">
                         <th className="px-4 py-2 text-left">Artikel</th>
-                        <th className="px-4 py-2 text-right">Aktuell</th>
-                        <th className="px-4 py-2 text-right">Mindest</th>
-                        <th className="px-4 py-2 text-right w-32">Zu bestellen</th>
-                        <th className="px-4 py-2 text-center">Status</th>
+                        <th className="px-3 py-2 text-right">Bestand</th>
+                        <th className="px-3 py-2 text-right">Unterwegs</th>
+                        <th className="px-3 py-2 text-right">Verbrauch {tage} T</th>
+                        <th className="px-3 py-2 text-right">Ø/Tag</th>
+                        <th className="px-3 py-2 text-right">Reicht</th>
+                        <th className="px-3 py-2 text-right">Mindest</th>
+                        <th className="px-3 py-2 text-right">Vorschlag</th>
+                        <th className="px-4 py-2 text-right w-28">Bestellen</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-line">
-                      {zeilen.map(z => (
-                        <tr key={z.id} className="hover:bg-panel-2">
-                          <td className="px-4 py-3 font-medium text-ink">{z.bezeichnung}</td>
-                          <td className="px-4 py-3 text-right font-mono text-ink-muted">
-                            {z.lagerstandMenge ?? 0}
+                      {gz.map(z => (
+                        <tr key={z.artikelId} className="hover:bg-panel-2" data-testid="vorschlag-zeile">
+                          <td className="px-4 py-2.5 font-medium text-ink">{z.bezeichnung}</td>
+                          <td className="px-3 py-2.5 text-right font-mono text-ink-muted">{zahl(z.bestand)}</td>
+                          <td className="px-3 py-2.5 text-right font-mono text-ink-muted">{z.unterwegs > 0 ? zahl(z.unterwegs) : '–'}</td>
+                          <td className="px-3 py-2.5 text-right font-mono text-ink-muted">{zahl(z.verbrauch)}</td>
+                          <td className="px-3 py-2.5 text-right font-mono text-ink-muted">{zahl(z.verbrauchProTag)}</td>
+                          <td className={`px-3 py-2.5 text-right font-mono ${z.reichtTage !== null && z.reichtTage < reichweite ? 'text-red-600 font-semibold' : 'text-ink-muted'}`}>
+                            {z.reichtTage === null ? '–' : `${zahl(z.reichtTage)} T`}
                           </td>
-                          <td className="px-4 py-3 text-right font-mono text-ink-muted">
-                            {z.mindestbestand ?? '–'}
-                          </td>
-                          <td className="px-4 py-3 text-right">
+                          <td className="px-3 py-2.5 text-right font-mono text-ink-muted">{z.mindestbestand ?? '–'}</td>
+                          <td className="px-3 py-2.5 text-right font-mono text-ink">{zahl(z.vorschlag)}</td>
+                          <td className="px-4 py-2.5 text-right">
                             <input
-                              type="number"
-                              min={0}
-                              value={z.bestellmenge}
-                              onChange={e => setMenge(z.id, parseInt(e.target.value) || 0)}
-                              className="w-24 text-right border border-line-strong rounded-md px-2 py-1 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-brand-500"
+                              type="number" min={0} value={z.bestellmenge} data-testid="vorschlag-menge" aria-label={`Bestellmenge ${z.bezeichnung}`}
+                              onChange={e => setMengen(m => ({ ...m, [z.artikelId]: Math.max(0, parseInt(e.target.value, 10) || 0) }))}
+                              className="w-24 text-right border border-line-strong rounded-md px-2 py-1 text-sm font-semibold bg-panel text-ink focus:outline-none focus:ring-2 focus:ring-brand-500"
                             />
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold border ${STATUS_FARBE[z.status]}`}>
-                              {z.status === 'kritisch' ? 'Kritisch' : 'Niedrig'}
-                            </span>
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
-              )
-            })}
-          </div>
-        </>
+              </div>
+            )
+          })}
+        </div>
       )}
     </div>
   )

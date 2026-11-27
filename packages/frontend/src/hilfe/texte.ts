@@ -378,24 +378,31 @@ export const HILFE_THEMEN: HilfeThema[] = [
   {
     id: 'lagerstand',
     titel: 'Lagerstand',
-    zweck: 'Übersicht über Bestände und Mindestbestände.',
+    zweck: 'Übersicht über Bestände, Mindestbestände und wie lange der Bestand voraussichtlich reicht.',
     pfade: ['/lagerstand'],
     schritte: [
       'Die Liste zeigt je Artikel den aktuellen Bestand. „Suche…" grenzt sie ein.',
+      '„Reicht" ist die erwartete Reichweite in Tagen: Lagerstand geteilt durch den Ø-Verbrauch der letzten 14 Tage (einstellbar). Rot unter einer Woche. Ist schon Ware bestellt, steht darunter, wie lange es samt Bestellung reicht.',
+      '„Sortieren nach: Reichweite" stellt die Artikel nach oben, die zuerst ausgehen.',
+      '„CSV-Export", „PDF" und „Drucken" geben die Liste samt Reichweite aus.',
       '„Warengruppe in Lagerführung aufnehmen" schaltet den Lagerstand für eine ganze Warengruppe ein.',
-      'Fällt der Bestand unter den Mindestbestand, erscheint der Artikel in der Bestellliste.',
     ],
   },
   {
     id: 'bestellliste',
     titel: 'Bestellliste',
-    zweck: 'Artikel unter Mindestbestand — was nachbestellt werden muss.',
+    zweck: 'Bestellvorschlag aus dem Verbrauch — was nachbestellt werden muss.',
     pfade: ['/bestellliste'],
     schritte: [
-      'Die Liste zeigt automatisch alle Artikel, die den Mindestbestand unterschreiten, samt Lieferant.',
-      '„CSV-Export" speichert sie für die Bestellung.',
+      'Der Vorschlag rechnet je Artikel: Verbrauch der letzten 14 Tage hochgerechnet auf die Reichweite („Bestellen für"), plus Mindestbestand, minus Lagerstand, minus schon bestellte und noch nicht gelieferte Ware.',
+      'Verbrauch = Verkäufe minus Stornos aller Kassen; Rohstoffe zählen über die Rezepturen ihrer Artikel mit.',
+      'Die Menge in „Bestellen" kannst du ändern. „Bestellung anlegen" macht daraus je Lieferant eine Bestellung.',
+      '„CSV-Export", „PDF" und „Drucken" geben den Vorschlag aus.',
     ],
-    tipps: ['Den Mindestbestand trägst du beim Artikel ein (Lagerstand aktivieren).'],
+    tipps: [
+      'Den Mindestbestand trägst du beim Artikel ein (Lagerstand aktivieren); er bleibt als Sicherheitsbestand übrig.',
+      'Nur Bestellungen mit Status „gesendet" oder „teilgeliefert" zählen als unterwegs, Entwürfe nicht.',
+    ],
   },
   {
     id: 'lieferanten',

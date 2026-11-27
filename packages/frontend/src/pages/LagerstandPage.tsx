@@ -1,10 +1,24 @@
-import { useState, useRef } from 'react'
+import { useMemo, useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { Artikel } from '@kassa/shared'
+import { BESTELLVORSCHLAG_STANDARD_TAGE, type Artikel, type BestellvorschlagZeile } from '@kassa/shared'
 import { baumFlach, kategoriePfad } from '../lib/kategorie-baum'
-import { artikelApi, kategorieApi } from '../lib/api'
+import { artikelApi, einkaufBestellungApi, kategorieApi } from '../lib/api'
 import { getAuth } from '../lib/auth'
 import { getKasseIdentity } from '../lib/kasse'
+import { heuteKalendertag } from '../lib/geschaeftstag'
+import { berichtPdfVorschauUrl, downloadBerichtPdf } from '../lib/pdf'
+import { alsCsv, ladeCsvHerunter, reichweiteTabelle } from '../lib/bestellvorschlagExport'
+import { PdfVorschauModal } from '../components/PdfVorschauModal'
+
+const zahl = (n: number) => n.toLocaleString('de-AT', { maximumFractionDigits: 1 })
+
+/** Erwartete Reichweite in Tagen: rot unter einer Woche, gelb unter dem Rückblick */
+function reichweiteFarbe(tageReicht: number | null, rueckblick: number): string {
+  if (tageReicht === null) return 'text-ink-subtle'
+  if (tageReicht < 7) return 'text-red-600 font-semibold'
+  if (tageReicht < rueckblick) return 'text-yellow-700 font-semibold'
+  return 'text-ink'
+}
 
 // ---------------------------------------------------------------------------
 // Status-Logik
@@ -122,6 +136,20 @@ export function LagerstandPage() {
   const queryClient  = useQueryClient()
   const [filter, setFilter] = useState<'alle' | 'alarm'>('alle')
   const [suche, setSuche]   = useState('')
+  const [sortierung, setSortierung] = useState<'status' | 'reichweite'>('status')
+  const [tage, setTage] = useState(BESTELLVORSCHLAG_STANDARD_TAGE)
+  const [exportFehler, setExportFehler] = useState<string | null>(null)
+  const [vorschauUrl, setVorschauUrl] = useState<string | null>(null)
+
+  // Verbrauch der letzten Tage → erwartete Reichweite (dieselbe Rechnung wie die Bestellliste)
+  const verbrauchQ = useQuery({
+    queryKey: ['bestellvorschlag', tage, tage],
+    queryFn:  () => einkaufBestellungApi.vorschlag({ tage, reichweite: tage }),
+  })
+  const verbrauch = useMemo(
+    () => new Map((verbrauchQ.data?.zeilen ?? []).map(z => [z.artikelId, z] as [string, BestellvorschlagZeile])),
+    [verbrauchQ.data],
+  )
 
   // Nur aktive: deaktivierte Artikel sollen keinen Lager-Alarm auslösen
   const { data: alleArtikel = [], isLoading } = useQuery({
@@ -161,6 +189,13 @@ export function LagerstandPage() {
     .filter(a => filter === 'alle' || lagerStatus(a) === 'kritisch' || lagerStatus(a) === 'niedrig')
     .filter(a => !suche || a.bezeichnung.toLowerCase().includes(suche.toLowerCase()))
     .sort((a, b) => {
+      if (sortierung === 'reichweite') {
+        // Kürzeste Reichweite zuerst; ohne Verbrauch (reicht „ewig") ans Ende
+        const ra = verbrauch.get(a.id)?.reichtTageBestand ?? Infinity
+        const rb = verbrauch.get(b.id)?.reichtTageBestand ?? Infinity
+        if (ra !== rb) return ra - rb
+        return a.bezeichnung.localeCompare(b.bezeichnung)
+      }
       // Kritisch zuerst, dann Niedrig, dann OK
       const prio: Record<LagerStatus, number> = { kritisch: 0, niedrig: 1, ok: 2, unbekannt: 3 }
       const diff = prio[lagerStatus(a)] - prio[lagerStatus(b)]
@@ -177,9 +212,46 @@ export function LagerstandPage() {
 
   const [gewaehlteKategorie, setGewaehlteKategorie] = useState<string>('alle')
 
+  // ── Export / PDF / Druck der Liste mit Reichweite ──────────────────────────
+  const tabelle = () => reichweiteTabelle(angezeigt.map(a => {
+    const v = verbrauch.get(a.id)
+    return {
+      bezeichnung: a.bezeichnung, artikelnummer: a.artikelnummer ?? null, bestand: a.lagerstandMenge ?? 0,
+      mindestbestand: a.mindestbestand ?? null, verbrauch: v?.verbrauch ?? 0, verbrauchProTag: v?.verbrauchProTag ?? 0,
+      reichtTageBestand: v?.reichtTageBestand ?? null, unterwegs: v?.unterwegs ?? 0, reichtTage: v?.reichtTage ?? null,
+    }
+  }), tage)
+  const titel = 'Lagerstand und Reichweite'
+  const zeitraum = `Erwartete Reichweite aus dem Ø-Verbrauch der letzten ${tage} Tage`
+  const firma = auth?.mandant.firmenname ?? ''
+  const dateiBasis = `Lagerstand-Reichweite-${heuteKalendertag()}`
+  const pdf = async () => {
+    try { await downloadBerichtPdf(titel, zeitraum, firma, tabelle(), `${dateiBasis}.pdf`) }
+    catch (e) { setExportFehler(e instanceof Error ? e.message : 'PDF fehlgeschlagen') }
+  }
+  // Drucken: PDF-Vorschau mit „Drucken" (wie bei den Berichten)
+  const drucken = async () => {
+    try { setVorschauUrl(await berichtPdfVorschauUrl(titel, zeitraum, firma, tabelle())) }
+    catch (e) { setExportFehler(e instanceof Error ? e.message : 'Druckansicht fehlgeschlagen') }
+  }
+  const schliesseVorschau = () => {
+    if (vorschauUrl) URL.revokeObjectURL(vorschauUrl)
+    setVorschauUrl(null)
+  }
+  const knopf = 'px-3 py-1.5 rounded-lg border border-line-strong text-sm font-medium text-ink hover:bg-panel-2 transition disabled:opacity-50'
+
   return (
-    <div className="max-w-4xl mx-auto px-4 py-6">
-      <h1 className="text-2xl font-bold text-ink mb-4">Lagerstand-Übersicht</h1>
+    <div className="max-w-5xl mx-auto px-4 py-6">
+      <PdfVorschauModal url={vorschauUrl} titel={titel} dateiname={`${dateiBasis}.pdf`} onClose={schliesseVorschau} />
+      <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
+        <h1 className="text-2xl font-bold text-ink">Lagerstand-Übersicht</h1>
+        <div className="flex gap-2">
+          <button type="button" className={knopf} disabled={angezeigt.length === 0} onClick={() => ladeCsvHerunter(alsCsv(tabelle()), `${dateiBasis}.csv`)} data-testid="lager-csv">CSV-Export</button>
+          <button type="button" className={knopf} disabled={angezeigt.length === 0} onClick={() => { void pdf() }} data-testid="lager-pdf">PDF</button>
+          <button type="button" className={knopf} disabled={angezeigt.length === 0} onClick={() => { void drucken() }} data-testid="lager-drucken">Drucken</button>
+        </div>
+      </div>
+      {exportFehler && <p className="mb-3 text-sm text-red-600" role="alert">{exportFehler}</p>}
 
       {/* Warengruppe in Lager aufnehmen */}
       <div className="mb-6 rounded-xl border border-brand-200 bg-brand-50 p-4">
@@ -247,6 +319,27 @@ export function LagerstandPage() {
           className="flex-1 px-3 py-1.5 border border-line rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
         />
       </div>
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mb-4 text-sm text-ink-muted">
+        <label className="flex items-center gap-2">
+          Reichweite aus dem Verbrauch der letzten
+          <input
+            type="number" min={1} max={365} value={tage} data-testid="lager-tage"
+            onChange={e => { const n = parseInt(e.target.value, 10); if (n >= 1 && n <= 365) setTage(n) }}
+            className="w-16 text-right border border-line-strong rounded-md px-2 py-1 text-sm font-semibold text-ink bg-panel focus:outline-none focus:ring-2 focus:ring-brand-500"
+          />
+          Tage
+        </label>
+        <label className="flex items-center gap-2">
+          Sortieren nach
+          <select
+            value={sortierung} onChange={e => setSortierung(e.target.value as 'status' | 'reichweite')} data-testid="lager-sortierung"
+            className="rounded-md border border-line-strong bg-panel px-2 py-1 text-sm text-ink"
+          >
+            <option value="status">Status</option>
+            <option value="reichweite">Reichweite (kürzeste zuerst)</option>
+          </select>
+        </label>
+      </div>
 
       {/* Tabelle */}
       {isLoading ? (
@@ -265,6 +358,8 @@ export function LagerstandPage() {
                 <th className="px-4 py-3 text-left">Artikel</th>
                 <th className="px-4 py-3 text-right">Lagerstand</th>
                 <th className="px-4 py-3 text-right">Mindestbestand</th>
+                <th className="px-3 py-3 text-right">Ø/Tag</th>
+                <th className="px-3 py-3 text-right" title="Erwartete Reichweite des Lagerstands beim Ø-Verbrauch">Reicht</th>
                 <th className="px-4 py-3 text-center">Status</th>
               </tr>
             </thead>
@@ -302,6 +397,24 @@ export function LagerstandPage() {
                         onSave={(id, mindestbestand) => updateMutation.mutate({ id, mindestbestand })}
                       />
                     </td>
+                    <td className="px-3 py-3 text-right font-mono text-ink-muted" data-testid="lager-pro-tag">
+                      {verbrauch.has(a.id) ? zahl(verbrauch.get(a.id)!.verbrauchProTag) : '…'}
+                    </td>
+                    <td className="px-3 py-3 text-right font-mono" data-testid="lager-reicht">
+                      {(() => {
+                        const v = verbrauch.get(a.id)
+                        if (!v) return <span className="text-ink-subtle">…</span>
+                        if (v.reichtTageBestand === null) return <span className="text-ink-subtle" title="Kein Verbrauch im Zeitraum">–</span>
+                        return (
+                          <span className={reichweiteFarbe(v.reichtTageBestand, tage)}>
+                            {zahl(v.reichtTageBestand)} T
+                            {v.unterwegs > 0 && v.reichtTage !== null && (
+                              <span className="block text-[11px] font-normal text-ink-muted">mit Bestellung {zahl(v.reichtTage)} T</span>
+                            )}
+                          </span>
+                        )
+                      })()}
+                    </td>
                     <td className="px-4 py-3 text-center">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${STATUS_FARBE[st]}`}>
                         {STATUS_LABEL[st]}
@@ -317,6 +430,7 @@ export function LagerstandPage() {
 
       <p className="mt-4 text-xs text-ink-subtle">
         Tipp: Klicke auf den Mindestbestand-Wert, um ihn direkt zu bearbeiten. Leerlassen = kein Alarm.
+        „Reicht" = Lagerstand ÷ Ø-Verbrauch je Tag (Verkäufe minus Stornos, Rohstoffe über die Rezepturen).
       </p>
     </div>
   )

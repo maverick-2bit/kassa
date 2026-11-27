@@ -83,9 +83,9 @@ test('Bestellung beim Lieferanten: aus der Bestellliste anlegen, bearbeiten, PDF
     await expect(dialog.getByText(artikel1)).toBeVisible()
     await expect(dialog.getByText(artikel2)).toBeVisible()
     await expect(dialog.getByText(`TN-${ts}`)).toBeVisible()
-    // Vorschlag: max(Fehlmenge, Mindestbestand, 1) → 4 × 45,00 + 10 × 1,50 = 195,00
+    // Vorschlag ohne Verbrauch: bis zum Mindestbestand auffüllen → (4 − 1) × 45,00 + (10 − 0) × 1,50 = 150,00
     await expect(dialog.getByText('Entwurf', { exact: true })).toBeVisible()
-    await expect(dialog.getByRole('cell', { name: /195,00/ }).first()).toBeVisible()
+    await expect(dialog.getByRole('cell', { name: /150,00/ }).first()).toBeVisible()
     const titel = await dialog.locator('h2').first().textContent()
     const nummer = /B\d{7}/.exec(titel ?? '')?.[0]
     expect(nummer, `Bestellnummer im Titel „${titel}"`).toBeTruthy()

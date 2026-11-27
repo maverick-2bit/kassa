@@ -139,6 +139,7 @@ export const ROUTEN_RECHTE: ReadonlyArray<readonly [Zugriff, readonly RoutenSchl
       'POST /api/artikel/bulk',
       'POST /api/artikel/lager-aktivieren',
       'PATCH /api/artikel/reihenfolge',
+      'GET /api/einkauf/bestellvorschlag',
       'GET /api/einkauf/bestellungen',
       'POST /api/einkauf/bestellungen',
       'DELETE /api/einkauf/bestellungen/:id',

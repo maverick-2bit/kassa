@@ -87,6 +87,16 @@ export type {
   EinkaufBestellungEmail,
 } from './schemas/einkaufsbestellung.js'
 
+// Bestellvorschlag aus dem Verbrauch
+export {
+  BESTELLVORSCHLAG_STANDARD_TAGE,
+  BestellvorschlagQuerySchema,
+  BestellvorschlagZeileSchema,
+  BestellvorschlagSchema,
+  berechneVorschlag,
+} from './schemas/bestellvorschlag.js'
+export type { BestellvorschlagQuery, BestellvorschlagZeile, Bestellvorschlag } from './schemas/bestellvorschlag.js'
+
 // Mandanten-Module + Stammdaten
 export {
   MandantModulSchema,
