@@ -15,6 +15,7 @@ import {
   createSign,
   createVerify,
   createPrivateKey,
+  createPublicKey,
   X509Certificate,
   type KeyObject,
 } from 'node:crypto'
@@ -78,6 +79,29 @@ export async function generateSEE(opts: SEEGenerierungsOptionen): Promise<SEECon
     // Software-SEE: Kennzeichen für geschlossene Gesamtsysteme — nur Dev/Test
     zdaId:         'AT0',
   }
+}
+
+/**
+ * Neues selbstsigniertes Zertifikat für einen VORHANDENEN Software-Schlüssel — z. B. wenn eine Kasse von einer
+ * externen Einheit (A-Trust, Signaturkarte) auf die Software-SEE zurückwechselt: Deren Zertifikat wurde beim
+ * Wechsel überschrieben, und ohne passendes Zertifikat schlüge die Gegenprobe jeder Signatur fehl.
+ */
+export function erneuereSoftwareZertifikat(
+  privateKeyDER: Buffer,
+  opts: SEEGenerierungsOptionen,
+): Buffer {
+  const privateKey = createPrivateKey({ key: privateKeyDER, format: 'der', type: 'pkcs8' })
+  const publicKey  = createPublicKey(privateKey)
+  const jetzt = new Date()
+  return buildSelfSignedCert({
+    subject: { commonName: `RKSV-SEE-${opts.kassenId}`, organization: opts.firmenname, country: 'AT' },
+    uid:        opts.uid,
+    kassenId:   opts.kassenId,
+    notBefore:  jetzt,
+    notAfter:   new Date(jetzt.getTime() + (opts.gueltigkeitTage ?? 1826) * 24 * 60 * 60 * 1000),
+    privateKey,
+    publicKey,
+  })
 }
 
 // ---------------------------------------------------------------------------

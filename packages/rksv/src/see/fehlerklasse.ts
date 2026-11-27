@@ -20,6 +20,7 @@
 
 import { SignaturUngueltigError } from '../beleg.js'
 import { ATrustHsmError } from './signatur-einheit.js'
+import { KartenError } from './karte/rk-chip.js'
 
 export type SeeFehlerKlasse = 'ausfall' | 'konfiguration'
 
@@ -37,6 +38,10 @@ export function klassifiziereSeeFehler(err: unknown): SeeFehlerKlasse {
     if (err.status === undefined) return 'ausfall'
     return istVorlaeufig(err.status) ? 'ausfall' : 'konfiguration'
   }
+
+  // Signaturkarte: gezogen, Leser oder Kartenbrücke weg, Karte antwortet wirr → Ausfall.
+  // PIN falsch/gesperrt/fehlt, andere Karte, Brücke weist uns ab → das behebt kein Warten.
+  if (err instanceof KartenError) return err.vorlaeufig ? 'ausfall' : 'konfiguration'
 
   // Alles andere stammt nicht von der Gegenstelle: kaputter Schlüssel, kaputtes Zertifikat,
   // Programmfehler. Verstecken wir hinter einem „Ausfall", merkt es niemand.

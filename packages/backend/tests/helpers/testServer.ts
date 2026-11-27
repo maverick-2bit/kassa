@@ -8,7 +8,7 @@ import type { FastifyInstance } from 'fastify'
 import { buildServer } from '../../src/server.js'
 import type { Db } from '../../src/db/client.js'
 import type { Berechtigung, Rolle } from '@kassa/shared'
-import type { FinanzOnlineClient } from '@kassa/rksv'
+import type { ApduTransport, FinanzOnlineClient } from '@kassa/rksv'
 import type { Config } from '../../src/config.js'
 import type { ShopStripe } from '../../src/services/ticketshop.service.js'
 import type { RoutenEintrag } from '../../src/server.js'
@@ -53,6 +53,8 @@ export interface BuildTestServerOptions {
   logStream?: { write: (zeile: string) => void }
   /** Alle registrierten Routen samt Wächtern einsammeln (tests/route-schutz.test.ts) */
   routenRegister?: RoutenEintrag[]
+  /** Weg zur Signaturkarte (in Tests: SimulierteSignaturkarte) */
+  kartenTransport?: ApduTransport
 }
 
 export async function buildTestServer(db: Db, opts: BuildTestServerOptions = {}): Promise<TestServer> {
@@ -91,11 +93,14 @@ export async function buildTestServer(db: Db, opts: BuildTestServerOptions = {})
       db,
       masterPassphrase: TEST_MASTER,
       ...(opts.finanzOnlineClient && { rksvOptionen: { finanzOnlineClient: opts.finanzOnlineClient } }),
+      ...(opts.kartenTransport && { kartenTransport: opts.kartenTransport }),
+      lokaleAtrustUrlErlaubt: true,
     },
     belegDeps: {
       db,
       masterPassphrase: TEST_MASTER,
       ...(opts.finanzOnlineClient && { finanzOnlineClient: opts.finanzOnlineClient }),
+      ...(opts.kartenTransport && { kartenTransport: opts.kartenTransport }),
     },
   })
 

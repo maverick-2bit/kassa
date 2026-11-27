@@ -57,6 +57,7 @@ import type {
   SbBestellung,
   SeeConfig,
   SeeConfigUpdate,
+  KartenbrueckeStatus,
   SeeTestErgebnis,
   Seriennummer,
   TischplanBereich,
@@ -563,6 +564,16 @@ export async function postSetup(input: SetupInput): Promise<SetupResponse> {
 export const setupApi = {
   status: (): Promise<{ eingerichtet: boolean }> =>
     request<{ eingerichtet: boolean }>('GET', '/api/setup/status'),
+  /** Steckt eine Signaturkarte, und welche? Ohne PIN (kein Fehlversuch). */
+  signaturkarte: async (uid: string): Promise<SeeTestErgebnis> => {
+    const token = getToken()
+    const res = await fetch('/api/setup/signaturkarte', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body:    JSON.stringify({ uid }),
+    })
+    return (await res.json()) as SeeTestErgebnis
+  },
 }
 
 // ---------------------------------------------------------------------------
@@ -648,6 +659,9 @@ export const preisregelApi = {
 export const seeApi = {
   get:    (kasseId: string) =>
     request<SeeConfig>('GET', `/api/kassen/${kasseId}/see`),
+  /** Läuft die Kartenbrücke am PC, und ist sie aktuell? */
+  kartenbruecke: (kasseId: string) =>
+    request<KartenbrueckeStatus>('GET', `/api/kassen/${kasseId}/see/kartenbruecke`),
   test:   (kasseId: string, input: SeeConfigUpdate) =>
     request<SeeTestErgebnis>('POST', `/api/kassen/${kasseId}/see/test`, input),
   update: (kasseId: string, input: SeeConfigUpdate) =>

@@ -158,6 +158,7 @@ export type {
 // Setup
 export {
   SetupModuleSchema,
+  SignaturWahlSchema,
   SetupInputSchema,
   SetupResponseSchema,
   EinrichtungsSchrittSchema,
@@ -170,6 +171,7 @@ export {
 export type {
   SetupModule,
   SetupInput,
+  SignaturWahl,
   SetupResponse,
   EinrichtungsSchrittDto,
   FinanzOnlineCredentialsInput,
@@ -740,8 +742,10 @@ export type {
 export {
   SeeTypSchema,
   SEE_TYP_LABELS,
+  KartePinSchema,
   SeeConfigSchema,
   SeeConfigUpdateSchema,
+  KartenbrueckeStatusSchema,
   SeeTestErgebnisSchema,
   ATRUST_ERLAUBTE_HOSTS,
   istErlaubteAtrustBasisUrl,
@@ -750,6 +754,7 @@ export type {
   SeeTyp,
   SeeConfig,
   SeeConfigUpdate,
+  KartenbrueckeStatus,
   SeeTestErgebnis,
 } from './schemas/see.js'
 

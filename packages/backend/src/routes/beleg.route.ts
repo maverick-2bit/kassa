@@ -18,7 +18,7 @@ import {
   geschaeftstagText,
   type BarzahlungsbelegInput,
 } from '@kassa/shared'
-import { ATrustHsmError, FonSoapError } from '@kassa/rksv'
+import { ATrustHsmError, FonSoapError, KartenError } from '@kassa/rksv'
 import {
   erstelleBarzahlungsbeleg,
   erstelleStornobeleg,
@@ -399,6 +399,11 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
       // bleibt bestehen, der Kassier braucht den Grund.
       if (err instanceof ATrustHsmError) {
         fastify.log.warn({ err }, 'SEE-Wiederherstellung: A-Trust signiert weiterhin nicht')
+        return reply.status(502).send({ fehler: err.message })
+      }
+      // Signaturkarte gezogen, Leser oder Kartenbrücke weg: der Ausfall bleibt
+      if (err instanceof KartenError) {
+        fastify.log.warn({ err }, 'SEE-Wiederherstellung: Signaturkarte nicht verfügbar')
         return reply.status(502).send({ fehler: err.message })
       }
       throw err

@@ -4,13 +4,17 @@ import { z } from 'zod'
 // Signaturerstellungseinheit (SEE) — Konfiguration je Kasse
 // ---------------------------------------------------------------------------
 
-export const SeeTypSchema = z.enum(['software', 'atrust_hsm'])
+export const SeeTypSchema = z.enum(['software', 'atrust_hsm', 'atrust_chip'])
 export type SeeTyp = z.infer<typeof SeeTypSchema>
 
 export const SEE_TYP_LABELS: Record<SeeTyp, string> = {
-  software:   'Software (nur Entwicklung/Test)',
-  atrust_hsm: 'A-Trust a.sign RK HSM (Cloud)',
+  software:    'Software (nur Entwicklung/Test)',
+  atrust_hsm:  'A-Trust a.sign RK HSM (Cloud)',
+  atrust_chip: 'A-Trust a.sign RK CHIP (Signaturkarte, lokal — ohne Internet)',
 }
+
+/** Karten-PIN der Signaturkarte: nur Ziffern, 4 bis 12 Stellen */
+export const KartePinSchema = z.string().regex(/^\d{4,12}$/, 'Die Karten-PIN besteht aus 4 bis 12 Ziffern')
 
 /** Aktuelle SEE-Konfiguration einer Kasse (ohne Geheimnisse) */
 export const SeeConfigSchema = z.object({
@@ -20,6 +24,12 @@ export const SeeConfigSchema = z.object({
   atrustBenutzer:        z.string().nullable(),
   /** true = ein A-Trust-Passwort ist hinterlegt (Wert wird nie ausgeliefert) */
   atrustPasswortGesetzt: z.boolean(),
+  /** Signaturkarte: true = eine PIN ist hinterlegt (Wert wird nie ausgeliefert) */
+  kartePinGesetzt:       z.boolean(),
+  /** Signaturkarte: true = die Karte hat die PIN abgelehnt — die Kassa signiert erst nach neuer PIN wieder */
+  kartePinGesperrt:      z.boolean(),
+  /** Wortlaut der letzten PIN-Ablehnung (z. B. „noch 2 Versuche") */
+  kartePinHinweis:       z.string().nullable(),
   zertifikatSn:          z.string(),
   zertifikatGueltigBis:  z.string(),
 })
@@ -58,8 +68,28 @@ export const SeeConfigUpdateSchema = z.object({
   atrustBenutzer: z.string().trim().min(1).max(100).optional(),
   /** Optional beim Update, wenn bereits ein Passwort hinterlegt ist */
   atrustPasswort: z.string().min(1).max(200).optional(),
+  /**
+   * Signaturkarte: PIN. Beim Speichern prüft die Kassa sie mit EINER Probesignatur auf der Karte
+   * (falsch = ein Fehlversuch, nichts wird gespeichert). Optional, wenn schon eine gültige PIN hinterlegt ist.
+   */
+  kartePin:       KartePinSchema.optional(),
 })
 export type SeeConfigUpdate = z.infer<typeof SeeConfigUpdateSchema>
+
+/** Zustand der Kartenbrücke am Kassen-PC (Signaturkarte) */
+export const KartenbrueckeStatusSchema = z.object({
+  /** An diesem Kassa-Server ist eine Brücke hinterlegt */
+  eingerichtet: z.boolean(),
+  erreichbar:   z.boolean(),
+  /** Von der Brücke gemeldete Version (null = sie nennt keine bzw. nicht erreichbar) */
+  version:      z.string().nullable(),
+  /** Version, mit der diese Kassa ausgeliefert wird */
+  erwartet:     z.string(),
+  /** Die Brücke läuft, ist aber älter — Kassa-Setup am PC ausführen */
+  veraltet:     z.boolean(),
+  fehler:       z.string().optional(),
+})
+export type KartenbrueckeStatus = z.infer<typeof KartenbrueckeStatusSchema>
 
 /** Ergebnis von „Verbindung testen" bzw. der Übernahme beim Speichern */
 export const SeeTestErgebnisSchema = z.object({
@@ -67,5 +97,9 @@ export const SeeTestErgebnisSchema = z.object({
   zdaId:         z.string().optional(),
   zertifikatSn:  z.string().optional(),
   fehler:        z.string().optional(),
+  /** Signaturkarte: erkannte Karte (z. B. „A-Trust ACOS-ID 4.1") */
+  karte:         z.string().optional(),
+  /** Signaturkarte: Hinweis, z. B. „bis Mai 2027 tauschen" */
+  hinweis:       z.string().optional(),
 })
 export type SeeTestErgebnis = z.infer<typeof SeeTestErgebnisSchema>

@@ -181,7 +181,7 @@ export const kassen = pgTable('kassen', {
   /** AES-256-GCM-verschlüsselter Umsatzzähler-Schlüssel (32 Byte; wird bei FON gemeldet) */
   aesSchluesselEnc:      text('aes_schluessel_enc'),
 
-  // Signaturerstellungseinheit: 'software' (Dev, ZDA AT0) | 'atrust_hsm' (a.sign RK HSM)
+  // Signaturerstellungseinheit: 'software' (Dev, ZDA AT0) | 'atrust_hsm' (a.sign RK HSM) | 'atrust_chip' (Signaturkarte)
   seeTyp:                varchar('see_typ', { length: 20 }).notNull().default('software'),
   /** ZDA-Kennzeichen im QR-Prefix (_R1-<ZDA>_): AT0 Software, AT1 A-Trust, … */
   seeZdaId:              varchar('see_zda_id', { length: 10 }).notNull().default('AT0'),
@@ -189,6 +189,15 @@ export const kassen = pgTable('kassen', {
   atrustBenutzer:        text('atrust_benutzer'),
   /** AES-256-GCM-verschlüsseltes A-Trust-Passwort (Muster master-key.ts) */
   atrustPasswortEnc:     text('atrust_passwort_enc'),
+  /** AES-256-GCM-verschlüsselte PIN der Signaturkarte (see_typ 'atrust_chip') */
+  kartePinEnc:           text('karte_pin_enc'),
+  /**
+   * true = die Karte hat die PIN abgelehnt. Die Kassa signiert dann NICHT mehr von selbst (jeder weitere
+   * Versuch kostet einen der wenigen Fehlversuche der Karte) — erst eine neu eingetragene PIN hebt das auf.
+   */
+  kartePinGesperrt:      boolean('karte_pin_gesperrt').notNull().default(false),
+  /** Wortlaut der letzten PIN-Ablehnung (z. B. „noch 2 Versuche") */
+  kartePinHinweis:       text('karte_pin_hinweis'),
 
   /** Gesetzt, solange die SEE ausgefallen ist (Belege tragen den Ausfallmarker, statt signiert zu sein). NULL = SEE in Betrieb. */
   seeAusgefallenSeit:    timestamp('see_ausgefallen_seit', { withTimezone: true }),

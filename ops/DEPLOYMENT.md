@@ -589,6 +589,13 @@ Container, die Daten (Postgres-Volume) bleiben erhalten.
   Vorschub vor dem Schnitt (Kopf-zu-Messer-Abstand ~12–15 mm; erledigt die Kassa
   automatisch).
 
+## 9a. Signaturkarte (lokal, ohne Internet)
+
+Für Kleininstallationen kann die Kassa statt mit A-Trust online mit der RKSV-Signaturkarte (a.sign RK CHIP) im
+Kartenleser am PC signieren. Einrichtung, PIN-Schutz und Verhalten bei gezogener Karte: [`ops/kartenbruecke/LIES-MICH.md`](kartenbruecke/LIES-MICH.md).
+Die Kartenbrücke am PC richtet **Kassa-Setup** ein und aktualisiert sie bei jedem Lauf. „Jetzt aktualisieren" erneuert sie
+nicht; ist sie veraltet, sagt es die Kassa unter Einstellungen → RKSV.
+
 ## 9b. Kassa übertragen (Büro → Kunden-Hardware)
 
 Eine im Büro eingerichtete Kassa (alle Daten, Layout, Benutzer, Signaturschlüssel) auf den PC

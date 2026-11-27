@@ -11,6 +11,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { belegApi } from '../lib/api'
 import { getKasseIdentity } from '../lib/kasse'
+import { SEE_STATUS_SCHLUESSEL, seeAbfrageTakt } from '../lib/seeStatus'
 
 /** Minuten → „3 Std 12 Min" / „45 Min". */
 export function formatAusfallDauer(min: number): string {
@@ -27,10 +28,11 @@ export function SeeStatusBanner() {
   const [fehler, setFehler] = useState<string | null>(null)
 
   const { data: status } = useQuery({
-    queryKey: ['see-status', kasseId],
+    queryKey: [SEE_STATUS_SCHLUESSEL, kasseId],
     queryFn:  () => belegApi.seeStatus(kasseId),
     enabled:  !!kasseId,
-    refetchInterval: 30_000,
+    // Nach Verkäufen fragt der QueryClient ohnehin sofort neu ab (lib/seeStatus); im Ausfall zusätzlich öfter
+    refetchInterval: (q) => seeAbfrageTakt(q.state.data?.ausgefallen),
     refetchOnWindowFocus: true,
   })
 
@@ -38,7 +40,7 @@ export function SeeStatusBanner() {
     mutationFn: () => belegApi.seeWiederherstellen(kasseId),
     onSuccess: () => {
       setFehler(null)
-      queryClient.invalidateQueries({ queryKey: ['see-status', kasseId] })
+      queryClient.invalidateQueries({ queryKey: [SEE_STATUS_SCHLUESSEL, kasseId] })
     },
     onError: (err) => setFehler(err instanceof Error ? err.message : String(err)),
   })

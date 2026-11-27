@@ -83,6 +83,8 @@ test('Onboarding: Setup-Formular richtet Kasse ein und signiert den Startbeleg',
   await page.fill('#admin-email', 'e2e-onboarding@test.at')
   await page.fill('#admin-passwort', 'e2e-passwort-12345')
 
+  // Signatur muss ausdrücklich gewählt werden — hier Test/Demo (Software, wie bisher)
+  await page.getByTestId('signatur-wahl').getByRole('radio', { name: /Test \/ Demo/ }).click()
   await page.getByRole('button', { name: 'Kasse einrichten' }).click()
 
   // Erfolg: Kasse registriert (FO-Stub) + Startbeleg geprueft. Grosszuegiges
@@ -270,6 +272,58 @@ test('SEE-Ausfall: melden zeigt Warnbanner, Wiederinbetriebnahme räumt ihn', as
 
   // Banner ist wieder weg
   await expect(page.getByTestId('see-banner')).toHaveCount(0)
+})
+
+/**
+ * Ausfall, den die Kassa erst beim Verkauf bemerkt (Stick abgezogen): Der Banner muss SOFORT nach dem Verkauf
+ * erscheinen, nicht erst beim nächsten 30-s-Takt (Test-PC 2026-11-27). Der Ausfall wird hier an der Oberfläche
+ * vorbei über die API gesetzt — genau wie der Server ihn beim Verkauf setzt; die Seite weiß davon nichts.
+ */
+test('SEE-Ausfall beim Verkauf: Banner erscheint sofort nach dem Beleg', async ({ page, request }) => {
+  const login = await ensureAuth(request)
+  const token = login.token as string
+  const kasseId = (login.kassen as { id: string }[])[0]!.id
+  const authHeader = { Authorization: `Bearer ${token}` }
+  await page.addInitScript((d: { token: string; authJson: string; mandantId: string; kasseId: string }) => {
+    localStorage.setItem('kassa:token', d.token)
+    localStorage.setItem('kassa:auth', d.authJson)
+    localStorage.setItem('kassa:mandantId', d.mandantId)
+    localStorage.setItem('kassa:kasseId', d.kasseId)
+  }, {
+    token, kasseId, mandantId: (login.mandant as { id: string }).id,
+    authJson: JSON.stringify({ user: login.user, mandant: login.mandant, kassen: login.kassen }),
+  })
+  page.on('dialog', (d) => d.accept())
+
+  const kat = await (await request.post('/api/kategorien', {
+    headers: authHeader, data: { name: 'Ausfall', farbe: 'rot', reihenfolge: 9 },
+  })).json() as { id: string }
+  expect((await request.post('/api/artikel', {
+    headers: authHeader, data: { bezeichnung: 'Ausfalltest', preisBruttoCent: 100, mwstSatz: 'normal', kategorieId: kat.id },
+  })).ok()).toBe(true)
+
+  // Erst den Status „in Betrieb" laden lassen — danach fragt die Seite 30 s lang nicht von selbst nach
+  const ersteAbfrage = page.waitForResponse(r => r.url().includes('/api/belege/see-status'))
+  await page.goto('/kasse')
+  expect(((await (await ersteAbfrage).json()) as { ausgefallen: boolean }).ausgefallen).toBe(false)
+  await expect(page.getByTestId('see-banner')).toHaveCount(0)
+
+  // Der Server erkennt den Ausfall (wie beim Verkauf mit gezogenem Stick) — die Seite bekommt es nicht mit
+  expect((await request.post('/api/belege/see-ausfall', { headers: authHeader, data: { kasseId } })).ok()).toBe(true)
+  try {
+    // Verkauf an der Oberfläche (Artikel ohne Optionen)
+    await (await artikelKachel(page, /Ausfalltest/)).click()
+    await page.getByRole('button', { name: /^Bar \(/ }).click()
+    await expect(page.getByText(/Beleg #\d+ erstellt/)).toBeVisible({ timeout: 20_000 })
+
+    // Sofort, nicht nach 30 s
+    await expect(page.getByTestId('see-banner')).toBeVisible({ timeout: 3_000 })
+  } finally {
+    // Aufräumen, auch wenn der Test scheitert: wieder in Betrieb (signierter Sammelbeleg), damit spätere Tests signieren
+    await request.post('/api/belege/see-wiederherstellung', { headers: authHeader, data: { kasseId } })
+  }
+  // Nach der Wiederherstellung verschwindet der Banner im schnellen Ausfall-Takt von selbst
+  await expect(page.getByTestId('see-banner')).toHaveCount(0, { timeout: 15_000 })
 })
 
 /**

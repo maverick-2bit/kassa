@@ -197,6 +197,8 @@ test.describe.serial('Betreiber der Installation', () => {
     await page.fill('#admin-name', neu.admin.name)
     await page.fill('#admin-email', neu.admin.email)
     await page.fill('#admin-passwort', neu.admin.passwort)
+    // Signatur muss ausdrücklich gewählt werden — hier Test/Demo (Software, wie bisher)
+    await page.getByTestId('signatur-wahl').getByRole('radio', { name: /Test \/ Demo/ }).click()
     await page.getByRole('button', { name: 'Kasse einrichten' }).click()
 
     await expect(page.getByRole('heading', { name: 'Kasse erfolgreich eingerichtet' })).toBeVisible({ timeout: 30_000 })
