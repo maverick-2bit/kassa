@@ -104,6 +104,14 @@ jobs:
         env:
           TEST_DATABASE_URL: postgresql://kassa:kassa@localhost:5432/kassa
 
+      - name: Serviceportal samt Abhängigkeiten bauen
+        run: pnpm --filter @kassa/portal... build
+
+      - name: Serviceportal-Integrationstests ausführen
+        run: pnpm --filter @kassa/portal test:integration
+        env:
+          TEST_DATABASE_URL: postgresql://kassa:kassa@localhost:5432/kassa
+
   # ── Dependency-Audit (Build rot bei high/critical) ───────────────────────────
   audit:
     name: Security-Audit
