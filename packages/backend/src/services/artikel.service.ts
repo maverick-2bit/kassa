@@ -122,6 +122,7 @@ function toDto(
     lagerstandAktiv:      row.lagerstandAktiv,
     lagerstandMenge:      row.lagerstandMenge,
     mindestbestand:       row.mindestbestand,
+    stornoLagerRueck:     row.stornoLagerRueck,
     seriennummernAktiv:   row.seriennummernAktiv,
     istFavorit:           row.istFavorit,
     reihenfolge:          row.reihenfolge,
@@ -175,6 +176,7 @@ export async function erstelleArtikel(db: Db, input: ArtikelInput): Promise<Arti
       lagerstandAktiv: input.lagerstandAktiv ?? false,
       lagerstandMenge: input.lagerstandAktiv ? (input.lagerstandMenge ?? null) : null,
       mindestbestand:  input.mindestbestand ?? null,
+      stornoLagerRueck: input.stornoLagerRueck ?? null,
       lieferantId:     input.lieferantId ?? null,
       ean:             input.ean ?? null,
       einkaufspreisCent: input.einkaufspreisCent ?? null,
@@ -247,6 +249,7 @@ export async function aktualisiereArtikel(
   if (update.seriennummernAktiv   !== undefined) values.seriennummernAktiv   = update.seriennummernAktiv
   if (update.lagerstandMenge      !== undefined) values.lagerstandMenge      = update.lagerstandMenge
   if (update.mindestbestand       !== undefined) values.mindestbestand       = update.mindestbestand
+  if (update.stornoLagerRueck     !== undefined) values.stornoLagerRueck     = update.stornoLagerRueck
   if (update.istFavorit           !== undefined) values.istFavorit           = update.istFavorit
   if (update.reihenfolge          !== undefined) values.reihenfolge          = update.reihenfolge
   if (update.favoritenReihenfolge !== undefined) values.favoritenReihenfolge = update.favoritenReihenfolge

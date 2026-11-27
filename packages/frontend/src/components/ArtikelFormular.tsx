@@ -51,12 +51,19 @@ type FormValues = {
   lagerstandAktiv:      boolean
   lagerstandMengeStr:   string
   mindestbestandStr:    string
+  /** Storno zurück ins Lager: automatisch (ohne Rezeptur ja, mit Rezeptur nein), immer, nie */
+  stornoLager:          'auto' | 'ja' | 'nein'
   seriennummernAktiv:   boolean
   optionenAbfrage:      OptionenAbfrageFeld
 }
 
 /** Ein Rezept-Bestandteil im Editor (lokaler State, nicht in react-hook-form). */
 type RezeptZeile = { bestandteilArtikelId: string; menge: number }
+
+/** Artikel-Wert → Auswahl im Formular (null = automatisch) */
+function stornoLagerFeld(w: boolean | null | undefined): 'auto' | 'ja' | 'nein' {
+  return w === true ? 'ja' : w === false ? 'nein' : 'auto'
+}
 
 interface Props {
   mandantId:     string
@@ -161,6 +168,7 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
       lagerstandAktiv:    initial?.lagerstandAktiv  ?? false,
       lagerstandMengeStr: initial?.lagerstandMenge   != null ? String(initial.lagerstandMenge)   : '',
       mindestbestandStr:  initial?.mindestbestand    != null ? String(initial.mindestbestand)    : '',
+      stornoLager:        stornoLagerFeld(initial?.stornoLagerRueck),
       seriennummernAktiv: initial?.seriennummernAktiv ?? false,
       optionenAbfrage:    optionenAbfrageFeld(initial?.optionenAbfrage),
     },
@@ -201,6 +209,7 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
       lagerstandAktiv:    initial?.lagerstandAktiv  ?? false,
       lagerstandMengeStr: initial?.lagerstandMenge   != null ? String(initial.lagerstandMenge)   : '',
       mindestbestandStr:  initial?.mindestbestand    != null ? String(initial.mindestbestand)    : '',
+      stornoLager:        stornoLagerFeld(initial?.stornoLagerRueck),
       seriennummernAktiv: initial?.seriennummernAktiv ?? false,
       optionenAbfrage:    optionenAbfrageFeld(initial?.optionenAbfrage),
     })
@@ -291,6 +300,7 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
       lagerstandAktiv: values.lagerstandAktiv,
       lagerstandMenge: lsMenge,
       mindestbestand:  mindest,
+      stornoLagerRueck: values.stornoLager === 'auto' ? null : values.stornoLager === 'ja',
       seriennummernAktiv: values.seriennummernAktiv,
       // Wird zentral im SB-Terminal-Bereich der Einstellungen verwaltet — hier nur erhalten
       terminalSichtbar: initial?.terminalSichtbar ?? null,
@@ -598,6 +608,24 @@ export function ArtikelFormular({ mandantId, initial, kategorien, bonierdrucker,
           </div>
         )}
       </div>
+
+      {/* Storno → Lager */}
+      {(lagerstandAktiv || bestandteile.length > 0) && (
+        <Field
+          label="Bei Storno zurück ins Lager"
+          hint="Vorgabe für den Storno-Dialog; dort je Position änderbar. Zubereitetes (Rezeptur) kann nicht zurück."
+        >
+          <select
+            {...register('stornoLager')}
+            data-testid="artikel-storno-lager"
+            className="w-full rounded-md border border-line-strong bg-panel px-3 py-2 text-sm text-ink focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+          >
+            <option value="auto">Automatisch ({bestandteile.length > 0 ? 'mit Rezeptur: nein' : 'ohne Rezeptur: ja'})</option>
+            <option value="ja">Ja, zurück ins Lager</option>
+            <option value="nein">Nein, bleibt verbraucht</option>
+          </select>
+        </Field>
+      )}
 
       {/* Seriennummern verwalten */}
       <div className={`rounded-lg border p-3 transition ${seriennummernAktiv ? 'border-brand-300 bg-brand-50' : 'border-line'}`}>

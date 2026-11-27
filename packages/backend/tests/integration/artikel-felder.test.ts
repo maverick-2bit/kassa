@@ -52,6 +52,7 @@ interface ArtikelRow {
   lagerstandAktiv: boolean
   lagerstandMenge: number | null
   mindestbestand: number | null
+  stornoLagerRueck: boolean | null
   seriennummernAktiv: boolean
   istFavorit: boolean
   reihenfolge: number
@@ -125,6 +126,7 @@ describe('Artikel anlegen und bearbeiten: alle Formularfelder werden gespeichert
     lagerstandAktiv:        true,
     lagerstandMenge:        12,
     mindestbestand:         3,
+    stornoLagerRueck:       false,
     seriennummernAktiv:     true,
     istFavorit:             true,
     reihenfolge:            5,

@@ -596,6 +596,13 @@
       "when": 1793318400000,
       "tag": "0086_signaturkarte",
       "breakpoints": true
+    },
+    {
+      "idx": 85,
+      "version": "7",
+      "when": 1793404800000,
+      "tag": "0087_storno_lager",
+      "breakpoints": true
     }
   ]
 }

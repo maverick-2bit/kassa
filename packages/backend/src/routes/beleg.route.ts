@@ -22,6 +22,7 @@ import { ATrustHsmError, FonSoapError, KartenError } from '@kassa/rksv'
 import {
   erstelleBarzahlungsbeleg,
   erstelleStornobeleg,
+  holeStornoLagerVorschau,
   erstelleNullbeleg,
   erstelleMonatsbeleg,
   erstelleJahresbeleg,
@@ -273,6 +274,17 @@ export const belegRoute: FastifyPluginAsync<BelegRouteOptions> = async (fastify,
       if (!beleg) return reply.status(409).send({ fehler: err.message })
       return reply.status(200).header('Idempotent-Replayed', 'true').send(beleg)
     }
+  })
+
+  /** Storno-Dialog: Lagerwirkung und Vorschlag je Position (GET /belege/:id/storno-lager?kasseId=…) */
+  fastify.get('/belege/:id/storno-lager', guard, async (request, reply) => {
+    const p = z.object({ id: z.string().guid() }).safeParse(request.params)
+    const q = z.object({ kasseId: z.string().guid() }).safeParse(request.query)
+    if (!p.success || !q.success) return reply.status(400).send({ fehler: 'Ungültige ID' })
+    if (!(await pruefeKasseZugriff(request, reply, opts.deps, q.data.kasseId))) return
+    const vorschau = await holeStornoLagerVorschau(opts.deps.db, p.data.id, q.data.kasseId, request.user.mandantId)
+    if (!vorschau) return reply.status(404).send({ fehler: 'Beleg nicht gefunden' })
+    return reply.send(vorschau)
   })
 
   fastify.post('/belege/storno', guard, async (request, reply) => {

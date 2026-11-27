@@ -266,6 +266,7 @@ export const ROUTEN_RECHTE: ReadonlyArray<readonly [Zugriff, readonly RoutenSchl
     recht('belege.stornieren'),
     [
       'POST /api/belege/storno',
+      'GET /api/belege/:id/storno-lager',
     ],
   ],
   // Recht „Kunden (CRM)".

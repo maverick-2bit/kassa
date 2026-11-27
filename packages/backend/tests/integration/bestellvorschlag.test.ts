@@ -123,8 +123,8 @@ describe('Bestellvorschlag (Integration, echtes PostgreSQL)', () => {
     const v = await vorschlag()
     expect(v).toMatchObject({ tage: 14, reichweite: 14 })
     // 10 + 4 + 2 − 2 (Storno) = 14; der 20 Tage alte Beleg mit 50 zählt nicht
-    expect(zeile(v, ids.bier)).toMatchObject({ verbrauch: 14, verbrauchProTag: 1, bedarf: 14, bestand: 100 - 66, unterwegs: 0, mindestbestand: 5 })
-    // Bestand 34 reicht: 14 + 5 − 34 < 0
+    expect(zeile(v, ids.bier)).toMatchObject({ verbrauch: 14, verbrauchProTag: 1, bedarf: 14, bestand: 100 - 66 + 2, unterwegs: 0, mindestbestand: 5 })
+    // Bestand 36 (66 verkauft, der Storno bucht die 2 Bier zurück) reicht: 14 + 5 − 36 < 0
     expect(zeile(v, ids.bier).vorschlag).toBe(0)
   })
 

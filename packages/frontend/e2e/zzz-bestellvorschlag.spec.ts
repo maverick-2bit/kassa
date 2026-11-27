@@ -119,4 +119,52 @@ test('Bestellvorschlag aus dem Verbrauch: Vorschlag, Reichweite, CSV, PDF, Druck
     await page.getByTestId('lager-drucken').click()
     await expect(page.getByRole('dialog').getByTestId('pdf-vorschau')).toHaveAttribute('src', /^blob:/, { timeout: 10_000 })
   })
+
+  await test.step('Storno: Häkchen „zurück ins Lager" ist vorbelegt; abgewählt bleibt der Bestand, angehakt kommt er zurück', async () => {
+    const bestand = async () => ((await (await request.get('/api/artikel', { headers: auth })).json()) as { id: string; lagerstandMenge: number }[])
+      .find(a => a.id === artikelId)!.lagerstandMenge
+    const verkaufe = async (menge: number) => {
+      const r = await request.post('/api/belege/barzahlung', {
+        headers: auth, data: { kasseId: login.kassen[0]!.id, positionen: [{ artikelId, menge }], zahlung: { barCent: menge * 300, karteCent: 0, sonstigeCent: 0 } },
+      })
+      expect(r.status()).toBe(201)
+      return r.json() as Promise<{ belegNummer: number }>
+    }
+    const stornieren = async (belegNummer: number, zurueck: boolean) => {
+      await page.goto('/belege')
+      await page.getByTestId(`beleg-zeile-${belegNummer}`).getByRole('button', { name: 'Stornieren' }).click()
+      const dialog = page.getByRole('dialog').filter({ hasText: `Beleg #${belegNummer} stornieren?` })
+      const haken = dialog.getByTestId('storno-lager-haken')
+      await expect(haken).toBeChecked()                         // Ware: Vorgabe „zurück"
+      await expect(dialog.getByTestId('storno-lager')).toContainText(name)
+      if (!zurueck) await haken.uncheck()
+      await dialog.getByRole('button', { name: 'Storno bestätigen' }).click()
+      const erstellt = page.getByRole('dialog').filter({ hasText: /Stornobeleg #\d+ erstellt/ })
+      await expect(erstellt).toBeVisible()
+      await erstellt.getByRole('button', { name: 'Schließen' }).click()
+    }
+
+    const vorher = await bestand()
+    const a = await verkaufe(2)
+    expect(await bestand()).toBe(vorher - 2)
+    await stornieren(a.belegNummer, false)
+    expect(await bestand()).toBe(vorher - 2)                    // abgewählt: bleibt verbraucht
+
+    const b = await verkaufe(3)
+    expect(await bestand()).toBe(vorher - 5)
+    await stornieren(b.belegNummer, true)
+    expect(await bestand()).toBe(vorher - 2)                    // angehakt: zurück ins Lager
+
+    // Zurückholen: Lager bleibt — das Neukassieren der (freien) Positionen bucht nicht noch einmal ab
+    const c = await verkaufe(1)
+    expect(await bestand()).toBe(vorher - 3)
+    await page.goto('/belege')
+    await page.getByTestId(`beleg-zeile-${c.belegNummer}`).getByRole('button', { name: 'Zurückholen' }).click()
+    const dialog = page.getByRole('dialog').filter({ hasText: `Beleg #${c.belegNummer} zurückholen?` })
+    await expect(dialog.getByTestId('storno-lager-zurueckholen')).toBeVisible()
+    await expect(dialog.getByTestId('storno-lager-haken')).toHaveCount(0)
+    await dialog.getByRole('button', { name: 'Stornieren und zurückholen' }).click()
+    await expect(page).toHaveURL(/\/kasse/, { timeout: 15_000 })
+    expect(await bestand()).toBe(vorher - 3)
+  })
 })

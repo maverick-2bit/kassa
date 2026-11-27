@@ -36,6 +36,7 @@ const BEISPIEL = {
   herstellerArtikelnummer: 'C13T10H14010',
   terminalSichtbar:       true,
   optionenAbfrage:        false,
+  stornoLagerRueck:       false,
   bild:                   'data:image/jpeg;base64,AAAA',
 } satisfies Record<keyof ArtikelInput, unknown>
 
@@ -93,7 +94,7 @@ describe('artikelUpdateAusInput: leere Werte leeren das Feld (null / []), statt 
       allergene: null, station: null, farbe: null, kategorieId: null, istFavorit: false, bonierdruckerId: null,
       bonierBeiDirektverkauf: false, istBestandteil: false, bestandteile: [], lieferantId: null,
       ean: null, einkaufspreisCent: null, lieferantenArtikelnummer: null, hersteller: null, herstellerArtikelnummer: null,
-      lagerstandAktiv: false, lagerstandMenge: null, mindestbestand: null, seriennummernAktiv: false,
+      lagerstandAktiv: false, lagerstandMenge: null, mindestbestand: null, stornoLagerRueck: null, seriennummernAktiv: false,
       optionenAbfrage: null, bild: null,
     })
   })

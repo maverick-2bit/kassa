@@ -47,6 +47,8 @@ export function artikelUpdateAusInput(input: ArtikelInput): ArtikelUpdate {
     lagerstandAktiv:        input.lagerstandAktiv,
     lagerstandMenge:        input.lagerstandMenge ?? null,
     mindestbestand:         input.mindestbestand  ?? null,
+    // null = automatisch (ohne Rezeptur ja, mit Rezeptur nein)
+    stornoLagerRueck:       input.stornoLagerRueck ?? null,
     seriennummernAktiv:     input.seriennummernAktiv,
     // null = „wie die Warengruppe" — wer die Auswahl zurücksetzt, will genau das (leert das Feld)
     optionenAbfrage:        input.optionenAbfrage ?? null,

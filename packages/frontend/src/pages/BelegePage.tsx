@@ -50,6 +50,8 @@ export function BelegePage() {
   const [ausgabeBeleg, setAusgabeBeleg] = useState<BelegResponse | null>(null)
   const [stornoAuftrag, setStornoAuftrag] = useState<StornoAuftrag | null>(null)
   const [stornoGrund, setStornoGrund] = useState('')
+  /** Storno: Positionen (Index im Originalbeleg), die zurück ins Lager gehen; null = noch die Vorgabe */
+  const [lagerAuswahl, setLagerAuswahl] = useState<Set<number> | null>(null)
   /**
    * Freigabe-PIN. Das Feld erscheint erst, wenn das Backend den Storno mit
    * „freigabe_erforderlich" abgelehnt hat — im Normalfall (Schwelle aus oder
@@ -138,6 +140,7 @@ export function BelegePage() {
 
   const stornoZuruecksetzen = () => {
     setStornoAuftrag(null)
+    setLagerAuswahl(null)
     setStornoGrund('')
     setFreigabePin('')
     setFreigabeNoetig(false)
@@ -187,6 +190,7 @@ export function BelegePage() {
         verweisBelegId: auftrag.beleg.id,
         ...(stornoGrund.trim() && { grund: stornoGrund.trim() }),
         ...(freigabePin && { freigabePin }),
+        ...(lagerZurueckFuer(auftrag) && { lagerZurueck: lagerZurueckFuer(auftrag) }),
       })
     },
     onSuccess:  (storno, auftrag) => {
@@ -270,6 +274,31 @@ export function BelegePage() {
   }
 
   const stornoBeleg = stornoAuftrag?.beleg
+
+  // Lager: was zurück ins Lager kann und was vorgeschlagen ist (je Position des Originalbelegs)
+  const stornoLagerQ = useQuery({
+    queryKey: ['storno-lager', stornoAuftrag?.beleg.id, stornoAuftrag?.kasseId],
+    queryFn:  () => belegApi.stornoLager(stornoAuftrag!.beleg.id, stornoAuftrag!.kasseId),
+    enabled:  !!stornoAuftrag,
+    retry:    false,
+  })
+  const lagerPositionen = (stornoLagerQ.data ?? []).filter(p => p.wirkung)
+  const lagerGewaehlt = lagerAuswahl ?? new Set(lagerPositionen.filter(p => p.vorschlag).map(p => p.index))
+  /**
+   * Was an den Server geht. Beim Zurückholen NICHTS: Die Positionen kommen als freie Positionen in den Warenkorb, das
+   * Neukassieren bucht nichts mehr ab — die Ware bleibt einmal verbraucht. Beim Storno die Auswahl. Ohne geladene
+   * Vorschau nichts senden — dann gilt die Vorgabe am Artikel.
+   */
+  function lagerZurueckFuer(auftrag: StornoAuftrag): number[] | undefined {
+    if (auftrag.art === 'zurueckholen') return []
+    if (!stornoLagerQ.data) return undefined
+    return [...lagerGewaehlt]
+  }
+  const lagerUmschalten = (index: number) => {
+    const neu = new Set(lagerGewaehlt)
+    if (neu.has(index)) neu.delete(index); else neu.add(index)
+    setLagerAuswahl(neu)
+  }
   /** Grund, warum sich der gewählte Beleg nicht zurückholen lässt */
   const wartender  = leseZurueckgeholt(identity.kasseId)
   const sperrGrund = stornoAuftrag?.art !== 'zurueckholen' ? null
@@ -670,6 +699,36 @@ export function BelegePage() {
               <div className="flex justify-between"><dt className="text-ink-muted">Datum</dt><dd>{formatDatum(stornoBeleg.belegDatum)}</dd></div>
               <div className="flex justify-between font-medium"><dt>Betrag</dt><dd className="font-mono">{formatPreis(stornoBeleg.gesamtbetragCent)}</dd></div>
             </dl>
+            {lagerPositionen.length > 0 && (
+              <div className="rounded-md border border-line p-3 space-y-2" data-testid="storno-lager">
+                <p className="text-sm font-medium text-ink">Lager</p>
+                {stornoAuftrag.art === 'zurueckholen' ? (
+                  <p className="text-xs text-ink-muted" data-testid="storno-lager-zurueckholen">
+                    Der Lagerstand bleibt unverändert: Die Positionen werden neu kassiert und dabei nicht noch einmal
+                    abgebucht. Entfernst du beim Korrigieren eine Position, die nicht verbraucht wurde, buche sie im
+                    Wareneingang zurück.
+                  </p>
+                ) : (
+                  <ul className="space-y-1.5">
+                    {lagerPositionen.map(p => (
+                      <li key={p.index}>
+                        <label className="flex items-start gap-2 text-sm text-ink cursor-pointer">
+                          <input
+                            type="checkbox" className="mt-0.5" checked={lagerGewaehlt.has(p.index)}
+                            onChange={() => lagerUmschalten(p.index)} data-testid="storno-lager-haken"
+                            aria-label={`${p.bezeichnung} zurück ins Lager`}
+                          />
+                          <span>
+                            {p.menge} × {p.bezeichnung} <span className="text-ink-muted">zurück ins Lager</span>
+                            <span className="block text-xs text-ink-subtle">{p.grund}</span>
+                          </span>
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
             <div>
               <label className="block text-sm font-medium text-ink mb-1">
                 Storno-Grund <span className="text-ink-subtle font-normal">(optional)</span>

@@ -112,6 +112,7 @@ import type {
   SetupResponse,
   Station,
   StornobelegInput,
+  StornoLagerPosition,
   Tagesabschluss,
   TabPosition,
   TischTabBezahlenInput,
@@ -1005,6 +1006,9 @@ export const belegApi = {
     }),
   storno:     (input: StornobelegInput) =>
     request<BelegResponse>('POST', '/api/belege/storno', input),
+  /** Storno-Dialog: Lagerwirkung und Vorschlag „zurück ins Lager" je Position */
+  stornoLager: (belegId: string, kasseId: string) =>
+    request<StornoLagerPosition[]>('GET', `/api/belege/${belegId}/storno-lager?kasseId=${kasseId}`),
   nullbeleg:  (input: NullbelegInput) =>
     request<BelegResponse>('POST', '/api/belege/nullbeleg', input),
   monatsbeleg:(input: MonatsbelegInput) =>

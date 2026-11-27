@@ -507,6 +507,7 @@ export const HILFE_THEMEN: HilfeThema[] = [
         schritte: [
           'Den falschen Beleg öffnen und „Storno" wählen.',
           'Unter „Storno-Grund" kurz eintragen, warum.',
+          'Unter „Lager" ist je Position angehakt, ob sie zurück ins Lager geht: Ware (Flasche, Dose) ja, Zubereitetes (Artikel mit Rezeptur) nein. Ein reklamiertes Schnitzel bleibt so verbraucht. Die Vorgabe stellst du beim Artikel unter „Bei Storno zurück ins Lager" ein, hier lässt sie sich je Storno ändern.',
           'Verlangt die Kassa die „Freigabe — PIN eines Berechtigten", gibt eine berechtigte Person ihre PIN ein.',
           '„Storno bestätigen". Es entsteht ein eigener Stornobeleg — der Originalbeleg wird nie gelöscht (Vorschrift).',
           'Der Stornobeleg entsteht immer auf der Kasse des Originalbelegs (deren RKSV-Kette), auch wenn du ihn an einem anderen Gerät auslöst.',
@@ -519,7 +520,7 @@ export const HILFE_THEMEN: HilfeThema[] = [
           'Die Kassa storniert ihn wie oben (gegebenenfalls mit Freigabe-PIN) und legt seine Positionen in den Warenkorb dieses Geräts.',
           'Im Warenkorb korrigieren und wie gewohnt neu kassieren. Bis dahin bleibt er auf diesem Gerät gespeichert, auch nach dem Neuladen; „Verwerfen" fragt nach.',
           'Belege, die mit Gutschein oder auf Kredit bezahlt wurden, lassen sich nicht zurückholen. Eine Kartenzahlung buchst du am Terminal selbst zurück.',
-          'Die Positionen kommen mit Bezeichnung, Preis und Steuersatz wie gebucht zurück. Lagerstand und Küchenbons werden dabei nicht noch einmal gebucht.',
+          'Die Positionen kommen mit Bezeichnung, Preis und Steuersatz wie gebucht zurück. Lagerstand und Küchenbons werden dabei nicht noch einmal gebucht — der Storno beim Zurückholen bucht darum auch nichts ins Lager zurück.',
         ],
       },
       {

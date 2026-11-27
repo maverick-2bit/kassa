@@ -48,6 +48,7 @@ import type {
   MonatsbelegInput,
   NullbelegInput,
   StornobelegInput,
+  StornoLagerPosition,
 } from '@kassa/shared'
 import { ArtikelPositionSchema, hatBonRouting, wienerZeitpunkt } from '@kassa/shared'
 import type { Db } from '../db/client.js'
@@ -57,6 +58,7 @@ import { pruefeRabattFreigabe, type FreigabeKontext } from './freigabe.service.j
 import { logAudit } from './audit.service.js'
 import { bestimmeBelegZeit } from './beleg-zeit.js'
 import { dekrementiereBestandteile, ladeRezepte } from './bestandteil.service.js'
+import { bewerteStornoLager, bucheStornoLagerZurueck } from './storno-lager.service.js'
 import { baueBonRouting, ladeKasseRoutingAusnahmen, ladeKategorieRoutingZeilen, wirksamesRoutingVonArtikel } from './kategorie-routing.service.js'
 import { decryptPrivateKey, encryptPrivateKey } from '../crypto/master-key.js'
 import { istKarteGesperrt, istPinAblehnung, pinHinweis, schreibeKartenSperre, sperreKarteSofort } from './karten-sperre.js'
@@ -885,6 +887,16 @@ export async function erstelleBarzahlungsbeleg(
 // Stornobeleg — Komplett-Storno eines Vorgängers
 // ---------------------------------------------------------------------------
 
+/** Storno-Dialog: welche Positionen eines Belegs zurück ins Lager können und was vorgeschlagen ist */
+export async function holeStornoLagerVorschau(
+  db: Db, belegId: string, kasseId: string, mandantId: string,
+): Promise<StornoLagerPosition[] | null> {
+  const [b] = await db.select({ positionen: belege.positionen }).from(belege)
+    .where(and(eq(belege.id, belegId), eq(belege.kasseId, kasseId), eq(belege.mandantId, mandantId))).limit(1)
+  if (!b) return null
+  return bewerteStornoLager(db, mandantId, b.positionen as { bezeichnung: string; menge: number; artikelId?: string; artikelName?: string }[])
+}
+
 export async function erstelleStornobeleg(
   input: StornobelegInput,
   deps:  BelegServiceDeps,
@@ -920,9 +932,17 @@ export async function erstelleStornobeleg(
         throw new BelegError(409, 'Dieser Beleg wurde bereits storniert')
       }
 
-      // Positionen mit negiertem Einzelpreis
+      // Lager: gewählte Positionen zurückbuchen (Vorgabe am Artikel, im Dialog je Position änderbar) —
+      // in derselben Transaktion wie der Stornobeleg
       const originalPositionen = verweisBeleg.positionen as (BelegPosition & { artikelId?: string; artikelName?: string; ean?: string })[]
-      const positionen: (BelegPosition & { artikelId?: string | undefined; artikelName?: string | undefined; ean?: string | undefined })[] = originalPositionen.map(p => ({
+      const lagerBewertung = await bewerteStornoLager(tx, verweisBeleg.mandantId, originalPositionen)
+      const lagerGewaehlt = input.lagerZurueck !== undefined
+        ? new Set(input.lagerZurueck)
+        : new Set(lagerBewertung.filter(b => b.vorschlag).map(b => b.index))
+      const zurueckGebucht = await bucheStornoLagerZurueck(tx, verweisBeleg.mandantId, lagerBewertung, lagerGewaehlt)
+
+      // Positionen mit negiertem Einzelpreis
+      const positionen: (BelegPosition & { artikelId?: string | undefined; artikelName?: string | undefined; ean?: string | undefined; lagerZurueck?: boolean })[] = originalPositionen.map((p, i) => ({
         bezeichnung:        `Storno: ${p.bezeichnung}`,
         ...(p.artikelId && { artikelId: p.artikelId }),
         // „Storno: Spritzer" statt je Option eine eigene Storno-Zeile in den Artikelberichten
@@ -931,6 +951,8 @@ export async function erstelleStornobeleg(
         einzelpreisBreutto: -p.einzelpreisBreutto,
         mwstSatz:           p.mwstSatz,
         ...(p.ean && { ean: p.ean }),
+        // Nachvollziehbar: diese Position ging zurück ins Lager (nicht signaturrelevant)
+        ...(zurueckGebucht.has(i) && { lagerZurueck: true }),
       }))
 
       // Zahlungsaufteilung 1:1 negieren

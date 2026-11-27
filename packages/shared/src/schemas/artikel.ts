@@ -103,6 +103,8 @@ export const ArtikelSchema = z.object({
   lagerstandAktiv:      z.boolean(),
   lagerstandMenge:      z.number().int().nonnegative().nullable(),
   mindestbestand:       z.number().int().nonnegative().nullable(),
+  /** Storno bucht zurück ins Lager? null = automatisch (ohne Rezeptur ja, mit Rezeptur nein) */
+  stornoLagerRueck:     z.boolean().nullable().optional(),
   /** Seriennummern-Verwaltung: Bestand = Anzahl freier Seriennummern im Pool */
   seriennummernAktiv:   z.boolean(),
   istFavorit:           z.boolean(),
@@ -152,6 +154,7 @@ export const ArtikelInputSchema = z.object({
   lagerstandAktiv: z.boolean().default(false),
   lagerstandMenge: z.number().int().nonnegative().nullable().default(null),
   mindestbestand:  z.number().int().nonnegative().nullable().default(null),
+  stornoLagerRueck: z.boolean().nullable().optional(),
   seriennummernAktiv: z.boolean().default(false),
   istFavorit:      z.boolean().default(false),
   bonierdruckerId: z.string().guid().optional().nullable(),
@@ -183,6 +186,7 @@ export const ArtikelUpdateSchema = z.object({
   lagerstandAktiv:      z.boolean().optional(),
   lagerstandMenge:      z.number().int().nonnegative().nullable().optional(),
   mindestbestand:       z.number().int().nonnegative().nullable().optional(),
+  stornoLagerRueck:     z.boolean().nullable().optional(),
   seriennummernAktiv:   z.boolean().optional(),
   istFavorit:           z.boolean().optional(),
   reihenfolge:          z.number().int().nonnegative().optional(),

@@ -101,8 +101,25 @@ export const StornobelegInputSchema = z.object({
    * eingestellten Freigabeschwelle liegt (Einstellungen → Freigaben).
    */
   freigabePin:    z.string().trim().min(4).max(12).optional(),
+  /**
+   * Welche Positionen des Originalbelegs zurück ins Lager gehen (Indizes). Fehlt die Angabe, gilt die Vorgabe der
+   * Artikel (automatisch: ohne Rezeptur ja, mit Rezeptur nein). Beim Zurückholen schickt die Kasse alle mit.
+   */
+  lagerZurueck:   z.array(z.number().int().min(0).max(999)).max(1000).optional(),
 })
 export type StornobelegInput = z.infer<typeof StornobelegInputSchema>
+
+/** Vorschau für den Storno-Dialog: je Position, ob sie zurück ins Lager kann und was vorgeschlagen ist */
+export const StornoLagerPositionSchema = z.object({
+  index:       z.number().int(),
+  bezeichnung: z.string(),
+  menge:       z.number(),
+  artikelId:   z.string().nullable(),
+  wirkung:     z.boolean(),
+  vorschlag:   z.boolean(),
+  grund:       z.string(),
+})
+export type StornoLagerPosition = z.infer<typeof StornoLagerPositionSchema>
 
 // ---------------------------------------------------------------------------
 // Nullbeleg — Test-/Kontrollbeleg ohne Umsatz

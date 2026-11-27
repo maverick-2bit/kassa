@@ -875,6 +875,8 @@ export const artikel = pgTable('artikel', {
   lagerstandMenge:     integer('lagerstand_menge'),
   /** Mindestbestand – Alarm wenn lagerstandMenge ≤ mindestbestand */
   mindestbestand:      integer('mindestbestand'),
+  /** Storno bucht zurück ins Lager? null = automatisch (ohne Rezeptur ja, mit Rezeptur nein) — storno-lager.service */
+  stornoLagerRueck:    boolean('storno_lager_rueck'),
   /** Seriennummern-Verwaltung: Bestand = Anzahl freier Seriennummern im Pool */
   seriennummernAktiv:  boolean('seriennummern_aktiv').notNull().default(false),
   /** SB-Terminal-Sichtbarkeit: NULL = erbt von der Kategorie, true/false = Override */
